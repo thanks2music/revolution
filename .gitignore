@@ -112,6 +112,25 @@ wp-content/backup-db/
 web.config
 
 # ========================================
+# 🎵 Composer関連
+# ========================================
+
+# Composer vendor ディレクトリ
+vendor/
+**/vendor/
+
+# for MU-Plugins
+wp-content/mu-plugins/*/vendor/
+apps/backend/wp-content/mu-plugins/*/vendor/
+
+# Composer生成ファイル
+composer.phar
+auth.json
+
+# Composer最適化ファイル
+vendor/composer/autoload_*.php
+
+# ========================================
 # 💾 データベース関連
 # ========================================
 
