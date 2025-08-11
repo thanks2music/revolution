@@ -1,0 +1,285 @@
+# ========================================
+# Environment Configuration
+# ========================================
+
+# 環境変数ファイル
+.env
+.env.local
+.env.production
+.env.staging
+apps/frontend/.env.local
+apps/backend/.env
+
+# Google Cloud認証
+**/service-account-key.json
+**/gcp-credentials.json
+google-cloud-key.json
+.gcloud/
+application_default_credentials.json
+
+# SSH Keys & Certificates
+*.pem
+*.key
+*.crt
+*.p12
+id_rsa*
+id_ed25519*
+
+# API Keys & Tokens
+**/secrets/
+**/*secret*
+**/*token*
+**/*key*
+.npmrc
+.yarnrc.yml
+
+# ========================================
+# 🐳 Docker関連
+# ========================================
+
+# Docker認証
+.docker/
+docker-compose.override.yml
+.dockerignore.local
+
+# Docker volumes (データベースデータなど)
+docker-volumes/
+mysql-data/
+postgres-data/
+
+# ========================================
+# 📦 Node.js関連
+# ========================================
+
+# 依存関係
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# パッケージマネージャー
+.npm
+.yarn/
+.pnpm-store/
+.pnpm-debug.log
+
+# ========================================
+# ⚛️ Next.js関連
+# ========================================
+
+# ビルド出力
+.next/
+out/
+build/
+dist/
+
+# Vercel関連
+.vercel
+
+# Next.js キャッシュ
+.next/cache/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# ========================================
+# 🏗️ WordPress関連
+# ========================================
+
+# Media Library
+wp-content/uploads/
+**/uploads/
+
+# WordPress設定
+wp-config-local.php
+wp-config-production.php
+
+# WordPress キャッシュ
+wp-content/cache/
+wp-content/advanced-cache.php
+wp-content/wp-cache-config.php
+
+# プラグイン開発中の一時ファイル
+wp-content/upgrade/
+wp-content/backup-db/
+
+# WordPress自動生成ファイル
+.htaccess
+web.config
+
+# ========================================
+# 💾 データベース関連
+# ========================================
+
+# SQLダンプ
+*.sql
+*.dump
+*.backup
+database/
+
+# SQLiteファイル
+*.sqlite
+*.sqlite3
+*.db
+
+# ========================================
+# ☁️ クラウドプロバイダー関連
+# ========================================
+
+# Google Cloud
+.gcp/
+gcp-service-account.json
+
+# AWS
+.aws/
+aws-credentials
+
+# Azure
+.azure/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+
+# ========================================
+# 🛠️ 開発ツール関連
+# ========================================
+
+# IDE設定
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS固有
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ログファイル
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 一時ファイル
+tmp/
+temp/
+.tmp/
+.temp/
+
+# ========================================
+# 📊 監視・分析関連
+# ========================================
+
+# 分析データ
+.analytics/
+reports/
+coverage/
+
+# パフォーマンス測定
+.lighthouse/
+.size-limit.json
+
+# ========================================
+# 🧪 テスト関連
+# ========================================
+
+# テスト出力
+test-results/
+playwright-report/
+test-artifacts/
+
+# カバレッジ
+coverage/
+.nyc_output/
+
+# ========================================
+# 🎨 フロントエンド関連
+# ========================================
+
+# Sass
+.sass-cache/
+
+# PostCSS
+.postcssrc.js.local
+
+# ========================================
+# 📚 ドキュメント生成
+# ========================================
+
+# 自動生成ドキュメント
+docs/api/generated/
+.docusaurus/
+
+# ========================================
+# 🔧 プロジェクト固有
+# ========================================
+
+# AI関連（APIキー含む可能性）
+ai-config.json
+openai-config.json
+claude-config.json
+
+## AI Documents
+CLAUDE.md
+.claude/**/*
+.clinerules/**/*
+
+# カスタム設定
+local-config.json
+private-config.yml
+
+# バックアップファイル
+*.backup
+*.bak
+*.orig
+
+# 圧縮ファイル（一時的）
+*.zip
+*.tar.gz
+*.rar
+
+# 固有ドキュメント
+!docs/**/README.md
+docs/**/.*.md
+
+# ========================================
+# 📝 学習・開発メモ
+# ========================================
+
+# 個人メモ
+NOTES.md
+TODO.md
+learning-notes/
+private-notes/
+
+# スクリーンショット（URLや機密情報含む可能性）
+screenshots/
+screen-captures/
+
+# ========================================
+# 🚀 デプロイ関連
+# ========================================
+
+# デプロイ設定（機密情報含む可能性）
+deploy-config.local.yml
+.deployment/
+deployment-secrets/
+
+# CI/CD固有設定
+.github/workflows/secrets.yml
