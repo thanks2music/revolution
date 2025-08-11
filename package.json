@@ -15,7 +15,9 @@
     "deploy:backend": "cd apps/backend && npm run deploy",
     "deploy:frontend": "cd apps/frontend && vercel --prod",
     "clean": "turbo run clean && rm -rf node_modules",
-    "fresh": "npm run clean && npm install"
+    "fresh": "npm run clean && npm install",
+    "turbo:version": "pnpm exec turbo --version",
+    "turbo:gen": "pnpm exec turbo gen"
   },
   "devDependencies": {
     "@types/node": "^24.2.1",
