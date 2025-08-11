@@ -1,0 +1,32 @@
+{
+  "name": "revolution",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Next.js Headless CMS Platform on Cloud Run Docker",
+  "workspaces": [
+    "apps/*",
+    "shared/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "deploy:backend": "cd apps/backend && npm run deploy",
+    "deploy:frontend": "cd apps/frontend && vercel --prod",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "fresh": "npm run clean && npm install"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "eslint": "^9.33.0",
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.5",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@10.11.0"
+}
