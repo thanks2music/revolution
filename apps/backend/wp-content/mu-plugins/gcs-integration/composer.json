@@ -1,0 +1,12 @@
+{
+  "name": "gcs-integration/mu-plugin",
+  "description": "Google Cloud Storage Integration for WordPress",
+  "type": "wordpress-muplugin",
+  "require": {
+    "google/cloud-storage": "^1.30"
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "classmap-authoritative": true
+  }
+}

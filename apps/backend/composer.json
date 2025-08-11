@@ -1,0 +1,31 @@
+{
+  "name": "dev/cloud-run-docker-wordpress",
+  "description": "Cloud Run + Docker + WordPressの開発環境",
+  "type": "wordpress-content",
+  "license": "GPL-3.0-or-later",
+  "authors": [
+    {
+      "name": "thanks2music",
+      "email": "thanks2music@gmail.com"
+    }
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "require": {
+    "php": ">=8.2",
+    "phpcsstandards/phpcsutils": "^1.0"
+  },
+  "require-dev": {
+    "wp-coding-standards/wpcs": "^3.0",
+    "squizlabs/php_codesniffer": "*"
+  },
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    }
+  },
+  "scripts": {
+    "lint": "phpcs --standard=./phpcs.xml --report-full --report-source ./mu-plugins/ ./plugins/gcs-*/ ./themes/**/*/",
+    "lint-all": "phpcs --standard=./phpcs.xml --report-full --report-summary --report-source ."
+  }
+}

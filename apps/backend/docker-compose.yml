@@ -1,0 +1,31 @@
+
+version: '3.8'
+
+services:
+  wordpress:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    # 直世指定する場合は下記のように指定
+    # environment:
+    #   - DB_NAME=wordpress
+    #   - DB_USER=root
+    #   - DB_PASSWORD=password
+    #   - DB_HOST=mysql
+    depends_on:
+      - mysql
+    volumes:
+      - ./wp-content:/var/www/html/wp-content
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: wordpress
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
