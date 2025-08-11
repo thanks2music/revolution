@@ -97,6 +97,7 @@ wp-content/uploads/
 # WordPress設定
 wp-config-local.php
 wp-config-production.php
+**/wp-config*.php
 
 # WordPress キャッシュ
 wp-content/cache/
@@ -257,7 +258,9 @@ claude-config.json
 ## AI Documents
 CLAUDE.md
 .claude/**/*
+**/.claude/**/*
 .clinerules/**/*
+**/.clinerules/**/*
 
 # カスタム設定
 local-config.json
@@ -276,6 +279,10 @@ private-config.yml
 # 固有ドキュメント
 !docs/**/README.md
 docs/**/.*.md
+**/docs/**/*.md
+
+# ローカル環境設定ファイル
+**/*.local.*
 
 # ========================================
 # 📝 学習・開発メモ
