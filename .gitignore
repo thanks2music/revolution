@@ -255,6 +255,12 @@ ai-config.json
 openai-config.json
 claude-config.json
 
+# WordPress セキュリティ関連
+wp-keys-backup.txt
+**/*wp-keys*
+scripts/*secrets*
+scripts/generate-wp-secrets.sh
+
 ## AI Documents
 CLAUDE.md
 .claude/**/*
