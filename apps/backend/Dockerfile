@@ -20,6 +20,22 @@ RUN sed -i 's/Listen 80/Listen 0.0.0.0:8080/' /etc/apache2/ports.conf && \
 # WordPress設定
 RUN mkdir -p /var/www/html/wp-content/mu-plugins
 COPY wp-config.php /var/www/html/
+
+# プラグインセットアップ
+# シンボリックリンクまたは実ファイルをコピー（どちらでも動作）
+COPY setup-wordpress.sh /tmp/setup-wordpress.sh || true
+RUN if [ -f /tmp/setup-wordpress.sh ]; then \
+        echo "Running WordPress setup script..." && \
+        chmod +x /tmp/setup-wordpress.sh && \
+        cd /var/www/html && \
+        WP_ENV=production BACKEND_DIR=/var/www/html /tmp/setup-wordpress.sh && \
+        rm /tmp/setup-wordpress.sh && \
+        echo "Plugin setup completed"; \
+    else \
+        echo "No setup script found, manual plugin installation required"; \
+    fi
+
+# wp-contentディレクトリをコピー（カスタムテーマ、mu-pluginsなど）
 COPY wp-content/ /var/www/html/wp-content/
 
 # 🔑 修正：正しいディレクトリでComposerインストール
