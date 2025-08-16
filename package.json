@@ -9,10 +9,10 @@
   ],
   "scripts": {
     "dev": "make dev",
-    "dev:frontend": "turbo run dev --filter=frontend",
+    "dev:frontend": "turbo run dev --filter=frontend-of-revolution",
     "dev:backend": "make backend", 
     "build": "make build",
-    "build:frontend": "turbo run build --filter=frontend",
+    "build:frontend": "turbo run build",
     "build:backend": "make build-backend",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",

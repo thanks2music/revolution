@@ -22,7 +22,12 @@ up: build
 	docker-compose up -d
 	@echo "✅ WordPress available at http://localhost:8080"
 
-# 停止
+# 停止(データは引き継ぐ)
+stop:
+	@echo "🛑 Stopping WordPress environment..."
+	docker-compose stop
+
+# 停止(データも消える)
 down:
 	@echo "🛑 Stopping WordPress environment..."
 	docker-compose down
