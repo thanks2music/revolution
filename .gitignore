@@ -293,8 +293,9 @@ private-config.yml
 *.tar.gz
 *.rar
 
-# 固有ドキュメント
+# ドキュメント関連
 !docs/**/README.md
+# 一旦除外しているが、ドキュメント整理・管理もGitに加えたい
 docs/**/.*.md
 **/docs/**/*.md
 
@@ -308,6 +309,7 @@ docs/**/.*.md
 # 個人メモ
 NOTES.md
 TODO.md
+TODOs.md
 learning-notes/
 private-notes/
 
