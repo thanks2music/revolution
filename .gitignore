@@ -294,10 +294,17 @@ private-config.yml
 *.rar
 
 # ドキュメント関連
-!docs/**/README.md
-# 一旦除外しているが、ドキュメント整理・管理もGitに加えたい
-docs/**/.*.md
+# ルート直下以外のdocs配下の.mdファイルを除外
 **/docs/**/*.md
+
+# ルート直下のdocsディレクトリ内の.mdファイルは除外しない
+!docs/*.md
+
+# ただし、機密ファイルは個別に除外
+docs/*secret*.md
+
+# README.mdは常に除外しない
+!docs/README.md
 
 # ローカル環境設定ファイル
 **/*.local.*
