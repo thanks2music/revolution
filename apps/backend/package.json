@@ -1,5 +1,5 @@
 {
-  "name": "cloud-run-docker-wordpress",
+  "name": "backend-cloud-run-docker-wordpress",
   "version": "1.0.0",
   "private": true,
   "description": "WordPress Backend - Docker + Cloud Run Environment",
@@ -9,7 +9,7 @@
     "prepare": "echo \"Backend environment ready for plugin development\""
   },
   "devDependencies": {
-    "eslint": "^9.32.0", 
+    "eslint": "^9.32.0",
     "prettier": "^3.6.2"
   },
   "engines": {

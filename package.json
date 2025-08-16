@@ -9,10 +9,10 @@
   ],
   "scripts": {
     "dev": "make dev",
-    "dev:frontend": "turbo run dev --filter=frontend-of-revolution",
-    "dev:backend": "make backend", 
+    "dev:frontend": "turbo run dev --filter=frontend-nextjs-headless-cms",
+    "dev:backend": "make backend",
     "build": "make build",
-    "build:frontend": "turbo run build",
+    "build:frontend": "turbo run build --filter=frontend-nextjs-headless-cms",
     "build:backend": "make build-backend",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
@@ -23,12 +23,15 @@
     "clean": "make clean",
     "fresh": "make clean && pnpm install",
     "turbo:version": "pnpm exec turbo --version",
-    "turbo:gen": "pnpm exec turbo gen"
+    "turbo:gen": "pnpm exec turbo gen",
+    "docs:build-toc": "tsx tools/docs-index.ts",
+    "docs:validate": "tsx tools/docs-index.ts && echo 'OK'"
   },
   "devDependencies": {
     "@types/node": "^24.2.1",
     "eslint": "^9.33.0",
     "prettier": "^3.6.2",
+    "tsx": "^4.20.4",
     "turbo": "^2.5.5",
     "typescript": "^5.9.2"
   },
