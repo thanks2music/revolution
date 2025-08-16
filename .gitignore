@@ -302,6 +302,9 @@ private-config.yml
 
 # ただし、機密ファイルは個別に除外
 docs/*secret*.md
+# 目次ファイルは除外する
+docs/TOC.*.md
+docs/TOC.*.json
 
 # README.mdは常に除外しない
 !docs/README.md
