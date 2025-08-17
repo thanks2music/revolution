@@ -41,12 +41,15 @@ dev: backend frontend-background
 	@echo "🎉 Revolution Development Environment Ready!"
 	@echo "==========================================="
 	@echo "📝 WordPress Backend:  http://localhost:8080"
-	@echo "🌐 Next.js Frontend:   http://localhost:3001"
+	@echo "🌐 Next.js Frontend:   http://localhost:3000"
 	@echo ""
 	@echo "💡 Tips:"
 	@echo "  - Backend logs: make logs"
 	@echo "  - Frontend only: pnpm dev:frontend"
 	@echo "  - Code quality: pnpm lint && pnpm type-check"
+	@echo ""
+	@echo "📝 Note:"
+	@echo "  - Default ports are listed above. If you’re running multiple apps, check your terminal for the actual ports."
 
 # バックエンド起動（Docker管理）
 backend:
