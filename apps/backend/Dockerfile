@@ -3,9 +3,9 @@ FROM wordpress:6.7-php8.4-apache
 # 基本設定（変更なし）
 RUN docker-php-ext-install mysqli pdo pdo_mysql
 RUN apt-get update && apt-get install -y \
-    libzip-dev unzip curl \
-    && docker-php-ext-install zip \
-    && rm -rf /var/lib/apt/lists/*
+	libzip-dev unzip curl \
+	&& docker-php-ext-install zip \
+	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
@@ -15,7 +15,7 @@ RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 RUN mkdir -p /cloudsql && chown www-data:www-data /cloudsql
 RUN chown -R www-data:www-data /var/www/html
 RUN sed -i 's/Listen 80/Listen 0.0.0.0:8080/' /etc/apache2/ports.conf && \
-    sed -i 's/:80>/:8080>/' /etc/apache2/sites-available/000-default.conf
+	sed -i 's/:80>/:8080>/' /etc/apache2/sites-available/000-default.conf
 
 # WordPress設定
 RUN mkdir -p /var/www/html/wp-content/mu-plugins
@@ -24,30 +24,34 @@ COPY wp-config.php /var/www/html/
 # プラグインセットアップ
 # シンボリックリンクを含むファイルをコピー
 COPY setup-wordpress.sh /tmp/setup-wordpress.sh
+COPY setup-premium-plugins.sh /tmp/setup-premium-plugins.sh
 RUN chmod +x /tmp/setup-wordpress.sh && \
-    cd /var/www/html && \
-    WP_ENV=production BACKEND_DIR=/var/www/html /tmp/setup-wordpress.sh && \
-    rm /tmp/setup-wordpress.sh && \
-    echo "Plugin setup completed"
+	chmod +x /tmp/setup-premium-plugins.sh && \
+	cd /var/www/html && \
+	WP_ENV=production BACKEND_DIR=/var/www/html /tmp/setup-wordpress.sh && \
+	cp /tmp/setup-premium-plugins.sh /var/www/html/ && \
+	rm /tmp/setup-wordpress.sh && \
+	rm /tmp/setup-premium-plugins.sh && \
+	echo "Plugin setup completed"
 
 # wp-contentディレクトリをコピー（カスタムテーマ、mu-pluginsなど）
 COPY wp-content/ /var/www/html/wp-content/
 
 # 🔑 修正：正しいディレクトリでComposerインストール
 RUN cd /var/www/html/wp-content/mu-plugins/gcs-integration && \
-    if [ -f composer.json ]; then \
-    composer install --no-dev --optimize-autoloader && \
-    rm -rf vendor/bin && \
-    echo "✅ GCS dependencies installed in gcs-integration/"; \
-    else \
-    echo "❌ composer.json not found in gcs-integration/"; \
-    exit 1; \
-    fi
+	if [ -f composer.json ]; then \
+	composer install --no-dev --optimize-autoloader && \
+	rm -rf vendor/bin && \
+	echo "✅ GCS dependencies installed in gcs-integration/"; \
+	else \
+	echo "❌ composer.json not found in gcs-integration/"; \
+	exit 1; \
+	fi
 
 # 🚨 重要：Dockerfileでのプラグインコード生成を削除
 # 既存のファイル構造を尊重し、上書きしない
 
-# WordPress初期化スクリプト（変更なし）
+# WordPress初期化スクリプト
 RUN cat > /usr/local/bin/wordpress-init.sh << 'EOF'
 #!/bin/bash
 set -e
@@ -61,6 +65,15 @@ echo "Changing Apache port to $PORT"
 sed -i "s/Listen 0.0.0.0:8080/Listen 0.0.0.0:$PORT/" /etc/apache2/ports.conf
 sed -i "s/:8080>/:$PORT>/" /etc/apache2/sites-available/000-default.conf
 fi
+
+# プレミアムプラグインセットアップ（起動時実行）
+if [ -f /var/www/html/setup-premium-plugins.sh ]; then
+echo "Setting up premium plugins..."
+cd /var/www/html && ./setup-premium-plugins.sh
+else
+echo "Premium plugins setup script not found, skipping..."
+fi
+
 echo "WordPress init completed"
 EOF
 

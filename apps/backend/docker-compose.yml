@@ -16,6 +16,7 @@ services:
       - mysql
     volumes:
       - ./wp-content:/var/www/html/wp-content
+      - ./premium-plugins:/var/www/html/premium-plugins
 
   mysql:
     image: mysql:8.0
