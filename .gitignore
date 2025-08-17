@@ -269,6 +269,11 @@ apps/backend/wp-content/plugins/wp-graphql/
 **/wp-content/plugins/*
 **/wp-content/languages/
 
+# 有料プラグイン除外
+apps/backend/premium-plugins/*.zip
+# 有料プラグインディレクトリ全体の除外パターン
+**/premium-plugins/*.zip
+
 # Next.js 本番環境設定
 apps/frontend/.env.production.local
 
