@@ -23,6 +23,9 @@ help:
 	@echo ""
 	@echo "🛠️  その他:"
 	@echo "  make setup        - 初回セットアップ"
+	@echo "  make restart-all  - 全体再起動"
+	@echo "  make restart-backend  - バックエンドのみ再起動"
+	@echo "  make restart-frontend - フロントエンドのみ再起動"
 	@echo "  make clean        - 環境クリーンアップ"
 	@echo "  make status       - 環境状態確認"
 
@@ -101,6 +104,24 @@ logs:
 # 開発用便利コマンド
 restart: clean dev
 	@echo "🔄 Environment restarted!"
+
+# 停止と再起動
+restart-backend:
+	@echo "🐳 Restarting WordPress backend (Docker)..."
+	@cd apps/backend && make stop
+	@cd apps/backend && make build
+	@cd apps/backend && make up
+	@echo "✅ Backend restarted!"
+
+restart-frontend:
+	@echo "⚛️ Restarting Next.js frontend..."
+	@pkill -f "next dev" || true
+	@sleep 2
+	@pnpm dev:frontend &
+	@echo "✅ Frontend restarted!"
+
+restart-all: restart-backend restart-frontend
+	@echo "🎉 All services restarted!"
 
 # 環境状態確認
 status:
