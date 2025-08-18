@@ -172,7 +172,7 @@ sequenceDiagram
     Docker-->>Make: WordPress起動完了
     Make->>Turbo: pnpm dev:frontend &
     Turbo-->>Make: Next.js起動完了
-    Make-->>Dev: 🎉 開発環境準備完了<br/>Backend: :8080<br/>Frontend: :3001
+    Make-->>Dev: 🎉 開発環境準備完了<br/>Backend: :8080<br/>Frontend: :4444
 ```
 
 ### 2. ビルドワークフロー

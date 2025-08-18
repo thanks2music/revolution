@@ -186,7 +186,7 @@ sequenceDiagram
 
 ### ローカル開発
 1. `make dev` で統合開発環境起動
-2. フロントエンド: http://localhost:3001
+2. フロントエンド: http://localhost:4444
 3. バックエンド: http://localhost:8080
 4. GraphQL Playground: http://localhost:8080/graphql
 

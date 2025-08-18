@@ -110,7 +110,7 @@ sequenceDiagram
         Backend-->>Dev: http://localhost:8080
     and
         Turbo->>Frontend: 開発サーバー起動
-        Frontend-->>Dev: http://localhost:3001
+        Frontend-->>Dev: http://localhost:4444
     end
     
     Note over Dev: 統合開発環境準備完了
@@ -275,7 +275,7 @@ rm -rf node_modules/.cache/turbo
 
 ```bash
 # 使用中のポート確認
-lsof -i :3001  # Frontend
+lsof -i :4444  # Frontend
 lsof -i :8080  # Backend
 
 # プロセス終了
