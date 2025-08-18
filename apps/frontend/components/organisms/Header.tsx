@@ -1,9 +1,11 @@
-"use client";
+'use client';
 
-import { Fragment } from "react";
-import Link from "next/link";
+import { Fragment, useEffect, useState } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { logImageOptimization } from '../../lib/imageOptimizationCheck';
 // requires Tailwind CSS v2.0+
-import { Popover, Transition } from "@headlessui/react";
+import { Popover, Transition } from '@headlessui/react';
 import {
   BookmarkAltIcon,
   CalendarIcon,
@@ -16,105 +18,127 @@ import {
   ShieldCheckIcon,
   SupportIcon,
   ViewGridIcon,
-  XIcon,
-} from "@heroicons/react/outline";
-import { ChevronDownIcon } from "@heroicons/react/solid";
+  XIcon
+} from '@heroicons/react/outline';
+import { ChevronDownIcon } from '@heroicons/react/solid';
+import SiteService from '@/services/SiteService';
 
 const solutions = [
   {
-    name: "Analytics",
-    description:
-      "Get a better understanding of where your traffic is coming from.",
-    href: "#",
-    icon: ChartBarIcon,
+    name: 'Analytics',
+    description: 'Get a better understanding of where your traffic is coming from.',
+    href: '#',
+    icon: ChartBarIcon
   },
   {
-    name: "Engagement",
-    description: "Speak directly to your customers in a more meaningful way.",
-    href: "#",
-    icon: CursorClickIcon,
+    name: 'Engagement',
+    description: 'Speak directly to your customers in a more meaningful way.',
+    href: '#',
+    icon: CursorClickIcon
   },
   {
-    name: "Security",
+    name: 'Security',
     description: "Your customers' data will be safe and secure.",
-    href: "#",
-    icon: ShieldCheckIcon,
+    href: '#',
+    icon: ShieldCheckIcon
   },
   {
-    name: "Integrations",
+    name: 'Integrations',
     description: "Connect with third-party tools that you're already using.",
-    href: "#",
-    icon: ViewGridIcon,
+    href: '#',
+    icon: ViewGridIcon
   },
   {
-    name: "Automations",
-    description:
-      "Build strategic funnels that will drive your customers to convert",
-    href: "#",
-    icon: RefreshIcon,
-  },
+    name: 'Automations',
+    description: 'Build strategic funnels that will drive your customers to convert',
+    href: '#',
+    icon: RefreshIcon
+  }
 ];
 const callsToAction = [
-  { name: "Watch Demo", href: "#", icon: PlayIcon },
-  { name: "Contact Sales", href: "#", icon: PhoneIcon },
+  { name: 'Watch Demo', href: '#', icon: PlayIcon },
+  { name: 'Contact Sales', href: '#', icon: PhoneIcon }
 ];
 const resources = [
   {
-    name: "Help Center",
-    description:
-      "Get all of your questions answered in our forums or contact support.",
-    href: "#",
-    icon: SupportIcon,
+    name: 'Help Center',
+    description: 'Get all of your questions answered in our forums or contact support.',
+    href: '#',
+    icon: SupportIcon
   },
   {
-    name: "Guides",
-    description:
-      "Learn how to maximize our platform to get the most out of it.",
-    href: "#",
-    icon: BookmarkAltIcon,
+    name: 'Guides',
+    description: 'Learn how to maximize our platform to get the most out of it.',
+    href: '#',
+    icon: BookmarkAltIcon
   },
   {
-    name: "Events",
-    description:
-      "See what meet-ups and other events we might be planning near you.",
-    href: "#",
-    icon: CalendarIcon,
+    name: 'Events',
+    description: 'See what meet-ups and other events we might be planning near you.',
+    href: '#',
+    icon: CalendarIcon
   },
   {
-    name: "Security",
-    description: "Understand how we take your privacy seriously.",
-    href: "#",
-    icon: ShieldCheckIcon,
-  },
+    name: 'Security',
+    description: 'Understand how we take your privacy seriously.',
+    href: '#',
+    icon: ShieldCheckIcon
+  }
 ];
 const recentPosts = [
-  { id: 1, name: "Boost your conversion rate", href: "#" },
+  { id: 1, name: 'Boost your conversion rate', href: '#' },
   {
     id: 2,
-    name: "How to use search engine optimization to drive traffic to your site",
-    href: "#",
+    name: 'How to use search engine optimization to drive traffic to your site',
+    href: '#'
   },
-  { id: 3, name: "Improve your customer experience", href: "#" },
+  { id: 3, name: 'Improve your customer experience', href: '#' }
 ];
 
 function classNames(...classes: string[]) {
-  return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(' ');
 }
 
 const Header = () => {
+  const [siteTitle, setSiteTitle] = useState('Revolution');
+
+  // 開発環境で画像最適化をログ出力
+  useEffect(() => {
+    logImageOptimization();
+  }, []);
+
+  // サイト情報を取得
+  useEffect(() => {
+    const fetchSiteInfo = async () => {
+      try {
+        const siteInfo = await SiteService.getSiteInfo();
+        setSiteTitle(siteInfo.title || 'Revolution');
+      } catch (error) {
+        console.warn('Failed to fetch site info, using fallback:', error);
+        setSiteTitle('Revolution');
+      }
+    };
+
+    fetchSiteInfo();
+  }, []);
+
   return (
     <Popover className="relative bg-white">
       <div className="mx-auto">
         <div className="border-b-2 border-gray-100 py-6 md:justify-start md:space-x-10">
           <div className="flex justify-between items-center w-main mx-auto">
             <div className="flex justify-start lg:w-0 lg:flex-1">
-              <Link href="/">
-                <span className="sr-only">Workflow</span>
-                <img
+              <Link href="/" className="flex items-center space-x-3">
+                <Image
+                  src="/images/logo-revolution.png"
+                  alt="Revolution Platform Logo"
+                  width={120}
+                  height={120}
                   className="h-8 w-auto sm:h-10"
-                  src="https://tailwindui.com/img/logos/workflow-mark.svg?color=indigo&shade=600"
-                  alt=""
+                  priority
                 />
+                <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{siteTitle}</h1>
+                <span className="sr-only">Revolution Platform</span>
               </Link>
             </div>
             <div className="-mr-2 -my-2 md:hidden">
@@ -129,15 +153,15 @@ const Header = () => {
                   <>
                     <Popover.Button
                       className={classNames(
-                        open ? "text-gray-900" : "text-gray-500",
-                        "group bg-white rounded-md inline-flex items-center text-base font-medium hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        open ? 'text-gray-900' : 'text-gray-500',
+                        'group bg-white rounded-md inline-flex items-center text-base font-medium hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
                       )}
                     >
                       <span>Solutions</span>
                       <ChevronDownIcon
                         className={classNames(
-                          open ? "text-gray-600" : "text-gray-400",
-                          "ml-2 h-5 w-5 group-hover:text-gray-500"
+                          open ? 'text-gray-600' : 'text-gray-400',
+                          'ml-2 h-5 w-5 group-hover:text-gray-500'
                         )}
                         aria-hidden="true"
                       />
@@ -155,7 +179,7 @@ const Header = () => {
                       <Popover.Panel className="absolute z-10 -ml-4 mt-3 transform px-2 w-screen max-w-md sm:px-0 lg:ml-0 lg:left-1/2 lg:-translate-x-1/2">
                         <div className="rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 overflow-hidden">
                           <div className="relative grid gap-6 bg-white px-5 py-6 sm:gap-8 sm:p-8">
-                            {solutions.map((item) => (
+                            {solutions.map(item => (
                               <a
                                 key={item.name}
                                 href={item.href}
@@ -166,18 +190,14 @@ const Header = () => {
                                   aria-hidden="true"
                                 />
                                 <div className="ml-4">
-                                  <p className="text-base font-medium text-gray-900">
-                                    {item.name}
-                                  </p>
-                                  <p className="mt-1 text-sm text-gray-500">
-                                    {item.description}
-                                  </p>
+                                  <p className="text-base font-medium text-gray-900">{item.name}</p>
+                                  <p className="mt-1 text-sm text-gray-500">{item.description}</p>
                                 </div>
                               </a>
                             ))}
                           </div>
                           <div className="px-5 py-5 bg-gray-50 space-y-6 sm:flex sm:space-y-0 sm:space-x-10 sm:px-8">
-                            {callsToAction.map((item) => (
+                            {callsToAction.map(item => (
                               <div key={item.name} className="flow-root">
                                 <a
                                   href={item.href}
@@ -199,16 +219,10 @@ const Header = () => {
                 )}
               </Popover>
 
-              <a
-                href="#"
-                className="text-base font-medium text-gray-500 hover:text-gray-900"
-              >
+              <a href="#" className="text-base font-medium text-gray-500 hover:text-gray-900">
                 Pricing
               </a>
-              <a
-                href="#"
-                className="text-base font-medium text-gray-500 hover:text-gray-900"
-              >
+              <a href="#" className="text-base font-medium text-gray-500 hover:text-gray-900">
                 Docs
               </a>
 
@@ -217,15 +231,15 @@ const Header = () => {
                   <>
                     <Popover.Button
                       className={classNames(
-                        open ? "text-gray-900" : "text-gray-500",
-                        "group bg-white rounded-md inline-flex items-center text-base font-medium hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        open ? 'text-gray-900' : 'text-gray-500',
+                        'group bg-white rounded-md inline-flex items-center text-base font-medium hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
                       )}
                     >
                       <span>More</span>
                       <ChevronDownIcon
                         className={classNames(
-                          open ? "text-gray-600" : "text-gray-400",
-                          "ml-2 h-5 w-5 group-hover:text-gray-500"
+                          open ? 'text-gray-600' : 'text-gray-400',
+                          'ml-2 h-5 w-5 group-hover:text-gray-500'
                         )}
                         aria-hidden="true"
                       />
@@ -243,7 +257,7 @@ const Header = () => {
                       <Popover.Panel className="absolute z-10 left-1/2 transform -translate-x-1/2 mt-3 px-2 w-screen max-w-md sm:px-0">
                         <div className="rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 overflow-hidden">
                           <div className="relative grid gap-6 bg-white px-5 py-6 sm:gap-8 sm:p-8">
-                            {resources.map((item) => (
+                            {resources.map(item => (
                               <a
                                 key={item.name}
                                 href={item.href}
@@ -254,27 +268,18 @@ const Header = () => {
                                   aria-hidden="true"
                                 />
                                 <div className="ml-4">
-                                  <p className="text-base font-medium text-gray-900">
-                                    {item.name}
-                                  </p>
-                                  <p className="mt-1 text-sm text-gray-500">
-                                    {item.description}
-                                  </p>
+                                  <p className="text-base font-medium text-gray-900">{item.name}</p>
+                                  <p className="mt-1 text-sm text-gray-500">{item.description}</p>
                                 </div>
                               </a>
                             ))}
                           </div>
                           <div className="px-5 py-5 bg-gray-50 sm:px-8 sm:py-8">
                             <div>
-                              <h3 className="text-base font-medium text-gray-500">
-                                Recent Posts
-                              </h3>
+                              <h3 className="text-base font-medium text-gray-500">Recent Posts</h3>
                               <ul role="list" className="mt-4 space-y-4">
-                                {recentPosts.map((post) => (
-                                  <li
-                                    key={post.id}
-                                    className="text-base truncate"
-                                  >
+                                {recentPosts.map(post => (
+                                  <li key={post.id} className="text-base truncate">
                                     <a
                                       href={post.href}
                                       className="font-medium text-gray-900 hover:text-gray-700"
@@ -290,9 +295,8 @@ const Header = () => {
                                 href="#"
                                 className="font-medium text-indigo-600 hover:text-indigo-500"
                               >
-                                {" "}
-                                View all posts{" "}
-                                <span aria-hidden="true">&rarr;</span>
+                                {' '}
+                                View all posts <span aria-hidden="true">&rarr;</span>
                               </a>
                             </div>
                           </div>
@@ -337,12 +341,15 @@ const Header = () => {
           <div className="rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 bg-white divide-y-2 divide-gray-50">
             <div className="pt-5 pb-6 px-5">
               <div className="flex items-center justify-between">
-                <div>
-                  <img
+                <div className="flex items-center space-x-2">
+                  <Image
+                    src="/images/logo-revolution.png"
+                    alt="Revolution Platform Logo"
+                    width={32}
+                    height={32}
                     className="h-8 w-auto"
-                    src="https://tailwindui.com/img/logos/workflow-mark.svg?color=indigo&shade=600"
-                    alt="Workflow"
                   />
+                  <h1 className="text-xl font-bold text-gray-900">{siteTitle}</h1>
                 </div>
                 <div className="-mr-2">
                   <Popover.Button className="bg-white rounded-md p-2 inline-flex items-center justify-center text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
@@ -353,7 +360,7 @@ const Header = () => {
               </div>
               <div className="mt-6">
                 <nav className="grid gap-y-8">
-                  {solutions.map((item) => (
+                  {solutions.map(item => (
                     <a
                       key={item.name}
                       href={item.href}
@@ -363,9 +370,7 @@ const Header = () => {
                         className="flex-shrink-0 h-6 w-6 text-indigo-600"
                         aria-hidden="true"
                       />
-                      <span className="ml-3 text-base font-medium text-gray-900">
-                        {item.name}
-                      </span>
+                      <span className="ml-3 text-base font-medium text-gray-900">{item.name}</span>
                     </a>
                   ))}
                 </nav>
@@ -373,20 +378,14 @@ const Header = () => {
             </div>
             <div className="py-6 px-5 space-y-6">
               <div className="grid grid-cols-2 gap-y-4 gap-x-8">
-                <a
-                  href="#"
-                  className="text-base font-medium text-gray-900 hover:text-gray-700"
-                >
+                <a href="#" className="text-base font-medium text-gray-900 hover:text-gray-700">
                   Pricing
                 </a>
 
-                <a
-                  href="#"
-                  className="text-base font-medium text-gray-900 hover:text-gray-700"
-                >
+                <a href="#" className="text-base font-medium text-gray-900 hover:text-gray-700">
                   Docs
                 </a>
-                {resources.map((item) => (
+                {resources.map(item => (
                   <a
                     key={item.name}
                     href={item.href}
@@ -404,7 +403,7 @@ const Header = () => {
                   Sign up
                 </a>
                 <p className="mt-6 text-center text-base font-medium text-gray-500">
-                  Existing customer?{" "}
+                  Existing customer?{' '}
                   <a href="#" className="text-indigo-600 hover:text-indigo-500">
                     Sign in
                   </a>
