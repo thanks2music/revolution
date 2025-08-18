@@ -1,7 +1,7 @@
 # Revolution Project - Root Makefile
 # Turbo + Make 統合管理
 
-.PHONY: help dev build deploy clean setup test
+.PHONY: help dev build deploy clean setup test stop stop-frontend stop-backend
 
 # デフォルトターゲット
 help:
@@ -23,6 +23,9 @@ help:
 	@echo ""
 	@echo "🛠️  その他:"
 	@echo "  make setup        - 初回セットアップ"
+	@echo "  make stop         - 全サービス停止"
+	@echo "  make stop-frontend - フロントエンドのみ停止"
+	@echo "  make stop-backend - バックエンドのみ停止"
 	@echo "  make restart-all  - 全体再起動"
 	@echo "  make restart-backend  - バックエンドのみ再起動"
 	@echo "  make restart-frontend - フロントエンドのみ再起動"
@@ -104,6 +107,20 @@ logs:
 # 開発用便利コマンド
 restart: clean dev
 	@echo "🔄 Environment restarted!"
+
+# 停止コマンド
+stop: stop-backend stop-frontend
+	@echo "🛑 All services stopped!"
+
+stop-frontend:
+	@echo "⚛️ Stopping Next.js frontend..."
+	@pkill -f "next dev" || true
+	@echo "✅ Frontend stopped!"
+
+stop-backend:
+	@echo "🐳 Stopping WordPress backend (Docker)..."
+	@cd apps/backend && make stop
+	@echo "✅ Backend stopped!"
 
 # 停止と再起動
 restart-backend:
