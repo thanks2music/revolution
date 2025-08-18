@@ -1,5 +1,5 @@
 interface FeaturedImageType {
-  url: string;
+  url: string | null;
 }
 
 export default FeaturedImageType;

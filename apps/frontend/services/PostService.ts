@@ -18,11 +18,11 @@ class PostService {
           date: data.node.date,
           excerpt: data.node.excerpt,
           featuredImage: {
-            url: data.node.featuredImage.node.sourceUrl,
+            url: data.node.featuredImage?.node?.sourceUrl || null,
           },
           category: {
-            slug: data.node.categories.edges[0].node.slug,
-            name: data.node.categories.edges[0].node.name,
+            slug: data.node.categories.edges[0]?.node?.slug || 'uncategorized',
+            name: data.node.categories.edges[0]?.node?.name || 'Uncategorized',
           },
         };
         return post;
@@ -43,11 +43,11 @@ class PostService {
         date: data.date,
         content: data.content,
         featuredImage: {
-          url: data.featuredImage.node.sourceUrl,
+          url: data.featuredImage?.node?.sourceUrl || null,
         },
         category: {
-          slug: data.categories.edges[0].node.slug,
-          name: data.categories.edges[0].node.name,
+          slug: data.categories.edges[0]?.node?.slug || 'uncategorized',
+          name: data.categories.edges[0]?.node?.name || 'Uncategorized',
         },
       };
       return post;
