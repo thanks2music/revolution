@@ -105,6 +105,93 @@ docker system prune -a
 docker system df
 ```
 
+### 💾 データベース・WP-CLI操作
+
+#### 🔧 WP-CLI コマンド（推奨）
+```bash
+# WordPressコンテナ内でWP-CLI実行（Dockerfile統合済み）
+docker-compose exec wordpress wp --allow-root core version
+docker-compose exec wordpress wp --allow-root plugin list
+docker-compose exec wordpress wp --allow-root user list
+docker-compose exec wordpress wp --allow-root post list
+
+# Makefileを使った便利コマンド
+make wp-plugins                              # プラグイン一覧
+make wp-users                               # ユーザー一覧
+make wp-cli cmd="theme list"                # 任意のWP-CLIコマンド
+make wp-cli cmd="user create testuser test@example.com --role=editor"
+```
+
+#### 🗄️ データベース直接操作
+```bash
+# MySQL コンテナに接続（正しいコンテナ名使用）
+docker-compose exec mysql mysql -u root -ppassword wordpress
+
+# SQLコマンド例
+docker-compose exec mysql mysql -u root -ppassword -e "USE wordpress; SELECT ID, post_title FROM wp_posts WHERE post_type='post';"
+
+# データベースダンプ作成
+docker-compose exec mysql mysqldump -u root -ppassword wordpress > backup.sql
+
+# データベース復元
+docker-compose exec -T mysql mysql -u root -ppassword wordpress < backup.sql
+```
+
+#### 💾 バックアップ・リストア（Makefile）
+```bash
+# 全データのバックアップ
+make backup-all
+
+# 最新バックアップのリストア
+make restore-latest
+
+# データ整合性確認
+make verify-data
+
+# バックアップ一覧表示
+make list-backups
+```
+
+#### 🐛 WordPress コンテナ操作
+```bash
+# WordPressコンテナに入る（正しいサービス名）
+docker-compose exec wordpress bash
+
+# またはコンテナ名で直接実行
+docker exec -it revolution-wp-local bash
+
+# PHPエラーログ確認
+docker-compose exec wordpress tail -f /var/log/apache2/error.log
+
+# WordPress設定確認
+docker-compose exec wordpress wp --allow-root config list
+```
+
+#### 📊 システム状態確認
+```bash
+# ログ確認（正しいコンテナ名）
+docker logs -f revolution-wp-local
+docker logs --tail=50 revolution-wp-db-local
+
+# リソース使用量確認
+docker stats revolution-wp-local revolution-wp-db-local
+
+# コンテナ詳細情報
+docker inspect revolution-wp-local | grep -A 10 "Mounts"
+```
+
+#### 🔍 デバッグ用エンドポイント
+```bash
+# WordPress動作確認
+curl http://localhost:8080/health.php
+
+# PHP情報確認
+curl http://localhost:8080/debug.php
+
+# Google Cloud Storage接続テスト
+curl http://localhost:8080/test-gcs.php
+```
+
 ## 🚨 よくあるトラブルと解決方法
 
 ### 1. ポート競合エラー

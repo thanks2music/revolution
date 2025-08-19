@@ -1,13 +1,21 @@
 FROM wordpress:6.7-php8.4-apache
 
-# 基本設定（変更なし）
+# 基本設定
 RUN docker-php-ext-install mysqli pdo pdo_mysql
 RUN apt-get update && apt-get install -y \
-	libzip-dev unzip curl \
+	libzip-dev unzip curl less \
 	&& docker-php-ext-install zip \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# WP-CLI インストール
+# プロダクション環境でも利用可能にするため、ビルド時に組み込み
+RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
+	&& chmod +x wp-cli.phar \
+	&& mv wp-cli.phar /usr/local/bin/wp \
+	&& echo "✅ WP-CLI installed successfully" \
+	&& wp --info --allow-root
 
 # Apache設定（変更なし）
 RUN a2enmod rewrite
