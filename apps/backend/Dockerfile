@@ -26,7 +26,10 @@ RUN sed -i 's/Listen 80/Listen 0.0.0.0:8080/' /etc/apache2/ports.conf && \
 	sed -i 's/:80>/:8080>/' /etc/apache2/sites-available/000-default.conf
 
 # WordPress設定
-RUN mkdir -p /var/www/html/wp-content/mu-plugins
+RUN mkdir -p /var/www/html/wp-content/mu-plugins \
+	&& mkdir -p /var/www/html/wp-content/uploads \
+	&& chmod -R 755 /var/www/html/wp-content/uploads \
+	&& chown -R www-data:www-data /var/www/html/wp-content/uploads
 COPY wp-config.php /var/www/html/
 
 # プラグインセットアップ

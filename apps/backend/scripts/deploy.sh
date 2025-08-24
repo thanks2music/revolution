@@ -10,7 +10,6 @@ ENV_FILE="$BACKEND_DIR/.env.production"
 if [ -f "$ENV_FILE" ]; then
   echo "📄 環境変数ファイル読み込み: $ENV_FILE"
 
-
   # 行頭が空白 + #（コメント行）で始まる行を除外し、かつ空行も除外する
   while IFS= read -r line; do
     if [[ ! "$line" =~ ^[[:space:]]*# ]] && [[ -n "$line" ]]; then
@@ -58,7 +57,7 @@ gcloud run deploy $SERVICE_NAME \
   --cpu-throttling \
   --service-account=revo-wordpress-app@${PROJECT_ID}.iam.gserviceaccount.com \
   --labels=app=revolution,env=prod,component=wordpress,tier=web \
-  --set-env-vars="BUCKET_NAME=${BUCKET_NAME},HOST=0.0.0.0" \
+  --set-env-vars="BUCKET_NAME=${BUCKET_NAME},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},HOST=0.0.0.0" \
   --set-secrets="DB_NAME=revo-wp-db-name:latest,DB_USER=revo-wp-db-user:latest,DB_PASSWORD=revo-wp-db-password:latest,DB_CONNECTION_NAME=revo-wp-db-connection-name:latest,WP_AUTH_KEY=revo-wp-auth-key:latest,WP_SECURE_AUTH_KEY=revo-wp-secure-auth-key:latest,WP_LOGGED_IN_KEY=revo-wp-logged-in-key:latest,WP_NONCE_KEY=revo-wp-nonce-key:latest,WP_AUTH_SALT=revo-wp-auth-salt:latest,WP_SECURE_AUTH_SALT=revo-wp-secure-auth-salt:latest,WP_LOGGED_IN_SALT=revo-wp-logged-in-salt:latest,WP_NONCE_SALT=revo-wp-nonce-salt:latest" \
   --add-cloudsql-instances=${PROJECT_ID}:${REGION}:${DB_INSTANCE_NAME}
 

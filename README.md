@@ -129,6 +129,29 @@ revolution/
 │   └── ARCHITECTURE.md       # System Architecture
 │
 └── 🚀 scripts/                # Automation Scripts
-    ├── deploy.sh             # Deployment Automation
+    ├── deploy.sh             # ⚠️ 未完成 - apps/backend/scripts/deploy.sh を使用
     └── setup.sh              # Environment Setup
 ```
+
+## ⚠️ 重要な注意事項
+
+### デプロイスクリプトについて
+
+**リポジトリルートの `scripts/deploy.sh` は未完成です。必ず `apps/backend/scripts/deploy.sh` を使用してください。**
+
+```bash
+# ❌ 使用しないでください
+./scripts/deploy.sh
+
+# ✅ 正しいデプロイ方法
+cd apps/backend
+./scripts/deploy.sh
+```
+
+リポジトリルートのデプロイスクリプトには以下の問題があります：
+- 環境変数ファイルのパスが不正
+- コメント行を処理しない危険な環境変数読み込み
+- Dockerfileのパス解決の問題
+- GCS Integration用の環境変数欠落
+
+修正が完了するまで、バックエンド用のデプロイスクリプトを使用してください。

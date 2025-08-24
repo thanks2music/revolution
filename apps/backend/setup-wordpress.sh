@@ -21,14 +21,13 @@ BACKEND_DIR=${BACKEND_DIR:-apps/backend}
 
 # スクリプトのルートディレクトリを取得
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 log_info "WordPress セットアップを開始します"
 log_info "環境: $WP_ENV"
-log_info "バックエンドディレクトリ: $PROJECT_ROOT/$BACKEND_DIR"
+log_info "バックエンドディレクトリ: $SCRIPT_DIR"
 
-# バックエンドディレクトリに移動
-cd "$PROJECT_ROOT/$BACKEND_DIR"
+# スクリプトが既にbackendディレクトリにあるため、そのまま作業
+cd "$SCRIPT_DIR"
 
 # プラグインディレクトリの作成
 mkdir -p wp-content/plugins
@@ -40,9 +39,9 @@ download_plugin() {
     local plugin_name=$1
     local plugin_url=$2
     local target_dir=${3:-wp-content/plugins}
-    
-    cd "$PROJECT_ROOT/$BACKEND_DIR/$target_dir"
-    
+
+    cd "$SCRIPT_DIR/$target_dir"
+
     if [ -d "$plugin_name" ]; then
         log_info "$plugin_name は既にインストール済み"
     else
@@ -52,8 +51,8 @@ download_plugin() {
         rm "$plugin_name.zip"
         log_info "$plugin_name インストール完了"
     fi
-    
-    cd "$PROJECT_ROOT/$BACKEND_DIR"
+
+    cd "$SCRIPT_DIR"
 }
 
 # ===========================================
@@ -70,12 +69,13 @@ download_plugin "wp-graphql" \
 if [ "$WP_ENV" = "development" ]; then
     log_info ""
     log_info "🔧 開発用プラグインのインストール"
-    
-    download_plugin "debug-bar" \
-        "https://downloads.wordpress.org/plugin/debug-bar.latest-stable.zip"
-    
+
     download_plugin "query-monitor" \
         "https://downloads.wordpress.org/plugin/query-monitor.latest-stable.zip"
+
+    # Debug Barは Query Monitor と競合するため削除
+    # download_plugin "debug-bar" \
+    #     "https://downloads.wordpress.org/plugin/debug-bar.latest-stable.zip"
     
     log_info "開発用プラグインのインストール完了"
 fi
@@ -90,41 +90,12 @@ download_plugin "classic-editor" \
     "https://downloads.wordpress.org/plugin/classic-editor.latest-stable.zip"
 
 # ===========================================
-# 自動有効化スクリプトの生成
+# 自動有効化スクリプトの生成は削除
 # ===========================================
-log_info ""
-log_info "🔧 自動有効化スクリプトを生成中..."
-
-cat > wp-content/mu-plugins/auto-activate-plugins.php << 'PHP'
-<?php
-/**
- * 必須プラグインの自動有効化
- * 
- * このファイルは mu-plugins ディレクトリに配置されているため、
- * WordPress起動時に自動的に読み込まれます。
- */
-
-add_action('admin_init', function() {
-    $required_plugins = [
-        'wp-graphql/wp-graphql.php',
-        'classic-editor/classic-editor.php',
-    ];
-    
-    // 開発環境のみ有効化
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        $required_plugins[] = 'debug-bar/debug-bar.php';
-        $required_plugins[] = 'query-monitor/query-monitor.php';
-    }
-    
-    require_once(ABSPATH . 'wp-admin/includes/plugin.php');
-    
-    foreach ($required_plugins as $plugin) {
-        if (file_exists(WP_PLUGIN_DIR . '/' . $plugin) && !is_plugin_active($plugin)) {
-            activate_plugin($plugin);
-        }
-    }
-});
-PHP
+# プラグインの競合を避けるため、自動有効化機能を削除しました。
+# プラグインは WordPress 管理画面から手動で有効化してください。
+# 一度有効化すれば、データベースに設定が保存されるため、
+# 再度有効化する必要はありません。
 
 # ===========================================
 # 権限設定
@@ -153,7 +124,7 @@ if [ -d "wp-content/plugins" ]; then
             echo "  - ${dir%/}"
         fi
     done
-    cd "$PROJECT_ROOT/$BACKEND_DIR"
+    cd "$SCRIPT_DIR"
 fi
 
 log_info ""
