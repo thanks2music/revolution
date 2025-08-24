@@ -26,11 +26,10 @@ RUN sed -i 's/Listen 80/Listen 0.0.0.0:8080/' /etc/apache2/ports.conf && \
 	sed -i 's/:80>/:8080>/' /etc/apache2/sites-available/000-default.conf
 
 # WordPress設定
-RUN mkdir -p /var/www/html/wp-content/mu-plugins \
-	&& mkdir -p /var/www/html/wp-content/uploads \
-	&& chmod -R 755 /var/www/html/wp-content/uploads \
-	&& chown -R www-data:www-data /var/www/html/wp-content/uploads
 COPY wp-config.php /var/www/html/
+
+# wp-contentディレクトリをコピー（カスタムテーマ、mu-pluginsなど）
+COPY wp-content/ /var/www/html/wp-content/
 
 # プラグインセットアップ
 # シンボリックリンクを含むファイルをコピー
@@ -45,8 +44,14 @@ RUN chmod +x /tmp/setup-wordpress.sh && \
 	rm /tmp/setup-premium-plugins.sh && \
 	echo "Plugin setup completed"
 
-# wp-contentディレクトリをコピー（カスタムテーマ、mu-pluginsなど）
-COPY wp-content/ /var/www/html/wp-content/
+# 🔑 重要：COPYの後に権限を設定（COPYが権限を上書きするため）
+RUN mkdir -p /var/www/html/wp-content/uploads \
+	&& mkdir -p /var/www/html/wp-content/upgrade \
+	&& chmod -R 755 /var/www/html/wp-content/uploads \
+	&& chmod -R 755 /var/www/html/wp-content/upgrade \
+	&& chown -R www-data:www-data /var/www/html/wp-content/uploads \
+	&& chown -R www-data:www-data /var/www/html/wp-content/upgrade \
+	&& echo "✅ Upload directory permissions fixed"
 
 # 🔑 修正：正しいディレクトリでComposerインストール
 RUN cd /var/www/html/wp-content/mu-plugins/gcs-integration && \
@@ -103,6 +108,219 @@ RUN chmod +x /usr/local/bin/cloud-run-entrypoint.sh
 # デバッグエンドポイント
 RUN echo "<?php phpinfo(); ?>" > /var/www/html/debug.php
 RUN echo "<?php http_response_code(200); echo 'OK - ' . date('Y-m-d H:i:s'); ?>" > /var/www/html/health.php
+
+# 診断用ディレクトリの作成（WordPressルーティング外）
+RUN mkdir -p /var/www/diagnostics && chown www-data:www-data /var/www/diagnostics
+
+# Apache設定：/diagnosticsパスを直接サーブ
+RUN echo 'Alias /diagnostics /var/www/diagnostics' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '<Directory "/var/www/diagnostics">' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '    Options Indexes FollowSymLinks' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '    AllowOverride None' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '    Require all granted' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '</Directory>' >> /etc/apache2/sites-available/000-default.conf
+
+# 総合診断スクリプト
+RUN cat > /var/www/diagnostics/permissions.php << 'EOF'
+<?php
+header('Content-Type: text/plain; charset=utf-8');
+echo "=== WordPress File System Diagnostic Report ===\n";
+echo "Timestamp: " . date('Y-m-d H:i:s T') . "\n\n";
+
+// Process Information
+echo "=== Process Information ===\n";
+echo "UID: " . posix_getuid() . "\n";
+echo "GID: " . posix_getgid() . "\n";
+if (function_exists('posix_getpwuid')) {
+    $user = posix_getpwuid(posix_getuid());
+    echo "User: " . ($user['name'] ?? 'unknown') . "\n";
+}
+if (function_exists('posix_getgrgid')) {
+    $group = posix_getgrgid(posix_getgid());
+    echo "Group: " . ($group['name'] ?? 'unknown') . "\n";
+}
+
+// Directory Analysis
+$critical_dirs = [
+    '/var/www/html' => 'WordPress root',
+    '/var/www/html/wp-content' => 'Content directory',
+    '/var/www/html/wp-content/uploads' => 'Uploads directory',
+    '/var/www/html/wp-content/upgrade' => 'Upgrade directory',
+    '/var/www/html/wp-content/mu-plugins' => 'Must-use plugins',
+    '/tmp' => 'Temporary directory'
+];
+
+echo "\n=== Directory Analysis ===\n";
+foreach ($critical_dirs as $dir => $description) {
+    echo "Directory: $dir ($description)\n";
+    if (file_exists($dir)) {
+        $perms = fileperms($dir);
+        $octal = substr(sprintf('%o', $perms), -4);
+        $owner = fileowner($dir);
+        $group = filegroup($dir);
+        
+        echo "  Permissions: $octal\n";
+        echo "  Owner UID: $owner\n";
+        echo "  Group GID: $group\n";
+        echo "  Writable: " . (is_writable($dir) ? 'YES' : 'NO') . "\n";
+        echo "  Readable: " . (is_readable($dir) ? 'YES' : 'NO') . "\n";
+        
+        if (is_dir($dir) && is_readable($dir)) {
+            try {
+                $files = scandir($dir);
+                $count = count($files) - 2;
+                echo "  Items: $count\n";
+                
+                // Special handling for uploads directory
+                if ($dir === '/var/www/html/wp-content/uploads') {
+                    $visible_items = array_slice($files, 2, 5);
+                    echo "  Sample contents: " . implode(', ', $visible_items) . 
+                         (count($files) > 7 ? " ..." : "") . "\n";
+                }
+            } catch (Exception $e) {
+                echo "  Scan error: " . $e->getMessage() . "\n";
+            }
+        }
+    } else {
+        echo "  Status: NOT EXISTS\n";
+    }
+    echo "\n";
+}
+
+// Write Permission Tests
+echo "=== Write Permission Tests ===\n";
+
+// Test 1: uploads directory
+$test_file = '/var/www/html/wp-content/uploads/diagnostic-test-' . uniqid() . '.txt';
+echo "Testing file write to uploads directory:\n";
+echo "  Target: $test_file\n";
+
+if (file_put_contents($test_file, "Diagnostic test content\nCreated: " . date('c'))) {
+    echo "  Result: SUCCESS ✅\n";
+    if (unlink($test_file)) {
+        echo "  Cleanup: SUCCESS ✅\n";
+    } else {
+        echo "  Cleanup: FAILED ❌\n";
+    }
+} else {
+    echo "  Result: FAILED ❌\n";
+    $error = error_get_last();
+    if ($error) {
+        echo "  Error: " . $error['message'] . "\n";
+    }
+}
+
+// Test 2: directory creation
+$test_dir = '/var/www/html/wp-content/uploads/diagnostic-dir-' . uniqid();
+echo "\nTesting directory creation in uploads:\n";
+echo "  Target: $test_dir\n";
+
+if (mkdir($test_dir, 0755, true)) {
+    echo "  Result: SUCCESS ✅\n";
+    if (rmdir($test_dir)) {
+        echo "  Cleanup: SUCCESS ✅\n";
+    } else {
+        echo "  Cleanup: FAILED ❌\n";
+    }
+} else {
+    echo "  Result: FAILED ❌\n";
+    $error = error_get_last();
+    if ($error) {
+        echo "  Error: " . $error['message'] . "\n";
+    }
+}
+
+// PHP Upload Settings
+echo "\n=== PHP Upload Configuration ===\n";
+echo "file_uploads: " . (ini_get('file_uploads') ? 'ON' : 'OFF') . "\n";
+echo "upload_max_filesize: " . ini_get('upload_max_filesize') . "\n";
+echo "post_max_size: " . ini_get('post_max_size') . "\n";
+echo "max_file_uploads: " . ini_get('max_file_uploads') . "\n";
+echo "upload_tmp_dir: " . (ini_get('upload_tmp_dir') ?: '/tmp (default)') . "\n";
+echo "memory_limit: " . ini_get('memory_limit') . "\n";
+
+// WordPress Integration Test
+echo "\n=== WordPress Integration Test ===\n";
+if (file_exists('/var/www/html/wp-load.php')) {
+    echo "WordPress installation: FOUND ✅\n";
+    
+    // Try to load WordPress environment (carefully)
+    try {
+        define('WP_USE_THEMES', false);
+        $original_dir = getcwd();
+        chdir('/var/www/html');
+        require_once('/var/www/html/wp-load.php');
+        
+        if (function_exists('wp_upload_dir')) {
+            $upload_dir = wp_upload_dir();
+            echo "WordPress upload_dir():\n";
+            echo "  Base dir: " . $upload_dir['basedir'] . "\n";
+            echo "  Path: " . $upload_dir['path'] . "\n";
+            echo "  URL: " . $upload_dir['url'] . "\n";
+            echo "  Error: " . ($upload_dir['error'] ?: 'None') . "\n";
+        }
+        
+        chdir($original_dir);
+    } catch (Exception $e) {
+        echo "WordPress load error: " . $e->getMessage() . "\n";
+    }
+} else {
+    echo "WordPress installation: NOT FOUND ❌\n";
+}
+
+// System Information
+echo "\n=== System Information ===\n";
+echo "PHP version: " . PHP_VERSION . "\n";
+echo "Server software: " . ($_SERVER['SERVER_SOFTWARE'] ?? 'Unknown') . "\n";
+echo "Document root: " . ($_SERVER['DOCUMENT_ROOT'] ?? 'Unknown') . "\n";
+
+// Disk Space
+echo "\n=== Disk Space ===\n";
+$free_bytes = disk_free_space('/var/www/html');
+$total_bytes = disk_total_space('/var/www/html');
+echo "Free space: " . number_format($free_bytes / (1024*1024), 2) . " MB\n";
+echo "Total space: " . number_format($total_bytes / (1024*1024), 2) . " MB\n";
+echo "Used: " . number_format(($total_bytes - $free_bytes) / (1024*1024), 2) . " MB\n";
+
+echo "\n=== Diagnostic Complete ===\n";
+echo "Access this report at: /diagnostics/permissions.php\n";
+?>
+EOF
+
+# 診断用インデックスページ
+RUN cat > /var/www/diagnostics/index.php << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WordPress Diagnostics</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: monospace; margin: 40px; }
+        .link { display: block; margin: 10px 0; }
+        .description { color: #666; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <h1>WordPress Diagnostics Dashboard</h1>
+    <p>Available diagnostic tools:</p>
+    
+    <a href="permissions.php" class="link">
+        <strong>📁 File System Permissions Analysis</strong><br>
+        <span class="description">Comprehensive analysis of directory permissions, write tests, and WordPress integration</span>
+    </a>
+    
+    <hr>
+    <p><strong>Usage:</strong></p>
+    <ul>
+        <li>These tools bypass WordPress routing</li>
+        <li>Access directly via /diagnostics/[tool].php</li>
+        <li>Reports are in plain text for easy parsing</li>
+    </ul>
+    
+    <p><strong>Timestamp:</strong> <?= date('Y-m-d H:i:s T') ?></p>
+</body>
+</html>
+EOF
 
 # 🔑 修正：正しいパスでGCSテスト
 RUN cat > /var/www/html/test-gcs.php << 'EOF'
