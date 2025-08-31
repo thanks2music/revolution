@@ -4,3 +4,7 @@
 - 並び順はファイル名ではなく docs/index.json で管理（sections[].order）
 - 略語: META/ARCH/MONO/INF/BE/FE/CI/OPS/BUILD/TEMPLATE
 - ファイル名は半角英数とハイフンのみ（スペースなし、拡張子は .md）
+
+## Next Step
+
+- 本ドキュメントを確認したら、次は docs/01-arch ディレクトリ内の資料を確認してください。

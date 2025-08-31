@@ -305,11 +305,9 @@ private-config.yml
 *.rar
 
 # ドキュメント関連
-# ルート直下以外のdocs配下の.mdファイルを除外
-**/docs/**/*.md
-
-# ルート直下のdocsディレクトリ内の.mdファイルは除外しない
-!docs/*.md
+# README.mdは常に除外しない
+!docs/README.md
+!docs/**/*.md
 
 # ただし、機密ファイルは個別に除外
 docs/*secret*.md
@@ -317,8 +315,6 @@ docs/*secret*.md
 docs/TOC.*.md
 docs/TOC.*.json
 
-# README.mdは常に除外しない
-!docs/README.md
 
 # ローカル環境設定ファイル
 **/*.local.*
