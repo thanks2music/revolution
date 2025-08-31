@@ -71,9 +71,6 @@ if [ "$WP_ENV" = "development" ]; then
     log_info ""
     log_info "🔧 開発用プラグインのインストール"
 
-    download_plugin "debug-bar" \
-        "https://downloads.wordpress.org/plugin/debug-bar.latest-stable.zip"
-
     download_plugin "query-monitor" \
         "https://downloads.wordpress.org/plugin/query-monitor.latest-stable.zip"
 
@@ -88,43 +85,6 @@ log_info "📝 オプションプラグインのインストール"
 
 download_plugin "classic-editor" \
     "https://downloads.wordpress.org/plugin/classic-editor.latest-stable.zip"
-
-# ===========================================
-# 自動有効化スクリプトの生成
-# ===========================================
-log_info ""
-log_info "🔧 自動有効化スクリプトを生成中..."
-
-cat > wp-content/mu-plugins/auto-activate-plugins.php << 'PHP'
-<?php
-/**
- * 必須プラグインの自動有効化
- *
- * このファイルは mu-plugins ディレクトリに配置されているため、
- * WordPress起動時に自動的に読み込まれます。
- */
-
-add_action('admin_init', function() {
-    $required_plugins = [
-        'wp-graphql/wp-graphql.php',
-        'classic-editor/classic-editor.php',
-    ];
-
-    // 開発環境のみ有効化
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        $required_plugins[] = 'debug-bar/debug-bar.php';
-        $required_plugins[] = 'query-monitor/query-monitor.php';
-    }
-
-    require_once(ABSPATH . 'wp-admin/includes/plugin.php');
-
-    foreach ($required_plugins as $plugin) {
-        if (file_exists(WP_PLUGIN_DIR . '/' . $plugin) && !is_plugin_active($plugin)) {
-            activate_plugin($plugin);
-        }
-    }
-});
-PHP
 
 # ===========================================
 # 権限設定

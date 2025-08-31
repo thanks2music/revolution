@@ -21,13 +21,14 @@ BACKEND_DIR=${BACKEND_DIR:-apps/backend}
 
 # スクリプトのルートディレクトリを取得
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 log_info "WordPress セットアップを開始します"
 log_info "環境: $WP_ENV"
-log_info "バックエンドディレクトリ: $SCRIPT_DIR"
+log_info "バックエンドディレクトリ: $PROJECT_ROOT/$BACKEND_DIR"
 
-# スクリプトが既にbackendディレクトリにあるため、そのまま作業
-cd "$SCRIPT_DIR"
+# バックエンドディレクトリに移動
+cd "$PROJECT_ROOT/$BACKEND_DIR"
 
 # プラグインディレクトリの作成
 mkdir -p wp-content/plugins
@@ -40,7 +41,7 @@ download_plugin() {
     local plugin_url=$2
     local target_dir=${3:-wp-content/plugins}
 
-    cd "$SCRIPT_DIR/$target_dir"
+    cd "$PROJECT_ROOT/$BACKEND_DIR/$target_dir"
 
     if [ -d "$plugin_name" ]; then
         log_info "$plugin_name は既にインストール済み"
@@ -52,7 +53,7 @@ download_plugin() {
         log_info "$plugin_name インストール完了"
     fi
 
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT/$BACKEND_DIR"
 }
 
 # ===========================================
@@ -73,10 +74,6 @@ if [ "$WP_ENV" = "development" ]; then
     download_plugin "query-monitor" \
         "https://downloads.wordpress.org/plugin/query-monitor.latest-stable.zip"
 
-    # Debug Barは Query Monitor と競合するため削除
-    # download_plugin "debug-bar" \
-    #     "https://downloads.wordpress.org/plugin/debug-bar.latest-stable.zip"
-    
     log_info "開発用プラグインのインストール完了"
 fi
 
@@ -85,17 +82,6 @@ fi
 # ===========================================
 log_info ""
 log_info "📝 オプションプラグインのインストール"
-
-download_plugin "classic-editor" \
-    "https://downloads.wordpress.org/plugin/classic-editor.latest-stable.zip"
-
-# ===========================================
-# 自動有効化スクリプトの生成は削除
-# ===========================================
-# プラグインの競合を避けるため、自動有効化機能を削除しました。
-# プラグインは WordPress 管理画面から手動で有効化してください。
-# 一度有効化すれば、データベースに設定が保存されるため、
-# 再度有効化する必要はありません。
 
 # ===========================================
 # 権限設定
@@ -124,7 +110,7 @@ if [ -d "wp-content/plugins" ]; then
             echo "  - ${dir%/}"
         fi
     done
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT/$BACKEND_DIR"
 fi
 
 log_info ""
