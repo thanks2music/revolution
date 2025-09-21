@@ -285,6 +285,7 @@ apps/frontend/.env.production.local
 
 ## AI Documents
 CLAUDE.md
+GEMINI.md
 .claude/**/*
 **/.claude/**/*
 .clinerules/**/*
