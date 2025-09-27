@@ -1,6 +1,8 @@
 import express from 'express';
 import { createServer } from 'http';
 import pino from 'pino';
+import testWordPressRoute from './routes/test-wordpress.route.js';
+import testSpecificRoute from './routes/test-specific.route.js';
 
 const logger = pino({
   name: 'ai-writer',
@@ -8,7 +10,7 @@ const logger = pino({
 });
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 7777;
 
 // Middleware
 app.use(express.json());
@@ -31,10 +33,23 @@ app.get('/', (req, res) => {
     service: '@revolution/ai-writer',
     endpoints: {
       health: '/health',
-      version: '/version'
+      version: '/version',
+      test: {
+        connection: '/test/wordpress/connection',
+        createPost: '/test/wordpress/create-post',
+        createTestPost: '/test/wordpress/create-test-post',
+        getPosts: '/test/wordpress/posts',
+        createSpecificPost: '/test/create-specific-post',
+        createPostNoAuth: '/test/create-post-no-auth',
+        authStatus: '/test/auth-status'
+      }
     }
   });
 });
+
+// Mount test routes
+app.use(testWordPressRoute);
+app.use(testSpecificRoute);
 
 // Version endpoint
 app.get('/version', (req, res) => {
