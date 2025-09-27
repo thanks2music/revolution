@@ -83,6 +83,9 @@ fi
 log_info ""
 log_info "📝 オプションプラグインのインストール"
 
+download_plugin "classic-editor" \
+    "https://downloads.wordpress.org/plugin/classic-editor.latest-stable.zip"
+
 # ===========================================
 # 権限設定
 # ===========================================

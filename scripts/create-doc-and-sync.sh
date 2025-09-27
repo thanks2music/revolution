@@ -2,6 +2,7 @@
 
 # ドキュメント作成＋自動同期ヘルパースクリプト
 # Claudeでドキュメントを作成した後、自動的にiCloudに同期
+# iCloudディレクトリ: We Are All One/Revolution
 
 set -e
 
@@ -117,9 +118,9 @@ log_success "🎉 完了！iPadで確認できます。"
 
 # iPad用のパス情報表示（相対パスで表示）
 if [[ "$DOC_TYPE" == "docs" ]]; then
-    IPAD_PATH="Revolution/docs/$RELATIVE_PATH"
+    IPAD_PATH="We Are All One/Revolution/docs/$RELATIVE_PATH"
 elif [[ "$DOC_TYPE" == "private" ]]; then
-    IPAD_PATH="Revolution/dot-claude/$RELATIVE_PATH"
+    IPAD_PATH="We Are All One/Revolution/dot-claude/$RELATIVE_PATH"
 fi
 
 log_info "📱 iPad MWebでのパス: $IPAD_PATH"

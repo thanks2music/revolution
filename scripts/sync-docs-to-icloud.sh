@@ -84,7 +84,7 @@ if [[ -d "$PROJECT_ROOT/docs" ]]; then
         --exclude='*' \
         "$PROJECT_ROOT/docs/" \
         "$ICLOUD_BASE/docs/"
-    
+
     # 同期されたファイル数を数える
     docs_count=$(find "$ICLOUD_BASE/docs" -name "*.md" -type f | wc -l)
     log_success "パブリックドキュメント同期完了: ${docs_count}個のMarkdownファイル"
@@ -104,7 +104,7 @@ if [[ -d "$PROJECT_ROOT/.claude" ]]; then
         --exclude='*.json' \
         "$PROJECT_ROOT/.claude/" \
         "$ICLOUD_BASE/dot-claude/"
-    
+
     # 同期されたファイル数を数える
     claude_count=$(find "$ICLOUD_BASE/dot-claude" -name "*.md" -type f | wc -l)
     log_success "機密ドキュメント同期完了: ${claude_count}個のMarkdownファイル"
