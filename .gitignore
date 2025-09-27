@@ -283,6 +283,13 @@ apps/backend/premium-plugins/*.zip
 # Next.js 本番環境設定
 apps/frontend/.env.production.local
 
+# AI Writer環境変数
+apps/ai-writer/.env
+apps/ai-writer/.env.local
+
+# GraphQL Code Generator生成ファイル
+apps/ai-writer/src/generated/
+
 ## AI Documents
 CLAUDE.md
 GEMINI.md
@@ -319,6 +326,13 @@ docs/TOC.*.json
 
 # ローカル環境設定ファイル
 **/*.local.*
+
+
+# ========================================
+# 🤖 参考
+# ========================================
+reference/
+reference/**
 
 # ========================================
 # 📝 学習・開発メモ
