@@ -3,6 +3,8 @@ import { createServer } from 'http';
 import pino from 'pino';
 import testWordPressRoute from './routes/test-wordpress.route.js';
 import testSpecificRoute from './routes/test-specific.route.js';
+import testExtendedPostRoute from './routes/test-extended-post.route.js';
+import testTypedRoute from './routes/test-typed.route.js';
 
 const logger = pino({
   name: 'ai-writer',
@@ -40,8 +42,15 @@ app.get('/', (req, res) => {
         createTestPost: '/test/wordpress/create-test-post',
         getPosts: '/test/wordpress/posts',
         createSpecificPost: '/test/create-specific-post',
+        createExtendedPost: '/test/create-extended-post',
         createPostNoAuth: '/test/create-post-no-auth',
         authStatus: '/test/auth-status'
+      },
+      typed: {
+        connection: '/test/typed/connection',
+        createPost: '/test/typed/create-post',
+        createPostExtended: '/test/typed/create-post-extended',
+        getCategoriesTags: '/test/typed/categories-tags'
       }
     }
   });
@@ -50,6 +59,8 @@ app.get('/', (req, res) => {
 // Mount test routes
 app.use(testWordPressRoute);
 app.use(testSpecificRoute);
+app.use(testExtendedPostRoute);
+app.use(testTypedRoute);
 
 // Version endpoint
 app.get('/version', (req, res) => {

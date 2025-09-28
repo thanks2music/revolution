@@ -28,6 +28,67 @@ const CREATE_POST_MUTATION = gql`
   }
 `;
 
+const CREATE_POST_EXTENDED_MUTATION = gql`
+  mutation CreatePostExtended(
+    $title: String!
+    $content: String!
+    $slug: String
+    $status: PostStatusEnum
+    $authorId: ID
+    $excerpt: String
+    $date: String
+    $categories: [PostCategoriesNodeInput]
+    $tags: [PostTagsNodeInput]
+    $commentStatus: String
+    $pingStatus: String
+  ) {
+    createPost(
+      input: {
+        title: $title
+        content: $content
+        slug: $slug
+        status: $status
+        authorId: $authorId
+        excerpt: $excerpt
+        date: $date
+        categories: { nodes: $categories }
+        tags: { nodes: $tags }
+        commentStatus: $commentStatus
+        pingStatus: $pingStatus
+      }
+    ) {
+      post {
+        id
+        databaseId
+        title
+        slug
+        uri
+        status
+        date
+        excerpt
+        author {
+          node {
+            id
+            name
+          }
+        }
+        categories {
+          nodes {
+            id
+            name
+          }
+        }
+        tags {
+          nodes {
+            id
+            name
+          }
+        }
+      }
+    }
+  }
+`;
+
 const UPDATE_POST_MUTATION = gql`
   mutation UpdatePost($id: ID!, $title: String, $content: String, $status: PostStatusEnum) {
     updatePost(
@@ -97,6 +158,21 @@ export interface CreatePostInput {
   featuredMediaId?: string;
 }
 
+export interface CreatePostExtendedInput {
+  title: string;
+  content: string;
+  slug?: string;
+  status?: PostStatus;
+  authorId?: string;
+  excerpt?: string;
+  date?: string;
+  categoryIds?: string[];
+  tagIds?: string[];
+  featuredImageId?: string;
+  commentStatus?: 'open' | 'closed';
+  pingStatus?: 'open' | 'closed';
+}
+
 export interface UpdatePostInput {
   id: string;
   title?: string;
@@ -132,8 +208,16 @@ export class WordPressGraphQLService {
     };
 
     // Add authorization header if token is provided
+    // WordPress Application Passwords use HTTP Basic Authentication
     if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`;
+      // If token contains ':', it's in format "username:password"
+      // Convert to Basic auth by base64 encoding
+      const base64Token = Buffer.from(this.authToken).toString('base64');
+      headers['Authorization'] = `Basic ${base64Token}`;
+      logger.info({
+        username: this.authToken.split(':')[0],
+        hasPassword: this.authToken.includes(':')
+      }, 'WordPress authentication configured');
     }
 
     this.client = new GraphQLClient(this.endpoint, {
@@ -168,6 +252,38 @@ export class WordPressGraphQLService {
     } catch (error) {
       logger.error({ error, input }, 'Failed to create post');
       throw new Error(`Failed to create WordPress post: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async createPostExtended(input: CreatePostExtendedInput): Promise<WordPressPost> {
+    try {
+      logger.info({ title: input.title, status: input.status }, 'Creating extended WordPress post');
+
+      const variables = {
+        title: input.title,
+        content: input.content,
+        slug: input.slug,
+        status: input.status || PostStatus.DRAFT,
+        authorId: input.authorId,
+        excerpt: input.excerpt,
+        date: input.date,
+        categories: input.categoryIds?.map(id => ({ id })),
+        tags: input.tagIds?.map(id => ({ id })),
+        commentStatus: input.commentStatus,
+        pingStatus: input.pingStatus,
+      };
+
+      const response = await this.client.request<{
+        createPost: { post: WordPressPost };
+      }>(CREATE_POST_EXTENDED_MUTATION, variables);
+
+      const post = response.createPost.post;
+      logger.info({ postId: post.id, slug: post.slug }, 'Extended post created successfully');
+
+      return post;
+    } catch (error) {
+      logger.error({ error, input }, 'Failed to create extended post');
+      throw new Error(`Failed to create extended WordPress post: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -281,7 +397,8 @@ export class WordPressGraphQLService {
    */
   setAuthToken(token: string): void {
     this.authToken = token;
-    this.client.setHeader('Authorization', `Bearer ${token}`);
+    const base64Token = Buffer.from(token).toString('base64');
+    this.client.setHeader('Authorization', `Basic ${base64Token}`);
     logger.info('Authentication token updated');
   }
 

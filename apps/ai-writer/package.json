@@ -9,17 +9,24 @@
     "start": "node dist/index.js",
     "test": "echo 'Add test script here'",
     "lint": "eslint src/**/*.ts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "codegen": "graphql-codegen --config codegen.yml",
+    "codegen:watch": "graphql-codegen --config codegen.yml --watch"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.63.0",
     "@extractus/article-extractor": "^8.0.20",
     "express": "^5.1.0",
+    "graphql-tag": "^2.12.6",
     "pino": "^9.11.0",
     "rss-parser": "^3.13.0",
     "zod": "^4.1.11"
   },
   "devDependencies": {
+    "@graphql-codegen/cli": "^6.0.0",
+    "@graphql-codegen/typescript": "^5.0.0",
+    "@graphql-codegen/typescript-graphql-request": "^6.3.0",
+    "@graphql-codegen/typescript-operations": "^5.0.0",
     "@types/express": "^5.0.3",
     "@types/node": "^24.5.2",
     "@typescript-eslint/eslint-plugin": "^8.44.0",

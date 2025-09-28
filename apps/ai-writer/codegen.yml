@@ -1,0 +1,23 @@
+schema: http://localhost:8080/graphql
+documents: 'src/graphql/**/*.graphql'
+generates:
+  src/generated/graphql.ts:
+    plugins:
+      - typescript
+      - typescript-operations
+      - typescript-graphql-request
+    config:
+      skipTypename: false
+      enumsAsTypes: false
+      futureProofEnums: true
+      dedupeFragments: true
+      useTypeImports: true
+      avoidOptionals:
+        field: false
+        inputValue: false
+        object: false
+      scalars:
+        DateTime: string
+        Date: string
+        Time: string
+        JSON: any

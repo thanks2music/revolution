@@ -25,8 +25,8 @@ RUN chown -R www-data:www-data /var/www/html
 RUN sed -i 's/Listen 80/Listen 0.0.0.0:8080/' /etc/apache2/ports.conf && \
 	sed -i 's/:80>/:8080>/' /etc/apache2/sites-available/000-default.conf
 
-# WordPress設定
-COPY wp-config.php /var/www/html/
+# WordPress設定（後でコピーするため、ここではコメントアウト）
+# COPY wp-config.php /var/www/html/
 
 # wp-contentディレクトリをコピー（カスタムテーマ、mu-pluginsなど）
 COPY wp-content/ /var/www/html/wp-content/
@@ -67,6 +67,9 @@ RUN cd /var/www/html/wp-content/mu-plugins/gcs-integration && \
 # 🚨 重要：Dockerfileでのプラグインコード生成を削除
 # 既存のファイル構造を尊重し、上書きしない
 
+# カスタムwp-config.phpを一時保存（起動時にコピーする）
+COPY wp-config.php /tmp/wp-config.php
+
 # WordPress初期化スクリプト
 RUN cat > /usr/local/bin/wordpress-init.sh << 'EOF'
 #!/bin/bash
@@ -75,6 +78,16 @@ echo "=== WordPress Cloud Run Init ==="
 echo "PORT: ${PORT:-8080}"
 echo "HOST: ${HOST:-0.0.0.0}"
 echo "BUCKET_NAME: ${BUCKET_NAME:-not set}"
+
+# カスタムwp-config.phpを強制的にコピー（WordPressの標準設定を上書き）
+if [ -f /tmp/wp-config.php ]; then
+echo "Copying custom wp-config.php..."
+cp -f /tmp/wp-config.php /var/www/html/wp-config.php
+chown www-data:www-data /var/www/html/wp-config.php
+echo "Custom wp-config.php applied successfully"
+else
+echo "Warning: Custom wp-config.php not found in /tmp/"
+fi
 
 if [ ! -z "$PORT" ] && [ "$PORT" != "8080" ]; then
 echo "Changing Apache port to $PORT"

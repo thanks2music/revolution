@@ -45,7 +45,7 @@ router.get('/test/wordpress/connection', async (req: Request, res: Response) => 
  */
 router.post('/test/wordpress/create-post', async (req: Request, res: Response) => {
   try {
-    const { title, content, authToken } = req.body;
+    const { title, content, authToken, slug, excerpt, status, categoryIds, tagIds, commentStatus, pingStatus } = req.body;
 
     // Validate input
     if (!title || !content) {
@@ -62,11 +62,32 @@ router.post('/test/wordpress/create-post', async (req: Request, res: Response) =
       authToken || process.env.WORDPRESS_AUTH_TOKEN
     );
 
-    // Create the post
+    // Use extended API if additional fields are provided
+    if (slug || excerpt || categoryIds || tagIds || commentStatus || pingStatus) {
+      const post = await wpService.createPostExtended({
+        title,
+        content,
+        slug,
+        excerpt,
+        status: status || PostStatus.DRAFT,
+        categoryIds,
+        tagIds,
+        commentStatus,
+        pingStatus
+      });
+
+      return res.json({
+        success: true,
+        message: 'Extended post created successfully',
+        post
+      });
+    }
+
+    // Create basic post
     const post = await wpService.createPost({
       title,
       content,
-      status: PostStatus.DRAFT
+      status: status || PostStatus.DRAFT
     });
 
     res.json({
