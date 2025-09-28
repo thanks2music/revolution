@@ -157,6 +157,22 @@ database/
 .gcp/
 gcp-service-account.json
 
+# Firebase
+.firebaserc
+**/.firebaserc
+
+# Firebase configuration files (contain project-specific and personal information)
+**/firebase.json
+**/firestore.rules
+**/firestore.indexes.json
+**/storage.rules
+
+# Firebase CLI cache and debug logs
+.firebase/
+firebase-debug.log*
+firebase-debug.*.log*
+.dataconnect
+
 # AWS
 .aws/
 aws-credentials
@@ -327,6 +343,9 @@ docs/TOC.*.json
 # ローカル環境設定ファイル
 **/*.local.*
 
+## TODO: ignoreファイルは以下にまとめる
+dotfiles/
+dotfiles/**
 
 # ========================================
 # 🤖 参考
