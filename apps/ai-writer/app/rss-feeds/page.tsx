@@ -1,0 +1,319 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../lib/auth/auth-context';
+import { RssFeedService } from '../../lib/services/rss-feed.service';
+import type { RssFeed, CreateRssFeedInput } from '../../lib/types/rss-feed';
+
+export default function RssFeedsPage() {
+  const { user } = useAuth();
+  const [feeds, setFeeds] = useState<RssFeed[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState<CreateRssFeedInput>({
+    url: '',
+    title: '',
+    description: '',
+    siteUrl: '',
+    isActive: true,
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    loadFeeds();
+  }, []);
+
+  const loadFeeds = async () => {
+    console.log('=== Loading Feeds ===');
+    try {
+      setLoading(true);
+      const data = await RssFeedService.listFeeds();
+      console.log('Feeds loaded:', data.length, 'items');
+      setFeeds(data);
+    } catch (err) {
+      console.error('Failed to load feeds:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load feeds');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    console.log('=== Form Submit Start ===');
+    console.log('User:', user);
+    console.log('Form Data:', formData);
+
+    if (!user) {
+      console.error('User is not authenticated');
+      setError('ユーザーが認証されていません');
+      return;
+    }
+
+    if (!formData.url.trim()) {
+      console.error('URL is empty');
+      setError('RSS URLを入力してください');
+      return;
+    }
+
+    try {
+      setError(null);
+      setIsSubmitting(true);
+      console.log('Creating feed...');
+
+      const result = await RssFeedService.createFeed(formData, user.uid);
+      console.log('Feed created successfully:', result);
+
+      setFormData({ url: '', title: '', description: '', siteUrl: '', isActive: true });
+      setShowForm(false);
+
+      console.log('Reloading feeds...');
+      await loadFeeds();
+      console.log('=== Form Submit Complete ===');
+
+    } catch (err) {
+      console.error('=== Form Submit Error ===');
+      console.error('Error type:', err?.constructor?.name);
+      console.error('Error message:', err);
+      console.error('Error stack:', err instanceof Error ? err.stack : 'No stack');
+
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create feed';
+      setError(`エラー: ${errorMessage}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('このRSSフィードを削除しますか？')) return;
+
+    try {
+      await RssFeedService.deleteFeed(id);
+      await loadFeeds();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete feed');
+    }
+  };
+
+  const handleToggleActive = async (feed: RssFeed) => {
+    try {
+      await RssFeedService.updateFeed(feed.id, { isActive: !feed.isActive });
+      await loadFeeds();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update feed');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-gray-900"></div>
+          <p className="mt-4 text-sm text-gray-600">読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="border-b bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <a href="/" className="text-sm text-gray-600 hover:text-gray-900">
+                ← ダッシュボードに戻る
+              </a>
+              <h1 className="mt-2 text-2xl font-bold text-gray-900">RSS フィード管理</h1>
+            </div>
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            >
+              {showForm ? 'キャンセル' : '+ 新規追加'}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {error && (
+          <div className="mb-4 rounded-md bg-red-50 p-4">
+            <p className="text-sm text-red-800">{error}</p>
+          </div>
+        )}
+
+        {showForm && (
+          <div className="mb-8 rounded-lg bg-white p-6 shadow">
+            <h2 className="mb-4 text-lg font-semibold">新しいRSSフィードを追加</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  RSS URL <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={formData.url}
+                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+                  placeholder="https://example.com/feed.xml"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  タイトル <span className="text-xs text-gray-500">(任意)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+                  placeholder="例: AI技術 最新ニュース"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  管理しやすい名前を付けてください。空欄の場合はURLが表示されます。
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  説明 <span className="text-xs text-gray-500">(任意)</span>
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={2}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+                  placeholder="例: AI関連の最新ニュースを収集"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  サイトURL <span className="text-xs text-gray-500">(任意)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.siteUrl}
+                  onChange={(e) => setFormData({ ...formData, siteUrl: e.target.value })}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+                  placeholder="https://example.com (Googleアラートの場合は不要)"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  通常のブログRSSの場合のみ入力してください。Googleアラートは空欄で構いません。
+                </p>
+              </div>
+
+              <div className="flex items-center gap-8">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? '追加中...' : '追加'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  disabled={isSubmitting}
+                  className="text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50"
+                >
+                  キャンセル
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        <div className="rounded-lg bg-white shadow">
+          {feeds.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="text-gray-500">登録されているRSSフィードはありません</p>
+              <button
+                onClick={() => setShowForm(true)}
+                className="mt-4 text-sm text-gray-900 underline"
+              >
+                最初のフィードを追加する
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      タイトル / URL
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      ステータス
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      登録日
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                      操作
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {feeds.map((feed) => (
+                    <tr key={feed.id}>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {feed.title || 'タイトルなし'}
+                        </div>
+                        <a
+                          href={feed.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:underline"
+                        >
+                          {feed.url}
+                        </a>
+                        {feed.description && (
+                          <div className="mt-1 text-xs text-gray-400">{feed.description}</div>
+                        )}
+                        {feed.siteUrl && (
+                          <div className="mt-1 text-xs text-gray-400">
+                            サイト: <a href={feed.siteUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">{feed.siteUrl}</a>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => handleToggleActive(feed)}
+                          className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                            feed.isActive
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {feed.isActive ? '有効' : '無効'}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {new Date(feed.createdAt).toLocaleDateString('ja-JP')}
+                      </td>
+                      <td className="px-6 py-4 text-right text-sm">
+                        <button
+                          onClick={() => handleDelete(feed.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          削除
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
