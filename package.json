@@ -27,11 +27,13 @@
     "docs:build-toc": "tsx tools/docs-index.ts",
     "docs:validate": "tsx tools/docs-index.ts && echo 'OK'",
     "docs:sync": "./scripts/sync-docs-to-icloud.sh",
-    "docs:create": "./scripts/create-doc-and-sync.sh"
+    "docs:create": "./scripts/create-doc-and-sync.sh",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@types/node": "^24.2.1",
     "eslint": "^9.33.0",
+    "husky": "^9.1.7",
     "prettier": "^3.6.2",
     "tsx": "^4.20.4",
     "turbo": "^2.5.5",
