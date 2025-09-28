@@ -1,0 +1,98 @@
+'use client';
+
+import { createContext, useContext, useEffect, useState } from 'react';
+import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { auth } from '../firebase/client';
+
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  signInWithGoogle: () => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+  signInWithGoogle: async () => {},
+  logout: async () => {},
+});
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    console.log('[AuthContext] Setting up auth listener');
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('[AuthContext] Auth state changed:', user ? user.email : 'null');
+
+      if (user) {
+        try {
+          const token = await user.getIdToken();
+          console.log('[AuthContext] Got ID token, length:', token.length);
+
+          const response = await fetch('/api/auth/set-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+          });
+
+          if (!response.ok) {
+            console.error('[AuthContext] Failed to set token:', response.status);
+          } else {
+            console.log('[AuthContext] Token set successfully');
+          }
+        } catch (error) {
+          console.error('[AuthContext] Error setting token:', error);
+        }
+      } else {
+        console.log('[AuthContext] No user, clearing token');
+        await fetch('/api/auth/clear-token', { method: 'POST' }).catch(console.error);
+      }
+
+      setUser(user);
+      setLoading(false);
+    });
+
+    return () => {
+      console.log('[AuthContext] Cleaning up auth listener');
+      unsubscribe();
+    };
+  }, []);
+
+  const signInWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const allowedEmails = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '').split(',');
+
+      if (!allowedEmails.includes(result.user.email || '')) {
+        await signOut(auth);
+        throw new Error('このメールアドレスはアクセス権限がありません');
+      }
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      throw error;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/clear-token', { method: 'POST' });
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout error:', error);
+      throw error;
+    }
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => useContext(AuthContext);
