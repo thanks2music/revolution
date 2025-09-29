@@ -8,6 +8,8 @@
     "dev:express": "tsx watch src/index.ts",
     "build": "next build",
     "start": "next start --port 7777",
+    "restart": "lsof -ti :7777 | xargs kill -9 2>/dev/null; sleep 1 && next dev --port 7777",
+    "stop": "lsof -ti :7777 | xargs kill -9 2>/dev/null && echo '✓ Next.js stopped on port 7777' || echo '✗ No process found on port 7777'",
     "test": "echo 'Add test script here'",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
