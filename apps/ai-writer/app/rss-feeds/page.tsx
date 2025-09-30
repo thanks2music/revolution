@@ -10,6 +10,7 @@ export default function RssFeedsPage() {
   const [feeds, setFeeds] = useState<RssFeed[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingFeed, setEditingFeed] = useState<RssFeed | null>(null);
   const [formData, setFormData] = useState<CreateRssFeedInput>({
     url: '',
     title: '',
@@ -45,6 +46,7 @@ export default function RssFeedsPage() {
     console.log('=== Form Submit Start ===');
     console.log('User:', user);
     console.log('Form Data:', formData);
+    console.log('Edit Mode:', !!editingFeed);
 
     if (!user) {
       console.error('User is not authenticated');
@@ -61,13 +63,29 @@ export default function RssFeedsPage() {
     try {
       setError(null);
       setIsSubmitting(true);
-      console.log('Creating feed...');
 
-      const result = await RssFeedService.createFeed(formData, user.uid);
-      console.log('Feed created successfully:', result);
+      if (editingFeed) {
+        // 編集モード
+        console.log('Updating feed...');
+        await RssFeedService.updateFeed(editingFeed.id, {
+          url: formData.url,
+          title: formData.title,
+          description: formData.description,
+          siteUrl: formData.siteUrl,
+          isActive: formData.isActive,
+        });
+        console.log('Feed updated successfully');
+      } else {
+        // 新規作成モード
+        console.log('Creating feed...');
+        const result = await RssFeedService.createFeed(formData, user.uid);
+        console.log('Feed created successfully:', result);
+      }
 
+      // フォームリセット
       setFormData({ url: '', title: '', description: '', siteUrl: '', isActive: true });
       setShowForm(false);
+      setEditingFeed(null);
 
       console.log('Reloading feeds...');
       await loadFeeds();
@@ -79,7 +97,7 @@ export default function RssFeedsPage() {
       console.error('Error message:', err);
       console.error('Error stack:', err instanceof Error ? err.stack : 'No stack');
 
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create feed';
+      const errorMessage = err instanceof Error ? err.message : editingFeed ? 'Failed to update feed' : 'Failed to create feed';
       setError(`エラー: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
@@ -106,6 +124,26 @@ export default function RssFeedsPage() {
     }
   };
 
+  const handleEdit = (feed: RssFeed) => {
+    setEditingFeed(feed);
+    setFormData({
+      url: feed.url,
+      title: feed.title || '',
+      description: feed.description || '',
+      siteUrl: feed.siteUrl || '',
+      isActive: feed.isActive,
+    });
+    setShowForm(true);
+    setError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingFeed(null);
+    setFormData({ url: '', title: '', description: '', siteUrl: '', isActive: true });
+    setShowForm(false);
+    setError(null);
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -129,7 +167,18 @@ export default function RssFeedsPage() {
               <h1 className="mt-2 text-2xl font-bold text-gray-900">RSS フィード管理</h1>
             </div>
             <button
-              onClick={() => setShowForm(!showForm)}
+              onClick={() => {
+                if (showForm && editingFeed) {
+                  handleCancelEdit();
+                } else if (showForm) {
+                  setShowForm(false);
+                } else {
+                  setEditingFeed(null);
+                  setFormData({ url: '', title: '', description: '', siteUrl: '', isActive: true });
+                  setShowForm(true);
+                  setError(null);
+                }
+              }}
               className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
             >
               {showForm ? 'キャンセル' : '+ 新規追加'}
@@ -147,7 +196,9 @@ export default function RssFeedsPage() {
 
         {showForm && (
           <div className="mb-8 rounded-lg bg-white p-6 shadow">
-            <h2 className="mb-4 text-lg font-semibold">新しいRSSフィードを追加</h2>
+            <h2 className="mb-4 text-lg font-semibold">
+              {editingFeed ? 'RSSフィードを編集' : '新しいRSSフィードを追加'}
+            </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
@@ -214,11 +265,14 @@ export default function RssFeedsPage() {
                   disabled={isSubmitting}
                   className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? '追加中...' : '追加'}
+                  {isSubmitting
+                    ? (editingFeed ? '更新中...' : '追加中...')
+                    : (editingFeed ? '更新' : '追加')
+                  }
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={handleCancelEdit}
                   disabled={isSubmitting}
                   className="text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50"
                 >
@@ -299,12 +353,20 @@ export default function RssFeedsPage() {
                         {new Date(feed.createdAt).toLocaleDateString('ja-JP')}
                       </td>
                       <td className="px-6 py-4 text-right text-sm">
-                        <button
-                          onClick={() => handleDelete(feed.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          削除
-                        </button>
+                        <div className="flex justify-end gap-3">
+                          <button
+                            onClick={() => handleEdit(feed)}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            編集
+                          </button>
+                          <button
+                            onClick={() => handleDelete(feed.id)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            削除
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
