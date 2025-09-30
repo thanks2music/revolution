@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../lib/auth/auth-context';
 import { RssFeedService } from '../../lib/services/rss-feed.service';
-import type { RssFeed, CreateRssFeedInput } from '../../lib/types/rss-feed';
+import type { RssFeed, CreateRssFeedInput, ValidationConfig } from '../../lib/types/rss-feed';
+import { VALIDATION_PRESETS } from '../../lib/types/rss-feed';
 
 export default function RssFeedsPage() {
   const { user } = useAuth();
@@ -17,13 +18,60 @@ export default function RssFeedsPage() {
     description: '',
     siteUrl: '',
     isActive: true,
+    validationConfig: undefined,
   });
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 妥当性設定関連のstate
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
+  const [showValidationConfig, setShowValidationConfig] = useState(false);
+  const [customKeywords, setCustomKeywords] = useState<string>('');
+
   useEffect(() => {
     loadFeeds();
   }, []);
+
+  // プリセット変更時の処理
+  const handlePresetChange = (presetId: string) => {
+    setSelectedPreset(presetId);
+    const preset = VALIDATION_PRESETS.find(p => p.id === presetId);
+
+    if (preset) {
+      setFormData(prev => ({
+        ...prev,
+        validationConfig: preset.config
+      }));
+      setCustomKeywords(preset.config.keywords.join(', '));
+      setShowValidationConfig(presetId === 'custom');
+    } else if (presetId === 'custom') {
+      setShowValidationConfig(true);
+      setFormData(prev => ({
+        ...prev,
+        validationConfig: {
+          keywords: [],
+          keywordLogic: 'OR',
+          requireJapanese: true,
+          minScore: 70,
+          isEnabled: true
+        }
+      }));
+      setCustomKeywords('');
+    }
+  };
+
+  // カスタムキーワード変更時の処理
+  const handleCustomKeywordsChange = (value: string) => {
+    setCustomKeywords(value);
+    const keywords = value.split(',').map(k => k.trim()).filter(k => k);
+    setFormData(prev => ({
+      ...prev,
+      validationConfig: prev.validationConfig ? {
+        ...prev.validationConfig,
+        keywords
+      } : undefined
+    }));
+  };
 
   const loadFeeds = async () => {
     console.log('=== Loading Feeds ===');
@@ -83,9 +131,12 @@ export default function RssFeedsPage() {
       }
 
       // フォームリセット
-      setFormData({ url: '', title: '', description: '', siteUrl: '', isActive: true });
+      setFormData({ url: '', title: '', description: '', siteUrl: '', isActive: true, validationConfig: undefined });
       setShowForm(false);
       setEditingFeed(null);
+      setSelectedPreset('');
+      setShowValidationConfig(false);
+      setCustomKeywords('');
 
       console.log('Reloading feeds...');
       await loadFeeds();
@@ -132,16 +183,41 @@ export default function RssFeedsPage() {
       description: feed.description || '',
       siteUrl: feed.siteUrl || '',
       isActive: feed.isActive,
+      validationConfig: feed.validationConfig,
     });
+
+    // プリセット設定の復元
+    if (feed.validationConfig) {
+      const matchingPreset = VALIDATION_PRESETS.find(preset =>
+        JSON.stringify(preset.config) === JSON.stringify(feed.validationConfig)
+      );
+
+      if (matchingPreset) {
+        setSelectedPreset(matchingPreset.id);
+        setShowValidationConfig(false);
+      } else {
+        setSelectedPreset('custom');
+        setShowValidationConfig(true);
+      }
+      setCustomKeywords(feed.validationConfig.keywords.join(', '));
+    } else {
+      setSelectedPreset('');
+      setShowValidationConfig(false);
+      setCustomKeywords('');
+    }
+
     setShowForm(true);
     setError(null);
   };
 
   const handleCancelEdit = () => {
     setEditingFeed(null);
-    setFormData({ url: '', title: '', description: '', siteUrl: '', isActive: true });
+    setFormData({ url: '', title: '', description: '', siteUrl: '', isActive: true, validationConfig: undefined });
     setShowForm(false);
     setError(null);
+    setSelectedPreset('');
+    setShowValidationConfig(false);
+    setCustomKeywords('');
   };
 
   if (loading) {
@@ -258,6 +334,152 @@ export default function RssFeedsPage() {
                   通常のブログRSSの場合のみ入力してください。Googleアラートは空欄で構いません。
                 </p>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  記事妥当性設定 <span className="text-xs text-gray-500">(任意)</span>
+                </label>
+                <select
+                  value={selectedPreset}
+                  onChange={(e) => handlePresetChange(e.target.value)}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+                >
+                  <option value="">妥当性チェックを設定しない</option>
+                  {VALIDATION_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                  <option value="custom">カスタム設定</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  収集した記事の妥当性チェック方法を選択してください。
+                </p>
+              </div>
+
+              {selectedPreset && selectedPreset !== '' && (
+                <div className="rounded-md bg-gray-50 p-3">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">選択された設定</h4>
+                  {selectedPreset !== 'custom' && (
+                    <div className="text-xs text-gray-600">
+                      {VALIDATION_PRESETS.find(p => p.id === selectedPreset)?.description}
+                    </div>
+                  )}
+                  {formData.validationConfig && (
+                    <div className="mt-2 space-y-1 text-xs text-gray-600">
+                      <div>キーワード: {formData.validationConfig.keywords.length > 0 ? formData.validationConfig.keywords.join(', ') : 'なし'}</div>
+                      <div>キーワードロジック: {formData.validationConfig.keywordLogic}</div>
+                      <div>日本語必須: {formData.validationConfig.requireJapanese ? 'はい' : 'いいえ'}</div>
+                      <div>最低スコア: {formData.validationConfig.minScore}%</div>
+                      <div>妥当性チェック: {formData.validationConfig.isEnabled ? '有効' : '無効'}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showValidationConfig && (
+                <div className="space-y-4 rounded-md border border-gray-200 p-4">
+                  <h4 className="text-sm font-medium text-gray-700">カスタム妥当性設定</h4>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      キーワード <span className="text-xs text-gray-500">(カンマ区切り)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={customKeywords}
+                      onChange={(e) => handleCustomKeywordsChange(e.target.value)}
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+                      placeholder="例: コラボカフェ, カフェコラボ, AI, React"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      記事に含まれるべきキーワードを入力してください。空欄の場合はキーワードチェックをスキップします。
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      キーワードマッチング
+                    </label>
+                    <select
+                      value={formData.validationConfig?.keywordLogic || 'OR'}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        validationConfig: prev.validationConfig ? {
+                          ...prev.validationConfig,
+                          keywordLogic: e.target.value as 'AND' | 'OR'
+                        } : undefined
+                      }))}
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
+                    >
+                      <option value="OR">いずれか一つのキーワードがあればOK</option>
+                      <option value="AND">すべてのキーワードが必要</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="requireJapanese"
+                      checked={formData.validationConfig?.requireJapanese ?? true}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        validationConfig: prev.validationConfig ? {
+                          ...prev.validationConfig,
+                          requireJapanese: e.target.checked
+                        } : undefined
+                      }))}
+                      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                    />
+                    <label htmlFor="requireJapanese" className="ml-2 text-sm text-gray-700">
+                      日本語記事を優先する
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      最低妥当性スコア: {formData.validationConfig?.minScore || 70}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value={formData.validationConfig?.minScore || 70}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        validationConfig: prev.validationConfig ? {
+                          ...prev.validationConfig,
+                          minScore: parseInt(e.target.value)
+                        } : undefined
+                      }))}
+                      className="mt-1 block w-full"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      この値以上のスコアを持つ記事のみが妥当と判定されます。
+                    </p>
+                  </div>
+
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="isEnabled"
+                      checked={formData.validationConfig?.isEnabled ?? true}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        validationConfig: prev.validationConfig ? {
+                          ...prev.validationConfig,
+                          isEnabled: e.target.checked
+                        } : undefined
+                      }))}
+                      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                    />
+                    <label htmlFor="isEnabled" className="ml-2 text-sm text-gray-700">
+                      妥当性チェックを有効にする
+                    </label>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center gap-8">
                 <button
