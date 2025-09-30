@@ -1,5 +1,6 @@
 import ClaudeAPIService, { ArticleGenerationRequest, GeneratedArticle } from './claude-api.service';
 import { WordPressGraphQLService, PostStatus } from './wordpress-graphql.service';
+import type { RssArticleEntry } from '../types/rss-article';
 
 // Types for the article generation pipeline
 export interface ArticleGenerationConfig {
@@ -208,6 +209,121 @@ export class ArticleGenerationService {
       wordpress: wordpressStatus,
       errors
     };
+  }
+
+  /**
+   * Generate and publish article from RSS entry
+   */
+  async generateAndPublishFromRssEntry(
+    rssEntry: RssArticleEntry,
+    options?: {
+      publishStatus?: PostStatus;
+      authorId?: string;
+      categoryIds?: string[];
+      customTitle?: string;
+      customKeywords?: string[];
+    }
+  ): Promise<ArticlePublishResult> {
+    try {
+      console.log(`Starting article generation from RSS entry: ${rssEntry.title}`);
+
+      if (!rssEntry.link) {
+        throw new Error('RSS entry must have a valid link');
+      }
+
+      // RSS記事の情報を使って記事生成リクエストを構築
+      const generationOptions: Partial<ArticleGenerationRequest> = {
+        title: options?.customTitle || rssEntry.title,
+        keywords: options?.customKeywords || rssEntry.categories || [],
+        targetLength: 600, // 記事として適切な長さ
+        tone: 'friendly',
+        language: 'ja'
+      };
+
+      // Claude APIでURLから記事内容を抽出して記事生成
+      const generatedArticle = await this.claudeService.generateArticleFromURL(
+        rssEntry.link,
+        generationOptions
+      );
+
+      // WordPress投稿オプションを準備
+      const publishRequest: ArticlePublishRequest = {
+        article: generatedArticle,
+        status: options?.publishStatus || this.config.defaultStatus,
+        authorId: options?.authorId || this.config.defaultAuthorId,
+        categoryIds: options?.categoryIds || this.config.defaultCategoryIds
+      };
+
+      // WordPressに投稿
+      const publishResult = await this.publishToWordPress(publishRequest);
+
+      console.log(`RSS entry processing completed: ${publishResult.success ? 'SUCCESS' : 'FAILED'}`);
+
+      return publishResult;
+
+    } catch (error) {
+      console.error('Failed to generate and publish from RSS entry:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        article: {} as GeneratedArticle
+      };
+    }
+  }
+
+  /**
+   * Batch process multiple RSS entries
+   */
+  async batchProcessRSSEntries(
+    rssEntries: RssArticleEntry[],
+    options: {
+      concurrency?: number;
+      delayBetweenRequests?: number;
+      publishStatus?: PostStatus;
+      authorId?: string;
+      categoryIds?: string[];
+    } = {}
+  ): Promise<ArticlePublishResult[]> {
+    const { concurrency = 2, delayBetweenRequests = 2000 } = options;
+    const results: ArticlePublishResult[] = [];
+
+    console.log(`Starting batch processing of ${rssEntries.length} RSS entries with concurrency ${concurrency}`);
+
+    // 処理を小さなチャンクに分割（慎重に処理）
+    for (let i = 0; i < rssEntries.length; i += concurrency) {
+      const chunk = rssEntries.slice(i, i + concurrency);
+
+      const chunkPromises = chunk.map(async (rssEntry) => {
+        try {
+          return await this.generateAndPublishFromRssEntry(rssEntry, {
+            publishStatus: options.publishStatus,
+            authorId: options.authorId,
+            categoryIds: options.categoryIds
+          });
+        } catch (error) {
+          console.error(`Failed to process RSS entry: ${rssEntry.title}`, error);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            article: {} as GeneratedArticle
+          };
+        }
+      });
+
+      const chunkResults = await Promise.all(chunkPromises);
+      results.push(...chunkResults);
+
+      // チャンク間の遅延（APIレート制限対策）
+      if (i + concurrency < rssEntries.length && delayBetweenRequests > 0) {
+        console.log(`Waiting ${delayBetweenRequests}ms before processing next chunk...`);
+        await new Promise(resolve => setTimeout(resolve, delayBetweenRequests));
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    console.log(`Batch RSS processing completed: ${successCount}/${results.length} successful`);
+
+    return results;
   }
 
   /**
