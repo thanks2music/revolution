@@ -1,4 +1,5 @@
 import { Anthropic } from '@anthropic-ai/sdk';
+import { extract } from '@extractus/article-extractor';
 
 // Types for article generation
 export interface ArticleGenerationRequest {
@@ -92,6 +93,82 @@ export class ClaudeAPIService {
     } catch (error) {
       console.error('Claude API connection test failed:', error);
       return false;
+    }
+  }
+
+  /**
+   * Generate an article from a URL by extracting content and processing with Claude
+   */
+  async generateArticleFromURL(url: string, request: Partial<ArticleGenerationRequest>): Promise<GeneratedArticle> {
+    try {
+      console.log(`Extracting content from URL: ${url}`);
+
+      // URLから記事内容を抽出
+      const extractedData = await extract(url);
+
+      if (!extractedData) {
+        throw new Error('Failed to extract content from URL');
+      }
+
+      console.log(`Content extracted. Title: ${extractedData.title}`);
+
+      // 抽出したデータを使って記事生成リクエストを構築
+      const generationRequest: ArticleGenerationRequest = {
+        title: request.title || extractedData.title || 'Untitled',
+        sourceUrl: url,
+        sourceContent: extractedData.content || extractedData.description || '',
+        keywords: request.keywords || [],
+        targetLength: request.targetLength || 800,
+        tone: request.tone || 'professional',
+        language: request.language || 'ja'
+      };
+
+      // 抽出したコンテンツが短すぎる場合の警告
+      if (!generationRequest.sourceContent || generationRequest.sourceContent.length < 100) {
+        console.warn('Extracted content is very short, article quality may be affected');
+      }
+
+      // Claude APIで記事生成
+      return await this.generateArticle(generationRequest);
+
+    } catch (error) {
+      console.error('Failed to generate article from URL:', error);
+      throw new Error(`URL記事生成失敗: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Extract and summarize content from URL without generating full article
+   */
+  async extractContentFromURL(url: string): Promise<{
+    title: string;
+    content: string;
+    description?: string;
+    author?: string;
+    publishedTime?: string;
+    source: string;
+  }> {
+    try {
+      console.log(`Extracting content from: ${url}`);
+
+      const extractedData = await extract(url);
+
+      if (!extractedData) {
+        throw new Error('Failed to extract content from URL');
+      }
+
+      return {
+        title: extractedData.title || 'No title',
+        content: extractedData.content || '',
+        description: extractedData.description || '',
+        author: extractedData.author || '',
+        publishedTime: extractedData.published || '',
+        source: url
+      };
+
+    } catch (error) {
+      console.error('Content extraction failed:', error);
+      throw new Error(`コンテンツ抽出失敗: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
