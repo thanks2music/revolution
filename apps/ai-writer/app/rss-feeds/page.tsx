@@ -24,8 +24,8 @@ export default function RssFeedsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 妥当性設定関連のstate
-  const [selectedPreset, setSelectedPreset] = useState<string>('');
-  const [showValidationConfig, setShowValidationConfig] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<string>('custom');
+  const [showValidationConfig, setShowValidationConfig] = useState(true);
   const [customKeywords, setCustomKeywords] = useState<string>('');
 
   useEffect(() => {
@@ -250,7 +250,23 @@ export default function RssFeedsPage() {
                   setShowForm(false);
                 } else {
                   setEditingFeed(null);
-                  setFormData({ url: '', title: '', description: '', siteUrl: '', isActive: true });
+                  setFormData({
+                    url: '',
+                    title: '',
+                    description: '',
+                    siteUrl: '',
+                    isActive: true,
+                    validationConfig: {
+                      keywords: [],
+                      keywordLogic: 'OR',
+                      requireJapanese: true,
+                      minScore: 70,
+                      isEnabled: true
+                    }
+                  });
+                  setSelectedPreset('custom');
+                  setShowValidationConfig(true);
+                  setCustomKeywords('');
                   setShowForm(true);
                   setError(null);
                 }
@@ -344,16 +360,12 @@ export default function RssFeedsPage() {
                   onChange={(e) => handlePresetChange(e.target.value)}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
                 >
-                  <option value="">妥当性チェックを設定しない</option>
-                  {VALIDATION_PRESETS.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name}
-                    </option>
-                  ))}
+                  <option value="">設定しない</option>
+                  <option value="disabled">妥当性チェックなし（すべての記事を通す）</option>
                   <option value="custom">カスタム設定</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
-                  収集した記事の妥当性チェック方法を選択してください。
+                  記事の妥当性チェック方法を選択してください。カスタム設定では、キーワードや言語などの条件を自由に設定できます。
                 </p>
               </div>
 
@@ -390,7 +402,7 @@ export default function RssFeedsPage() {
                       value={customKeywords}
                       onChange={(e) => handleCustomKeywordsChange(e.target.value)}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
-                      placeholder="例: コラボカフェ, カフェコラボ, AI, React"
+                      placeholder="例: キーワード1, キーワード2, キーワード3"
                     />
                     <p className="mt-1 text-xs text-gray-500">
                       記事に含まれるべきキーワードを入力してください。空欄の場合はキーワードチェックをスキップします。
