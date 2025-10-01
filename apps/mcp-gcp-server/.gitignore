@@ -1,0 +1,52 @@
+# 依存関係
+node_modules/
+dist/
+build/
+
+# 環境変数・認証情報（絶対にコミットしない）
+.env
+.env.local
+*.env
+!.env.example
+
+# Google Cloud認証情報（絶対にコミットしない）
+*-credentials.json
+*-key.json
+service-account*.json
+gcp-*.json
+mcp-*.json
+credentials/
+keys/
+
+# Claude Desktop設定（個人設定）
+claude_desktop_config.json
+.claude_config
+
+# ログ
+*.log
+logs/
+*.log.*
+
+# TypeScript
+*.tsbuildinfo
+*.d.ts.map
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# テスト
+coverage/
+.nyc_output/
+
+# 一時ファイル
+tmp/
+temp/
+*.tmp
