@@ -16,6 +16,13 @@ apps/backend/.env
 google-cloud-key.json
 .gcloud/
 application_default_credentials.json
+**/credentials.json
+**/*credentials.json
+**/*-credentials.json
+**/service-account*.json
+**/gcp-*.json
+*credentials*
+*credentials*
 
 # SSH Keys & Certificates
 *.pem
@@ -380,3 +387,9 @@ deployment-secrets/
 
 # CI/CD固有設定
 .github/workflows/secrets.yml
+
+
+# ========================================
+# 🔺 プロダクション関連
+# ========================================
+*production*
