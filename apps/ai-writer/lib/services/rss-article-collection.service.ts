@@ -178,7 +178,13 @@ export class RssArticleCollectionService {
 
     // 妥当性判定（フィード設定の最低スコアを使用）
     const minScore = validationConfig.minScore || 70;
-    const isValid = score >= minScore && (validationConfig.keywords.length === 0 || hasValidKeyword);
+
+    // 必須条件チェック
+    const hasRequiredKeywords = validationConfig.keywords.length === 0 || hasValidKeyword;
+    const hasRequiredJapanese = !validationConfig.requireJapanese || isJapanese;
+    const hasMinScore = score >= minScore;
+
+    const isValid = hasRequiredKeywords && hasRequiredJapanese && hasMinScore;
 
     return {
       isValid,
