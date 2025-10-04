@@ -100,6 +100,14 @@ next-env.d.ts
 # 🏗️ WordPress関連
 # ========================================
 
+# WordPress コアファイル（バックエンド）
+apps/backend/wp-admin/
+apps/backend/wp-includes/
+apps/backend/*.php
+apps/backend/premium-plugins/
+!apps/backend/wp-config.php
+!apps/backend/wp-config.local.php
+
 # Media Library
 wp-content/uploads/
 **/uploads/
@@ -117,10 +125,27 @@ wp-content/wp-cache-config.php
 # プラグイン開発中の一時ファイル
 wp-content/upgrade/
 wp-content/backup-db/
+apps/backend/wp-content/backups/
+
+# WordPress デフォルトテーマ（Docker起動時に自動生成）
+apps/backend/wp-content/themes/twentytwentythree/
+apps/backend/wp-content/themes/twentytwentyfour/
+apps/backend/wp-content/themes/twentytwentyfive/
+
+# WordPress 自動生成ライセンスガイド
+apps/backend/wp-content/mu-plugins/premium-license-guide.php
 
 # WordPress自動生成ファイル
 .htaccess
 web.config
+
+# WordPress ログファイル
+apps/backend/wp-content/debug.log
+
+# WordPress データベースバックアップ
+apps/backend/*.sql
+apps/backend/*.sql.gz
+apps/backend/backups/
 
 # ========================================
 # 🎵 Composer関連
