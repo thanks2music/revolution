@@ -89,9 +89,17 @@ copy_from_local() {
 # ライセンス設定ガイド生成
 # ==========================================
 setup_license_guide() {
+    local guide_file="${WP_CONTENT_DIR}/mu-plugins/premium-license-guide.php"
+
+    # 既にファイルが存在する場合はスキップ
+    if [ -f "$guide_file" ]; then
+        log_info "License guide already exists, skipping..."
+        return 0
+    fi
+
     log_info "Creating license setup guide..."
-    
-    cat > "${WP_CONTENT_DIR}/mu-plugins/premium-license-guide.php" << 'PHP'
+
+    cat > "$guide_file" << 'PHP'
 <?php
 /**
  * Premium Plugin License Setup Guide

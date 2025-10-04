@@ -89,6 +89,13 @@ else
 echo "Warning: Custom wp-config.php not found in /tmp/"
 fi
 
+# デフォルトテーマの削除（カスタムテーマのみ使用）
+if [ -d /var/www/html/wp-content/themes ]; then
+echo "Removing default WordPress themes..."
+rm -rf /var/www/html/wp-content/themes/twentytwenty*
+echo "Default themes removed"
+fi
+
 if [ ! -z "$PORT" ] && [ "$PORT" != "8080" ]; then
 echo "Changing Apache port to $PORT"
 sed -i "s/Listen 0.0.0.0:8080/Listen 0.0.0.0:$PORT/" /etc/apache2/ports.conf
