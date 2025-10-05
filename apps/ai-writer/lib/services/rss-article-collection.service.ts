@@ -233,7 +233,7 @@ export class RssArticleCollectionService {
   }
 
   /**
-   * 特定のフィードのみを処理
+   * 特定のフィードのみを処理（フィードIDから取得）
    */
   async collectArticlesFromFeed(feedId: string): Promise<RssArticleEntry[]> {
     const feed = await RssFeedService.getFeed(feedId);
@@ -243,6 +243,18 @@ export class RssArticleCollectionService {
 
     if (!feed.isActive) {
       throw new Error(`Feed is not active: ${feedId}`);
+    }
+
+    return this.collectArticlesFromFeedObject(feed);
+  }
+
+  /**
+   * 特定のフィードのみを処理（フィードオブジェクトを直接渡す）
+   * API Routeなどサーバーサイドから呼び出す場合に使用
+   */
+  async collectArticlesFromFeedObject(feed: RssFeed): Promise<RssArticleEntry[]> {
+    if (!feed.isActive) {
+      throw new Error(`Feed is not active: ${feed.id}`);
     }
 
     const articles = await this.processFeed(feed);
