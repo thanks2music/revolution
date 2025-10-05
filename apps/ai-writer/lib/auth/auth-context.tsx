@@ -23,7 +23,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('[AuthContext] Setting up auth listener');
+    // 開発環境では認証をバイパスしてダミーユーザーを設定
+    const isDevelopment = process.env.NODE_ENV === 'development';
+
+    if (isDevelopment) {
+      console.log('[AuthContext] Development mode - using mock user');
+
+      // ダミーユーザーを作成（部分的なUser型）
+      const mockUser = {
+        uid: 'dev-user-local',
+        email: 'dev@local.test',
+        displayName: 'Development User',
+        photoURL: null,
+        emailVerified: true,
+        // 最小限のUser型プロパティを追加
+        getIdToken: async () => 'dev-token-local',
+      } as User;
+
+      setUser(mockUser);
+      setLoading(false);
+
+      // 開発環境では認証リスナーを設定しない
+      return () => {
+        console.log('[AuthContext] Development mode - no cleanup needed');
+      };
+    }
+
+    // 本番環境では通常の認証フロー
+    console.log('[AuthContext] Production mode - setting up auth listener');
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('[AuthContext] Auth state changed:', user ? user.email : 'null');
