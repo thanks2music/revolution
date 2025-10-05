@@ -24,9 +24,12 @@ export interface ArticlePublishRequest {
 export interface ArticlePublishResult {
   success: boolean;
   postId?: string;
+  databaseId?: number;
   postUrl?: string;
   error?: string;
   article: GeneratedArticle;
+  wordPressCategories?: Array<{ id: string; name: string }>;
+  wordPressTags?: Array<{ id: string; name: string }>;
 }
 
 export interface RSSArticleRequest {
@@ -154,8 +157,11 @@ export class ArticleGenerationService {
       return {
         success: true,
         postId: post.id,
+        databaseId: post.databaseId,
         postUrl: post.uri,
-        article: request.article
+        article: request.article,
+        wordPressCategories: post.categories?.nodes || [],
+        wordPressTags: post.tags?.nodes || []
       };
 
     } catch (error) {
