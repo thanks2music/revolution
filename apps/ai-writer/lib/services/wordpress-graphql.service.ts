@@ -142,6 +142,20 @@ const GET_POSTS_QUERY = gql`
   }
 `;
 
+const SEARCH_POSTS_BY_CONTENT = gql`
+  query SearchPostsByContent($search: String!, $first: Int = 100) {
+    posts(where: { search: $search }, first: $first) {
+      nodes {
+        id
+        databaseId
+        title
+        content
+        excerpt
+      }
+    }
+  }
+`;
+
 export enum PostStatus {
   DRAFT = 'DRAFT',
   PUBLISH = 'PUBLISH',
@@ -192,6 +206,12 @@ export interface WordPressPost {
   content?: string;
   status: string;
   date?: string;
+  categories?: {
+    nodes: Array<{ id: string; name: string }>;
+  };
+  tags?: {
+    nodes: Array<{ id: string; name: string }>;
+  };
 }
 
 export class WordPressGraphQLService {
@@ -354,6 +374,36 @@ export class WordPressGraphQLService {
     } catch (error) {
       logger.error({ error }, 'Failed to fetch posts');
       throw new Error(`Failed to fetch WordPress posts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Search for posts that contain a specific URL in their content
+   * (仮実装: URL照合による既存記事検索)
+   */
+  async searchPostsByUrl(url: string): Promise<WordPressPost[]> {
+    try {
+      logger.info({ url }, 'Searching posts by URL');
+
+      // URLをエンコードして検索
+      const response = await this.client.request<{
+        posts: {
+          nodes: WordPressPost[];
+        };
+      }>(SEARCH_POSTS_BY_CONTENT, { search: url });
+
+      const posts = response.posts.nodes;
+
+      // contentにURLが含まれているかを厳密にチェック
+      const matchedPosts = posts.filter(post => {
+        return post.content?.includes(url);
+      });
+
+      logger.info({ count: matchedPosts.length }, 'Posts found by URL');
+      return matchedPosts;
+    } catch (error) {
+      logger.error({ error, url }, 'Failed to search posts by URL');
+      return [];
     }
   }
 
