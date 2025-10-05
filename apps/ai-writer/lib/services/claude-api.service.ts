@@ -97,14 +97,42 @@ export class ClaudeAPIService {
   }
 
   /**
+   * Extract actual URL from Google Alert redirect URLs
+   */
+  private extractActualUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+
+      // Check if this is a Google redirect URL
+      if (urlObj.hostname === 'www.google.com' && urlObj.pathname === '/url') {
+        const actualUrl = urlObj.searchParams.get('url');
+        if (actualUrl) {
+          console.log(`Extracted actual URL from Google redirect: ${actualUrl}`);
+          return actualUrl;
+        }
+      }
+
+      // Not a redirect URL, return as-is
+      return url;
+    } catch (error) {
+      console.error('Failed to parse URL:', error);
+      return url; // Return original URL if parsing fails
+    }
+  }
+
+  /**
    * Generate an article from a URL by extracting content and processing with Claude
    */
   async generateArticleFromURL(url: string, request: Partial<ArticleGenerationRequest>): Promise<GeneratedArticle> {
     try {
       console.log(`Extracting content from URL: ${url}`);
 
+      // Extract actual URL if it's a Google Alert redirect
+      const actualUrl = this.extractActualUrl(url);
+      console.log(`Using URL for extraction: ${actualUrl}`);
+
       // URLから記事内容を抽出
-      const extractedData = await extract(url);
+      const extractedData = await extract(actualUrl);
 
       if (!extractedData) {
         throw new Error('Failed to extract content from URL');
