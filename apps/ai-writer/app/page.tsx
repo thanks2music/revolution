@@ -46,6 +46,15 @@ export default function Home() {
                 RSS feedsの登録と管理
               </p>
             </a>
+            <a
+              href="/debug-rss"
+              className="rounded-lg border border-blue-200 bg-blue-50 p-4 transition-colors hover:bg-blue-100"
+            >
+              <h3 className="font-semibold text-blue-900">🔧 手動デバッグ</h3>
+              <p className="mt-2 text-sm text-blue-700">
+                RSSチェックと記事生成のテスト
+              </p>
+            </a>
             <div className="rounded-lg border p-4 opacity-50">
               <h3 className="font-semibold">記事一覧</h3>
               <p className="mt-2 text-sm text-gray-600">
