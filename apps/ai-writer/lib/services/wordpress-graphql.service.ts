@@ -156,6 +156,57 @@ const SEARCH_POSTS_BY_CONTENT = gql`
   }
 `;
 
+// Category Queries
+const GET_CATEGORY_BY_SLUG_QUERY = gql`
+  query GetCategoryBySlug($slug: String!) {
+    categories(where: { slug: [$slug] }, first: 1) {
+      nodes {
+        id
+        databaseId
+        name
+        slug
+        parentId
+        parentDatabaseId
+      }
+    }
+  }
+`;
+
+const GET_CATEGORY_BY_ID_QUERY = gql`
+  query GetCategoryById($id: ID!) {
+    category(id: $id, idType: DATABASE_ID) {
+      id
+      databaseId
+      name
+      slug
+      parentId
+      parentDatabaseId
+    }
+  }
+`;
+
+// Category Mutations
+const CREATE_CATEGORY_MUTATION = gql`
+  mutation CreateCategory($name: String!, $slug: String, $parentId: ID) {
+    createCategory(
+      input: {
+        name: $name
+        slug: $slug
+        parentId: $parentId
+      }
+    ) {
+      category {
+        id
+        databaseId
+        name
+        slug
+        parentId
+        parentDatabaseId
+      }
+    }
+  }
+`;
+
 export enum PostStatus {
   DRAFT = 'DRAFT',
   PUBLISH = 'PUBLISH',
@@ -212,6 +263,28 @@ export interface WordPressPost {
   tags?: {
     nodes: Array<{ id: string; name: string }>;
   };
+}
+
+export interface WordPressCategory {
+  id: string;
+  databaseId: number;
+  name: string;
+  slug: string;
+  parentId?: string;
+  parentDatabaseId?: number;
+}
+
+export interface CreateCategoryInput {
+  name: string;
+  slug: string;
+  parentId?: string;
+}
+
+export interface WordPressMedia {
+  id: number;
+  source_url: string;
+  alt_text: string;
+  title: { rendered: string };
 }
 
 export class WordPressGraphQLService {
@@ -457,6 +530,224 @@ export class WordPressGraphQLService {
    */
   getEndpoint(): string {
     return this.endpoint;
+  }
+
+  /**
+   * Get category by slug
+   */
+  async getCategoryBySlug(slug: string): Promise<WordPressCategory | null> {
+    try {
+      logger.info({ slug }, 'Getting category by slug');
+
+      const response = await this.client.request<{
+        categories: { nodes: WordPressCategory[] };
+      }>(GET_CATEGORY_BY_SLUG_QUERY, { slug });
+
+      const category = response.categories.nodes[0] || null;
+
+      if (category) {
+        logger.info({ categoryId: category.id, name: category.name }, 'Category found');
+      } else {
+        logger.info({ slug }, 'Category not found');
+      }
+
+      return category;
+    } catch (error) {
+      logger.error({ error, slug }, 'Failed to get category by slug');
+      return null;
+    }
+  }
+
+  /**
+   * Get category by database ID
+   */
+  async getCategoryById(databaseId: number): Promise<WordPressCategory | null> {
+    try {
+      logger.info({ databaseId }, 'Getting category by ID');
+
+      const response = await this.client.request<{
+        category: WordPressCategory;
+      }>(GET_CATEGORY_BY_ID_QUERY, { id: databaseId.toString() });
+
+      logger.info({ categoryId: response.category.id, name: response.category.name }, 'Category found');
+      return response.category;
+    } catch (error) {
+      logger.error({ error, databaseId }, 'Failed to get category by ID');
+      return null;
+    }
+  }
+
+  /**
+   * Create a new category
+   */
+  async createCategory(input: CreateCategoryInput): Promise<WordPressCategory> {
+    try {
+      logger.info({ name: input.name, slug: input.slug, parentId: input.parentId }, 'Creating category');
+
+      const response = await this.client.request<{
+        createCategory: { category: WordPressCategory };
+      }>(CREATE_CATEGORY_MUTATION, input);
+
+      const category = response.createCategory.category;
+      logger.info({ categoryId: category.id, name: category.name }, 'Category created successfully');
+
+      return category;
+    } catch (error) {
+      logger.error({ error, input }, 'Failed to create category');
+      throw new Error(`Failed to create WordPress category: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get or create category (helper method)
+   * @param name Category name
+   * @param slug Category slug
+   * @param parentSlug Parent category slug (optional, default: 'titles')
+   * @returns Category ID (global ID format)
+   */
+  async getOrCreateCategory(
+    name: string,
+    slug: string,
+    parentSlug: string = 'titles'
+  ): Promise<string> {
+    try {
+      logger.info({ name, slug, parentSlug }, 'Getting or creating category');
+
+      // 1. Check if category already exists
+      let category = await this.getCategoryBySlug(slug);
+
+      if (category) {
+        logger.info({ categoryId: category.id }, 'Category already exists');
+        return category.id;
+      }
+
+      // 2. Get parent category ID
+      let parentId: string | undefined;
+      if (parentSlug) {
+        const parentCategory = await this.getCategoryBySlug(parentSlug);
+        if (parentCategory) {
+          parentId = parentCategory.id;
+          logger.info({ parentId, parentSlug }, 'Parent category found');
+        } else {
+          logger.warn({ parentSlug }, 'Parent category not found, creating as top-level category');
+        }
+      }
+
+      // 3. Create new category
+      category = await this.createCategory({
+        name,
+        slug,
+        parentId,
+      });
+
+      return category.id;
+    } catch (error) {
+      logger.error({ error, name, slug }, 'Failed to get or create category');
+      throw new Error(`Failed to get or create category: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Upload media to WordPress via REST API
+   * @param imageUrl Image URL to download and upload
+   * @param altText Alt text for the image
+   * @param title Image title
+   * @returns Uploaded media information
+   */
+  async uploadMediaFromUrl(
+    imageUrl: string,
+    altText: string = '',
+    title: string = ''
+  ): Promise<WordPressMedia> {
+    try {
+      logger.info({ imageUrl }, 'Uploading media to WordPress');
+
+      // 1. Download image
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to download image: ${imageResponse.statusText}`);
+      }
+
+      const imageBuffer = await imageResponse.arrayBuffer();
+      const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+      const filename = imageUrl.split('/').pop() || 'image.jpg';
+
+      // 2. Upload to WordPress REST API
+      const restEndpoint = this.endpoint.replace('/graphql', '/wp-json/wp/v2/media');
+
+      const formData = new FormData();
+      const blob = new Blob([imageBuffer], { type: contentType });
+      formData.append('file', blob, filename);
+
+      if (title) {
+        formData.append('title', title);
+      }
+      if (altText) {
+        formData.append('alt_text', altText);
+      }
+
+      const headers: Record<string, string> = {};
+      if (this.authToken) {
+        const base64Token = Buffer.from(this.authToken).toString('base64');
+        headers['Authorization'] = `Basic ${base64Token}`;
+      }
+
+      const uploadResponse = await fetch(restEndpoint, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Failed to upload media: ${uploadResponse.statusText} - ${errorText}`);
+      }
+
+      const media: WordPressMedia = await uploadResponse.json();
+      logger.info({ mediaId: media.id, sourceUrl: media.source_url }, 'Media uploaded successfully');
+
+      return media;
+    } catch (error) {
+      logger.error({ error, imageUrl }, 'Failed to upload media');
+      throw new Error(`Failed to upload media: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Upload multiple images and return their IDs
+   * @param imageUrls Array of image URLs
+   * @param altTextPrefix Prefix for alt text (e.g., "Product Name")
+   * @returns Array of media IDs
+   */
+  async uploadMultipleMedia(
+    imageUrls: string[],
+    altTextPrefix: string = 'Image'
+  ): Promise<number[]> {
+    try {
+      logger.info({ count: imageUrls.length }, 'Uploading multiple media');
+
+      const mediaIds: number[] = [];
+
+      for (let i = 0; i < imageUrls.length; i++) {
+        const url = imageUrls[i];
+        const altText = `${altTextPrefix} ${i + 1}`;
+        const title = `${altTextPrefix} ${i + 1}`;
+
+        try {
+          const media = await this.uploadMediaFromUrl(url, altText, title);
+          mediaIds.push(media.id);
+        } catch (error) {
+          logger.warn({ error, url }, 'Failed to upload individual media, skipping');
+          // Continue with other images
+        }
+      }
+
+      logger.info({ uploaded: mediaIds.length, total: imageUrls.length }, 'Multiple media upload completed');
+      return mediaIds;
+    } catch (error) {
+      logger.error({ error }, 'Failed to upload multiple media');
+      throw new Error(`Failed to upload multiple media: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 

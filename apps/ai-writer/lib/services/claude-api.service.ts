@@ -237,6 +237,85 @@ ${content}
   }
 
   /**
+   * Generate URL-friendly slug from Japanese title
+   * 日本語タイトルからWordPress用のURLスラッグを生成
+   */
+  async generateSlug(title: string): Promise<string> {
+    console.log(`>>> generateSlug called with: "${title}" <<<`);
+    const prompt = `Convert the following Japanese title to a URL-friendly slug (lowercase alphanumeric characters and hyphens only).
+
+Title: ${title}
+
+Requirements:
+- Use English transliteration or common English title if available (e.g., "魔法少女まどか☆マギカ" → "madoka-magica", "呪術廻戦" → "jujutsu-kaisen")
+- If no English title exists, use Romaji (e.g., "鬼滅の刃" → "kimetsu-no-yaiba")
+- All lowercase, words separated by hyphens
+- Remove special characters
+- Keep it simple and memorable
+
+Output format: Return ONLY the slug, nothing else. Do NOT include markdown formatting, code blocks, or explanations.
+
+Examples:
+- 魔法少女まどか☆マギカ → madoka-magica
+- 呪術廻戦 → jujutsu-kaisen
+- 鬼滅の刃 → kimetsu-no-yaiba
+
+Slug:`;
+
+    try {
+      console.log(`\n🔍 [generateSlug] Starting slug generation for: "${title}"`);
+
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 100,
+        temperature: 0.1,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      });
+
+      console.log(`🔍 [generateSlug] Claude API response received:`, JSON.stringify(response, null, 2));
+
+      const responseContent = response.content[0];
+      if (responseContent.type !== 'text') {
+        throw new Error('Unexpected response type from Claude API');
+      }
+
+      const rawResponse = responseContent.text.trim();
+      console.log(`🔍 [generateSlug] Raw response text: "${rawResponse}" (length: ${rawResponse.length})`);
+
+      // Claude APIが空または空白のみを返した場合、即座にフォールバック
+      if (!rawResponse || rawResponse.length === 0) {
+        console.warn(`⚠️ Claude API returned empty response for title: ${title}`);
+        return this.generateFallbackSlug(title);
+      }
+
+      const slug = rawResponse.toLowerCase();
+
+      // サニタイズ（ハイフンを保持）
+      const sanitizedSlug = slug
+        .replace(/[^\w\s-]/g, '')  // 英数字、空白、ハイフン以外を削除
+        .replace(/[\s_]+/g, '-')   // 空白とアンダースコアをハイフンに
+        .replace(/^-+|-+$/g, '')   // 先頭と末尾のハイフンを削除
+        .replace(/-{2,}/g, '-');   // 連続するハイフンを1つに
+
+      // サニタイゼーション後も空の場合はフォールバック
+      if (!sanitizedSlug || sanitizedSlug.length === 0) {
+        console.warn(`⚠️ Slug became empty after sanitization for title: ${title}`);
+        return this.generateFallbackSlug(title);
+      }
+
+      return sanitizedSlug;
+    } catch (error) {
+      console.error('Failed to generate slug:', error);
+      throw new Error(`Failed to generate slug: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Build the prompt for article generation
    */
   private buildArticlePrompt(request: ArticleGenerationRequest): string {
@@ -385,7 +464,7 @@ Respond ONLY with JSON format. No other text should be included.
         title: articleData.title,
         content: articleData.content,
         excerpt: articleData.excerpt || '',
-        slug: articleData.slug || this.generateSlug(articleData.title),
+        slug: articleData.slug || 'untitled',
         tags: articleData.tags || [],
         categories: articleData.categories || [],
         metadata: {
@@ -400,16 +479,31 @@ Respond ONLY with JSON format. No other text should be included.
       throw new Error(`Failed to parse article response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-
   /**
-   * Generate URL-friendly slug from title
+   * Fallback slug generator for when Claude API fails
+   * Creates a timestamp-based slug with a sanitized title prefix
    */
-  private generateSlug(title: string): string {
-    return title
+  private generateFallbackSlug(title: string): string {
+    // Try basic ASCII conversion first
+    const basicSlug = title
       .toLowerCase()
       .replace(/[^\w\s-]/g, '')
-      .replace(/[\s_-]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+      .replace(/[\s_]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-{2,}/g, '-');
+
+    // If we got something useful (at least 2 characters), use it
+    if (basicSlug && basicSlug.length >= 2) {
+      console.log(`📝 Using basic fallback slug: ${title} → ${basicSlug}`);
+      return basicSlug;
+    }
+
+    // Otherwise, create a timestamp-based slug
+    const timestamp = Date.now().toString(36);
+    const fallbackSlug = `article-${timestamp}`;
+
+    console.warn(`⚠️ Generated timestamp-based fallback slug: ${title} → ${fallbackSlug}`);
+    return fallbackSlug;
   }
 }
 
