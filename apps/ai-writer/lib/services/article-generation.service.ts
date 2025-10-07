@@ -171,7 +171,7 @@ export class ArticleGenerationService {
         categoryIds: categoryIds,
         tagIds: tagIds,
         date: request.publishDate,
-        featuredImageUrl: request.featuredImageUrl
+        featuredImageId: request.article.metadata?.featuredImageId?.toString()
       });
 
       console.log(`Article published successfully to WordPress: ID ${post.databaseId}`);

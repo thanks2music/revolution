@@ -1,5 +1,6 @@
 import { GraphQLClient, gql } from 'graphql-request';
 import pino from 'pino';
+import FormData from 'form-data';
 
 const logger = pino({
   name: 'wordpress-graphql-service',
@@ -41,6 +42,7 @@ const CREATE_POST_EXTENDED_MUTATION = gql`
     $tags: [PostTagsNodeInput]
     $commentStatus: String
     $pingStatus: String
+    $featuredImageId: ID
   ) {
     createPost(
       input: {
@@ -55,6 +57,7 @@ const CREATE_POST_EXTENDED_MUTATION = gql`
         tags: { nodes: $tags }
         commentStatus: $commentStatus
         pingStatus: $pingStatus
+        featuredImage: $featuredImageId
       }
     ) {
       post {
@@ -364,6 +367,7 @@ export class WordPressGraphQLService {
         tags: input.tagIds?.map(id => ({ id })),
         commentStatus: input.commentStatus,
         pingStatus: input.pingStatus,
+        featuredImageId: input.featuredImageId,
       };
 
       const response = await this.client.request<{
@@ -670,14 +674,19 @@ export class WordPressGraphQLService {
 
       const imageBuffer = await imageResponse.arrayBuffer();
       const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
-      const filename = imageUrl.split('/').pop() || 'image.jpg';
+      // Extract filename and remove query parameters
+      const urlPath = imageUrl.split('/').pop() || 'image.jpg';
+      const filename = urlPath.split('?')[0];
 
       // 2. Upload to WordPress REST API
       const restEndpoint = this.endpoint.replace('/graphql', '/wp-json/wp/v2/media');
 
+      // Use form-data package with Buffer (not stream)
       const formData = new FormData();
-      const blob = new Blob([imageBuffer], { type: contentType });
-      formData.append('file', blob, filename);
+      formData.append('file', Buffer.from(imageBuffer), {
+        filename: filename,
+        contentType: contentType,
+      });
 
       if (title) {
         formData.append('title', title);
@@ -686,7 +695,18 @@ export class WordPressGraphQLService {
         formData.append('alt_text', altText);
       }
 
-      const headers: Record<string, string> = {};
+      // Convert FormData Stream to Buffer for fetch() compatibility
+      const formBuffer = await new Promise<Buffer>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        formData.on('data', (chunk) => chunks.push(chunk));
+        formData.on('end', () => resolve(Buffer.concat(chunks)));
+        formData.on('error', reject);
+      });
+
+      // Include form-data headers + Authorization
+      const headers: Record<string, string> = {
+        ...formData.getHeaders(),
+      };
       if (this.authToken) {
         const base64Token = Buffer.from(this.authToken).toString('base64');
         headers['Authorization'] = `Basic ${base64Token}`;
@@ -695,7 +715,7 @@ export class WordPressGraphQLService {
       const uploadResponse = await fetch(restEndpoint, {
         method: 'POST',
         headers,
-        body: formData,
+        body: formBuffer,  // Send as Buffer instead of Stream
       });
 
       if (!uploadResponse.ok) {
@@ -703,7 +723,23 @@ export class WordPressGraphQLService {
         throw new Error(`Failed to upload media: ${uploadResponse.statusText} - ${errorText}`);
       }
 
-      const media: WordPressMedia = await uploadResponse.json();
+      // Log response details for debugging
+      const responseContentType = uploadResponse.headers.get('content-type');
+      logger.info({ contentType: responseContentType, status: uploadResponse.status }, 'Upload response received');
+
+      // Read response body as text first
+      const responseText = await uploadResponse.text();
+      logger.info({ responsePreview: responseText.substring(0, 500) }, 'Response body preview');
+
+      // Try to parse as JSON
+      let media: WordPressMedia;
+      try {
+        media = JSON.parse(responseText);
+      } catch (parseError) {
+        logger.error({ parseError, responseText: responseText.substring(0, 1000) }, 'Failed to parse response as JSON');
+        throw new Error(`Failed to parse upload response as JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+      }
+
       logger.info({ mediaId: media.id, sourceUrl: media.source_url }, 'Media uploaded successfully');
 
       return media;
