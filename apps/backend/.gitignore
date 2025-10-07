@@ -34,6 +34,10 @@ wp-config.local.php
 .env.local
 .env.production
 
+# GCS Service Account Keys (NEVER commit these!)
+.gcs-local-key.json
+*-key.json
+
 # OS files
 .DS_Store
 Thumbs.db
