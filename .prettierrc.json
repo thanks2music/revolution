@@ -6,5 +6,21 @@
   "printWidth": 100,
   "arrowParens": "avoid",
   "endOfLine": "lf",
-  "useTabs": false
+  "useTabs": false,
+  "overrides": [
+    {
+      "files": ["*.yaml", "*.yml"],
+      "options": {
+        "singleQuote": false,
+        "tabWidth": 2
+      }
+    },
+    {
+      "files": ["*.json"],
+      "options": {
+        "singleQuote": false,
+        "trailingComma": "none"
+      }
+    }
+  ]
 }

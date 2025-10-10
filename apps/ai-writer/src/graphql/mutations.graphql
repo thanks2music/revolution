@@ -1,0 +1,90 @@
+mutation CreatePost($title: String!, $content: String!, $status: PostStatusEnum) {
+  createPost(input: { title: $title, content: $content, status: $status }) {
+    post {
+      id
+      databaseId
+      title
+      slug
+      uri
+      status
+    }
+  }
+}
+
+mutation CreatePostExtended(
+  $title: String!
+  $content: String!
+  $slug: String
+  $status: PostStatusEnum
+  $authorId: ID
+  $excerpt: String
+  $date: String
+  $categories: [PostCategoriesNodeInput]
+  $tags: [PostTagsNodeInput]
+  $commentStatus: String
+  $pingStatus: String
+) {
+  createPost(
+    input: {
+      title: $title
+      content: $content
+      slug: $slug
+      status: $status
+      authorId: $authorId
+      excerpt: $excerpt
+      date: $date
+      categories: { nodes: $categories }
+      tags: { nodes: $tags }
+      commentStatus: $commentStatus
+      pingStatus: $pingStatus
+    }
+  ) {
+    post {
+      id
+      databaseId
+      title
+      slug
+      uri
+      status
+      date
+      excerpt
+      author {
+        node {
+          id
+          name
+        }
+      }
+      categories {
+        nodes {
+          id
+          name
+        }
+      }
+      tags {
+        nodes {
+          id
+          name
+        }
+      }
+    }
+  }
+}
+
+mutation UpdatePost($id: ID!, $title: String, $content: String, $status: PostStatusEnum) {
+  updatePost(input: { id: $id, title: $title, content: $content, status: $status }) {
+    post {
+      id
+      databaseId
+      title
+      slug
+      uri
+      status
+    }
+  }
+}
+
+mutation DeletePost($id: ID!) {
+  deletePost(input: { id: $id }) {
+    deletedId
+  }
+}

@@ -4,14 +4,17 @@ services:
     build: .
     container_name: ${COMPOSE_PROJECT_NAME}-wp-${ENV}
     ports:
-      - "8080:8080"
+      - "5555:8080"
     env_file:
       - .env
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/var/www/html/.gcs-local-key.json
     depends_on:
       - mysql
     volumes:
       - ./wp-content:/var/www/html/wp-content
       - ./premium-plugins:/var/www/html/premium-plugins
+      - ./.gcs-local-key.json:/var/www/html/.gcs-local-key.json:ro
 
   mysql:
     image: mysql:8.0

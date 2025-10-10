@@ -16,6 +16,13 @@ apps/backend/.env
 google-cloud-key.json
 .gcloud/
 application_default_credentials.json
+**/credentials.json
+**/*credentials.json
+**/*-credentials.json
+**/service-account*.json
+**/gcp-*.json
+*credentials*
+*credentials*
 
 # SSH Keys & Certificates
 *.pem
@@ -93,6 +100,14 @@ next-env.d.ts
 # 🏗️ WordPress関連
 # ========================================
 
+# WordPress コアファイル（バックエンド）
+apps/backend/wp-admin/
+apps/backend/wp-includes/
+apps/backend/*.php
+apps/backend/premium-plugins/
+!apps/backend/wp-config.php
+!apps/backend/wp-config.local.php
+
 # Media Library
 wp-content/uploads/
 **/uploads/
@@ -110,10 +125,27 @@ wp-content/wp-cache-config.php
 # プラグイン開発中の一時ファイル
 wp-content/upgrade/
 wp-content/backup-db/
+apps/backend/wp-content/backups/
+
+# WordPress デフォルトテーマ（Docker起動時に自動生成）
+apps/backend/wp-content/themes/twentytwentythree/
+apps/backend/wp-content/themes/twentytwentyfour/
+apps/backend/wp-content/themes/twentytwentyfive/
+
+# WordPress 自動生成ライセンスガイド
+apps/backend/wp-content/mu-plugins/premium-license-guide.php
 
 # WordPress自動生成ファイル
 .htaccess
 web.config
+
+# WordPress ログファイル
+apps/backend/wp-content/debug.log
+
+# WordPress データベースバックアップ
+apps/backend/*.sql
+apps/backend/*.sql.gz
+apps/backend/backups/
 
 # ========================================
 # 🎵 Composer関連
@@ -156,6 +188,22 @@ database/
 # Google Cloud
 .gcp/
 gcp-service-account.json
+
+# Firebase
+.firebaserc
+**/.firebaserc
+
+# Firebase configuration files (contain project-specific and personal information)
+**/firebase.json
+**/firestore.rules
+**/firestore.indexes.json
+**/storage.rules
+
+# Firebase CLI cache and debug logs
+.firebase/
+firebase-debug.log*
+firebase-debug.*.log*
+.dataconnect
 
 # AWS
 .aws/
@@ -283,8 +331,16 @@ apps/backend/premium-plugins/*.zip
 # Next.js 本番環境設定
 apps/frontend/.env.production.local
 
+# AI Writer環境変数
+apps/ai-writer/.env
+apps/ai-writer/.env.local
+
+# GraphQL Code Generator生成ファイル
+apps/ai-writer/src/generated/
+
 ## AI Documents
 CLAUDE.md
+GEMINI.md
 .claude/**/*
 **/.claude/**/*
 .clinerules/**/*
@@ -319,6 +375,16 @@ docs/TOC.*.json
 # ローカル環境設定ファイル
 **/*.local.*
 
+## TODO: ignoreファイルは以下にまとめる
+dotfiles/
+dotfiles/**
+
+# ========================================
+# 🤖 参考
+# ========================================
+reference/
+reference/**
+
 # ========================================
 # 📝 学習・開発メモ
 # ========================================
@@ -330,6 +396,8 @@ TODOs.md
 IDEAs.md
 learning-notes/
 private-notes/
+todo/**/*
+tasks/**/*
 
 # スクリーンショット（URLや機密情報含む可能性）
 screenshots/
@@ -346,3 +414,9 @@ deployment-secrets/
 
 # CI/CD固有設定
 .github/workflows/secrets.yml
+
+
+# ========================================
+# 🔺 プロダクション関連
+# ========================================
+*production*

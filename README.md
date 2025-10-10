@@ -155,3 +155,35 @@ cd apps/backend
 - GCS Integration用の環境変数欠落
 
 修正が完了するまで、バックエンド用のデプロイスクリプトを使用してください。
+
+## 📱 iCloud同期設定（オプション）
+
+iPadでドキュメントを閲覧するためのiCloud自動同期機能を提供しています。
+
+### セットアップ
+
+1. 環境変数ファイルを作成：
+```bash
+cp .env.local.example .env.local
+```
+
+2. `.env.local` を編集してあなたの環境に合わせて設定：
+```bash
+PROJECT_ROOT="/path/to/your/project"
+ICLOUD_DRIVE_PATH="/Users/YOUR_USERNAME/Library/Mobile Documents/YOUR_APP"
+```
+
+### 使用方法
+
+```bash
+# 全ドキュメントを同期
+./scripts/sync-docs-to-icloud.sh
+
+# 特定のドキュメント作成後に同期
+./scripts/create-doc-and-sync.sh docs 04-backend/BE-new-feature.md
+./scripts/create-doc-and-sync.sh private 04-backend/BE-secret-config.md
+```
+
+同期先：
+- パブリックドキュメント: `iCloud/{REPO_NAME}/docs/`
+- 機密ドキュメント: `iCloud/{REPO_NAME}/dot-claude/`

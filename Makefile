@@ -1,7 +1,7 @@
 # Revolution Project - Root Makefile
 # Turbo + Make 統合管理
 
-.PHONY: help dev build deploy clean setup test stop stop-frontend stop-backend
+.PHONY: help dev build deploy clean setup test stop stop-frontend stop-backend docs-sync docs-create
 
 # デフォルトターゲット
 help:
@@ -31,6 +31,10 @@ help:
 	@echo "  make restart-frontend - フロントエンドのみ再起動"
 	@echo "  make clean        - 環境クリーンアップ"
 	@echo "  make status       - 環境状態確認"
+	@echo ""
+	@echo "📚 ドキュメント管理:"
+	@echo "  make docs-sync    - iPadへドキュメント同期"
+	@echo "  make docs-create  - ドキュメント作成+同期"
 
 # 初回セットアップ
 setup:
@@ -154,3 +158,19 @@ status:
 	@echo "  make dev      - Start full environment"
 	@echo "  pnpm lint     - Code quality (Turbo)"
 	@echo "  make status   - Check this status"
+
+# ドキュメント管理
+docs-sync:
+	@echo "📚 Syncing documents to iCloud..."
+	@./scripts/sync-docs-to-icloud.sh
+
+docs-create:
+	@echo "📝 Document creation helper"
+	@echo "Usage: make docs-create TYPE=docs PATH=04-backend/BE-new-feature.md"
+	@if [ -z "$(TYPE)" ] || [ -z "$(PATH)" ]; then \
+		echo "❌ Required parameters missing!"; \
+		echo "Example: make docs-create TYPE=docs PATH=04-backend/BE-new-feature.md"; \
+		echo "         make docs-create TYPE=private PATH=04-backend/BE-secret.md"; \
+		exit 1; \
+	fi
+	@./scripts/create-doc-and-sync.sh $(TYPE) $(PATH)
