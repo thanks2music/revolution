@@ -334,6 +334,7 @@ apps/frontend/.env.production.local
 # AI Writer環境変数
 apps/ai-writer/.env
 apps/ai-writer/.env.local
+apps/ai-writer/.env.deploy
 
 # GraphQL Code Generator生成ファイル
 apps/ai-writer/src/generated/

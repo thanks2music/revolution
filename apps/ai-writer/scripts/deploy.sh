@@ -33,10 +33,18 @@ log_error() {
 # 環境変数設定
 # ==============================================================================
 
-export PROJECT_ID="t4v-revo-prd"
-export REGION="asia-northeast1"
-export SERVICE_NAME="revo-ai-writer"
-export ARTIFACT_REPO_NAME="revo-wordpress-repo"
+# .env.deploy から環境変数を読み込む（存在する場合）
+if [ -f ".env.deploy" ]; then
+  log_info "📂 .env.deploy から環境変数を読み込んでいます..."
+  export $(grep -v '^#' .env.deploy | xargs)
+fi
+
+# デフォルト値を設定（.env.deployで上書き可能）
+export PROJECT_ID="${GCP_PROJECT_ID:-t4v-revo-prd}"
+export REGION="${GCP_REGION:-asia-northeast1}"
+export SERVICE_NAME="${SERVICE_NAME:-revo-ai-writer}"
+export ARTIFACT_REPO_NAME="${ARTIFACT_REPO_NAME:-revo-wordpress-repo}"
+export SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-revo-wordpress-app}"
 
 log_info "🚀 Revolution AI Writer (Discovery) デプロイ開始..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -137,7 +145,7 @@ gcloud run deploy $SERVICE_NAME \
   --max-instances=5 \
   --execution-environment=gen2 \
   --cpu-throttling \
-  --service-account=revo-wordpress-app@${PROJECT_ID}.iam.gserviceaccount.com \
+  --service-account=${SERVICE_ACCOUNT}@${PROJECT_ID}.iam.gserviceaccount.com \
   --labels=app=revolution,env=prod,component=ai-writer,tier=web \
   --set-env-vars="NODE_ENV=production,PORT=8080,NEXT_TELEMETRY_DISABLED=1" \
   --set-secrets="GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,NEXT_PUBLIC_WP_ENDPOINT=revo-wp-graphql-endpoint:latest"

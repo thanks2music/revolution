@@ -33,9 +33,17 @@ log_error() {
 # 環境変数設定
 # ==============================================================================
 
-export GCP_PROJECT_ID="t4v-revo-prd"
-export FIREBASE_PROJECT_ID="revolution-discovery"
-export SERVICE_ACCOUNT="revo-wordpress-app@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+# .env.deploy から環境変数を読み込む（存在する場合）
+if [ -f ".env.deploy" ]; then
+  log_info "📂 .env.deploy から環境変数を読み込んでいます..."
+  export $(grep -v '^#' .env.deploy | xargs)
+fi
+
+# デフォルト値を設定（.env.deployで上書き可能）
+export GCP_PROJECT_ID="${GCP_PROJECT_ID:-t4v-revo-prd}"
+export FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-revolution-discovery}"
+export SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT:-revo-wordpress-app}"
+export SERVICE_ACCOUNT="${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
 
 log_info "🔐 Revolution AI Writer - Firebase IAM セットアップ"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
