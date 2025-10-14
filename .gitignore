@@ -73,6 +73,19 @@ lerna-debug.log*
 .pnpm-store/
 .pnpm-debug.log
 
+
+# pnpm deploy artifacts
+apps/*/node_modules
+apps/*/@*
+**/next
+**/frontend-*@*
+
+または、より保守的に：
+
+# pnpm deploy 関連の一時ファイル
+apps/frontend/frontend-nextjs-headless-cms@*
+apps/frontend/next
+
 # ========================================
 # ⚛️ Next.js関連
 # ========================================
