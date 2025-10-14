@@ -5,9 +5,16 @@ WORKDIR /app
 # pnpm インストール
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# 依存関係のみをコピーしてインストール（キャッシュ最適化）
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# モノレポ対応: ルートとワークスペース設定をコピー
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
+COPY package.json ./
+
+# ai-writerのpackage.jsonをコピー
+COPY apps/ai-writer/package.json ./apps/ai-writer/
+
+# 依存関係インストール（ワークスペースを考慮）
+RUN pnpm install --frozen-lockfile --filter=@revolution/ai-writer...
 
 # Stage 2: ビルド
 FROM node:20-alpine AS builder
@@ -18,12 +25,20 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # 依存関係をコピー
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
+
+# ルート設定ファイルをコピー
+COPY pnpm-workspace.yaml ./
+COPY package.json ./
+
+# ai-writerアプリをコピー
+COPY apps/ai-writer ./apps/ai-writer
 
 # Next.js テレメトリーを無効化
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# ビルド実行
+# ビルド実行（ai-writerディレクトリで）
+WORKDIR /app/apps/ai-writer
 RUN pnpm build
 
 # Stage 3: 本番環境
@@ -40,16 +55,16 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 # Standalone出力をコピー
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/public ./public
 
 # Firebase設定ファイルをコピー（必要な場合）
-COPY --from=builder --chown=nextjs:nodejs /app/firebase.json ./firebase.json
-COPY --from=builder --chown=nextjs:nodejs /app/.firebaserc ./.firebaserc
-COPY --from=builder --chown=nextjs:nodejs /app/firestore.rules ./firestore.rules
-COPY --from=builder --chown=nextjs:nodejs /app/firestore.indexes.json ./firestore.indexes.json
-COPY --from=builder --chown=nextjs:nodejs /app/storage.rules ./storage.rules
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/firebase.json ./firebase.json
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/.firebaserc ./.firebaserc
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/firestore.rules ./firestore.rules
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/firestore.indexes.json ./firestore.indexes.json
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/storage.rules ./storage.rules
 
 USER nextjs
 

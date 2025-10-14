@@ -95,12 +95,20 @@ IMAGE_URL_LATEST="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO_NAME}/a
 log_info "📦 Docker イメージをビルド中..."
 log_info "Image URL: ${IMAGE_URL}"
 
+# モノレポルートに移動してビルド
+cd ../..
+
 # Docker ビルド（Apple Silicon対応でlinux/amd64を指定）
+# モノレポ対応: コンテキストはルート、Dockerfileはapps/ai-writer/
 docker build \
   --platform linux/amd64 \
+  -f apps/ai-writer/Dockerfile \
   -t $IMAGE_URL \
   -t $IMAGE_URL_LATEST \
   .
+
+# 元のディレクトリに戻る
+cd apps/ai-writer
 
 if [ $? -ne 0 ]; then
   log_error "Docker ビルドに失敗しました"
