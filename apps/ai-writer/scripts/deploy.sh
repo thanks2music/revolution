@@ -156,7 +156,7 @@ gcloud run deploy $SERVICE_NAME \
   --service-account=${SERVICE_ACCOUNT}@${PROJECT_ID}.iam.gserviceaccount.com \
   --labels=app=revolution,env=prod,component=ai-writer,tier=web \
   --set-env-vars="NODE_ENV=production,PORT=8080,NEXT_TELEMETRY_DISABLED=1" \
-  --set-secrets="GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,NEXT_PUBLIC_WP_ENDPOINT=revo-wp-graphql-endpoint:latest"
+  --set-secrets="GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,NEXT_PUBLIC_WP_ENDPOINT=revo-wp-graphql-endpoint:latest,WORDPRESS_AUTH_TOKEN=revo-wp-auth-token:latest,ANTHROPIC_API_KEY=revo-anthropic-api-key:latest"
 
 if [ $? -ne 0 ]; then
   log_error "Cloud Run デプロイに失敗しました"
