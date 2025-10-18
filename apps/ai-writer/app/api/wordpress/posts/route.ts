@@ -4,7 +4,7 @@ import {
   GetPostsDocument,
   GetPostsQuery,
   GetPostsQueryVariables,
-} from '../../../src/generated/graphql';
+} from '@generated/graphql';
 
 const endpoint = process.env.NEXT_PUBLIC_WP_ENDPOINT || '';
 
