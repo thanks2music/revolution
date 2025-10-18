@@ -1,6 +1,5 @@
 import { GraphQLClient, gql } from 'graphql-request';
 import pino from 'pino';
-import FormData from 'form-data';
 
 const logger = pino({
   name: 'wordpress-graphql-service',
@@ -57,7 +56,7 @@ const CREATE_POST_EXTENDED_MUTATION = gql`
         tags: { nodes: $tags }
         commentStatus: $commentStatus
         pingStatus: $pingStatus
-        featuredImage: $featuredImageId
+        featuredImageId: $featuredImageId
       }
     ) {
       post {
@@ -316,9 +315,26 @@ export class WordPressGraphQLService {
       }, 'WordPress authentication configured');
     }
 
+    // Create custom fetch with timeout using AbortController (graphql-request v7+)
+    const createFetchWithTimeout = (timeout: number) => async (
+      input: RequestInfo | URL,
+      init?: RequestInit
+    ) => {
+      const controller = new AbortController();
+      const timerId = setTimeout(() => {
+        controller.abort();
+      }, timeout);
+
+      try {
+        return await fetch(input, { ...init, signal: controller.signal });
+      } finally {
+        clearTimeout(timerId);
+      }
+    };
+
     this.client = new GraphQLClient(this.endpoint, {
       headers,
-      timeout: 30000, // 30 seconds timeout
+      fetch: createFetchWithTimeout(30000), // 30 second timeout
     });
 
     logger.info({ endpoint: this.endpoint, hasAuth: !!this.authToken }, 'WordPress GraphQL client initialized');
@@ -679,34 +695,29 @@ export class WordPressGraphQLService {
       const filename = urlPath.split('?')[0];
 
       // 2. Upload to WordPress REST API
-      const restEndpoint = this.endpoint.replace('/graphql', '/wp-json/wp/v2/media');
+      const baseEndpoint = this.endpoint.replace('/graphql', '/wp-json/wp/v2/media');
 
-      // Use form-data package with Buffer (not stream)
-      const formData = new FormData();
-      formData.append('file', Buffer.from(imageBuffer), {
-        filename: filename,
-        contentType: contentType,
-      });
+      // Add query parameters for title and alt_text
+      const queryParams = new URLSearchParams();
+      if (title) queryParams.append('title', title);
+      if (altText) queryParams.append('alt_text', altText);
 
-      if (title) {
-        formData.append('title', title);
-      }
-      if (altText) {
-        formData.append('alt_text', altText);
-      }
+      const restEndpoint = queryParams.toString()
+        ? `${baseEndpoint}?${queryParams.toString()}`
+        : baseEndpoint;
 
-      // Convert FormData Stream to Buffer for fetch() compatibility
-      const formBuffer = await new Promise<Buffer>((resolve, reject) => {
-        const chunks: Buffer[] = [];
-        formData.on('data', (chunk) => chunks.push(chunk));
-        formData.on('end', () => resolve(Buffer.concat(chunks)));
-        formData.on('error', reject);
-      });
+      // Use simple binary upload (same as curl --data-binary)
+      // IMPORTANT: Must convert ArrayBuffer to Uint8Array first, then to Buffer
+      // Otherwise Buffer.from() treats it as UTF-8 and corrupts binary data
+      const bodyBuffer = Buffer.from(new Uint8Array(imageBuffer));
 
-      // Include form-data headers + Authorization
+      // Build headers manually (same as successful curl command)
       const headers: Record<string, string> = {
-        ...formData.getHeaders(),
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename=${filename}`,
+        'Content-Length': bodyBuffer.length.toString(),
       };
+
       if (this.authToken) {
         const base64Token = Buffer.from(this.authToken).toString('base64');
         headers['Authorization'] = `Basic ${base64Token}`;
@@ -715,7 +726,7 @@ export class WordPressGraphQLService {
       const uploadResponse = await fetch(restEndpoint, {
         method: 'POST',
         headers,
-        body: formBuffer,  // Send as Buffer instead of Stream
+        body: bodyBuffer,
       });
 
       if (!uploadResponse.ok) {
@@ -731,10 +742,17 @@ export class WordPressGraphQLService {
       const responseText = await uploadResponse.text();
       logger.info({ responsePreview: responseText.substring(0, 500) }, 'Response body preview');
 
-      // Try to parse as JSON
+      // Parse JSON, handling PHP warnings that may precede the JSON
       let media: WordPressMedia;
       try {
-        media = JSON.parse(responseText);
+        // WordPress/GCS plugin may output PHP warnings before JSON
+        // Find the first '{' character to locate JSON start
+        const jsonStart = responseText.indexOf('{');
+        if (jsonStart === -1) {
+          throw new Error('No JSON object found in response');
+        }
+        const jsonText = jsonStart > 0 ? responseText.substring(jsonStart) : responseText;
+        media = JSON.parse(jsonText);
       } catch (parseError) {
         logger.error({ parseError, responseText: responseText.substring(0, 1000) }, 'Failed to parse response as JSON');
         throw new Error(`Failed to parse upload response as JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
