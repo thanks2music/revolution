@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
     const rssEntry: RssArticleEntry = {
       title: rssArticle.title || 'Untitled',
       link: rssArticle.link,
-      contentSnippet: rssArticle.contentSnippet || rssArticle.title,
-      isoDate: new Date().toISOString(),
+      description: rssArticle.contentSnippet || rssArticle.title,
+      pubDate: new Date().toISOString(),
       categories: rssArticle.categories || [],
     };
 
