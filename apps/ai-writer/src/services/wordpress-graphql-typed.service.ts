@@ -13,11 +13,10 @@ import type {
   GetPostsQueryVariables,
   TestConnectionQuery,
   GetCategoriesAndTagsQuery,
-  PostStatusEnum,
   PostCategoriesNodeInput,
   PostTagsNodeInput
 } from '../generated/graphql.js';
-import { getSdk } from '../generated/graphql.js';
+import { getSdk, PostStatusEnum } from '../generated/graphql.js';
 
 const logger = pino({
   name: 'wordpress-graphql-typed-service',
@@ -73,9 +72,26 @@ export class WordPressGraphQLTypedService {
       }, 'WordPress authentication configured');
     }
 
+    // Create custom fetch with timeout using AbortController (graphql-request v7+)
+    const createFetchWithTimeout = (timeout: number) => async (
+      input: RequestInfo | URL,
+      init?: RequestInit
+    ) => {
+      const controller = new AbortController();
+      const timerId = setTimeout(() => {
+        controller.abort();
+      }, timeout);
+
+      try {
+        return await fetch(input, { ...init, signal: controller.signal });
+      } finally {
+        clearTimeout(timerId);
+      }
+    };
+
     const client = new GraphQLClient(this.endpoint, {
       headers,
-      timeout: 30000,
+      fetch: createFetchWithTimeout(30000), // 30 second timeout
     });
 
     this.sdk = getSdk(client);
@@ -240,12 +256,29 @@ export class WordPressGraphQLTypedService {
     this.authToken = token;
     const base64Token = Buffer.from(token).toString('base64');
 
+    // Create custom fetch with timeout using AbortController (graphql-request v7+)
+    const createFetchWithTimeout = (timeout: number) => async (
+      input: RequestInfo | URL,
+      init?: RequestInit
+    ) => {
+      const controller = new AbortController();
+      const timerId = setTimeout(() => {
+        controller.abort();
+      }, timeout);
+
+      try {
+        return await fetch(input, { ...init, signal: controller.signal });
+      } finally {
+        clearTimeout(timerId);
+      }
+    };
+
     const client = new GraphQLClient(this.endpoint, {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Basic ${base64Token}`
       },
-      timeout: 30000,
+      fetch: createFetchWithTimeout(30000), // 30 second timeout
     });
 
     this.sdk = getSdk(client);
