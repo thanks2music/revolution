@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
           detail: 'Google Alert URLから実際の記事URLを抽出しています'
         })}\n\n`));
 
-        // Step 4: AI記事生成
+        // Step 4: AI記事生成 + WordPress投稿 (with automatic featured image extraction)
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           step: 4,
           totalSteps: 5,
@@ -156,37 +156,39 @@ export async function POST(request: NextRequest) {
           detail: 'Claude APIで日本語記事を生成しています（20〜30秒程度）'
         })}\n\n`));
 
-        const claudeService = new ClaudeAPIService();
-        const generationOptions = {
-          title: articleToGenerate.title,
-          keywords: articleToGenerate.categories || [],
-          targetLength: 600,
-          tone: 'friendly' as const,
-          language: 'ja' as const
-        };
-
-        const generatedArticle = await claudeService.generateArticleFromURL(
-          articleToGenerate.link,
-          generationOptions
-        );
-
         // Step 5: WordPress投稿
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           step: 5,
           totalSteps: 5,
           message: 'WordPress投稿中...',
-          detail: '生成した記事を下書きとして投稿しています'
+          detail: 'アイキャッチ画像を抽出して記事を下書きとして投稿しています'
         })}\n\n`));
 
+        // Use generateAndPublishFromRSS which includes automatic featured image extraction
         const articleService = new ArticleGenerationService(config);
-        const publishRequest = {
-          article: generatedArticle,
-          status: PostStatus.DRAFT,
-          authorId: config.defaultAuthorId,
-          categoryIds: config.defaultCategoryIds
-        };
-
-        const publishResult = await articleService.publishToWordPress(publishRequest);
+        const publishResult = await articleService.generateAndPublishFromRSS({
+          rssItem: {
+            title: articleToGenerate.title,
+            link: articleToGenerate.link,
+            description: articleToGenerate.description,
+            content: articleToGenerate.content,
+            pubDate: articleToGenerate.pubDate,
+            categories: articleToGenerate.categories
+          },
+          generationOptions: {
+            title: articleToGenerate.title,
+            keywords: articleToGenerate.categories || [],
+            targetLength: 600,
+            tone: 'friendly',
+            language: 'ja'
+          },
+          publishOptions: {
+            status: PostStatus.DRAFT,
+            authorId: config.defaultAuthorId,
+            categoryIds: config.defaultCategoryIds
+            // featuredImageUrl is automatically extracted from article element
+          }
+        });
 
         if (publishResult.success) {
           console.log(`[Debug] Article generated successfully: ${publishResult.postId}`);
