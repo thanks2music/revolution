@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ArticleGenerationService } from '../../../../../lib/services/article-generation.service';
 import { RssArticleEntry } from '../../../../../lib/types/rss-article';
+import { PostStatus } from '../../../../../lib/services/wordpress-graphql.service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
     const articleService = new ArticleGenerationService({
       useClaudeAPI: true,
       wordPressEndpoint: process.env.NEXT_PUBLIC_WP_ENDPOINT || '',
-      defaultStatus: 'DRAFT',
+      defaultStatus: PostStatus.DRAFT,
     });
 
     // RssArticleEntry形式に変換
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
       {
         forceTemplateId,
         validationKeywords,
-        publishStatus: 'DRAFT', // 下書きとして投稿（テスト用）
+        publishStatus: PostStatus.DRAFT, // 下書きとして投稿（テスト用）
       }
     );
 
