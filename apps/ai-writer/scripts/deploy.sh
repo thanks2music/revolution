@@ -100,7 +100,9 @@ cd ../..
 
 # Docker ビルド（Apple Silicon対応でlinux/amd64を指定）
 # モノレポ対応: コンテキストはルート、Dockerfileはapps/ai-writer/
+# --no-cache: Dockerキャッシュが古いコードを保持している問題の解決
 docker build \
+  --no-cache \
   --platform linux/amd64 \
   -f apps/ai-writer/Dockerfile \
   -t $IMAGE_URL \
@@ -155,7 +157,7 @@ gcloud run deploy $SERVICE_NAME \
   --cpu-throttling \
   --service-account=${SERVICE_ACCOUNT}@${PROJECT_ID}.iam.gserviceaccount.com \
   --labels=app=revolution,env=prod,component=ai-writer,tier=web \
-  --set-env-vars="NODE_ENV=production,PORT=8080,NEXT_TELEMETRY_DISABLED=1" \
+  --set-env-vars="NODE_ENV=production,NEXT_TELEMETRY_DISABLED=1" \
   --set-secrets="GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,NEXT_PUBLIC_WP_ENDPOINT=revo-wp-graphql-endpoint:latest,WORDPRESS_AUTH_TOKEN=revo-wp-auth-token:latest,ANTHROPIC_API_KEY=revo-anthropic-api-key:latest"
 
 if [ $? -ne 0 ]; then

@@ -13,6 +13,9 @@ COPY package.json ./
 # ai-writerのpackage.jsonをコピー
 COPY apps/ai-writer/package.json ./apps/ai-writer/
 
+# pnpm node-linker=hoisted でシンボリックリンクを実体化
+ENV PNPM_NODE_LINKER=hoisted
+
 # 依存関係インストール（ワークスペースを考慮）
 RUN pnpm install --frozen-lockfile --filter=@revolution/ai-writer...
 
@@ -47,17 +50,16 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=8080
 ENV HOSTNAME=0.0.0.0
 
 # セキュリティのため非rootユーザーを作成
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Standalone出力をコピー
+# Standalone出力をコピー（モノレポ構造を維持）
 COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/.next/static ./apps/ai-writer/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/public ./apps/ai-writer/public
 
 # Firebase設定ファイルをコピー（必要な場合）
 COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/firebase.json ./firebase.json
@@ -74,4 +76,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:8080/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-CMD ["node", "server.js"]
+CMD ["node", "apps/ai-writer/server.js"]
