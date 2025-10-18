@@ -8,10 +8,10 @@ import { templateLoaderService } from '../../../../../lib/services/template-load
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const templateId = params.id;
+    const { id: templateId } = await params;
 
     console.log('[Debug API] テンプレート詳細取得開始:', templateId);
 
