@@ -1,14 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth/auth-context';
 
 export default function LoginPage() {
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, user, loading: authLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  // 認証状態が変わったら自動的にリダイレクト（COOPエラーの回避策）
+  useEffect(() => {
+    if (!authLoading && user) {
+      console.log('[LoginPage] User authenticated, redirecting to home');
+      router.push('/');
+    }
+  }, [authLoading, user, router]);
 
   const handleGoogleSignIn = async () => {
     try {

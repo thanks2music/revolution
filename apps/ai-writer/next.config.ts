@@ -19,6 +19,21 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+
+  // Firebase Auth のポップアップ認証を許可するためのヘッダー設定
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
