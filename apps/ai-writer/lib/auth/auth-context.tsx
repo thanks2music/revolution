@@ -56,6 +56,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[AuthContext] Auth state changed:', user ? user.email : 'null');
 
       if (user) {
+        // メールアドレスのチェック（許可されたユーザーのみ）
+        const allowedEmails = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '').split(',');
+        console.log('[AuthContext] Checking email:', user.email, 'against allowed:', allowedEmails);
+
+        if (!allowedEmails.includes(user.email || '')) {
+          console.error('[AuthContext] Unauthorized email:', user.email);
+          // 許可されていないユーザーは即座にサインアウト
+          await signOut(auth);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
         try {
           const token = await user.getIdToken();
           console.log('[AuthContext] Got ID token, length:', token.length);

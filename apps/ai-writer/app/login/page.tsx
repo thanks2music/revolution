@@ -11,12 +11,13 @@ export default function LoginPage() {
   const router = useRouter();
 
   // 認証状態が変わったら自動的にリダイレクト（COOPエラーの回避策）
+  // ただし、loading中やエラー発生時は遷移しない
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user && !loading && !error) {
       console.log('[LoginPage] User authenticated, redirecting to home');
       router.push('/');
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, user, loading, error, router]);
 
   const handleGoogleSignIn = async () => {
     try {
