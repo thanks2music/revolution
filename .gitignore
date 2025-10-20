@@ -426,6 +426,9 @@ deploy-config.local.yml
 .deployment/
 deployment-secrets/
 
+**/deploy.sh
+apps/ai-writer/scripts/deploy.sh
+
 # CI/CD固有設定
 .github/workflows/secrets.yml
 
