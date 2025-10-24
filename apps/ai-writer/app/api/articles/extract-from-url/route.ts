@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ClaudeAPIService from '../../../../lib/services/claude-api.service';
-import { requireAuth } from '../../../../lib/auth/server-auth';
+import { requireAuth } from '@/lib/auth/server-auth';
 
 /**
  * 🔒 Protected route - requires authentication

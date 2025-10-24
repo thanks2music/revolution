@@ -5,7 +5,7 @@ import {
   GetPostsQuery,
   GetPostsQueryVariables,
 } from '@generated/graphql';
-import { requireAuth } from '../../../lib/auth/server-auth';
+import { requireAuth } from '@/lib/auth/server-auth';
 
 const endpoint = process.env.NEXT_PUBLIC_WP_ENDPOINT || '';
 

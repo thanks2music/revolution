@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RssArticleCollectionService } from '../../../../lib/services/rss-article-collection.service';
 import { adminDb } from '../../../../lib/firebase/admin';
 import type { RssFeed } from '../../../../lib/types/rss-feed';
-import { requireAuth } from '../../../../lib/auth/server-auth';
+import { requireAuth } from '@/lib/auth/server-auth';
 
 /**
  * Debug endpoint: Check RSS feed and return articles with validation info

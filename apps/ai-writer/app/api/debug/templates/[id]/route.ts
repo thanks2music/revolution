@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { templateLoaderService } from '../../../../../lib/services/template-loader.service';
-import { requireAuth } from '../../../../../lib/auth/server-auth';
+import { requireAuth } from '@/lib/auth/server-auth';
 
 /**
  * 🔒 Protected route - requires authentication

@@ -7,7 +7,7 @@ import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../l
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
 import type { RssArticleEntry } from '../../../../lib/types/rss-article';
 import type { RssFeed } from '../../../../lib/types/rss-feed';
-import { requireAuth } from '../../../../lib/auth/server-auth';
+import { requireAuth } from '@/lib/auth/server-auth';
 
 /**
  * Debug endpoint: RSSフィードから未生成記事を取得して生成

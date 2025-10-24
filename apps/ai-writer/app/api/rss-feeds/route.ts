@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '../../../lib/firebase/admin';
-import { requireAuth } from '../../../lib/auth/server-auth';
+import { requireAuth } from '@/lib/auth/server-auth';
 import type { RssFeed } from '../../../lib/types/rss-feed';
 
 /**

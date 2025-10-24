@@ -3,7 +3,7 @@ import ClaudeAPIService from '../../../../lib/services/claude-api.service';
 import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../lib/services/article-generation.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
 import type { RssArticleEntry } from '../../../../lib/types/rss-article';
-import { requireAuth } from '../../../../lib/auth/server-auth';
+import { requireAuth } from '@/lib/auth/server-auth';
 
 /**
  * Debug endpoint: Generate article from RSS entry with progress streaming

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '../../../../lib/auth/server-auth';
+import { requireAuth } from '@/lib/auth/server-auth';
 import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../lib/services/article-generation.service';
 import { ArticleGenerationRequest } from '../../../../lib/services/claude-api.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';

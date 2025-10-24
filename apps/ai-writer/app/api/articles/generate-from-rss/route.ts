@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ArticleGenerationService, { ArticleGenerationConfig, RSSArticleRequest } from '../../../../lib/services/article-generation.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
-import { requireAuth } from '../../../../lib/auth/server-auth';
+import { requireAuth } from '@/lib/auth/server-auth';
 
 /**
  * 🔒 Protected route - requires authentication
