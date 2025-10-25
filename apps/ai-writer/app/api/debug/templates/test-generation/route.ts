@@ -18,9 +18,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ArticleGenerationService } from '../../../../../lib/services/article-generation.service';
 import { RssArticleEntry } from '../../../../../lib/types/rss-article';
 import { PostStatus } from '../../../../../lib/services/wordpress-graphql.service';
+import { requireAuth } from '../../../../../lib/auth/server-auth';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function POST(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/debug/templates/test-generation] Authenticated user: ${authUser.email}`);
+
     const body = await request.json();
     const { rssArticle, forceTemplateId, validationKeywords } = body;
 

@@ -2,12 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RssArticleCollectionService } from '../../../../lib/services/rss-article-collection.service';
 import { adminDb } from '../../../../lib/firebase/admin';
 import type { RssFeed } from '../../../../lib/types/rss-feed';
+import { requireAuth } from '../../../../lib/auth/server-auth';
 
 /**
  * Debug endpoint: Check RSS feed and return articles with validation info
+ * 🔒 Protected route - requires authentication
  */
 export async function POST(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/debug/check-feed] Authenticated user: ${authUser.email}`);
+
     const body = await request.json();
     const { feedId } = body;
 
@@ -92,13 +98,28 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
-  return NextResponse.json({
+  try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/debug/check-feed] Authenticated user: ${authUser.email}`);
+
+    return NextResponse.json({
     message: 'Debug RSS Feed Check API',
     endpoint: 'POST /api/debug/check-feed',
     description: 'Check RSS feed and return articles with validation info',
     body: {
       feedId: 'string (required) - RSS feed ID to check'
     }
-  });
+    });
+  } catch (error) {
+    console.error('GET error:', error);
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
 }

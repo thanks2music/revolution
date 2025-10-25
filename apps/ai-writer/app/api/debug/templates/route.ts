@@ -5,9 +5,17 @@
 
 import { NextResponse } from 'next/server';
 import { templateLoaderService } from '../../../../lib/services/template-loader.service';
+import { requireAuth } from '../../../../lib/auth/server-auth';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/debug/templates] Authenticated user: ${authUser.email}`);
+
     console.log('[Debug API] テンプレート一覧取得開始');
 
     // テンプレート一覧を取得

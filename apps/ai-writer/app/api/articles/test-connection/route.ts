@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../lib/services/article-generation.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
+import { requireAuth } from '../../../../lib/auth/server-auth';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/articles/test-connection] Authenticated user: ${authUser.email}`);
     // Get configuration from environment variables
     const config: ArticleGenerationConfig = {
       useClaudeAPI: true,
@@ -79,8 +86,15 @@ export async function GET() {
   }
 }
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function POST(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/articles/test-connection] Authenticated user: ${authUser.email}`);
+
     const body = await request.json();
 
     // Get configuration from request body or environment

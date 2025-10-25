@@ -7,9 +7,11 @@ import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../l
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
 import type { RssArticleEntry } from '../../../../lib/types/rss-article';
 import type { RssFeed } from '../../../../lib/types/rss-feed';
+import { requireAuth } from '../../../../lib/auth/server-auth';
 
 /**
  * Debug endpoint: RSSフィードから未生成記事を取得して生成
+ * 🔒 Protected route - requires authentication
  */
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
@@ -17,6 +19,10 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        // 🔒 認証チェック
+        const authUser = await requireAuth();
+        console.log(`[API /api/debug/generate-from-feed] Authenticated user: ${authUser.email}`);
+
         const body = await request.json();
         const { feedId } = body as { feedId: string };
 
@@ -250,8 +256,16 @@ export async function POST(request: NextRequest) {
   });
 }
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
-  return new Response(JSON.stringify({
+  try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/debug/generate-from-feed] Authenticated user: ${authUser.email}`);
+
+    return new Response(JSON.stringify({
     message: 'Debug Generate From Feed API',
     endpoint: 'POST /api/debug/generate-from-feed',
     description: 'Generate article from RSS feed with automatic ungenerated article detection',
@@ -259,8 +273,15 @@ export async function GET() {
       feedId: 'string (required)'
     }
   }), {
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  });
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+  } catch (error) {
+    console.error('GET error:', error);
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 }

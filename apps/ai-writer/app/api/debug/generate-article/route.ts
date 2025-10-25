@@ -3,9 +3,11 @@ import ClaudeAPIService from '../../../../lib/services/claude-api.service';
 import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../lib/services/article-generation.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
 import type { RssArticleEntry } from '../../../../lib/types/rss-article';
+import { requireAuth } from '../../../../lib/auth/server-auth';
 
 /**
  * Debug endpoint: Generate article from RSS entry with progress streaming
+ * 🔒 Protected route - requires authentication
  */
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
@@ -13,6 +15,10 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        // 🔒 認証チェック
+        const authUser = await requireAuth();
+        console.log(`[API /api/debug/generate-article] Authenticated user: ${authUser.email}`);
+
         const body = await request.json();
         const { article } = body as { article: RssArticleEntry };
 
@@ -156,8 +162,16 @@ export async function POST(request: NextRequest) {
   });
 }
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
-  return new Response(JSON.stringify({
+  try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/debug/generate-article] Authenticated user: ${authUser.email}`);
+
+    return new Response(JSON.stringify({
     message: 'Debug Article Generation API',
     endpoint: 'POST /api/debug/generate-article',
     description: 'Generate article from RSS entry with progress streaming',
@@ -172,8 +186,15 @@ export async function GET() {
       }
     }
   }), {
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  });
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+  } catch (error) {
+    console.error('GET error:', error);
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 }
