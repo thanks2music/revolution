@@ -36,7 +36,7 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-  # Job 2: Build all apps
+  # Job 2: Build TypeScript apps (skip backend Docker build)
   build:
     name: Build Apps
     runs-on: ubuntu-latest
@@ -59,8 +59,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build all apps
-        run: pnpm build
+      - name: Build Frontend
+        run: pnpm build:frontend
         env:
-          # Add any required build-time env vars
           NEXT_PUBLIC_WP_ENDPOINT: ${{ secrets.NEXT_PUBLIC_WP_ENDPOINT || 'http://localhost:8080/graphql' }}
+
+      - name: Build AI Writer
+        run: cd apps/ai-writer && pnpm build
+        env:
+          NEXT_PUBLIC_WP_ENDPOINT: ${{ secrets.NEXT_PUBLIC_WP_ENDPOINT || 'http://localhost:8080/graphql' }}
+
+      # Note: Backend Docker build is skipped in CI
+      # Docker builds are handled in deployment workflows
