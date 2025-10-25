@@ -34,7 +34,7 @@ jobs:
         run: pnpm type-check
 
       - name: Lint
-        run: turbo run lint --filter='!mcp-gcp-server'
+        run: pnpm exec turbo run lint --filter='!mcp-gcp-server'
 
   # Job 2: Build TypeScript apps (skip backend Docker build)
   build:
@@ -70,6 +70,7 @@ jobs:
           NEXT_PUBLIC_WP_ENDPOINT: ${{ secrets.NEXT_PUBLIC_WP_ENDPOINT || 'http://localhost:8080/graphql' }}
           ANTHROPIC_API_KEY: 'dummy-key-for-ci-build'
           WORDPRESS_AUTH_TOKEN: 'dummy-token-for-ci-build'
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: '{"type":"service_account","project_id":"dummy","private_key_id":"dummy","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7W8DUMMY\n-----END PRIVATE KEY-----\n","client_email":"dummy@dummy.iam.gserviceaccount.com","client_id":"dummy","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"https://www.googleapis.com/robot/v1/metadata/x509/dummy"}'
 
       # Note: Backend Docker build is skipped in CI
       # Docker builds are handled in deployment workflows
