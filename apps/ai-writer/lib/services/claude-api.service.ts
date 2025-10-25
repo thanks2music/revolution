@@ -30,21 +30,37 @@ export interface GeneratedArticle {
 export class ClaudeAPIService {
   private client: Anthropic;
   private model: string = 'claude-3-7-sonnet-20250219';
+  private apiKey?: string;
 
   constructor(apiKey?: string) {
-    if (!apiKey && !process.env.ANTHROPIC_API_KEY) {
-      throw new Error('Anthropic API key is required. Set ANTHROPIC_API_KEY environment variable or pass it as parameter.');
-    }
+    this.apiKey = apiKey || process.env.ANTHROPIC_API_KEY;
 
+    // Defer client initialization until first use
+    // This allows the class to be instantiated during build without environment variables
     this.client = new Anthropic({
-      apiKey: apiKey || process.env.ANTHROPIC_API_KEY!,
+      apiKey: this.apiKey || 'placeholder-will-validate-on-use',
     });
+  }
+
+  /**
+   * Ensure API key is configured before making requests
+   * @throws Error if API key is not available
+   */
+  private ensureApiKey(): void {
+    if (!this.apiKey) {
+      throw new Error(
+        'Anthropic API key is required. ' +
+        'Set ANTHROPIC_API_KEY environment variable or pass it as parameter to the constructor.'
+      );
+    }
   }
 
   /**
    * Generate an article based on source content or topic
    */
   async generateArticle(request: ArticleGenerationRequest): Promise<GeneratedArticle> {
+    this.ensureApiKey();
+
     const prompt = this.buildArticlePrompt(request);
 
     try {
@@ -76,6 +92,8 @@ export class ClaudeAPIService {
    * Test connection to Claude API
    */
   async testConnection(): Promise<boolean> {
+    this.ensureApiKey();
+
     try {
       const response = await this.client.messages.create({
         model: this.model,
@@ -124,6 +142,8 @@ export class ClaudeAPIService {
    * Generate an article from a URL by extracting content and processing with Claude
    */
   async generateArticleFromURL(url: string, request: Partial<ArticleGenerationRequest>): Promise<GeneratedArticle> {
+    this.ensureApiKey();
+
     try {
       console.log(`Extracting content from URL: ${url}`);
 
@@ -204,6 +224,8 @@ export class ClaudeAPIService {
    * Generate article summary/excerpt
    */
   async generateExcerpt(content: string, maxLength: number = 150): Promise<string> {
+    this.ensureApiKey();
+
     const prompt = `以下の記事内容から、${maxLength}文字以内で魅力的な要約を作成してください。SEOを意識した要約にしてください。
 
 記事内容:
@@ -241,6 +263,8 @@ ${content}
    * 日本語タイトルからWordPress用のURLスラッグを生成
    */
   async generateSlug(title: string): Promise<string> {
+    this.ensureApiKey();
+
     console.log(`>>> generateSlug called with: "${title}" <<<`);
     const prompt = `Convert the following Japanese title to a URL-friendly slug (lowercase alphanumeric characters and hyphens only).
 

@@ -341,9 +341,24 @@ export class WordPressGraphQLService {
   }
 
   /**
+   * Ensure authentication is configured for write operations
+   * @throws Error if auth token is not available
+   */
+  private ensureAuth(): void {
+    if (!this.authToken) {
+      throw new Error(
+        'WordPress authentication required. ' +
+        'Set WORDPRESS_AUTH_TOKEN environment variable or pass authToken to the constructor.'
+      );
+    }
+  }
+
+  /**
    * Create a new post in WordPress
    */
   async createPost(input: CreatePostInput): Promise<WordPressPost> {
+    this.ensureAuth();
+
     try {
       logger.info({ title: input.title, status: input.status }, 'Creating WordPress post');
 
@@ -368,6 +383,8 @@ export class WordPressGraphQLService {
   }
 
   async createPostExtended(input: CreatePostExtendedInput): Promise<WordPressPost> {
+    this.ensureAuth();
+
     try {
       logger.info({ title: input.title, status: input.status }, 'Creating extended WordPress post');
 
@@ -404,6 +421,8 @@ export class WordPressGraphQLService {
    * Update an existing post
    */
   async updatePost(input: UpdatePostInput): Promise<WordPressPost> {
+    this.ensureAuth();
+
     try {
       logger.info({ id: input.id, title: input.title }, 'Updating WordPress post');
 
@@ -425,6 +444,8 @@ export class WordPressGraphQLService {
    * Delete a post
    */
   async deletePost(id: string): Promise<string> {
+    this.ensureAuth();
+
     try {
       logger.info({ id }, 'Deleting WordPress post');
 
@@ -601,6 +622,8 @@ export class WordPressGraphQLService {
    * Create a new category
    */
   async createCategory(input: CreateCategoryInput): Promise<WordPressCategory> {
+    this.ensureAuth();
+
     try {
       logger.info({ name: input.name, slug: input.slug, parentId: input.parentId }, 'Creating category');
 
