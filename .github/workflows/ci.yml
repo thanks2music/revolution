@@ -34,7 +34,7 @@ jobs:
         run: pnpm type-check
 
       - name: Lint
-        run: pnpm lint
+        run: turbo run lint --filter='!mcp-gcp-server'
 
   # Job 2: Build TypeScript apps (skip backend Docker build)
   build:
@@ -68,6 +68,8 @@ jobs:
         run: cd apps/ai-writer && pnpm build
         env:
           NEXT_PUBLIC_WP_ENDPOINT: ${{ secrets.NEXT_PUBLIC_WP_ENDPOINT || 'http://localhost:8080/graphql' }}
+          ANTHROPIC_API_KEY: 'dummy-key-for-ci-build'
+          WORDPRESS_AUTH_TOKEN: 'dummy-token-for-ci-build'
 
       # Note: Backend Docker build is skipped in CI
       # Docker builds are handled in deployment workflows

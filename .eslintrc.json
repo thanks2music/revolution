@@ -1,11 +1,9 @@
 {
   "extends": [
     "eslint:recommended",
-    "next/core-web-vitals",
-    "next/typescript",
     "plugin:prettier/recommended"
   ],
-  "env": { "browser": true },
+  "env": { "node": true, "es2022": true },
   "rules": {
     "semi": ["error", "never"]
   }

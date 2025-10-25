@@ -1,0 +1,9 @@
+{
+  "root": true,
+  "extends": [
+    "../../.eslintrc.json",
+    "next/core-web-vitals",
+    "next/typescript"
+  ],
+  "env": { "browser": true, "node": true }
+}
