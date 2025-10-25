@@ -69,6 +69,12 @@ jobs:
         env:
           CI: 'true'
           NEXT_PUBLIC_WP_ENDPOINT: ${{ secrets.NEXT_PUBLIC_WP_ENDPOINT || 'http://localhost:8080/graphql' }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: 'AIzaSyDummy-Key-For-CI-Build-Only'
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'dummy.firebaseapp.com'
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: 'dummy-project'
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: 'dummy.appspot.com'
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '123456789'
+          NEXT_PUBLIC_FIREBASE_APP_ID: '1:123456789:web:dummy'
           ANTHROPIC_API_KEY: 'dummy-key-for-ci-build'
           WORDPRESS_AUTH_TOKEN: 'dummy-token-for-ci-build'
 
