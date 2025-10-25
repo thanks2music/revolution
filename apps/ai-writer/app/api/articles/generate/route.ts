@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/server-auth';
 import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../lib/services/article-generation.service';
 import { ArticleGenerationRequest } from '../../../../lib/services/claude-api.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function POST(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/articles/generate] Authenticated user: ${authUser.email}`);
+
     const body = await request.json();
 
     // Validate required fields

@@ -3,10 +3,6 @@
   "version": "0.0.1",
   "private": true,
   "description": "Next.js Headless CMS Platform on Cloud Run Docker",
-  "workspaces": [
-    "apps/*",
-    "shared/*"
-  ],
   "scripts": {
     "dev": "make dev",
     "dev:frontend": "turbo run dev --filter=frontend-nextjs-headless-cms",

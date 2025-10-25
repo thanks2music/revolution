@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ArticleGenerationService, { ArticleGenerationConfig, RSSArticleRequest } from '../../../../lib/services/article-generation.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
+import { requireAuth } from '@/lib/auth/server-auth';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function POST(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/articles/generate-from-rss] Authenticated user: ${authUser.email}`);
+
     const body = await request.json();
 
     // Validate required fields
@@ -95,8 +103,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
-  return NextResponse.json({
+  try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/articles/generate-from-rss] Authenticated user: ${authUser.email}`);
+
+    return NextResponse.json({
     message: 'RSS Article Generation API',
     endpoint: 'POST /api/articles/generate-from-rss',
     description: 'Generate and publish articles from RSS feed items',
@@ -126,5 +142,12 @@ export async function GET() {
       defaultAuthorId: 'string (optional)',
       defaultCategoryIds: 'string[] (optional)'
     }
-  });
+    });
+  } catch (error) {
+    console.error('GET error:', error);
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
 }

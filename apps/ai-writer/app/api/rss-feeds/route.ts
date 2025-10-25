@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '../../../lib/firebase/admin';
+import { requireAuth } from '@/lib/auth/server-auth';
 import type { RssFeed } from '../../../lib/types/rss-feed';
 
 /**
  * Get list of RSS feeds using Admin SDK
+ * 🔒 Protected route - requires authentication
  */
 export async function GET(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/rss-feeds] Authenticated user: ${authUser.email}`);
+
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get('activeOnly') === 'true';
 

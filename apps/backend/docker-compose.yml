@@ -15,6 +15,7 @@ services:
       - ./wp-content:/var/www/html/wp-content
       - ./premium-plugins:/var/www/html/premium-plugins
       - ./.gcs-local-key.json:/var/www/html/.gcs-local-key.json:ro
+      - ./plugins.json:/var/www/html/plugins.json:ro
 
   mysql:
     image: mysql:8.0

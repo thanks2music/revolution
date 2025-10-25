@@ -220,9 +220,26 @@ export class WordPressGraphQLService {
       }, 'WordPress authentication configured');
     }
 
+    // Create custom fetch with timeout using AbortController (graphql-request v7+)
+    const createFetchWithTimeout = (timeout: number) => async (
+      input: RequestInfo | URL,
+      init?: RequestInit
+    ) => {
+      const controller = new AbortController();
+      const timerId = setTimeout(() => {
+        controller.abort();
+      }, timeout);
+
+      try {
+        return await fetch(input, { ...init, signal: controller.signal });
+      } finally {
+        clearTimeout(timerId);
+      }
+    };
+
     this.client = new GraphQLClient(this.endpoint, {
       headers,
-      timeout: 30000, // 30 seconds timeout
+      fetch: createFetchWithTimeout(30000), // 30 second timeout
     });
 
     logger.info({ endpoint: this.endpoint, hasAuth: !!this.authToken }, 'WordPress GraphQL client initialized');

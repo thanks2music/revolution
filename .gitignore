@@ -73,6 +73,19 @@ lerna-debug.log*
 .pnpm-store/
 .pnpm-debug.log
 
+
+# pnpm deploy artifacts
+apps/*/node_modules
+apps/*/@*
+**/next
+**/frontend-*@*
+
+または、より保守的に：
+
+# pnpm deploy 関連の一時ファイル
+apps/frontend/frontend-nextjs-headless-cms@*
+apps/frontend/next
+
 # ========================================
 # ⚛️ Next.js関連
 # ========================================
@@ -256,8 +269,8 @@ yarn-error.log*
 # 一時ファイル
 tmp/
 temp/
-.tmp/
-.temp/
+.tmp/**
+.temp/**
 
 # ========================================
 # 📊 監視・分析関連
@@ -334,6 +347,7 @@ apps/frontend/.env.production.local
 # AI Writer環境変数
 apps/ai-writer/.env
 apps/ai-writer/.env.local
+apps/ai-writer/.env.deploy
 
 # GraphQL Code Generator生成ファイル
 apps/ai-writer/src/generated/
@@ -411,6 +425,9 @@ screen-captures/
 deploy-config.local.yml
 .deployment/
 deployment-secrets/
+
+**/deploy.sh
+apps/ai-writer/scripts/deploy.sh
 
 # CI/CD固有設定
 .github/workflows/secrets.yml

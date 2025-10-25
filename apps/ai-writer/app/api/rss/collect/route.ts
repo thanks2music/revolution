@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import RssArticleCollectionService from '../../../../lib/services/rss-article-collection.service';
+import { requireAuth } from '@/lib/auth/server-auth';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function POST(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/rss/collect] Authenticated user: ${authUser.email}`);
+
     const body = await request.json();
 
     const {
@@ -39,8 +47,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
-  return NextResponse.json({
+  try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/rss/collect] Authenticated user: ${authUser.email}`);
+
+    return NextResponse.json({
     message: 'RSS Article Collection API',
     endpoint: 'POST /api/rss/collect',
     description: 'Collect and validate articles from registered RSS feeds using per-feed validation configuration',
@@ -56,5 +72,12 @@ export async function GET() {
       v2: 'Removed global keywords and requireJapanese parameters',
       migration: 'Configure validation settings per feed in the RSS management UI'
     }
-  });
+    });
+  } catch (error) {
+    console.error('GET error:', error);
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
 }

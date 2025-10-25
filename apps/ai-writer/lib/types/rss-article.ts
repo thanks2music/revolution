@@ -3,6 +3,7 @@ export interface RssArticleEntry {
   title: string;
   link: string;
   description?: string;
+  contentSnippet?: string;  // RSSパーサーが提供する要約テキスト（テンプレート選択に使用）
   content?: string;
   pubDate?: string;
   categories?: string[];

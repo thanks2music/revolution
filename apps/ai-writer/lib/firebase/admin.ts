@@ -9,25 +9,42 @@ let adminDb: Firestore;
 try {
   if (getApps().length === 0) {
     console.log('[Firebase Admin] Initializing Firebase Admin SDK...');
-    console.log('[Firebase Admin] Project ID:', process.env.FIREBASE_PROJECT_ID);
-    console.log('[Firebase Admin] Client Email:', process.env.FIREBASE_CLIENT_EMAIL);
-    console.log('[Firebase Admin] Private Key exists:', !!process.env.FIREBASE_PRIVATE_KEY);
 
-    if (!process.env.FIREBASE_PROJECT_ID) {
-      throw new Error('FIREBASE_PROJECT_ID is not set');
+    // Cloud Run の GOOGLE_APPLICATION_CREDENTIALS_JSON から認証情報を取得
+    let projectId: string;
+    let clientEmail: string;
+    let privateKey: string;
+
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+      console.log('[Firebase Admin] Using GOOGLE_APPLICATION_CREDENTIALS_JSON');
+      const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+      projectId = credentials.project_id;
+      clientEmail = credentials.client_email;
+      privateKey = credentials.private_key;
+    } else if (
+      process.env.FIREBASE_PROJECT_ID &&
+      process.env.FIREBASE_CLIENT_EMAIL &&
+      process.env.FIREBASE_PRIVATE_KEY
+    ) {
+      console.log('[Firebase Admin] Using individual environment variables');
+      projectId = process.env.FIREBASE_PROJECT_ID;
+      clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    } else {
+      throw new Error(
+        'Firebase Admin credentials not found. Set either GOOGLE_APPLICATION_CREDENTIALS_JSON or individual FIREBASE_* variables'
+      );
     }
-    if (!process.env.FIREBASE_CLIENT_EMAIL) {
-      throw new Error('FIREBASE_CLIENT_EMAIL is not set');
-    }
-    if (!process.env.FIREBASE_PRIVATE_KEY) {
-      throw new Error('FIREBASE_PRIVATE_KEY is not set');
-    }
+
+    console.log('[Firebase Admin] Project ID:', projectId);
+    console.log('[Firebase Admin] Client Email:', clientEmail);
+    console.log('[Firebase Admin] Private Key exists:', !!privateKey);
 
     adminApp = initializeApp({
       credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        projectId,
+        clientEmail,
+        privateKey,
       }),
     });
 

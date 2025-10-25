@@ -7,9 +7,11 @@ import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../l
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
 import type { RssArticleEntry } from '../../../../lib/types/rss-article';
 import type { RssFeed } from '../../../../lib/types/rss-feed';
+import { requireAuth } from '@/lib/auth/server-auth';
 
 /**
  * Debug endpoint: RSSフィードから未生成記事を取得して生成
+ * 🔒 Protected route - requires authentication
  */
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
@@ -17,6 +19,10 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        // 🔒 認証チェック
+        const authUser = await requireAuth();
+        console.log(`[API /api/debug/generate-from-feed] Authenticated user: ${authUser.email}`);
+
         const body = await request.json();
         const { feedId } = body as { feedId: string };
 
@@ -148,7 +154,7 @@ export async function POST(request: NextRequest) {
           detail: 'Google Alert URLから実際の記事URLを抽出しています'
         })}\n\n`));
 
-        // Step 4: AI記事生成
+        // Step 4: AI記事生成 + WordPress投稿 (with automatic featured image extraction)
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           step: 4,
           totalSteps: 5,
@@ -156,37 +162,39 @@ export async function POST(request: NextRequest) {
           detail: 'Claude APIで日本語記事を生成しています（20〜30秒程度）'
         })}\n\n`));
 
-        const claudeService = new ClaudeAPIService();
-        const generationOptions = {
-          title: articleToGenerate.title,
-          keywords: articleToGenerate.categories || [],
-          targetLength: 600,
-          tone: 'friendly' as const,
-          language: 'ja' as const
-        };
-
-        const generatedArticle = await claudeService.generateArticleFromURL(
-          articleToGenerate.link,
-          generationOptions
-        );
-
         // Step 5: WordPress投稿
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           step: 5,
           totalSteps: 5,
           message: 'WordPress投稿中...',
-          detail: '生成した記事を下書きとして投稿しています'
+          detail: 'アイキャッチ画像を抽出して記事を下書きとして投稿しています'
         })}\n\n`));
 
+        // Use generateAndPublishFromRSS which includes automatic featured image extraction
         const articleService = new ArticleGenerationService(config);
-        const publishRequest = {
-          article: generatedArticle,
-          status: PostStatus.DRAFT,
-          authorId: config.defaultAuthorId,
-          categoryIds: config.defaultCategoryIds
-        };
-
-        const publishResult = await articleService.publishToWordPress(publishRequest);
+        const publishResult = await articleService.generateAndPublishFromRSS({
+          rssItem: {
+            title: articleToGenerate.title,
+            link: articleToGenerate.link,
+            description: articleToGenerate.description,
+            content: articleToGenerate.content,
+            pubDate: articleToGenerate.pubDate,
+            categories: articleToGenerate.categories
+          },
+          generationOptions: {
+            title: articleToGenerate.title,
+            keywords: articleToGenerate.categories || [],
+            targetLength: 600,
+            tone: 'friendly',
+            language: 'ja'
+          },
+          publishOptions: {
+            status: PostStatus.DRAFT,
+            authorId: config.defaultAuthorId,
+            categoryIds: config.defaultCategoryIds
+            // featuredImageUrl is automatically extracted from article element
+          }
+        });
 
         if (publishResult.success) {
           console.log(`[Debug] Article generated successfully: ${publishResult.postId}`);
@@ -248,8 +256,16 @@ export async function POST(request: NextRequest) {
   });
 }
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
-  return new Response(JSON.stringify({
+  try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/debug/generate-from-feed] Authenticated user: ${authUser.email}`);
+
+    return new Response(JSON.stringify({
     message: 'Debug Generate From Feed API',
     endpoint: 'POST /api/debug/generate-from-feed',
     description: 'Generate article from RSS feed with automatic ungenerated article detection',
@@ -257,8 +273,15 @@ export async function GET() {
       feedId: 'string (required)'
     }
   }), {
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  });
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+  } catch (error) {
+    console.error('GET error:', error);
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 }

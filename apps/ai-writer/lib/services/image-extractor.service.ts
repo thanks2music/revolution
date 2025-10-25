@@ -142,6 +142,49 @@ export class ImageExtractorService {
       return false;
     }
   }
+
+  /**
+   * article要素内の最初の画像を抽出（アイキャッチ用）
+   * @param html HTML文字列
+   * @param sourceUrl ソースURL（相対URLの解決に使用）
+   * @returns 最初の画像URL、見つからない場合はnull
+   */
+  extractFeaturedImageFromArticle(
+    html: string,
+    sourceUrl: string
+  ): string | null {
+    try {
+      const $ = cheerio.load(html);
+      const baseUrl = new URL(sourceUrl);
+
+      // article要素内の最初のimg要素を取得
+      const firstImg = $('article img').first();
+
+      if (firstImg.length === 0) {
+        console.log('📷 No image found in <article> element');
+        return null;
+      }
+
+      const src = firstImg.attr('src') || firstImg.attr('data-src');
+      if (!src) {
+        console.log('📷 Image element found but no src attribute');
+        return null;
+      }
+
+      // 相対URLを絶対URLに変換
+      try {
+        const absoluteUrl = new URL(src, baseUrl.origin).href;
+        console.log(`📷 Extracted featured image from article: ${absoluteUrl}`);
+        return absoluteUrl;
+      } catch (error) {
+        console.warn(`Invalid image URL in article: ${src}`, error);
+        return null;
+      }
+    } catch (error) {
+      console.error('Failed to extract featured image from article:', error);
+      return null;
+    }
+  }
 }
 
 /**

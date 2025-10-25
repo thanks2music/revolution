@@ -23,11 +23,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 開発環境では認証をバイパスしてダミーユーザーを設定
-    const isDevelopment = process.env.NODE_ENV === 'development';
+    // 🚨 開発環境判定を厳格化
+    // - NODE_ENV === 'development' であること
+    // - かつ window.location.hostname が localhost または 127.0.0.1 であること
+    // - かつ NEXT_PUBLIC_BYPASS_AUTH_FOR_DEV が明示的に 'true' に設定されていること
+    const isDevelopment =
+      process.env.NODE_ENV === 'development' &&
+      (typeof window !== 'undefined' &&
+       (window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1')) &&
+      process.env.NEXT_PUBLIC_BYPASS_AUTH_FOR_DEV === 'true';
 
     if (isDevelopment) {
-      console.log('[AuthContext] Development mode - using mock user');
+      console.log('[AuthContext] Development mode with auth bypass enabled - using mock user');
 
       // ダミーユーザーを作成（部分的なUser型）
       const mockUser = {
@@ -60,6 +68,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const token = await user.getIdToken();
           console.log('[AuthContext] Got ID token, length:', token.length);
 
+          // /api/auth/set-token でサーバーサイド検証を実施
+          // - Firebase Admin SDK による Token 検証
+          // - メールアドレスの許可リストチェック
           const response = await fetch('/api/auth/set-token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -67,12 +78,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
 
           if (!response.ok) {
-            console.error('[AuthContext] Failed to set token:', response.status);
-          } else {
-            console.log('[AuthContext] Token set successfully');
+            // 401 (Invalid token) または 403 (Unauthorized email) の場合
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            console.error('[AuthContext] Server rejected token:', response.status, errorData.error);
+
+            // サインアウトしてユーザーをクリア
+            await signOut(auth);
+            setUser(null);
+            setLoading(false);
+            return;
           }
+
+          console.log('[AuthContext] Token verified and set successfully');
         } catch (error) {
           console.error('[AuthContext] Error setting token:', error);
+          // エラー時もサインアウト
+          await signOut(auth);
+          setUser(null);
+          setLoading(false);
+          return;
         }
       } else {
         console.log('[AuthContext] No user, clearing token');
@@ -92,15 +116,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
-      const allowedEmails = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '').split(',');
+      // signInWithPopup を実行
+      // メール検証は onAuthStateChanged と /api/auth/set-token で実施されるため、
+      // ここでは重複チェックを行わない（Race Condition 回避）
+      await signInWithPopup(auth, provider);
 
-      if (!allowedEmails.includes(result.user.email || '')) {
-        await signOut(auth);
-        throw new Error('このメールアドレスはアクセス権限がありません');
-      }
+      // onAuthStateChanged が自動的に発火し、
+      // /api/auth/set-token でサーバーサイド検証が行われる
     } catch (error) {
-      console.error('Google sign-in error:', error);
+      console.error('[AuthContext] Google sign-in error:', error);
       throw error;
     }
   };

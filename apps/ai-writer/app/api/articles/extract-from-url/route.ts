@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ClaudeAPIService from '../../../../lib/services/claude-api.service';
+import { requireAuth } from '@/lib/auth/server-auth';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function POST(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/articles/extract-from-url] Authenticated user: ${authUser.email}`);
+
     const body = await request.json();
 
     // URLの検証
@@ -69,8 +77,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
-  return NextResponse.json({
+  try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/articles/extract-from-url] Authenticated user: ${authUser.email}`);
+
+    return NextResponse.json({
     message: 'URL Content Extraction and Article Generation API',
     endpoint: 'POST /api/articles/extract-from-url',
     description: 'Extract content from URL and optionally generate article with Claude API',
@@ -87,5 +103,12 @@ export async function GET() {
       extractOnly_true: 'Extract content only (title, content, description, etc.)',
       extractOnly_false: 'Extract content and generate full article using Claude API'
     }
-  });
+    });
+  } catch (error) {
+    console.error('GET error:', error);
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
 }

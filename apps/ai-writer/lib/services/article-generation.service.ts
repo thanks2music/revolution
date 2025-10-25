@@ -29,6 +29,11 @@ export interface ArticlePublishRequest {
   categoryIds?: string[];
   publishDate?: string;
   featuredImageUrl?: string;
+  // WordPress-specific fields (separated for CMS abstraction)
+  wordpress?: {
+    featuredImageId?: string; // WordPress internal media ID
+    categoryId?: string;      // WordPress category ID (legacy - prefer categoryIds)
+  };
 }
 
 export interface ArticlePublishResult {
@@ -56,7 +61,7 @@ export interface RSSArticleRequest {
 }
 
 export class ArticleGenerationService {
-  private claudeService: ClaudeAPIService;
+  private claudeService!: ClaudeAPIService;
   private wordPressService: WordPressGraphQLService;
   private config: ArticleGenerationConfig;
 
@@ -103,12 +108,51 @@ export class ArticleGenerationService {
 
       const generatedArticle = await this.generateArticle(generationRequest);
 
+      // Step 1.5: Extract featured image URL if not provided
+      let featuredImageUrl = request.publishOptions?.featuredImageUrl;
+
+      if (!featuredImageUrl && request.rssItem.link) {
+        try {
+          console.log('Featured image URL not provided, extracting from article element...');
+          const html = await this.fetchHtmlContent(request.rssItem.link);
+
+          // First try: Extract from article element (最優先)
+          const articleImage = this.imageExtractor.extractFeaturedImageFromArticle(
+            html,
+            request.rssItem.link
+          );
+
+          if (articleImage) {
+            featuredImageUrl = articleImage;
+            console.log(`✅ Extracted featured image from <article> element: ${featuredImageUrl}`);
+          } else {
+            // Fallback: Extract from general image extraction
+            console.log('⚠️ No image found in <article> element, trying general extraction...');
+            const extractedImages = await this.imageExtractor.extractImagesFromHtml(
+              html,
+              request.rssItem.link
+            );
+            featuredImageUrl = extractedImages.eyecatch || extractedImages.ogp || undefined;
+
+            if (featuredImageUrl) {
+              console.log(`✅ Extracted featured image from fallback: ${featuredImageUrl}`);
+            } else {
+              console.log('⚠️ No featured image found in source');
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to extract image from source:', error);
+          // Continue without featured image
+        }
+      }
+
       // Step 2: Publish to WordPress
       const publishRequest: ArticlePublishRequest = {
         article: generatedArticle,
         status: this.config.defaultStatus,
         authorId: this.config.defaultAuthorId,
         categoryIds: this.config.defaultCategoryIds,
+        featuredImageUrl, // Add extracted or provided featured image URL
         ...request.publishOptions
       };
 
@@ -154,6 +198,31 @@ export class ArticleGenerationService {
     try {
       console.log('Publishing article to WordPress...');
 
+      // Upload featured image if URL is provided
+      let featuredImageId: string | undefined;
+
+      if (request.featuredImageUrl) {
+        try {
+          console.log(`Uploading featured image: ${request.featuredImageUrl}`);
+          const media = await this.wordPressService.uploadMediaFromUrl(
+            request.featuredImageUrl,
+            `${request.article.title} - Featured Image`,
+            request.article.title
+          );
+
+          // Convert REST API numeric ID to WPGraphQL Global ID format
+          // WPGraphQL expects Relay-style Global IDs: base64('attachment:' + numericId)
+          // Note: Media items use 'attachment' as the type prefix, not 'post'
+          const globalId = Buffer.from(`attachment:${media.id}`).toString('base64');
+          featuredImageId = globalId;
+
+          console.log(`✅ Featured image uploaded successfully (Numeric ID: ${media.id}, Global ID: ${globalId})`);
+        } catch (error) {
+          console.error('❌ Failed to upload featured image:', error);
+          // Continue with article publishing even if image upload fails
+        }
+      }
+
       // Prepare categories (convert names to IDs if needed)
       const categoryIds = await this.prepareCategoryIds(request.article.categories, request.categoryIds);
 
@@ -171,7 +240,11 @@ export class ArticleGenerationService {
         categoryIds: categoryIds,
         tagIds: tagIds,
         date: request.publishDate,
-        featuredImageId: request.article.metadata?.featuredImageId?.toString()
+        featuredImageId: featuredImageId || (
+          request.wordpress?.featuredImageId
+            ? Buffer.from(`post:${request.wordpress.featuredImageId}`).toString('base64')
+            : undefined
+        )
       });
 
       console.log(`Article published successfully to WordPress: ID ${post.databaseId}`);
@@ -637,8 +710,6 @@ export class ArticleGenerationService {
             generatedAt: new Date().toISOString(),
             wordCount: renderedContent.content.length,
             model: "template-based",
-            categoryId,
-            featuredImageId,
           },
         };
 
@@ -647,6 +718,11 @@ export class ArticleGenerationService {
           status: options.publishStatus,
           authorId: options.authorId,
           categoryIds: options.categoryIds,
+          // WordPress-specific IDs moved from metadata to wordpress object
+          wordpress: {
+            featuredImageId: featuredImageId?.toString(),
+            categoryId,
+          },
         });
 
         console.log("WordPress投稿完了:", {

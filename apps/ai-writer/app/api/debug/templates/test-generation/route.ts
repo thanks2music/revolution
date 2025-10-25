@@ -17,9 +17,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ArticleGenerationService } from '../../../../../lib/services/article-generation.service';
 import { RssArticleEntry } from '../../../../../lib/types/rss-article';
+import { PostStatus } from '../../../../../lib/services/wordpress-graphql.service';
+import { requireAuth } from '@/lib/auth/server-auth';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function POST(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/debug/templates/test-generation] Authenticated user: ${authUser.email}`);
+
     const body = await request.json();
     const { rssArticle, forceTemplateId, validationKeywords } = body;
 
@@ -43,15 +52,15 @@ export async function POST(request: NextRequest) {
     const articleService = new ArticleGenerationService({
       useClaudeAPI: true,
       wordPressEndpoint: process.env.NEXT_PUBLIC_WP_ENDPOINT || '',
-      defaultStatus: 'DRAFT',
+      defaultStatus: PostStatus.DRAFT,
     });
 
     // RssArticleEntry形式に変換
     const rssEntry: RssArticleEntry = {
       title: rssArticle.title || 'Untitled',
       link: rssArticle.link,
-      contentSnippet: rssArticle.contentSnippet || rssArticle.title,
-      isoDate: new Date().toISOString(),
+      description: rssArticle.contentSnippet || rssArticle.title,
+      pubDate: new Date().toISOString(),
       categories: rssArticle.categories || [],
     };
 
@@ -61,7 +70,7 @@ export async function POST(request: NextRequest) {
       {
         forceTemplateId,
         validationKeywords,
-        publishStatus: 'DRAFT', // 下書きとして投稿（テスト用）
+        publishStatus: PostStatus.DRAFT, // 下書きとして投稿（テスト用）
       }
     );
 

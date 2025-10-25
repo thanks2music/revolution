@@ -2,9 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import RssArticleCollectionService from '../../../../lib/services/rss-article-collection.service';
 import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../lib/services/article-generation.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
+import { requireAuth } from '@/lib/auth/server-auth';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function POST(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/rss/collect-and-process] Authenticated user: ${authUser.email}`);
+
     const body = await request.json();
 
     // 設定の準備
@@ -113,8 +121,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET() {
-  return NextResponse.json({
+  try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/rss/collect-and-process] Authenticated user: ${authUser.email}`);
+
+    return NextResponse.json({
     message: 'RSS Collection and Processing API',
     endpoint: 'POST /api/rss/collect-and-process',
     description: 'Collect RSS articles and generate WordPress posts',
@@ -133,5 +149,12 @@ export async function GET() {
       '4. Generate articles using Claude API',
       '5. Publish to WordPress via GraphQL'
     ]
-  });
+    });
+  } catch (error) {
+    console.error('GET error:', error);
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
 }

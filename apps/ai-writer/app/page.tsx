@@ -1,10 +1,21 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth/auth-context';
 import { LogoutButton } from '../components/ui/logout-button';
 
 export default function Home() {
   const { user, loading } = useAuth();
+  const router = useRouter();
+
+  // 未認証ユーザーをログインページにリダイレクト
+  useEffect(() => {
+    if (!loading && !user) {
+      console.log('[Home] No authenticated user, redirecting to login');
+      router.push('/login');
+    }
+  }, [loading, user, router]);
 
   if (loading) {
     return (
@@ -15,6 +26,11 @@ export default function Home() {
         </div>
       </div>
     );
+  }
+
+  // 認証されていない場合は何も表示しない（リダイレクト中）
+  if (!user) {
+    return null;
   }
 
   return (

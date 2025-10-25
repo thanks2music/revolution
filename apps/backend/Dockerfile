@@ -1,9 +1,14 @@
 FROM wordpress:6.7-php8.4-apache
 
+# デフォルトプラグインを削除（docker-entrypoint.shがコピーする前に削除）
+RUN rm -rf /usr/src/wordpress/wp-content/plugins/akismet \
+    && rm -f /usr/src/wordpress/wp-content/plugins/hello.php \
+    && echo "Removed default plugins from /usr/src/wordpress/"
+
 # 基本設定
 RUN docker-php-ext-install mysqli pdo pdo_mysql
 RUN apt-get update && apt-get install -y \
-	libzip-dev unzip curl less \
+	libzip-dev unzip curl less jq \
 	&& docker-php-ext-install zip \
 	&& rm -rf /var/lib/apt/lists/*
 
@@ -31,18 +36,19 @@ RUN sed -i 's/Listen 80/Listen 0.0.0.0:8080/' /etc/apache2/ports.conf && \
 # wp-contentディレクトリをコピー（カスタムテーマ、mu-pluginsなど）
 COPY wp-content/ /var/www/html/wp-content/
 
-# プラグインセットアップ
-# シンボリックリンクを含むファイルをコピー
-COPY setup-wordpress.sh /tmp/setup-wordpress.sh
+# プラグインセットアップ（新方式: plugins.json + install-plugins.sh）
+# プラグイン設定ファイルとインストールスクリプトをコピー
+# 注意: プラグインインストールはコンテナ起動時に実行（WordPress初期化後）
+COPY plugins.json /var/www/html/plugins.json
+COPY install-plugins.sh /var/www/html/install-plugins.sh
 COPY setup-premium-plugins.sh /tmp/setup-premium-plugins.sh
-RUN chmod +x /tmp/setup-wordpress.sh && \
+
+# スクリプトに実行権限を付与
+RUN chmod +x /var/www/html/install-plugins.sh && \
 	chmod +x /tmp/setup-premium-plugins.sh && \
-	cd /var/www/html && \
-	WP_ENV=production BACKEND_DIR=/var/www/html /tmp/setup-wordpress.sh && \
 	cp /tmp/setup-premium-plugins.sh /var/www/html/ && \
-	rm /tmp/setup-wordpress.sh && \
 	rm /tmp/setup-premium-plugins.sh && \
-	echo "Plugin setup completed"
+	echo "✅ Plugin scripts prepared (will run at container startup)"
 
 # 🔑 重要：COPYの後に権限を設定（COPYが権限を上書きするため）
 RUN mkdir -p /var/www/html/wp-content/uploads \
@@ -96,18 +102,26 @@ rm -rf /var/www/html/wp-content/themes/twentytwenty*
 echo "Default themes removed"
 fi
 
+# デフォルトプラグインの削除（念のための二重チェック）
+# 注: /usr/src/wordpress/ から既に削除済みだが、万が一のバックアップとして実行
+echo "Checking for any remaining default plugins..."
+rm -rf /var/www/html/wp-content/plugins/akismet
+rm -f /var/www/html/wp-content/plugins/hello.php
+echo "Default plugins cleanup completed (akismet, hello.php)"
+
+# 開発中プラグインの削除（本番環境には不要）
+echo "Removing development plugins..."
+rm -rf /var/www/html/wp-content/plugins/ai-writer
+echo "Development plugins removed (ai-writer)"
+
+# 削除後の確認（診断用）
+echo "Remaining plugins:"
+ls -1 /var/www/html/wp-content/plugins/ 2>/dev/null || echo "  (plugins directory empty or not found)"
+
 if [ ! -z "$PORT" ] && [ "$PORT" != "8080" ]; then
 echo "Changing Apache port to $PORT"
 sed -i "s/Listen 0.0.0.0:8080/Listen 0.0.0.0:$PORT/" /etc/apache2/ports.conf
 sed -i "s/:8080>/:$PORT>/" /etc/apache2/sites-available/000-default.conf
-fi
-
-# プレミアムプラグインセットアップ（起動時実行）
-if [ -f /var/www/html/setup-premium-plugins.sh ]; then
-echo "Setting up premium plugins..."
-cd /var/www/html && ./setup-premium-plugins.sh
-else
-echo "Premium plugins setup script not found, skipping..."
 fi
 
 echo "WordPress init completed"
@@ -115,7 +129,30 @@ EOF
 
 RUN chmod +x /usr/local/bin/wordpress-init.sh
 
-# エントリーポイント（変更なし）
+# 元のdocker-entrypoint.shをバックアップし、プラグインインストールを追加したラッパーを作成
+# 注意: 元のスクリプトは最後に exec "$@" するため、その直前にプラグインインストールを挿入する
+RUN cp /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.orig && \
+    awk '/^exec "\$@"$/ { \
+        print "# === カスタム: プラグインインストール（WordPress初期化後、apache起動前） ==="; \
+        print "if [[ \"$1\" == apache2* ]] || [ \"$1\" = \"php-fpm\" ]; then"; \
+        print "    # 無料プラグインのインストール"; \
+        print "    if [ -f /var/www/html/install-plugins.sh ]; then"; \
+        print "        echo \"Installing free plugins from plugins.json...\""; \
+        print "        cd /var/www/html && ./install-plugins.sh"; \
+        print "    fi"; \
+        print "    "; \
+        print "    # プレミアムプラグインセットアップ"; \
+        print "    if [ -f /var/www/html/setup-premium-plugins.sh ]; then"; \
+        print "        echo \"Setting up premium plugins...\""; \
+        print "        cd /var/www/html && ./setup-premium-plugins.sh"; \
+        print "    fi"; \
+        print "fi"; \
+        print "# === カスタムプラグインインストール終了 ==="; \
+        print ""; \
+    } { print }' /usr/local/bin/docker-entrypoint.orig > /usr/local/bin/docker-entrypoint.sh && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# エントリーポイント（wordpress-init.shを先に実行）
 RUN cat > /usr/local/bin/cloud-run-entrypoint.sh << 'EOF'
 #!/bin/bash
 set -e

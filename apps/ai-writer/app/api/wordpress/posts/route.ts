@@ -4,12 +4,20 @@ import {
   GetPostsDocument,
   GetPostsQuery,
   GetPostsQueryVariables,
-} from '../../../src/generated/graphql';
+} from '@generated/graphql';
+import { requireAuth } from '@/lib/auth/server-auth';
 
 const endpoint = process.env.NEXT_PUBLIC_WP_ENDPOINT || '';
 
+/**
+ * 🔒 Protected route - requires authentication
+ */
 export async function GET(request: NextRequest) {
   try {
+    // 🔒 認証チェック
+    const authUser = await requireAuth();
+    console.log(`[API /api/wordpress/posts] Authenticated user: ${authUser.email}`);
+
     const searchParams = request.nextUrl.searchParams;
     const first = parseInt(searchParams.get('first') || '10');
     const after = searchParams.get('after') || undefined;
