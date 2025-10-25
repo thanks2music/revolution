@@ -60,7 +60,12 @@ try {
   console.log('[Firebase Admin] Firestore instance created');
 } catch (error) {
   console.error('[Firebase Admin] Failed to initialize Firebase Admin SDK:', error);
-  throw error;
+  // In CI/build environments, allow initialization to fail gracefully
+  // The app will throw errors only when Firebase is actually used
+  if (process.env.NODE_ENV === 'production' && !process.env.CI) {
+    throw error;
+  }
+  console.warn('[Firebase Admin] Continuing without Firebase Admin SDK (non-production or CI environment)');
 }
 
 export { adminApp, adminAuth, adminDb };

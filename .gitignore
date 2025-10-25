@@ -350,7 +350,8 @@ apps/ai-writer/.env.local
 apps/ai-writer/.env.deploy
 
 # GraphQL Code Generator生成ファイル
-apps/ai-writer/src/generated/
+# Note: Generated files are committed for CI compatibility
+# apps/ai-writer/src/generated/
 
 ## AI Documents
 CLAUDE.md

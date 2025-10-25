@@ -7,7 +7,7 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: 'http',
-        hostname: process.env.ALLOWED_IMAGE_HOST
+        hostname: process.env.ALLOWED_IMAGE_HOST || 'localhost'
       }
     ]
   }
