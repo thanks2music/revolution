@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ClaudeAPIService from '../../../../lib/services/claude-api.service';
+import { getClaudeService } from '../../../../lib/server/claude-api.service';
 import { requireAuth } from '@/lib/auth/server-auth';
+
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = 'force-dynamic';
 
 /**
  * 🔒 Protected route - requires authentication
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`Processing URL: ${url}`);
 
-    const claudeService = new ClaudeAPIService();
+    const claudeService = getClaudeService();
 
     if (extractOnly) {
       // コンテンツ抽出のみ
