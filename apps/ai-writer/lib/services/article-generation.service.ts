@@ -1,5 +1,7 @@
-import ClaudeAPIService, { ArticleGenerationRequest, GeneratedArticle } from './claude-api.service';
-import { WordPressGraphQLService, PostStatus } from './wordpress-graphql.service';
+import { type ArticleGenerationRequest, type GeneratedArticle } from './claude-api.service';
+import { PostStatus } from './wordpress-graphql.service';
+import { getClaudeService } from '../server/claude-api.service';
+import { getWordPressService } from '../server/wordpress-graphql.service';
 import type { RssArticleEntry } from '../types/rss-article';
 import { TemplateSelectorService } from './template-selector.service';
 import { PlaceholderExtractorService } from './placeholder-extractor.service';
@@ -61,8 +63,6 @@ export interface RSSArticleRequest {
 }
 
 export class ArticleGenerationService {
-  private claudeService!: ClaudeAPIService;
-  private wordPressService: WordPressGraphQLService;
   private config: ArticleGenerationConfig;
 
   // Template-based generation services
@@ -74,20 +74,28 @@ export class ArticleGenerationService {
   constructor(config: ArticleGenerationConfig) {
     this.config = config;
 
-    if (config.useClaudeAPI) {
-      this.claudeService = new ClaudeAPIService();
-    }
-
-    this.wordPressService = new WordPressGraphQLService(
-      config.wordPressEndpoint,
-      config.wordPressAuthToken
-    );
-
     // Initialize template-based services
     this.templateSelector = new TemplateSelectorService();
     this.placeholderExtractor = new PlaceholderExtractorService();
     this.templateRenderer = new TemplateRendererService();
     this.imageExtractor = new ImageExtractorService();
+  }
+
+  /**
+   * Get Claude service instance (lazy-loaded, request-scoped)
+   */
+  private getClaudeService() {
+    if (!this.config.useClaudeAPI) {
+      throw new Error('Claude API is not enabled in configuration');
+    }
+    return getClaudeService();
+  }
+
+  /**
+   * Get WordPress service instance (lazy-loaded, request-scoped)
+   */
+  private getWordPressService() {
+    return getWordPressService();
   }
 
   /**
@@ -182,7 +190,7 @@ export class ArticleGenerationService {
 
     try {
       console.log('Generating article with Claude API...');
-      const article = await this.claudeService.generateArticle(request);
+      const article = await this.getClaudeService().generateArticle(request);
       console.log(`Article generated successfully: ${article.metadata.wordCount} characters`);
       return article;
     } catch (error) {
@@ -204,7 +212,7 @@ export class ArticleGenerationService {
       if (request.featuredImageUrl) {
         try {
           console.log(`Uploading featured image: ${request.featuredImageUrl}`);
-          const media = await this.wordPressService.uploadMediaFromUrl(
+          const media = await this.getWordPressService().uploadMediaFromUrl(
             request.featuredImageUrl,
             `${request.article.title} - Featured Image`,
             request.article.title
@@ -230,7 +238,7 @@ export class ArticleGenerationService {
       const tagIds = await this.prepareTagIds(request.article.tags);
 
       // Create post in WordPress
-      const post = await this.wordPressService.createPostExtended({
+      const post = await this.getWordPressService().createPostExtended({
         title: request.article.title,
         content: request.article.content,
         slug: request.article.slug,
@@ -284,7 +292,7 @@ export class ArticleGenerationService {
     // Test Claude API
     if (this.config.useClaudeAPI) {
       try {
-        claudeStatus = await this.claudeService.testConnection();
+        claudeStatus = await this.getClaudeService().testConnection();
         if (!claudeStatus) {
           errors.push('Claude API connection test failed');
         }
@@ -297,7 +305,7 @@ export class ArticleGenerationService {
 
     // Test WordPress GraphQL
     try {
-      wordpressStatus = await this.wordPressService.testConnection();
+      wordpressStatus = await this.getWordPressService().testConnection();
       if (!wordpressStatus) {
         errors.push('WordPress GraphQL connection test failed');
       }
@@ -342,7 +350,7 @@ export class ArticleGenerationService {
       };
 
       // Claude APIでURLから記事内容を抽出して記事生成
-      const generatedArticle = await this.claudeService.generateArticleFromURL(
+      const generatedArticle = await this.getClaudeService().generateArticleFromURL(
         rssEntry.link,
         generationOptions
       );
@@ -662,7 +670,7 @@ export class ArticleGenerationService {
               console.log(`✅ カテゴリスラッグ生成成功: ${categorySlug}`);
             }
 
-            categoryId = await this.wordPressService.getOrCreateCategory(
+            categoryId = await this.getWordPressService().getOrCreateCategory(
               extractedData["作品名"] as string,
               categorySlug,
               'titles' // 親カテゴリ: 作品
@@ -681,7 +689,7 @@ export class ArticleGenerationService {
 
         if (imageUrls && imageUrls["アイキャッチ画像"]) {
           try {
-            const media = await this.wordPressService.uploadMediaFromUrl(
+            const media = await this.getWordPressService().uploadMediaFromUrl(
               imageUrls["アイキャッチ画像"],
               `${extractedData["作品名"]} アイキャッチ`,
               `${extractedData["作品名"]} ${extractedData["イベント名"]}`
@@ -767,7 +775,7 @@ export class ArticleGenerationService {
    */
   private async extractSourceContentForTemplate(url: string): Promise<string> {
     try {
-      const extracted = await this.claudeService.extractContentFromURL(url);
+      const extracted = await this.getClaudeService().extractContentFromURL(url);
       return `
 タイトル: ${extracted.title}
 
@@ -812,7 +820,7 @@ ${extracted.description ? `説明: ${extracted.description}` : ""}
       console.log(`カテゴリスラッグ生成を開始: ${title}`);
 
       // Claude APIでスラッグ変換を依頼
-      const slug = await this.claudeService.generateSlug(title);
+      const slug = await this.getClaudeService().generateSlug(title);
       console.log(`✅ Claude APIでスラッグ生成成功: ${title} → ${slug}`);
 
       return slug;

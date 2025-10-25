@@ -1,13 +1,15 @@
 import { NextRequest } from 'next/server';
 import { RssArticleCollectionService } from '../../../../lib/services/rss-article-collection.service';
 import { adminDb } from '../../../../lib/firebase/admin';
-import { WordPressGraphQLService } from '../../../../lib/services/wordpress-graphql.service';
-import ClaudeAPIService from '../../../../lib/services/claude-api.service';
+import { getWordPressService } from '../../../../lib/server/wordpress-graphql.service';
 import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../lib/services/article-generation.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
 import type { RssArticleEntry } from '../../../../lib/types/rss-article';
 import type { RssFeed } from '../../../../lib/types/rss-feed';
 import { requireAuth } from '@/lib/auth/server-auth';
+
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = 'force-dynamic';
 
 /**
  * Debug endpoint: RSSフィードから未生成記事を取得して生成
@@ -113,10 +115,7 @@ export async function POST(request: NextRequest) {
           detail: '既に生成済みの記事を確認しています'
         })}\n\n`));
 
-        const wordPressService = new WordPressGraphQLService(
-          config.wordPressEndpoint,
-          config.wordPressAuthToken
-        );
+        const wordPressService = getWordPressService();
 
         // 未生成記事をフィルタリング（仮実装）
         const ungeneratedArticles: RssArticleEntry[] = [];

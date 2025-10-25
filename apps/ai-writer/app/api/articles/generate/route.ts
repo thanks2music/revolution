@@ -4,6 +4,9 @@ import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../l
 import { ArticleGenerationRequest } from '../../../../lib/services/claude-api.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
 
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = 'force-dynamic';
+
 /**
  * 🔒 Protected route - requires authentication
  */

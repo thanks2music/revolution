@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { auth } from '../firebase/client';
+import { getFirebaseAuth } from '../firebase/client';
 
 interface AuthContextType {
   user: User | null;
@@ -60,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // 本番環境では通常の認証フロー
     console.log('[AuthContext] Production mode - setting up auth listener');
 
+    const auth = getFirebaseAuth();
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('[AuthContext] Auth state changed:', user ? user.email : 'null');
 
@@ -119,6 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // signInWithPopup を実行
       // メール検証は onAuthStateChanged と /api/auth/set-token で実施されるため、
       // ここでは重複チェックを行わない（Race Condition 回避）
+      const auth = getFirebaseAuth();
       await signInWithPopup(auth, provider);
 
       // onAuthStateChanged が自動的に発火し、
@@ -132,6 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       await fetch('/api/auth/clear-token', { method: 'POST' });
+      const auth = getFirebaseAuth();
       await signOut(auth);
     } catch (error) {
       console.error('Logout error:', error);

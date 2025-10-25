@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '../../lib/auth/auth-context';
-import { auth, app } from '../../lib/firebase/client';
+import { getFirebaseAuth } from '../../lib/firebase/client';
 import { useEffect, useState } from 'react';
 
 export default function DebugPage() {
@@ -22,11 +22,17 @@ export default function DebugPage() {
     }
     setLocalStorage(storage);
 
-    // Firebase App の設定を取得
-    setFirebaseConfig({
-      name: app.name,
-      options: app.options,
-    });
+    // Firebase App の設定を取得（lazy initialization）
+    try {
+      const auth = getFirebaseAuth();
+      setFirebaseConfig({
+        name: auth.app.name,
+        options: auth.app.options,
+      });
+    } catch (error) {
+      console.error('Firebase initialization error:', error);
+      setFirebaseConfig({ error: String(error) });
+    }
   }, []);
 
   return (
@@ -66,8 +72,8 @@ export default function DebugPage() {
           <div className="bg-white p-6 rounded-lg shadow">
             <h2 className="text-lg font-semibold mb-4">Firebase Auth 直接確認</h2>
             <div className="space-y-2">
-              <p><strong>currentUser:</strong> {auth.currentUser?.email || 'null'}</p>
-              <p><strong>currentUser UID:</strong> {auth.currentUser?.uid || 'null'}</p>
+              <p><strong>currentUser:</strong> {getFirebaseAuth().currentUser?.email || 'null'}</p>
+              <p><strong>currentUser UID:</strong> {getFirebaseAuth().currentUser?.uid || 'null'}</p>
             </div>
           </div>
 

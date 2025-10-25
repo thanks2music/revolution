@@ -75,8 +75,43 @@ jobs:
           NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: 'dummy.appspot.com'
           NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '123456789'
           NEXT_PUBLIC_FIREBASE_APP_ID: '1:123456789:web:dummy'
-          ANTHROPIC_API_KEY: 'dummy-key-for-ci-build'
-          WORDPRESS_AUTH_TOKEN: 'dummy-token-for-ci-build'
+          # Server-only secrets are no longer required for CI builds
+          # API routes are marked with 'export const dynamic = force-dynamic'
+          # which prevents build-time execution of routes that require secrets
+
+      - name: Verify No Secrets in Client Bundle
+        run: |
+          echo "🔍 Checking AI Writer client bundle for leaked secrets..."
+
+          # More specific search for actual secret values (not code references)
+          # Look for actual API key patterns
+          if grep -rE "sk-ant-[0-9a-zA-Z]{10,}" apps/ai-writer/.next/static/ 2>/dev/null; then
+            echo "❌ ERROR: Anthropic API key found in client bundle!"
+            echo "Please ensure all API keys are only used in server-side code."
+            exit 1
+          else
+            echo "✅ No Anthropic API keys found in client bundle"
+          fi
+
+          # Check for WordPress auth token patterns (JWT or similar)
+          if grep -rE "eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}" apps/ai-writer/.next/static/ 2>/dev/null; then
+            echo "❌ ERROR: JWT tokens found in client bundle!"
+            echo "Please ensure all auth tokens are only used in server-side code."
+            exit 1
+          else
+            echo "✅ No JWT tokens found in client bundle"
+          fi
+
+          # Verify server-only modules are not in client bundle
+          if grep -r '"server-only"' apps/ai-writer/.next/static/ 2>/dev/null; then
+            echo "❌ ERROR: server-only modules found in client bundle!"
+            echo "This indicates server code is being bundled for the client."
+            exit 1
+          else
+            echo "✅ No server-only imports in client bundle"
+          fi
+
+          echo "✨ Bundle security verification passed!"
 
       # Note: Backend Docker build is skipped in CI
       # Docker builds are handled in deployment workflows

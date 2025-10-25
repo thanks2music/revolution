@@ -1,9 +1,12 @@
 import { NextRequest } from 'next/server';
-import ClaudeAPIService from '../../../../lib/services/claude-api.service';
+import { getClaudeService } from '../../../../lib/server/claude-api.service';
 import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../lib/services/article-generation.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
 import type { RssArticleEntry } from '../../../../lib/types/rss-article';
 import { requireAuth } from '@/lib/auth/server-auth';
+
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = 'force-dynamic';
 
 /**
  * Debug endpoint: Generate article from RSS entry with progress streaming
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
           detail: '元記事のコンテンツを抽出しています'
         })}\n\n`));
 
-        const claudeService = new ClaudeAPIService();
+        const claudeService = getClaudeService();
 
         // Step 3: AI記事生成
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
