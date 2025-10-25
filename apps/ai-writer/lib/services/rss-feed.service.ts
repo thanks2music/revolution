@@ -11,7 +11,7 @@ import {
   Timestamp,
   where,
 } from 'firebase/firestore';
-import { db } from '../firebase/client';
+import { getFirebaseDb } from '../firebase/client';
 import type { RssFeed, CreateRssFeedInput, UpdateRssFeedInput } from '../types/rss-feed';
 
 const COLLECTION_NAME = 'rss_feeds';
@@ -38,6 +38,7 @@ export class RssFeedService {
       };
 
       console.log('[RssFeedService] Feed data prepared:', feedData);
+      const db = getFirebaseDb();
       console.log('[RssFeedService] Firestore db object:', db);
       console.log('[RssFeedService] Collection name:', COLLECTION_NAME);
 
@@ -67,6 +68,7 @@ export class RssFeedService {
   }
 
   static async updateFeed(id: string, input: UpdateRssFeedInput): Promise<void> {
+    const db = getFirebaseDb();
     const docRef = doc(db, COLLECTION_NAME, id);
     const updateData: Record<string, unknown> = {
       ...input,
@@ -77,11 +79,13 @@ export class RssFeedService {
   }
 
   static async deleteFeed(id: string): Promise<void> {
+    const db = getFirebaseDb();
     const docRef = doc(db, COLLECTION_NAME, id);
     await deleteDoc(docRef);
   }
 
   static async getFeed(id: string): Promise<RssFeed | null> {
+    const db = getFirebaseDb();
     const docRef = doc(db, COLLECTION_NAME, id);
     const docSnap = await getDoc(docRef);
 
@@ -106,6 +110,7 @@ export class RssFeedService {
   }
 
   static async listFeeds(activeOnly = false): Promise<RssFeed[]> {
+    const db = getFirebaseDb();
     let q = query(collection(db, COLLECTION_NAME), orderBy('createdAt', 'desc'));
 
     if (activeOnly) {
