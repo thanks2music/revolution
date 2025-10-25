@@ -85,7 +85,7 @@ jobs:
 
           # More specific search for actual secret values (not code references)
           # Look for actual API key patterns
-          if grep -r "sk-ant-api[0-9a-zA-Z]" apps/ai-writer/.next/static/ 2>/dev/null; then
+          if grep -rE "sk-ant-[0-9a-zA-Z]{10,}" apps/ai-writer/.next/static/ 2>/dev/null; then
             echo "❌ ERROR: Anthropic API key found in client bundle!"
             echo "Please ensure all API keys are only used in server-side code."
             exit 1

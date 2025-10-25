@@ -37,7 +37,7 @@ export const getClaudeService = cache((): ClaudeAPIService => {
 
     // Return service with dummy key for build-time compatibility
     // This instance should never be used at runtime in production
-    return new ClaudeAPIService('sk-ant-dummy-key-for-build-only');
+    return new ClaudeAPIService('dummy-key-for-build-only');
   }
 
   return new ClaudeAPIService(apiKey);

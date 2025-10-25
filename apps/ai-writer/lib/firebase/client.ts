@@ -21,7 +21,7 @@ function getFirebaseApp(): FirebaseApp {
 
   // Validate configuration - all fields are required
   const missing = Object.entries(config)
-    .filter(([_, v]) => !v)
+    .filter(([_, v]) => v === undefined || v === null || v === '')
     .map(([k]) => k);
 
   if (missing.length > 0) {
