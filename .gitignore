@@ -73,6 +73,10 @@ lerna-debug.log*
 .pnpm-store/
 .pnpm-debug.log
 
+# Node.js V8 compile cache
+node-compile-cache/
+**/node-compile-cache/
+
 
 # pnpm deploy artifacts
 apps/*/node_modules
