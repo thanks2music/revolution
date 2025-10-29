@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '../../../lib/firebase/admin';
+import { getAdminDb } from '../../../lib/firebase/admin';
 import { requireAuth } from '@/lib/auth/server-auth';
 import type { RssFeed } from '../../../lib/types/rss-feed';
+
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = 'force-dynamic';
 
 /**
  * Get list of RSS feeds using Admin SDK
@@ -19,6 +22,7 @@ export async function GET(request: NextRequest) {
     console.log('[API] Fetching RSS feeds, activeOnly:', activeOnly);
 
     // Query Firestore using Admin SDK
+    const adminDb = getAdminDb();
     let query = adminDb.collection('rss_feeds').orderBy('createdAt', 'desc');
 
     if (activeOnly) {

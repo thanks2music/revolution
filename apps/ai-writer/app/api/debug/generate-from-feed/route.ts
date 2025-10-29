@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { RssArticleCollectionService } from '../../../../lib/services/rss-article-collection.service';
-import { adminDb } from '../../../../lib/firebase/admin';
+import { getAdminDb } from '../../../../lib/firebase/admin';
 import { getWordPressService } from '../../../../lib/server/wordpress-graphql.service';
 import ArticleGenerationService, { ArticleGenerationConfig } from '../../../../lib/services/article-generation.service';
 import { PostStatus } from '../../../../lib/services/wordpress-graphql.service';
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
         })}\n\n`));
 
         // Get feed details using Admin SDK
+        const adminDb = getAdminDb();
         const feedDoc = await adminDb.collection('rss_feeds').doc(feedId).get();
 
         if (!feedDoc.exists) {

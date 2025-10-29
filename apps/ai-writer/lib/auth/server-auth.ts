@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { adminAuth } from '../firebase/admin';
+import { getAdminAuth } from '../firebase/admin';
 import { isEmailAllowed } from './allowed-emails';
 
 export interface AuthUser {
@@ -20,6 +20,7 @@ export async function verifyAuth(): Promise<AuthUser | null> {
 
     // Firebase Admin SDK で Token を検証
     // checkRevoked: true で取り消されたトークンを拒否
+    const adminAuth = getAdminAuth();
     const decodedToken = await adminAuth.verifyIdToken(token, true);
 
     // メールアドレスが許可リストに含まれているかチェック
