@@ -34,19 +34,21 @@ function getAdminApp(): App {
   // Pattern 1: JSON形式（現在の Secret Manager 設定）
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
     console.log('[Firebase Admin] Using GOOGLE_APPLICATION_CREDENTIALS_JSON');
+    let credentials;
     try {
-      const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
-      projectId = credentials.project_id;
-      clientEmail = credentials.client_email;
-      privateKey = credentials.private_key;
-
-      // 値の検証
-      if (!projectId || !clientEmail || !privateKey) {
-        throw new Error('GOOGLE_APPLICATION_CREDENTIALS_JSON is missing required fields');
-      }
+      credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON: ${errMsg}`);
+    }
+
+    projectId = credentials.project_id;
+    clientEmail = credentials.client_email;
+    privateKey = credentials.private_key;
+
+    // 値の検証
+    if (!projectId || !clientEmail || !privateKey) {
+      throw new Error('GOOGLE_APPLICATION_CREDENTIALS_JSON is missing required fields');
     }
   }
   // Pattern 2: 個別環境変数

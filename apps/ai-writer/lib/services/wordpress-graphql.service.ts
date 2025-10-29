@@ -460,7 +460,6 @@ export class WordPressGraphQLService {
       };
 
       logger.error(errorDetails, 'Failed to create extended post - DETAILED ERROR');
-      console.error('[DETAILED ERROR]', JSON.stringify(errorDetails, null, 2));
 
       throw new Error(`Failed to create extended WordPress post: ${errorDetails.message}`);
     }
