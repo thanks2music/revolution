@@ -295,7 +295,10 @@ export class WordPressGraphQLService {
   private authToken?: string;
 
   constructor(endpoint?: string, authToken?: string) {
-    this.endpoint = endpoint || process.env.WORDPRESS_GRAPHQL_ENDPOINT || 'http://localhost:8080/graphql';
+    this.endpoint = endpoint ||
+                    process.env.WORDPRESS_GRAPHQL_ENDPOINT ||
+                    process.env.NEXT_PUBLIC_WP_ENDPOINT ||
+                    this.getFallbackEndpoint();
     this.authToken = authToken || process.env.WORDPRESS_AUTH_TOKEN;
 
     const headers: Record<string, string> = {
@@ -386,8 +389,6 @@ export class WordPressGraphQLService {
     this.ensureAuth();
 
     try {
-      logger.info({ title: input.title, status: input.status }, 'Creating extended WordPress post');
-
       const variables = {
         title: input.title,
         content: input.content,
@@ -403,6 +404,17 @@ export class WordPressGraphQLService {
         featuredImageId: input.featuredImageId,
       };
 
+      const payloadSize = JSON.stringify(variables).length;
+
+      logger.info({
+        title: input.title,
+        status: input.status,
+        endpoint: this.endpoint,
+        hasAuth: !!this.authToken,
+        contentLength: input.content.length,
+        payloadSize
+      }, 'Creating extended WordPress post');
+
       const response = await this.client.request<{
         createPost: { post: WordPressPost };
       }>(CREATE_POST_EXTENDED_MUTATION, variables);
@@ -412,8 +424,44 @@ export class WordPressGraphQLService {
 
       return post;
     } catch (error) {
-      logger.error({ error, input }, 'Failed to create extended post');
-      throw new Error(`Failed to create extended WordPress post: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // 詳細なエラー情報をログ出力
+      const errorDetails = {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        cause: (error as any).cause,  // fetch の underlying error
+        code: (error as any).code,    // ECONNREFUSED, ETIMEDOUT など
+        errno: (error as any).errno,
+        type: (error as any).type,    // FetchError の type
+        response: (error as any).response ? {
+          status: (error as any).response?.status,
+          statusText: (error as any).response?.statusText,
+          headers: (error as any).response?.headers,
+        } : undefined,
+        endpoint: this.endpoint,
+        hasAuth: !!this.authToken,
+        inputSummary: {
+          title: input.title,
+          contentLength: input.content.length,
+          payloadSize: JSON.stringify({
+            title: input.title,
+            content: input.content,
+            slug: input.slug,
+            status: input.status || PostStatus.DRAFT,
+            authorId: input.authorId,
+            excerpt: input.excerpt,
+            date: input.date,
+            categories: input.categoryIds?.map(id => ({ id })),
+            tags: input.tagIds?.map(id => ({ id })),
+            commentStatus: input.commentStatus,
+            pingStatus: input.pingStatus,
+            featuredImageId: input.featuredImageId,
+          }).length
+        }
+      };
+
+      logger.error(errorDetails, 'Failed to create extended post - DETAILED ERROR');
+
+      throw new Error(`Failed to create extended WordPress post: ${errorDetails.message}`);
     }
   }
 
@@ -571,6 +619,23 @@ export class WordPressGraphQLService {
    */
   getEndpoint(): string {
     return this.endpoint;
+  }
+
+  /**
+   * Get fallback endpoint (safe for production)
+   * @private
+   * @returns Fallback endpoint or throws error in production
+   */
+  private getFallbackEndpoint(): string {
+    // 本番環境では localhost を使わない
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'WordPress GraphQL endpoint is required in production. ' +
+        'Please set WORDPRESS_GRAPHQL_ENDPOINT or NEXT_PUBLIC_WP_ENDPOINT environment variable.'
+      );
+    }
+    logger.warn('Using localhost fallback for WordPress endpoint (development only)');
+    return 'http://localhost:8080/graphql';
   }
 
   /**

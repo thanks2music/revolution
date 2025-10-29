@@ -9,6 +9,9 @@ import { requireAuth } from '@/lib/auth/server-auth';
 
 const endpoint = process.env.NEXT_PUBLIC_WP_ENDPOINT || '';
 
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = 'force-dynamic';
+
 /**
  * 🔒 Protected route - requires authentication
  */

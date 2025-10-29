@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import RssArticleCollectionService from '../../../../lib/services/rss-article-collection.service';
 import { requireAuth } from '@/lib/auth/server-auth';
 
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = 'force-dynamic';
+
 /**
  * 🔒 Protected route - requires authentication
  */

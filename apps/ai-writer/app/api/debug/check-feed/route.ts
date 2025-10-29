@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RssArticleCollectionService } from '../../../../lib/services/rss-article-collection.service';
-import { adminDb } from '../../../../lib/firebase/admin';
+import { getAdminDb } from '../../../../lib/firebase/admin';
 import type { RssFeed } from '../../../../lib/types/rss-feed';
 import { requireAuth } from '@/lib/auth/server-auth';
+
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = 'force-dynamic';
 
 /**
  * Debug endpoint: Check RSS feed and return articles with validation info
@@ -25,13 +28,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Debug] Checking RSS feed: ${feedId}`);
-    console.log(`[Debug] Admin DB initialized:`, !!adminDb);
-    console.log(`[Debug] Firebase Project ID:`, process.env.FIREBASE_PROJECT_ID);
-    console.log(`[Debug] Firebase Client Email:`, process.env.FIREBASE_CLIENT_EMAIL);
-    console.log(`[Debug] Firebase Private Key exists:`, !!process.env.FIREBASE_PRIVATE_KEY);
 
     // Get feed details using Admin SDK
     console.log(`[Debug] Attempting to fetch document from Firestore...`);
+    const adminDb = getAdminDb();
     const feedDoc = await adminDb.collection('rss_feeds').doc(feedId).get();
     console.log(`[Debug] Document exists:`, feedDoc.exists);
 
