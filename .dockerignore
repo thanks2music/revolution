@@ -1,0 +1,65 @@
+# ==============================================================================
+# Revolution モノレポ - Docker ビルド除外設定
+# ==============================================================================
+# このファイルはモノレポrootでのDockerビルド時に適用されます
+
+# Environment files (development only)
+# ローカル開発用環境変数ファイルを除外（本番環境ではSecret Managerを使用）
+apps/*/.env.local
+apps/*/.env.test
+apps/*/.env.*.local
+
+# Node.js
+apps/*/node_modules
+apps/*/.next
+apps/*/out
+apps/*/dist
+apps/*/.turbo
+
+# Testing
+apps/*/coverage
+apps/*/.nyc_output
+apps/*/__tests__
+apps/*/*.test.ts
+apps/*/*.test.tsx
+apps/*/*.spec.ts
+apps/*/*.spec.tsx
+apps/*/test-data
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+
+# Documentation
+README.md
+CHANGELOG.md
+CLAUDE.md
+*.md
+!apps/*/README.md
+docs
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Firebase
+apps/*/.firebase
+apps/*/firebase-debug.log

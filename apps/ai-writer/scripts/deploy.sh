@@ -113,6 +113,7 @@ FIREBASE_PROJECT_ID=$(gcloud secrets versions access latest --secret="revo-fireb
 FIREBASE_STORAGE_BUCKET=$(gcloud secrets versions access latest --secret="revo-firebase-storage-bucket" --project=$PROJECT_ID)
 FIREBASE_MESSAGING_SENDER_ID=$(gcloud secrets versions access latest --secret="revo-firebase-messaging-sender-id" --project=$PROJECT_ID)
 FIREBASE_APP_ID=$(gcloud secrets versions access latest --secret="revo-firebase-app-id" --project=$PROJECT_ID)
+WP_ENDPOINT=$(gcloud secrets versions access latest --secret="revo-wp-graphql-endpoint" --project=$PROJECT_ID)
 
 log_success "Secret Manager からの取得完了"
 
@@ -126,6 +127,7 @@ docker build \
   --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${FIREBASE_STORAGE_BUCKET}" \
   --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${FIREBASE_MESSAGING_SENDER_ID}" \
   --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="${FIREBASE_APP_ID}" \
+  --build-arg NEXT_PUBLIC_WP_ENDPOINT="${WP_ENDPOINT}" \
   -t $IMAGE_URL \
   -t $IMAGE_URL_LATEST \
   .
