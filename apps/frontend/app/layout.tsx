@@ -1,18 +1,24 @@
 import "@/styles/globals.css";
-import { Metadata } from "next";
+import { generateBasicMetadata, generateWebSiteSchema } from "@/lib/metadata";
 
-export const metadata: Metadata = {
-  title: "WordPress Next.js Blog",
-  description: "A blog built with Next.js and WordPress",
-};
+export const metadata = generateBasicMetadata();
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const webSiteSchema = generateWebSiteSchema();
+
   return (
-    <html lang="en">
+    <html lang="ja">
+      <head>
+        {/* JSON-LD構造化データ */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(webSiteSchema) }}
+        />
+      </head>
       <body>{children}</body>
     </html>
   );
