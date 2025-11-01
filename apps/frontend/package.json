@@ -14,13 +14,13 @@
     "@heroicons/react": "v1",
     "next": "14.2.32",
     "react": "^18",
-    "react-dom": "^18",
+    "react-dom": "^19",
     "swr": "^2.2.5"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",
     "axios": "^1.7.2",
     "eslint": "^8",
