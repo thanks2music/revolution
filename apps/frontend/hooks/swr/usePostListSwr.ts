@@ -7,6 +7,7 @@ import PostOnListType from "../../types/PostOnListType";
 import PostService from "../../services/PostService";
 // config
 import { SWR_CONFIG, createSWRKey, logSWRConfig } from "../../lib/swrConfig";
+import { env } from "../../lib/env";
 
 const usePostListSwr = ({
   categoryId,
@@ -16,7 +17,7 @@ const usePostListSwr = ({
   staticPostList: PostOnListType[];
 }) => {
   // デバッグログ出力
-  if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+  if (env.NEXT_PUBLIC_DEBUG) {
     logSWRConfig();
   }
 
@@ -48,7 +49,7 @@ const usePostListSwr = ({
         });
       },
       onSuccess: (data) => {
-        if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+        if (env.NEXT_PUBLIC_DEBUG) {
           console.log('✅ SWR Success in usePostListSwr:', {
             categoryId,
             postCount: data?.length || 0,

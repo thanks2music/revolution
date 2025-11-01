@@ -7,6 +7,8 @@ import PostOnListType from '../../types/PostOnListType';
 import usePostListSwr from '../../hooks/swr/usePostListSwr';
 // components
 import PostBox from '../molecules/PostBox';
+// env
+import { env } from '../../lib/env';
 
 interface PostListClientProps {
   staticPostList: PostOnListType[];
@@ -32,7 +34,7 @@ const PostListClient = ({ staticPostList, categoryId }: PostListClientProps) => 
 
   // デバッグ情報
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_DEBUG === 'true' && mounted) {
+    if (env.NEXT_PUBLIC_DEBUG && mounted) {
       console.log('🔄 PostListClient State:', {
         mounted,
         isValidating,
@@ -47,7 +49,7 @@ const PostListClient = ({ staticPostList, categoryId }: PostListClientProps) => 
   return (
     <>
       {/* デバッグ情報表示 */}
-      {process.env.NEXT_PUBLIC_DEBUG === 'true' && mounted && (
+      {env.NEXT_PUBLIC_DEBUG && mounted && (
         <div className="mb-4 p-2 bg-gray-100 text-xs">
           <div>🔄 SWR Status: {isValidating ? 'Updating...' : 'Idle'}</div>
           <div>📊 Posts: {displayPostList?.length || 0}</div>
@@ -69,7 +71,7 @@ const PostListClient = ({ staticPostList, categoryId }: PostListClientProps) => 
       </div>
 
       {/* 手動更新ボタン（デバッグ用） */}
-      {process.env.NEXT_PUBLIC_DEBUG === 'true' && mounted && (
+      {env.NEXT_PUBLIC_DEBUG && mounted && (
         <div className="mt-4 text-center">
           <button
             onClick={() => mutate()}
