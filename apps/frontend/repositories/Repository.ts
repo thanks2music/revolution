@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { env } from '../lib/env';
 
 const repository = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_WP_ENDPOINT,
+  baseURL: env.NEXT_PUBLIC_WP_ENDPOINT,
   headers: {
     'Content-Type': 'application/json'
   }

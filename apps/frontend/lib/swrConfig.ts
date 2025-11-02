@@ -3,19 +3,21 @@
  * 開発環境と本番環境で異なる設定を適用
  */
 
+import { env } from './env';
+
 // 開発環境判定
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 // 環境別設定
 export const SWR_CONFIG = {
   // リフレッシュ間隔（ミリ秒）
-  refreshInterval: isDevelopment 
-    ? parseInt(process.env.NEXT_PUBLIC_SWR_REFRESH_INTERVAL || '10000', 10)  // 開発: 10秒
+  refreshInterval: isDevelopment
+    ? (env.NEXT_PUBLIC_SWR_REFRESH_INTERVAL || 10000)  // 開発: 10秒
     : 60000,  // 本番: 60秒
 
   // 重複排除間隔（ミリ秒）
   dedupingInterval: isDevelopment
-    ? parseInt(process.env.NEXT_PUBLIC_SWR_DEDUPING_INTERVAL || '10000', 10)  // 開発: 10秒
+    ? (env.NEXT_PUBLIC_SWR_DEDUPING_INTERVAL || 10000)  // 開発: 10秒
     : 60000,  // 本番: 60秒
 
   // タブフォーカス時の再検証
@@ -57,7 +59,7 @@ export const createSWRKey = {
 
 // デバッグ用ログ
 export const logSWRConfig = () => {
-  if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+  if (env.NEXT_PUBLIC_DEBUG) {
     console.log('🔧 SWR Config:', {
       environment: isDevelopment ? 'development' : 'production',
       refreshInterval: SWR_CONFIG.refreshInterval,

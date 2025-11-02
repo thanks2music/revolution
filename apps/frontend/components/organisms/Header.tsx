@@ -123,33 +123,34 @@ const Header = () => {
   }, []);
 
   return (
-    <Popover className="relative bg-white">
+    <header>
+      <Popover className="relative bg-white">
       <div className="mx-auto">
         <div className="border-b-2 border-gray-100 py-6 md:justify-start md:space-x-10">
-          <div className="flex justify-between items-center w-main mx-auto">
-            <div className="flex justify-start lg:w-0 lg:flex-1">
-              <Link href="/" className="flex items-center space-x-3">
-                <Image
-                  src="/images/logo-revolution.png"
-                  alt="Revolution Platform Logo"
-                  width={120}
-                  height={120}
-                  className="h-8 w-auto sm:h-10"
-                  priority
-                />
-                <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{siteTitle}</h1>
-                <span className="sr-only">Revolution Platform</span>
-              </Link>
-            </div>
-            <div className="-mr-2 -my-2 md:hidden">
-              <Popover.Button className="bg-white rounded-md p-2 inline-flex items-center justify-center text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
-                <span className="sr-only">Open menu</span>
-                <MenuIcon className="h-6 w-6" aria-hidden="true" />
-              </Popover.Button>
-            </div>
-            <Popover.Group as="nav" className="hidden md:flex space-x-10">
-              <Popover className="relative">
-                {({ open }) => (
+            <div className="flex justify-between items-center w-main mx-auto">
+              <div className="flex justify-start lg:w-0 lg:flex-1">
+                <Link href="/" className="flex items-center space-x-3">
+                  <Image
+                    src="/images/logo-revolution.png"
+                    alt="Revolution Platform Logo"
+                    width={120}
+                    height={120}
+                    className="h-8 w-auto sm:h-10"
+                    priority
+                  />
+                  <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{siteTitle}</h1>
+                  <span className="sr-only">Revolution Platform</span>
+                </Link>
+              </div>
+              <div className="-mr-2 -my-2 md:hidden">
+                <Popover.Button className="bg-white rounded-md p-2 inline-flex items-center justify-center text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
+                  <span className="sr-only">Open menu</span>
+                  <MenuIcon className="h-6 w-6" aria-hidden="true" />
+                </Popover.Button>
+              </div>
+              <Popover.Group as="nav" className="hidden md:flex space-x-10">
+                <Popover className="relative">
+                  {({ open }) => (
                   <>
                     <Popover.Button
                       className={classNames(
@@ -414,6 +415,7 @@ const Header = () => {
         </Popover.Panel>
       </Transition>
     </Popover>
+    </header>
   );
 };
 

@@ -98,6 +98,7 @@ dist/
 
 # Vercel関連
 .vercel
+.apps/frontend/.vercel
 
 # Next.js キャッシュ
 .next/cache/

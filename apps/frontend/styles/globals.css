@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -23,14 +21,14 @@ body {
 }
 
 @layer base {
-    *,
-    *::before,
-    *::after {
-        @apply box-border;
-    }
-    body {
-        @apply font-body;
-    }
+  *,
+  *::before,
+  *::after {
+    @apply box-border;
+  }
+  body {
+    @apply font-body;
+  }
 }
 
 @layer utilities {

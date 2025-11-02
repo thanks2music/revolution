@@ -7,6 +7,7 @@ import PostType from "../../types/PostType";
 import PostService from "../../services/PostService";
 // config
 import { SWR_CONFIG, createSWRKey, logSWRConfig } from "../../lib/swrConfig";
+import { env } from "../../lib/env";
 
 const usePostSwr = ({
   id,
@@ -16,7 +17,7 @@ const usePostSwr = ({
   staticPost: PostType;
 }) => {
   // デバッグログ出力
-  if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+  if (env.NEXT_PUBLIC_DEBUG) {
     logSWRConfig();
   }
 
@@ -46,7 +47,7 @@ const usePostSwr = ({
         });
       },
       onSuccess: (data) => {
-        if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+        if (env.NEXT_PUBLIC_DEBUG) {
           console.log('✅ SWR Success in usePostSwr:', {
             postId: id,
             postTitle: data?.title || 'Unknown',

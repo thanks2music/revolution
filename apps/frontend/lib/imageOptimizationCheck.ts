@@ -2,6 +2,8 @@
  * Next.js画像最適化確認ユーティリティ
  */
 
+import { env } from './env';
+
 export const getImageOptimizationInfo = () => {
   if (typeof window === 'undefined') return null;
 
@@ -37,7 +39,7 @@ const getImageFormat = (src: string): string => {
 
 // デバッグ用：コンソールに画像情報を出力
 export const logImageOptimization = () => {
-  if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+  if (env.NEXT_PUBLIC_DEBUG) {
     const info = getImageOptimizationInfo();
     console.log('🖼️ Next.js Image Optimization Info:', info);
   }
