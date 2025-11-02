@@ -62,18 +62,20 @@ export default function NotFound() {
             >
               トップページ
             </Link>
+            {/* TODO: 記事一覧ページ実装後にルートを変更 */}
             <Link
-              href="/#"
+              href="/"
               className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors duration-200"
             >
-              記事一覧
+              記事一覧（トップページ）
             </Link>
-            <Link
-              href="/#"
+            {/* TODO: カテゴリ一覧ページ実装後に有効化 */}
+            {/* <Link
+              href="/categories"
               className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors duration-200"
             >
               カテゴリ一覧
-            </Link>
+            </Link> */}
           </nav>
         </div>
 

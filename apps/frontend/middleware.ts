@@ -14,10 +14,14 @@ export function middleware(request: NextRequest) {
   }
 
   // HTTPSリダイレクト（本番環境のみ）
+  // リバースプロキシ（Vercel等）配下では x-forwarded-proto ヘッダーを使用
   const requestUrl = new URL(request.url);
+  const proto =
+    request.headers.get('x-forwarded-proto') ||
+    requestUrl.protocol.replace(':', '');
 
   // HTTPアクセスの場合、HTTPSにリダイレクト
-  if (requestUrl.protocol === 'http:') {
+  if (proto === 'http') {
     const httpsUrl = new URL(request.url);
     httpsUrl.protocol = 'https:';
 

@@ -22,10 +22,11 @@ export function sanitizeHtml(dirty: string): string {
       'figure', 'figcaption', 'cite', 'del', 'ins', 'sup', 'sub',
     ],
     // 許可する属性
+    // NOTE: style属性はXSS攻撃のリスクがあるため除外
     allowedAttributes: {
       'a': ['href', 'title', 'target', 'rel'],
       'img': ['src', 'alt', 'title', 'width', 'height', 'loading', 'decoding'],
-      '*': ['class', 'id', 'style'],
+      '*': ['class', 'id'],
     },
     // URLスキームの制限
     allowedSchemes: ['http', 'https', 'mailto', 'tel'],

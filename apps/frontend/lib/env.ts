@@ -55,8 +55,8 @@ export const env = createEnv({
     // デバッグモード
     NEXT_PUBLIC_DEBUG: z
       .enum(["true", "false"])
-      .transform((val) => val === "true")
-      .optional(),
+      .default("false")
+      .transform((val) => val === "true"),
 
     // SWR設定（開発環境用）
     NEXT_PUBLIC_SWR_REFRESH_INTERVAL: z
