@@ -17,18 +17,20 @@ const nextConfig = {
     remotePatterns: [
       // 開発環境: HTTPを許可（localhostのみ）
       ...(process.env.NODE_ENV === 'development'
-        ? [
-            {
-              protocol: 'http',
-              hostname: process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST || 'localhost',
-            },
-          ]
+        ? [{ protocol: 'http', hostname: process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST ?? 'localhost' }]
         : []),
       // 本番環境: HTTPSのみ
-      {
-        protocol: 'https',
-        hostname: process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST || 'localhost',
-      },
+      { protocol: 'https', hostname: process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST ?? 'localhost' },
+      // Google Cloud Storage画像用の設定（pathname制約あり）
+      ...(process.env.NEXT_PUBLIC_GCS_IMAGE_HOST
+        ? [{
+            protocol: 'https',
+            hostname: process.env.NEXT_PUBLIC_GCS_IMAGE_HOST,
+            pathname: process.env.NEXT_PUBLIC_GCS_BUCKET
+              ? `/${process.env.NEXT_PUBLIC_GCS_BUCKET}/**`
+              : '/**',
+          }]
+        : []),
     ],
   },
 
