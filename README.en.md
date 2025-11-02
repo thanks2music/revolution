@@ -250,8 +250,6 @@ revolution/
 └── turbo.json                  # Turbo cache config
 ```
 
-See the [full version in README](README.en.md#project-structure) for complete details.
-
 ---
 
 ## 💻 Development

@@ -77,9 +77,6 @@ NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
 # Anthropic API
 ANTHROPIC_API_KEY=your_anthropic_api_key
 
-# Grok API
-GROK_API_KEY=your_grok_api_key
-
 # WordPress GraphQLエンドポイント
 NEXT_PUBLIC_WP_ENDPOINT=http://localhost:8080/graphql
 
@@ -209,7 +206,7 @@ sequenceDiagram
 | サービス | 用途 | パッケージ |
 |---------|---------|---------|
 | **Claude API** | 記事生成 | `@anthropic-ai/sdk` |
-| **Grok API** | Coming soon | `@anthropic-ai/sdk` |
+| **Grok API** | Coming soon | `TRD` |
 | **RSS Parser** | フィード収集 | `rss-parser` |
 | **Article Extractor** | URLコンテンツ抽出 | `@extractus/article-extractor` |
 | **GraphQL Codegen** | 型安全なWordPress API | `@graphql-codegen/*` |
@@ -223,8 +220,15 @@ sequenceDiagram
 | **Jest** | 30.2+ | ユニットテスト |
 | **Firebase Emulator** | Latest | ローカル認証/DBテスト |
 | **ESLint + Prettier** | Latest | コード品質 |
-| **Claude Code** | Latest | 開発生産性向上 |
-| **MCP Server** | Latest | 開発生産性向上 |
+
+### LLM for Coding
+
+| ツール | バージョン | 開発元 |
+|------|---------|---------|
+| **Claude Code** | Latest | Anthropic |
+| **Codex** | Latest | OpenAI |
+| **Gemini CLI** | Latest | Google |
+| **MCP Server Tools** | Latest | Various |
 
 ---
 
