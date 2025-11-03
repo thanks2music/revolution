@@ -1,6 +1,13 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["**/.env*"],
+  "globalEnv": [
+    "NODE_ENV",
+    "NEXT_PUBLIC_*",
+    "VERCEL",
+    "VERCEL_ENV",
+    "VERCEL_URL"
+  ],
   "tasks": {
     "dev": {
       "cache": false,
@@ -8,7 +15,19 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**", "build/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "build/**"],
+      "env": [
+        "NEXT_PUBLIC_WP_ENDPOINT",
+        "NEXT_PUBLIC_WP_URL",
+        "NEXT_PUBLIC_ALLOWED_IMAGE_HOST",
+        "NEXT_PUBLIC_GCS_IMAGE_HOST",
+        "NEXT_PUBLIC_GCS_BUCKET",
+        "NEXT_PUBLIC_SITE_NAME",
+        "NEXT_PUBLIC_SITE_DESCRIPTION",
+        "NEXT_PUBLIC_DEBUG",
+        "NEXT_PUBLIC_SWR_REFRESH_INTERVAL",
+        "NEXT_PUBLIC_SWR_DEDUPING_INTERVAL"
+      ]
     },
     "lint": {
       "outputs": ["eslint-report.json"]

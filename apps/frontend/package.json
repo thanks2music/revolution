@@ -7,7 +7,10 @@
     "dev": "next dev --turbo --port 4444",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "validate-env": "tsx scripts/validate-env.ts",
+    "validate-env:test": "tsx scripts/validate-env.ts --test-connection",
+    "vercel-build": "pnpm validate-env && next build"
   },
   "dependencies": {
     "@headlessui/react": "^2.1.2",
