@@ -8,6 +8,9 @@
     "VERCEL_ENV",
     "VERCEL_URL"
   ],
+  "globalPassThroughEnv": [
+    "ENABLE_EXPERIMENTAL_COREPACK"
+  ],
   "tasks": {
     "dev": {
       "cache": false,
