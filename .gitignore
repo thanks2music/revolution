@@ -439,3 +439,5 @@ apps/ai-writer/scripts/deploy.sh
 # 🔺 プロダクション関連
 # ========================================
 *production*
+.env.vercel.local
+apps/frontend/.env.vercel.local

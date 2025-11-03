@@ -383,22 +383,6 @@ export async function GET(request: Request) {
 - 機密情報はサーバーサイドのみで使用
 - `.env.local` は git ignore に追加
 
-## 今後の実装計画
-
-### 短期目標
-
-- [ ] Storybook 導入によるコンポーネントカタログ
-- [ ] Jest + React Testing Library によるユニットテスト
-- [ ] Playwright による E2E テスト
-- [ ] Web Vitals モニタリング
-
-### 中長期目標
-
-- [ ] PWA 対応（オフライン機能）
-- [ ] 国際化（i18n）対応
-- [ ] GraphQL Code Generator による型自動生成
-- [ ] Micro Frontends アーキテクチャ検討
-
 ## 関連ドキュメント
 
 - [アーキテクチャ概要](../01-arch/ARCH-project-overview.md)
