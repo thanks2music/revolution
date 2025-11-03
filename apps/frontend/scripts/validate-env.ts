@@ -61,7 +61,7 @@ function validateEnv(): Env {
     if (error instanceof z.ZodError) {
       console.error('❌ 環境変数の検証に失敗しました\n');
       console.error('エラー詳細:');
-      error.errors.forEach((err) => {
+      error.issues.forEach((err) => {
         console.error(`  - ${err.path.join('.')}: ${err.message}`);
       });
       console.error('\n📚 VERCEL_ENV_SETUP.md を参照して、必要な環境変数を設定してください\n');
