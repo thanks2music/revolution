@@ -30,7 +30,7 @@
     "admin:remove": "tsx lib/firebase/admin-setup.ts remove"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.63.0",
+    "@anthropic-ai/sdk": "^0.68.0",
     "@extractus/article-extractor": "^8.0.20",
     "@types/js-yaml": "^4.0.9",
     "cheerio": "^1.1.2",
