@@ -8,6 +8,8 @@
  * - エラーハンドリング (5xx/4xx判定)
  */
 
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { timingSafeEqual } from 'crypto';
