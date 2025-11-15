@@ -23,8 +23,8 @@ const MyOctokit = Octokit.plugin(retry, throttling);
  * リポジトリ設定
  */
 export const REPO_CONFIG = {
-  owner: 't4v-revo-prd', // GitHub organization/user
-  repo: 't4v-revolution', // Repository name
+  owner: 'thanks2music', // GitHub organization/user
+  repo: 'revolution', // Repository name
   baseBranch: 'main', // Default branch
   articlesPath: 'content/articles', // MDX files directory
 } as const;

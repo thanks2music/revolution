@@ -357,9 +357,13 @@ apps/ai-writer/.env.deploy
 ## AI Documents
 CLAUDE.md
 GEMINI.md
-.claude/**/*
+
+# Claude Code設定（settings.json以外を無視）
+.claude/*
+!.claude/settings.json
+
+# サブディレクトリの.claude（全て無視）
 **/.claude/**/*
-.clinerules/**/*
 **/.clinerules/**/*
 
 # カスタム設定
@@ -405,7 +409,10 @@ reference/**
 # 📝 学習・開発メモ
 # ========================================
 
-# 個人メモ
+# 個人メモディレクトリ（iCloud同期用）
+notes/
+
+# 個人メモファイル
 NOTES.md
 TODO.md
 TODOs.md
