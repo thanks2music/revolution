@@ -34,7 +34,7 @@ function CustomImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
   }
 
   // 外部画像の場合はfillモードを使用
-  if (props.src.startsWith('http')) {
+  if (typeof props.src === 'string' && props.src.startsWith('http')) {
     return (
       <span className="relative block w-full" style={{ minHeight: '400px' }}>
         <Image

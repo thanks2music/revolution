@@ -20,9 +20,11 @@ export async function generateMetadata({
 }
 
 // Replace getStaticPaths with generateStaticParams
+// TEMPORARY: WordPress取得をスキップ（MDXプレビュー用）
 export async function generateStaticParams() {
-  const paths = await PostService.getAllCategorySlugList();
-  return paths;
+  // const paths = await PostService.getAllCategorySlugList();
+  // return paths;
+  return []; // 空配列を返してビルド時の静的生成をスキップ
 }
 
 export default async function Category({

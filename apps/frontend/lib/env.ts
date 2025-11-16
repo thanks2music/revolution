@@ -28,9 +28,10 @@ export const env = createEnv({
    */
   client: {
     // WordPress GraphQL エンドポイント（公開用）
+    // MDX専用モードでは任意（WordPress統合時は必須）
     NEXT_PUBLIC_WP_ENDPOINT: z.string().url({
       message: "NEXT_PUBLIC_WP_ENDPOINT must be a valid URL (e.g., https://example.com/graphql)"
-    }),
+    }).optional(),
 
     // WordPress サイトURL（OGP画像等で使用）
     NEXT_PUBLIC_WP_URL: z.string().url({
