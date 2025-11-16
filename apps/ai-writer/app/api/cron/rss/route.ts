@@ -4,7 +4,7 @@
  * Codexレビュー指摘対応:
  * - crypto.timingSafeEqual() によるタイミング攻撃対策
  * - 同一401レスポンスでキー情報漏洩防止
- * - Idempotency対応 (Phase 2でFirestore導入予定)
+ * - Firestore Idempotency対応 (Phase 1完了)
  * - エラーハンドリング (5xx/4xx判定)
  */
 
@@ -12,13 +12,21 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
-import { timingSafeEqual } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { createArticlePr } from '../../../../lib/github/createPr';
 import {
   DuplicateSlugError,
   isRetryableGitHubError,
   getGitHubErrorStatus,
 } from '../../../../lib/errors/github';
+import {
+  checkIfProcessed,
+  markAsPending,
+  markAsSuccess,
+  markAsFailed,
+} from '../../../../lib/firestore/processed-articles';
+import { parseRssFeed } from '../../../../lib/rss/parser';
+import { generateArticleWithClaude } from '../../../../lib/ai/article-generator';
 
 /**
  * Cron認証キーをSecret Managerから取得 (キャッシュ)
@@ -119,28 +127,123 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 3. Idempotency チェック (Phase 2: Firestore導入後に実装)
-    // TODO: Feed item GUID をFirestoreでチェック
-    // const isDuplicate = await checkDuplicateByGuid(feedItemGuid);
-    // if (isDuplicate) {
-    //   return NextResponse.json({ status: 'already_processed' }, { status: 200 });
-    // }
+    // 3. RSSフィード取得
+    console.log('Fetching RSS feed:', feedUrl);
+    const feedResult = await parseRssFeed(feedUrl, 1); // 最新1件のみ取得
 
-    // 4. RSS取得 (簡易実装: Phase 1では省略、Phase 2で実装)
-    // TODO: rss-parser を使用してRSS取得
-    // const feedItems = await fetchRssFeed(feedUrl);
+    if (feedResult.items.length === 0) {
+      return NextResponse.json(
+        { error: 'No items in RSS feed' },
+        { status: 404 }
+      );
+    }
 
-    // 5. 記事生成 (モックデータで動作確認)
-    const mockMarkdown = generateMockArticle();
+    const rssItem = feedResult.items[0];
+    const guid = rssItem.guid;
 
-    // 6. PR作成
-    const result = await createArticlePr({
-      markdown: mockMarkdown,
-      source: {
+    console.log('RSS item fetched:', {
+      guid,
+      title: rssItem.title,
+      link: rssItem.link,
+    });
+
+    // 4. Idempotency チェック (Firestore)
+    const existingRecord = await checkIfProcessed(feedUrl, guid);
+    if (existingRecord) {
+      console.info('Article already processed', {
         feedUrl,
-        originalUrl: 'https://example.com/original-article',
+        guid,
+        status: existingRecord.status,
+        prNumber: existingRecord.prNumber,
+      });
+
+      return NextResponse.json(
+        {
+          status: 'already_processed',
+          existingStatus: existingRecord.status,
+          prNumber: existingRecord.prNumber,
+          prUrl: existingRecord.prUrl,
+        },
+        { status: 200 }
+      );
+    }
+
+    // 5. Claude APIで記事生成
+    console.log('Generating article with Claude API...');
+    const articleResult = await generateArticleWithClaude({
+      rssItem,
+      feedMeta: {
+        title: feedResult.meta.title,
+        link: feedResult.meta.link,
       },
     });
+
+    console.log('Article generated:', {
+      model: articleResult.model,
+      inputTokens: articleResult.usage.inputTokens,
+      outputTokens: articleResult.usage.outputTokens,
+    });
+
+    // 6. Frontmatterからslugを抽出（エラーハンドリング）
+    const slugMatch = articleResult.markdown.match(/^slug:\s*(.+)$/m);
+    if (!slugMatch) {
+      throw new Error('Generated article missing "slug" in frontmatter');
+    }
+    const slug = slugMatch[1].trim();
+
+    // 7. Processing開始をマーク
+    const pendingResult = await markAsPending({
+      feedUrl,
+      guid,
+      slug,
+    });
+
+    if (!pendingResult.allowed) {
+      console.warn('Processing not allowed', {
+        feedUrl,
+        guid,
+        reason: pendingResult.reason,
+      });
+
+      return NextResponse.json(
+        {
+          status: 'not_allowed',
+          reason: pendingResult.reason,
+        },
+        { status: 409 }
+      );
+    }
+
+    // 8. PR作成
+    let result;
+    try {
+      result = await createArticlePr({
+        markdown: articleResult.markdown,
+        source: {
+          feedUrl,
+          originalUrl: rssItem.link,
+        },
+      });
+
+      console.log('PR created:', {
+        prNumber: result.prNumber,
+        prUrl: result.prUrl,
+      });
+
+      // 9. 成功をマーク
+      await markAsSuccess(
+        { feedUrl, guid, slug },
+        { prNumber: result.prNumber, prUrl: result.prUrl }
+      );
+    } catch (prError) {
+      // PR作成失敗をマーク
+      const errorMessage =
+        prError instanceof Error ? prError.message : String(prError);
+      await markAsFailed({ feedUrl, guid, slug }, errorMessage);
+
+      // エラーを再スロー（外側のcatchブロックで処理）
+      throw prError;
+    }
 
     return NextResponse.json(
       {
@@ -193,48 +296,3 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-/**
- * モック記事生成 (Phase 1動作確認用)
- *
- * Phase 2で Claude API 統合時に置き換え
- */
-function generateMockArticle(): string {
-  const now = new Date().toISOString();
-  const timestamp = Date.now();
-
-  return `---
-id: test-article-${timestamp}
-title: Test Article Generated by Cron
-slug: test-article-${timestamp}
-date: ${now}
-categories: ['tech', 'test']
-tags: ['cron', 'automation', 'test']
-excerpt: This is a test article generated by the Cloud Scheduler cron job to verify the RSS endpoint implementation.
-author: AI Writer Bot
-ogImage: https://example.com/og-image.png
----
-
-# Test Article Generated by Cron
-
-This article was automatically generated by the **Revolution AI Writer** cron job.
-
-## Purpose
-
-This test verifies:
-
-1. Cloud Scheduler authentication
-2. GitHub API integration
-3. PR creation workflow
-4. Markdown frontmatter parsing
-
-## Next Steps
-
-- [ ] Integrate Claude API for real article generation
-- [ ] Implement RSS feed parsing
-- [ ] Add Firestore idempotency checking
-
----
-
-**Generated at**: ${now}
-`;
-}
