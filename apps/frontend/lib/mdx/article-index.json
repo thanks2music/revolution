@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2025-11-16T09:24:25.261Z",
+  "totalArticles": 1,
+  "articles": [
+    {
+      "slug": "hello-mdx",
+      "title": "MDX移行テスト記事：Revolution プロジェクトの新しい始まり",
+      "date": "2025-11-15T10:00:00Z",
+      "excerpt": "RevolutionプロジェクトがHeadless WordPressからMDXベースのJamstackアーキテクチャへ移行しました。この記事では、新しいアーキテクチャの概要と、MDXを使った記事執筆の方法を紹介します。",
+      "categories": [
+        "tech",
+        "announcement"
+      ],
+      "tags": [
+        "mdx",
+        "nextjs",
+        "headless-cms",
+        "jamstack"
+      ],
+      "author": "yoshi",
+      "filePath": "content/articles/2025-11-15-hello-mdx.md"
+    }
+  ]
+}
