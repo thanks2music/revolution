@@ -20,13 +20,13 @@ import { GitHubAuthError, GitHubNetworkError } from '../errors/github';
 const MyOctokit = Octokit.plugin(retry, throttling);
 
 /**
- * リポジトリ設定
+ * リポジトリ設定（環境変数から取得）
  */
 export const REPO_CONFIG = {
-  owner: 'thanks2music', // GitHub organization/user
-  repo: 'revolution', // Repository name
-  baseBranch: 'main', // Default branch
-  articlesPath: 'content/articles', // MDX files directory
+  owner: process.env.GITHUB_OWNER || 'thanks2music', // GitHub organization/user
+  repo: process.env.GITHUB_REPO || 'revolution', // Repository name
+  baseBranch: process.env.GITHUB_BASE_BRANCH || 'main', // Default branch
+  articlesPath: process.env.GITHUB_ARTICLES_PATH || 'content/articles', // MDX files directory
 } as const;
 
 /**
