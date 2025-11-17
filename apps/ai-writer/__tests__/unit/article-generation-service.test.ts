@@ -211,7 +211,7 @@ describe('記事生成サービス ユニットテスト', () => {
           sourceUrl: 'https://example.com/original-article',
           generatedAt: '2024-01-01T00:00:00Z',
           wordCount: 500,
-          model: 'claude-3-7-sonnet-20250219',
+          model: 'claude-sonnet-4-5-20250929',
         },
       };
 
@@ -292,7 +292,7 @@ describe('記事生成サービス ユニットテスト', () => {
         metadata: {
           generatedAt: '2024-01-01T00:00:00Z',
           wordCount: 100,
-          model: 'claude-3-7-sonnet-20250219',
+          model: 'claude-sonnet-4-5-20250929',
         },
       };
 
@@ -353,7 +353,7 @@ describe('記事生成サービス ユニットテスト', () => {
         metadata: {
           generatedAt: '2024-01-01T00:00:00Z',
           wordCount: 100,
-          model: 'claude-3-7-sonnet-20250219',
+          model: 'claude-sonnet-4-5-20250929',
         },
       };
 
@@ -410,7 +410,7 @@ describe('記事生成サービス ユニットテスト', () => {
         metadata: {
           generatedAt: '2024-01-01T00:00:00Z',
           wordCount: 100,
-          model: 'claude-3-7-sonnet-20250219',
+          model: 'claude-sonnet-4-5-20250929',
         },
       };
 
@@ -490,7 +490,7 @@ describe('記事生成サービス ユニットテスト', () => {
         metadata: {
           generatedAt: '2024-01-01T00:00:00Z',
           wordCount: 100,
-          model: 'claude-3-7-sonnet-20250219',
+          model: 'claude-sonnet-4-5-20250929',
         },
       };
 
@@ -538,7 +538,7 @@ describe('記事生成サービス ユニットテスト', () => {
         metadata: {
           generatedAt: '2024-01-01T00:00:00Z',
           wordCount: 50,
-          model: 'claude-3-7-sonnet-20250219',
+          model: 'claude-sonnet-4-5-20250929',
         },
       };
 

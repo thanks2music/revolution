@@ -75,7 +75,7 @@ export async function generateArticleWithClaude(
 
   // Claude API呼び出し
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 4096,
     temperature: 0.7,
     system: systemPrompt,
@@ -86,6 +86,11 @@ export async function generateArticleWithClaude(
       },
     ],
   });
+
+  // Handle refusal stop reason (Claude 4.5+)
+  if (response.stop_reason === 'refusal') {
+    throw new Error('Claude refused to generate article due to safety policies');
+  }
 
   // レスポンス抽出
   const textContent = response.content.find(block => block.type === 'text');

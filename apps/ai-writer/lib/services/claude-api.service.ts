@@ -29,7 +29,7 @@ export interface GeneratedArticle {
 
 export class ClaudeAPIService {
   private client: Anthropic;
-  private model: string = 'claude-3-7-sonnet-20250219';
+  private model: string = 'claude-sonnet-4-5-20250929';
   private apiKey?: string;
 
   constructor(apiKey?: string) {
@@ -75,6 +75,11 @@ export class ClaudeAPIService {
           }
         ]
       });
+
+      // Handle refusal stop reason (Claude 4.5+)
+      if (response.stop_reason === 'refusal') {
+        throw new Error('Claude refused to generate content due to safety policies');
+      }
 
       const content = response.content[0];
       if (content.type !== 'text') {
@@ -246,6 +251,11 @@ ${content}
         ]
       });
 
+      // Handle refusal stop reason (Claude 4.5+)
+      if (response.stop_reason === 'refusal') {
+        throw new Error('Claude refused to generate excerpt due to safety policies');
+      }
+
       const responseContent = response.content[0];
       if (responseContent.type !== 'text') {
         throw new Error('Unexpected response type from Claude API');
@@ -302,6 +312,12 @@ Slug:`;
       });
 
       console.log(`🔍 [generateSlug] Claude API response received:`, JSON.stringify(response, null, 2));
+
+      // Handle refusal stop reason (Claude 4.5+)
+      if (response.stop_reason === 'refusal') {
+        console.warn(`⚠️ Claude refused to generate slug for title: ${title}`);
+        return this.generateFallbackSlug(title);
+      }
 
       const responseContent = response.content[0];
       if (responseContent.type !== 'text') {

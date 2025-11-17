@@ -37,7 +37,7 @@ Slug:`;
   console.log(`Title: "${title}"\n`);
 
   const response = await client.messages.create({
-    model: 'claude-3-7-sonnet-20250219',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 100,
     temperature: 0.1,
     messages: [{

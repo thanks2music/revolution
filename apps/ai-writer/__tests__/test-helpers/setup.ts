@@ -98,7 +98,7 @@ export const createMockClaudeResponse = (overrides = {}) => ({
     wordCount: 600,
     language: 'ja',
     generatedAt: new Date().toISOString(),
-    model: 'claude-3-7-sonnet',
+    model: 'claude-sonnet-4-5-20250929',
   },
   ...overrides,
 });
