@@ -78,9 +78,8 @@ export function parseFrontmatter(fileContent: string): {
  * @returns MDXファイルのパス配列
  */
 export function getMDXFiles(dir: string = 'content/articles'): string[] {
-  // モノレポのルートディレクトリを取得（apps/frontend から ../../ を遡る）
-  const monorepoRoot = path.join(process.cwd(), '..', '..');
-  const articlesDir = path.join(monorepoRoot, dir);
+  // apps/frontend/content/articles を参照
+  const articlesDir = path.join(process.cwd(), dir);
 
   // ディレクトリが存在しない場合は空配列を返す
   if (!fs.existsSync(articlesDir)) {
@@ -100,9 +99,8 @@ export function getMDXFiles(dir: string = 'content/articles'): string[] {
  * @returns ファイル内容
  */
 export function readMDXFile(slug: string, dir: string = 'content/articles'): string {
-  // モノレポのルートディレクトリを取得（apps/frontend から ../../ を遡る）
-  const monorepoRoot = path.join(process.cwd(), '..', '..');
-  const articlesDir = path.join(monorepoRoot, dir);
+  // apps/frontend/content/articles を参照
+  const articlesDir = path.join(process.cwd(), dir);
 
   // .md または .mdx 拡張子を試す
   const extensions = ['.md', '.mdx'];
