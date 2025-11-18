@@ -20,16 +20,10 @@ export class TemplateLoaderService {
 
   constructor(templatesDir?: string) {
     // デフォルトのテンプレートディレクトリ
+    // YAMLファイルは apps/ai-writer/templates/ 直下にフラット配置
     this.templatesDir =
       templatesDir ||
-      path.join(
-        process.cwd(),
-        "..",
-        "..",
-        ".claude",
-        "12-tools",
-        "post-template-for-ai"
-      );
+      path.join(process.cwd(), "templates");
   }
 
   /**

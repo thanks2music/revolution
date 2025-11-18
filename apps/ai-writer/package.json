@@ -27,9 +27,7 @@
     "codegen:watch": "graphql-codegen --config codegen.yml --watch",
     "admin:setup": "tsx lib/firebase/admin-setup.ts setup",
     "admin:list": "tsx lib/firebase/admin-setup.ts list",
-    "admin:remove": "tsx lib/firebase/admin-setup.ts remove",
-    "sync:templates": "node ../../scripts/sync-templates.mjs",
-    "sync:templates:dry-run": "node ../../scripts/sync-templates.mjs --dry-run"
+    "admin:remove": "tsx lib/firebase/admin-setup.ts remove"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.63.0",
