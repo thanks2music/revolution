@@ -24,7 +24,8 @@
     "docs:validate": "tsx tools/docs-index.ts && echo 'OK'",
     "docs:sync": "./scripts/sync-docs-to-icloud.sh",
     "docs:create": "./scripts/create-doc-and-sync.sh",
-    "prepare": "husky"
+    "prepare": "husky",
+    "sync:templates": "node scripts/sync-templates.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.2.1",
