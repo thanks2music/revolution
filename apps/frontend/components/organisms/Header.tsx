@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { logImageOptimization } from '../../lib/imageOptimizationCheck';
@@ -21,7 +21,7 @@ import {
   XIcon,
 } from '@heroicons/react/outline';
 import { ChevronDownIcon } from '@heroicons/react/solid';
-import SiteService from '@/services/SiteService';
+import { env } from '@/lib/env';
 
 const solutions = [
   {
@@ -100,26 +100,11 @@ function classNames(...classes: string[]) {
 }
 
 const Header = () => {
-  const [siteTitle, setSiteTitle] = useState('Revolution');
+  const siteTitle = env.NEXT_PUBLIC_SITE_NAME;
 
   // 開発環境で画像最適化をログ出力
   useEffect(() => {
     logImageOptimization();
-  }, []);
-
-  // サイト情報を取得
-  useEffect(() => {
-    const fetchSiteInfo = async () => {
-      try {
-        const siteInfo = await SiteService.getSiteInfo();
-        setSiteTitle(siteInfo.title || 'Revolution');
-      } catch (error) {
-        console.warn('Failed to fetch site info, using fallback:', error);
-        setSiteTitle('Revolution');
-      }
-    };
-
-    fetchSiteInfo();
   }, []);
 
   return (

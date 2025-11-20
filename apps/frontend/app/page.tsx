@@ -1,6 +1,3 @@
-// TEMPORARY: WordPress関連のimportをコメントアウト（MDXプレビュー用）
-// import PostService from '@/services/PostService';
-// import PostListClient from '@/components/organisms/PostListClient';
 import Layout from '@/components/templates/Layout';
 import { Metadata } from 'next';
 import { ISR_CONFIG } from '@/lib/swrConfig';
@@ -18,21 +15,11 @@ export const metadata: Metadata = {
 
 // Server Component: ISRで初期データ取得
 export default async function Home() {
-  // TEMPORARY: WordPress取得をスキップ（MDXプレビュー用）
-  // const staticPostList = await PostService.getList({});
-
   // MDX記事取得
   const mdxArticles = getLatestArticles(10);
 
   return (
     <Layout>
-      {/* TEMPORARY: WordPress記事セクションをコメントアウト（MDXプレビュー用） */}
-      {/* <section className="mb-12">
-        <h2 className="text-3xl font-bold mb-6">Latest from WordPress</h2>
-        <PostListClient staticPostList={staticPostList} />
-      </section> */}
-
-      {/* MDX記事セクション（新規） */}
       {mdxArticles.length > 0 && (
         <section className="mb-12">
           <h2 className="text-3xl font-bold mb-6">Latest MDX Articles</h2>
