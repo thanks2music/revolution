@@ -79,7 +79,7 @@ export async function createArticlePr(
   params: CreateArticlePrParams
 ): Promise<CreateArticlePrResult> {
   const octokit = await createGitHubClient();
-  const { owner, repo, baseBranch, articlesPath } = REPO_CONFIG;
+  const { owner, repo, baseBranch, contentBasePath } = REPO_CONFIG;
 
   // 1. frontmatterバリデーション (Zodでバリデーション)
   const { metadata, content } = parseFrontmatter(params.markdown);
@@ -87,7 +87,7 @@ export async function createArticlePr(
   // 2. slug重複チェック (正規化 + .mdx と index.mdx 両方)
   const normalizedSlug = normalizeSlug(metadata.slug);
   const fileName = generateFileName(metadata.date, normalizedSlug);
-  const filePath = `${articlesPath}/${fileName}`;
+  const filePath = `${contentBasePath}/articles/${fileName}`;
 
   await checkDuplicateSlug(octokit, filePath, normalizedSlug);
 
@@ -138,13 +138,13 @@ async function checkDuplicateSlug(
   filePath: string,
   slug: string
 ): Promise<void> {
-  const { owner, repo, baseBranch, articlesPath } = REPO_CONFIG;
+  const { owner, repo, baseBranch, contentBasePath } = REPO_CONFIG;
 
   // チェック対象パス: fileName.mdx と index.mdx
   const pathsToCheck = [
     filePath, // e.g., content/articles/2025-01-15-hello-world.md
-    `${articlesPath}/${slug}.mdx`,
-    `${articlesPath}/${slug}/index.mdx`,
+    `${contentBasePath}/articles/${slug}.mdx`,
+    `${contentBasePath}/articles/${slug}/index.mdx`,
   ];
 
   for (const path of pathsToCheck) {

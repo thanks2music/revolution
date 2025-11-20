@@ -1,6 +1,10 @@
 /**
  * Cloud Scheduler用RSSクローラーエンドポイント
  *
+ * Pipeline Mode:
+ * - MDX Pipeline: 本番運用モード (PIPELINE_TARGET=mdx)
+ * - WordPress Pipeline: レガシーモード (PIPELINE_TARGET=wordpress)
+ *
  * Codexレビュー指摘対応:
  * - crypto.timingSafeEqual() によるタイミング攻撃対策
  * - 同一401レスポンスでキー情報漏洩防止
@@ -13,6 +17,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { createHash, timingSafeEqual } from 'crypto';
+import { isMdxMode, getPipelineModeDescription } from '../../../../lib/pipeline-mode';
 import { createArticlePr } from '../../../../lib/github/createPr';
 import {
   DuplicateSlugError,
@@ -89,10 +94,8 @@ function isValidCronKey(expected: string, provided: string | null): boolean {
  *
  * Flow:
  * 1. X-CRON-KEY 認証
- * 2. Idempotency チェック (Phase 2で実装予定)
- * 3. RSS取得
- * 4. 記事生成 (Claude API)
- * 5. PR作成 (GitHub API)
+ * 2. Pipeline Mode 判定 (MDX or WordPress)
+ * 3. 対応するパイプラインを実行
  *
  * @param request - Next.js Request
  * @returns Next.js Response
@@ -127,136 +130,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 3. RSSフィード取得
-    console.log('Fetching RSS feed:', feedUrl);
-    const feedResult = await parseRssFeed(feedUrl, 1); // 最新1件のみ取得
+    // 3. Pipeline Mode 判定
+    const pipelineMode = getPipelineModeDescription();
+    console.log(`Running pipeline: ${pipelineMode}`, { feedUrl });
 
-    if (feedResult.items.length === 0) {
-      return NextResponse.json(
-        { error: 'No items in RSS feed' },
-        { status: 404 }
-      );
+    if (isMdxMode()) {
+      return await runMdxPipeline(feedUrl);
+    } else {
+      return await runWordpressPipeline(feedUrl);
     }
-
-    const rssItem = feedResult.items[0];
-    const guid = rssItem.guid;
-
-    console.log('RSS item fetched:', {
-      guid,
-      title: rssItem.title,
-      link: rssItem.link,
-    });
-
-    // 4. Idempotency チェック (Firestore)
-    const existingRecord = await checkIfProcessed(feedUrl, guid);
-    if (existingRecord) {
-      console.info('Article already processed', {
-        feedUrl,
-        guid,
-        status: existingRecord.status,
-        prNumber: existingRecord.prNumber,
-      });
-
-      return NextResponse.json(
-        {
-          status: 'already_processed',
-          existingStatus: existingRecord.status,
-          prNumber: existingRecord.prNumber,
-          prUrl: existingRecord.prUrl,
-        },
-        { status: 200 }
-      );
-    }
-
-    // 5. Claude APIで記事生成
-    console.log('Generating article with Claude API...');
-    const articleResult = await generateArticleWithClaude({
-      rssItem,
-      feedMeta: {
-        title: feedResult.meta.title,
-        link: feedResult.meta.link,
-      },
-    });
-
-    console.log('Article generated:', {
-      model: articleResult.model,
-      inputTokens: articleResult.usage.inputTokens,
-      outputTokens: articleResult.usage.outputTokens,
-    });
-
-    // 6. Frontmatterからslugを抽出（エラーハンドリング）
-    const slugMatch = articleResult.markdown.match(/^slug:\s*(.+)$/m);
-    if (!slugMatch) {
-      throw new Error('Generated article missing "slug" in frontmatter');
-    }
-    const slug = slugMatch[1].trim();
-
-    // 7. Processing開始をマーク
-    const pendingResult = await markAsPending({
-      feedUrl,
-      guid,
-      slug,
-    });
-
-    if (!pendingResult.allowed) {
-      console.warn('Processing not allowed', {
-        feedUrl,
-        guid,
-        reason: pendingResult.reason,
-      });
-
-      return NextResponse.json(
-        {
-          status: 'not_allowed',
-          reason: pendingResult.reason,
-        },
-        { status: 409 }
-      );
-    }
-
-    // 8. PR作成
-    let result;
-    try {
-      result = await createArticlePr({
-        markdown: articleResult.markdown,
-        source: {
-          feedUrl,
-          originalUrl: rssItem.link,
-        },
-      });
-
-      console.log('PR created:', {
-        prNumber: result.prNumber,
-        prUrl: result.prUrl,
-      });
-
-      // 9. 成功をマーク
-      await markAsSuccess(
-        { feedUrl, guid, slug },
-        { prNumber: result.prNumber, prUrl: result.prUrl }
-      );
-    } catch (prError) {
-      // PR作成失敗をマーク
-      const errorMessage =
-        prError instanceof Error ? prError.message : String(prError);
-      await markAsFailed({ feedUrl, guid, slug }, errorMessage);
-
-      // エラーを再スロー（外側のcatchブロックで処理）
-      throw prError;
-    }
-
-    return NextResponse.json(
-      {
-        status: 'success',
-        pr: {
-          number: result.prNumber,
-          url: result.prUrl,
-          branch: result.branchName,
-          file: result.filePath,
-        },
-      },
-      { status: 200 }
-    );
   } catch (error) {
     // エラーハンドリング (5xx/4xx判定)
     if (error instanceof DuplicateSlugError) {
@@ -294,5 +176,178 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 500 }
     );
   }
+}
+
+/**
+ * MDX Pipeline (本番運用モード)
+ *
+ * Flow:
+ * 1. RSS取得
+ * 2. Claude API (workTitle/storeName/eventType 抽出)
+ * 3. Firestore (重複チェック + ULID生成)
+ * 4. Claude API (categories/excerpt 生成)
+ * 5. MDX Article 生成
+ * 6. GitHub PR 作成
+ * 7. Firestore (ステータス更新)
+ *
+ * @param feedUrl - RSS feed URL
+ * @returns Next.js Response
+ */
+async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
+  // TODO: Step 5 で実装
+  console.log('MDX Pipeline implementation coming in Step 5');
+
+  return NextResponse.json(
+    { error: 'MDX Pipeline not yet implemented' },
+    { status: 501 }
+  );
+}
+
+/**
+ * WordPress Pipeline (レガシーモード)
+ *
+ * Flow:
+ * 1. RSS取得
+ * 2. Idempotency チェック (Firestore)
+ * 3. 記事生成 (Claude API)
+ * 4. PR作成 (GitHub API)
+ * 5. ステータス更新 (Firestore)
+ *
+ * @param feedUrl - RSS feed URL
+ * @returns Next.js Response
+ */
+async function runWordpressPipeline(feedUrl: string): Promise<NextResponse> {
+
+  // 1. RSSフィード取得
+  console.log('[WordPress Pipeline] Fetching RSS feed:', feedUrl);
+  const feedResult = await parseRssFeed(feedUrl, 1); // 最新1件のみ取得
+
+  if (feedResult.items.length === 0) {
+    return NextResponse.json(
+      { error: 'No items in RSS feed' },
+      { status: 404 }
+    );
+  }
+
+  const rssItem = feedResult.items[0];
+  const guid = rssItem.guid;
+
+  console.log('[WordPress Pipeline] RSS item fetched:', {
+    guid,
+    title: rssItem.title,
+    link: rssItem.link,
+  });
+
+  // 2. Idempotency チェック (Firestore)
+  const existingRecord = await checkIfProcessed(feedUrl, guid);
+  if (existingRecord) {
+    console.info('[WordPress Pipeline] Article already processed', {
+      feedUrl,
+      guid,
+      status: existingRecord.status,
+      prNumber: existingRecord.prNumber,
+    });
+
+    return NextResponse.json(
+      {
+        status: 'already_processed',
+        existingStatus: existingRecord.status,
+        prNumber: existingRecord.prNumber,
+        prUrl: existingRecord.prUrl,
+      },
+      { status: 200 }
+    );
+  }
+
+  // 3. Claude APIで記事生成
+  console.log('[WordPress Pipeline] Generating article with Claude API...');
+  const articleResult = await generateArticleWithClaude({
+    rssItem,
+    feedMeta: {
+      title: feedResult.meta.title,
+      link: feedResult.meta.link,
+    },
+  });
+
+  console.log('[WordPress Pipeline] Article generated:', {
+    model: articleResult.model,
+    inputTokens: articleResult.usage.inputTokens,
+    outputTokens: articleResult.usage.outputTokens,
+  });
+
+  // 4. Frontmatterからslugを抽出（エラーハンドリング）
+  const slugMatch = articleResult.markdown.match(/^slug:\s*(.+)$/m);
+  if (!slugMatch) {
+    throw new Error('Generated article missing "slug" in frontmatter');
+  }
+  const slug = slugMatch[1].trim();
+
+  // 5. Processing開始をマーク
+  const pendingResult = await markAsPending({
+    feedUrl,
+    guid,
+    slug,
+  });
+
+  if (!pendingResult.allowed) {
+    console.warn('[WordPress Pipeline] Processing not allowed', {
+      feedUrl,
+      guid,
+      reason: pendingResult.reason,
+    });
+
+    return NextResponse.json(
+      {
+        status: 'not_allowed',
+        reason: pendingResult.reason,
+      },
+      { status: 409 }
+    );
+  }
+
+  // 6. PR作成
+  let result;
+  try {
+    result = await createArticlePr({
+      markdown: articleResult.markdown,
+      source: {
+        feedUrl,
+        originalUrl: rssItem.link,
+      },
+    });
+
+    console.log('[WordPress Pipeline] PR created:', {
+      prNumber: result.prNumber,
+      prUrl: result.prUrl,
+    });
+
+    // 7. 成功をマーク
+    await markAsSuccess(
+      { feedUrl, guid, slug },
+      { prNumber: result.prNumber, prUrl: result.prUrl }
+    );
+  } catch (prError) {
+    // PR作成失敗をマーク
+    const errorMessage =
+      prError instanceof Error ? prError.message : String(prError);
+    await markAsFailed({ feedUrl, guid, slug }, errorMessage);
+
+    // エラーを再スロー（外側のcatchブロックで処理）
+    throw prError;
+  }
+
+  return NextResponse.json(
+    {
+      status: 'success',
+      pipeline: 'wordpress',
+      pr: {
+        number: result.prNumber,
+        url: result.prUrl,
+        branch: result.branchName,
+        file: result.filePath,
+      },
+    },
+    { status: 200 }
+  );
 }
 
