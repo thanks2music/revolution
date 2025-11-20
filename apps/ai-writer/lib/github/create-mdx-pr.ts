@@ -20,6 +20,10 @@ import {
   DuplicateSlugError,
   BranchConflictError,
 } from '../errors/github';
+import { getAdminDb } from '../firebase/admin';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import type { EventCanonicalKey } from '../firestore/types';
+import { FIRESTORE_COLLECTIONS } from '../firestore/types';
 
 /**
  * MDX PR作成パラメータ
@@ -200,7 +204,9 @@ export async function createMdxPr(
     if (duplicationResult.isDuplicate) {
       const error = new DuplicateSlugError(
         `Event already exists: ${duplicationResult.canonicalKey}. ` +
-          `Status: ${duplicationResult.existingDoc?.status}`
+          `Status: ${duplicationResult.existingDoc?.status}`,
+        duplicationResult.canonicalKey,
+        `Firestore event_canonical_keys/${duplicationResult.canonicalKey}`
       );
 
       // Slack通知
@@ -222,15 +228,64 @@ export async function createMdxPr(
     console.log('  ✅ No duplicate in Firestore');
 
     // ========================================
-    // Step 2: GitHub Open PR重複チェック
+    // Step 2.5: Firestore event document作成
     // ========================================
-    console.log('[Create MDX PR] Step 2: Checking GitHub Open PR...');
+    console.log('[Create MDX PR] Step 2.5: Creating Firestore event document...');
+
+    // Parse canonical key: {workSlug}:{storeSlug}:{eventType}:{year}
+    const canonicalComponents = context.canonicalKey.split(':');
+    if (canonicalComponents.length !== 4) {
+      throw new Error(`Invalid canonical key format: ${context.canonicalKey}`);
+    }
+    const [workSlug, storeSlug, eventType, yearStr] = canonicalComponents;
+
+    // Create Firestore document
+    getAdminDb(); // Firebase Admin SDK初期化
+    const db = getFirestore();
+    const now = Timestamp.now();
+    const eventDoc: EventCanonicalKey = {
+      canonicalKey: context.canonicalKey,
+      workSlug,
+      storeSlug,
+      eventType,
+      year: context.year,
+      postId: context.postId,
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+      retryCount: 0,
+    };
+
+    const docRef = db
+      .collection(FIRESTORE_COLLECTIONS.EVENT_CANONICAL_KEYS)
+      .doc(context.canonicalKey);
+
+    try {
+      await docRef.set(eventDoc);
+      console.log(`  ✅ Firestore document created: ${context.canonicalKey}`);
+    } catch (error: any) {
+      // ALREADY_EXISTS の場合は警告のみ（重複チェック済みのはずだが念のため）
+      if (error.code === 6 || error.message?.includes('already exists')) {
+        console.warn(
+          `  ⚠️  Firestore document already exists (duplicate check may have race condition): ${context.canonicalKey}`
+        );
+      } else {
+        throw error;
+      }
+    }
+
+    // ========================================
+    // Step 3: GitHub Open PR重複チェック
+    // ========================================
+    console.log('[Create MDX PR] Step 3: Checking GitHub Open PR...');
 
     const hasDuplicatePr = await checkDuplicateOpenPr(branchName);
 
     if (hasDuplicatePr) {
       const error = new DuplicateSlugError(
-        `Open PR already exists for branch: ${branchName}`
+        `Open PR already exists for branch: ${branchName}`,
+        context.canonicalKey,
+        `GitHub branch: ${branchName}`
       );
 
       // Slack通知
@@ -252,16 +307,16 @@ export async function createMdxPr(
     console.log('  ✅ No duplicate Open PR in GitHub');
 
     // ========================================
-    // Step 3: GitHub Client初期化
+    // Step 4: GitHub Client初期化
     // ========================================
-    console.log('[Create MDX PR] Step 3: Initializing GitHub client...');
+    console.log('[Create MDX PR] Step 4: Initializing GitHub client...');
 
     const octokit = await createGitHubClient();
 
     // ========================================
-    // Step 4: ベースブランチの最新コミット取得
+    // Step 5: ベースブランチの最新コミット取得
     // ========================================
-    console.log('[Create MDX PR] Step 4: Fetching base branch commit...');
+    console.log('[Create MDX PR] Step 5: Fetching base branch commit...');
 
     const { data: baseRef } = await octokit.git.getRef({
       owner: REPO_CONFIG.owner,
@@ -273,9 +328,9 @@ export async function createMdxPr(
     console.log(`  Base SHA: ${baseSha}`);
 
     // ========================================
-    // Step 5: 新規ブランチ作成
+    // Step 6: 新規ブランチ作成
     // ========================================
-    console.log('[Create MDX PR] Step 5: Creating new branch...');
+    console.log('[Create MDX PR] Step 6: Creating new branch...');
 
     try {
       await octokit.git.createRef({
@@ -288,15 +343,15 @@ export async function createMdxPr(
       console.log(`  ✅ Branch created: ${branchName}`);
     } catch (error: any) {
       if (error.status === 422 && error.message.includes('Reference already exists')) {
-        throw new BranchConflictError(`Branch already exists: ${branchName}`);
+        throw new BranchConflictError(`Branch already exists: ${branchName}`, branchName);
       }
       throw error;
     }
 
     // ========================================
-    // Step 6: MDXファイルをコミット
+    // Step 7: MDXファイルをコミット
     // ========================================
-    console.log('[Create MDX PR] Step 6: Committing MDX file...');
+    console.log('[Create MDX PR] Step 7: Committing MDX file...');
 
     // Base64エンコード
     const contentBase64 = Buffer.from(mdxContent, 'utf-8').toString('base64');
@@ -320,9 +375,9 @@ Canonical Key: ${context.canonicalKey}`,
     console.log(`  ✅ File committed: ${commitSha}`);
 
     // ========================================
-    // Step 7: PR作成
+    // Step 8: PR作成
     // ========================================
-    console.log('[Create MDX PR] Step 7: Creating Pull Request...');
+    console.log('[Create MDX PR] Step 8: Creating Pull Request...');
 
     const { data: pr } = await octokit.pulls.create({
       owner: REPO_CONFIG.owner,
@@ -336,9 +391,9 @@ Canonical Key: ${context.canonicalKey}`,
     console.log(`  ✅ PR created: ${pr.html_url}`);
 
     // ========================================
-    // Step 8: Firestore status更新
+    // Step 9: Firestore status更新
     // ========================================
-    console.log('[Create MDX PR] Step 8: Updating Firestore status...');
+    console.log('[Create MDX PR] Step 9: Updating Firestore status...');
 
     await updateEventStatus(context.canonicalKey, 'generated');
 
