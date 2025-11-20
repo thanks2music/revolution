@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "next dev --turbo --port 4444",
-    "build": "next build",
+    "build": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
     "validate-env": "tsx scripts/validate-env.ts",
