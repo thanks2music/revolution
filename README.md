@@ -28,8 +28,11 @@
 
 ## ✨ 主要機能
 
-- 🤖 **AIコンテンツパイプライン**: RSS収集 → Claude API記事生成 → WordPress自動投稿 (DBレスに変更予定)
+- 🤖 **AIコンテンツパイプライン**: RSS収集 → Claude API記事生成(Phase0.1), Grok → Claude and ChatGPT API記事生成(予定)
+  - Phase 0.1 以降は 「MDX 専用」とする。
 - ⚡ **ヘッドレスCMS**: WordPress GraphQL API と Next.js SSG/ISR
+  - 「Headless WordPress」は、 git tag: `headless-wp-mvp-final-20251103` までで一旦開発をストップ中。
+  - 「Headless WordPress 版を復旧したい場合は、上記タグを参照」
 - ☁️ **クラウドネイティブ**: Google Cloud Run上のコンテナ化WordPress
 - 🔐 **セキュア**: Firebase認証とカスタムクレーム
 - 🧪 **テストカバレッジ**: Jest + Firebase Emulator による包括的なユニットテスト
