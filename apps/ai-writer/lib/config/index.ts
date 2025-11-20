@@ -38,3 +38,10 @@ export {
   isValidBrandName,
   isValidEventTypeName,
 } from './slug-resolver';
+
+// Export slug generator functions
+export {
+  generateSlugWithClaude,
+  generateSlugWithFallback,
+  generateAsciiSlug,
+} from './slug-generator';

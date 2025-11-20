@@ -242,28 +242,28 @@ async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
     confidence: extraction.confidence,
   });
 
-  // 3. YAML スラグ解決
-  console.log('[MDX Pipeline] Resolving slugs from YAML...');
+  // 3. YAML スラグ解決（fallback: Claude API → ASCII）
+  console.log('[MDX Pipeline] Resolving slugs (YAML → Claude → ASCII fallback)...');
   const workSlug = await resolveWorkSlug(extraction.workTitle);
   const storeSlug = await resolveStoreSlug(extraction.storeName);
   const eventType = await resolveEventTypeSlug(extraction.eventTypeName);
 
-  // 必須スラグの存在チェック（Step 7でフォールバック実装予定）
+  // 必須スラグの存在チェック（fallback実装済み、通常は成功するはず）
   if (!workSlug) {
     throw new Error(
-      `Work slug not found in YAML for: "${extraction.workTitle}". Please add to title-romaji-mapping.yaml`
+      `Failed to generate work slug for: "${extraction.workTitle}". All fallback methods failed.`
     );
   }
 
   if (!eventType) {
     throw new Error(
-      `Event type slug not found in YAML for: "${extraction.eventTypeName}". Please add to event-type-slugs.yaml`
+      `Failed to generate event type slug for: "${extraction.eventTypeName}". All fallback methods failed.`
     );
   }
 
   console.log('[MDX Pipeline] Slugs resolved:', {
     workSlug,
-    storeSlug,
+    storeSlug: storeSlug || '(none)',
     eventType,
   });
 
