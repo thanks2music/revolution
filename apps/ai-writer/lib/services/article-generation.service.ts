@@ -13,6 +13,7 @@ import {
   RenderedContent,
   ExtractedData,
 } from '../types/template';
+import { isMdxMode, getPipelineModeDescription } from '../pipeline-mode';
 
 // Types for the article generation pipeline
 export interface ArticleGenerationConfig {
@@ -100,10 +101,19 @@ export class ArticleGenerationService {
 
   /**
    * Generate and publish an article from RSS item
+   *
+   * @throws Error if pipeline is in MDX mode (safety check)
    */
   async generateAndPublishFromRSS(request: RSSArticleRequest): Promise<ArticlePublishResult> {
+    // Pipeline mode safety check
+    if (isMdxMode()) {
+      const error = `ArticleGenerationService is for WordPress mode only. Current mode: ${getPipelineModeDescription()}. Use MDX pipeline instead.`;
+      console.error(error);
+      throw new Error(error);
+    }
+
     try {
-      console.log(`Starting article generation from RSS: ${request.rssItem.title}`);
+      console.log(`[WordPress Pipeline] Starting article generation from RSS: ${request.rssItem.title}`);
 
       // Step 1: Generate article using Claude API
       const generationRequest: ArticleGenerationRequest = {
@@ -201,10 +211,19 @@ export class ArticleGenerationService {
 
   /**
    * Publish generated article to WordPress
+   *
+   * @throws Error if pipeline is in MDX mode (safety check)
    */
   async publishToWordPress(request: ArticlePublishRequest): Promise<ArticlePublishResult> {
+    // Pipeline mode safety check
+    if (isMdxMode()) {
+      const error = `WordPress publishing is disabled in ${getPipelineModeDescription()} mode. Use MDX pipeline instead.`;
+      console.error(error);
+      throw new Error(error);
+    }
+
     try {
-      console.log('Publishing article to WordPress...');
+      console.log('[WordPress Pipeline] Publishing article to WordPress...');
 
       // Upload featured image if URL is provided
       let featuredImageId: string | undefined;
@@ -322,6 +341,8 @@ export class ArticleGenerationService {
 
   /**
    * Generate and publish article from RSS entry
+   *
+   * @throws Error if pipeline is in MDX mode (safety check)
    */
   async generateAndPublishFromRssEntry(
     rssEntry: RssArticleEntry,
@@ -333,8 +354,15 @@ export class ArticleGenerationService {
       customKeywords?: string[];
     }
   ): Promise<ArticlePublishResult> {
+    // Pipeline mode safety check
+    if (isMdxMode()) {
+      const error = `ArticleGenerationService is for WordPress mode only. Current mode: ${getPipelineModeDescription()}. Use MDX pipeline instead.`;
+      console.error(error);
+      throw new Error(error);
+    }
+
     try {
-      console.log(`Starting article generation from RSS entry: ${rssEntry.title}`);
+      console.log(`[WordPress Pipeline] Starting article generation from RSS entry: ${rssEntry.title}`);
 
       if (!rssEntry.link) {
         throw new Error('RSS entry must have a valid link');
@@ -654,6 +682,13 @@ export class ArticleGenerationService {
       let publishResult: ArticlePublishResult | undefined;
 
       if (options?.publishStatus) {
+        // Pipeline mode safety check
+        if (isMdxMode()) {
+          const error = `WordPress publishing is disabled in ${getPipelineModeDescription()} mode. Use MDX pipeline instead.`;
+          console.error(error);
+          throw new Error(error);
+        }
+
         console.log("\n[Step 5] WordPress投稿中...");
 
         // Step 5.1: カテゴリ自動作成
