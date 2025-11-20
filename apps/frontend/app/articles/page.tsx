@@ -1,5 +1,10 @@
 import Layout from '@/components/templates/Layout';
-import { getAllArticles, getAllCategories, getAllTags } from '@/lib/mdx/articles';
+import {
+  getAllArticles,
+  getAllCategories,
+  getAllTags,
+  getArticleUrl,
+} from '@/lib/mdx/articles';
 import Link from 'next/link';
 import { Metadata } from 'next';
 
@@ -74,7 +79,7 @@ export default function ArticlesPage() {
                 key={article.slug}
                 className="border border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:shadow-lg transition-shadow"
               >
-                <Link href={`/articles/${article.slug}`}>
+                <Link href={getArticleUrl(article)}>
                   <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400">
                     {article.title}
                   </h3>

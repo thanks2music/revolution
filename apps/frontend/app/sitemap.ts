@@ -5,7 +5,7 @@
 
 import { MetadataRoute } from 'next';
 import { env } from '@/lib/env';
-import { getAllArticles } from '@/lib/mdx/articles';
+import { getAllArticles, getArticleUrl } from '@/lib/mdx/articles';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com';
@@ -24,7 +24,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const articles = getAllArticles();
 
     const articlePages: MetadataRoute.Sitemap = articles.map((article) => ({
-      url: `${baseUrl}/articles/${article.slug}`,
+      url: `${baseUrl}${getArticleUrl(article)}`,
       lastModified: article.date ? new Date(article.date) : new Date(),
       changeFrequency: 'weekly' as const,
       priority: 0.8,

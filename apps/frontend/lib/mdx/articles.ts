@@ -21,6 +21,8 @@ export interface ArticleIndexItem {
   author: string;
   filePath: string;
   ogImage?: string;
+  eventType: string | null;
+  workSlug: string | null;
 }
 
 /**
@@ -115,4 +117,48 @@ export function getArticleBySlug(slug: string): ArticleIndexItem | null {
 export function getLatestArticles(limit = 10): ArticleIndexItem[] {
   const index = getArticleIndex();
   return index.articles.slice(0, limit);
+}
+
+/**
+ * 記事のURLパスを生成
+ *
+ * URL設計: /{event_type}/{work_slug}/{slug}
+ * 例: /collabo-cafe/jujutsu-kaisen/01kafsdmvd-2025
+ *
+ * レガシー記事（eventType='articles', workSlug=null）の場合:
+ * 例: /articles/hello-mdx
+ */
+export function getArticleUrl(article: ArticleIndexItem): string {
+  if (!article.eventType) {
+    return `/articles/${article.slug}`;
+  }
+
+  if (article.eventType === 'articles' || !article.workSlug) {
+    return `/articles/${article.slug}`;
+  }
+
+  return `/${article.eventType}/${article.workSlug}/${article.slug}`;
+}
+
+/**
+ * パスパラメータから記事を検索
+ *
+ * @param eventType イベント種別 (collabo-cafe, pop-up-store, etc.)
+ * @param workSlug 作品スラッグ (jujutsu-kaisen, chainsaw-man, etc.)
+ * @param slug 記事スラッグ (01kafsdmvd-2025, etc.)
+ */
+export function getArticleByPath(
+  eventType: string,
+  workSlug: string,
+  slug: string
+): ArticleIndexItem | null {
+  const index = getArticleIndex();
+  return (
+    index.articles.find(
+      (article) =>
+        article.eventType === eventType &&
+        article.workSlug === workSlug &&
+        article.slug === slug
+    ) || null
+  );
 }

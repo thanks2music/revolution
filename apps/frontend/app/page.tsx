@@ -1,7 +1,7 @@
 import Layout from '@/components/templates/Layout';
 import { Metadata } from 'next';
 import { ISR_CONFIG } from '@/lib/swrConfig';
-import { getLatestArticles } from '@/lib/mdx/articles';
+import { getLatestArticles, getArticleUrl } from '@/lib/mdx/articles';
 import Link from 'next/link';
 
 // ISR設定をexport
@@ -30,7 +30,7 @@ export default async function Home() {
                 key={article.slug}
                 className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow"
               >
-                <Link href={`/articles/${article.slug}`}>
+                <Link href={getArticleUrl(article)}>
                   <h3 className="text-xl font-semibold mb-2 text-gray-900 hover:text-blue-600">
                     {article.title}
                   </h3>

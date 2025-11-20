@@ -1,5 +1,5 @@
 import Layout from '@/components/templates/Layout';
-import { getArticleBySlug, getAllArticles } from '@/lib/mdx/articles';
+import { getAllArticles, getArticleByPath } from '@/lib/mdx/articles';
 import { CustomMDX } from '@/components/mdx';
 import { notFound } from 'next/navigation';
 import { Metadata } from 'next';
@@ -8,21 +8,26 @@ import path from 'path';
 import fs from 'fs';
 import { parseFrontmatter } from '@/lib/mdx/utils';
 
-// Generate static params for all articles
+// Generate static params for all articles (new URL structure)
 export async function generateStaticParams() {
   const articles = getAllArticles();
-  return articles.map((article) => ({
-    slug: article.slug,
-  }));
+  return articles
+    .filter((article) => article.eventType && article.workSlug)
+    .map((article) => ({
+      event_type: article.eventType!,
+      work_slug: article.workSlug!,
+      slug: article.slug,
+    }));
 }
 
 // Dynamic metadata
 export async function generateMetadata({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ event_type: string; work_slug: string; slug: string }>;
 }): Promise<Metadata> {
-  const article = getArticleBySlug(params.slug);
+  const { event_type, work_slug, slug } = await params;
+  const article = getArticleByPath(event_type, work_slug, slug);
 
   if (!article) {
     return {
@@ -51,16 +56,22 @@ export async function generateMetadata({
   };
 }
 
-export default function ArticlePage({ params }: { params: { slug: string } }) {
+export default async function ArticlePage({
+  params,
+}: {
+  params: Promise<{ event_type: string; work_slug: string; slug: string }>;
+}) {
+  const { event_type, work_slug, slug } = await params;
+
   // Get article metadata from index
-  const article = getArticleBySlug(params.slug);
+  const article = getArticleByPath(event_type, work_slug, slug);
 
   if (!article) {
     notFound();
   }
 
   // Read full MDX content using the full filePath
-  // filePath is relative to project root (e.g., "content/articles/2025-11-15-hello-mdx.md")
+  // filePath is relative to project root (e.g., "content/collabo-cafe/jujutsu-kaisen/01kafsdmvd-2025.mdx")
   const fullPath = path.join(process.cwd(), '..', '..', article.filePath);
   const rawContent = fs.readFileSync(fullPath, 'utf-8');
   const { content } = parseFrontmatter(rawContent);

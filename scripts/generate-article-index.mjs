@@ -114,6 +114,24 @@ async function main() {
       continue;
     }
 
+    // パス解析: content/{event_type}/{work_slug}/{filename}.mdx
+    const relativePath = path.relative(CONTENT_DIR, filePath);
+    const pathParts = relativePath.split(path.sep);
+
+    // イベント種別と作品スラッグを抽出
+    let eventType = null;
+    let workSlug = null;
+
+    if (pathParts.length >= 3) {
+      // 通常のイベント記事: content/collabo-cafe/jujutsu-kaisen/01kafsdmvd-2025.mdx
+      eventType = pathParts[0];
+      workSlug = pathParts[1];
+    } else if (pathParts.length === 2 && pathParts[0] === 'articles') {
+      // レガシー記事: content/articles/hello-mdx.md
+      eventType = 'articles';
+      workSlug = null;
+    }
+
     articles.push({
       slug: frontmatter.slug,
       title: frontmatter.title,
@@ -123,6 +141,8 @@ async function main() {
       tags: frontmatter.tags || [],
       author: frontmatter.author || 'Revolution AI Writer',
       filePath: path.relative(REPO_ROOT, filePath),
+      eventType,
+      workSlug,
     });
   }
 
