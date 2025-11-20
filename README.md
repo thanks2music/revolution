@@ -2,8 +2,6 @@
 
 > **Languages**: [🇯🇵 日本語](README.md) | [🇬🇧 English](README.en.md)
 
-![License](https://img.shields.io/badge/license-Personal%20Project-blue)
-
 ---
 
 ## 📑 目次
