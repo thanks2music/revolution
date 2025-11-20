@@ -19,6 +19,7 @@ import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { createHash, timingSafeEqual } from 'crypto';
 import { isMdxMode, getPipelineModeDescription } from '../../../../lib/pipeline-mode';
 import { createArticlePr } from '../../../../lib/github/createPr';
+import { createMdxPr } from '../../../../lib/github/create-mdx-pr';
 import {
   DuplicateSlugError,
   isRetryableGitHubError,
@@ -30,8 +31,21 @@ import {
   markAsSuccess,
   markAsFailed,
 } from '../../../../lib/firestore/processed-articles';
+import {
+  checkEventDuplication,
+  registerNewEvent,
+  updateEventStatus,
+} from '../../../../lib/firestore/event-deduplication';
 import { parseRssFeed } from '../../../../lib/rss/parser';
 import { generateArticleWithClaude } from '../../../../lib/ai/article-generator';
+import { extractFromRss } from '../../../../lib/claude/rss-extractor';
+import { generateArticleMetadata } from '../../../../lib/claude/metadata-generator';
+import { generateMdxArticle } from '../../../../lib/mdx/template-generator';
+import {
+  resolveWorkSlug,
+  resolveStoreSlug,
+  resolveEventTypeSlug,
+} from '../../../../lib/config';
 
 /**
  * Cron認証キーをSecret Managerから取得 (キャッシュ)
@@ -194,12 +208,229 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  * @returns Next.js Response
  */
 async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
-  // TODO: Step 5 で実装
-  console.log('MDX Pipeline implementation coming in Step 5');
+  // 1. RSSフィード取得
+  console.log('[MDX Pipeline] Fetching RSS feed:', feedUrl);
+  const feedResult = await parseRssFeed(feedUrl, 1); // 最新1件のみ取得
+
+  if (feedResult.items.length === 0) {
+    return NextResponse.json(
+      { error: 'No items in RSS feed' },
+      { status: 404 }
+    );
+  }
+
+  const rssItem = feedResult.items[0];
+  const year = new Date().getFullYear();
+
+  console.log('[MDX Pipeline] RSS item fetched:', {
+    title: rssItem.title,
+    link: rssItem.link,
+  });
+
+  // 2. Claude API で workTitle/storeName/eventType 抽出
+  console.log('[MDX Pipeline] Extracting work/store/event from RSS...');
+  const extraction = await extractFromRss({
+    title: rssItem.title,
+    content: rssItem.content || rssItem.contentSnippet || '',
+    link: rssItem.link,
+  });
+
+  console.log('[MDX Pipeline] Extraction result:', {
+    workTitle: extraction.workTitle,
+    storeName: extraction.storeName,
+    eventTypeName: extraction.eventTypeName,
+    confidence: extraction.confidence,
+  });
+
+  // 3. YAML スラグ解決
+  console.log('[MDX Pipeline] Resolving slugs from YAML...');
+  const workSlug = await resolveWorkSlug(extraction.workTitle);
+  const storeSlug = await resolveStoreSlug(extraction.storeName);
+  const eventType = await resolveEventTypeSlug(extraction.eventTypeName);
+
+  // 必須スラグの存在チェック（Step 7でフォールバック実装予定）
+  if (!workSlug) {
+    throw new Error(
+      `Work slug not found in YAML for: "${extraction.workTitle}". Please add to title-romaji-mapping.yaml`
+    );
+  }
+
+  if (!eventType) {
+    throw new Error(
+      `Event type slug not found in YAML for: "${extraction.eventTypeName}". Please add to event-type-slugs.yaml`
+    );
+  }
+
+  console.log('[MDX Pipeline] Slugs resolved:', {
+    workSlug,
+    storeSlug,
+    eventType,
+  });
+
+  // 4. Firestore 重複チェック + 登録
+  console.log('[MDX Pipeline] Checking for duplicates in Firestore...');
+  const duplicationCheck = await checkEventDuplication({
+    workTitle: extraction.workTitle,
+    storeName: extraction.storeName,
+    eventTypeName: extraction.eventTypeName,
+    year,
+  });
+
+  if (duplicationCheck.isDuplicate) {
+    console.info('[MDX Pipeline] Event already registered:', {
+      canonicalKey: duplicationCheck.canonicalKey,
+      status: duplicationCheck.existingDoc?.status,
+      postId: duplicationCheck.existingDoc?.postId,
+    });
+
+    return NextResponse.json(
+      {
+        status: 'already_processed',
+        canonicalKey: duplicationCheck.canonicalKey,
+        existingStatus: duplicationCheck.existingDoc?.status,
+        postId: duplicationCheck.existingDoc?.postId,
+      },
+      { status: 200 }
+    );
+  }
+
+  // 新規イベント登録
+  console.log('[MDX Pipeline] Registering new event in Firestore...');
+  const eventRecord = await registerNewEvent({
+    workTitle: extraction.workTitle,
+    storeName: extraction.storeName,
+    eventTypeName: extraction.eventTypeName,
+    year,
+  });
+
+  console.log('[MDX Pipeline] Event registered:', {
+    postId: eventRecord.postId,
+    canonicalKey: eventRecord.canonicalKey,
+  });
+
+  // 5. Claude API で categories/excerpt 生成
+  console.log('[MDX Pipeline] Generating metadata with Claude API...');
+  const metadata = await generateArticleMetadata({
+    content: rssItem.content || rssItem.contentSnippet || '',
+    title: rssItem.title,
+    workTitle: extraction.workTitle,
+    eventType: extraction.eventTypeName,
+  });
+
+  console.log('[MDX Pipeline] Metadata generated:', {
+    categories: metadata.categories,
+    excerptLength: metadata.excerpt.length,
+  });
+
+  // 6. MDX Article 生成
+  console.log('[MDX Pipeline] Generating MDX article...');
+  const mdxArticle = generateMdxArticle(
+    {
+      postId: eventRecord.postId,
+      year,
+      eventType,
+      eventTitle: extraction.eventTypeName,
+      workTitle: extraction.workTitle,
+      workSlug,
+      title: rssItem.title,
+      categories: metadata.categories,
+      excerpt: metadata.excerpt,
+    },
+    rssItem.content || rssItem.contentSnippet || ''
+  );
+
+  console.log('[MDX Pipeline] MDX article generated:', {
+    filePath: mdxArticle.filePath,
+    contentLength: mdxArticle.content.length,
+  });
+
+  // 7. GitHub PR 作成
+  console.log('[MDX Pipeline] Creating GitHub PR...');
+  const branchName = `content/mdx-${workSlug}-${eventRecord.postId}`;
+  const prTitle = `✨ 新規記事: ${rssItem.title}`;
+  const prBody = `## 📝 記事概要
+
+**タイトル**: ${rssItem.title}
+**作品**: ${extraction.workTitle}
+**イベント**: ${extraction.eventTypeName}
+**店舗**: ${extraction.storeName}
+
+## 🤖 AI Writer情報
+
+- **Post ID**: \`${eventRecord.postId}\`
+- **Work Slug**: \`${workSlug}\`
+- **Canonical Key**: \`${eventRecord.canonicalKey}\`
+- **ファイルパス**: \`${mdxArticle.filePath}\`
+
+## 📊 メタデータ
+
+- **カテゴリ**: ${metadata.categories.join(', ')}
+- **要約**: ${metadata.excerpt.substring(0, 100)}...
+
+---
+
+🤖 この記事は **Revolution AI Writer (MDX Pipeline)** によって自動生成されました。
+
+**注意**: マージ前に内容を確認してください。`;
+
+  let prResult;
+  try {
+    prResult = await createMdxPr({
+      mdxContent: mdxArticle.content,
+      filePath: mdxArticle.filePath,
+      title: prTitle,
+      body: prBody,
+      branchName,
+      context: {
+        workTitle: extraction.workTitle,
+        storeName: extraction.storeName,
+        eventTypeName: extraction.eventTypeName,
+        year,
+        postId: eventRecord.postId,
+        workSlug,
+        canonicalKey: eventRecord.canonicalKey,
+      },
+    });
+
+    console.log('[MDX Pipeline] PR created:', {
+      prNumber: prResult.prNumber,
+      prUrl: prResult.prUrl,
+    });
+
+    // 8. Firestore ステータス更新 (成功)
+    await updateEventStatus(eventRecord.canonicalKey, 'generated');
+  } catch (prError) {
+    // 8b. Firestore ステータス更新 (失敗)
+    const errorMessage =
+      prError instanceof Error ? prError.message : String(prError);
+
+    await updateEventStatus(
+      eventRecord.canonicalKey,
+      'failed',
+      errorMessage
+    );
+
+    // エラーを再スロー
+    throw prError;
+  }
 
   return NextResponse.json(
-    { error: 'MDX Pipeline not yet implemented' },
-    { status: 501 }
+    {
+      status: 'success',
+      pipeline: 'mdx',
+      pr: {
+        number: prResult.prNumber,
+        url: prResult.prUrl,
+        branch: prResult.branchName,
+        file: mdxArticle.filePath,
+      },
+      event: {
+        postId: eventRecord.postId,
+        canonicalKey: eventRecord.canonicalKey,
+        workSlug,
+      },
+    },
+    { status: 200 }
   );
 }
 
