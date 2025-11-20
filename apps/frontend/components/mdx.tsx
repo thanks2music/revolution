@@ -155,7 +155,7 @@ const components = {
  * カスタムMDXコンポーネント
  * next-mdx-remote/rsc を使用してMDXをレンダリング
  */
-export function CustomMDX(props: Omit<MDXRemoteProps, 'components'>) {
+export function CustomMDX(props: MDXRemoteProps) {
   return (
     <MDXRemote
       {...props}

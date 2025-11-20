@@ -20,6 +20,7 @@ export interface ArticleIndexItem {
   tags: string[];
   author: string;
   filePath: string;
+  ogImage?: string;
 }
 
 /**

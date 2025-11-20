@@ -51,20 +51,21 @@ export function parseFrontmatter(fileContent: string): {
     if (colonIndex === -1) return;
 
     const key = line.slice(0, colonIndex).trim();
-    let value = line.slice(colonIndex + 1).trim();
+    let valueStr = line.slice(colonIndex + 1).trim();
+    let value: string | string[];
 
     // 配列の解析（categories, tagsなど）
-    if (value.startsWith('[') && value.endsWith(']')) {
+    if (valueStr.startsWith('[') && valueStr.endsWith(']')) {
       try {
         // シングルクォートをダブルクォートに変換してJSONパース
-        value = JSON.parse(value.replace(/'/g, '"'));
+        value = JSON.parse(valueStr.replace(/'/g, '"'));
       } catch (e) {
-        console.error(`Failed to parse array for key "${key}":`, value);
-        value = [];
+        console.error(`Failed to parse array for key "${key}":`, valueStr);
+        value = [] as string[];
       }
     } else {
       // クォート削除
-      value = value.replace(/^["'](.*)["']$/, '$1');
+      value = valueStr.replace(/^["'](.*)["']$/, '$1');
     }
 
     metadata[key as keyof ArticleMetadata] = value as any;
