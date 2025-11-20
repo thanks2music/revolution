@@ -2,8 +2,13 @@
 /**
  * 記事インデックス生成スクリプト
  *
- * content/articles/ をスキャンし、全記事のメタデータを収集して
+ * content/ をスキャンし、全記事のメタデータを収集して
  * apps/frontend/lib/mdx/article-index.json に出力
+ *
+ * Phase 0.1対応:
+ *   - content/articles/ (既存記事)
+ *   - content/collabo-cafe/ (AI Writer生成記事)
+ *   - content/{event-type}/ (その他イベントタイプ)
  */
 
 import { promises as fs } from 'fs';
@@ -14,7 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const CONTENT_DIR = path.join(REPO_ROOT, 'content', 'articles');
+const CONTENT_DIR = path.join(REPO_ROOT, 'content');
 const OUTPUT_PATH = path.join(REPO_ROOT, 'apps', 'frontend', 'lib', 'mdx', 'article-index.json');
 
 /**

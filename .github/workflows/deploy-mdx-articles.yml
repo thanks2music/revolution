@@ -4,13 +4,13 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - 'content/articles/**/*.md'
-      - 'content/articles/**/*.mdx'
+      - 'content/**/*.md'
+      - 'content/**/*.mdx'
   push:
     branches: [main]
     paths:
-      - 'content/articles/**/*.md'
-      - 'content/articles/**/*.mdx'
+      - 'content/**/*.md'
+      - 'content/**/*.mdx'
 
 permissions:
   contents: read

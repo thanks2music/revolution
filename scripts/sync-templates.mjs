@@ -29,10 +29,13 @@ const templatesRepoPath = process.env.TEMPLATES_REPO_PATH || defaultTemplatesRep
 // 4. private リポ内の YAML / Markdown の場所
 const yamlSrcDir = path.join(templatesRepoPath, 'ai-writer', 'posts', 'yaml');
 const markdownSrcDir = path.join(templatesRepoPath, 'ai-writer', 'posts', 'markdown');
+const configSrcDir = path.join(templatesRepoPath, 'ai-writer', 'config');
 
 // 5. public リポ側の配置先
 //    apps/ai-writer/templates/ 配下にフラットにコピーする
+//    apps/ai-writer/config/ に設定ファイルをコピーする
 const destDir = path.join(projectRoot, 'apps', 'ai-writer', 'templates');
+const configDestDir = path.join(projectRoot, 'apps', 'ai-writer', 'config');
 
 // 6. オプション解析
 const isDryRun = process.argv.includes('--dry-run');
@@ -171,13 +174,16 @@ function main() {
   }
 
   log.info(`ソース: ${templatesRepoPath}`);
-  log.info(`宛先  : ${destDir}`);
+  log.info(`宛先  : `);
+  log.info(`  - テンプレート: ${destDir}`);
+  log.info(`  - 設定ファイル: ${configDestDir}`);
   log.info('');
 
   // バリデーション
   ensureDirExists(templatesRepoPath, 'テンプレートリポジトリ');
   ensureDirExists(yamlSrcDir, 'YAML テンプレート');
   ensureDirExists(markdownSrcDir, 'Markdown テンプレート');
+  ensureDirExists(configSrcDir, 'Config ファイル');
   validateGitRepository();
 
   // Gitコミット情報の取得
@@ -189,13 +195,15 @@ function main() {
   // 出力先ディレクトリを用意
   if (!isDryRun) {
     fs.mkdirSync(destDir, { recursive: true });
+    fs.mkdirSync(configDestDir, { recursive: true });
   }
 
   // ファイルコピー
   log.info('ファイルをコピー中...');
   const yamlCount = copyAllFiles(yamlSrcDir, destDir);
   const markdownCount = copyAllFiles(markdownSrcDir, destDir);
-  const totalCount = yamlCount + markdownCount;
+  const configCount = copyAllFiles(configSrcDir, configDestDir);
+  const totalCount = yamlCount + markdownCount + configCount;
   log.info('');
 
   // バージョン情報の書き込み

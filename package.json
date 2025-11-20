@@ -26,7 +26,6 @@
     "docs:create": "./scripts/create-doc-and-sync.sh",
     "prepare": "husky",
     "sync:templates": "node scripts/sync-templates.mjs",
-    "sync:templates": "node scripts/sync-templates.mjs",
     "sync:templates:dry-run": "node scripts/sync-templates.mjs --dry-run"
   },
   "devDependencies": {

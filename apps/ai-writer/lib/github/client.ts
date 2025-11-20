@@ -26,7 +26,7 @@ export const REPO_CONFIG = {
   owner: process.env.GITHUB_OWNER || 'thanks2music', // GitHub organization/user
   repo: process.env.GITHUB_REPO || 'revolution', // Repository name
   baseBranch: process.env.GITHUB_BASE_BRANCH || 'main', // Default branch
-  articlesPath: process.env.GITHUB_ARTICLES_PATH || 'content/articles', // MDX files directory
+  contentBasePath: process.env.GITHUB_CONTENT_PATH || 'content', // MDX content base directory
 } as const;
 
 /**
@@ -42,7 +42,11 @@ let patCachedAt: number | null = null;
 const PAT_CACHE_TTL_MS = 60 * 60 * 1000; // 1時間
 
 /**
- * Secret ManagerからGitHub PATを取得 (メモ化)
+ * GitHub PATを取得 (メモ化)
+ *
+ * 取得優先順位:
+ * 1. 環境変数 GITHUB_PAT (ローカル開発・デバッグ用)
+ * 2. Secret Manager (Cloud Run本番用)
  *
  * Codexレビュー指摘対応:
  * - プロセス単位でメモ化
@@ -66,7 +70,17 @@ async function getGitHubPat(forceRefresh = false): Promise<string> {
     return cachedPat;
   }
 
+  // Pattern 1: 環境変数から直接取得（ローカル開発・デバッグ用）
+  if (process.env.GITHUB_PAT) {
+    console.log('[GitHub Client] Using GITHUB_PAT from environment variable');
+    cachedPat = process.env.GITHUB_PAT;
+    patCachedAt = now;
+    return cachedPat;
+  }
+
+  // Pattern 2: Secret Manager（Cloud Run本番用）
   try {
+    console.log('[GitHub Client] Fetching GITHUB_PAT from Secret Manager');
     const client = new SecretManagerServiceClient();
     const projectId = process.env.GOOGLE_CLOUD_PROJECT || 't4v-revo-prd';
     const secretName = `projects/${projectId}/secrets/GITHUB_PAT/versions/latest`;
