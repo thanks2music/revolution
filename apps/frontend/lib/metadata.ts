@@ -12,7 +12,7 @@ import { env } from './env';
 export const siteConfig = {
   name: env.NEXT_PUBLIC_SITE_NAME,
   description: env.NEXT_PUBLIC_SITE_DESCRIPTION,
-  url: env.NEXT_PUBLIC_WP_URL || 'https://example.com',
+  url: env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com',
   ogImage: '/og-image.png', // デフォルトのOG画像
   twitterHandle: '@your_twitter', // Twitter handle（必要に応じて環境変数化）
 };
@@ -101,7 +101,7 @@ export function generateArticleMetadata({
   imageUrl?: string;
   slug: string;
 }): Metadata {
-  const url = `${siteConfig.url}/post/${slug}`;
+  const url = `${siteConfig.url}/articles/${slug}`;
   const ogImage = imageUrl || siteConfig.ogImage;
 
   return {

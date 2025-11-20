@@ -1,8 +1,8 @@
-import { ImageResponse } from '@vercel/og';
-import { getArticleBySlug } from '@/lib/mdx/articles';
+import { ImageResponse } from 'next/og';
+// Import article index directly (Edge Runtime compatible)
+import articleIndex from '@/lib/mdx/article-index.json';
 
 // Image metadata
-export const runtime = 'edge';
 export const alt = 'Article OG Image';
 export const size = {
   width: 1200,
@@ -14,13 +14,22 @@ export const contentType = 'image/png';
  * Dynamic OG Image Generation for Articles
  *
  * @description
- * Generates Open Graph images dynamically for each article using @vercel/og.
+ * Generates Open Graph images dynamically for each article using next/og.
  * Displays title, author, date, and categories with Revolution branding.
+ * Uses direct JSON import for Edge Runtime compatibility (no fs/path).
  *
- * @see https://vercel.com/docs/functions/og-image-generation
+ * @see https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image
  */
-export default async function Image({ params }: { params: { slug: string } }) {
-  const article = getArticleBySlug(params.slug);
+export default async function Image({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  // Await params (Next.js 14+ requirement for metadata routes)
+  const { slug } = await params;
+
+  // Find article from imported index (Edge-compatible)
+  const article = articleIndex.articles.find((a) => a.slug === slug);
 
   // Fallback if article not found
   if (!article) {
@@ -165,3 +174,6 @@ export default async function Image({ params }: { params: { slug: string } }) {
     }
   );
 }
+
+// Edge Runtime for optimal performance
+export const runtime = 'edge';

@@ -21,6 +21,7 @@
       "outputs": [".next/**", "!.next/cache/**", "dist/**", "build/**"],
       "env": [
         "NEXT_PUBLIC_WP_ENDPOINT",
+        "NEXT_PUBLIC_SITE_URL",
         "NEXT_PUBLIC_WP_URL",
         "NEXT_PUBLIC_ALLOWED_IMAGE_HOST",
         "NEXT_PUBLIC_GCS_IMAGE_HOST",
