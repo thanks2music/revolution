@@ -230,5 +230,5 @@ export interface MdxArticle {
 export const MDX_DEFAULTS = {
   AUTHOR: 'thanks2music',
   OG_IMAGE: '/images/og-image-compressed.png',
-  CONTENT_BASE_DIR: 'content',
+  CONTENT_BASE_DIR: 'apps/ai-writer/content',
 } as const;
