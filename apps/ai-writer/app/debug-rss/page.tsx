@@ -98,7 +98,7 @@ export default function DebugRssPage() {
       const response = await fetch('/api/debug/generate-from-feed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feedId })
+        body: JSON.stringify({ feedId }),
       });
 
       if (!response.body) {
@@ -142,13 +142,16 @@ export default function DebugRssPage() {
                       wordpress: data.wordpress,
                       remainingArticles: data.remainingArticles || [],
                       feedId,
-                      feedTitle
+                      feedTitle,
                     };
                     setGeneratedResults(prev => [result, ...prev]);
 
                     // 生成された記事エリアにスクロール
                     setTimeout(() => {
-                      generatedResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      generatedResultsRef.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                      });
                     }, 300);
                   }
                 } else {
@@ -160,7 +163,7 @@ export default function DebugRssPage() {
                   step: data.step,
                   totalSteps: data.totalSteps,
                   message: data.message,
-                  detail: data.detail
+                  detail: data.detail,
                 });
               }
             } catch (parseError) {
@@ -169,7 +172,6 @@ export default function DebugRssPage() {
           }
         }
       }
-
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate from feed');
       setArticleProgress(null);
@@ -198,7 +200,7 @@ export default function DebugRssPage() {
               ← ダッシュボードに戻る
             </a>
             <h1 className="mt-2 text-2xl font-bold text-gray-900">
-              🔧 RSS手動デバッグ
+              🔧 RSS手動デバッグ (Headless WordPress版)
             </h1>
             <p className="mt-1 text-sm text-gray-600">
               RSSフィードから記事を取得し、Claude APIで記事生成をテストします
@@ -222,15 +224,13 @@ export default function DebugRssPage() {
             <p className="text-gray-500">アクティブなRSSフィードがありません</p>
           ) : (
             <div className="space-y-3">
-              {feeds.map((feed) => (
+              {feeds.map(feed => (
                 <div
                   key={feed.id}
                   className="flex items-center justify-between rounded-lg border p-4"
                 >
                   <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">
-                      {feed.title || 'タイトルなし'}
-                    </h3>
+                    <h3 className="font-medium text-gray-900">{feed.title || 'タイトルなし'}</h3>
                     <p className="text-sm text-gray-500">{feed.url}</p>
                   </div>
                   <button
@@ -269,16 +269,16 @@ export default function DebugRssPage() {
                 <div className="h-3 w-full overflow-hidden rounded-full bg-blue-200">
                   <div
                     className="h-full rounded-full bg-blue-600 transition-all duration-500 ease-out"
-                    style={{ width: `${(articleProgress.step / articleProgress.totalSteps) * 100}%` }}
+                    style={{
+                      width: `${(articleProgress.step / articleProgress.totalSteps) * 100}%`,
+                    }}
                   ></div>
                 </div>
               </div>
 
               {/* Detail Message */}
               {articleProgress.detail && (
-                <p className="text-sm text-blue-700">
-                  {articleProgress.detail}
-                </p>
+                <p className="text-sm text-blue-700">{articleProgress.detail}</p>
               )}
 
               {/* Loading Spinner */}
@@ -314,7 +314,7 @@ export default function DebugRssPage() {
 
 function GeneratedArticleDisplay({
   result,
-  onGenerateNext
+  onGenerateNext,
 }: {
   result: GeneratedArticleResult;
   onGenerateNext: (feedId: string, feedTitle: string) => void;
@@ -325,9 +325,7 @@ function GeneratedArticleDisplay({
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4">
         <h3 className="font-semibold text-red-900">生成失敗</h3>
-        <p className="mt-2 text-sm text-red-600">
-          エラー: {result.error}
-        </p>
+        <p className="mt-2 text-sm text-red-600">エラー: {result.error}</p>
       </div>
     );
   }
@@ -338,13 +336,9 @@ function GeneratedArticleDisplay({
     <div className="rounded-lg border border-green-200 bg-green-50 p-6">
       <div className="mb-4 flex items-start justify-between">
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-green-900">
-            ✅ {article?.title}
-          </h3>
+          <h3 className="text-lg font-semibold text-green-900">✅ {article?.title}</h3>
           {result.feedTitle && (
-            <p className="mt-1 text-sm text-green-700">
-              フィード: {result.feedTitle}
-            </p>
+            <p className="mt-1 text-sm text-green-700">フィード: {result.feedTitle}</p>
           )}
         </div>
         {wordpress?.databaseId && (
@@ -380,7 +374,9 @@ function GeneratedArticleDisplay({
         <div>
           <p className="text-xs text-gray-500">生成日時</p>
           <p className="font-mono text-sm font-medium">
-            {article?.metadata.generatedAt ? new Date(article.metadata.generatedAt).toLocaleString('ja-JP') : 'N/A'}
+            {article?.metadata.generatedAt
+              ? new Date(article.metadata.generatedAt).toLocaleString('ja-JP')
+              : 'N/A'}
           </p>
         </div>
       </div>
@@ -391,8 +387,11 @@ function GeneratedArticleDisplay({
           <p className="text-xs text-gray-500">カテゴリ</p>
           {wordpress?.categories && wordpress.categories.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-2">
-              {wordpress.categories.map((cat) => (
-                <span key={cat.id} className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-800">
+              {wordpress.categories.map(cat => (
+                <span
+                  key={cat.id}
+                  className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-800"
+                >
                   {cat.name}
                 </span>
               ))}
@@ -405,8 +404,11 @@ function GeneratedArticleDisplay({
           <p className="text-xs text-gray-500">タグ</p>
           {wordpress?.tags && wordpress.tags.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-2">
-              {wordpress.tags.map((tag) => (
-                <span key={tag.id} className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-800">
+              {wordpress.tags.map(tag => (
+                <span
+                  key={tag.id}
+                  className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-800"
+                >
                   {tag.name}
                 </span>
               ))}
@@ -454,9 +456,7 @@ function GeneratedArticleDisplay({
         <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
           <div className="mb-3">
             <h4 className="font-semibold text-blue-900">次の記事</h4>
-            <p className="mt-1 text-sm text-blue-700">
-              まだ生成していない記事があります：
-            </p>
+            <p className="mt-1 text-sm text-blue-700">まだ生成していない記事があります：</p>
           </div>
           <div className="mb-3 rounded-lg bg-white p-3">
             <h5 className="font-medium text-gray-900 text-sm">
