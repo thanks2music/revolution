@@ -19,7 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const CONTENT_DIR = path.join(REPO_ROOT, 'content');
+const CONTENT_DIR = path.join(REPO_ROOT, 'apps', 'ai-writer', 'content');
 const OUTPUT_PATH = path.join(REPO_ROOT, 'apps', 'frontend', 'lib', 'mdx', 'article-index.json');
 
 /**
@@ -168,7 +168,7 @@ async function main() {
   console.log(`Total articles: ${articles.length}`);
 }
 
-main().catch((error) => {
+main().catch(error => {
   console.error('❌ Error generating article index:', error);
   process.exit(1);
 });
