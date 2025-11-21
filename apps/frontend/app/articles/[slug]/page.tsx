@@ -1,12 +1,16 @@
 import Layout from '@/components/templates/Layout';
-import { getArticleBySlug, getAllArticles } from '@/lib/mdx/articles';
+import {
+  getArticleBySlug,
+  getAllArticles,
+  getArticleUrl,
+  readArticleContentFile,
+} from '@/lib/mdx/articles';
 import { CustomMDX } from '@/components/mdx';
 import { notFound } from 'next/navigation';
 import { Metadata } from 'next';
 import Link from 'next/link';
-import path from 'path';
-import fs from 'fs';
 import { parseFrontmatter } from '@/lib/mdx/utils';
+import { generateArticleMetadata } from '@/lib/metadata';
 
 // Generate static params for all articles
 export async function generateStaticParams() {
@@ -30,25 +34,16 @@ export async function generateMetadata({
     };
   }
 
-  return {
-    title: `${article.title} | Revolution Platform`,
+  return generateArticleMetadata({
+    title: article.title,
     description: article.excerpt,
-    openGraph: {
-      title: article.title,
-      description: article.excerpt,
-      type: 'article',
-      publishedTime: article.date,
-      authors: [article.author],
-      tags: [...article.categories, ...article.tags],
-      images: article.ogImage ? [article.ogImage] : [],
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: article.title,
-      description: article.excerpt,
-      images: article.ogImage ? [article.ogImage] : [],
-    },
-  };
+    publishedTime: article.date,
+    authors: [article.author],
+    tags: article.tags,
+    imageUrl: article.ogImage,
+    slug: article.slug,
+    path: getArticleUrl(article),
+  });
 }
 
 export default function ArticlePage({ params }: { params: { slug: string } }) {
@@ -59,10 +54,7 @@ export default function ArticlePage({ params }: { params: { slug: string } }) {
     notFound();
   }
 
-  // Read full MDX content using the full filePath
-  // filePath is relative to project root (e.g., "content/articles/2025-11-15-hello-mdx.md")
-  const fullPath = path.join(process.cwd(), '..', '..', article.filePath);
-  const rawContent = fs.readFileSync(fullPath, 'utf-8');
+  const rawContent = readArticleContentFile(article.filePath);
   const { content } = parseFrontmatter(rawContent);
 
   return (

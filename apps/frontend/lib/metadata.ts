@@ -91,6 +91,7 @@ export function generateArticleMetadata({
   tags,
   imageUrl,
   slug,
+  path,
 }: {
   title: string;
   description: string;
@@ -100,8 +101,10 @@ export function generateArticleMetadata({
   tags?: string[];
   imageUrl?: string;
   slug: string;
+  path?: string;
 }): Metadata {
-  const url = `${siteConfig.url}/articles/${slug}`;
+  const canonicalPath = path ?? `/articles/${slug}`;
+  const url = `${siteConfig.url}${canonicalPath}`;
   const ogImage = imageUrl || siteConfig.ogImage;
 
   return {
