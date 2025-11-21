@@ -77,9 +77,17 @@ export default function RssFeedsPage() {
     console.log('=== Loading Feeds ===');
     try {
       setLoading(true);
-      const data = await RssFeedService.listFeeds();
-      console.log('Feeds loaded:', data.length, 'items');
-      setFeeds(data);
+
+      // Use API endpoint instead of direct Firestore access
+      const response = await fetch('/api/rss-feeds?activeOnly=false');
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to load feeds');
+      }
+
+      console.log('Feeds loaded:', data.feeds.length, 'items');
+      setFeeds(data.feeds);
     } catch (err) {
       console.error('Failed to load feeds:', err);
       setError(err instanceof Error ? err.message : 'Failed to load feeds');
