@@ -1,6 +1,44 @@
 import fs from 'fs';
 import path from 'path';
-import { ArticleMetadata } from './utils';
+
+const FRONTEND_ROOT = path.join(process.cwd(), 'apps', 'frontend');
+
+/**
+ * モノレポルートを検出
+ *
+ * Next.jsの実行コンテキストに応じて、モノレポルートを適切に解決します。
+ * - process.cwd() が apps/frontend の場合: ../../ がモノレポルート
+ * - process.cwd() がモノレポルートの場合: そのまま使用
+ */
+function getMonorepoRoot(): string {
+  const cwd = process.cwd();
+
+  // process.cwd() が apps/frontend の場合（通常のNext.js実行時）
+  if (cwd.endsWith(path.join('apps', 'frontend'))) {
+    return path.join(cwd, '..', '..');
+  }
+
+  // process.cwd() がモノレポルートの場合（ビルド時など）
+  return cwd;
+}
+
+function resolvePathRelativeToFrontend(relativePath: string): string | null {
+  const MONOREPO_ROOT = getMonorepoRoot();
+
+  const candidates = [
+    path.join(FRONTEND_ROOT, relativePath),
+    path.join(process.cwd(), relativePath),
+    path.join(MONOREPO_ROOT, relativePath),  // モノレポルートからの参照を追加
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 /**
  * 記事インデックスの型定義
@@ -29,17 +67,26 @@ export interface ArticleIndexItem {
  * 記事インデックスJSONを読み込む
  *
  * パフォーマンス最適化: 全ファイル読み込みではなくインデックスから取得
+ *
+ * Note: Turbopackの静的解析警告を回避するため、固定パスを使用
  */
 export function getArticleIndex(): ArticleIndex {
-  const indexPath = path.join(process.cwd(), 'lib', 'mdx', 'article-index.json');
+  const MONOREPO_ROOT = getMonorepoRoot();
+
+  // 固定パス: apps/frontend/lib/mdx/article-index.json
+  const indexPath = path.join(
+    MONOREPO_ROOT,
+    'apps',
+    'frontend',
+    'lib',
+    'mdx',
+    'article-index.json'
+  );
 
   if (!fs.existsSync(indexPath)) {
-    console.warn('Article index not found. Run `node scripts/generate-article-index.mjs`');
-    return {
-      generatedAt: new Date().toISOString(),
-      totalArticles: 0,
-      articles: [],
-    };
+    throw new Error(
+      `article-index.json not found at ${indexPath}. Please run \`pnpm --filter @revolution/frontend generate:article-index\` before building.`
+    );
   }
 
   const indexData = fs.readFileSync(indexPath, 'utf-8');
@@ -53,10 +100,7 @@ export function getArticleIndex(): ArticleIndex {
  * @param offset 開始位置（ページネーション用）
  * @returns 記事メタデータ配列
  */
-export function getAllArticles(
-  limit?: number,
-  offset = 0
-): ArticleIndexItem[] {
+export function getAllArticles(limit?: number, offset = 0): ArticleIndexItem[] {
   const index = getArticleIndex();
   const articles = index.articles;
 
@@ -72,9 +116,7 @@ export function getAllArticles(
  */
 export function getArticlesByCategory(category: string): ArticleIndexItem[] {
   const index = getArticleIndex();
-  return index.articles.filter(article =>
-    article.categories.includes(category)
-  );
+  return index.articles.filter(article => article.categories.includes(category));
 }
 
 /**
@@ -155,10 +197,18 @@ export function getArticleByPath(
   const index = getArticleIndex();
   return (
     index.articles.find(
-      (article) =>
-        article.eventType === eventType &&
-        article.workSlug === workSlug &&
-        article.slug === slug
+      article =>
+        article.eventType === eventType && article.workSlug === workSlug && article.slug === slug
     ) || null
   );
+}
+
+export function readArticleContentFile(filePath: string): string {
+  const resolvedPath = resolvePathRelativeToFrontend(filePath);
+
+  if (!resolvedPath) {
+    throw new Error(`Article file not found for path: ${filePath}`);
+  }
+
+  return fs.readFileSync(resolvedPath, 'utf-8');
 }
