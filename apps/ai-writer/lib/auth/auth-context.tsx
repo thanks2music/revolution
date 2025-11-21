@@ -38,14 +38,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[AuthContext] Development mode with auth bypass enabled - using mock user');
 
       // ダミーユーザーを作成（部分的なUser型）
+      // 注意: カスタムクレームはgetIdTokenResult()で取得されるが、
+      // Firestore Security Rulesで認識させるにはFirebase Emulator Suiteが必要
       const mockUser = {
         uid: 'dev-user-local',
         email: 'dev@local.test',
-        displayName: 'Development User',
+        displayName: 'Development User (Admin)',
         photoURL: null,
         emailVerified: true,
         // 最小限のUser型プロパティを追加
         getIdToken: async () => 'dev-token-local',
+        // カスタムクレームを含むトークン情報を返す（開発環境用モック）
+        getIdTokenResult: async () => ({
+          token: 'dev-token-local',
+          expirationTime: new Date(Date.now() + 3600000).toISOString(),
+          authTime: new Date().toISOString(),
+          issuedAtTime: new Date().toISOString(),
+          signInProvider: 'mock',
+          signInSecondFactor: null,
+          claims: {
+            // 管理者権限を付与（開発環境用）
+            admin: true,
+            allowedEditor: true,
+            email: 'dev@local.test',
+            email_verified: true,
+            user_id: 'dev-user-local',
+          },
+        }),
       } as User;
 
       setUser(mockUser);
