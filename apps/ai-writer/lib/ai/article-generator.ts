@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { RssFeedItem } from '../rss/parser';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
+import { DEFAULT_CLAUDE_MODEL } from '../config/claude-models';
 
 /**
  * 記事生成リクエスト
@@ -75,7 +76,7 @@ export async function generateArticleWithClaude(
 
   // Claude API呼び出し
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5-20250929',
+    model: DEFAULT_CLAUDE_MODEL,
     max_tokens: 4096,
     temperature: 0.7,
     system: systemPrompt,

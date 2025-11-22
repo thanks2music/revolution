@@ -12,6 +12,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
+import { DEFAULT_CLAUDE_MODEL } from './claude-models';
 
 /**
  * Claude API key cache (shared with rss-extractor)
@@ -94,7 +95,7 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 - 入力: "アベイル" → 出力: "avail"`;
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5-20250929',
+    model: DEFAULT_CLAUDE_MODEL,
     max_tokens: 100,
     temperature: 0,
     messages: [{ role: 'user', content: prompt }],

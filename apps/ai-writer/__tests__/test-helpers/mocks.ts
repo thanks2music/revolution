@@ -3,6 +3,7 @@
  */
 
 import { jest } from '@jest/globals';
+import { DEFAULT_CLAUDE_MODEL } from '../../lib/config/claude-models';
 
 // Claude API モック
 export const mockClaudeAPI = {
@@ -17,7 +18,7 @@ export const mockClaudeAPI = {
       wordCount: 500,
       language: 'ja',
       generatedAt: new Date().toISOString(),
-      model: 'claude-sonnet-4-5-20250929'
+      model: DEFAULT_CLAUDE_MODEL
     }
   }),
 
@@ -32,7 +33,7 @@ export const mockClaudeAPI = {
       wordCount: 600,
       language: 'ja',
       generatedAt: new Date().toISOString(),
-      model: 'claude-sonnet-4-5-20250929'
+      model: DEFAULT_CLAUDE_MODEL
     }
   }),
 

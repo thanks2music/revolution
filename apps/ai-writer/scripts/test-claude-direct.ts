@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Anthropic } from '@anthropic-ai/sdk';
+import { DEFAULT_CLAUDE_MODEL } from '../lib/config/claude-models.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,7 +38,7 @@ Slug:`;
   console.log(`Title: "${title}"\n`);
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5-20250929',
+    model: DEFAULT_CLAUDE_MODEL,
     max_tokens: 100,
     temperature: 0.1,
     messages: [{

@@ -1,5 +1,6 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { extract } from '@extractus/article-extractor';
+import { DEFAULT_CLAUDE_MODEL } from '../config/claude-models';
 
 // Types for article generation
 export interface ArticleGenerationRequest {
@@ -29,7 +30,7 @@ export interface GeneratedArticle {
 
 export class ClaudeAPIService {
   private client: Anthropic;
-  private model: string = 'claude-sonnet-4-5-20250929';
+  private model: string = DEFAULT_CLAUDE_MODEL;
   private apiKey?: string;
 
   constructor(apiKey?: string) {

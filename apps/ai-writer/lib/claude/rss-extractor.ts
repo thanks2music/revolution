@@ -11,6 +11,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
+import { DEFAULT_CLAUDE_MODEL } from '../config/claude-models';
 
 /**
  * RSS extraction input
@@ -109,7 +110,7 @@ export async function extractFromRss(
 
   // Call Claude API
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5-20250929',
+    model: DEFAULT_CLAUDE_MODEL,
     max_tokens: 1024,
     temperature: 0,
     messages: [
