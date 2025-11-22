@@ -22,7 +22,7 @@ import {
 } from '../errors/github';
 import { getAdminDb } from '../firebase/admin';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
-import type { EventCanonicalKey } from '../firestore/types';
+import type { EventCanonicalKey, ResolvedSlugs } from '../firestore/types';
 import { FIRESTORE_COLLECTIONS } from '../firestore/types';
 
 /**
@@ -65,6 +65,10 @@ export interface CreateMdxPrParams {
     postId: string;
     workSlug: string;
     canonicalKey: string;
+    /**
+     * Optional: Pre-resolved slugs to avoid redundant Claude API calls
+     */
+    resolvedSlugs?: ResolvedSlugs;
   };
 }
 
@@ -161,7 +165,7 @@ async function checkDuplicateOpenPr(branchName: string): Promise<boolean> {
  * const result = await createMdxPr({
  *   mdxContent: '---\nslug: jujutsu-kaisen-cafe-2025\n...',
  *   filePath: 'content/collabo-cafe/jujutsu-kaisen/01kaek3mh9-2025.mdx',
- *   title: '✨ 新規記事: 呪術廻戦×アニメイトカフェ2025',
+ *   title: '✨ Generate MDX (AI Writer): ${extraction.eventTypeName}/${eventRecord.postId}`',
  *   body: '## 概要\nAI Writerが自動生成した記事です...',
  *   branchName: 'content/mdx-jujutsu-kaisen-01kaek3mh9',
  *   context: {
@@ -178,9 +182,7 @@ async function checkDuplicateOpenPr(branchName: string): Promise<boolean> {
  * console.log(result.prUrl); // https://github.com/thanks2music/revolution/pull/123
  * ```
  */
-export async function createMdxPr(
-  params: CreateMdxPrParams
-): Promise<CreateMdxPrResult> {
+export async function createMdxPr(params: CreateMdxPrParams): Promise<CreateMdxPrResult> {
   const { mdxContent, filePath, title, body, branchName, context } = params;
 
   console.log('[Create MDX PR] Starting PR creation process...');
@@ -199,6 +201,7 @@ export async function createMdxPr(
       storeName: context.storeName,
       eventTypeName: context.eventTypeName,
       year: context.year,
+      resolvedSlugs: context.resolvedSlugs,
     });
 
     if (duplicationResult.isDuplicate) {
