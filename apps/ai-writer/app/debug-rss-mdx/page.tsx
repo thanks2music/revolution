@@ -292,12 +292,57 @@ export default function DebugRssMdxPage() {
 
 function MdxArticleDisplay({ result }: { result: MdxGenerationResult }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  const handleResetFirestore = async (canonicalKey: string) => {
+    if (!confirm(`Firestoreのステータスをリセットしますか？\n\nCanonical Key: ${canonicalKey}\n\nこの操作により、同じイベントの記事を再生成できるようになります。`)) {
+      return;
+    }
+
+    try {
+      setResetting(true);
+      setResetSuccess(false);
+
+      const response = await fetch('/api/debug/reset-firestore-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ canonicalKey }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to reset Firestore status');
+      }
+
+      setResetSuccess(true);
+      alert('✅ Firestoreステータスをリセットしました。\n\n同じ記事を再生成できます。');
+    } catch (error) {
+      alert(`❌ リセット失敗: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setResetting(false);
+    }
+  };
 
   if (!result.success) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-        <h3 className="font-semibold text-red-900">生成失敗</h3>
-        <p className="mt-2 text-sm text-red-600">エラー: {result.error}</p>
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <h3 className="font-semibold text-red-900">生成失敗</h3>
+            <p className="mt-2 text-sm text-red-600">エラー: {result.error}</p>
+          </div>
+          {result.event?.canonicalKey && (
+            <button
+              onClick={() => handleResetFirestore(result.event!.canonicalKey)}
+              disabled={resetting}
+              className="ml-4 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {resetting ? 'リセット中...' : 'Firestoreリセット'}
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -313,16 +358,28 @@ function MdxArticleDisplay({ result }: { result: MdxGenerationResult }) {
             <p className="mt-1 text-sm text-green-700">フィード: {result.feedTitle}</p>
           )}
         </div>
-        {github?.prUrl && (
-          <a
-            href={github.prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-4 rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
-          >
-            GitHub PRで確認
-          </a>
-        )}
+        <div className="ml-4 flex gap-2">
+          {github?.prUrl && (
+            <a
+              href={github.prUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
+            >
+              GitHub PRで確認
+            </a>
+          )}
+          {event?.canonicalKey && (
+            <button
+              onClick={() => handleResetFirestore(event.canonicalKey)}
+              disabled={resetting}
+              className="rounded-md bg-orange-600 px-3 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+              title="Firestoreステータスをリセットして同じ記事を再生成できるようにする"
+            >
+              {resetting ? 'リセット中...' : '🔄 リセット'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Metadata */}
