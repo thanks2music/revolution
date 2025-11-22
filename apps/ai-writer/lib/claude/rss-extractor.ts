@@ -109,7 +109,7 @@ export async function extractFromRss(
 
   // Call Claude API
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 1024,
     temperature: 0,
     messages: [
@@ -200,11 +200,7 @@ function parseExtractionResponse(responseText: string): {
   try {
     const parsed = JSON.parse(jsonText.trim());
 
-    if (
-      !parsed.workTitle ||
-      !parsed.storeName ||
-      !parsed.eventTypeName
-    ) {
+    if (!parsed.workTitle || !parsed.storeName || !parsed.eventTypeName) {
       throw new Error('Missing required fields in extraction response');
     }
 
@@ -233,10 +229,7 @@ function calculateConfidence(extracted: {
 }): number {
   // Simple heuristic: longer strings = higher confidence
   const avgLength =
-    (extracted.workTitle.length +
-      extracted.storeName.length +
-      extracted.eventTypeName.length) /
-    3;
+    (extracted.workTitle.length + extracted.storeName.length + extracted.eventTypeName.length) / 3;
 
   // Confidence score: 0.6 baseline + 0.4 * (avgLength / 20)
   // Max confidence: 1.0

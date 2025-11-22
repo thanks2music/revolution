@@ -41,11 +41,7 @@ import { generateArticleWithClaude } from '../../../../lib/ai/article-generator'
 import { extractFromRss } from '../../../../lib/claude/rss-extractor';
 import { generateArticleMetadata } from '../../../../lib/claude/metadata-generator';
 import { generateMdxArticle } from '../../../../lib/mdx/template-generator';
-import {
-  resolveWorkSlug,
-  resolveStoreSlug,
-  resolveEventTypeSlug,
-} from '../../../../lib/config';
+import { resolveWorkSlug, resolveStoreSlug, resolveEventTypeSlug } from '../../../../lib/config';
 
 /**
  * Cron認証キーをSecret Managerから取得 (キャッシュ)
@@ -127,10 +123,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         userAgent: request.headers.get('user-agent') || 'unknown',
       });
 
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // 2. Request body 取得
@@ -138,10 +131,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { feedUrl } = body as { feedUrl?: string };
 
     if (!feedUrl) {
-      return NextResponse.json(
-        { error: 'feedUrl is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'feedUrl is required' }, { status: 400 });
     }
 
     // 3. Pipeline Mode 判定
@@ -185,10 +175,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // その他のエラー: 500
     console.error('Unexpected error in cron/rss', { error });
 
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -213,10 +200,7 @@ async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
   const feedResult = await parseRssFeed(feedUrl, 1); // 最新1件のみ取得
 
   if (feedResult.items.length === 0) {
-    return NextResponse.json(
-      { error: 'No items in RSS feed' },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: 'No items in RSS feed' }, { status: 404 });
   }
 
   const rssItem = feedResult.items[0];
@@ -347,7 +331,7 @@ async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
   // 7. GitHub PR 作成
   console.log('[MDX Pipeline] Creating GitHub PR...');
   const branchName = `content/mdx-${workSlug}-${eventRecord.postId}`;
-  const prTitle = `✨ 新規記事: ${rssItem.title}`;
+  const prTitle = `✨ Generate MDX (AI Writer): ${extraction.eventTypeName}/${eventRecord.postId}`;
   const prBody = `## 📝 記事概要
 
 **タイトル**: ${rssItem.title}
@@ -401,14 +385,9 @@ async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
     await updateEventStatus(eventRecord.canonicalKey, 'generated');
   } catch (prError) {
     // 8b. Firestore ステータス更新 (失敗)
-    const errorMessage =
-      prError instanceof Error ? prError.message : String(prError);
+    const errorMessage = prError instanceof Error ? prError.message : String(prError);
 
-    await updateEventStatus(
-      eventRecord.canonicalKey,
-      'failed',
-      errorMessage
-    );
+    await updateEventStatus(eventRecord.canonicalKey, 'failed', errorMessage);
 
     // エラーを再スロー
     throw prError;
@@ -448,16 +427,12 @@ async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
  * @returns Next.js Response
  */
 async function runWordpressPipeline(feedUrl: string): Promise<NextResponse> {
-
   // 1. RSSフィード取得
   console.log('[WordPress Pipeline] Fetching RSS feed:', feedUrl);
   const feedResult = await parseRssFeed(feedUrl, 1); // 最新1件のみ取得
 
   if (feedResult.items.length === 0) {
-    return NextResponse.json(
-      { error: 'No items in RSS feed' },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: 'No items in RSS feed' }, { status: 404 });
   }
 
   const rssItem = feedResult.items[0];
@@ -559,8 +534,7 @@ async function runWordpressPipeline(feedUrl: string): Promise<NextResponse> {
     );
   } catch (prError) {
     // PR作成失敗をマーク
-    const errorMessage =
-      prError instanceof Error ? prError.message : String(prError);
+    const errorMessage = prError instanceof Error ? prError.message : String(prError);
     await markAsFailed({ feedUrl, guid, slug }, errorMessage);
 
     // エラーを再スロー（外側のcatchブロックで処理）
@@ -581,4 +555,3 @@ async function runWordpressPipeline(feedUrl: string): Promise<NextResponse> {
     { status: 200 }
   );
 }
-
