@@ -117,6 +117,42 @@ export interface EventCanonicalKey {
 }
 
 /**
+ * Pre-resolved slugs to avoid redundant Claude API calls
+ *
+ * @description
+ * When slugs are already resolved (e.g., in Step 2 of the MDX pipeline),
+ * pass them here to skip redundant slug resolution in subsequent steps.
+ *
+ * @example
+ * ```typescript
+ * const resolvedSlugs: ResolvedSlugs = {
+ *   workSlug: "jujutsu-kaisen",
+ *   storeSlug: "avail",
+ *   eventType: "collabo-cafe"
+ * };
+ * ```
+ */
+export interface ResolvedSlugs {
+  /**
+   * Work slug (romanized anime/manga title)
+   * @example "jujutsu-kaisen"
+   */
+  workSlug: string;
+
+  /**
+   * Store slug (brand/cafe name)
+   * @example "avail", "animate-cafe"
+   */
+  storeSlug: string;
+
+  /**
+   * Event type slug
+   * @example "collabo-cafe", "pop-up-store"
+   */
+  eventType: string;
+}
+
+/**
  * Input parameters for creating a new event canonical key
  */
 export interface CreateEventCanonicalKeyInput {
@@ -144,6 +180,16 @@ export interface CreateEventCanonicalKeyInput {
    * Optional: Post ID (generated if not provided)
    */
   postId?: string;
+
+  /**
+   * Optional: Pre-resolved slugs to avoid redundant Claude API calls
+   *
+   * @description
+   * If slugs are already resolved (e.g., in MDX pipeline Step 2),
+   * pass them here to skip slug resolution in checkEventDuplication/registerNewEvent.
+   * This optimization reduces Claude API costs and improves performance.
+   */
+  resolvedSlugs?: ResolvedSlugs;
 }
 
 /**

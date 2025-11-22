@@ -51,16 +51,26 @@ import { FIRESTORE_COLLECTIONS } from './types';
 export async function checkEventDuplication(
   input: CreateEventCanonicalKeyInput
 ): Promise<DuplicationCheckResult> {
-  const { workTitle, storeName, eventTypeName } = input;
+  const { workTitle, storeName, eventTypeName, resolvedSlugs } = input;
   const year = input.year || new Date().getFullYear();
 
-  // Generate canonical key
-  const { canonicalKey } = await generateCanonicalKeyFromNames(
-    workTitle,
-    storeName,
-    eventTypeName,
-    year
-  );
+  // Generate canonical key (use pre-resolved slugs if available)
+  let canonicalKey: string;
+
+  if (resolvedSlugs) {
+    // Use pre-resolved slugs to avoid redundant Claude API calls
+    const { workSlug, storeSlug, eventType } = resolvedSlugs;
+    canonicalKey = `${workSlug}:${storeSlug}:${eventType}:${year}`;
+  } else {
+    // Fallback: resolve slugs from Japanese names
+    const result = await generateCanonicalKeyFromNames(
+      workTitle,
+      storeName,
+      eventTypeName,
+      year
+    );
+    canonicalKey = result.canonicalKey;
+  }
 
   // Query Firestore (getAdminDb()を呼ぶことで初期化を確実に実行)
   getAdminDb(); // Firebase Admin SDK初期化
@@ -116,15 +126,16 @@ export async function checkEventDuplication(
 export async function registerNewEvent(
   input: CreateEventCanonicalKeyInput
 ): Promise<EventCanonicalKey> {
-  const { workTitle, storeName, eventTypeName } = input;
+  const { workTitle, storeName, eventTypeName, resolvedSlugs } = input;
   const year = input.year || new Date().getFullYear();
 
-  // Check for duplicates first
+  // Check for duplicates first (pass resolved slugs if available)
   const duplicationCheck = await checkEventDuplication({
     workTitle,
     storeName,
     eventTypeName,
     year,
+    resolvedSlugs,
   });
 
   if (duplicationCheck.isDuplicate) {
@@ -134,13 +145,31 @@ export async function registerNewEvent(
     );
   }
 
-  // Generate components
-  const { canonicalKey, components } = await generateCanonicalKeyFromNames(
-    workTitle,
-    storeName,
-    eventTypeName,
-    year
-  );
+  // Generate canonical key and components (use pre-resolved slugs if available)
+  let canonicalKey: string;
+  let workSlug: string;
+  let storeSlug: string;
+  let eventType: string;
+
+  if (resolvedSlugs) {
+    // Use pre-resolved slugs to avoid redundant Claude API calls
+    workSlug = resolvedSlugs.workSlug;
+    storeSlug = resolvedSlugs.storeSlug;
+    eventType = resolvedSlugs.eventType;
+    canonicalKey = `${workSlug}:${storeSlug}:${eventType}:${year}`;
+  } else {
+    // Fallback: resolve slugs from Japanese names
+    const result = await generateCanonicalKeyFromNames(
+      workTitle,
+      storeName,
+      eventTypeName,
+      year
+    );
+    canonicalKey = result.canonicalKey;
+    workSlug = result.components.workSlug;
+    storeSlug = result.components.storeSlug;
+    eventType = result.components.eventType;
+  }
 
   // Generate post ID
   const postId = input.postId || generateSlugWithYear(year);
@@ -149,10 +178,10 @@ export async function registerNewEvent(
   const now = Timestamp.now();
   const doc: EventCanonicalKey = {
     canonicalKey,
-    workSlug: components.workSlug,
-    storeSlug: components.storeSlug,
-    eventType: components.eventType,
-    year: components.year,
+    workSlug,
+    storeSlug,
+    eventType,
+    year,
     postId,
     status: 'pending',
     createdAt: now,
