@@ -1,16 +1,19 @@
-import { generateMdxArticle, type MdxArticle } from '../mdx/template-generator';
+import { generateMdxArticle } from '../mdx/template-generator';
+import { type MdxArticle } from '../mdx/types';
 import { createMdxPr, type CreateMdxPrResult } from '../github/create-mdx-pr';
 import {
   checkEventDuplication,
   registerNewEvent,
   updateEventStatus,
-  type EventCanonicalKey,
 } from '../firestore/event-deduplication';
+import { type EventCanonicalKey } from '../firestore/types';
 import { resolveWorkSlug, resolveStoreSlug, resolveEventTypeSlug } from '../config/slug-resolver';
 import { DuplicateSlugError } from '../errors/github';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
-import { generateArticleMetadata, type ArticleMetadata } from '../claude/metadata-generator';
+import { generateArticleMetadata } from '../claude/metadata-generator';
+import { type ArticleMetadata } from '../claude/types';
 import { ClaudeAPIService } from './claude-api.service';
+import { convertRssContentToMarkdown } from '../utils/html-to-markdown';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -91,11 +94,13 @@ export class ArticleGenerationMdxService {
       // Step 1: Extract work/store/event information from RSS
       console.log('\n[Step 1/7] Claude APIでRSS記事から作品/店舗/イベント情報を抽出...');
 
-      const extraction = request.extracted || await extractFromRss({
-        title: rssItem.title,
-        content: rssItem.content || rssItem.contentSnippet || '',
-        link: rssItem.link,
-      });
+      const extraction =
+        request.extracted ||
+        (await extractFromRss({
+          title: rssItem.title,
+          content: rssItem.content || rssItem.contentSnippet || '',
+          link: rssItem.link,
+        }));
 
       console.log('抽出結果:', extraction);
 
@@ -109,6 +114,18 @@ export class ArticleGenerationMdxService {
       ]);
 
       console.log('Slug解決結果:', { workSlug, storeSlug, eventType });
+
+      // Validate that all slugs were resolved successfully
+      if (!workSlug || !storeSlug || !eventType) {
+        const missingFields = [];
+        if (!workSlug) missingFields.push(`workSlug (${extraction.workTitle})`);
+        if (!storeSlug) missingFields.push(`storeSlug (${extraction.storeName})`);
+        if (!eventType) missingFields.push(`eventType (${extraction.eventTypeName})`);
+
+        throw new Error(
+          `Slug解決に失敗しました。以下のフィールドが解決できませんでした: ${missingFields.join(', ')}`
+        );
+      }
 
       // Create resolved slugs object to pass to subsequent functions
       const resolvedSlugs = { workSlug, storeSlug, eventType };
@@ -124,11 +141,16 @@ export class ArticleGenerationMdxService {
         resolvedSlugs,
       });
 
-      if (duplicationCheck.isDuplicate) {
+      if (duplicationCheck.isDuplicate && duplicationCheck.existingDoc) {
         console.log('⚠️ 重複イベントを検出:', duplicationCheck.canonicalKey);
+
+        // Construct expected file path for the existing document
+        const existingFilePath = `apps/ai-writer/content/${duplicationCheck.existingDoc.eventType}/${duplicationCheck.existingDoc.workSlug}/${duplicationCheck.existingDoc.postId}.mdx`;
+
         throw new DuplicateSlugError(
           `このイベントは既に生成済みです: ${duplicationCheck.canonicalKey}`,
-          duplicationCheck.canonicalKey!
+          duplicationCheck.existingDoc.postId,
+          existingFilePath
         );
       }
 
@@ -166,6 +188,16 @@ export class ArticleGenerationMdxService {
       // Step 5: Generate MDX article
       console.log('\n[Step 5/7] MDX記事を生成...');
 
+      // Convert HTML content to Markdown
+      const rawContent = rssItem.content || rssItem.contentSnippet || '';
+      const markdownContent = convertRssContentToMarkdown(rawContent);
+
+      console.log('コンテンツ変換:', {
+        hasHtmlTags: rawContent.includes('<'),
+        originalLength: rawContent.length,
+        convertedLength: markdownContent.length,
+      });
+
       const mdxArticle = generateMdxArticle(
         {
           postId: eventRecord.postId,
@@ -180,7 +212,7 @@ export class ArticleGenerationMdxService {
           date: rssItem.pubDate || new Date().toISOString().split('T')[0],
           author: 'thanks2music',
         },
-        rssItem.content || rssItem.contentSnippet || ''
+        markdownContent
       );
 
       console.log('MDX生成完了:', {
@@ -191,8 +223,8 @@ export class ArticleGenerationMdxService {
       // Step 6: Create GitHub PR
       console.log('\n[Step 6/7] GitHub PRを作成...');
 
-      const branchName = `content/mdx-${workSlug}-${eventRecord.postId}`;
-      const prTitle = `✨ 新規記事: ${rssItem.title}`;
+      const branchName = `ai-writer/mdx-${eventType}-${eventRecord.postId}`;
+      const prTitle = `✨ Generate MDX (AI Writer): ${eventType}/${eventRecord.postId}`;
       const prBody = this.generatePrBody({
         rssItem,
         extraction,
@@ -248,7 +280,6 @@ export class ArticleGenerationMdxService {
           year,
         },
       };
-
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
       console.error('エラー:', error);
@@ -273,7 +304,6 @@ export class ArticleGenerationMdxService {
       };
     }
   }
-
 
   /**
    * GitHub PR説明文を生成
