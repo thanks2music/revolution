@@ -66,7 +66,9 @@ export function generateMdxFrontmatter(
     throw new Error('Content fields (title, excerpt, categories) are required');
   }
 
-  const slug = `${postId}-${year}`;
+  // Note: postId already includes year suffix (e.g., "01jcxy4567-2025")
+  // from generateSlugWithYear() in event-deduplication.ts
+  const slug = postId;
 
   return {
     post_id: postId,
