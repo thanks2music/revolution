@@ -33,17 +33,10 @@ config({ path: resolve(__dirname, '../.env.local') });
 import { generatePostId } from '../lib/ulid/generate-post-id';
 
 // Task 2: YAML読み込み
-import {
-  resolveWorkSlug,
-  resolveStoreSlug,
-  resolveEventTypeSlug,
-} from '../lib/config';
+import { resolveWorkSlug, resolveStoreSlug, resolveEventTypeSlug } from '../lib/config';
 
 // Task 3: Firestore重複判定
-import {
-  generateCanonicalKeyFromNames,
-  checkEventDuplication,
-} from '../lib/firestore';
+import { generateCanonicalKeyFromNames, checkEventDuplication } from '../lib/firestore';
 
 // Task 4: MDX生成
 import { generateMdxFrontmatter, generateMdxArticle } from '../lib/mdx';
@@ -110,9 +103,9 @@ const SAMPLE_DATA = {
  */
 async function main() {
   console.log('🔍 MDX生成プロセス E2Eデバッグ開始\n');
-  console.log('=' .repeat(80));
+  console.log('='.repeat(80));
   console.log('Phase 0.1 統合テスト: Task 1-5');
-  console.log('=' .repeat(80));
+  console.log('='.repeat(80));
   console.log();
 
   try {
@@ -267,7 +260,7 @@ async function main() {
     console.log(`  ブランチ名: ${branchName}`);
 
     // PR タイトル・本文生成
-    const prTitle = `✨ 新規記事: ${SAMPLE_DATA.title}`;
+    const prTitle = `✨ Generate MDX (AI Writer): ${SAMPLE_DATA.eventTitle}/${postId}`;
     const prBody = `## 📝 記事概要
 
 **タイトル**: ${SAMPLE_DATA.title}
@@ -332,21 +325,20 @@ async function main() {
     // ========================================
     // 最終結果の表示
     // ========================================
-    console.log('=' .repeat(80));
+    console.log('='.repeat(80));
     console.log('📄 生成されたMDXファイルのプレビュー');
-    console.log('=' .repeat(80));
+    console.log('='.repeat(80));
     console.log();
     console.log(mdxArticle.content);
     console.log();
-    console.log('=' .repeat(80));
+    console.log('='.repeat(80));
     console.log('✅ E2Eデバッグ完了！すべてのステップが正常に動作しました。');
-    console.log('=' .repeat(80));
+    console.log('='.repeat(80));
     console.log();
     console.log('📊 次のステップ:');
     console.log('  - 実際のRSSフィードやスクレイピングデータで動作確認');
     console.log('  - Firestore接続の確認（.env.localにFIREBASE_PROJECT_ID設定）');
     console.log('  - GitHub PR作成のテスト（GITHUB_PAT設定済み）');
-
   } catch (error) {
     console.error('\n❌ エラー発生:', error);
     if (error instanceof Error) {
