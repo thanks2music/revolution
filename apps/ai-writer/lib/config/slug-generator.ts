@@ -94,7 +94,7 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 - 入力: "アベイル" → 出力: "avail"`;
 
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 100,
     temperature: 0,
     messages: [{ role: 'user', content: prompt }],
@@ -110,9 +110,7 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 
   // Validate slug format (alphanumeric + hyphens only)
   if (!/^[a-z0-9-]+$/.test(slug)) {
-    throw new Error(
-      `Generated slug contains invalid characters: "${slug}"`
-    );
+    throw new Error(`Generated slug contains invalid characters: "${slug}"`);
   }
 
   return slug;
@@ -199,8 +197,6 @@ export async function generateSlugWithFallback(
     );
   }
 
-  console.log(
-    `[Slug Generator] ⚠️ ASCII fallback generated: "${asciiSlug}" (may not be ideal)`
-  );
+  console.log(`[Slug Generator] ⚠️ ASCII fallback generated: "${asciiSlug}" (may not be ideal)`);
   return asciiSlug;
 }
