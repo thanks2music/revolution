@@ -4,7 +4,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { templateLoaderService } from '../../../../lib/services/template-loader.service';
+import { templateLoaderService } from '../../../../lib/services/template-loader-for-wordpress.service';
 import { requireAuth } from '@/lib/auth/server-auth';
 
 // Force dynamic rendering to prevent build-time execution

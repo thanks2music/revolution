@@ -8,7 +8,7 @@ import {
   TemplateSelectionRequest,
   TemplateSelectionResult,
 } from "@/lib/types/template";
-import { TemplateLoaderService } from "./template-loader.service";
+import { TemplateLoaderService } from "./template-loader-for-wordpress.service";
 import { ClaudeAPIService } from "./claude-api.service";
 
 /**
