@@ -121,19 +121,23 @@ function copyAllFiles(srcDir, destDir) {
 
   for (const file of files) {
     const srcPath = path.join(srcDir, file);
-    const destPath = path.join(destDir, file);
-
     const stat = fs.statSync(srcPath);
-    if (!stat.isFile()) continue; // ディレクトリなどはスキップ
 
-    if (isDryRun) {
-      log.dryRun(`${srcPath} → ${destPath}`);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-      log.success(`コピー: ${file}`);
+    if (stat.isDirectory()) {
+      // サブディレクトリを再帰的に処理（フラット構造でコピー）
+      copiedCount += copyAllFiles(srcPath, destDir);
+    } else if (stat.isFile()) {
+      const destPath = path.join(destDir, file);
+
+      if (isDryRun) {
+        log.dryRun(`${srcPath} → ${destPath}`);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+        log.success(`コピー: ${file}`);
+      }
+
+      copiedCount++;
     }
-
-    copiedCount++;
   }
 
   return copiedCount;
