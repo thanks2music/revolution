@@ -11,11 +11,13 @@ export interface ArticleSelectionRequest {
   /** RSSアイテムのタイトル */
   rss_title: string;
 
-  /** RSS本文（抜粋 or 全文） */
+  /**
+   * 記事本文HTML
+   * extractArticleHtml()で抽出された、記事本体のHTML
+   * （<article>, <main>, .entry-content などから抽出）
+   * Claude AIが内部でURLを抽出し、公式情報元URLを判定する
+   */
   rss_content: string;
-
-  /** RSSアイテム内から抽出した全URL一覧 */
-  url_list: string[];
 
   /** RSS配信元ドメイン（任意） */
   site_domain?: string;

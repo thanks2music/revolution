@@ -61,6 +61,11 @@ export class ArticleSelectionService {
         throw new Error('Unexpected response type from Claude API');
       }
 
+      // Claude APIのレスポンス全文をログ出力（デバッグ用）
+      console.log('\n[ArticleSelection] === Claude APIレスポンス全文 ===');
+      console.log(content.text);
+      console.log('[ArticleSelection] === レスポンス終了 ===\n');
+
       // レスポンスをパース
       const result = this.parseResponse(content.text);
 
@@ -101,7 +106,6 @@ export class ArticleSelectionService {
 
 - rss_title: ${request.rss_title}
 - rss_content: ${request.rss_content.substring(0, 2000)}${request.rss_content.length > 2000 ? '...' : ''}
-- url_list: ${JSON.stringify(request.url_list, null, 2)}
 ${request.site_domain ? `- site_domain: ${request.site_domain}` : ''}
 
 上記の入力データを解析し、JSON形式でのみ出力してください。`;
@@ -149,6 +153,21 @@ ${request.site_domain ? `- site_domain: ${request.site_domain}` : ''}
       if (!Array.isArray(jsonData.official_urls)) {
         throw new Error('Missing or invalid official_urls field');
       }
+
+      // パース済みデータの詳細ログ（デバッグ用）
+      console.log('\n[ArticleSelection] === パース済みデータ詳細 ===');
+      console.log('should_generate:', jsonData.should_generate);
+      console.log('primary_official_url:', jsonData.primary_official_url);
+      console.log('official_urls (公式URL一覧):');
+      if (jsonData.official_urls.length === 0) {
+        console.log('  (0件)');
+      } else {
+        jsonData.official_urls.forEach((url: string, index: number) => {
+          console.log(`  [${index + 1}] ${url}`);
+        });
+      }
+      console.log('reason:', jsonData.reason || '理由なし');
+      console.log('[ArticleSelection] === 詳細終了 ===\n');
 
       return {
         should_generate: jsonData.should_generate,
