@@ -267,6 +267,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# デバッグ出力
+debug-logs/
+**/debug-logs/
+
 # 一時ファイル
 tmp/
 temp/
