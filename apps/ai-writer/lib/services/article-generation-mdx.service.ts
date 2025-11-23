@@ -14,8 +14,11 @@ import { generateArticleMetadata } from '../claude/metadata-generator';
 import { type ArticleMetadata } from '../claude/types';
 import { ClaudeAPIService } from './claude-api.service';
 import { convertRssContentToMarkdown } from '../utils/html-to-markdown';
+import { extractArticleHtml } from '../utils/html-extractor';
 import { ArticleSelectionService } from './article-selection.service';
 import { type ArticleSelectionRequest, type ArticleSelectionResult } from '@/lib/types/article-selection';
+import { TitleGenerationService } from './title-generation.service';
+import { type TitleGenerationRequest, type TitleGenerationResult } from '@/lib/types/title-generation';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -73,28 +76,18 @@ export interface MdxGenerationResult {
  */
 export class ArticleGenerationMdxService {
   /**
-   * テキストからURLを抽出
-   * @private
-   */
-  private extractUrls(text: string): string[] {
-    const urlRegex = /https?:\/\/[^\s<>"]+/gi;
-    const matches = text.match(urlRegex) || [];
-    // 重複を除去して返す
-    return [...new Set(matches)];
-  }
-
-  /**
    * RSS記事からMDX記事を生成してGitHub PRを作成
    *
    * @param request MDX生成リクエスト
    * @returns MDX生成結果
    *
    * 処理フロー:
-   * 0.5. Claude APIで記事選別（公式URL検出、採用判定） ← NEW
+   * 0.5. Claude APIで記事選別（公式URL検出、採用判定）
    * 1. Claude APIでRSS記事から作品/店舗/イベント情報を抽出
    * 2. YAMLコンフィグでslugを解決（フォールバック: Claude API → ASCII）
    * 3. Firestoreで重複チェック + イベント登録（status: pending）
    * 4. Claude APIでカテゴリ/抜粋を生成
+   * 4.5. Claude APIでタイトルを生成（YAMLテンプレート使用） ← NEW
    * 5. MDX記事を生成
    * 6. GitHub PRを作成
    * 7. Firestoreのステータスを更新（status: generated）
@@ -106,22 +99,21 @@ export class ArticleGenerationMdxService {
     console.log('========== MDXパイプライン: 記事生成開始 ==========');
     console.log('RSS記事:', { title: rssItem.title, link: rssItem.link });
 
-    // RSS本文を取得（Step 0.5 と Step 5 で共用）
+    // RSS本文を取得（Step 4.5 と Step 5 で使用）
     const rawContent = rssItem.content || rssItem.contentSnippet || '';
 
     try {
       // Step 0.5: Article selection filter (公式URL検出 + 採用判定)
-      console.log('\n[Step 0.5/8] Claude APIで記事選別（公式URL検出、採用判定）...');
+      console.log('\n[Step 0.5/9] Claude APIで記事選別（公式URL検出、採用判定）...');
+      console.log('記事URLからHTML取得中:', rssItem.link);
 
-      const extractedUrls = this.extractUrls(rawContent);
-
-      console.log('抽出URL数:', extractedUrls.length);
+      const articleHtml = await extractArticleHtml(rssItem.link);
+      console.log('記事HTML取得完了:', articleHtml.length, 'bytes');
 
       const selectionService = new ArticleSelectionService();
       const selectionResult = await selectionService.shouldGenerateArticle({
         rss_title: rssItem.title,
-        rss_content: rawContent,
-        url_list: extractedUrls,
+        rss_content: articleHtml,
         site_domain: new URL(rssItem.link).hostname,
       });
 
@@ -147,7 +139,7 @@ export class ArticleGenerationMdxService {
       console.log('✅ 記事生成対象として採用');
 
       // Step 1: Extract work/store/event information from RSS
-      console.log('\n[Step 1/8] Claude APIでRSS記事から作品/店舗/イベント情報を抽出...');
+      console.log('\n[Step 1/9] Claude APIでRSS記事から作品/店舗/イベント情報を抽出...');
 
       const extraction =
         request.extracted ||
@@ -160,7 +152,7 @@ export class ArticleGenerationMdxService {
       console.log('抽出結果:', extraction);
 
       // Step 2: Resolve slugs (YAML config → Claude API → ASCII fallback)
-      console.log('\n[Step 2/8] YAMLコンフィグでslugを解決...');
+      console.log('\n[Step 2/9] YAMLコンフィグでslugを解決...');
 
       const [workSlug, storeSlug, eventType] = await Promise.all([
         resolveWorkSlug(extraction.workTitle),
@@ -186,7 +178,7 @@ export class ArticleGenerationMdxService {
       const resolvedSlugs = { workSlug, storeSlug, eventType };
 
       // Step 3: Firestore duplication check + event registration
-      console.log('\n[Step 3/8] Firestoreで重複チェック...');
+      console.log('\n[Step 3/9] Firestoreで重複チェック...');
 
       const duplicationCheck = await checkEventDuplication({
         workTitle: extraction.workTitle,
@@ -226,7 +218,7 @@ export class ArticleGenerationMdxService {
       });
 
       // Step 4: Generate categories and excerpt using Claude API
-      console.log('\n[Step 4/8] Claude APIでカテゴリ/抜粋を生成...');
+      console.log('\n[Step 4/9] Claude APIでカテゴリ/抜粋を生成...');
 
       const metadata = await generateArticleMetadata({
         content: rssItem.content || rssItem.contentSnippet || '',
@@ -240,8 +232,24 @@ export class ArticleGenerationMdxService {
         excerptLength: metadata.excerpt.length,
       });
 
+      // Step 4.5: Generate title using YAML template
+      console.log('\n[Step 4.5/9] Claude APIでタイトルを生成（YAMLテンプレート使用）...');
+
+      const titleService = new TitleGenerationService();
+      const titleResult = await titleService.generateTitle({
+        rss_title: rssItem.title,
+        rss_content: rawContent,
+        rss_link: rssItem.link,
+      });
+
+      console.log('タイトル生成完了:', {
+        title: titleResult.title,
+        length: titleResult.length,
+        is_valid: titleResult.is_valid,
+      });
+
       // Step 5: Generate MDX article
-      console.log('\n[Step 5/8] MDX記事を生成...');
+      console.log('\n[Step 5/9] MDX記事を生成...');
 
       // Convert HTML content to Markdown
       const markdownContent = convertRssContentToMarkdown(rawContent);
@@ -260,7 +268,7 @@ export class ArticleGenerationMdxService {
           eventTitle: extraction.eventTypeName,
           workTitle: extraction.workTitle,
           workSlug,
-          title: rssItem.title,
+          title: titleResult.title, // YAMLテンプレートで生成されたタイトルを使用
           categories: metadata.categories,
           excerpt: metadata.excerpt,
           date: rssItem.pubDate || new Date().toISOString().split('T')[0],
@@ -275,7 +283,7 @@ export class ArticleGenerationMdxService {
       });
 
       // Step 6: Create GitHub PR
-      console.log('\n[Step 6/8] GitHub PRを作成...');
+      console.log('\n[Step 6/9] GitHub PRを作成...');
 
       const branchName = `ai-writer/mdx-${eventType}-${eventRecord.postId}`;
       const prTitle = `✨ Generate MDX (AI Writer): ${eventType}/${eventRecord.postId}`;
@@ -313,7 +321,7 @@ export class ArticleGenerationMdxService {
       });
 
       // Step 7: Update Firestore status to 'generated'
-      console.log('\n[Step 7/8] Firestoreのステータスを更新...');
+      console.log('\n[Step 7/9] Firestoreのステータスを更新...');
 
       await updateEventStatus(eventRecord.canonicalKey, 'generated');
 
