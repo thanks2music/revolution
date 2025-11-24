@@ -21,15 +21,21 @@ import type {
 
 /**
  * Recommended Gemini models for different use cases
+ *
+ * Deprecation Schedule (as of 2025):
+ * - gemini-2.0-flash: Earliest February 2026 (~3 months)
+ * - gemini-2.5-flash-lite: Earliest July 2026 (~8 months) ⭐ Longest lifecycle
+ * - gemini-2.5-flash: Earliest June 2026 (~7 months)
+ * - gemini-2.5-pro: Earliest June 2026 (~7 months)
  */
 const GEMINI_MODELS = {
-  // Stable and widely available model with free tier
+  // Stable and widely available model with free tier (Deprecation: Feb 2026)
   FLASH_2_0: 'gemini-2.0-flash',
-  // Cheapest option with free tier - best for development/debugging (may have availability issues)
+  // Cheapest and longest-lived option - best for production (Deprecation: July 2026)
   FLASH_LITE: 'gemini-2.5-flash-lite',
-  // Balanced option with free tier
+  // Balanced option with free tier (Deprecation: June 2026)
   FLASH: 'gemini-2.5-flash',
-  // High quality option with free tier
+  // High quality option with free tier (Deprecation: June 2026)
   PRO: 'gemini-2.5-pro',
 } as const;
 
@@ -38,12 +44,12 @@ const GEMINI_MODELS = {
  *
  * @description
  * Implements the AiProvider interface using Google Gemini API.
- * Uses Gemini 2.0 Flash by default for stability and performance.
+ * Uses Gemini 2.5 Flash-Lite by default for cost efficiency and longevity.
  *
  * Pricing (as of 2025):
- * - Gemini 2.0 Flash: $0.10 input / $0.40 output per 1M tokens (Free tier available)
+ * - Gemini 2.5 Flash-Lite: $0.10 input / $0.40 output per 1M tokens (Free tier available)
  * - ~30x cheaper than Claude Sonnet 4.5
- * - More stable than 2.5 Flash-Lite for production use
+ * - Longest lifecycle among Flash models (Deprecation: July 2026)
  *
  * @example
  * ```typescript
@@ -63,9 +69,9 @@ export class GeminiProvider implements AiProvider {
    * Initialize Gemini Provider
    *
    * @param apiKey - Optional API key override (defaults to GEMINI_API_KEY env var)
-   * @param modelName - Optional model override (defaults to gemini-2.0-flash for stability)
+   * @param modelName - Optional model override (defaults to gemini-2.5-flash-lite)
    */
-  constructor(apiKey?: string, modelName: string = GEMINI_MODELS.FLASH_2_0) {
+  constructor(apiKey?: string, modelName: string = GEMINI_MODELS.FLASH_LITE) {
     this.apiKey = apiKey || process.env.GEMINI_API_KEY || '';
 
     if (!this.apiKey) {
@@ -415,7 +421,7 @@ Respond ONLY with JSON format. No other text should be included.
           sourceUrl: request.sourceUrl,
           generatedAt: new Date().toISOString(),
           wordCount,
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash-lite',
         },
       };
     } catch (error) {
@@ -450,7 +456,7 @@ Respond ONLY with JSON format. No other text should be included.
         workTitle: parsed.workTitle.trim(),
         storeName: parsed.storeName.trim(),
         eventTypeName: parsed.eventTypeName.trim(),
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash-lite',
         confidence,
       };
     } catch (error) {
