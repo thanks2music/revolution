@@ -278,3 +278,138 @@ export async function extractArticleHtmlBatch(
     }
   });
 }
+
+/**
+ * URLからタイトルと記事HTMLを抽出
+ *
+ * タイトル抽出優先順位:
+ * 1. Open Graph title (<meta property="og:title">)
+ * 2. HTML title (<title>)
+ * 3. H1 tag (<h1>)
+ * 4. フォールバック: URLから生成
+ *
+ * @param url 記事URL（Google リダイレクトURLの場合は自動的に実際のURLを抽出）
+ * @returns タイトル、記事HTML、実際のURL
+ * @throws フェッチエラー、タイムアウトエラー
+ */
+export async function extractArticleData(url: string): Promise<{
+  title: string;
+  html: string;
+  actualUrl: string;
+}> {
+  try {
+    // Google リダイレクトURLから実際のURLを抽出
+    const actualUrl = extractActualUrl(url);
+
+    console.log(`[HTMLExtractor] フェッチ開始: ${actualUrl}`);
+
+    // タイムアウト付きフェッチ
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    const response = await fetch(actualUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (compatible; RevolutionBot/1.0; +https://revolution.example.com/bot)',
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(
+        `HTTP error! status: ${response.status} ${response.statusText}`
+      );
+    }
+
+    const fullHtml = await response.text();
+    console.log(`[HTMLExtractor] HTML取得完了: ${fullHtml.length} bytes`);
+
+    // cheerioでパース
+    const $ = cheerio.load(fullHtml);
+
+    // タイトル抽出（優先順位順）
+    let title = '';
+
+    // 1. Open Graph title
+    const ogTitle = $('meta[property="og:title"]').attr('content');
+    if (ogTitle && ogTitle.trim()) {
+      title = ogTitle.trim();
+      console.log(`[HTMLExtractor] ✅ タイトル抽出 (og:title): ${title}`);
+    }
+
+    // 2. HTML title
+    if (!title) {
+      const htmlTitle = $('title').text();
+      if (htmlTitle && htmlTitle.trim()) {
+        title = htmlTitle.trim();
+        console.log(`[HTMLExtractor] ✅ タイトル抽出 (title): ${title}`);
+      }
+    }
+
+    // 3. H1 tag
+    if (!title) {
+      const h1Title = $('h1').first().text();
+      if (h1Title && h1Title.trim()) {
+        title = h1Title.trim();
+        console.log(`[HTMLExtractor] ✅ タイトル抽出 (h1): ${title}`);
+      }
+    }
+
+    // 4. フォールバック: URLから生成
+    if (!title) {
+      const urlObj = new URL(actualUrl);
+      title = `Article from ${urlObj.hostname}`;
+      console.warn(`[HTMLExtractor] ⚠️  タイトルが見つからないため、URLから生成: ${title}`);
+    }
+
+    // 記事HTML抽出（既存ロジックを再利用）
+    let articleHtml = '';
+    for (const selector of ARTICLE_SELECTORS) {
+      const element = $(selector).first();
+
+      if (element.length > 0) {
+        const extractedHtml = element.html();
+
+        if (extractedHtml && extractedHtml.trim().length > 0) {
+          articleHtml = extractedHtml;
+          console.log(
+            `[HTMLExtractor] ✅ 記事HTML抽出成功: selector="${selector}", length=${articleHtml.length} bytes`
+          );
+
+          // デバッグモード時にHTMLを保存
+          await saveHtmlForDebug(articleHtml, actualUrl);
+          break;
+        }
+      }
+    }
+
+    // すべてのセレクタで見つからない場合はフォールバック
+    if (!articleHtml) {
+      console.warn(
+        `[HTMLExtractor] ⚠️  セレクタで要素が見つからないため、完全なHTMLを返します`
+      );
+      articleHtml = fullHtml;
+      await saveHtmlForDebug(fullHtml, actualUrl);
+    }
+
+    return {
+      title,
+      html: articleHtml,
+      actualUrl,
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        throw new Error(
+          `記事データのフェッチがタイムアウトしました: ${url} (${FETCH_TIMEOUT_MS}ms)`
+        );
+      }
+      throw new Error(
+        `記事データの取得に失敗: ${url} - ${error.message}`
+      );
+    }
+    throw new Error(`記事データの取得に失敗: ${url}`);
+  }
+}
