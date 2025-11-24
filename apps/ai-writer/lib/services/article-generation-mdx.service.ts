@@ -5,10 +5,12 @@ import {
   checkEventDuplication,
   registerNewEvent,
   updateEventStatus,
+  deleteEvent,
 } from '../firestore/event-deduplication';
 import { type EventCanonicalKey } from '../firestore/types';
 import { resolveWorkSlug, resolveStoreSlug, resolveEventTypeSlug } from '../config/slug-resolver';
 import { DuplicateSlugError } from '../errors/github';
+import { getPrStatusByCanonicalKey } from '../github/pr-status';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
 import { generateArticleMetadata } from '../claude/metadata-generator';
 import { type ArticleMetadata } from '../claude/types';
@@ -16,9 +18,15 @@ import { ClaudeAPIService } from './claude-api.service';
 import { convertRssContentToMarkdown } from '../utils/html-to-markdown';
 import { extractArticleHtml } from '../utils/html-extractor';
 import { ArticleSelectionService } from './article-selection.service';
-import { type ArticleSelectionRequest, type ArticleSelectionResult } from '@/lib/types/article-selection';
+import {
+  type ArticleSelectionRequest,
+  type ArticleSelectionResult,
+} from '@/lib/types/article-selection';
 import { TitleGenerationService } from './title-generation.service';
-import { type TitleGenerationRequest, type TitleGenerationResult } from '@/lib/types/title-generation';
+import {
+  type TitleGenerationRequest,
+  type TitleGenerationResult,
+} from '@/lib/types/title-generation';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -191,14 +199,33 @@ export class ArticleGenerationMdxService {
       if (duplicationCheck.isDuplicate && duplicationCheck.existingDoc) {
         console.log('⚠️ 重複イベントを検出:', duplicationCheck.canonicalKey);
 
-        // Construct expected file path for the existing document
-        const existingFilePath = `apps/ai-writer/content/${duplicationCheck.existingDoc.eventType}/${duplicationCheck.existingDoc.workSlug}/${duplicationCheck.existingDoc.postId}.mdx`;
+        // Check if the corresponding GitHub PR is still open
+        console.log('GitHub PRの状態を確認中...');
+        const prStatus = await getPrStatusByCanonicalKey(duplicationCheck.canonicalKey);
 
-        throw new DuplicateSlugError(
-          `このイベントは既に生成済みです: ${duplicationCheck.canonicalKey}`,
-          duplicationCheck.existingDoc.postId,
-          existingFilePath
-        );
+        if (prStatus.hasOpenPr) {
+          // Open PR exists - this is a true duplicate
+          console.log('✗ Open PRが存在します。重複エラーをスローします。');
+
+          const existingFilePath = `apps/ai-writer/content/${duplicationCheck.existingDoc.eventType}/${duplicationCheck.existingDoc.workSlug}/${duplicationCheck.existingDoc.postId}.mdx`;
+
+          throw new DuplicateSlugError(
+            `このイベントは既に生成済みです: ${duplicationCheck.canonicalKey}`,
+            duplicationCheck.existingDoc.postId,
+            existingFilePath
+          );
+        } else {
+          // No open PR - allow regeneration
+          console.log(`✓ Open PRが見つかりません。PRがCloseされたため、再生成を許可します。`);
+          console.log(`  - Open PRs: ${prStatus.hasOpenPr ? 'Yes' : 'No'}`);
+          console.log(`  - Closed PRs: ${prStatus.hasClosedPr ? 'Yes' : 'No'}`);
+          console.log(`  - Total PRs: ${prStatus.totalCount}`);
+
+          // Delete existing Firestore document to allow re-registration
+          console.log('既存のFirestoreドキュメントを削除中...');
+          await deleteEvent(duplicationCheck.canonicalKey);
+          console.log('✅ 既存ドキュメント削除完了');
+        }
       }
 
       console.log('✅ 重複なし。イベントを登録...');
@@ -386,7 +413,6 @@ export class ArticleGenerationMdxService {
     return `## 📝 記事情報
 
 **タイトル:** ${rssItem.title}
-**情報源:** ${rssItem.link}
 **公開日:** ${rssItem.pubDate || '不明'}
 
 ## 🎯 抽出情報
