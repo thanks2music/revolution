@@ -175,7 +175,13 @@ ${content}
 {
   "categories": ["カテゴリ1", "カテゴリ2", "カテゴリ3"],
   "excerpt": "記事の要約文（${maxExcerptLength}文字以内）"
-}`;
+}
+
+## 重要な注意事項
+- 日本語全角記号の引用符 ” “ ’ ‘ 〝 〟 ゛ ❝ ❞ は禁止です。
+- 半角英数のシングルクォート = ' も禁止です。
+- 半角英数のダブルクォート = " も禁止です。
+- クォート（' や "）ではなく、かぎ括弧「」を使用してください。強調・目立たせたい箇所には日本語のかぎ括弧「」で囲んでください。`;
 }
 
 /**
@@ -186,10 +192,18 @@ function parseMetadataResponse(response: string): ArticleMetadata {
   try {
     let metadataData: ClaudeMetadataResponse;
 
+    // [DEBUG] Log full response details
+    console.log('[DEBUG] Full Claude response length:', response.length);
+    console.log('[DEBUG] First 500 chars:', response.substring(0, 500));
+    console.log('[DEBUG] Last 500 chars:', response.substring(response.length - 500));
+
     // First, try to parse the response directly as JSON
     try {
       metadataData = JSON.parse(response.trim());
+      console.log('[DEBUG] Direct JSON parse succeeded');
     } catch (directParseError) {
+      console.log('[DEBUG] Direct JSON parse failed, trying markdown extraction');
+
       // If direct parsing fails, try to extract JSON from markdown code blocks
       const jsonMatch =
         response.match(/```json\n([\s\S]*?)\n```/) ||
@@ -201,10 +215,39 @@ function parseMetadataResponse(response: string): ArticleMetadata {
         throw new Error('No JSON found in Claude response');
       }
 
+      console.log(
+        '[DEBUG] JSON extraction succeeded with pattern:',
+        jsonMatch.input?.includes('```json')
+          ? '```json'
+          : jsonMatch.input?.includes('```')
+            ? '```'
+            : 'regex \\{[\\s\\S]*\\}'
+      );
+      console.log('[DEBUG] Extracted JSON length:', (jsonMatch[1] || jsonMatch[0]).length);
+      console.log('[DEBUG] Extracted JSON:', jsonMatch[1] || jsonMatch[0]);
+
       try {
-        metadataData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+        // Clean up extracted JSON before parsing
+        // Replace Japanese full-width quotation marks with escaped ASCII quotes
+        let extractedJson = jsonMatch[1] || jsonMatch[0];
+        const originalJson = extractedJson;
+
+        extractedJson = extractedJson
+          .replace(/\u201C/g, '\\"') // U+201C: LEFT DOUBLE QUOTATION MARK (")
+          .replace(/\u201D/g, '\\"'); // U+201D: RIGHT DOUBLE QUOTATION MARK (")
+
+        if (originalJson !== extractedJson) {
+          console.log('[DEBUG] Cleaned full-width quotation marks in JSON');
+          console.log('[DEBUG] Original JSON:', originalJson);
+          console.log('[DEBUG] Cleaned JSON:', extractedJson);
+        }
+
+        metadataData = JSON.parse(extractedJson);
+        console.log('[DEBUG] Extracted JSON parse succeeded');
       } catch (blockParseError) {
-        console.error('Failed to parse extracted JSON:', jsonMatch[1] || jsonMatch[0]);
+        console.error('[DEBUG] Parse error details:', blockParseError);
+        console.error('[DEBUG] Original extracted JSON:', jsonMatch[1] || jsonMatch[0]);
+        console.error('[DEBUG] After cleaning:', extractedJson);
         throw new Error('Invalid JSON in Claude response');
       }
     }
