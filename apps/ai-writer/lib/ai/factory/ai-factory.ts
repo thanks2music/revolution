@@ -12,6 +12,7 @@
 import type { AiProvider, AiProviderType } from '../providers/ai-provider.interface';
 import { AnthropicProvider } from '../providers/anthropic.provider';
 import { GeminiProvider } from '../providers/gemini.provider';
+import { OpenAIProvider } from '../providers/openai.provider';
 
 /**
  * Get the configured AI provider type from environment variables
@@ -71,11 +72,8 @@ export function createAiProvider(): AiProvider {
       return new GeminiProvider();
 
     case 'openai':
-      // TODO: Implement OpenAIProvider
-      throw new Error(
-        'OpenAI provider is not yet implemented. ' +
-          'Please set AI_PROVIDER=anthropic in your .env.local file.'
-      );
+      console.log('🤖 Using OpenAI GPT provider');
+      return new OpenAIProvider();
 
     default:
       // TypeScript should never reach here due to type checking
@@ -108,7 +106,7 @@ export function createSpecificProvider(
       return new GeminiProvider(apiKey);
 
     case 'openai':
-      throw new Error('OpenAI provider is not yet implemented.');
+      return new OpenAIProvider(apiKey);
 
     default:
       throw new Error(`Unknown provider type: ${providerType}`);
