@@ -46,7 +46,7 @@ export class ArticleSelectionService {
       // Claude APIを呼び出し
       const response = await this.claudeAPI['client'].messages.create({
         model: this.claudeAPI['model'],
-        max_tokens: 1000,
+        max_tokens: 2000, // HTML全文対応のため増加
         temperature: 0.3, // 判定は確実性を重視
         messages: [
           {
@@ -105,7 +105,7 @@ export class ArticleSelectionService {
 ## 入力データ
 
 - rss_title: ${request.rss_title}
-- rss_content: ${request.rss_content.substring(0, 2000)}${request.rss_content.length > 2000 ? '...' : ''}
+- rss_content: ${request.rss_content}
 ${request.site_domain ? `- site_domain: ${request.site_domain}` : ''}
 
 上記の入力データを解析し、JSON形式でのみ出力してください。`;
