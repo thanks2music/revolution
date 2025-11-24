@@ -11,6 +11,7 @@
 
 import type { AiProvider, AiProviderType } from '../providers/ai-provider.interface';
 import { AnthropicProvider } from '../providers/anthropic.provider';
+import { GeminiProvider } from '../providers/gemini.provider';
 
 /**
  * Get the configured AI provider type from environment variables
@@ -66,11 +67,8 @@ export function createAiProvider(): AiProvider {
       return new AnthropicProvider();
 
     case 'gemini':
-      // TODO: Implement GeminiProvider
-      throw new Error(
-        'Gemini provider is not yet implemented. ' +
-          'Please set AI_PROVIDER=anthropic in your .env.local file.'
-      );
+      console.log('🤖 Using Google Gemini provider');
+      return new GeminiProvider();
 
     case 'openai':
       // TODO: Implement OpenAIProvider
@@ -107,7 +105,7 @@ export function createSpecificProvider(
       return new AnthropicProvider(apiKey);
 
     case 'gemini':
-      throw new Error('Gemini provider is not yet implemented.');
+      return new GeminiProvider(apiKey);
 
     case 'openai':
       throw new Error('OpenAI provider is not yet implemented.');

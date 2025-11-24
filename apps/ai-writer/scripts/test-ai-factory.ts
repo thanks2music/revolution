@@ -64,7 +64,7 @@ async function main() {
     console.log(`Result: "${excerpt}"\n`);
 
     console.log('✅ All tests passed!');
-    console.log('\n🎉 AI Factory is working correctly with Anthropic provider.');
+    console.log(`\n🎉 AI Factory is working correctly with ${providerType} provider.`);
   } catch (error) {
     console.error('❌ Test failed:', error);
     process.exit(1);
