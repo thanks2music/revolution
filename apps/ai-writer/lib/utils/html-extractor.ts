@@ -3,14 +3,19 @@
  * 記事本文HTMLを抽出するユーティリティ
  *
  * セレクタ優先順位:
- * 1. article
- * 2. main
+ * 1. main
+ * 2. article
  * 3. [role="main"]
  * 4. [role="article"]
  * 5. .entry-content (WordPress standard)
  * 6. .post-content (WordPress theme)
  * 7. .article__main-text-area (nijimen.kusuguru.co.jp)
  * 8. フォールバック: 完全なHTML
+ *
+ * main を最優先とする理由:
+ * - article よりも広い範囲をカバー
+ * - 関連リンクセクション（公式URLなど）も含まれることが多い
+ * - 記事本文 + 関連情報を一括取得できる
  *
  * デバッグモード:
  * 環境変数 DEBUG_HTML_EXTRACTION=true で有効化
@@ -24,15 +29,17 @@ import * as path from 'path';
 /**
  * セレクタ優先順位
  * より意味的に明確な要素から順に試行
+ *
+ * main を最優先: article よりも広い範囲をカバーし、
+ * 関連リンクセクション（公式URLなど）も含まれることが多い
  */
 const ARTICLE_SELECTORS = [
-  'article',
   'main',
+  'article',
   '[role="main"]',
   '[role="article"]',
   '.entry-content', // WordPress standard
   '.post-content', // WordPress theme
-  '.article__main-text-area', // nijimen.kusuguru.co.jp
 ] as const;
 
 /**
@@ -63,9 +70,7 @@ export function extractActualUrl(url: string): string {
       // URLを '?' で分割してクエリパラメータ部分を取得
       const queryString = url.split('?')[1];
       if (!queryString) {
-        console.warn(
-          `[HTMLExtractor] Google URL detected but no query string found: ${url}`
-        );
+        console.warn(`[HTMLExtractor] Google URL detected but no query string found: ${url}`);
         return url;
       }
 
@@ -73,22 +78,15 @@ export function extractActualUrl(url: string): string {
       const actualUrl = urlParams.get('url');
 
       if (actualUrl) {
-        console.log(
-          `[HTMLExtractor] Google リダイレクトURL検出: ${url.substring(0, 100)}...`
-        );
+        console.log(`[HTMLExtractor] Google リダイレクトURL検出: ${url.substring(0, 100)}...`);
         console.log(`[HTMLExtractor] 実際のURL抽出: ${actualUrl}`);
         return actualUrl;
       } else {
-        console.warn(
-          `[HTMLExtractor] Google URL detected but 'url' parameter not found: ${url}`
-        );
+        console.warn(`[HTMLExtractor] Google URL detected but 'url' parameter not found: ${url}`);
         return url;
       }
     } catch (error) {
-      console.error(
-        `[HTMLExtractor] Failed to extract actual URL from Google redirect:`,
-        error
-      );
+      console.error(`[HTMLExtractor] Failed to extract actual URL from Google redirect:`, error);
       return url;
     }
   }
@@ -125,14 +123,9 @@ async function saveHtmlForDebug(html: string, url: string): Promise<void> {
     // HTMLを保存
     await fs.writeFile(filepath, html, 'utf-8');
 
-    console.log(
-      `[HTMLExtractor] 🐛 デバッグHTML保存: debug-logs/${filename}`
-    );
+    console.log(`[HTMLExtractor] 🐛 デバッグHTML保存: debug-logs/${filename}`);
   } catch (error) {
-    console.error(
-      '[HTMLExtractor] デバッグHTMLの保存に失敗:',
-      error
-    );
+    console.error('[HTMLExtractor] デバッグHTMLの保存に失敗:', error);
   }
 }
 
@@ -165,9 +158,7 @@ export async function extractArticleHtml(url: string): Promise<string> {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(
-        `HTTP error! status: ${response.status} ${response.statusText}`
-      );
+      throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
     }
 
     const html = await response.text();
@@ -178,9 +169,7 @@ export async function extractArticleHtml(url: string): Promise<string> {
       console.warn(
         `[HTMLExtractor] ⚠️  異常に小さいHTML検出: ${html.length} bytes (通常は数十KB以上)`
       );
-      console.warn(
-        `[HTMLExtractor] HTMLプレビュー（最初の500文字）:\n${html.substring(0, 500)}`
-      );
+      console.warn(`[HTMLExtractor] HTMLプレビュー（最初の500文字）:\n${html.substring(0, 500)}`);
     }
 
     // cheerioでパース
@@ -221,15 +210,9 @@ export async function extractArticleHtml(url: string): Promise<string> {
     }
 
     // すべてのセレクタで見つからない場合はフォールバック
-    console.warn(
-      `[HTMLExtractor] ⚠️  セレクタで要素が見つからないため、完全なHTMLを返します`
-    );
-    console.warn(
-      `[HTMLExtractor] セレクタ試行結果: ${JSON.stringify(selectorTrials, null, 2)}`
-    );
-    console.warn(
-      `[HTMLExtractor] HTMLプレビュー（最初の1000文字）:\n${html.substring(0, 1000)}`
-    );
+    console.warn(`[HTMLExtractor] ⚠️  セレクタで要素が見つからないため、完全なHTMLを返します`);
+    console.warn(`[HTMLExtractor] セレクタ試行結果: ${JSON.stringify(selectorTrials, null, 2)}`);
+    console.warn(`[HTMLExtractor] HTMLプレビュー（最初の1000文字）:\n${html.substring(0, 1000)}`);
 
     // デバッグモード時にHTMLを保存（フォールバック時も保存）
     await saveHtmlForDebug(html, actualUrl);
@@ -238,13 +221,9 @@ export async function extractArticleHtml(url: string): Promise<string> {
   } catch (error) {
     if (error instanceof Error) {
       if (error.name === 'AbortError') {
-        throw new Error(
-          `記事HTMLのフェッチがタイムアウトしました: ${url} (${FETCH_TIMEOUT_MS}ms)`
-        );
+        throw new Error(`記事HTMLのフェッチがタイムアウトしました: ${url} (${FETCH_TIMEOUT_MS}ms)`);
       }
-      throw new Error(
-        `記事HTMLの取得に失敗: ${url} - ${error.message}`
-      );
+      throw new Error(`記事HTMLの取得に失敗: ${url} - ${error.message}`);
     }
     throw new Error(`記事HTMLの取得に失敗: ${url}`);
   }
@@ -260,7 +239,7 @@ export async function extractArticleHtmlBatch(
   urls: string[]
 ): Promise<Array<{ url: string; html: string | null; error?: string }>> {
   const results = await Promise.allSettled(
-    urls.map(async (url) => ({
+    urls.map(async url => ({
       url,
       html: await extractArticleHtml(url),
     }))
@@ -318,9 +297,7 @@ export async function extractArticleData(url: string): Promise<{
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(
-        `HTTP error! status: ${response.status} ${response.statusText}`
-      );
+      throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
     }
 
     const fullHtml = await response.text();
@@ -387,9 +364,7 @@ export async function extractArticleData(url: string): Promise<{
 
     // すべてのセレクタで見つからない場合はフォールバック
     if (!articleHtml) {
-      console.warn(
-        `[HTMLExtractor] ⚠️  セレクタで要素が見つからないため、完全なHTMLを返します`
-      );
+      console.warn(`[HTMLExtractor] ⚠️  セレクタで要素が見つからないため、完全なHTMLを返します`);
       articleHtml = fullHtml;
       await saveHtmlForDebug(fullHtml, actualUrl);
     }
@@ -406,9 +381,7 @@ export async function extractArticleData(url: string): Promise<{
           `記事データのフェッチがタイムアウトしました: ${url} (${FETCH_TIMEOUT_MS}ms)`
         );
       }
-      throw new Error(
-        `記事データの取得に失敗: ${url} - ${error.message}`
-      );
+      throw new Error(`記事データの取得に失敗: ${url} - ${error.message}`);
     }
     throw new Error(`記事データの取得に失敗: ${url}`);
   }
