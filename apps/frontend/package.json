@@ -24,8 +24,8 @@
     "react": "^18",
     "react-dom": "^18",
     "sanitize-html": "^2.17.0",
-    "swr": "^2.2.5",
-    "zod": "^4.1.12"
+    "swr": "^2.3.7",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@types/node": "^20",
@@ -38,7 +38,7 @@
     "eslint-config-next": "14.2.4",
     "eslint-plugin-prettier": "^5.5.4",
     "postcss": "^8",
-    "sass": "^1.77.6",
+    "sass": "^1.94.2",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.20.6",
     "typescript": "^5"
