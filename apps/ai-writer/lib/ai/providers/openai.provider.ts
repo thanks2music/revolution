@@ -17,6 +17,8 @@ import type {
   GeneratedArticle,
   RssExtractionInput,
   RssExtractionResult,
+  SendMessageOptions,
+  SendMessageResult,
 } from './ai-provider.interface';
 
 /**
@@ -503,5 +505,58 @@ Respond ONLY with JSON format. No other text should be included.
     const fallbackSlug = `article-${timestamp}`;
     console.warn(`⚠️ Generated timestamp-based fallback slug: ${title} → ${fallbackSlug}`);
     return fallbackSlug;
+  }
+
+  /**
+   * Send a generic message to OpenAI API
+   *
+   * @description
+   * Generic method for sending prompts to OpenAI.
+   * Service layer handles prompt construction and response parsing.
+   *
+   * @param prompt - The prompt to send
+   * @param options - Optional configuration
+   * @returns Response with content and metadata
+   */
+  async sendMessage(prompt: string, options?: SendMessageOptions): Promise<SendMessageResult> {
+    console.log(`🤖 Using AI Provider: OpenAI (${this.modelName})`);
+
+    try {
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+
+      // Add system message if provided
+      if (options?.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
+
+      // Add user message
+      messages.push({ role: 'user', content: prompt });
+
+      const completion = await this.client.chat.completions.create({
+        model: this.modelName,
+        messages,
+        max_tokens: options?.maxTokens ?? 2048,
+        temperature: options?.temperature ?? 0,
+      });
+
+      const responseText = completion.choices[0]?.message?.content || '';
+
+      return {
+        content: responseText,
+        model: this.modelName,
+        usage: completion.usage
+          ? {
+              promptTokens: completion.usage.prompt_tokens,
+              completionTokens: completion.usage.completion_tokens,
+              totalTokens: completion.usage.total_tokens,
+            }
+          : undefined,
+      };
+    } catch (error) {
+      console.error('OpenAI sendMessage error:', error);
+      throw new Error(
+        `Failed to send message to OpenAI: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 }

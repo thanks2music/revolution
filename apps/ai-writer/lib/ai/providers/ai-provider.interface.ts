@@ -74,6 +74,40 @@ export interface RssExtractionResult {
 }
 
 /**
+ * Options for sendMessage() method
+ *
+ * @description
+ * Provides flexible configuration for generic AI message sending.
+ * Used for rapid prototyping and experimentation with new AI features.
+ */
+export interface SendMessageOptions {
+  /** Maximum tokens to generate (default: provider-specific) */
+  maxTokens?: number;
+  /** Temperature for response randomness (0-1, default: 0) */
+  temperature?: number;
+  /** System prompt to set context (optional) */
+  systemPrompt?: string;
+  /** Expected response format hint */
+  responseFormat?: 'text' | 'json';
+}
+
+/**
+ * Result from sendMessage() method
+ */
+export interface SendMessageResult {
+  /** The generated text response */
+  content: string;
+  /** Model used for generation */
+  model: string;
+  /** Token usage statistics (if available) */
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+}
+
+/**
  * Common interface for AI providers
  *
  * @description
@@ -131,4 +165,34 @@ export interface AiProvider {
    * @returns True if connection successful
    */
   testConnection(): Promise<boolean>;
+
+  /**
+   * Send a generic message to the AI provider
+   *
+   * @description
+   * Generic method for sending prompts to AI providers.
+   * Designed for rapid prototyping and experimentation with new AI features.
+   * Service layer handles prompt construction and response parsing.
+   *
+   * Use cases:
+   * - Article selection evaluation (Step 0.5)
+   * - Metadata generation (Step 4)
+   * - Title generation (Step 4.5)
+   * - Slug generation (Step 2)
+   * - Future AI features (image analysis, content verification, etc.)
+   *
+   * @param prompt - The prompt to send to the AI
+   * @param options - Optional configuration for the request
+   * @returns Response with content and metadata
+   *
+   * @example
+   * ```typescript
+   * const result = await provider.sendMessage(
+   *   "Extract the anime title from: ...",
+   *   { temperature: 0, responseFormat: 'json' }
+   * );
+   * const parsed = JSON.parse(result.content);
+   * ```
+   */
+  sendMessage(prompt: string, options?: SendMessageOptions): Promise<SendMessageResult>;
 }

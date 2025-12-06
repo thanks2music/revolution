@@ -18,6 +18,8 @@ import type {
   GeneratedArticle,
   RssExtractionInput,
   RssExtractionResult,
+  SendMessageOptions,
+  SendMessageResult,
 } from './ai-provider.interface';
 
 /**
@@ -216,5 +218,57 @@ JSON以外の説明文は出力しないでください。`;
    */
   async testConnection(): Promise<boolean> {
     return await this.claudeService.testConnection();
+  }
+
+  /**
+   * Send a generic message to Claude API
+   *
+   * @description
+   * Generic method for sending prompts to Claude.
+   * Service layer handles prompt construction and response parsing.
+   *
+   * @param prompt - The prompt to send
+   * @param options - Optional configuration
+   * @returns Response with content and metadata
+   */
+  async sendMessage(prompt: string, options?: SendMessageOptions): Promise<SendMessageResult> {
+    console.log(`🤖 Using AI Provider: Anthropic Claude (${this.modelName})`);
+
+    try {
+      const messages: Anthropic.MessageParam[] = [{ role: 'user', content: prompt }];
+
+      const response = await this.client.messages.create({
+        model: this.modelName,
+        max_tokens: options?.maxTokens ?? 2048,
+        temperature: options?.temperature ?? 0,
+        system: options?.systemPrompt,
+        messages,
+      });
+
+      // Handle refusal stop reason (Claude 4.5+)
+      if (response.stop_reason === 'refusal') {
+        throw new Error('Claude refused to process the request due to safety policies');
+      }
+
+      const content = response.content[0];
+      if (content.type !== 'text') {
+        throw new Error('Unexpected response type from Claude API');
+      }
+
+      return {
+        content: content.text,
+        model: this.modelName,
+        usage: {
+          promptTokens: response.usage.input_tokens,
+          completionTokens: response.usage.output_tokens,
+          totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+        },
+      };
+    } catch (error) {
+      console.error('Anthropic sendMessage error:', error);
+      throw new Error(
+        `Failed to send message to Claude: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 }

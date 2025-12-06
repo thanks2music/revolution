@@ -17,6 +17,8 @@ import type {
   GeneratedArticle,
   RssExtractionInput,
   RssExtractionResult,
+  SendMessageOptions,
+  SendMessageResult,
 } from './ai-provider.interface';
 
 /**
@@ -488,5 +490,57 @@ Respond ONLY with JSON format. No other text should be included.
     const fallbackSlug = `article-${timestamp}`;
     console.warn(`⚠️ Generated timestamp-based fallback slug: ${title} → ${fallbackSlug}`);
     return fallbackSlug;
+  }
+
+  /**
+   * Send a generic message to Gemini API
+   *
+   * @description
+   * Generic method for sending prompts to Gemini.
+   * Service layer handles prompt construction and response parsing.
+   *
+   * @param prompt - The prompt to send
+   * @param options - Optional configuration
+   * @returns Response with content and metadata
+   */
+  async sendMessage(prompt: string, options?: SendMessageOptions): Promise<SendMessageResult> {
+    const modelName = GEMINI_MODELS.FLASH_LITE;
+    console.log(`🤖 Using AI Provider: Google Gemini (${modelName})`);
+
+    try {
+      // Create model with generation config
+      const model = this.genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          maxOutputTokens: options?.maxTokens ?? 2048,
+          temperature: options?.temperature ?? 0,
+        },
+        systemInstruction: options?.systemPrompt,
+      });
+
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const text = response.text();
+
+      // Extract usage metadata if available
+      const usageMetadata = response.usageMetadata;
+
+      return {
+        content: text,
+        model: modelName,
+        usage: usageMetadata
+          ? {
+              promptTokens: usageMetadata.promptTokenCount ?? 0,
+              completionTokens: usageMetadata.candidatesTokenCount ?? 0,
+              totalTokens: usageMetadata.totalTokenCount ?? 0,
+            }
+          : undefined,
+      };
+    } catch (error) {
+      console.error('Gemini sendMessage error:', error);
+      throw new Error(
+        `Failed to send message to Gemini: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 }
