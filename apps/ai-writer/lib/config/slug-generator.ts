@@ -72,6 +72,9 @@ export async function generateSlugWithClaude(
   const key = await getAnthropicApiKey();
   const client = new Anthropic({ apiKey: key });
 
+  // TODO: マルチプロバイダー対応 - 現在はClaude固定
+  console.log(`🤖 Using AI Provider: Anthropic Claude (${DEFAULT_CLAUDE_MODEL})`);
+
   const prompt = `あなたはURL生成エキスパートです。以下の日本語テキストをURL-friendlyな英語スラグに変換してください。
 
 ## 変換ルール

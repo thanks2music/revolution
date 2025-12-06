@@ -83,9 +83,11 @@ export async function generateArticleMetadata(
   try {
     // Call Claude API using internal client (accessing private property for now)
     // TODO: Refactor ClaudeAPIService to expose a generic message creation method
+    // TODO: マルチプロバイダー対応 - 現在はClaude固定
     const client = (claudeService as any).client;
     const model = (claudeService as any).model;
 
+    console.log(`🤖 Using AI Provider: Anthropic Claude (${model})`);
     const response = await client.messages.create({
       model: model,
       max_tokens: METADATA_DEFAULTS.MAX_TOKENS,

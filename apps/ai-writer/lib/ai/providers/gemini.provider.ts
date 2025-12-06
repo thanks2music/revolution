@@ -170,6 +170,8 @@ Slug:`;
    * @returns Extracted information with confidence score
    */
   async extractFromRss(input: RssExtractionInput): Promise<RssExtractionResult> {
+    console.log(`🤖 Using AI Provider: Google Gemini (gemini-2.5-flash-lite)`);
+
     const prompt = `あなたはアニメコラボイベントの情報抽出エキスパートです。
 
 以下のRSS記事から、以下の3つの情報を抽出してください：

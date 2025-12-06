@@ -44,6 +44,8 @@ export class ArticleSelectionService {
       const prompt = this.buildPrompt(template.prompts.selection, request);
 
       // Claude APIを呼び出し
+      // TODO: マルチプロバイダー対応 - 現在はClaude固定
+      console.log(`🤖 Using AI Provider: Anthropic Claude (${this.claudeAPI['model']})`);
       const response = await this.claudeAPI['client'].messages.create({
         model: this.claudeAPI['model'],
         max_tokens: 2000, // HTML全文対応のため増加
