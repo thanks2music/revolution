@@ -3,77 +3,37 @@
  *
  * Purpose:
  *   - Generate URL-friendly slugs from Japanese text
- *   - Implement fallback chain: Claude API → ASCII slugify → error
+ *   - Implement fallback chain: AI API → ASCII slugify → error
  *   - Support MDX Pipeline production flow (Phase 0.2)
+ *
+ * @description
+ * マルチプロバイダー対応済み（2025-12-07）
+ * AI_PROVIDER環境変数でプロバイダーを切り替え可能
  *
  * @module lib/config/slug-generator
  * @see {@link /notes/02-backlog/super-mvp-scope.md} Section: Step 7 YAML fallback
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
-import { DEFAULT_CLAUDE_MODEL } from './claude-models';
+import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 
 /**
- * Claude API key cache (shared with rss-extractor)
- */
-let cachedAnthropicKey: string | null = null;
-
-/**
- * Get Anthropic API key from Secret Manager
- *
- * @param forceRefresh - Force refresh cache
- * @returns Anthropic API key
- */
-async function getAnthropicApiKey(forceRefresh = false): Promise<string> {
-  if (!forceRefresh && cachedAnthropicKey) {
-    return cachedAnthropicKey;
-  }
-
-  // Pattern 1: Environment variable (local development)
-  if (process.env.ANTHROPIC_API_KEY) {
-    cachedAnthropicKey = process.env.ANTHROPIC_API_KEY;
-    return cachedAnthropicKey;
-  }
-
-  // Pattern 2: Secret Manager (Cloud Run production)
-  const client = new SecretManagerServiceClient();
-  const projectId = process.env.GOOGLE_CLOUD_PROJECT || 't4v-revo-prd';
-  const secretName = `projects/${projectId}/secrets/ANTHROPIC_API_KEY/versions/latest`;
-
-  const [version] = await client.accessSecretVersion({ name: secretName });
-  const key = version.payload?.data?.toString();
-
-  if (!key) {
-    throw new Error('ANTHROPIC_API_KEY is empty in Secret Manager');
-  }
-
-  cachedAnthropicKey = key;
-  return key;
-}
-
-/**
- * Generate URL-friendly slug from Japanese text using Claude API
+ * Generate URL-friendly slug from Japanese text using AI API
  *
  * @param japaneseText - Japanese text (e.g., "呪術廻戦", "BOX cafe&space")
- * @param context - Context hint for Claude (e.g., "anime title", "cafe name")
+ * @param context - Context hint for AI (e.g., "anime title", "cafe name")
  * @returns URL-friendly slug (e.g., "jujutsu-kaisen", "box-cafe-and-space")
  *
  * @example
  * ```typescript
- * const slug = await generateSlugWithClaude("呪術廻戦", "anime title");
+ * const slug = await generateSlugWithAI("呪術廻戦", "anime title");
  * console.log(slug); // "jujutsu-kaisen"
  * ```
  */
-export async function generateSlugWithClaude(
+export async function generateSlugWithAI(
   japaneseText: string,
   context?: string
 ): Promise<string> {
-  const key = await getAnthropicApiKey();
-  const client = new Anthropic({ apiKey: key });
-
-  // TODO: マルチプロバイダー対応 - 現在はClaude固定
-  console.log(`🤖 Using AI Provider: Anthropic Claude (${DEFAULT_CLAUDE_MODEL})`);
+  const aiProvider = createAiProvider();
 
   const prompt = `あなたはURL生成エキスパートです。以下の日本語テキストをURL-friendlyな英語スラグに変換してください。
 
@@ -97,20 +57,15 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 - 入力: "BOX cafe&space" → 出力: "box-cafe-and-space"
 - 入力: "アベイル" → 出力: "avail"`;
 
-  const response = await client.messages.create({
-    model: DEFAULT_CLAUDE_MODEL,
-    max_tokens: 100,
+  // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
+  const response = await aiProvider.sendMessage(prompt, {
+    maxTokens: 100,
     temperature: 0,
-    messages: [{ role: 'user', content: prompt }],
+    responseFormat: 'text',
   });
 
-  const content = response.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from Claude API');
-  }
-
   // Clean up response (remove any extra whitespace or formatting)
-  const slug = content.text.trim().toLowerCase();
+  const slug = response.content.trim().toLowerCase();
 
   // Validate slug format (alphanumeric + hyphens only)
   if (!/^[a-z0-9-]+$/.test(slug)) {
@@ -119,6 +74,11 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 
   return slug;
 }
+
+/**
+ * @deprecated Use generateSlugWithAI instead
+ */
+export const generateSlugWithClaude = generateSlugWithAI;
 
 /**
  * Generate ASCII slug as final fallback
@@ -157,36 +117,36 @@ export function generateAsciiSlug(text: string): string {
  *
  * @description
  * Fallback chain:
- * 1. Try Claude API for intelligent Japanese → Romaji conversion
- * 2. If Claude fails, use ASCII slugify
+ * 1. Try AI API for intelligent Japanese → Romaji conversion (multi-provider support)
+ * 2. If AI fails, use ASCII slugify
  * 3. If result is empty, throw error
  *
  * @param japaneseText - Japanese text to convert
- * @param context - Optional context for Claude
+ * @param context - Optional context for AI
  * @returns Generated slug
  * @throws Error if all fallback methods fail
  *
  * @example
  * ```typescript
  * const slug = await generateSlugWithFallback("呪術廻戦", "anime title");
- * console.log(slug); // "jujutsu-kaisen" (from Claude)
+ * console.log(slug); // "jujutsu-kaisen" (from AI API)
  * ```
  */
 export async function generateSlugWithFallback(
   japaneseText: string,
   context?: string
 ): Promise<string> {
-  // Try Claude API first
+  // Try AI API first (multi-provider support)
   try {
     console.log(
-      `[Slug Generator] Trying Claude API for: "${japaneseText}"${context ? ` (${context})` : ''}`
+      `[Slug Generator] Trying AI API for: "${japaneseText}"${context ? ` (${context})` : ''}`
     );
-    const claudeSlug = await generateSlugWithClaude(japaneseText, context);
-    console.log(`[Slug Generator] ✅ Claude API generated: "${claudeSlug}"`);
-    return claudeSlug;
+    const aiSlug = await generateSlugWithAI(japaneseText, context);
+    console.log(`[Slug Generator] ✅ AI API generated: "${aiSlug}"`);
+    return aiSlug;
   } catch (error) {
     console.warn(
-      `[Slug Generator] ⚠️ Claude API failed for "${japaneseText}":`,
+      `[Slug Generator] ⚠️ AI API failed for "${japaneseText}":`,
       error instanceof Error ? error.message : String(error)
     );
   }

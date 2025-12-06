@@ -1,27 +1,30 @@
 /**
- * Claude Metadata Generator Module
+ * Article Metadata Generator Module
  *
  * Purpose:
- *   - Generate article metadata (categories + excerpt) using Claude API
+ *   - Generate article metadata (categories + excerpt) using AI API
  *   - Support Phase 0.1 MVP article generation
  *   - Efficient single-call generation for both metadata fields
+ *
+ * @description
+ * マルチプロバイダー対応済み（2025-12-07）
+ * AI_PROVIDER環境変数でプロバイダーを切り替え可能
  *
  * @module lib/claude/metadata-generator
  */
 
-import { ClaudeAPIService } from '../services/claude-api.service';
+import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { GenerateMetadataInput, ArticleMetadata, ClaudeMetadataResponse } from './types';
 import { METADATA_DEFAULTS } from './types';
 
 /**
- * Generate article metadata (categories + excerpt) using Claude API
+ * Generate article metadata (categories + excerpt) using AI API
  *
  * @param {GenerateMetadataInput} input - Metadata generation parameters
- * @param {string} apiKey - Optional API key (uses env var if not provided)
+ * @param {string} _apiKey - Deprecated: API key is now managed by AI provider factory
  * @returns {Promise<ArticleMetadata>} Generated metadata
  *
- * @throws {Error} If API key is missing
- * @throws {Error} If Claude API request fails
+ * @throws {Error} If AI API request fails
  * @throws {Error} If response parsing fails
  *
  * @example
@@ -39,7 +42,7 @@ import { METADATA_DEFAULTS } from './types';
  */
 export async function generateArticleMetadata(
   input: GenerateMetadataInput,
-  apiKey?: string
+  _apiKey?: string // Deprecated: kept for backward compatibility
 ): Promise<ArticleMetadata> {
   const {
     content,
@@ -67,8 +70,8 @@ export async function generateArticleMetadata(
     throw new Error('Event type is required for metadata generation');
   }
 
-  // Initialize Claude API service
-  const claudeService = new ClaudeAPIService(apiKey);
+  // Initialize AI provider (multi-provider support)
+  const aiProvider = createAiProvider();
 
   // Build prompt for metadata generation
   const prompt = buildMetadataPrompt({
@@ -81,44 +84,22 @@ export async function generateArticleMetadata(
   });
 
   try {
-    // Call Claude API using internal client (accessing private property for now)
-    // TODO: Refactor ClaudeAPIService to expose a generic message creation method
-    // TODO: マルチプロバイダー対応 - 現在はClaude固定
-    const client = (claudeService as any).client;
-    const model = (claudeService as any).model;
-
-    console.log(`🤖 Using AI Provider: Anthropic Claude (${model})`);
-    const response = await client.messages.create({
-      model: model,
-      max_tokens: METADATA_DEFAULTS.MAX_TOKENS,
+    // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
+    const response = await aiProvider.sendMessage(prompt, {
+      maxTokens: METADATA_DEFAULTS.MAX_TOKENS,
       temperature: METADATA_DEFAULTS.TEMPERATURE,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+      responseFormat: 'json',
     });
 
-    // Handle refusal stop reason (Claude 4.5+)
-    if (response.stop_reason === 'refusal') {
-      throw new Error('Claude refused to generate metadata due to safety policies');
-    }
-
-    const responseContent = response.content[0];
-    if (responseContent.type !== 'text') {
-      throw new Error('Unexpected response type from Claude API');
-    }
-
     // Parse JSON response
-    const metadata = parseMetadataResponse(responseContent.text);
+    const metadata = parseMetadataResponse(response.content);
 
     // Validate generated metadata
     validateMetadata(metadata, { maxCategories, maxExcerptLength });
 
     return metadata;
   } catch (error) {
-    console.error('Claude API metadata generation error:', error);
+    console.error('AI API metadata generation error:', error);
     throw new Error(
       `Failed to generate article metadata: ${error instanceof Error ? error.message : 'Unknown error'}`
     );

@@ -1,6 +1,10 @@
 /**
  * Article Selection Service
  * RSS記事から公式情報元URLを検出し、記事生成対象にするか判定するサービス
+ *
+ * @description
+ * マルチプロバイダー対応済み（2025-12-07）
+ * AI_PROVIDER環境変数でプロバイダーを切り替え可能
  */
 
 import {
@@ -8,22 +12,20 @@ import {
   ArticleSelectionResult,
 } from '@/lib/types/article-selection';
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
-import { ClaudeAPIService } from './claude-api.service';
+import { createAiProvider } from '@/lib/ai/factory/ai-factory';
+import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 
 /**
  * 記事選別サービス
  */
 export class ArticleSelectionService {
   private templateLoader: YamlTemplateLoaderService;
-  private claudeAPI: ClaudeAPIService;
+  private aiProvider: AiProvider;
   private readonly templateId = 'collabo-cafe-selection';
 
-  constructor(
-    templateLoader?: YamlTemplateLoaderService,
-    claudeAPI?: ClaudeAPIService
-  ) {
+  constructor(templateLoader?: YamlTemplateLoaderService, aiProvider?: AiProvider) {
     this.templateLoader = templateLoader || new YamlTemplateLoaderService();
-    this.claudeAPI = claudeAPI || new ClaudeAPIService();
+    this.aiProvider = aiProvider || createAiProvider();
   }
 
   /**
@@ -43,33 +45,20 @@ export class ArticleSelectionService {
       // プロンプトを構築
       const prompt = this.buildPrompt(template.prompts.selection, request);
 
-      // Claude APIを呼び出し
-      // TODO: マルチプロバイダー対応 - 現在はClaude固定
-      console.log(`🤖 Using AI Provider: Anthropic Claude (${this.claudeAPI['model']})`);
-      const response = await this.claudeAPI['client'].messages.create({
-        model: this.claudeAPI['model'],
-        max_tokens: 2000, // HTML全文対応のため増加
+      // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
+      const response = await this.aiProvider.sendMessage(prompt, {
+        maxTokens: 2000, // HTML全文対応のため増加
         temperature: 0.3, // 判定は確実性を重視
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
+        responseFormat: 'json',
       });
 
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
-      }
-
-      // Claude APIのレスポンス全文をログ出力（デバッグ用）
-      console.log('\n[ArticleSelection] === Claude APIレスポンス全文 ===');
-      console.log(content.text);
-      console.log('[ArticleSelection] === レスポンス終了 ===\n');
+      // AI APIのレスポンス全文をログ出力（デバッグ用）
+      console.log('\n[ArticleSelection] === AI APIレスポンス全文 ===');
+      console.log(response.content);
+      console.log(`[ArticleSelection] === レスポンス終了 (model: ${response.model}) ===\n`);
 
       // レスポンスをパース
-      const result = this.parseResponse(content.text);
+      const result = this.parseResponse(response.content);
 
       console.log('[ArticleSelection] 選別結果:', {
         should_generate: result.should_generate,

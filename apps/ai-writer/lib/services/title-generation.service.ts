@@ -1,6 +1,10 @@
 /**
  * Title Generation Service
  * YAML テンプレートを使用してコラボカフェ記事のタイトルを生成するサービス
+ *
+ * @description
+ * マルチプロバイダー対応済み（2025-12-07）
+ * AI_PROVIDER環境変数でプロバイダーを切り替え可能
  */
 
 import {
@@ -8,22 +12,20 @@ import {
   TitleGenerationResult,
 } from '@/lib/types/title-generation';
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
-import { ClaudeAPIService } from './claude-api.service';
+import { createAiProvider } from '@/lib/ai/factory/ai-factory';
+import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 
 /**
  * タイトル生成サービス
  */
 export class TitleGenerationService {
   private templateLoader: YamlTemplateLoaderService;
-  private claudeAPI: ClaudeAPIService;
+  private aiProvider: AiProvider;
   private readonly templateId = 'post-template-collabo-cafe-title';
 
-  constructor(
-    templateLoader?: YamlTemplateLoaderService,
-    claudeAPI?: ClaudeAPIService
-  ) {
+  constructor(templateLoader?: YamlTemplateLoaderService, aiProvider?: AiProvider) {
     this.templateLoader = templateLoader || new YamlTemplateLoaderService();
-    this.claudeAPI = claudeAPI || new ClaudeAPIService();
+    this.aiProvider = aiProvider || createAiProvider();
   }
 
   /**
@@ -43,28 +45,15 @@ export class TitleGenerationService {
       // プロンプトを構築
       const prompt = this.buildPrompt(template.prompts.generate_title, request);
 
-      // Claude APIを呼び出し
-      // TODO: マルチプロバイダー対応 - 現在はClaude固定
-      console.log(`🤖 Using AI Provider: Anthropic Claude (${this.claudeAPI['model']})`);
-      const response = await this.claudeAPI['client'].messages.create({
-        model: this.claudeAPI['model'],
-        max_tokens: 500, // タイトルは短いので500で十分
+      // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
+      const response = await this.aiProvider.sendMessage(prompt, {
+        maxTokens: 500, // タイトルは短いので500で十分
         temperature: 0.7, // 創造性と正確性のバランス
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
+        responseFormat: 'text',
       });
 
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
-      }
-
       // レスポンスからタイトルを抽出
-      const title = this.extractTitle(content.text);
+      const title = this.extractTitle(response.content);
 
       // タイトルの文字数を検証
       const length = this.countCharacters(title);
