@@ -206,9 +206,7 @@ function getSlackWebhookUrl(): string {
   const url = process.env.SLACK_WEBHOOK_URL || '';
 
   if (!url) {
-    throw new Error(
-      'SLACK webhook URL is not configured. Set SLACK_WEBHOOK_URL or DEFAULT_SLACK_WEBHOOK_URL.'
-    );
+    throw new Error('SLACK webhook URL is not configured. Set SLACK_WEBHOOK_URL');
   }
 
   return url;
