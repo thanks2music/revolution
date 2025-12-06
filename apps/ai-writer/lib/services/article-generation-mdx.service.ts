@@ -45,6 +45,12 @@ export interface MdxGenerationRequest {
     storeName: string;
     eventTypeName: string;
   };
+  /**
+   * ドライランモード
+   * true の場合、Firestore登録とGitHub PR作成をスキップ
+   * AI処理（記事選別、情報抽出、メタデータ生成）のみ実行
+   */
+  dryRun?: boolean;
 }
 
 /**
@@ -101,10 +107,13 @@ export class ArticleGenerationMdxService {
    * 7. Firestoreのステータスを更新（status: generated）
    */
   async generateMdxFromRSS(request: MdxGenerationRequest): Promise<MdxGenerationResult> {
-    const { rssItem } = request;
+    const { rssItem, dryRun = false } = request;
     const year = new Date().getFullYear();
 
     console.log('========== MDXパイプライン: 記事生成開始 ==========');
+    if (dryRun) {
+      console.log('🧪 ドライランモード: Firestore登録・GitHub PR作成をスキップします');
+    }
     console.log('RSS記事:', { title: rssItem.title, link: rssItem.link });
 
     // RSS本文を取得（Step 4.5 と Step 5 で使用）
@@ -186,63 +195,94 @@ export class ArticleGenerationMdxService {
       const resolvedSlugs = { workSlug, storeSlug, eventType };
 
       // Step 3: Firestore duplication check + event registration
-      console.log('\n[Step 3/9] Firestoreで重複チェック...');
+      let eventRecord: EventCanonicalKey;
 
-      const duplicationCheck = await checkEventDuplication({
-        workTitle: extraction.workTitle,
-        storeName: extraction.storeName,
-        eventTypeName: extraction.eventTypeName,
-        year,
-        resolvedSlugs,
-      });
+      if (dryRun) {
+        // ドライランモード: 重複チェック・登録をスキップ
+        console.log('\n[Step 3/9] Firestore重複チェック（ドライランのためスキップ）...');
 
-      if (duplicationCheck.isDuplicate && duplicationCheck.existingDoc) {
-        console.log('⚠️ 重複イベントを検出:', duplicationCheck.canonicalKey);
+        // ダミーの postId を生成（タイムスタンプベース）
+        const dryRunPostId = `dry-run-${Date.now()}`;
+        const dryRunCanonicalKey = `${workSlug}:${storeSlug}:${eventType}:${year}`;
 
-        // Check if the corresponding GitHub PR is still open
-        console.log('GitHub PRの状態を確認中...');
-        const prStatus = await getPrStatusByCanonicalKey(duplicationCheck.canonicalKey);
+        // ドライラン用のダミーレコード（Firestoreには保存しないため、Timestamp の代わりに null を使用）
+        eventRecord = {
+          canonicalKey: dryRunCanonicalKey,
+          postId: dryRunPostId,
+          workSlug,
+          storeSlug,
+          eventType,
+          year,
+          status: 'pending', // ドライランでも valid な status を使用
+          createdAt: null as any, // ドライラン用ダミー値
+          updatedAt: null as any, // ドライラン用ダミー値
+        };
 
-        if (prStatus.hasOpenPr) {
-          // Open PR exists - this is a true duplicate
-          console.log('✗ Open PRが存在します。重複エラーをスローします。');
+        console.log('🧪 ドライラン: ダミーイベントレコード生成:', {
+          canonicalKey: eventRecord.canonicalKey,
+          postId: eventRecord.postId,
+          status: 'dry-run (not saved)',
+        });
+      } else {
+        // 通常モード: 重複チェック + 登録
+        console.log('\n[Step 3/9] Firestoreで重複チェック...');
 
-          const existingFilePath = `apps/ai-writer/content/${duplicationCheck.existingDoc.eventType}/${duplicationCheck.existingDoc.workSlug}/${duplicationCheck.existingDoc.postId}.mdx`;
+        const duplicationCheck = await checkEventDuplication({
+          workTitle: extraction.workTitle,
+          storeName: extraction.storeName,
+          eventTypeName: extraction.eventTypeName,
+          year,
+          resolvedSlugs,
+        });
 
-          throw new DuplicateSlugError(
-            `このイベントは既に生成済みです: ${duplicationCheck.canonicalKey}`,
-            duplicationCheck.existingDoc.postId,
-            existingFilePath
-          );
-        } else {
-          // No open PR - allow regeneration
-          console.log(`✓ Open PRが見つかりません。PRがCloseされたため、再生成を許可します。`);
-          console.log(`  - Open PRs: ${prStatus.hasOpenPr ? 'Yes' : 'No'}`);
-          console.log(`  - Closed PRs: ${prStatus.hasClosedPr ? 'Yes' : 'No'}`);
-          console.log(`  - Total PRs: ${prStatus.totalCount}`);
+        if (duplicationCheck.isDuplicate && duplicationCheck.existingDoc) {
+          console.log('⚠️ 重複イベントを検出:', duplicationCheck.canonicalKey);
 
-          // Delete existing Firestore document to allow re-registration
-          console.log('既存のFirestoreドキュメントを削除中...');
-          await deleteEvent(duplicationCheck.canonicalKey);
-          console.log('✅ 既存ドキュメント削除完了');
+          // Check if the corresponding GitHub PR is still open
+          console.log('GitHub PRの状態を確認中...');
+          const prStatus = await getPrStatusByCanonicalKey(duplicationCheck.canonicalKey);
+
+          if (prStatus.hasOpenPr) {
+            // Open PR exists - this is a true duplicate
+            console.log('✗ Open PRが存在します。重複エラーをスローします。');
+
+            const existingFilePath = `apps/ai-writer/content/${duplicationCheck.existingDoc.eventType}/${duplicationCheck.existingDoc.workSlug}/${duplicationCheck.existingDoc.postId}.mdx`;
+
+            throw new DuplicateSlugError(
+              `このイベントは既に生成済みです: ${duplicationCheck.canonicalKey}`,
+              duplicationCheck.existingDoc.postId,
+              existingFilePath
+            );
+          } else {
+            // No open PR - allow regeneration
+            console.log(`✓ Open PRが見つかりません。PRがCloseされたため、再生成を許可します。`);
+            console.log(`  - Open PRs: ${prStatus.hasOpenPr ? 'Yes' : 'No'}`);
+            console.log(`  - Closed PRs: ${prStatus.hasClosedPr ? 'Yes' : 'No'}`);
+            console.log(`  - Total PRs: ${prStatus.totalCount}`);
+
+            // Delete existing Firestore document to allow re-registration
+            console.log('既存のFirestoreドキュメントを削除中...');
+            await deleteEvent(duplicationCheck.canonicalKey);
+            console.log('✅ 既存ドキュメント削除完了');
+          }
         }
+
+        console.log('✅ 重複なし。イベントを登録...');
+
+        eventRecord = await registerNewEvent({
+          workTitle: extraction.workTitle,
+          storeName: extraction.storeName,
+          eventTypeName: extraction.eventTypeName,
+          year,
+          resolvedSlugs,
+        });
+
+        console.log('イベント登録完了:', {
+          canonicalKey: eventRecord.canonicalKey,
+          postId: eventRecord.postId,
+          status: eventRecord.status,
+        });
       }
-
-      console.log('✅ 重複なし。イベントを登録...');
-
-      const eventRecord = await registerNewEvent({
-        workTitle: extraction.workTitle,
-        storeName: extraction.storeName,
-        eventTypeName: extraction.eventTypeName,
-        year,
-        resolvedSlugs,
-      });
-
-      console.log('イベント登録完了:', {
-        canonicalKey: eventRecord.canonicalKey,
-        postId: eventRecord.postId,
-        status: eventRecord.status,
-      });
 
       // Step 4: Generate categories and excerpt using Claude API
       console.log('\n[Step 4/9] Claude APIでカテゴリ/抜粋を生成...');
@@ -310,50 +350,78 @@ export class ArticleGenerationMdxService {
       });
 
       // Step 6: Create GitHub PR
-      console.log('\n[Step 6/9] GitHub PRを作成...');
+      let prResult: CreateMdxPrResult | undefined;
 
-      const branchName = `ai-writer/mdx-${eventType}-${eventRecord.postId}`;
-      const prTitle = `✨ Generate MDX (AI Writer): ${eventType}/${eventRecord.postId}`;
-      const prBody = this.generatePrBody({
-        rssItem,
-        extraction,
-        metadata,
-        eventRecord,
-        workSlug,
-        storeSlug,
-        eventType,
-      });
+      if (dryRun) {
+        // ドライランモード: GitHub PR作成をスキップ
+        console.log('\n[Step 6/9] GitHub PR作成（ドライランのためスキップ）...');
+        console.log('🧪 ドライラン: PR作成をスキップしました');
 
-      const prResult = await createMdxPr({
-        mdxContent: mdxArticle.content,
-        filePath: mdxArticle.filePath,
-        title: prTitle,
-        body: prBody,
-        branchName,
-        context: {
-          workTitle: extraction.workTitle,
-          storeName: extraction.storeName,
-          eventTypeName: extraction.eventTypeName,
-          year,
-          postId: eventRecord.postId,
+        // MDX記事の内容をプレビュー表示
+        console.log('\n📄 生成されたMDX記事のプレビュー:');
+        console.log('-'.repeat(60));
+        // 先頭50行を表示
+        const previewLines = mdxArticle.content.split('\n').slice(0, 50);
+        console.log(previewLines.join('\n'));
+        if (mdxArticle.content.split('\n').length > 50) {
+          console.log('... (以下省略)');
+        }
+        console.log('-'.repeat(60));
+      } else {
+        // 通常モード: GitHub PR作成
+        console.log('\n[Step 6/9] GitHub PRを作成...');
+
+        const branchName = `ai-writer/mdx-${eventType}-${eventRecord.postId}`;
+        const prTitle = `✨ Generate MDX (AI Writer): ${eventType}/${eventRecord.postId}`;
+        const prBody = this.generatePrBody({
+          rssItem,
+          extraction,
+          metadata,
+          eventRecord,
           workSlug,
-          canonicalKey: eventRecord.canonicalKey,
-          resolvedSlugs,
-        },
-      });
+          storeSlug,
+          eventType,
+        });
 
-      console.log('GitHub PR作成完了:', {
-        prNumber: prResult.prNumber,
-        prUrl: prResult.prUrl,
-      });
+        prResult = await createMdxPr({
+          mdxContent: mdxArticle.content,
+          filePath: mdxArticle.filePath,
+          title: prTitle,
+          body: prBody,
+          branchName,
+          context: {
+            workTitle: extraction.workTitle,
+            storeName: extraction.storeName,
+            eventTypeName: extraction.eventTypeName,
+            year,
+            postId: eventRecord.postId,
+            workSlug,
+            canonicalKey: eventRecord.canonicalKey,
+            resolvedSlugs,
+          },
+        });
+
+        console.log('GitHub PR作成完了:', {
+          prNumber: prResult.prNumber,
+          prUrl: prResult.prUrl,
+        });
+      }
 
       // Step 7: Update Firestore status to 'generated'
-      console.log('\n[Step 7/9] Firestoreのステータスを更新...');
+      if (dryRun) {
+        // ドライランモード: ステータス更新をスキップ
+        console.log('\n[Step 7/9] Firestoreステータス更新（ドライランのためスキップ）...');
+        console.log('🧪 ドライラン: ステータス更新をスキップしました');
+        console.log('========== MDXパイプライン: ドライラン完了 ==========\n');
+      } else {
+        // 通常モード: ステータス更新
+        console.log('\n[Step 7/9] Firestoreのステータスを更新...');
 
-      await updateEventStatus(eventRecord.canonicalKey, 'generated');
+        await updateEventStatus(eventRecord.canonicalKey, 'generated');
 
-      console.log('✅ ステータス更新完了: pending → generated');
-      console.log('========== MDXパイプライン: 記事生成完了 ==========\n');
+        console.log('✅ ステータス更新完了: pending → generated');
+        console.log('========== MDXパイプライン: 記事生成完了 ==========\n');
+      }
 
       return {
         success: true,

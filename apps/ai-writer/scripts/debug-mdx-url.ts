@@ -8,11 +8,15 @@
  *
  * 使用方法:
  *   pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html
+ *   pnpm debug:mdx --dry-run https://animeanime.jp/article/2025/11/24/94010.html
+ *
+ * オプション:
+ *   --dry-run    Firestore登録とGitHub PR作成をスキップ（AI処理のみ実行）
  *
  * 前提条件:
- *   - .env.local に GITHUB_PAT を設定
+ *   - .env.local に GITHUB_PAT を設定（--dry-run時は不要）
  *   - .env.local に ANTHROPIC_API_KEY を設定
- *   - Firebase Admin SDK の認証情報を設定
+ *   - Firebase Admin SDK の認証情報を設定（--dry-run時は不要）
  */
 
 import { config } from 'dotenv';
@@ -34,26 +38,56 @@ import { ArticleGenerationMdxService } from '../lib/services/article-generation-
 import type { MdxGenerationRequest } from '../lib/services/article-generation-mdx.service';
 
 /**
+ * コマンドライン引数をパース
+ */
+function parseArgs(): { url: string; dryRun: boolean } {
+  const args = process.argv.slice(2);
+  let dryRun = false;
+  let url = '';
+
+  for (const arg of args) {
+    if (arg === '--dry-run') {
+      dryRun = true;
+    } else if (!arg.startsWith('-')) {
+      url = arg;
+    }
+  }
+
+  return { url, dryRun };
+}
+
+/**
  * メインデバッグフロー
  */
 async function main() {
-  // コマンドライン引数からURL取得
-  const url = process.argv[2];
+  // コマンドライン引数をパース
+  const { url, dryRun } = parseArgs();
 
   if (!url) {
     console.error('\n❌ エラー: URLが指定されていません\n');
     console.log('使用方法:');
-    console.log('  pnpm debug:mdx <URL>\n');
+    console.log('  pnpm debug:mdx <URL>');
+    console.log('  pnpm debug:mdx --dry-run <URL>\n');
+    console.log('オプション:');
+    console.log('  --dry-run    Firestore登録とGitHub PR作成をスキップ\n');
     console.log('例:');
-    console.log('  pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html\n');
+    console.log('  pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html');
+    console.log('  pnpm debug:mdx --dry-run https://animeanime.jp/article/2025/11/24/94010.html\n');
     process.exit(1);
   }
 
   console.log('🔍 URLからMDX記事生成デバッグ開始\n');
   console.log('='.repeat(80));
-  console.log('URL指定デバッグモード');
+  if (dryRun) {
+    console.log('🧪 ドライランモード（Firestore/GitHub スキップ）');
+  } else {
+    console.log('URL指定デバッグモード');
+  }
   console.log('='.repeat(80));
   console.log(`URL: ${url}`);
+  if (dryRun) {
+    console.log('モード: --dry-run（Firestore登録・GitHub PR作成をスキップ）');
+  }
   console.log();
 
   try {
@@ -75,11 +109,19 @@ async function main() {
     console.log('🤖 STEP 2: MDX記事生成パイプライン実行中...');
     console.log('  → 記事選別（公式URL検出）');
     console.log('  → 作品/店舗/イベント情報抽出');
-    console.log('  → Firestore重複チェック');
+    if (dryRun) {
+      console.log('  → Firestore重複チェック（登録スキップ）');
+    } else {
+      console.log('  → Firestore重複チェック');
+    }
     console.log('  → カテゴリ/抜粋生成');
     console.log('  → タイトル生成');
     console.log('  → MDX記事生成');
-    console.log('  → GitHub PR作成');
+    if (dryRun) {
+      console.log('  → GitHub PR作成（スキップ）');
+    } else {
+      console.log('  → GitHub PR作成');
+    }
     console.log();
 
     const service = new ArticleGenerationMdxService();
@@ -92,6 +134,7 @@ async function main() {
         contentSnippet: html.substring(0, 500), // 最初の500文字をスニペットとして使用
         pubDate: new Date().toISOString(),
       },
+      dryRun, // ドライランモードをサービスに渡す
     };
 
     const result = await service.generateMdxFromRSS(request);
@@ -142,6 +185,9 @@ async function main() {
       console.log(`  ブランチ: ${result.prResult.branchName}`);
       console.log(`  コミットSHA: ${result.prResult.commitSha}`);
       console.log();
+    } else if (dryRun) {
+      console.log('🔀 GitHub PR: （ドライランのためスキップ）');
+      console.log();
     }
 
     if (result.details) {
@@ -156,11 +202,24 @@ async function main() {
     }
 
     console.log('='.repeat(80));
-    console.log('✅ デバッグ完了！');
+    if (dryRun) {
+      console.log('✅ ドライラン完了！（Firestore/GitHub操作なし）');
+    } else {
+      console.log('✅ デバッグ完了！');
+    }
     console.log('='.repeat(80));
     console.log();
 
-    if (result.prResult?.prUrl) {
+    if (dryRun) {
+      console.log('📊 ドライラン結果:');
+      console.log('  - AI処理（記事選別、情報抽出、メタデータ生成）: 完了');
+      console.log('  - Firestore登録: スキップ');
+      console.log('  - GitHub PR作成: スキップ');
+      console.log();
+      console.log('💡 本番実行するには --dry-run を外して実行してください:');
+      console.log(`  pnpm debug:mdx ${url}`);
+      console.log();
+    } else if (result.prResult?.prUrl) {
       console.log('📊 次のステップ:');
       console.log(`  1. PR を確認: ${result.prResult.prUrl}`);
       console.log('  2. 記事内容をレビュー');
