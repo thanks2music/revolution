@@ -176,6 +176,31 @@ ${request.site_domain ? `- site_domain: ${request.site_domain}` : ''}
 }
 
 /**
- * シングルトンインスタンス
+ * シングルトンインスタンス（遅延初期化）
+ *
+ * @description
+ * モジュールロード時ではなく、初回アクセス時にインスタンスを生成します。
+ * これにより、環境変数（.env.local）が読み込まれた後にAIプロバイダーが
+ * 初期化されることを保証します。
  */
-export const articleSelectionService = new ArticleSelectionService();
+let _articleSelectionService: ArticleSelectionService | null = null;
+
+export function getArticleSelectionService(): ArticleSelectionService {
+  if (!_articleSelectionService) {
+    _articleSelectionService = new ArticleSelectionService();
+  }
+  return _articleSelectionService;
+}
+
+/**
+ * @deprecated Use getArticleSelectionService() instead
+ * シングルトンインスタンスへの直接アクセスは非推奨です。
+ * 遅延初期化のため、getArticleSelectionService() を使用してください。
+ */
+export const articleSelectionService = {
+  get instance() {
+    return getArticleSelectionService();
+  },
+  shouldGenerateArticle: (request: ArticleSelectionRequest) =>
+    getArticleSelectionService().shouldGenerateArticle(request),
+};

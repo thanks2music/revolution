@@ -149,6 +149,31 @@ export class TitleGenerationService {
 }
 
 /**
- * シングルトンインスタンス
+ * シングルトンインスタンス（遅延初期化）
+ *
+ * @description
+ * モジュールロード時ではなく、初回アクセス時にインスタンスを生成します。
+ * これにより、環境変数（.env.local）が読み込まれた後にAIプロバイダーが
+ * 初期化されることを保証します。
  */
-export const titleGenerationService = new TitleGenerationService();
+let _titleGenerationService: TitleGenerationService | null = null;
+
+export function getTitleGenerationService(): TitleGenerationService {
+  if (!_titleGenerationService) {
+    _titleGenerationService = new TitleGenerationService();
+  }
+  return _titleGenerationService;
+}
+
+/**
+ * @deprecated Use getTitleGenerationService() instead
+ * シングルトンインスタンスへの直接アクセスは非推奨です。
+ * 遅延初期化のため、getTitleGenerationService() を使用してください。
+ */
+export const titleGenerationService = {
+  get instance() {
+    return getTitleGenerationService();
+  },
+  generateTitle: (request: TitleGenerationRequest) =>
+    getTitleGenerationService().generateTitle(request),
+};
