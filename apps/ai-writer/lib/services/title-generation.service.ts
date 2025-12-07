@@ -42,8 +42,15 @@ export class TitleGenerationService {
       // YAMLテンプレートを読み込み
       const template = await this.templateLoader.loadTemplate(this.templateId);
 
-      // プロンプトを構築
-      const prompt = this.buildPrompt(template.prompts.generate_title, request);
+      // プロンプトを構築（YAMLテンプレート全体を含む）
+      const prompt = this.buildPrompt(template, request);
+
+      // デバッグ: 送信プロンプトをログ出力
+      if (process.env.DEBUG_TITLE_PROMPT === 'true') {
+        console.log('\n[TitleGeneration] ========== 送信プロンプト全文 ==========');
+        console.log(prompt);
+        console.log('[TitleGeneration] ========== プロンプト終了 ==========\n');
+      }
 
       // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
       const response = await this.aiProvider.sendMessage(prompt, {
@@ -87,16 +94,23 @@ export class TitleGenerationService {
 
   /**
    * プロンプトを構築
-   * @param generateTitlePrompt YAMLテンプレートの prompts.generate_title
+   * @param template YAMLテンプレート全体
    * @param request リクエストデータ
    * @returns 完成したプロンプト
    */
   private buildPrompt(
-    generateTitlePrompt: string,
+    template: any,
     request: TitleGenerationRequest
   ): string {
-    // プロンプトテンプレートに実際のデータを埋め込む
-    return `${generateTitlePrompt}
+    // YAMLテンプレートのルール定義をプロンプトに含める
+    const rulesSection = this.buildRulesSection(template);
+
+    // 最終プロンプトを構築
+    return `${template.prompts.generate_title}
+
+${rulesSection}
+
+---
 
 ## 入力データ（RSS記事）
 
@@ -104,10 +118,92 @@ export class TitleGenerationService {
 - URL: ${request.rss_link}
 - 本文: ${request.rss_content.substring(0, 3000)}${request.rss_content.length > 3000 ? '...' : ''}
 
+---
+
 上記のRSS記事情報から、必要な情報（作品名、店舗名、開催日、略称、複数店舗情報など）を抽出し、
-最適な記事タイトルを生成してください。
+仕様に従って最適な記事タイトルを生成してください。
 
 重要: タイトル文のみを出力し、説明文・理由・JSON・補足テキストなどは一切含めないでください。`;
+  }
+
+  /**
+   * YAMLテンプレートからルール定義セクションを構築
+   * @param template YAMLテンプレート
+   * @returns ルール定義のテキスト
+   */
+  private buildRulesSection(template: any): string {
+    const sections: string[] = [];
+
+    // 文字数制約
+    if (template.constraints?.title_length) {
+      const tl = template.constraints.title_length;
+      sections.push(`## 文字数制約（必須）
+- 最小: ${tl.min}文字
+- 最大: ${tl.max}文字
+- 推奨: ${tl.recommended}
+- カウント方法: ${tl.count_rule}`);
+    }
+
+    // スペースルール
+    if (template.constraints?.spacing) {
+      sections.push(`## スペースルール
+- ${template.constraints.spacing.rule}`);
+    }
+
+    // 作品名の略称ロジック
+    if (template.logic?.work_name_normalization) {
+      sections.push(`## 作品名の決定ロジック（略称の使用判断）
+${template.logic.work_name_normalization}`);
+    }
+
+    // 複数店舗のロケーション抽出ロジック
+    if (template.logic?.multi_location_extraction) {
+      sections.push(`## 複数店舗時のロケーション抽出ルール
+${template.logic.multi_location_extraction}`);
+    }
+
+    // 施設名の分類ロジック
+    if (template.logic?.facility_name_classification) {
+      sections.push(`## 施設名カテゴリの判定基準
+${template.logic.facility_name_classification}`);
+    }
+
+    // ルール適用順序
+    if (template.logic?.rule_application_order) {
+      sections.push(`## ルール適用順序
+${template.logic.rule_application_order}`);
+    }
+
+    // タイトル命名ルール
+    if (template.rules && Array.isArray(template.rules)) {
+      const rulesText = template.rules.map((rule: any) => {
+        let ruleStr = `### ${rule.id}: ${rule.name}
+- 条件: ${rule.condition}`;
+
+        if (rule.template) {
+          ruleStr += `\n- テンプレート: ${rule.template}`;
+        }
+        if (rule.template_primary) {
+          ruleStr += `\n- プライマリテンプレート: ${rule.template_primary}`;
+        }
+        if (rule.template_fallback) {
+          ruleStr += `\n- フォールバックテンプレート: ${rule.template_fallback}`;
+        }
+        if (rule.example?.template_filled) {
+          ruleStr += `\n- 例: ${rule.example.template_filled}`;
+        }
+        if (rule.template_primary_example?.template_filled) {
+          ruleStr += `\n- プライマリ例: ${rule.template_primary_example.template_filled}`;
+        }
+
+        return ruleStr;
+      }).join('\n\n');
+
+      sections.push(`## タイトル命名ルール（条件分岐）
+${rulesText}`);
+    }
+
+    return sections.join('\n\n');
   }
 
   /**
