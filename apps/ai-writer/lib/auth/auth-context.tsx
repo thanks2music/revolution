@@ -37,18 +37,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isDevelopment) {
       console.log('[AuthContext] Development mode with auth bypass enabled - using mock user');
 
-      // ダミーユーザーを作成（部分的なUser型）
+      // ダミーユーザーを作成（開発環境専用モック）
       // 注意: カスタムクレームはgetIdTokenResult()で取得されるが、
       // Firestore Security Rulesで認識させるにはFirebase Emulator Suiteが必要
+      //
+      // Firebase User 型は多くの必須プロパティを持つため、
+      // 開発環境モックでは必要最小限のプロパティのみ実装し、
+      // `as unknown as User` で安全にキャストする
       const mockUser = {
+        // 基本的なユーザー情報
         uid: 'dev-user-local',
         email: 'dev@local.test',
         displayName: 'Development User (Admin)',
         photoURL: null,
         emailVerified: true,
-        // 最小限のUser型プロパティを追加
+        phoneNumber: null,
+        isAnonymous: false,
+        tenantId: null,
+        providerId: 'mock',
+
+        // Firebase User 型の必須プロパティ（モック実装）
+        metadata: {
+          creationTime: new Date().toISOString(),
+          lastSignInTime: new Date().toISOString(),
+        },
+        providerData: [],
+        refreshToken: 'mock-refresh-token',
+
+        // メソッド（モック実装）
         getIdToken: async () => 'dev-token-local',
-        // カスタムクレームを含むトークン情報を返す（開発環境用モック）
         getIdTokenResult: async () => ({
           token: 'dev-token-local',
           expirationTime: new Date(Date.now() + 3600000).toISOString(),
@@ -57,7 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           signInProvider: 'mock',
           signInSecondFactor: null,
           claims: {
-            // 管理者権限を付与（開発環境用）
             admin: true,
             allowedEditor: true,
             email: 'dev@local.test',
@@ -65,7 +81,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             user_id: 'dev-user-local',
           },
         }),
-      } as User;
+        reload: async () => {},
+        delete: async () => {},
+        toJSON: () => ({
+          uid: 'dev-user-local',
+          email: 'dev@local.test',
+          displayName: 'Development User (Admin)',
+        }),
+      } as unknown as User;
 
       setUser(mockUser);
       setLoading(false);

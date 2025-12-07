@@ -209,27 +209,27 @@ function parseMetadataResponse(response: string): ArticleMetadata {
       console.log('[DEBUG] Extracted JSON length:', (jsonMatch[1] || jsonMatch[0]).length);
       console.log('[DEBUG] Extracted JSON:', jsonMatch[1] || jsonMatch[0]);
 
+      // Clean up extracted JSON before parsing
+      // Replace Japanese full-width quotation marks with escaped ASCII quotes
+      let extractedJson = jsonMatch[1] || jsonMatch[0];
+      const originalJson = extractedJson;
+
+      extractedJson = extractedJson
+        .replace(/\u201C/g, '\\"') // U+201C: LEFT DOUBLE QUOTATION MARK (")
+        .replace(/\u201D/g, '\\"'); // U+201D: RIGHT DOUBLE QUOTATION MARK (")
+
+      if (originalJson !== extractedJson) {
+        console.log('[DEBUG] Cleaned full-width quotation marks in JSON');
+        console.log('[DEBUG] Original JSON:', originalJson);
+        console.log('[DEBUG] Cleaned JSON:', extractedJson);
+      }
+
       try {
-        // Clean up extracted JSON before parsing
-        // Replace Japanese full-width quotation marks with escaped ASCII quotes
-        let extractedJson = jsonMatch[1] || jsonMatch[0];
-        const originalJson = extractedJson;
-
-        extractedJson = extractedJson
-          .replace(/\u201C/g, '\\"') // U+201C: LEFT DOUBLE QUOTATION MARK (")
-          .replace(/\u201D/g, '\\"'); // U+201D: RIGHT DOUBLE QUOTATION MARK (")
-
-        if (originalJson !== extractedJson) {
-          console.log('[DEBUG] Cleaned full-width quotation marks in JSON');
-          console.log('[DEBUG] Original JSON:', originalJson);
-          console.log('[DEBUG] Cleaned JSON:', extractedJson);
-        }
-
         metadataData = JSON.parse(extractedJson);
         console.log('[DEBUG] Extracted JSON parse succeeded');
       } catch (blockParseError) {
         console.error('[DEBUG] Parse error details:', blockParseError);
-        console.error('[DEBUG] Original extracted JSON:', jsonMatch[1] || jsonMatch[0]);
+        console.error('[DEBUG] Original extracted JSON:', originalJson);
         console.error('[DEBUG] After cleaning:', extractedJson);
         throw new Error('Invalid JSON in Claude response');
       }
