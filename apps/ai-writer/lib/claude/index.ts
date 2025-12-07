@@ -1,5 +1,9 @@
 /**
- * Claude API Integration Module Entry Point
+ * AI API Integration Module Entry Point
+ *
+ * @description
+ * マルチプロバイダー対応済み（2025-12-07）
+ * AI_PROVIDER環境変数でプロバイダーを切り替え可能
  *
  * @module lib/claude
  */
@@ -8,7 +12,7 @@
 export type {
   GenerateMetadataInput,
   ArticleMetadata,
-  ClaudeMetadataResponse,
+  AiMetadataResponse,
 } from './types';
 
 export { METADATA_DEFAULTS } from './types';

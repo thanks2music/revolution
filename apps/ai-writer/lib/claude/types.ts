@@ -1,9 +1,13 @@
 /**
- * Claude Metadata Generator Types
+ * AI Metadata Generator Types
  *
  * Purpose:
- *   - Define TypeScript interfaces for Claude API metadata generation
+ *   - Define TypeScript interfaces for AI API metadata generation
  *   - Support Phase 0.1 article metadata extraction (categories + excerpt)
+ *
+ * @description
+ * マルチプロバイダー対応済み（2025-12-07）
+ * AI_PROVIDER環境変数でプロバイダーを切り替え可能
  *
  * @module lib/claude/types
  */
@@ -63,10 +67,10 @@ export interface ArticleMetadata {
 }
 
 /**
- * Claude API response structure for metadata generation
+ * AI API response structure for metadata generation
  * @internal
  */
-export interface ClaudeMetadataResponse {
+export interface AiMetadataResponse {
   categories: string[];
   excerpt: string;
 }

@@ -14,7 +14,7 @@
  */
 
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
-import type { GenerateMetadataInput, ArticleMetadata, ClaudeMetadataResponse } from './types';
+import type { GenerateMetadataInput, ArticleMetadata, AiMetadataResponse } from './types';
 import { METADATA_DEFAULTS } from './types';
 
 /**
@@ -173,7 +173,7 @@ ${content}
  */
 function parseMetadataResponse(response: string): ArticleMetadata {
   try {
-    let metadataData: ClaudeMetadataResponse;
+    let metadataData: AiMetadataResponse;
 
     // [DEBUG] Log full response details
     console.log('[DEBUG] Full AI response length:', response.length);

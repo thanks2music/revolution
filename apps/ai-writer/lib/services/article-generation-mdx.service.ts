@@ -14,8 +14,7 @@ import { getPrStatusByCanonicalKey } from '../github/pr-status';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
 import { generateArticleMetadata } from '../claude/metadata-generator';
 import { type ArticleMetadata } from '../claude/types';
-import { ClaudeAPIService } from './claude-api.service';
-import { getConfiguredProvider } from '../ai/factory/ai-factory';
+import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { convertRssContentToMarkdown } from '../utils/html-to-markdown';
 import { extractArticleHtml } from '../utils/html-extractor';
 import { ArticleSelectionService } from './article-selection.service';
@@ -530,28 +529,35 @@ export class ArticleGenerationMdxService {
   /**
    * コネクションテスト
    *
-   * Claude API、Firestore、GitHub API への接続を確認します。
+   * AI API（設定されたプロバイダー）、Firestore、GitHub API への接続を確認します。
+   *
+   * @description
+   * マルチプロバイダー対応済み（2025-12-07）
+   * AI_PROVIDER環境変数で設定されたプロバイダーをテストします
    */
   async testConnections(): Promise<{
-    claude: boolean;
+    ai: boolean;
     firestore: boolean;
     github: boolean;
     errors: string[];
   }> {
     const errors: string[] = [];
-    let claudeStatus = false;
+    let aiStatus = false;
     let firestoreStatus = false;
     let githubStatus = false;
 
-    // Test Claude API
+    // Test AI API (configured provider)
     try {
-      const claudeService = new ClaudeAPIService();
-      claudeStatus = await claudeService.testConnection();
-      if (!claudeStatus) {
-        errors.push('Claude API connection test failed');
+      const aiProvider = createAiProvider();
+      const providerName = getConfiguredProvider();
+      console.log(`[testConnections] Testing AI API connection (${providerName})...`);
+      aiStatus = await aiProvider.testConnection();
+      if (!aiStatus) {
+        errors.push(`AI API (${providerName}) connection test failed`);
       }
     } catch (error) {
-      errors.push(`Claude API error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const providerName = getConfiguredProvider();
+      errors.push(`AI API (${providerName}) error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     // Test Firestore (simple read operation)
@@ -573,7 +579,7 @@ export class ArticleGenerationMdxService {
     }
 
     return {
-      claude: claudeStatus,
+      ai: aiStatus,
       firestore: firestoreStatus,
       github: githubStatus,
       errors,
