@@ -111,7 +111,7 @@ export class TitleGenerationService {
   }
 
   /**
-   * Claude APIのレスポンスからタイトルを抽出
+   * AI APIのレスポンスからタイトルを抽出
    * @param response レスポンステキスト
    * @returns タイトル文字列
    */

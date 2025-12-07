@@ -107,7 +107,7 @@ export async function generateArticleMetadata(
 }
 
 /**
- * Build prompt for Claude API metadata generation
+ * Build prompt for AI API metadata generation
  * @internal
  */
 function buildMetadataPrompt(params: {
@@ -168,7 +168,7 @@ ${content}
 }
 
 /**
- * Parse Claude API response to metadata
+ * Parse AI API response to metadata
  * @internal
  */
 function parseMetadataResponse(response: string): ArticleMetadata {
@@ -176,7 +176,7 @@ function parseMetadataResponse(response: string): ArticleMetadata {
     let metadataData: ClaudeMetadataResponse;
 
     // [DEBUG] Log full response details
-    console.log('[DEBUG] Full Claude response length:', response.length);
+    console.log('[DEBUG] Full AI response length:', response.length);
     console.log('[DEBUG] First 500 chars:', response.substring(0, 500));
     console.log('[DEBUG] Last 500 chars:', response.substring(response.length - 500));
 
@@ -194,8 +194,8 @@ function parseMetadataResponse(response: string): ArticleMetadata {
         response.match(/\{[\s\S]*\}/);
 
       if (!jsonMatch) {
-        console.error('Claude response that could not be parsed:', response);
-        throw new Error('No JSON found in Claude response');
+        console.error('AI response that could not be parsed:', response);
+        throw new Error('No JSON found in AI response');
       }
 
       console.log(
@@ -231,7 +231,7 @@ function parseMetadataResponse(response: string): ArticleMetadata {
         console.error('[DEBUG] Parse error details:', blockParseError);
         console.error('[DEBUG] Original extracted JSON:', originalJson);
         console.error('[DEBUG] After cleaning:', extractedJson);
-        throw new Error('Invalid JSON in Claude response');
+        throw new Error('Invalid JSON in AI response');
       }
     }
 
@@ -241,11 +241,11 @@ function parseMetadataResponse(response: string): ArticleMetadata {
       !Array.isArray(metadataData.categories) ||
       metadataData.categories.length === 0
     ) {
-      throw new Error('Missing or invalid categories in Claude response');
+      throw new Error('Missing or invalid categories in AI response');
     }
 
     if (!metadataData.excerpt || typeof metadataData.excerpt !== 'string') {
-      throw new Error('Missing or invalid excerpt in Claude response');
+      throw new Error('Missing or invalid excerpt in AI response');
     }
 
     return {
@@ -253,7 +253,7 @@ function parseMetadataResponse(response: string): ArticleMetadata {
       excerpt: metadataData.excerpt.trim(),
     };
   } catch (error) {
-    console.error('Failed to parse Claude metadata response:', error);
+    console.error('Failed to parse AI metadata response:', error);
     throw new Error(
       `Failed to parse metadata response: ${error instanceof Error ? error.message : 'Unknown error'}`
     );

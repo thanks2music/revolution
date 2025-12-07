@@ -103,7 +103,7 @@ ${request.site_domain ? `- site_domain: ${request.site_domain}` : ''}
   }
 
   /**
-   * Claude APIからのレスポンスをパース
+   * AI APIからのレスポンスをパース
    * @param response レスポンステキスト
    * @returns パース済みの選別結果
    */

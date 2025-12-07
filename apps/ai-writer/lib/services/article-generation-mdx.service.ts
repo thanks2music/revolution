@@ -15,6 +15,7 @@ import { extractFromRss, type RssExtractionResult } from '../claude/rss-extracto
 import { generateArticleMetadata } from '../claude/metadata-generator';
 import { type ArticleMetadata } from '../claude/types';
 import { ClaudeAPIService } from './claude-api.service';
+import { getConfiguredProvider } from '../ai/factory/ai-factory';
 import { convertRssContentToMarkdown } from '../utils/html-to-markdown';
 import { extractArticleHtml } from '../utils/html-extractor';
 import { ArticleSelectionService } from './article-selection.service';
@@ -39,7 +40,7 @@ export interface MdxGenerationRequest {
     contentSnippet?: string;
     pubDate?: string;
   };
-  // Claude APIで抽出された情報（オプション）
+  // AI APIで抽出された情報（オプション）
   extracted?: {
     workTitle: string;
     storeName: string;
@@ -96,21 +97,34 @@ export class ArticleGenerationMdxService {
    * @returns MDX生成結果
    *
    * 処理フロー:
-   * 0.5. Claude APIで記事選別（公式URL検出、採用判定）
-   * 1. Claude APIでRSS記事から作品/店舗/イベント情報を抽出
-   * 2. YAMLコンフィグでslugを解決（フォールバック: Claude API → ASCII）
+   * 0.5. AI APIで記事選別（公式URL検出、採用判定）
+   * 1. AI APIでRSS記事から作品/店舗/イベント情報を抽出
+   * 2. YAMLコンフィグでslugを解決（フォールバック: AI API → ASCII）
    * 3. Firestoreで重複チェック + イベント登録（status: pending）
-   * 4. Claude APIでカテゴリ/抜粋を生成
-   * 4.5. Claude APIでタイトルを生成（YAMLテンプレート使用） ← NEW
+   * 4. AI APIでカテゴリ/抜粋を生成
+   * 4.5. AI APIでタイトルを生成（YAMLテンプレート使用）
    * 5. MDX記事を生成
    * 6. GitHub PRを作成
    * 7. Firestoreのステータスを更新（status: generated）
+   *
+   * @description
+   * マルチプロバイダー対応済み（2025-12-07）
+   * AI_PROVIDER環境変数でプロバイダーを切り替え可能
    */
   async generateMdxFromRSS(request: MdxGenerationRequest): Promise<MdxGenerationResult> {
     const { rssItem, dryRun = false } = request;
     const year = new Date().getFullYear();
 
+    // Get configured AI provider for logging
+    const providerName = getConfiguredProvider();
+    const providerDisplayName = {
+      anthropic: 'Anthropic Claude',
+      gemini: 'Google Gemini',
+      openai: 'OpenAI',
+    }[providerName] || providerName;
+
     console.log('========== MDXパイプライン: 記事生成開始 ==========');
+    console.log(`🤖 Using AI Provider: ${providerDisplayName}`);
     if (dryRun) {
       console.log('🧪 ドライランモード: Firestore登録・GitHub PR作成をスキップします');
     }
@@ -121,7 +135,7 @@ export class ArticleGenerationMdxService {
 
     try {
       // Step 0.5: Article selection filter (公式URL検出 + 採用判定)
-      console.log('\n[Step 0.5/9] Claude APIで記事選別（公式URL検出、採用判定）...');
+      console.log(`\n[Step 0.5/9] AI API (${providerDisplayName}) で記事選別（公式URL検出、採用判定）...`);
       console.log('記事URLからHTML取得中:', rssItem.link);
 
       const articleHtml = await extractArticleHtml(rssItem.link);
@@ -156,7 +170,7 @@ export class ArticleGenerationMdxService {
       console.log('✅ 記事生成対象として採用');
 
       // Step 1: Extract work/store/event information from RSS
-      console.log('\n[Step 1/9] Claude APIでRSS記事から作品/店舗/イベント情報を抽出...');
+      console.log(`\n[Step 1/9] AI API (${providerDisplayName}) でRSS記事から作品/店舗/イベント情報を抽出...`);
 
       const extraction =
         request.extracted ||
@@ -168,7 +182,7 @@ export class ArticleGenerationMdxService {
 
       console.log('抽出結果:', extraction);
 
-      // Step 2: Resolve slugs (YAML config → Claude API → ASCII fallback)
+      // Step 2: Resolve slugs (YAML config → AI API → ASCII fallback)
       console.log('\n[Step 2/9] YAMLコンフィグでslugを解決...');
 
       const [workSlug, storeSlug, eventType] = await Promise.all([
@@ -284,8 +298,8 @@ export class ArticleGenerationMdxService {
         });
       }
 
-      // Step 4: Generate categories and excerpt using Claude API
-      console.log('\n[Step 4/9] Claude APIでカテゴリ/抜粋を生成...');
+      // Step 4: Generate categories and excerpt using AI API
+      console.log(`\n[Step 4/9] AI API (${providerDisplayName}) でカテゴリ/抜粋を生成...`);
 
       const metadata = await generateArticleMetadata({
         content: rssItem.content || rssItem.contentSnippet || '',
@@ -300,7 +314,7 @@ export class ArticleGenerationMdxService {
       });
 
       // Step 4.5: Generate title using YAML template
-      console.log('\n[Step 4.5/9] Claude APIでタイトルを生成（YAMLテンプレート使用）...');
+      console.log(`\n[Step 4.5/9] AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
 
       const titleService = new TitleGenerationService();
       const titleResult = await titleService.generateTitle({
