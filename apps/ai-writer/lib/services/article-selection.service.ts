@@ -42,8 +42,15 @@ export class ArticleSelectionService {
       // YAMLテンプレートを読み込み
       const template = await this.templateLoader.loadTemplate(this.templateId);
 
-      // プロンプトを構築
-      const prompt = this.buildPrompt(template.prompts.selection, request);
+      // プロンプトを構築（YAMLテンプレート全体を含む）
+      const prompt = this.buildPrompt(template, request);
+
+      // デバッグ: 送信プロンプトをログ出力
+      if (process.env.DEBUG_SELECTION_PROMPT === 'true') {
+        console.log('\n[ArticleSelection] ========== 送信プロンプト全文 ==========');
+        console.log(prompt);
+        console.log('[ArticleSelection] ========== プロンプト終了 ==========\n');
+      }
 
       // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
       const response = await this.aiProvider.sendMessage(prompt, {
@@ -82,16 +89,23 @@ export class ArticleSelectionService {
 
   /**
    * プロンプトを構築
-   * @param selectionPrompt YAMLテンプレートの prompts.selection
+   * @param template YAMLテンプレート全体
    * @param request リクエストデータ
    * @returns 完成したプロンプト
    */
   private buildPrompt(
-    selectionPrompt: string,
+    template: any,
     request: ArticleSelectionRequest
   ): string {
-    // プロンプトテンプレートに実際のデータを埋め込む
-    return `${selectionPrompt}
+    // YAMLテンプレートのルール定義をプロンプトに含める
+    const rulesSection = this.buildRulesSection(template);
+
+    // 最終プロンプトを構築
+    return `${template.prompts.selection}
+
+${rulesSection}
+
+---
 
 ## 入力データ
 
@@ -99,7 +113,46 @@ export class ArticleSelectionService {
 - rss_content: ${request.rss_content}
 ${request.site_domain ? `- site_domain: ${request.site_domain}` : ''}
 
+---
+
 上記の入力データを解析し、JSON形式でのみ出力してください。`;
+  }
+
+  /**
+   * YAMLテンプレートからルール定義セクションを構築
+   * @param template YAMLテンプレート
+   * @returns ルール定義のテキスト
+   */
+  private buildRulesSection(template: any): string {
+    const sections: string[] = [];
+
+    // 公式URL判定基準（logic.official_url_detection）
+    if (template.logic?.official_url_detection) {
+      sections.push(`## 公式URL判定基準（必須）
+
+${template.logic.official_url_detection}`);
+    }
+
+    // 出力形式の定義（output.schema）
+    if (template.output?.schema) {
+      sections.push(`## 出力形式（JSON Schema）
+
+\`\`\`json
+${template.output.schema}
+\`\`\``);
+    }
+
+    // プレースホルダー情報（参考）
+    if (template.placeholders?.required) {
+      const placeholdersList = template.placeholders.required
+        .map((p: any) => `- ${p.name}: ${p.description || ''}`)
+        .join('\n');
+      sections.push(`## 入力パラメータ定義
+
+${placeholdersList}`);
+    }
+
+    return sections.join('\n\n');
   }
 
   /**
