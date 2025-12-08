@@ -14,6 +14,7 @@ import {
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
+import type { MergedModularTemplate } from '@/lib/types/modular-template';
 
 /**
  * タイトル生成サービス
@@ -21,7 +22,10 @@ import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 export class TitleGenerationService {
   private templateLoader: YamlTemplateLoaderService;
   private aiProvider: AiProvider;
-  private readonly templateId = 'post-template-collabo-cafe-title';
+  /** モジュール化テンプレートID */
+  private readonly templateId = 'collabo-cafe';
+  /** パイプラインID */
+  private readonly pipelineId = '3-title';
 
   constructor(templateLoader?: YamlTemplateLoaderService, aiProvider?: AiProvider) {
     this.templateLoader = templateLoader || new YamlTemplateLoaderService();
@@ -39,8 +43,12 @@ export class TitleGenerationService {
     try {
       console.log('[TitleGeneration] タイトル生成開始:', request.rss_title);
 
-      // YAMLテンプレートを読み込み
-      const template = await this.templateLoader.loadTemplate(this.templateId);
+      // モジュール化YAMLテンプレートを読み込み
+      const template = await this.templateLoader.loadModularTemplate(
+        this.templateId,
+        this.pipelineId,
+        { includeSections: false } // タイトル生成ではセクション不要
+      );
 
       // プロンプトを構築（YAMLテンプレート全体を含む）
       const prompt = this.buildPrompt(template, request);
@@ -94,12 +102,12 @@ export class TitleGenerationService {
 
   /**
    * プロンプトを構築
-   * @param template YAMLテンプレート全体
+   * @param template モジュール化YAMLテンプレート
    * @param request リクエストデータ
    * @returns 完成したプロンプト
    */
   private buildPrompt(
-    template: any,
+    template: MergedModularTemplate,
     request: TitleGenerationRequest
   ): string {
     // YAMLテンプレートのルール定義をプロンプトに含める
@@ -127,27 +135,28 @@ ${rulesSection}
   }
 
   /**
-   * YAMLテンプレートからルール定義セクションを構築
-   * @param template YAMLテンプレート
+   * モジュール化YAMLテンプレートからルール定義セクションを構築
+   * @param template モジュール化YAMLテンプレート
    * @returns ルール定義のテキスト
    */
-  private buildRulesSection(template: any): string {
+  private buildRulesSection(template: MergedModularTemplate): string {
     const sections: string[] = [];
 
-    // 文字数制約
-    if (template.constraints?.title_length) {
-      const tl = template.constraints.title_length;
+    // 文字数制約（モジュール化テンプレート: constraints.title.length）
+    const titleConstraints = (template.constraints as any)?.title;
+    if (titleConstraints?.length) {
+      const tl = titleConstraints.length;
       sections.push(`## 文字数制約（必須）
 - 最小: ${tl.min}文字
 - 最大: ${tl.max}文字
 - 推奨: ${tl.recommended}
-- カウント方法: ${tl.count_rule}`);
+- カウント方法: ${titleConstraints.count_rule || '全角・半角・記号・スペースをすべて1文字としてカウント'}`);
     }
 
-    // スペースルール
-    if (template.constraints?.spacing) {
+    // スペースルール（モジュール化テンプレート: constraints.title.spacing）
+    if (titleConstraints?.spacing) {
       sections.push(`## スペースルール
-- ${template.constraints.spacing.rule}`);
+- ${titleConstraints.spacing.rule}`);
     }
 
     // 作品名の略称ロジック

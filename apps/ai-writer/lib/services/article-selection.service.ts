@@ -14,6 +14,7 @@ import {
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
+import type { MergedModularTemplate } from '@/lib/types/modular-template';
 
 /**
  * 記事選別サービス
@@ -21,7 +22,10 @@ import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 export class ArticleSelectionService {
   private templateLoader: YamlTemplateLoaderService;
   private aiProvider: AiProvider;
-  private readonly templateId = 'collabo-cafe-selection';
+  /** モジュール化テンプレートID */
+  private readonly templateId = 'collabo-cafe';
+  /** パイプラインID */
+  private readonly pipelineId = '1-selection';
 
   constructor(templateLoader?: YamlTemplateLoaderService, aiProvider?: AiProvider) {
     this.templateLoader = templateLoader || new YamlTemplateLoaderService();
@@ -39,8 +43,12 @@ export class ArticleSelectionService {
     try {
       console.log('[ArticleSelection] 記事選別開始:', request.rss_title);
 
-      // YAMLテンプレートを読み込み
-      const template = await this.templateLoader.loadTemplate(this.templateId);
+      // モジュール化YAMLテンプレートを読み込み
+      const template = await this.templateLoader.loadModularTemplate(
+        this.templateId,
+        this.pipelineId,
+        { includeSections: false } // 記事選別ではセクション不要
+      );
 
       // プロンプトを構築（YAMLテンプレート全体を含む）
       const prompt = this.buildPrompt(template, request);
@@ -89,12 +97,12 @@ export class ArticleSelectionService {
 
   /**
    * プロンプトを構築
-   * @param template YAMLテンプレート全体
+   * @param template モジュール化YAMLテンプレート
    * @param request リクエストデータ
    * @returns 完成したプロンプト
    */
   private buildPrompt(
-    template: any,
+    template: MergedModularTemplate,
     request: ArticleSelectionRequest
   ): string {
     // YAMLテンプレートのルール定義をプロンプトに含める
@@ -119,11 +127,11 @@ ${request.site_domain ? `- site_domain: ${request.site_domain}` : ''}
   }
 
   /**
-   * YAMLテンプレートからルール定義セクションを構築
-   * @param template YAMLテンプレート
+   * モジュール化YAMLテンプレートからルール定義セクションを構築
+   * @param template モジュール化YAMLテンプレート
    * @returns ルール定義のテキスト
    */
-  private buildRulesSection(template: any): string {
+  private buildRulesSection(template: MergedModularTemplate): string {
     const sections: string[] = [];
 
     // 公式URL判定基準（logic.official_url_detection）
@@ -135,10 +143,14 @@ ${template.logic.official_url_detection}`);
 
     // 出力形式の定義（output.schema）
     if (template.output?.schema) {
+      // schema がオブジェクトの場合は JSON 文字列に変換
+      const schemaStr = typeof template.output.schema === 'string'
+        ? template.output.schema
+        : JSON.stringify(template.output.schema, null, 2);
       sections.push(`## 出力形式（JSON Schema）
 
 \`\`\`json
-${template.output.schema}
+${schemaStr}
 \`\`\``);
     }
 
