@@ -16,7 +16,7 @@ import { generateArticleMetadata } from '../claude/metadata-generator';
 import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { convertRssContentToMarkdown } from '../utils/html-to-markdown';
-import { extractArticleHtml } from '../utils/html-extractor';
+import { extractArticleHtml, extractContentHtml } from '../utils/html-extractor';
 import { ArticleSelectionService } from './article-selection.service';
 import {
   type ArticleSelectionRequest,
@@ -194,9 +194,9 @@ export class ArticleGenerationMdxService {
       let detailedExtraction: ExtractionResult | undefined;
       if (selectionResult.primary_official_url) {
         try {
-          // 公式サイトのHTMLを取得
+          // 公式サイトのHTMLを取得（本文用抽出器を使用）
           console.log('公式サイトURLからHTML取得中:', selectionResult.primary_official_url);
-          const officialHtml = await extractArticleHtml(selectionResult.primary_official_url);
+          const officialHtml = await extractContentHtml(selectionResult.primary_official_url);
           console.log('公式サイトHTML取得完了:', officialHtml.length, 'bytes');
 
           // ExtractionService で詳細情報を抽出

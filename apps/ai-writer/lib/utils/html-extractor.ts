@@ -43,6 +43,29 @@ const ARTICLE_SELECTORS = [
 ] as const;
 
 /**
+ * コンテンツ抽出時に除去する要素
+ * (extractContentHtml で使用)
+ */
+const CONTENT_REMOVE_SELECTORS = [
+  'script',
+  'style',
+  'noscript',
+  'iframe',
+  'svg',
+  'canvas',
+] as const;
+
+/**
+ * head 内で保持するセレクタ
+ * (extractContentHtml で使用)
+ */
+const HEAD_KEEP_SELECTORS = [
+  'title',
+  'meta[name="description"]',
+  'meta[property^="og:"]',
+] as const;
+
+/**
  * HTMLフェッチのタイムアウト設定（ミリ秒）
  */
 const FETCH_TIMEOUT_MS = 10000;
@@ -384,5 +407,135 @@ export async function extractArticleData(url: string): Promise<{
       throw new Error(`記事データの取得に失敗: ${url} - ${error.message}`);
     }
     throw new Error(`記事データの取得に失敗: ${url}`);
+  }
+}
+
+/**
+ * 公式サイトからコンテンツHTMLを抽出（本文抽出用）
+ *
+ * タイトル抽出用（extractArticleHtml）とは異なり、
+ * カスタムランディングページ（main/article要素がないサイト）にも対応。
+ *
+ * 抽出戦略:
+ * 1. まず既存のセレクタ（main, article等）で試行
+ * 2. 見つからない場合は body 全体をフォールバック
+ * 3. 不要な要素（script, style, noscript等）を除去
+ * 4. head から必要な情報（title, meta description, og:*）のみ抽出
+ *
+ * 保持する要素:
+ * - header, nav: 他ページへの参照リンク用
+ * - footer: コピーライト情報抽出用
+ * - head内: title, meta[name="description"], meta[property^="og:"]
+ *
+ * @param url 公式サイトURL
+ * @returns クリーンアップされたHTML
+ * @throws フェッチエラー、タイムアウトエラー
+ */
+export async function extractContentHtml(url: string): Promise<string> {
+  try {
+    // Google リダイレクトURLから実際のURLを抽出
+    const actualUrl = extractActualUrl(url);
+
+    console.log(`[HTMLExtractor:Content] フェッチ開始: ${actualUrl}`);
+
+    // タイムアウト付きフェッチ
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    const response = await fetch(actualUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (compatible; RevolutionBot/1.0; +https://revolution.example.com/bot)',
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
+    }
+
+    const fullHtml = await response.text();
+    console.log(`[HTMLExtractor:Content] HTML取得完了: ${fullHtml.length} bytes`);
+
+    // cheerioでパース
+    const $ = cheerio.load(fullHtml);
+
+    // まず既存のセレクタで試行
+    for (const selector of ARTICLE_SELECTORS) {
+      const element = $(selector).first();
+
+      if (element.length > 0) {
+        const extractedHtml = element.html();
+
+        if (extractedHtml && extractedHtml.trim().length > 0) {
+          console.log(
+            `[HTMLExtractor:Content] ✅ セレクタ抽出成功: "${selector}", ${extractedHtml.length} bytes`
+          );
+
+          // デバッグモード時にHTMLを保存
+          await saveHtmlForDebug(extractedHtml, actualUrl);
+
+          return extractedHtml;
+        }
+      }
+    }
+
+    // フォールバック: body 全体を使用し、クリーンアップ
+    console.log(`[HTMLExtractor:Content] 🔄 セレクタで見つからないため、body全体を使用`);
+
+    // 不要な要素を除去
+    for (const removeSelector of CONTENT_REMOVE_SELECTORS) {
+      $(removeSelector).remove();
+    }
+
+    // head から必要な情報を抽出
+    const headInfo: string[] = [];
+    for (const keepSelector of HEAD_KEEP_SELECTORS) {
+      $(keepSelector).each((_, el) => {
+        const outerHtml = $.html(el);
+        if (outerHtml) {
+          headInfo.push(outerHtml);
+        }
+      });
+    }
+
+    // body のコンテンツを取得
+    const bodyContent = $('body').html() || '';
+
+    // クリーンアップされたHTMLを構築
+    const cleanedHtml = `<!-- Head Info -->
+${headInfo.join('\n')}
+
+<!-- Body Content -->
+${bodyContent}`;
+
+    console.log(
+      `[HTMLExtractor:Content] ✅ クリーンアップ完了: ${cleanedHtml.length} bytes (元: ${fullHtml.length} bytes)`
+    );
+
+    // HTMLプレビュー（デバッグ用）
+    const preview = cleanedHtml
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 300);
+    console.log(`[HTMLExtractor:Content] プレビュー: ${preview}...`);
+
+    // デバッグモード時にHTMLを保存
+    await saveHtmlForDebug(cleanedHtml, actualUrl);
+
+    return cleanedHtml;
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        throw new Error(
+          `コンテンツHTMLのフェッチがタイムアウトしました: ${url} (${FETCH_TIMEOUT_MS}ms)`
+        );
+      }
+      throw new Error(`コンテンツHTMLの取得に失敗: ${url} - ${error.message}`);
+    }
+    throw new Error(`コンテンツHTMLの取得に失敗: ${url}`);
   }
 }
