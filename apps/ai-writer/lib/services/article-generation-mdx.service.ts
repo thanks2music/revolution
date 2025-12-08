@@ -27,6 +27,10 @@ import {
   type TitleGenerationRequest,
   type TitleGenerationResult,
 } from '@/lib/types/title-generation';
+import {
+  ExtractionService,
+  type ExtractionResult,
+} from './extraction.service';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -73,6 +77,8 @@ export interface MdxGenerationResult {
     postId: string;
     year: number;
   };
+  // 公式サイトからの詳細抽出結果（Step 1.5）
+  detailedExtraction?: ExtractionResult;
 }
 
 /**
@@ -98,6 +104,7 @@ export class ArticleGenerationMdxService {
    * 処理フロー:
    * 0.5. AI APIで記事選別（公式URL検出、採用判定）
    * 1. AI APIでRSS記事から作品/店舗/イベント情報を抽出
+   * 1.5. AI APIで公式サイトHTMLから詳細情報を抽出（YAMLテンプレート使用）
    * 2. YAMLコンフィグでslugを解決（フォールバック: AI API → ASCII）
    * 3. Firestoreで重複チェック + イベント登録（status: pending）
    * 4. AI APIでカテゴリ/抜粋を生成
@@ -180,6 +187,41 @@ export class ArticleGenerationMdxService {
         }));
 
       console.log('抽出結果:', extraction);
+
+      // Step 1.5: Extract detailed information from official site HTML
+      console.log(`\n[Step 1.5/9] AI API (${providerDisplayName}) で公式サイトHTMLから詳細情報を抽出...`);
+
+      let detailedExtraction: ExtractionResult | undefined;
+      if (selectionResult.primary_official_url) {
+        try {
+          // 公式サイトのHTMLを取得
+          console.log('公式サイトURLからHTML取得中:', selectionResult.primary_official_url);
+          const officialHtml = await extractArticleHtml(selectionResult.primary_official_url);
+          console.log('公式サイトHTML取得完了:', officialHtml.length, 'bytes');
+
+          // ExtractionService で詳細情報を抽出
+          const extractionService = new ExtractionService();
+          detailedExtraction = await extractionService.extractFromOfficialSite({
+            primary_official_url: selectionResult.primary_official_url,
+            page_content: officialHtml,
+            official_urls: selectionResult.official_urls,
+          });
+
+          console.log('詳細抽出結果:', {
+            作品名: detailedExtraction.作品名,
+            作品タイプ: detailedExtraction.作品タイプ,
+            店舗名: detailedExtraction.店舗名,
+            開催期間: detailedExtraction.開催期間,
+            原作者名: detailedExtraction.原作者名,
+            略称: detailedExtraction.略称,
+          });
+        } catch (extractionError) {
+          console.warn('⚠️ 公式サイトからの詳細抽出に失敗しました（処理は継続）:', extractionError);
+          // 詳細抽出は失敗しても処理を続行（基本情報はStep 1で取得済み）
+        }
+      } else {
+        console.log('⚠️ 公式サイトURLが見つからないため、詳細抽出をスキップ');
+      }
 
       // Step 2: Resolve slugs (YAML config → AI API → ASCII fallback)
       console.log('\n[Step 2/9] YAMLコンフィグでslugを解決...');
@@ -449,6 +491,7 @@ export class ArticleGenerationMdxService {
           postId: eventRecord.postId,
           year,
         },
+        detailedExtraction,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
