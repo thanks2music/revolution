@@ -155,7 +155,7 @@ graph TB
     style FB fill:#ffccbc
 ```
 
-### データフロー: AI記事生成
+### データフロー: AI記事生成（レガシー: WordPress版）
 
 ```mermaid
 sequenceDiagram
@@ -179,6 +179,287 @@ sequenceDiagram
     WP-->>AIWriter: 投稿IDを返す
     AIWriter-->>User: 成功
 ```
+
+> ⚠️ **注意**: 上記は WordPress 版（レガシー）のフローです。現在は MDX パイプラインが主流です。
+
+### MDX パイプライン アーキテクチャ（現行版）
+
+現在の AI Writer は **MDX ベースの記事生成パイプライン** を使用しています。
+
+#### パイプライン概要図
+
+```mermaid
+flowchart TB
+    subgraph Input["📥 入力"]
+        RSS[("RSS フィード")]
+        URL["記事 URL"]
+    end
+
+    subgraph Pipeline["🔄 MDX パイプライン (9 Steps)"]
+        direction TB
+        S0["Step 0.5<br/>記事選別"]
+        S1["Step 1<br/>情報抽出"]
+        S2["Step 2<br/>Slug 解決"]
+        S3["Step 3<br/>重複チェック"]
+        S4["Step 4<br/>メタデータ生成"]
+        S45["Step 4.5<br/>タイトル生成"]
+        S5["Step 5<br/>MDX 生成"]
+        S6["Step 6<br/>GitHub PR 作成"]
+        S7["Step 7<br/>ステータス更新"]
+
+        S0 --> S1 --> S2 --> S3 --> S4 --> S45 --> S5 --> S6 --> S7
+    end
+
+    subgraph External["🌐 外部サービス"]
+        AI["AI Provider<br/>(Claude/Gemini/OpenAI)"]
+        FS[("Firestore<br/>イベント管理")]
+        GH["GitHub API<br/>PR 作成"]
+        YAML["YAML テンプレート<br/>(モジュール化)"]
+    end
+
+    subgraph Output["📤 出力"]
+        MDX["MDX ファイル"]
+        PR["GitHub PR"]
+    end
+
+    RSS --> S0
+    URL --> S0
+    S0 <--> AI
+    S1 <--> AI
+    S2 <--> YAML
+    S3 <--> FS
+    S4 <--> AI
+    S45 <--> AI
+    S45 <--> YAML
+    S6 --> GH
+    S7 --> FS
+    S5 --> MDX
+    S6 --> PR
+
+    style S0 fill:#e3f2fd
+    style S1 fill:#e3f2fd
+    style S4 fill:#e3f2fd
+    style S45 fill:#e3f2fd
+    style AI fill:#fff9c4
+    style FS fill:#ffe0b2
+    style GH fill:#c8e6c9
+    style YAML fill:#f3e5f5
+```
+
+#### 詳細パイプラインフロー
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as ユーザー
+    participant MDX as MDX Service
+    participant HTML as HTML Extractor
+    participant Select as ArticleSelection Service
+    participant Extract as extractFromRss
+    participant Slug as Slug Resolver
+    participant FS as Firestore
+    participant GH as GitHub API
+    participant Meta as Metadata Generator
+    participant TitleSvc as TitleGeneration Service
+    participant AI as AI Provider (Claude/Gemini/OpenAI)
+    participant YAML as YAML Template
+
+    User->>MDX: generateMdxFromRSS(rssItem)
+
+    Note over MDX,AI: Step 0.5 記事選別
+    MDX->>HTML: 記事HTML取得
+    HTML-->>MDX: articleHtml
+    MDX->>Select: shouldGenerateArticle()
+    Select->>YAML: loadModularTemplate('EVENT_TYPE','1-selection')
+    YAML-->>Select: template
+    Select->>AI: sendMessage(prompt)
+    AI-->>Select: JSON response
+    Select-->>MDX: should_generate, official_urls
+
+    alt should_generate = false
+        MDX-->>User: スキップ (公式URLなし)
+    end
+
+    Note over MDX,AI: Step 1 情報抽出
+    MDX->>Extract: extractFromRss(rssItem)
+    Extract->>AI: RSS から抽出
+    AI-->>Extract: workTitle, storeName, eventTypeName
+    Extract-->>MDX: extraction
+
+    Note over MDX,Slug: Step 2 Slug 解決
+    MDX->>Slug: resolveWorkSlug(workTitle)
+    MDX->>Slug: resolveStoreSlug(storeName)
+    MDX->>Slug: resolveEventTypeSlug(eventTypeName)
+    Slug-->>MDX: workSlug, storeSlug, eventType
+
+    Note over MDX,FS: Step 3 重複チェック & 登録
+    MDX->>FS: checkEventDuplication()
+    FS-->>MDX: isDuplicate, canonicalKey
+    alt isDuplicate
+        MDX->>GH: getPrStatusByCanonicalKey()
+        GH-->>MDX: hasOpenPr
+        alt hasOpenPr
+            MDX-->>User: DuplicateSlugError
+        else closed
+            MDX->>FS: deleteEvent()
+        end
+    end
+    MDX->>FS: registerNewEvent()
+    FS-->>MDX: eventRecord
+
+    Note over MDX,AI: Step 4 メタデータ生成
+    MDX->>Meta: generateArticleMetadata()
+    Meta->>AI: カテゴリ/抜粋生成
+    AI-->>Meta: categories, excerpt
+    Meta-->>MDX: metadata
+
+    Note over MDX,AI: Step 4.5 タイトル生成
+    MDX->>TitleSvc: generateTitle()
+    TitleSvc->>YAML: loadModularTemplate('EVENT_TYPE','3-title')
+    YAML-->>TitleSvc: template rules
+    TitleSvc->>AI: sendMessage(prompt)
+    AI-->>TitleSvc: title
+    TitleSvc-->>MDX: title, length, is_valid
+
+    Note over MDX,GH: Step 5-7 MDX生成 & PR作成
+    MDX->>MDX: generateMdxArticle()
+    MDX->>GH: createMdxPr()
+    GH-->>MDX: prNumber, prUrl
+    MDX->>FS: updateEventStatus('generated')
+
+    MDX-->>User: success, mdxArticle, prResult
+```
+
+#### サービス依存関係図
+
+```mermaid
+graph LR
+    subgraph Services["サービス層"]
+        AGMS["ArticleGeneration<br/>MdxService"]
+        ASS["ArticleSelection<br/>Service"]
+        TGS["TitleGeneration<br/>Service"]
+        YTLS["YamlTemplateLoader<br/>Service"]
+    end
+
+    subgraph AI["AI プロバイダー層"]
+        AIF["AI Factory"]
+        ANT["Anthropic<br/>Provider"]
+        GEM["Gemini<br/>Provider"]
+        OAI["OpenAI<br/>Provider"]
+    end
+
+    subgraph Data["データ層"]
+        FS[("Firestore")]
+        GH["GitHub API"]
+        YAML[("YAML<br/>Templates")]
+    end
+
+    subgraph Utils["ユーティリティ"]
+        EFR["extractFromRss"]
+        GAM["generateArticle<br/>Metadata"]
+        SR["Slug Resolver"]
+        HE["HTML Extractor"]
+    end
+
+    AGMS --> ASS
+    AGMS --> TGS
+    AGMS --> EFR
+    AGMS --> GAM
+    AGMS --> SR
+    AGMS --> HE
+    AGMS --> FS
+    AGMS --> GH
+
+    ASS --> YTLS
+    ASS --> AIF
+    TGS --> YTLS
+    TGS --> AIF
+
+    YTLS --> YAML
+
+    AIF --> ANT
+    AIF --> GEM
+    AIF --> OAI
+
+    EFR --> AIF
+    GAM --> AIF
+
+    style AGMS fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style AIF fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+    style YAML fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+```
+
+#### YAML テンプレート モジュール構造
+
+```mermaid
+graph TB
+    subgraph Templates["templates/EVENT_TYPE/"]
+        META["_meta.yaml<br/>メタ情報・順序定義"]
+
+        subgraph Shared["shared/"]
+            PH["placeholders.yaml<br/>プレースホルダー定義"]
+            CONS["constraints.yaml<br/>文字数制約・バリデーション"]
+        end
+
+        subgraph Pipeline["pipeline/"]
+            P1["1-selection.yaml<br/>記事選別"]
+            P2["2-extraction.yaml<br/>情報抽出"]
+            P3["3-title.yaml<br/>タイトル生成"]
+            P4["4-content.yaml<br/>本文生成"]
+        end
+
+        subgraph Sections["sections/"]
+            S1["01-header.yaml"]
+            S2["02-event-overview.yaml"]
+            S3["03-menu.yaml"]
+            S4["..."]
+        end
+    end
+
+    META --> Shared
+    META --> Pipeline
+    META --> Sections
+
+    style META fill:#ffecb3
+    style Shared fill:#e1f5fe
+    style Pipeline fill:#f3e5f5
+    style Sections fill:#c8e6c9
+```
+
+#### マルチプロバイダー切り替え
+
+```mermaid
+flowchart LR
+    ENV["AI_PROVIDER<br/>環境変数"]
+
+    subgraph Factory["AI Factory"]
+        direction TB
+        CREATE["createAiProvider()"]
+    end
+
+    subgraph Providers["プロバイダー"]
+        ANT["🟣 Anthropic<br/>Claude"]
+        GEM["🔵 Gemini<br/>Google"]
+        OAI["🟢 OpenAI<br/>GPT"]
+    end
+
+    ENV --> CREATE
+    CREATE --> ANT
+    CREATE --> GEM
+    CREATE --> OAI
+
+    ANT -.->|"default"| CREATE
+
+    style ANT fill:#d1c4e9
+    style GEM fill:#bbdefb
+    style OAI fill:#c8e6c9
+```
+
+| 環境変数 | プロバイダー | モデル例 |
+|---------|------------|---------|
+| `AI_PROVIDER=anthropic` | Anthropic Claude | claude-sonnet-4-20250514 |
+| `AI_PROVIDER=gemini` | Google Gemini | gemini-2.5-pro |
+| `AI_PROVIDER=openai` | OpenAI | gpt-4o |
 
 ---
 
