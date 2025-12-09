@@ -353,6 +353,8 @@ apps/frontend/.env.production.local
 apps/ai-writer/.env
 apps/ai-writer/.env.local
 apps/ai-writer/.env.deploy
+## AI Writerの設定ファイル
+apps/ai-writer/config/*
 
 # AI Writerテンプレート（プライベートリポジトリから同期）
 apps/ai-writer/templates/
