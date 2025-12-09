@@ -255,6 +255,8 @@ export interface SectionTemplate {
     version: string;
     order: number;
   };
+  /** スキップ条件（JavaScript式） */
+  skip_if?: string;
   required_placeholders?: string[];
   optional_placeholders?: string[];
   conditions?: SectionCondition[];
