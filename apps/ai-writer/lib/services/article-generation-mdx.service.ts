@@ -15,7 +15,6 @@ import { extractFromRss, type RssExtractionResult } from '../claude/rss-extracto
 import { generateArticleMetadata } from '../claude/metadata-generator';
 import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
-import { convertRssContentToMarkdown } from '../utils/html-to-markdown';
 import { extractArticleHtml, extractContentHtml } from '../utils/html-extractor';
 import { ArticleSelectionService } from './article-selection.service';
 import {
@@ -31,6 +30,10 @@ import {
   ExtractionService,
   type ExtractionResult,
 } from './extraction.service';
+import {
+  ContentGenerationService,
+  type ContentGenerationResult,
+} from './content-generation.service';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -79,6 +82,8 @@ export interface MdxGenerationResult {
   };
   // 公式サイトからの詳細抽出結果（Step 1.5）
   detailedExtraction?: ExtractionResult;
+  // コンテンツ生成結果（Step 5）
+  contentGeneration?: ContentGenerationResult;
 }
 
 /**
@@ -209,18 +214,40 @@ export class ArticleGenerationMdxService {
 
           console.log('詳細抽出結果:', {
             作品名: detailedExtraction.作品名,
-            作品タイプ: detailedExtraction.作品タイプ,
+            メディアタイプ: detailedExtraction.メディアタイプ,
+            原作タイプ: detailedExtraction.原作タイプ,
+            原作者有無: detailedExtraction.原作者有無,
+            原作者名: detailedExtraction.原作者名,
             店舗名: detailedExtraction.店舗名,
             開催期間: detailedExtraction.開催期間,
-            原作者名: detailedExtraction.原作者名,
             略称: detailedExtraction.略称,
           });
         } catch (extractionError) {
-          console.warn('⚠️ 公式サイトからの詳細抽出に失敗しました（処理は継続）:', extractionError);
-          // 詳細抽出は失敗しても処理を続行（基本情報はStep 1で取得済み）
+          console.error('❌ 公式サイトからの詳細抽出に失敗しました:', extractionError);
+          // 必須フィールドが取得できない場合は記事生成を中止
+          return {
+            success: false,
+            skipped: true,
+            skipReason: `公式サイトからの詳細抽出に失敗: ${extractionError instanceof Error ? extractionError.message : 'Unknown error'}`,
+          };
         }
       } else {
-        console.log('⚠️ 公式サイトURLが見つからないため、詳細抽出をスキップ');
+        console.error('❌ 公式サイトURLが見つからないため、記事生成を中止');
+        return {
+          success: false,
+          skipped: true,
+          skipReason: '公式サイトURLが見つからないため、詳細情報を抽出できません',
+        };
+      }
+
+      // 詳細抽出結果の必須フィールド検証
+      if (!detailedExtraction) {
+        console.error('❌ 詳細抽出結果がnullのため、記事生成を中止');
+        return {
+          success: false,
+          skipped: true,
+          skipReason: '詳細抽出結果がありません',
+        };
       }
 
       // Step 2: Resolve slugs (YAML config → AI API → ASCII fallback)
@@ -370,18 +397,41 @@ export class ArticleGenerationMdxService {
         is_valid: titleResult.is_valid,
       });
 
-      // Step 5: Generate MDX article
-      console.log('\n[Step 5/9] MDX記事を生成...');
+      // Step 5: Generate MDX article content using ContentGenerationService
+      console.log(`\n[Step 5/9] AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用）...`);
 
-      // Convert HTML content to Markdown
-      const markdownContent = convertRssContentToMarkdown(rawContent);
+      // ContentGenerationService で本文を生成
+      const contentService = new ContentGenerationService();
+      let contentGeneration: ContentGenerationResult;
 
-      console.log('コンテンツ変換:', {
-        hasHtmlTags: rawContent.includes('<'),
-        originalLength: rawContent.length,
-        convertedLength: markdownContent.length,
-      });
+      try {
+        // 公式サイトのHTMLを再取得（コンテンツ生成の参考情報として）
+        const officialHtmlForContent = selectionResult.primary_official_url
+          ? await extractContentHtml(selectionResult.primary_official_url)
+          : undefined;
 
+        contentGeneration = await contentService.generateContent({
+          extractedData: detailedExtraction,
+          generatedTitle: titleResult.title,
+          officialHtml: officialHtmlForContent,
+        });
+
+        console.log('コンテンツ生成完了:', {
+          contentLength: contentGeneration.content.length,
+          generatedSections: contentGeneration.generatedSections,
+          skippedSections: contentGeneration.skippedSections,
+        });
+      } catch (contentError) {
+        console.error('❌ コンテンツ生成に失敗しました:', contentError);
+        return {
+          success: false,
+          skipped: true,
+          skipReason: `コンテンツ生成に失敗: ${contentError instanceof Error ? contentError.message : 'Unknown error'}`,
+          detailedExtraction,
+        };
+      }
+
+      // MDX記事を組み立て
       const mdxArticle = generateMdxArticle(
         {
           postId: eventRecord.postId,
@@ -396,10 +446,10 @@ export class ArticleGenerationMdxService {
           date: rssItem.pubDate || new Date().toISOString().split('T')[0],
           author: 'thanks2music',
         },
-        markdownContent
+        contentGeneration.content // ContentGenerationService で生成した本文を使用
       );
 
-      console.log('MDX生成完了:', {
+      console.log('MDX組み立て完了:', {
         filePath: mdxArticle.filePath,
         contentLength: mdxArticle.content.length,
       });
@@ -492,6 +542,7 @@ export class ArticleGenerationMdxService {
           year,
         },
         detailedExtraction,
+        contentGeneration,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');

@@ -172,7 +172,8 @@ async function main() {
 
     if (result.mdxArticle) {
       console.log('📝 記事情報:');
-      console.log(`  タイトル: ${result.mdxArticle.title || title}`);
+      // 生成されたMDXタイトル（frontmatter.title）を表示。RSSタイトルではない。
+      console.log(`  タイトル: ${result.mdxArticle.frontmatter?.title || '（タイトル未生成）'}`);
       console.log(`  ファイルパス: ${result.mdxArticle.filePath}`);
       console.log(`  ファイルサイズ: ${result.mdxArticle.content?.length || 0}文字`);
       console.log();
