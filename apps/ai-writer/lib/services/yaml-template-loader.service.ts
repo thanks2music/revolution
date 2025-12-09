@@ -189,7 +189,7 @@ export class YamlTemplateLoaderService {
    */
   private async loadMeta(templateId: string): Promise<MetaConfig> {
     const metaPath = path.join(this.templatesDir, templateId, '_meta.yaml');
-    const content = await this.loadYamlFile(metaPath);
+    const content = await this.loadYamlFile(metaPath) as Record<string, any>;
 
     // 必須フィールドの検証
     if (!content.meta?.id) {
@@ -202,7 +202,7 @@ export class YamlTemplateLoaderService {
       throw new Error(`Invalid _meta.yaml in ${templateId}: missing sections.order`);
     }
 
-    return content as MetaConfig;
+    return content as unknown as MetaConfig;
   }
 
   /**
@@ -218,7 +218,7 @@ export class YamlTemplateLoaderService {
     const placeholdersPath = path.join(sharedDir, 'placeholders.yaml');
     let placeholders: SharedPlaceholders;
     try {
-      placeholders = await this.loadYamlFile(placeholdersPath) as SharedPlaceholders;
+      placeholders = await this.loadYamlFile(placeholdersPath) as unknown as SharedPlaceholders;
     } catch {
       // ファイルが存在しない場合はデフォルト値
       placeholders = {
@@ -231,7 +231,7 @@ export class YamlTemplateLoaderService {
     const constraintsPath = path.join(sharedDir, 'constraints.yaml');
     let constraints: SharedConstraints;
     try {
-      constraints = await this.loadYamlFile(constraintsPath) as SharedConstraints;
+      constraints = await this.loadYamlFile(constraintsPath) as unknown as SharedConstraints;
     } catch {
       // ファイルが存在しない場合はデフォルト値
       constraints = {
@@ -260,7 +260,7 @@ export class YamlTemplateLoaderService {
       'pipeline',
       `${pipelineId}.yaml`
     );
-    const content = await this.loadYamlFile(pipelinePath);
+    const content = await this.loadYamlFile(pipelinePath) as Record<string, any>;
 
     // 必須フィールドの検証
     if (!content.template?.id) {
@@ -270,7 +270,7 @@ export class YamlTemplateLoaderService {
       throw new Error(`Invalid pipeline ${pipelineId}.yaml: missing prompts`);
     }
 
-    return content as PipelineTemplate;
+    return content as unknown as PipelineTemplate;
   }
 
   /**
@@ -291,7 +291,7 @@ export class YamlTemplateLoaderService {
       const sectionPath = path.join(sectionsDir, `${sectionId}.yaml`);
 
       try {
-        const section = await this.loadYamlFile(sectionPath) as SectionTemplate;
+        const section = await this.loadYamlFile(sectionPath) as unknown as SectionTemplate;
 
         // デバッグモードの場合、境界マーカーを挿入
         if (debug) {
