@@ -93,7 +93,7 @@ export class OgImageUploadService {
         return {
           success: true,
           originalUrl: ogImageUrl,
-          r2Url: `[DRY RUN] https://images.anime-events.com/${folder}/${articleSlug || 'article'}/og-image.jpg`,
+          r2Url: `[DRY RUN] ${process.env.R2_PUBLIC_URL}/${folder}/${articleSlug || 'article'}/og-image.jpg`,
         };
       }
 
@@ -152,7 +152,7 @@ export class OgImageUploadService {
         return {
           success: true,
           originalUrl: imageUrl,
-          r2Url: `[DRY RUN] https://images.anime-events.com/${folder}/${articleSlug || 'article'}/og-image.jpg`,
+          r2Url: `[DRY RUN] ${process.env.R2_PUBLIC_URL}/${folder}/${articleSlug || 'article'}/og-image.jpg`,
         };
       }
 

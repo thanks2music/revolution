@@ -191,7 +191,7 @@ export class ArticleImageUploadService {
             console.log(`  🔍 [DRY RUN] ${imageUrl}`);
             result.bodyImages.push({
               originalUrl: imageUrl,
-              r2Url: `[DRY RUN] https://images.anime-events.com/${folder}/${Date.now()}.jpg`,
+              r2Url: `[DRY RUN] ${process.env.R2_PUBLIC_URL}/${folder}/${Date.now()}.jpg`,
               key: `${folder}/${Date.now()}.jpg`,
               size: 0,
               success: true,
@@ -354,7 +354,7 @@ export class ArticleImageUploadService {
           console.log(`  🔍 [DRY RUN] ${imageUrl}`);
           result.bodyImages.push({
             originalUrl: imageUrl,
-            r2Url: `[DRY RUN] https://images.anime-events.com/${folder}/${Date.now()}.jpg`,
+            r2Url: `[DRY RUN] ${process.env.R2_PUBLIC_URL}/${folder}/${Date.now()}.jpg`,
             key: `${folder}/${Date.now()}.jpg`,
             size: 0,
             success: true,
