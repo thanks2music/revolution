@@ -34,6 +34,14 @@ import {
   ContentGenerationService,
   type ContentGenerationResult,
 } from './content-generation.service';
+import {
+  getOgImageUploadService,
+  type OgImageUploadResult,
+} from './og-image-upload.service';
+import {
+  getArticleImageUploadService,
+  type ArticleImageUploadResult,
+} from './article-image-upload.service';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -84,6 +92,10 @@ export interface MdxGenerationResult {
   detailedExtraction?: ExtractionResult;
   // コンテンツ生成結果（Step 5）
   contentGeneration?: ContentGenerationResult;
+  // OG画像アップロード結果（Step 5.5）
+  ogImageUpload?: OgImageUploadResult;
+  // 本文画像アップロード結果（Step 5.5）
+  bodyImagesUpload?: ArticleImageUploadResult;
 }
 
 /**
@@ -114,9 +126,11 @@ export class ArticleGenerationMdxService {
    * 3. Firestoreで重複チェック + イベント登録（status: pending）
    * 4. AI APIでカテゴリ/抜粋を生成
    * 4.5. AI APIでタイトルを生成（YAMLテンプレート使用）
-   * 5. MDX記事を生成
-   * 6. GitHub PRを作成
-   * 7. Firestoreのステータスを更新（status: generated）
+   * 5. AI APIで記事本文を生成（YAMLテンプレート使用）
+   * 5.5. OG画像をR2にアップロード
+   * 6. MDX記事を組み立て
+   * 7. GitHub PRを作成
+   * 8. Firestoreのステータスを更新（status: generated）
    *
    * @description
    * マルチプロバイダー対応済み（2025-12-07）
@@ -403,10 +417,12 @@ export class ArticleGenerationMdxService {
       // ContentGenerationService で本文を生成
       const contentService = new ContentGenerationService();
       let contentGeneration: ContentGenerationResult;
+      // 公式サイトのHTMLを保持（Step 5.5でも使用するためスコープを広げる）
+      let officialHtmlForContent: string | undefined;
 
       try {
-        // 公式サイトのHTMLを再取得（コンテンツ生成の参考情報として）
-        const officialHtmlForContent = selectionResult.primary_official_url
+        // 公式サイトのHTMLを取得（コンテンツ生成 + 画像抽出で使用）
+        officialHtmlForContent = selectionResult.primary_official_url
           ? await extractContentHtml(selectionResult.primary_official_url)
           : undefined;
 
@@ -431,7 +447,66 @@ export class ArticleGenerationMdxService {
         };
       }
 
-      // MDX記事を組み立て
+      // Step 5.5: Upload OG image and body images to R2
+      console.log('\n[Step 5.5/9] 画像をR2にアップロード（OG画像 + 本文画像）...');
+
+      let ogImageUpload: OgImageUploadResult | undefined;
+      let bodyImagesUpload: ArticleImageUploadResult | undefined;
+      let ogImageUrl = '/images/og-image-compressed.png'; // デフォルト画像
+
+      if (selectionResult.primary_official_url) {
+        try {
+          // 5.5a: OG画像のアップロード
+          console.log('\n[Step 5.5a] OG画像をアップロード...');
+          const ogService = getOgImageUploadService();
+          ogImageUpload = await ogService.uploadFromPageUrl(
+            selectionResult.primary_official_url,
+            {
+              folder: `${eventType}/${year}/${eventRecord.postId}`,
+              articleSlug: eventRecord.postId,
+              dryRun,
+            }
+          );
+
+          if (ogImageUpload.success && ogImageUpload.r2Url) {
+            ogImageUrl = ogImageUpload.r2Url;
+            console.log(`✅ OG画像アップロード完了: ${ogImageUrl}`);
+          } else {
+            console.log(`⚠️ OG画像アップロード失敗、デフォルト画像を使用: ${ogImageUpload.error || '不明なエラー'}`);
+          }
+
+          // 5.5b: 本文画像のアップロード
+          console.log('\n[Step 5.5b] 本文画像をアップロード...');
+          if (officialHtmlForContent) {
+            const articleImageService = getArticleImageUploadService();
+            bodyImagesUpload = await articleImageService.uploadFromHtml(
+              officialHtmlForContent,
+              selectionResult.primary_official_url,
+              {
+                articleSlug: eventRecord.postId,
+                eventType,
+                year,
+                dryRun,
+                uploadOgImage: false, // OG画像は既にアップロード済み
+                uploadBodyImages: true,
+              }
+            );
+
+            console.log(`✅ 本文画像アップロード完了: ${bodyImagesUpload.stats.successCount}件成功, ${bodyImagesUpload.stats.failureCount}件失敗, ${bodyImagesUpload.stats.skippedCount}件スキップ`);
+          } else {
+            console.log('⚠️ 公式サイトHTMLがないため、本文画像アップロードをスキップ');
+          }
+        } catch (imageError) {
+          console.error('❌ 画像アップロードエラー:', imageError);
+          console.log('⚠️ デフォルトOG画像を使用します');
+        }
+      } else {
+        console.log('⚠️ 公式サイトURLがないため、画像アップロードをスキップします');
+      }
+
+      // Step 6: MDX記事を組み立て
+      console.log('\n[Step 6/9] MDX記事を組み立て...');
+
       const mdxArticle = generateMdxArticle(
         {
           postId: eventRecord.postId,
@@ -445,6 +520,7 @@ export class ArticleGenerationMdxService {
           excerpt: metadata.excerpt,
           date: rssItem.pubDate || new Date().toISOString().split('T')[0],
           author: 'thanks2music',
+          ogImage: ogImageUrl, // R2にアップロードしたOG画像URL
         },
         contentGeneration.content // ContentGenerationService で生成した本文を使用
       );
@@ -454,12 +530,12 @@ export class ArticleGenerationMdxService {
         contentLength: mdxArticle.content.length,
       });
 
-      // Step 6: Create GitHub PR
+      // Step 7: Create GitHub PR
       let prResult: CreateMdxPrResult | undefined;
 
       if (dryRun) {
         // ドライランモード: GitHub PR作成をスキップ
-        console.log('\n[Step 6/9] GitHub PR作成（ドライランのためスキップ）...');
+        console.log('\n[Step 7/9] GitHub PR作成（ドライランのためスキップ）...');
         console.log('🧪 ドライラン: PR作成をスキップしました');
 
         // MDX記事の内容をプレビュー表示
@@ -474,7 +550,7 @@ export class ArticleGenerationMdxService {
         console.log('-'.repeat(60));
       } else {
         // 通常モード: GitHub PR作成
-        console.log('\n[Step 6/9] GitHub PRを作成...');
+        console.log('\n[Step 7/9] GitHub PRを作成...');
 
         const branchName = `ai-writer/mdx-${eventType}-${eventRecord.postId}`;
         const prTitle = `✨ Generate MDX (AI Writer): ${eventType}/${eventRecord.postId}`;
@@ -512,15 +588,15 @@ export class ArticleGenerationMdxService {
         });
       }
 
-      // Step 7: Update Firestore status to 'generated'
+      // Step 8: Update Firestore status to 'generated'
       if (dryRun) {
         // ドライランモード: ステータス更新をスキップ
-        console.log('\n[Step 7/9] Firestoreステータス更新（ドライランのためスキップ）...');
+        console.log('\n[Step 8/9] Firestoreステータス更新（ドライランのためスキップ）...');
         console.log('🧪 ドライラン: ステータス更新をスキップしました');
         console.log('========== MDXパイプライン: ドライラン完了 ==========\n');
       } else {
         // 通常モード: ステータス更新
-        console.log('\n[Step 7/9] Firestoreのステータスを更新...');
+        console.log('\n[Step 8/9] Firestoreのステータスを更新...');
 
         await updateEventStatus(eventRecord.canonicalKey, 'generated');
 
@@ -543,6 +619,8 @@ export class ArticleGenerationMdxService {
         },
         detailedExtraction,
         contentGeneration,
+        ogImageUpload,
+        bodyImagesUpload,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
