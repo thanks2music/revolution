@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.63.0",
+    "@aws-sdk/client-s3": "^3.948.0",
     "@extractus/article-extractor": "^8.0.20",
     "@google-cloud/secret-manager": "^5.6.0",
     "@google/generative-ai": "^0.24.1",
@@ -60,6 +61,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "ulid": "^3.0.1",
+    "uuid": "^13.0.0",
     "zod": "^4.1.11"
   },
   "devDependencies": {
@@ -80,6 +82,7 @@
     "@types/node": "^24.5.2",
     "@types/react": "^19.1.14",
     "@types/react-dom": "^19.1.9",
+    "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "^8.44.0",
     "@typescript-eslint/parser": "^8.44.0",
     "autoprefixer": "^10.4.21",
