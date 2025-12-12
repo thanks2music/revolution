@@ -42,6 +42,7 @@ import {
   getArticleImageUploadService,
   type ArticleImageUploadResult,
 } from './article-image-upload.service';
+import { getR2StorageService } from './r2-storage.service';
 import {
   getSubpageDetectorService,
   type SubpageDetectionResult,
@@ -50,6 +51,11 @@ import {
   getCategoryImageExtractorService,
   type CategoryImages,
 } from './category-image-extractor.service';
+import {
+  getImagePlaceholderReplacerService,
+  type CategoryR2Images,
+  type PlaceholderReplacementResult,
+} from './image-placeholder-replacer.service';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -108,6 +114,10 @@ export interface MdxGenerationResult {
   subpageDetection?: SubpageDetectionResult;
   // カテゴリ別画像抽出結果（Step 1.7）
   categoryImages?: CategoryImages;
+  // カテゴリ別R2画像URL（Step 5.5b後）
+  categoryR2Images?: CategoryR2Images;
+  // プレースホルダー置換結果（Step 5.7）
+  placeholderReplacement?: PlaceholderReplacementResult;
 }
 
 /**
@@ -526,6 +536,13 @@ export class ArticleGenerationMdxService {
       let bodyImagesUpload: ArticleImageUploadResult | undefined;
       let ogImageUrl = '/images/og-image-compressed.png'; // デフォルト画像
 
+      // カテゴリ別R2 URLを追跡（Step 5.7 で使用するためスコープを外に出す）
+      const uploadedCategoryR2Images: CategoryR2Images = {
+        menu: [],
+        novelty: [],
+        goods: [],
+      };
+
       if (selectionResult.primary_official_url) {
         try {
           // 5.5a: OG画像のアップロード
@@ -547,9 +564,47 @@ export class ArticleGenerationMdxService {
             console.log(`⚠️ OG画像アップロード失敗、デフォルト画像を使用: ${ogImageUpload.error || '不明なエラー'}`);
           }
 
-          // 5.5b: 本文画像のアップロード
-          console.log('\n[Step 5.5b] 本文画像をアップロード...');
-          if (officialHtml) {
+          // 5.5b: カテゴリ別画像のアップロード
+          console.log('\n[Step 5.5b] カテゴリ別画像をアップロード...');
+
+          if (categoryImages) {
+            // categoryImagesが存在する場合は、カテゴリ別にアップロード
+            const r2Service = getR2StorageService();
+            const baseFolder = `${eventType}/${year}/${eventRecord.postId}`;
+
+            for (const category of ['menu', 'novelty', 'goods'] as const) {
+              const sourceUrls = categoryImages[category];
+              if (sourceUrls.length === 0) {
+                console.log(`[Step 5.5b] ${category}: 画像なし`);
+                continue;
+              }
+
+              console.log(`[Step 5.5b] ${category}: ${sourceUrls.length}件の画像をアップロード中...`);
+
+              for (const sourceUrl of sourceUrls) {
+                try {
+                  if (dryRun) {
+                    const dryRunUrl = `[DRY RUN] ${process.env.R2_PUBLIC_URL}/${baseFolder}/${category}/${Date.now()}.jpg`;
+                    uploadedCategoryR2Images[category].push(dryRunUrl);
+                    console.log(`  🔍 [DRY RUN] ${sourceUrl}`);
+                  } else {
+                    const uploadResult = await r2Service.uploadFromUrl(
+                      sourceUrl,
+                      `${baseFolder}/${category}`
+                    );
+                    uploadedCategoryR2Images[category].push(uploadResult.url);
+                    console.log(`  ✅ ${sourceUrl} → ${uploadResult.url}`);
+                  }
+                } catch (error) {
+                  console.warn(`  ⚠️ ${category} 画像アップロード失敗: ${sourceUrl}`, error);
+                }
+              }
+
+              console.log(`[Step 5.5b] ${category}: ${uploadedCategoryR2Images[category].length}件アップロード完了`);
+            }
+          } else if (officialHtml) {
+            // フォールバック: categoryImagesがない場合は従来のHTML抽出を使用
+            console.log('[Step 5.5b] categoryImagesがないため、HTML抽出にフォールバック');
             const articleImageService = getArticleImageUploadService();
             bodyImagesUpload = await articleImageService.uploadFromHtml(
               officialHtml, // Step 1.5 で取得済みのHTMLを再利用
@@ -576,6 +631,40 @@ export class ArticleGenerationMdxService {
         console.log('⚠️ 公式サイトURLがないため、画像アップロードをスキップします');
       }
 
+      // Step 5.7: プレースホルダー置換
+      console.log('\n[Step 5.7/11] プレースホルダー置換...');
+
+      let placeholderReplacement: PlaceholderReplacementResult | undefined;
+      let finalContent = contentGeneration.content;
+
+      // カテゴリ別R2画像がある場合のみ置換を実行
+      // uploadedCategoryR2Images は Step 5.5b でアップロードされた画像のR2 URL
+      const hasCategoryR2Images =
+        uploadedCategoryR2Images.menu.length > 0 ||
+        uploadedCategoryR2Images.novelty.length > 0 ||
+        uploadedCategoryR2Images.goods.length > 0;
+
+      if (hasCategoryR2Images) {
+        const placeholderReplacer = getImagePlaceholderReplacerService();
+        placeholderReplacement = placeholderReplacer.replaceAll(
+          contentGeneration.content,
+          uploadedCategoryR2Images
+        );
+        finalContent = placeholderReplacement.content;
+
+        console.log('[Step 5.7] プレースホルダー置換結果:', {
+          replacedCount: placeholderReplacement.replacedCount.total,
+          removedSections: placeholderReplacement.removedSections,
+          unreplacedCount: placeholderReplacement.unreplacedPlaceholders.length,
+        });
+
+        if (placeholderReplacement.unreplacedPlaceholders.length > 0) {
+          console.warn('[Step 5.7] ⚠️ 未置換プレースホルダー:', placeholderReplacement.unreplacedPlaceholders);
+        }
+      } else {
+        console.log('[Step 5.7] カテゴリ別R2画像なし、プレースホルダー置換をスキップ');
+      }
+
       // Step 6: MDX記事を組み立て
       console.log('\n[Step 6/11] MDX記事を組み立て...');
 
@@ -594,7 +683,7 @@ export class ArticleGenerationMdxService {
           author: 'thanks2music',
           ogImage: ogImageUrl, // R2にアップロードしたOG画像URL
         },
-        contentGeneration.content // ContentGenerationService で生成した本文を使用
+        finalContent // プレースホルダー置換済みの本文を使用
       );
 
       console.log('MDX組み立て完了:', {
@@ -695,6 +784,8 @@ export class ArticleGenerationMdxService {
         bodyImagesUpload,
         subpageDetection,
         categoryImages,
+        categoryR2Images: uploadedCategoryR2Images,
+        placeholderReplacement,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
