@@ -173,13 +173,6 @@ export class ArticleGenerationMdxService {
         site_domain: new URL(rssItem.link).hostname,
       });
 
-      console.log('選別結果:', {
-        should_generate: selectionResult.should_generate,
-        official_urls_count: selectionResult.official_urls.length,
-        primary_url: selectionResult.primary_official_url,
-        reason: selectionResult.reason,
-      });
-
       // 公式URLが見つからない場合はスキップ
       if (!selectionResult.should_generate) {
         console.log('⚠️ 記事生成をスキップ:', selectionResult.reason);
@@ -211,11 +204,14 @@ export class ArticleGenerationMdxService {
       console.log(`\n[Step 1.5/9] AI API (${providerDisplayName}) で公式サイトHTMLから詳細情報を抽出...`);
 
       let detailedExtraction: ExtractionResult | undefined;
+      // 公式サイトのHTMLを保持（Step 5 と Step 5.5 で再利用）
+      let officialHtml: string | undefined;
+
       if (selectionResult.primary_official_url) {
         try {
-          // 公式サイトのHTMLを取得（本文用抽出器を使用）
+          // 公式サイトのHTMLを1回だけ取得（Step 5 と Step 5.5 で再利用）
           console.log('公式サイトURLからHTML取得中:', selectionResult.primary_official_url);
-          const officialHtml = await extractContentHtml(selectionResult.primary_official_url);
+          officialHtml = await extractContentHtml(selectionResult.primary_official_url);
           console.log('公式サイトHTML取得完了:', officialHtml.length, 'bytes');
 
           // ExtractionService で詳細情報を抽出
@@ -403,6 +399,10 @@ export class ArticleGenerationMdxService {
         rss_title: rssItem.title,
         rss_content: rawContent,
         rss_link: rssItem.link,
+        // Step 1.5 で抽出済みのデータを渡す（日付エラー防止）
+        extractedPeriod: detailedExtraction?.開催期間,
+        extractedStoreName: detailedExtraction?.店舗名,
+        extractedWorkName: detailedExtraction?.作品名,
       });
 
       console.log('タイトル生成完了:', {
@@ -411,25 +411,24 @@ export class ArticleGenerationMdxService {
         is_valid: titleResult.is_valid,
       });
 
+      // タイトル生成理由をログ出力（デバッグ用）
+      if (titleResult._reasoning) {
+        console.log('タイトル生成理由:', titleResult._reasoning);
+      }
+
       // Step 5: Generate MDX article content using ContentGenerationService
       console.log(`\n[Step 5/9] AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用）...`);
 
       // ContentGenerationService で本文を生成
       const contentService = new ContentGenerationService();
       let contentGeneration: ContentGenerationResult;
-      // 公式サイトのHTMLを保持（Step 5.5でも使用するためスコープを広げる）
-      let officialHtmlForContent: string | undefined;
 
       try {
-        // 公式サイトのHTMLを取得（コンテンツ生成 + 画像抽出で使用）
-        officialHtmlForContent = selectionResult.primary_official_url
-          ? await extractContentHtml(selectionResult.primary_official_url)
-          : undefined;
-
+        // Step 1.5 で取得した officialHtml を再利用（再取得不要）
         contentGeneration = await contentService.generateContent({
           extractedData: detailedExtraction,
           generatedTitle: titleResult.title,
-          officialHtml: officialHtmlForContent,
+          officialHtml: officialHtml, // Step 1.5 で取得済みのHTMLを再利用
         });
 
         console.log('コンテンツ生成完了:', {
@@ -477,10 +476,10 @@ export class ArticleGenerationMdxService {
 
           // 5.5b: 本文画像のアップロード
           console.log('\n[Step 5.5b] 本文画像をアップロード...');
-          if (officialHtmlForContent) {
+          if (officialHtml) {
             const articleImageService = getArticleImageUploadService();
             bodyImagesUpload = await articleImageService.uploadFromHtml(
-              officialHtmlForContent,
+              officialHtml, // Step 1.5 で取得済みのHTMLを再利用
               selectionResult.primary_official_url,
               {
                 articleSlug: eventRecord.postId,
