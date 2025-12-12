@@ -24,31 +24,51 @@ import type {
 /**
  * Recommended OpenAI models for different use cases
  *
- * Pricing (as of 2025):
- * - gpt-4o-mini: $0.150 input / $0.600 output per 1M tokens
- * - gpt-4o: $2.50 input / $10.00 output per 1M tokens
- * - gpt-4-turbo: $10.00 input / $30.00 output per 1M tokens
+ * Pricing (as of 2025-12, Standard tier per 1M tokens):
+ * - gpt-5-nano: $0.05 input / $0.40 output (most cost-effective)
+ * - gpt-5-mini: $0.25 input / $2.00 output
+ * - gpt-4.1-nano: $0.10 input / $0.40 output
+ * - gpt-4o-mini: $0.15 input / $0.60 output
+ * - gpt-4o: $2.50 input / $10.00 output
+ *
+ * Priority order for cost optimization:
+ * 1. gpt-5-nano (3x cheaper than gpt-4o-mini)
+ * 2. gpt-5-mini
+ * 3. gpt-4.1-nano
+ * 4. gpt-4o-mini (fallback)
  */
 const OPENAI_MODELS = {
-  // Most cost-effective option - best for production
-  MINI: 'gpt-4o-mini',
+  // Priority 1: Most cost-effective (GPT-5 series nano)
+  GPT5_NANO: 'gpt-5-nano',
+  // Priority 2: GPT-5 series mini
+  GPT5_MINI: 'gpt-5-mini',
+  // Priority 3: GPT-4.1 nano
+  GPT41_NANO: 'gpt-4.1-nano',
+  // Priority 4: Fallback (legacy)
+  GPT4O_MINI: 'gpt-4o-mini',
   // High quality balanced option
   GPT4O: 'gpt-4o',
   // Premium quality option
   TURBO: 'gpt-4-turbo',
 } as const;
 
+/** Default model with best cost-performance ratio */
+const DEFAULT_MODEL = OPENAI_MODELS.GPT5_NANO;
+
 /**
  * OpenAI Provider
  *
  * @description
  * Implements the AiProvider interface using OpenAI API.
- * Uses GPT-4o-mini by default for cost efficiency.
+ * Uses gpt-5-nano by default for best cost efficiency.
  *
- * Pricing (as of 2025):
- * - GPT-4o-mini: $0.150 input / $0.600 output per 1M tokens
- * - ~20x cheaper than Claude Sonnet 4.5
- * - Good balance between cost and quality
+ * Pricing (as of 2025-12, Standard tier per 1M tokens):
+ * - gpt-5-nano: $0.05 input / $0.40 output (DEFAULT - most cost-effective)
+ * - gpt-4o-mini: $0.15 input / $0.60 output (legacy fallback)
+ *
+ * Cost comparison:
+ * - gpt-5-nano is 3x cheaper than gpt-4o-mini for input tokens
+ * - gpt-5-nano is 1.5x cheaper than gpt-4o-mini for output tokens
  *
  * @example
  * ```typescript
@@ -68,9 +88,9 @@ export class OpenAIProvider implements AiProvider {
    * Initialize OpenAI Provider
    *
    * @param apiKey - Optional API key override (defaults to OPENAI_API_KEY env var)
-   * @param modelName - Optional model override (defaults to gpt-4o-mini)
+   * @param modelName - Optional model override (defaults to gpt-5-nano)
    */
-  constructor(apiKey?: string, modelName: string = OPENAI_MODELS.MINI) {
+  constructor(apiKey?: string, modelName: string = DEFAULT_MODEL) {
     this.apiKey = apiKey || process.env.OPENAI_API_KEY || '';
 
     if (!this.apiKey) {
