@@ -15,12 +15,14 @@
  */
 
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
+import type { CostTrackerService } from '@/lib/ai/cost';
 
 /**
  * Generate URL-friendly slug from Japanese text using AI API
  *
  * @param japaneseText - Japanese text (e.g., "呪術廻戦", "BOX cafe&space")
  * @param context - Context hint for AI (e.g., "anime title", "cafe name")
+ * @param costTracker - Optional cost tracker for recording API usage
  * @returns URL-friendly slug (e.g., "jujutsu-kaisen", "box-cafe-and-space")
  *
  * @example
@@ -31,7 +33,8 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
  */
 export async function generateSlugWithAI(
   japaneseText: string,
-  context?: string
+  context?: string,
+  costTracker?: CostTrackerService
 ): Promise<string> {
   const aiProvider = createAiProvider();
 
@@ -63,6 +66,11 @@ ${context ? `**コンテキスト**: ${context}` : ''}
     temperature: 0,
     responseFormat: 'text',
   });
+
+  // コストを記録（costTracker が渡された場合のみ）
+  if (costTracker && response.model && response.usage) {
+    costTracker.recordUsage('Step2_SlugGeneration', response.model, response.usage);
+  }
 
   // Clean up response (remove any extra whitespace or formatting)
   const slug = response.content.trim().toLowerCase();
@@ -123,6 +131,7 @@ export function generateAsciiSlug(text: string): string {
  *
  * @param japaneseText - Japanese text to convert
  * @param context - Optional context for AI
+ * @param costTracker - Optional cost tracker for recording API usage
  * @returns Generated slug
  * @throws Error if all fallback methods fail
  *
@@ -134,14 +143,15 @@ export function generateAsciiSlug(text: string): string {
  */
 export async function generateSlugWithFallback(
   japaneseText: string,
-  context?: string
+  context?: string,
+  costTracker?: CostTrackerService
 ): Promise<string> {
   // Try AI API first (multi-provider support)
   try {
     console.log(
       `[Slug Generator] Trying AI API for: "${japaneseText}"${context ? ` (${context})` : ''}`
     );
-    const aiSlug = await generateSlugWithAI(japaneseText, context);
+    const aiSlug = await generateSlugWithAI(japaneseText, context, costTracker);
     console.log(`[Slug Generator] ✅ AI API generated: "${aiSlug}"`);
     return aiSlug;
   } catch (error) {

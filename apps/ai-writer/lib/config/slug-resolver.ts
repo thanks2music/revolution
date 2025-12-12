@@ -13,6 +13,7 @@
 
 import { loadYamlConfig } from './yaml-loader';
 import { generateSlugWithFallback } from './slug-generator';
+import type { CostTrackerService } from '@/lib/ai/cost';
 
 /**
  * Resolves a Japanese anime/manga title to its romaji slug
@@ -24,6 +25,7 @@ import { generateSlugWithFallback } from './slug-generator';
  *
  * @param {string} japaneseTitle - Japanese title (e.g., "呪術廻戦")
  * @param {boolean} enableFallback - Enable fallback to Claude API + ASCII (default: true)
+ * @param {CostTrackerService} costTracker - Optional cost tracker for recording API usage
  * @returns {Promise<string | null>} Romaji slug (e.g., "jujutsu-kaisen") or null if not found and fallback disabled
  *
  * @example
@@ -43,7 +45,8 @@ import { generateSlugWithFallback } from './slug-generator';
  */
 export async function resolveWorkSlug(
   japaneseTitle: string,
-  enableFallback = true
+  enableFallback = true,
+  costTracker?: CostTrackerService
 ): Promise<string | null> {
   // Try YAML first
   const config = loadYamlConfig('TITLE_ROMAJI');
@@ -64,7 +67,8 @@ export async function resolveWorkSlug(
     try {
       const fallbackSlug = await generateSlugWithFallback(
         japaneseTitle,
-        'anime/manga title'
+        'anime/manga title',
+        costTracker
       );
       return fallbackSlug;
     } catch (error) {
@@ -108,7 +112,8 @@ export async function resolveWorkSlug(
  */
 export async function resolveStoreSlug(
   brandName: string,
-  enableFallback = true
+  enableFallback = true,
+  costTracker?: CostTrackerService
 ): Promise<string | null> {
   // Try YAML first
   const config = loadYamlConfig('BRAND_SLUGS');
@@ -129,7 +134,8 @@ export async function resolveStoreSlug(
     try {
       const fallbackSlug = await generateSlugWithFallback(
         brandName,
-        'store/brand name'
+        'store/brand name',
+        costTracker
       );
       return fallbackSlug;
     } catch (error) {
@@ -174,7 +180,8 @@ export async function resolveStoreSlug(
  */
 export async function resolveEventTypeSlug(
   eventTypeName: string,
-  enableFallback = true
+  enableFallback = true,
+  costTracker?: CostTrackerService
 ): Promise<string | null> {
   // Try YAML first
   const config = loadYamlConfig('EVENT_TYPE_SLUGS');
@@ -195,7 +202,8 @@ export async function resolveEventTypeSlug(
     try {
       const fallbackSlug = await generateSlugWithFallback(
         eventTypeName,
-        'event type'
+        'event type',
+        costTracker
       );
       return fallbackSlug;
     } catch (error) {
