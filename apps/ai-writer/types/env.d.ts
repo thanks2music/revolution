@@ -96,10 +96,16 @@ declare namespace NodeJS {
     /** HTML 抽出デバッグモード */
     DEBUG_HTML_EXTRACTION?: string;
 
-    /** 選別プロンプトデバッグモード */
+    /** 選別プロンプトデバッグモード（Step 0.5: 公式URL検出） */
     DEBUG_SELECTION_PROMPT?: string;
 
-    /** タイトルプロンプトデバッグモード */
+    /** 情報抽出プロンプトデバッグモード（Step 1.5: 作品名・店舗名・開催期間） */
+    DEBUG_EXTRACTION_PROMPT?: string;
+
+    /** タイトルプロンプトデバッグモード（Step 4.5: タイトル生成 + _reasoning） */
     DEBUG_TITLE_PROMPT?: string;
+
+    /** 本文生成プロンプトデバッグモード（Step 5: MDX本文生成） */
+    DEBUG_CONTENT_PROMPT?: string;
   }
 }

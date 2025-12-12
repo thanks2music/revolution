@@ -98,11 +98,138 @@ pnpm type-check
 # Lint
 pnpm lint
 
-# MDX 生成デバッグ (E2E テスト)
-pnpm tsx scripts/debug-mdx-generation.ts
-
 # RSS Cron デバッグ
 pnpm tsx scripts/debug-rss-cron.ts
+```
+
+## デバッグ方法
+
+AI Writer には複数のデバッグオプションがあります。
+
+### 基本コマンド: `pnpm debug:mdx`
+
+URL から直接 MDX 記事を生成するデバッグスクリプトです。
+
+```bash
+# 基本使用法
+pnpm debug:mdx <URL>
+
+# ドライランモード（Firestore/GitHub 操作をスキップ）
+pnpm debug:mdx --dry-run <URL>
+```
+
+**コマンドライン引数**
+
+| 引数 | 説明 |
+|------|------|
+| `<URL>` | 記事生成元の URL（必須） |
+| `--dry-run` | Firestore 登録と GitHub PR 作成をスキップ。AI 処理のみ実行 |
+
+**使用例**
+
+```bash
+# 本番実行（Firestore登録 + GitHub PR作成）
+pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html
+
+# ドライラン（AI処理のみ、外部サービスへの書き込みなし）
+pnpm debug:mdx --dry-run https://g-tekketsu.theme-cafe.jp/
+```
+
+### 環境変数オプション
+
+#### AI プロバイダー選択
+
+```bash
+# 環境変数でプロバイダーを指定
+AI_PROVIDER=anthropic pnpm debug:mdx <URL>  # Claude（デフォルト）
+AI_PROVIDER=gemini pnpm debug:mdx <URL>     # Google Gemini
+AI_PROVIDER=openai pnpm debug:mdx <URL>     # ChatGPT
+```
+
+| 値 | 説明 | 必要な API キー |
+|----|------|---------------|
+| `anthropic` | Anthropic Claude（デフォルト） | `ANTHROPIC_API_KEY` |
+| `gemini` | Google Gemini | `GEMINI_API_KEY` |
+| `openai` | OpenAI ChatGPT | `OPENAI_API_KEY` |
+
+#### DEBUG_* 環境変数
+
+各パイプラインステップのプロンプトと処理内容を詳細表示します。
+
+| 環境変数 | 説明 | 出力内容 |
+|----------|------|---------|
+| `DEBUG_SELECTION_PROMPT=true` | 記事選別ステップのデバッグ | 公式 URL 検出プロンプト全文 |
+| `DEBUG_EXTRACTION_PROMPT=true` | 情報抽出ステップのデバッグ | 作品名・店舗名・開催期間抽出プロンプト全文 |
+| `DEBUG_TITLE_PROMPT=true` | タイトル生成ステップのデバッグ | タイトル生成プロンプト全文 + `_reasoning`（生成理由） |
+| `DEBUG_CONTENT_PROMPT=true` | 本文生成ステップのデバッグ | MDX 本文生成プロンプト全文 |
+| `DEBUG_HTML_EXTRACTION=true` | HTML 抽出のデバッグ | 抽出 HTML を `debug-logs/` に保存 |
+
+**使用例**
+
+```bash
+# タイトル生成の判断理由を確認（日付誤りのデバッグに有効）
+DEBUG_TITLE_PROMPT=true AI_PROVIDER=gemini pnpm debug:mdx --dry-run https://example.com/
+
+# 複数のデバッグフラグを同時に有効化
+DEBUG_TITLE_PROMPT=true DEBUG_EXTRACTION_PROMPT=true pnpm debug:mdx --dry-run https://example.com/
+
+# HTML 抽出結果をファイルに保存（選別失敗時のデバッグに有効）
+DEBUG_HTML_EXTRACTION=true pnpm debug:mdx --dry-run https://example.com/
+```
+
+### トラブルシューティング
+
+#### タイトルの日付が間違っている場合
+
+```bash
+# 1. タイトル生成の判断理由を確認
+DEBUG_TITLE_PROMPT=true pnpm debug:mdx --dry-run <URL>
+
+# 2. 情報抽出結果を確認（開催期間が正しく抽出されているか）
+DEBUG_EXTRACTION_PROMPT=true pnpm debug:mdx --dry-run <URL>
+```
+
+#### 記事がスキップされる場合
+
+```bash
+# 1. HTML 抽出結果を確認
+DEBUG_HTML_EXTRACTION=true pnpm debug:mdx --dry-run <URL>
+# → debug-logs/ に HTML ファイルが保存される
+
+# 2. 選別ロジックのプロンプトを確認
+DEBUG_SELECTION_PROMPT=true pnpm debug:mdx --dry-run <URL>
+```
+
+#### AI 応答の問題を調査する場合
+
+```bash
+# 各ステップのプロンプトを順番に確認
+DEBUG_SELECTION_PROMPT=true pnpm debug:mdx --dry-run <URL>   # Step 0.5
+DEBUG_EXTRACTION_PROMPT=true pnpm debug:mdx --dry-run <URL>  # Step 1.5
+DEBUG_TITLE_PROMPT=true pnpm debug:mdx --dry-run <URL>       # Step 4.5
+DEBUG_CONTENT_PROMPT=true pnpm debug:mdx --dry-run <URL>     # Step 5
+```
+
+### その他のデバッグスクリプト
+
+```bash
+# AI ファクトリーのテスト（プロバイダー切り替え確認）
+pnpm tsx scripts/test-ai-factory.ts
+
+# AI メッセージ送信テスト
+AI_PROVIDER=gemini pnpm tsx scripts/test-send-message.ts
+
+# R2 ストレージ接続テスト
+pnpm tsx scripts/test-r2-connection.ts
+
+# OG 画像アップロードテスト
+pnpm tsx scripts/test-og-image-upload.ts
+
+# 記事画像アップロードテスト
+pnpm tsx scripts/test-article-image-upload.ts
+
+# スラッグ生成テスト
+pnpm tsx scripts/test-slug-generation.ts
 ```
 
 ## デプロイ
