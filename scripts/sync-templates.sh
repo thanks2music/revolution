@@ -93,6 +93,35 @@ for template in "${MODULAR_TEMPLATES[@]}"; do
     fi
 done
 
+# -----------------------------------
+# config ディレクトリの同期
+# -----------------------------------
+# 同期先は templates/config（テンプレートのコンフィグファイルとして整理）
+CONFIG_SOURCE_PATH="$TEMPLATES_SOURCE_PATH/ai-writer/config"
+CONFIG_DEST_PATH="$DEST_DIR/config"
+
+if [[ -d "$CONFIG_SOURCE_PATH" ]]; then
+    log_info "同期中: config ディレクトリ"
+
+    # ディレクトリが存在しない場合は作成
+    if [[ ! -d "$CONFIG_DEST_PATH" ]]; then
+        mkdir -p "$CONFIG_DEST_PATH"
+    fi
+
+    # YAMLファイルのみを同期（.md ファイルは除外）
+    rsync -av \
+        --include="*.yaml" \
+        --exclude="*.md" \
+        --exclude="*" \
+        "$CONFIG_SOURCE_PATH/" \
+        "$CONFIG_DEST_PATH/"
+
+    config_count=$(find "$CONFIG_DEST_PATH" -name "*.yaml" -type f | wc -l | tr -d ' ')
+    log_success "config 同期完了: ${config_count}個のYAMLファイル"
+else
+    log_warning "config ディレクトリが見つかりません: $CONFIG_SOURCE_PATH"
+fi
+
 # 同期統計情報
 log_info "同期統計情報："
 for template in "${MODULAR_TEMPLATES[@]}"; do
@@ -102,6 +131,12 @@ for template in "${MODULAR_TEMPLATES[@]}"; do
         echo "  $template: ${yaml_count}個のYAMLファイル"
     fi
 done
+
+# config ディレクトリの統計
+if [[ -d "$CONFIG_DEST_PATH" ]]; then
+    config_yaml_count=$(find "$CONFIG_DEST_PATH" -name "*.yaml" -type f | wc -l | tr -d ' ')
+    echo "  config: ${config_yaml_count}個のYAMLファイル"
+fi
 
 # VERSION.json の更新
 VERSION_FILE="$DEST_DIR/VERSION.json"

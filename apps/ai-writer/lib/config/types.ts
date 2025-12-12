@@ -111,8 +111,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // プロジェクトルートからの相対パスで設定ファイルを参照
-// 同期スクリプトで revolution-templates から apps/ai-writer/config にコピーされる
-const CONFIG_DIR = resolve(__dirname, '../../config');
+// 同期スクリプトで revolution-templates から apps/ai-writer/templates/config にコピーされる
+const CONFIG_DIR = resolve(__dirname, '../../templates/config');
 
 export const CONFIG_PATHS = {
   TITLE_ROMAJI: resolve(CONFIG_DIR, 'title-romaji-mapping.yaml'),
