@@ -157,7 +157,19 @@ JSON以外の説明文は出力しないでください。`;
         throw new Error('Unexpected response type from Claude API');
       }
 
-      return this.parseRssExtractionResponse(content.text);
+      const result = this.parseRssExtractionResponse(content.text);
+
+      // usage をコスト追跡用に追加
+      return {
+        ...result,
+        usage: response.usage
+          ? {
+              promptTokens: response.usage.input_tokens,
+              completionTokens: response.usage.output_tokens,
+              totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+            }
+          : undefined,
+      };
     } catch (error) {
       console.error('Anthropic RSS extraction error:', error);
       throw new Error(

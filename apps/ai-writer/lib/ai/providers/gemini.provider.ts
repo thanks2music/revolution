@@ -218,7 +218,22 @@ JSON以外の説明文は出力しないでください。`;
       const response = result.response;
       const text = response.text();
 
-      return this.parseRssExtractionResponse(text);
+      const parsedResult = this.parseRssExtractionResponse(text);
+
+      // Extract usage metadata if available
+      const usageMetadata = response.usageMetadata;
+
+      // usage をコスト追跡用に追加
+      return {
+        ...parsedResult,
+        usage: usageMetadata
+          ? {
+              promptTokens: usageMetadata.promptTokenCount ?? 0,
+              completionTokens: usageMetadata.candidatesTokenCount ?? 0,
+              totalTokens: usageMetadata.totalTokenCount ?? 0,
+            }
+          : undefined,
+      };
     } catch (error) {
       console.error('Gemini RSS extraction error:', error);
       throw new Error(

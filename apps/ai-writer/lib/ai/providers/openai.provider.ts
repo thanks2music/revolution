@@ -3,8 +3,8 @@
  *
  * Purpose:
  *   - Implement AiProvider interface using OpenAI API
- *   - Cost-effective alternative with GPT-4o-mini
- *   - Support for latest GPT-4o models
+ *   - Cost-effective alternative with GPT-4.1-nano
+ *   - Support for GPT-4 series models (Chat Completions API)
  *
  * @module lib/ai/providers/openai.provider
  * @see https://platform.openai.com/docs/api-reference
@@ -25,27 +25,26 @@ import type {
  * Recommended OpenAI models for different use cases
  *
  * Pricing (as of 2025-12, Standard tier per 1M tokens):
- * - gpt-5-nano: $0.05 input / $0.40 output (most cost-effective)
- * - gpt-5-mini: $0.25 input / $2.00 output
- * - gpt-4.1-nano: $0.10 input / $0.40 output
+ * - gpt-4.1-nano: $0.10 input / $0.40 output (DEFAULT - best cost-performance)
  * - gpt-4o-mini: $0.15 input / $0.60 output
+ * - gpt-4.1-mini: $0.40 input / $1.60 output
  * - gpt-4o: $2.50 input / $10.00 output
  *
  * Priority order for cost optimization:
- * 1. gpt-5-nano (3x cheaper than gpt-4o-mini)
- * 2. gpt-5-mini
- * 3. gpt-4.1-nano
- * 4. gpt-4o-mini (fallback)
+ * 1. gpt-4.1-nano (most cost-effective for simple tasks)
+ * 2. gpt-4o-mini (fallback)
+ * 3. gpt-4.1-mini (higher capability)
+ *
+ * Note: GPT-5 series (gpt-5-nano, gpt-5-mini, gpt-5.x) requires
+ * Responses API and different parameters. See REFACTORING.md for details.
  */
 const OPENAI_MODELS = {
-  // Priority 1: Most cost-effective (GPT-5 series nano)
-  GPT5_NANO: 'gpt-5-nano',
-  // Priority 2: GPT-5 series mini
-  GPT5_MINI: 'gpt-5-mini',
-  // Priority 3: GPT-4.1 nano
+  // Priority 1: Most cost-effective (GPT-4.1 nano)
   GPT41_NANO: 'gpt-4.1-nano',
-  // Priority 4: Fallback (legacy)
+  // Priority 2: Fallback
   GPT4O_MINI: 'gpt-4o-mini',
+  // Priority 3: Higher capability
+  GPT41_MINI: 'gpt-4.1-mini',
   // High quality balanced option
   GPT4O: 'gpt-4o',
   // Premium quality option
@@ -53,22 +52,18 @@ const OPENAI_MODELS = {
 } as const;
 
 /** Default model with best cost-performance ratio */
-const DEFAULT_MODEL = OPENAI_MODELS.GPT5_NANO;
+const DEFAULT_MODEL = OPENAI_MODELS.GPT41_NANO;
 
 /**
  * OpenAI Provider
  *
  * @description
- * Implements the AiProvider interface using OpenAI API.
- * Uses gpt-5-nano by default for best cost efficiency.
+ * Implements the AiProvider interface using OpenAI Chat Completions API.
+ * Uses gpt-4.1-nano by default for best cost efficiency.
  *
  * Pricing (as of 2025-12, Standard tier per 1M tokens):
- * - gpt-5-nano: $0.05 input / $0.40 output (DEFAULT - most cost-effective)
- * - gpt-4o-mini: $0.15 input / $0.60 output (legacy fallback)
- *
- * Cost comparison:
- * - gpt-5-nano is 3x cheaper than gpt-4o-mini for input tokens
- * - gpt-5-nano is 1.5x cheaper than gpt-4o-mini for output tokens
+ * - gpt-4.1-nano: $0.10 input / $0.40 output (DEFAULT)
+ * - gpt-4o-mini: $0.15 input / $0.60 output
  *
  * @example
  * ```typescript
@@ -88,7 +83,7 @@ export class OpenAIProvider implements AiProvider {
    * Initialize OpenAI Provider
    *
    * @param apiKey - Optional API key override (defaults to OPENAI_API_KEY env var)
-   * @param modelName - Optional model override (defaults to gpt-5-nano)
+   * @param modelName - Optional model override (defaults to gpt-4.1-nano)
    */
   constructor(apiKey?: string, modelName: string = DEFAULT_MODEL) {
     this.apiKey = apiKey || process.env.OPENAI_API_KEY || '';
@@ -245,7 +240,19 @@ JSON以外の説明文は出力しないでください。`;
       });
 
       const responseText = completion.choices[0]?.message?.content || '';
-      return this.parseRssExtractionResponse(responseText);
+      const result = this.parseRssExtractionResponse(responseText);
+
+      // usage をコスト追跡用に追加
+      return {
+        ...result,
+        usage: completion.usage
+          ? {
+              promptTokens: completion.usage.prompt_tokens,
+              completionTokens: completion.usage.completion_tokens,
+              totalTokens: completion.usage.total_tokens,
+            }
+          : undefined,
+      };
     } catch (error) {
       console.error('OpenAI RSS extraction error:', error);
       throw new Error(
