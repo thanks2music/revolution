@@ -182,10 +182,11 @@ ${extractedDataSection}
           parts.push(`- 開催終了日: 未定`);
         }
 
-        // タイトルには開始月を使用するよう明示
-        const startMonth = period.開始.日付.match(/(\d+)月/)?.[1];
-        if (startMonth) {
-          parts.push(`- ⚠️ 重要: タイトルに含める開催月は「${startMonth}月」です。他の月を使用しないでください。`);
+        // タイトルには開始日（月日形式）を使用するよう明示
+        // 例: "12月18日" → タイトルに「12月18日よりコラボ開催」と記載
+        const startDateForTitle = period.開始.日付; // "12月18日" 形式
+        if (startDateForTitle) {
+          parts.push(`- ⚠️ 重要: タイトルの開始日は「${startDateForTitle}」を使用してください。月のみ（例: 12月）ではなく、日付まで含めてください。`);
         }
       }
 
