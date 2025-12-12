@@ -50,6 +50,15 @@ export interface GenerateMetadataInput {
 }
 
 /**
+ * Token usage statistics for cost tracking
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
  * Generated article metadata
  */
 export interface ArticleMetadata {
@@ -64,6 +73,12 @@ export interface ArticleMetadata {
    * @example "呪術廻戦とBOX cafe&spaceのコラボイベントが2025年12月25日から開催されます。"
    */
   excerpt: string;
+
+  /** Model used for generation */
+  model?: string;
+
+  /** Token usage statistics for cost tracking */
+  usage?: TokenUsage;
 }
 
 /**

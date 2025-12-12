@@ -4,6 +4,19 @@
  */
 
 // ===================================
+// コスト追跡用の型
+// ===================================
+
+/**
+ * Token usage statistics for cost tracking
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+// ===================================
 // 検出結果
 // ===================================
 
@@ -40,6 +53,10 @@ export interface SubpageDetectionResult {
   };
   /** トップページのみか（下層ページが検出されなかった） */
   isTopPageOnly: boolean;
+  /** Model used for AI detection (only when detectionMethods includes 'ai') */
+  model?: string;
+  /** Token usage statistics for cost tracking (only when AI was used) */
+  usage?: TokenUsage;
   /** デバッグ情報 */
   _debug?: {
     storeSlug?: string;

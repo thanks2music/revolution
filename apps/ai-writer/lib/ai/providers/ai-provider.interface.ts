@@ -58,6 +58,15 @@ export interface RssExtractionInput {
 }
 
 /**
+ * Token usage statistics for cost tracking
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
  * RSS extraction result
  */
 export interface RssExtractionResult {
@@ -71,6 +80,8 @@ export interface RssExtractionResult {
   model: string;
   /** Confidence level (0-1) */
   confidence: number;
+  /** Token usage statistics for cost tracking */
+  usage?: TokenUsage;
 }
 
 /**

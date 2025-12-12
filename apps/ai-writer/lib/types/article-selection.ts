@@ -4,6 +4,15 @@
  */
 
 /**
+ * Token usage statistics for cost tracking
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
  * 記事選別リクエスト
  * collabo-cafe-selection.yaml の placeholders に対応
  */
@@ -39,4 +48,10 @@ export interface ArticleSelectionResult {
 
   /** 判定理由 */
   reason: string;
+
+  /** Model used for selection */
+  model?: string;
+
+  /** Token usage statistics for cost tracking */
+  usage?: TokenUsage;
 }

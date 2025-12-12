@@ -64,6 +64,15 @@ export interface TitleGenerationRequest {
 }
 
 /**
+ * Token usage statistics from AI provider
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
  * タイトル生成結果
  */
 export interface TitleGenerationResult {
@@ -81,4 +90,10 @@ export interface TitleGenerationResult {
    * なぜこのタイトルにしたか、どのルールを適用したかを説明
    */
   _reasoning?: string;
+
+  /** Model used for generation */
+  model?: string;
+
+  /** Token usage statistics for cost tracking */
+  usage?: TokenUsage;
 }
