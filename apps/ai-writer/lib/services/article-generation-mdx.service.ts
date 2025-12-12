@@ -56,6 +56,10 @@ import {
   type CategoryR2Images,
   type PlaceholderReplacementResult,
 } from './image-placeholder-replacer.service';
+import {
+  createCostTracker,
+  type CostTrackerService,
+} from '@/lib/ai/cost';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -177,6 +181,9 @@ export class ArticleGenerationMdxService {
     }
     console.log('RSS記事:', { title: rssItem.title, link: rssItem.link });
 
+    // コストトラッカーを初期化（記事ごとに新規作成）
+    const costTracker = createCostTracker(rssItem.link);
+
     // RSS本文を取得（Step 4.5 と Step 5 で使用）
     const rawContent = rssItem.content || rssItem.contentSnippet || '';
 
@@ -209,6 +216,15 @@ export class ArticleGenerationMdxService {
 
       console.log('✅ 記事生成対象として採用');
 
+      // コストを記録（Step 0.5: ArticleSelection）
+      if (selectionResult.model && selectionResult.usage) {
+        costTracker.recordUsage(
+          'Step0.5_ArticleSelection',
+          selectionResult.model,
+          selectionResult.usage
+        );
+      }
+
       // Step 1: Extract work/store/event information from RSS
       console.log(`\n[Step 1/11] AI API (${providerDisplayName}) でRSS記事から作品/店舗/イベント情報を抽出...`);
 
@@ -221,6 +237,18 @@ export class ArticleGenerationMdxService {
         }));
 
       console.log('抽出結果:', extraction);
+
+      // コストを記録（Step 1: RssExtraction）
+      // Note: request.extracted が渡された場合は AI 呼び出しがないため usage がない
+      // extractFromRss の戻り値のみ model と usage を持つ
+      const extractionWithUsage = extraction as RssExtractionResult;
+      if (!request.extracted && extractionWithUsage.usage) {
+        costTracker.recordUsage(
+          'Step1_RssExtraction',
+          extractionWithUsage.model,
+          extractionWithUsage.usage
+        );
+      }
 
       // Step 1.5: Extract detailed information from official site HTML
       console.log(`\n[Step 1.5/11] AI API (${providerDisplayName}) で公式サイトHTMLから詳細情報を抽出...`);
@@ -254,6 +282,15 @@ export class ArticleGenerationMdxService {
             開催期間: detailedExtraction.開催期間,
             略称: detailedExtraction.略称,
           });
+
+          // コストを記録
+          if (detailedExtraction.model && detailedExtraction.usage) {
+            costTracker.recordUsage(
+              'Step1.5_Extraction',
+              detailedExtraction.model,
+              detailedExtraction.usage
+            );
+          }
         } catch (extractionError) {
           console.error('❌ 公式サイトからの詳細抽出に失敗しました:', extractionError);
           // 必須フィールドが取得できない場合は記事生成を中止
@@ -328,6 +365,15 @@ export class ArticleGenerationMdxService {
             methods: subpageDetection.detectionMethods,
           });
 
+          // コストを記録（Step 1.6: SubpageDetection - AI使用時のみ）
+          if (subpageDetection.model && subpageDetection.usage) {
+            costTracker.recordUsage(
+              'Step1.6_SubpageDetection',
+              subpageDetection.model,
+              subpageDetection.usage
+            );
+          }
+
           // Step 1.7: Category image extraction（カテゴリ別画像抽出）
           console.log(`\n[Step 1.7/11] カテゴリ別画像抽出（下層ページから画像を取得）...`);
 
@@ -357,9 +403,9 @@ export class ArticleGenerationMdxService {
       console.log('\n[Step 2/11] YAMLコンフィグでslugを解決...');
 
       const [workSlug, storeSlug, eventType] = await Promise.all([
-        resolveWorkSlug(extraction.workTitle),
-        resolveStoreSlug(extraction.storeName),
-        resolveEventTypeSlug(extraction.eventTypeName),
+        resolveWorkSlug(extraction.workTitle, true, costTracker),
+        resolveStoreSlug(extraction.storeName, true, costTracker),
+        resolveEventTypeSlug(extraction.eventTypeName, true, costTracker),
       ]);
 
       console.log('Slug解決結果:', { workSlug, storeSlug, eventType });
@@ -484,6 +530,15 @@ export class ArticleGenerationMdxService {
         excerptLength: metadata.excerpt.length,
       });
 
+      // コストを記録（Step 4: MetadataGeneration）
+      if (metadata.model && metadata.usage) {
+        costTracker.recordUsage(
+          'Step4_MetadataGeneration',
+          metadata.model,
+          metadata.usage
+        );
+      }
+
       // Step 4.5: Generate title using YAML template
       console.log(`\n[Step 4.5/11] AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
 
@@ -498,6 +553,15 @@ export class ArticleGenerationMdxService {
         // 作品名は Step 1 の workTitle を canonical として使用
         extractedWorkName: canonicalWorkTitle,
       });
+
+      // コストを記録
+      if (titleResult.model && titleResult.usage) {
+        costTracker.recordUsage(
+          'Step4.5_TitleGeneration',
+          titleResult.model,
+          titleResult.usage
+        );
+      }
 
       // Step 5: Generate MDX article content using ContentGenerationService
       console.log(`\n[Step 5/11] AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用）...`);
@@ -519,6 +583,15 @@ export class ArticleGenerationMdxService {
           generatedSections: contentGeneration.generatedSections,
           skippedSections: contentGeneration.skippedSections,
         });
+
+        // コストを記録（Step 5: ContentGeneration）
+        if (contentGeneration.model && contentGeneration.usage) {
+          costTracker.recordUsage(
+            'Step5_ContentGeneration',
+            contentGeneration.model,
+            contentGeneration.usage
+          );
+        }
       } catch (contentError) {
         console.error('❌ コンテンツ生成に失敗しました:', contentError);
         return {
@@ -754,7 +827,6 @@ export class ArticleGenerationMdxService {
         // ドライランモード: ステータス更新をスキップ
         console.log('\n[Step 8/11] Firestoreステータス更新（ドライランのためスキップ）...');
         console.log('🧪 ドライラン: ステータス更新をスキップしました');
-        console.log('========== MDXパイプライン: ドライラン完了 ==========\n');
       } else {
         // 通常モード: ステータス更新
         console.log('\n[Step 8/11] Firestoreのステータスを更新...');
@@ -762,8 +834,14 @@ export class ArticleGenerationMdxService {
         await updateEventStatus(eventRecord.canonicalKey, 'generated');
 
         console.log('✅ ステータス更新完了: pending → generated');
-        console.log('========== MDXパイプライン: 記事生成完了 ==========\n');
       }
+
+      // LLM APIコストサマリーを出力
+      if (costTracker.hasUsage()) {
+        costTracker.logSummary();
+      }
+
+      console.log(`========== MDXパイプライン: ${dryRun ? 'ドライラン' : '記事生成'}完了 ==========\n`);
 
       return {
         success: true,
