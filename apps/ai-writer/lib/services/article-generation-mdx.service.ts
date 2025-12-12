@@ -405,17 +405,6 @@ export class ArticleGenerationMdxService {
         extractedWorkName: detailedExtraction?.作品名,
       });
 
-      console.log('タイトル生成完了:', {
-        title: titleResult.title,
-        length: titleResult.length,
-        is_valid: titleResult.is_valid,
-      });
-
-      // タイトル生成理由をログ出力（デバッグ用）
-      if (titleResult._reasoning) {
-        console.log('タイトル生成理由:', titleResult._reasoning);
-      }
-
       // Step 5: Generate MDX article content using ContentGenerationService
       console.log(`\n[Step 5/9] AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用）...`);
 
