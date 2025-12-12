@@ -4,9 +4,32 @@
  */
 
 /**
+ * 開催期間（ExtractionService からインポートせず独自定義）
+ * タイトル生成で使用する開催期間情報
+ */
+export interface TitleEventPeriod {
+  /** 開始日情報 */
+  開始: {
+    /** 年（YYYY年形式） */
+    年: string;
+    /** 日付（N月NN日形式） */
+    日付: string;
+  };
+  /** 終了日情報 */
+  終了: {
+    /** 年（YYYY年形式、未定の場合はnull） */
+    年: string | null;
+    /** 日付（N月NN日形式、未定の場合はnull） */
+    日付: string | null;
+    /** 終了日が未定の場合はtrue */
+    未定: boolean;
+  };
+}
+
+/**
  * タイトル生成リクエスト
  *
- * RSS記事情報のみを入力として、Claude AIが以下を自動抽出:
+ * RSS記事情報と抽出済み開催期間を入力として、Claude AIが以下を自動抽出:
  * - 作品名
  * - 略称（存在する場合）
  * - 店舗名
@@ -22,6 +45,22 @@ export interface TitleGenerationRequest {
 
   /** RSS記事のURL */
   rss_link: string;
+
+  /**
+   * Step 1.5 で抽出済みの開催期間（オプション）
+   * 指定された場合、AIはこの日付を優先して使用する
+   */
+  extractedPeriod?: TitleEventPeriod;
+
+  /**
+   * Step 1.5 で抽出済みの店舗名（オプション）
+   */
+  extractedStoreName?: string;
+
+  /**
+   * Step 1.5 で抽出済みの作品名（オプション）
+   */
+  extractedWorkName?: string;
 }
 
 /**
@@ -36,4 +75,10 @@ export interface TitleGenerationResult {
 
   /** 文字数制約を満たしているか */
   is_valid: boolean;
+
+  /**
+   * タイトル生成の判断理由（デバッグ用）
+   * なぜこのタイトルにしたか、どのルールを適用したかを説明
+   */
+  _reasoning?: string;
 }

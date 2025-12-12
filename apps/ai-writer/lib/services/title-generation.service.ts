@@ -62,13 +62,13 @@ export class TitleGenerationService {
 
       // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
       const response = await this.aiProvider.sendMessage(prompt, {
-        maxTokens: 500, // タイトルは短いので500で十分
+        maxTokens: 800, // JSON形式 + reasoning のため増加
         temperature: 0.7, // 創造性と正確性のバランス
-        responseFormat: 'text',
+        responseFormat: 'json',
       });
 
-      // レスポンスからタイトルを抽出
-      const title = this.extractTitle(response.content);
+      // レスポンスからタイトルとreasoningを抽出
+      const { title, _reasoning } = this.parseResponse(response.content);
 
       // タイトルの文字数を検証
       const length = this.countCharacters(title);
@@ -81,6 +81,13 @@ export class TitleGenerationService {
         recommended: length >= 32 && length <= 36,
       });
 
+      // デバッグモード時は reasoning を表示
+      if (process.env.DEBUG_TITLE_PROMPT === 'true' && _reasoning) {
+        console.log('\n[TitleGeneration] === タイトル生成理由 ===');
+        console.log(_reasoning);
+        console.log('[TitleGeneration] === 理由終了 ===\n');
+      }
+
       if (!is_valid) {
         console.warn(
           `[TitleGeneration] タイトルが文字数制約（28〜40文字）を満たしていません: ${length}文字`
@@ -91,6 +98,7 @@ export class TitleGenerationService {
         title,
         length,
         is_valid,
+        _reasoning,
       };
     } catch (error) {
       console.error('[TitleGeneration] タイトル生成エラー:', error);
@@ -113,6 +121,9 @@ export class TitleGenerationService {
     // YAMLテンプレートのルール定義をプロンプトに含める
     const rulesSection = this.buildRulesSection(template);
 
+    // 抽出済みデータセクション（Step 1.5 で抽出済みの情報がある場合）
+    const extractedDataSection = this.buildExtractedDataSection(request);
+
     // 最終プロンプトを構築
     return `${template.prompts.generate_title}
 
@@ -125,13 +136,63 @@ ${rulesSection}
 - タイトル: ${request.rss_title}
 - URL: ${request.rss_link}
 - 本文: ${request.rss_content.substring(0, 3000)}${request.rss_content.length > 3000 ? '...' : ''}
-
+${extractedDataSection}
 ---
 
 上記のRSS記事情報から、必要な情報（作品名、店舗名、開催日、略称、複数店舗情報など）を抽出し、
 仕様に従って最適な記事タイトルを生成してください。
 
-重要: タイトル文のみを出力し、説明文・理由・JSON・補足テキストなどは一切含めないでください。`;
+【出力形式】
+以下のJSON形式で出力してください:
+\`\`\`json
+{
+  "title": "生成したタイトル（28〜40文字）",
+  "_reasoning": "タイトル生成の判断理由（適用したルール、日付の選択理由など）"
+}
+\`\`\``;
+  }
+
+  /**
+   * 抽出済みデータセクションを構築
+   * Step 1.5 で抽出済みの情報がある場合、AIに優先的に使用させる
+   */
+  private buildExtractedDataSection(request: TitleGenerationRequest): string {
+    const parts: string[] = [];
+
+    if (request.extractedPeriod || request.extractedStoreName || request.extractedWorkName) {
+      parts.push('\n## 抽出済みデータ（以下の情報は検証済みのため、優先的に使用してください）');
+
+      if (request.extractedWorkName) {
+        parts.push(`- 作品名（確定）: ${request.extractedWorkName}`);
+      }
+
+      if (request.extractedStoreName) {
+        parts.push(`- 店舗名（確定）: ${request.extractedStoreName}`);
+      }
+
+      if (request.extractedPeriod) {
+        const period = request.extractedPeriod;
+        const startDate = `${period.開始.年}${period.開始.日付}`;
+        parts.push(`- 開催開始日（確定）: ${startDate}`);
+
+        if (!period.終了.未定 && period.終了.日付) {
+          const endDate = `${period.終了.年 || ''}${period.終了.日付}`;
+          parts.push(`- 開催終了日（確定）: ${endDate}`);
+        } else {
+          parts.push(`- 開催終了日: 未定`);
+        }
+
+        // タイトルには開始月を使用するよう明示
+        const startMonth = period.開始.日付.match(/(\d+)月/)?.[1];
+        if (startMonth) {
+          parts.push(`- ⚠️ 重要: タイトルに含める開催月は「${startMonth}月」です。他の月を使用しないでください。`);
+        }
+      }
+
+      parts.push('');
+    }
+
+    return parts.join('\n');
   }
 
   /**
@@ -216,30 +277,42 @@ ${rulesText}`);
   }
 
   /**
-   * AI APIのレスポンスからタイトルを抽出
+   * AI APIのレスポンスをパース（JSON形式）
    * @param response レスポンステキスト
-   * @returns タイトル文字列
+   * @returns タイトルとreasoning
    */
-  private extractTitle(response: string): string {
-    // レスポンスをトリムし、前後の空白や改行を削除
-    let title = response.trim();
+  private parseResponse(response: string): { title: string; _reasoning?: string } {
+    let content = response.trim();
 
     // マークダウンコードブロックが含まれている場合は除去
-    const codeBlockMatch = title.match(/```(?:text)?\n(.*?)\n```/s);
+    const codeBlockMatch = content.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
     if (codeBlockMatch) {
-      title = codeBlockMatch[1].trim();
+      content = codeBlockMatch[1].trim();
     }
 
-    // 複数行ある場合は最初の行のみを採用
-    const lines = title.split('\n').filter((line) => line.trim().length > 0);
-    if (lines.length > 0) {
-      title = lines[0].trim();
+    try {
+      // JSON形式でパース
+      const parsed = JSON.parse(content);
+
+      if (parsed.title) {
+        return {
+          title: parsed.title.trim(),
+          _reasoning: parsed._reasoning || undefined,
+        };
+      }
+    } catch (e) {
+      // JSONパースに失敗した場合はフォールバック
+      console.warn('[TitleGeneration] JSONパース失敗、テキストモードにフォールバック');
     }
+
+    // フォールバック: 最初の行をタイトルとして扱う
+    const lines = content.split('\n').filter((line) => line.trim().length > 0);
+    let title = lines[0] || content;
 
     // 前後の引用符を削除
     title = title.replace(/^["']|["']$/g, '');
 
-    return title;
+    return { title: title.trim() };
   }
 
   /**
