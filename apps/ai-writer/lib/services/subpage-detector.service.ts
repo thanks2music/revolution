@@ -16,6 +16,7 @@ import type {
   DetectionMethod,
   SubpageDetectionResult,
   StorePatternConfig,
+  TokenUsage,
 } from '@/lib/types/subpage-detection';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
 
@@ -23,6 +24,15 @@ import { getConfigLoaderService, ConfigLoaderService } from './config-loader.ser
 export type { SubpageDetectionResult, CategoryUrls, DetectionMethod };
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
+
+/**
+ * AI検出結果（内部用）
+ */
+interface AiDetectionResult {
+  urls: string[];
+  model?: string;
+  usage?: TokenUsage;
+}
 
 /**
  * Subpage Detector Service
@@ -75,6 +85,10 @@ export class SubpageDetectorService {
       },
     };
 
+    // AI使用時のusageを追跡
+    let aiModel: string | undefined;
+    let aiUsage: TokenUsage | undefined;
+
     // カテゴリごとに検出
     const categories: CategoryType[] = ['menu', 'novelty', 'goods'];
 
@@ -91,7 +105,32 @@ export class SubpageDetectorService {
         result.categoryUrls[category] = detected.urls;
         result.detectionMethods[category] = detected.method;
         result.isTopPageOnly = false;
+
+        // AI使用時はmodel/usageをキャプチャ
+        if (detected.method === 'ai' && detected.aiResult) {
+          aiModel = detected.aiResult.model;
+          // 複数カテゴリでAI使用の場合はusageを合算
+          if (detected.aiResult.usage) {
+            if (aiUsage) {
+              aiUsage = {
+                promptTokens: aiUsage.promptTokens + detected.aiResult.usage.promptTokens,
+                completionTokens: aiUsage.completionTokens + detected.aiResult.usage.completionTokens,
+                totalTokens: aiUsage.totalTokens + detected.aiResult.usage.totalTokens,
+              };
+            } else {
+              aiUsage = detected.aiResult.usage;
+            }
+          }
+        }
       }
+    }
+
+    // AI使用時はmodel/usageを設定
+    if (aiModel) {
+      result.model = aiModel;
+    }
+    if (aiUsage) {
+      result.usage = aiUsage;
     }
 
     console.log('[SubpageDetector] 検出結果:', {
@@ -99,6 +138,7 @@ export class SubpageDetectorService {
       novelty: result.categoryUrls.novelty?.length || 0,
       goods: result.categoryUrls.goods?.length || 0,
       isTopPageOnly: result.isTopPageOnly,
+      aiUsed: !!aiModel,
     });
 
     return result;
@@ -113,7 +153,7 @@ export class SubpageDetectorService {
     links: string[],
     config: Awaited<ReturnType<ConfigLoaderService['loadStoreUrlPatterns']>>,
     baseUrl: string
-  ): Promise<{ urls: string[]; method: DetectionMethod }> {
+  ): Promise<{ urls: string[]; method: DetectionMethod; aiResult?: AiDetectionResult }> {
     // 1. YAML設定で検出
     if (storeSlug && config.stores[storeSlug]?.[category]) {
       const storePattern = config.stores[storeSlug][category] as StorePatternConfig;
@@ -136,11 +176,11 @@ export class SubpageDetectorService {
 
     // 3. AI判定で検出（フォールバック）
     if (config.ai_fallback.enabled && links.length > 0) {
-      const aiUrls = await this.detectByAi(category, links, config.ai_fallback.prompt_template);
+      const aiResult = await this.detectByAi(category, links, config.ai_fallback.prompt_template);
 
-      if (aiUrls.length > 0) {
-        console.log(`[SubpageDetector] ${category}: AI判定で検出 (${aiUrls.length}件)`);
-        return { urls: aiUrls, method: 'ai' };
+      if (aiResult.urls.length > 0) {
+        console.log(`[SubpageDetector] ${category}: AI判定で検出 (${aiResult.urls.length}件)`);
+        return { urls: aiResult.urls, method: 'ai', aiResult };
       }
     }
 
@@ -250,7 +290,7 @@ export class SubpageDetectorService {
     category: CategoryType,
     links: string[],
     promptTemplate: string
-  ): Promise<string[]> {
+  ): Promise<AiDetectionResult> {
     try {
       // プロンプトを構築
       const urlList = links.map((url) => `- ${url}`).join('\n');
@@ -278,10 +318,14 @@ export class SubpageDetectorService {
         });
       }
 
-      return validUrls;
+      return {
+        urls: validUrls,
+        model: response.model,
+        usage: response.usage,
+      };
     } catch (error) {
       console.warn('[SubpageDetector] AI判定エラー:', error);
-      return [];
+      return { urls: [] };
     }
   }
 

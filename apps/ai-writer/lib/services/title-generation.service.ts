@@ -99,6 +99,8 @@ export class TitleGenerationService {
         length,
         is_valid,
         _reasoning,
+        model: response.model,
+        usage: response.usage,
       };
     } catch (error) {
       console.error('[TitleGeneration] タイトル生成エラー:', error);

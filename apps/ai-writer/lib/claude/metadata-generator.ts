@@ -97,7 +97,12 @@ export async function generateArticleMetadata(
     // Validate generated metadata
     validateMetadata(metadata, { maxCategories, maxExcerptLength });
 
-    return metadata;
+    // model/usage をコスト追跡用に追加
+    return {
+      ...metadata,
+      model: response.model,
+      usage: response.usage,
+    };
   } catch (error) {
     console.error('AI API metadata generation error:', error);
     throw new Error(

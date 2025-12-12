@@ -19,6 +19,15 @@ import type { MergedModularTemplate, SectionTemplate } from '@/lib/types/modular
 import type { ExtractionResult } from './extraction.service';
 
 /**
+ * Token usage statistics for cost tracking
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
  * コンテンツ生成リクエスト
  */
 export interface ContentGenerationRequest {
@@ -40,6 +49,10 @@ export interface ContentGenerationResult {
   generatedSections: string[];
   /** スキップされたセクション一覧 */
   skippedSections: string[];
+  /** Model used for generation */
+  model?: string;
+  /** Token usage statistics for cost tracking */
+  usage?: TokenUsage;
 }
 
 /**
@@ -105,7 +118,12 @@ export class ContentGenerationService {
         skippedSections: result.skippedSections,
       });
 
-      return result;
+      // model/usage をコスト追跡用に追加
+      return {
+        ...result,
+        model: response.model,
+        usage: response.usage,
+      };
     } catch (error) {
       console.error('[ContentGeneration] 本文生成エラー:', error);
       throw new Error(

@@ -100,6 +100,15 @@ export type SourceType =
   | 'other';                 // その他
 
 /**
+ * Token usage statistics from AI provider
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
  * 抽出結果
  */
 export interface ExtractionResult {
@@ -155,6 +164,10 @@ export interface ExtractionResult {
     /** 原作者名の判断理由（敬称選択ロジック含む） */
     原作者名?: string;
   };
+  /** Model used for extraction */
+  model?: string;
+  /** Token usage statistics for cost tracking */
+  usage?: TokenUsage;
 }
 
 /**
@@ -212,7 +225,12 @@ export class ExtractionService {
       console.log('[Extraction] === レスポンス終了 ===\n');
 
       // レスポンスをパース
-      const result = this.parseResponse(response.content, request.primary_official_url);
+      const result = this.parseResponse(
+        response.content,
+        request.primary_official_url,
+        response.model,
+        response.usage
+      );
 
       console.log('[Extraction] 抽出完了:', {
         作品名: result.作品名,
@@ -341,9 +359,16 @@ ${schemaStr}
    * AI APIからのレスポンスをパース
    * @param response レスポンステキスト
    * @param officialUrl 公式サイトURL
+   * @param model 使用したモデル名
+   * @param usage トークン使用量
    * @returns パース済みの抽出結果
    */
-  private parseResponse(response: string, officialUrl: string): ExtractionResult {
+  private parseResponse(
+    response: string,
+    officialUrl: string,
+    model?: string,
+    usage?: TokenUsage
+  ): ExtractionResult {
     try {
       let jsonData: any;
 
@@ -441,6 +466,8 @@ ${schemaStr}
         コピーライト: jsonData.コピーライト || null,
         TwitterURL: jsonData.TwitterURL || null,
         _reasoning: jsonData._reasoning || undefined,
+        model,
+        usage,
       };
     } catch (error) {
       console.error('[Extraction] Failed to parse response:', error);

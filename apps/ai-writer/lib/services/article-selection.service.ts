@@ -81,7 +81,12 @@ export class ArticleSelectionService {
         reason: result.reason,
       });
 
-      return result;
+      // model/usage をコスト追跡用に追加
+      return {
+        ...result,
+        model: response.model,
+        usage: response.usage,
+      };
     } catch (error) {
       console.error('[ArticleSelection] 記事選別エラー:', error);
 
