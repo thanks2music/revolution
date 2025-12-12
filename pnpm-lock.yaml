@@ -120,6 +120,9 @@ importers:
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.19(ts-node@10.9.2(@types/node@24.10.3)(typescript@5.9.3)))
+      ulid:
+        specifier: ^3.0.1
+        version: 3.0.1
       zod:
         specifier: ^4.1.11
         version: 4.1.13
@@ -8262,6 +8265,10 @@ packages:
 
   uhyphen@0.2.0:
     resolution: {integrity: sha512-qz3o9CHXmJJPGBdqzab7qAYuW8kQGKNEuoHFYrBwV6hWIMcpAmxDLXojcHfFr9US1Pe6zUswEIJIbLI610fuqA==}
+
+  ulid@3.0.1:
+    resolution: {integrity: sha512-dPJyqPzx8preQhqq24bBG1YNkvigm87K8kVEHCD+ruZg24t6IFEFv00xMWfxcC4djmFtiTLdFuADn4+DOz6R7Q==}
+    hasBin: true
 
   unbox-primitive@1.1.0:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
@@ -18765,6 +18772,8 @@ snapshots:
     optional: true
 
   uhyphen@0.2.0: {}
+
+  ulid@3.0.1: {}
 
   unbox-primitive@1.1.0:
     dependencies:

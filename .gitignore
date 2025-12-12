@@ -352,6 +352,7 @@ apps/ai-writer/.env.deploy
 
 # AI Writerテンプレート（プライベートリポジトリから同期）
 apps/ai-writer/templates/
+apps/ai-writer/config/
 
 # GraphQL Code Generator生成ファイル
 # Note: Generated files are committed for CI compatibility
