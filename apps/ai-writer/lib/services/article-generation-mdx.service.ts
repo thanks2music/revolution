@@ -15,7 +15,7 @@ import { extractFromRss, type RssExtractionResult } from '../claude/rss-extracto
 import { generateArticleMetadata } from '../claude/metadata-generator';
 import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
-import { extractArticleHtml, extractContentHtml } from '../utils/html-extractor';
+import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
 import { ArticleSelectionService } from './article-selection.service';
 import {
   type ArticleSelectionRequest,
@@ -42,6 +42,14 @@ import {
   getArticleImageUploadService,
   type ArticleImageUploadResult,
 } from './article-image-upload.service';
+import {
+  getSubpageDetectorService,
+  type SubpageDetectionResult,
+} from './subpage-detector.service';
+import {
+  getCategoryImageExtractorService,
+  type CategoryImages,
+} from './category-image-extractor.service';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -96,6 +104,10 @@ export interface MdxGenerationResult {
   ogImageUpload?: OgImageUploadResult;
   // 本文画像アップロード結果（Step 5.5）
   bodyImagesUpload?: ArticleImageUploadResult;
+  // 下層ページ検出結果（Step 1.6）
+  subpageDetection?: SubpageDetectionResult;
+  // カテゴリ別画像抽出結果（Step 1.7）
+  categoryImages?: CategoryImages;
 }
 
 /**
@@ -160,7 +172,7 @@ export class ArticleGenerationMdxService {
 
     try {
       // Step 0.5: Article selection filter (公式URL検出 + 採用判定)
-      console.log(`\n[Step 0.5/9] AI API (${providerDisplayName}) で記事選別（公式URL検出、採用判定）...`);
+      console.log(`\n[Step 0.5/11] AI API (${providerDisplayName}) で記事選別（公式URL検出、採用判定）...`);
       console.log('記事URLからHTML取得中:', rssItem.link);
 
       const articleHtml = await extractArticleHtml(rssItem.link);
@@ -188,7 +200,7 @@ export class ArticleGenerationMdxService {
       console.log('✅ 記事生成対象として採用');
 
       // Step 1: Extract work/store/event information from RSS
-      console.log(`\n[Step 1/9] AI API (${providerDisplayName}) でRSS記事から作品/店舗/イベント情報を抽出...`);
+      console.log(`\n[Step 1/11] AI API (${providerDisplayName}) でRSS記事から作品/店舗/イベント情報を抽出...`);
 
       const extraction =
         request.extracted ||
@@ -201,7 +213,7 @@ export class ArticleGenerationMdxService {
       console.log('抽出結果:', extraction);
 
       // Step 1.5: Extract detailed information from official site HTML
-      console.log(`\n[Step 1.5/9] AI API (${providerDisplayName}) で公式サイトHTMLから詳細情報を抽出...`);
+      console.log(`\n[Step 1.5/11] AI API (${providerDisplayName}) で公式サイトHTMLから詳細情報を抽出...`);
 
       let detailedExtraction: ExtractionResult | undefined;
       // 公式サイトのHTMLを保持（Step 5 と Step 5.5 で再利用）
@@ -260,8 +272,79 @@ export class ArticleGenerationMdxService {
         };
       }
 
+      // ========================================
+      // 作品名の正規化（Step 1 の workTitle を canonical として使用）
+      // ========================================
+      // Step 1.5 の「作品名」はイベント名を含む場合があるため、
+      // Step 1（RSS抽出）の workTitle を正式な作品名として採用する
+      const canonicalWorkTitle = extraction.workTitle;
+
+      // 差分があればログ出力（デバッグ用）
+      if (detailedExtraction.作品名 !== canonicalWorkTitle) {
+        console.log('📝 作品名の正規化:', {
+          'Step 1 (canonical)': canonicalWorkTitle,
+          'Step 1.5 (参考)': detailedExtraction.作品名,
+          '差分理由': 'Step 1.5 がイベント名を含んでいる可能性あり',
+        });
+      }
+
+      // Step 1.6: Subpage detection（下層ページ検出）
+      console.log(`\n[Step 1.6/11] 下層ページ検出（メニュー/ノベルティ/グッズ）...`);
+
+      let subpageDetection: SubpageDetectionResult | undefined;
+      let categoryImages: CategoryImages | undefined;
+
+      if (selectionResult.primary_official_url && officialHtml) {
+        try {
+          // 公式サイトHTMLからリンクを抽出
+          const pageLinks = extractPageLinks(officialHtml, selectionResult.primary_official_url);
+          console.log(`[Step 1.6] 公式サイトから${pageLinks.length}件のリンクを抽出`);
+
+          // 下層ページを検出
+          const subpageService = getSubpageDetectorService();
+          const storeName = detailedExtraction?.店舗名 || extraction.storeName;
+
+          subpageDetection = await subpageService.detectSubpages(
+            selectionResult.primary_official_url,
+            storeName,
+            pageLinks
+          );
+
+          console.log('[Step 1.6] 下層ページ検出結果:', {
+            menu: subpageDetection.categoryUrls.menu?.length || 0,
+            novelty: subpageDetection.categoryUrls.novelty?.length || 0,
+            goods: subpageDetection.categoryUrls.goods?.length || 0,
+            isTopPageOnly: subpageDetection.isTopPageOnly,
+            methods: subpageDetection.detectionMethods,
+          });
+
+          // Step 1.7: Category image extraction（カテゴリ別画像抽出）
+          console.log(`\n[Step 1.7/11] カテゴリ別画像抽出（下層ページから画像を取得）...`);
+
+          const categoryImageService = getCategoryImageExtractorService();
+          categoryImages = await categoryImageService.extractCategoryImages(
+            selectionResult.primary_official_url,
+            officialHtml,
+            subpageDetection.categoryUrls
+          );
+
+          console.log('[Step 1.7] カテゴリ別画像抽出結果:', {
+            eyecatch: categoryImages.eyecatch ? '取得済み' : 'なし',
+            menu: categoryImages.menu.length,
+            novelty: categoryImages.novelty.length,
+            goods: categoryImages.goods.length,
+            total: categoryImages.all.length,
+          });
+        } catch (subpageError) {
+          console.warn('⚠️ 下層ページ検出/画像抽出に失敗（処理は続行）:', subpageError);
+          // エラーが発生しても処理は続行（既存のトップページ画像抽出にフォールバック）
+        }
+      } else {
+        console.log('[Step 1.6/1.7] 公式サイトHTMLがないため、下層ページ検出をスキップ');
+      }
+
       // Step 2: Resolve slugs (YAML config → AI API → ASCII fallback)
-      console.log('\n[Step 2/9] YAMLコンフィグでslugを解決...');
+      console.log('\n[Step 2/11] YAMLコンフィグでslugを解決...');
 
       const [workSlug, storeSlug, eventType] = await Promise.all([
         resolveWorkSlug(extraction.workTitle),
@@ -291,7 +374,7 @@ export class ArticleGenerationMdxService {
 
       if (dryRun) {
         // ドライランモード: 重複チェック・登録をスキップ
-        console.log('\n[Step 3/9] Firestore重複チェック（ドライランのためスキップ）...');
+        console.log('\n[Step 3/11] Firestore重複チェック（ドライランのためスキップ）...');
 
         // ダミーの postId を生成（タイムスタンプベース）
         const dryRunPostId = `dry-run-${Date.now()}`;
@@ -317,7 +400,7 @@ export class ArticleGenerationMdxService {
         });
       } else {
         // 通常モード: 重複チェック + 登録
-        console.log('\n[Step 3/9] Firestoreで重複チェック...');
+        console.log('\n[Step 3/11] Firestoreで重複チェック...');
 
         const duplicationCheck = await checkEventDuplication({
           workTitle: extraction.workTitle,
@@ -377,7 +460,7 @@ export class ArticleGenerationMdxService {
       }
 
       // Step 4: Generate categories and excerpt using AI API
-      console.log(`\n[Step 4/9] AI API (${providerDisplayName}) でカテゴリ/抜粋を生成...`);
+      console.log(`\n[Step 4/11] AI API (${providerDisplayName}) でカテゴリ/抜粋を生成...`);
 
       const metadata = await generateArticleMetadata({
         content: rssItem.content || rssItem.contentSnippet || '',
@@ -392,7 +475,7 @@ export class ArticleGenerationMdxService {
       });
 
       // Step 4.5: Generate title using YAML template
-      console.log(`\n[Step 4.5/9] AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
+      console.log(`\n[Step 4.5/11] AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
 
       const titleService = new TitleGenerationService();
       const titleResult = await titleService.generateTitle({
@@ -402,11 +485,12 @@ export class ArticleGenerationMdxService {
         // Step 1.5 で抽出済みのデータを渡す（日付エラー防止）
         extractedPeriod: detailedExtraction?.開催期間,
         extractedStoreName: detailedExtraction?.店舗名,
-        extractedWorkName: detailedExtraction?.作品名,
+        // 作品名は Step 1 の workTitle を canonical として使用
+        extractedWorkName: canonicalWorkTitle,
       });
 
       // Step 5: Generate MDX article content using ContentGenerationService
-      console.log(`\n[Step 5/9] AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用）...`);
+      console.log(`\n[Step 5/11] AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用）...`);
 
       // ContentGenerationService で本文を生成
       const contentService = new ContentGenerationService();
@@ -436,7 +520,7 @@ export class ArticleGenerationMdxService {
       }
 
       // Step 5.5: Upload OG image and body images to R2
-      console.log('\n[Step 5.5/9] 画像をR2にアップロード（OG画像 + 本文画像）...');
+      console.log('\n[Step 5.5/11] 画像をR2にアップロード（OG画像 + 本文画像）...');
 
       let ogImageUpload: OgImageUploadResult | undefined;
       let bodyImagesUpload: ArticleImageUploadResult | undefined;
@@ -493,7 +577,7 @@ export class ArticleGenerationMdxService {
       }
 
       // Step 6: MDX記事を組み立て
-      console.log('\n[Step 6/9] MDX記事を組み立て...');
+      console.log('\n[Step 6/11] MDX記事を組み立て...');
 
       const mdxArticle = generateMdxArticle(
         {
@@ -523,7 +607,7 @@ export class ArticleGenerationMdxService {
 
       if (dryRun) {
         // ドライランモード: GitHub PR作成をスキップ
-        console.log('\n[Step 7/9] GitHub PR作成（ドライランのためスキップ）...');
+        console.log('\n[Step 7/11] GitHub PR作成（ドライランのためスキップ）...');
         console.log('🧪 ドライラン: PR作成をスキップしました');
 
         // MDX記事の内容をプレビュー表示
@@ -538,7 +622,7 @@ export class ArticleGenerationMdxService {
         console.log('-'.repeat(60));
       } else {
         // 通常モード: GitHub PR作成
-        console.log('\n[Step 7/9] GitHub PRを作成...');
+        console.log('\n[Step 7/11] GitHub PRを作成...');
 
         const branchName = `ai-writer/mdx-${eventType}-${eventRecord.postId}`;
         const prTitle = `✨ Generate MDX (AI Writer): ${eventType}/${eventRecord.postId}`;
@@ -579,12 +663,12 @@ export class ArticleGenerationMdxService {
       // Step 8: Update Firestore status to 'generated'
       if (dryRun) {
         // ドライランモード: ステータス更新をスキップ
-        console.log('\n[Step 8/9] Firestoreステータス更新（ドライランのためスキップ）...');
+        console.log('\n[Step 8/11] Firestoreステータス更新（ドライランのためスキップ）...');
         console.log('🧪 ドライラン: ステータス更新をスキップしました');
         console.log('========== MDXパイプライン: ドライラン完了 ==========\n');
       } else {
         // 通常モード: ステータス更新
-        console.log('\n[Step 8/9] Firestoreのステータスを更新...');
+        console.log('\n[Step 8/11] Firestoreのステータスを更新...');
 
         await updateEventStatus(eventRecord.canonicalKey, 'generated');
 
@@ -609,6 +693,8 @@ export class ArticleGenerationMdxService {
         contentGeneration,
         ogImageUpload,
         bodyImagesUpload,
+        subpageDetection,
+        categoryImages,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');

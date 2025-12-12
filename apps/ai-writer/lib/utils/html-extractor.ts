@@ -411,6 +411,57 @@ export async function extractArticleData(url: string): Promise<{
 }
 
 /**
+ * HTMLからページ内のリンクを抽出
+ *
+ * @param html 解析するHTML
+ * @param baseUrl ベースURL（相対URLを絶対URLに変換するため）
+ * @returns 抽出されたリンクURL配列（重複排除済み）
+ *
+ * @description
+ * - a[href] 属性からリンクを抽出
+ * - 相対URLは絶対URLに変換
+ * - javascript:, mailto:, tel: などは除外
+ * - 重複は排除
+ */
+export function extractPageLinks(html: string, baseUrl: string): string[] {
+  const $ = cheerio.load(html);
+  const links: Set<string> = new Set();
+  const baseUrlObj = new URL(baseUrl);
+
+  $('a[href]').each((_, element) => {
+    const href = $(element).attr('href');
+    if (!href) return;
+
+    // 除外パターン
+    if (
+      href.startsWith('javascript:') ||
+      href.startsWith('mailto:') ||
+      href.startsWith('tel:') ||
+      href.startsWith('#') ||
+      href === '' ||
+      href === '/'
+    ) {
+      return;
+    }
+
+    try {
+      // 絶対URLに変換
+      const absoluteUrl = href.startsWith('http')
+        ? href
+        : new URL(href, baseUrlObj.origin).href;
+
+      links.add(absoluteUrl);
+    } catch {
+      // 無効なURLはスキップ
+    }
+  });
+
+  console.log(`[HTMLExtractor] 抽出されたリンク: ${links.size}件`);
+
+  return Array.from(links);
+}
+
+/**
  * 公式サイトからコンテンツHTMLを抽出（本文抽出用）
  *
  * タイトル抽出用（extractArticleHtml）とは異なり、
