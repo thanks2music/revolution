@@ -260,6 +260,14 @@ ${template.logic.rule_application_order}`);
         if (rule.template_fallback) {
           ruleStr += `\n- フォールバックテンプレート: ${rule.template_fallback}`;
         }
+
+        // ルール固有のロジック（location_extraction など）
+        if (rule.logic) {
+          for (const [logicKey, logicValue] of Object.entries(rule.logic)) {
+            ruleStr += `\n- ${logicKey}: ${logicValue}`;
+          }
+        }
+
         if (rule.example?.template_filled) {
           ruleStr += `\n- 例: ${rule.example.template_filled}`;
         }
