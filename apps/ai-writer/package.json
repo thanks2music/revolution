@@ -28,7 +28,8 @@
     "admin:setup": "tsx lib/firebase/admin-setup.ts setup",
     "admin:list": "tsx lib/firebase/admin-setup.ts list",
     "admin:remove": "tsx lib/firebase/admin-setup.ts remove",
-    "debug:mdx": "tsx scripts/debug-mdx-url.ts"
+    "debug:mdx": "tsx scripts/debug-mdx-url.ts",
+    "generate:article-index": "tsx scripts/generate-article-index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.63.0",
