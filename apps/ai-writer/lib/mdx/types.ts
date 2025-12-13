@@ -135,6 +135,28 @@ export interface MdxFrontmatter {
    * @example ['tokyo', 'osaka', 'fukuoka']
    */
   venue_slugs?: string[];
+
+  /**
+   * Optional: Prefecture names (Phase 1+ - URL設計v1.1 areas軸対応)
+   * @see taxonomy.yaml axes.areas
+   * @example ['東京都', '大阪府']
+   */
+  prefectures?: string[];
+
+  /**
+   * Optional: Prefecture slugs (Phase 1+ - URL設計v1.1 areas軸対応)
+   * @see jp-prefecture.yaml
+   * @example ['tokyo', 'osaka']
+   */
+  prefecture_slugs?: string[];
+
+  /**
+   * Optional: SEO tags (将来拡張用)
+   * カテゴリとは別に、検索・フィルタリング用の補助キーワード
+   * @see taxonomy.yaml tag_rules
+   * @example ['アニメ', 'アニメイトカフェ', '芥見下々']
+   */
+  tags?: string[];
 }
 
 /**
@@ -200,6 +222,24 @@ export interface GenerateMdxFrontmatterInput {
    * Optional: OG Image path (defaults to default image)
    */
   ogImage?: string;
+
+  /**
+   * Optional: Prefecture names (Phase 1+ - URL設計v1.1 areas軸対応)
+   * @example ['東京都', '大阪府']
+   */
+  prefectures?: string[];
+
+  /**
+   * Optional: Prefecture slugs (Phase 1+ - URL設計v1.1 areas軸対応)
+   * @example ['tokyo', 'osaka']
+   */
+  prefectureSlugs?: string[];
+
+  /**
+   * Optional: SEO tags (将来拡張用)
+   * @example ['アニメ', 'アニメイトカフェ']
+   */
+  tags?: string[];
 }
 
 /**
