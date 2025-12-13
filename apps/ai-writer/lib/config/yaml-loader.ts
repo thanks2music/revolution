@@ -125,6 +125,7 @@ export function preloadAllConfigs(): void {
     'BRAND_SLUGS',
     'EVENT_TYPE_SLUGS',
     'JP_PREFECTURE',
+    'TAXONOMY',
   ];
 
   configKeys.forEach((key) => {

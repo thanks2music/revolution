@@ -98,6 +98,141 @@ export interface PrefectureConfig {
 }
 
 /**
+ * Taxonomy Configuration
+ *
+ * Defines URL axes and category/tag generation rules
+ * Source: /revolution-templates/ai-writer/config/taxonomy.yaml
+ *
+ * @see URL設計 v1.1 (/notes/01-project-docs/01-architecture/03-url-design-v1.1.md)
+ *
+ * @example
+ * ```yaml
+ * axes:
+ *   titles:
+ *     description: "作品別にイベントを分類する軸"
+ *     phase: "mvp"
+ *     slug_resolution:
+ *       primary: "title-romaji-mapping.yaml"
+ *       fallback: "ai_transliteration"
+ * ```
+ */
+export interface TaxonomyConfig {
+  version: string;
+  description: string;
+
+  /**
+   * URL軸（Axes）定義
+   * MVP: titles, eventType
+   * Phase1: areas
+   */
+  axes: {
+    titles: TaxonomyAxis;
+    eventType: TaxonomyAxis;
+    areas: TaxonomyAxis;
+  };
+
+  /**
+   * カテゴリ生成ルール
+   * MdxFrontmatter.categories[] の生成に使用
+   */
+  category_rules: {
+    description: string;
+    generation_order: CategoryGenerationRule[];
+    constraints: {
+      min_count: number;
+      max_count: number;
+      validation: string;
+    };
+  };
+
+  /**
+   * タグ生成ルール（将来拡張用）
+   * MdxFrontmatter.tags[] の生成に使用
+   */
+  tag_rules: {
+    description: string;
+    enabled: boolean;
+    auto_generation?: TagAutoGenerationRule[];
+    constraints: {
+      max_count: number;
+      validation: string;
+    };
+  };
+
+  /**
+   * フロントマター出力スキーマ
+   */
+  frontmatter_schema: {
+    description: string;
+    axis_fields: Record<string, FrontmatterFieldSchema>;
+    taxonomy_fields: Record<string, FrontmatterFieldSchema>;
+  };
+
+  /**
+   * 関連設定ファイル一覧
+   */
+  related_configs: Array<{
+    file: string;
+    purpose: string;
+  }>;
+}
+
+/**
+ * Taxonomy Axis Definition
+ */
+export interface TaxonomyAxis {
+  description: string;
+  phase: 'mvp' | 'phase1' | 'phase2';
+  url_patterns: string[];
+  source_fields: {
+    name: string;
+    slug: string;
+  };
+  slug_resolution: {
+    primary: string;
+    fallback: 'ai_transliteration' | 'error';
+  };
+  notes?: string[];
+}
+
+/**
+ * Category Generation Rule
+ */
+export interface CategoryGenerationRule {
+  source: string;
+  priority: number;
+  required: boolean;
+  description: string;
+  example: string;
+  max_items?: number;
+  notes?: string[];
+}
+
+/**
+ * Tag Auto Generation Rule (将来拡張用)
+ */
+export interface TagAutoGenerationRule {
+  source: string;
+  mapping?: Record<string, string>;
+  description?: string;
+  example?: string;
+  condition?: string;
+}
+
+/**
+ * Frontmatter Field Schema
+ */
+export interface FrontmatterFieldSchema {
+  type: 'string' | 'array';
+  required: boolean;
+  description: string;
+  example: string | string[];
+  resolution?: string;
+  min_items?: number;
+  max_items?: number;
+}
+
+/**
  * Configuration file paths
  *
  * These paths point to the private repository containing YAML configs
@@ -119,6 +254,7 @@ export const CONFIG_PATHS = {
   BRAND_SLUGS: resolve(CONFIG_DIR, 'brand-slugs.yaml'),
   EVENT_TYPE_SLUGS: resolve(CONFIG_DIR, 'event-type-slugs.yaml'),
   JP_PREFECTURE: resolve(CONFIG_DIR, 'jp-prefecture.yaml'),
+  TAXONOMY: resolve(CONFIG_DIR, 'taxonomy.yaml'),
 } as const;
 
 /**
@@ -134,4 +270,5 @@ export interface ConfigTypeMap {
   BRAND_SLUGS: BrandSlugsConfig;
   EVENT_TYPE_SLUGS: EventTypeSlugsConfig;
   JP_PREFECTURE: PrefectureConfig;
+  TAXONOMY: TaxonomyConfig;
 }
