@@ -243,6 +243,64 @@ export function resolvePrefectureSlug(prefectureName: string): string | null {
 }
 
 /**
+ * Resolves an array of prefecture names to their slugs
+ *
+ * @description
+ * Batch version of resolvePrefectureSlug for Phase 1+ areas axis support.
+ * Handles multiple prefectures from multi-location events.
+ * Invalid prefecture names are filtered out.
+ *
+ * @param {string[]} prefectureNames - Array of prefecture names (e.g., ["東京都", "大阪府"])
+ * @returns {{ prefectures: string[], slugs: string[] }} Object with resolved prefectures and slugs
+ *
+ * @see taxonomy.yaml axes.areas
+ *
+ * @example
+ * ```typescript
+ * const result = resolvePrefectureSlugs(["東京都", "大阪府", "UnknownCity"]);
+ * console.log(result);
+ * // {
+ * //   prefectures: ["東京都", "大阪府"],  // Only valid ones
+ * //   slugs: ["tokyo", "osaka"]
+ * // }
+ * ```
+ */
+export function resolvePrefectureSlugs(prefectureNames: string[]): {
+  prefectures: string[];
+  slugs: string[];
+} {
+  const config = loadYamlConfig('JP_PREFECTURE');
+
+  const resolvedPrefectures: string[] = [];
+  const resolvedSlugs: string[] = [];
+
+  for (const name of prefectureNames) {
+    const slug = config.prefectures[name];
+    if (slug) {
+      // Only include if slug is found and not already in the list
+      if (!resolvedSlugs.includes(slug)) {
+        resolvedPrefectures.push(name);
+        resolvedSlugs.push(slug);
+      }
+    } else {
+      console.warn(
+        `[Slug Resolver] ⚠️ Prefecture not found in YAML: "${name}". Skipping.`
+      );
+    }
+  }
+
+  console.log(
+    `[Slug Resolver] 📍 Resolved ${resolvedPrefectures.length}/${prefectureNames.length} prefectures: ` +
+      `[${resolvedPrefectures.join(', ')}] → [${resolvedSlugs.join(', ')}]`
+  );
+
+  return {
+    prefectures: resolvedPrefectures,
+    slugs: resolvedSlugs,
+  };
+}
+
+/**
  * Resolves a city name to its slug
  *
  * @description
