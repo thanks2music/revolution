@@ -165,7 +165,7 @@ export function getLatestArticles(limit = 10): ArticleIndexItem[] {
  * 記事のURLパスを生成
  *
  * URL設計: /{event_type}/{work_slug}/{slug}
- * 例: /collabo-cafe/jujutsu-kaisen/01kafsdmvd-2025
+ * 例: /collabo-cafe/jujutsu-kaisen/01kafsdmvd
  *
  * レガシー記事（eventType='articles', workSlug=null）の場合:
  * 例: /articles/hello-mdx
@@ -187,7 +187,7 @@ export function getArticleUrl(article: ArticleIndexItem): string {
  *
  * @param eventType イベント種別 (collabo-cafe, pop-up-store, etc.)
  * @param workSlug 作品スラッグ (jujutsu-kaisen, chainsaw-man, etc.)
- * @param slug 記事スラッグ (01kafsdmvd-2025, etc.)
+ * @param slug 記事スラッグ (01kafsdmvd, etc.)
  */
 export function getArticleByPath(
   eventType: string,

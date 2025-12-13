@@ -232,7 +232,7 @@ function getSlackWebhookUrl(): string {
  *     workSlug: 'jujutsu-kaisen',
  *     title: '呪術廻戦×アニメイトカフェ2025',
  *     branchName: 'content/mdx-jujutsu-kaisen-01kaek3mh9',
- *     filePath: 'content/collabo-cafe/jujutsu-kaisen/01kaek3mh9-2025.mdx'
+ *     filePath: 'content/collabo-cafe/jujutsu-kaisen/01kaek3mh9.mdx'
  *   }
  * });
  * ```

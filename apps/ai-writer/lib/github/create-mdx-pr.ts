@@ -35,7 +35,7 @@ export interface CreateMdxPrParams {
   mdxContent: string;
 
   /**
-   * ファイルパス (例: content/collabo-cafe/jujutsu-kaisen/01kaek3mh9-2025.mdx)
+   * ファイルパス (例: content/collabo-cafe/jujutsu-kaisen/01kaek3mh9.mdx)
    */
   filePath: string;
 
@@ -164,7 +164,7 @@ async function checkDuplicateOpenPr(branchName: string): Promise<boolean> {
  * ```typescript
  * const result = await createMdxPr({
  *   mdxContent: '---\nslug: jujutsu-kaisen-cafe-2025\n...',
- *   filePath: 'content/collabo-cafe/jujutsu-kaisen/01kaek3mh9-2025.mdx',
+ *   filePath: 'content/collabo-cafe/jujutsu-kaisen/01kaek3mh9.mdx',
  *   title: '✨ Generate MDX (AI Writer): ${extraction.eventTypeName}/${eventRecord.postId}`',
  *   body: '## 概要\nAI Writerが自動生成した記事です...',
  *   branchName: 'content/mdx-jujutsu-kaisen-01kaek3mh9',
