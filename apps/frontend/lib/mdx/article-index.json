@@ -3,7 +3,7 @@
   "totalArticles": 1,
   "articles": [
     {
-      "slug": "01kafsdmvd-2025",
+      "slug": "01kafsdmvd",
       "title": "呪術廻戦 × BOX cafe&space2025が東京・大阪で開催決定",
       "date": "2025-11-20",
       "excerpt": "TVアニメ『呪術廻戦』第2期「渋谷事変」をテーマにした「呪術廻戦カフェ2025 渋谷事変」が2025年9月25日より東京・大阪・愛知で期間限定オープン。虎杖・伏黒・釘崎をイメージしたオリジナルメニューや限定特典が登場。事前予約でクリアファイルプレゼント。",
@@ -14,7 +14,7 @@
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/jujutsu-kaisen/01kafsdmvd-2025.mdx",
+      "filePath": "apps/ai-writer/content/collabo-cafe/jujutsu-kaisen/01kafsdmvd.mdx",
       "eventType": "collabo-cafe",
       "workSlug": "jujutsu-kaisen"
     }
