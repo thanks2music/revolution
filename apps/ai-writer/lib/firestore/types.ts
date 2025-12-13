@@ -46,7 +46,7 @@ export type EventStatus = 'pending' | 'generated' | 'failed' | 'retryable';
  *   storeSlug: "avail",
  *   eventType: "collabo-cafe",
  *   year: 2025,
- *   postId: "01jcxy4567-2025",
+ *   postId: "01jcxy4567",
  *   status: "generated",
  *   createdAt: Timestamp.now(),
  *   updatedAt: Timestamp.now(),
@@ -85,8 +85,8 @@ export interface EventCanonicalKey {
   year: number;
 
   /**
-   * Post ID with year suffix (from ULID generation)
-   * @example "01jcxy4567-2025"
+   * Post ID (10-character ULID)
+   * @example "01jcxy4567"
    */
   postId: string;
 

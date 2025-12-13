@@ -70,8 +70,7 @@ export function generateMdxFrontmatter(
     throw new Error('Content fields (title, excerpt, categories) are required');
   }
 
-  // Note: postId already includes year suffix (e.g., "01jcxy4567-2025")
-  // from generateSlugWithYear() in event-deduplication.ts
+  // slug is the same as postId (pure 10-character ULID)
   const slug = postId;
 
   // Build frontmatter object with required fields
@@ -203,12 +202,12 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
  * Generates file path for MDX article
  *
  * @description
- * Format: content/{event-type}/{work-slug}/{slug}.mdx
- * Example: content/collabo-cafe/jujutsu-kaisen/01jcxy4567-2025.mdx
+ * Format: content/{event-type}/{work-slug}/{post-id}.mdx
+ * Example: content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx
  *
  * @param {string} eventType - Event type slug (e.g., "collabo-cafe")
  * @param {string} workSlug - Work slug (e.g., "jujutsu-kaisen")
- * @param {string} slug - Article slug (e.g., "01jcxy4567-2025")
+ * @param {string} slug - Article slug (e.g., "01jcxy4567")
  * @param {string} baseDir - Base directory (defaults to "content")
  * @returns {string} Full file path
  *
@@ -217,9 +216,9 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
  * const path = generateMdxFilePath(
  *   "collabo-cafe",
  *   "jujutsu-kaisen",
- *   "01jcxy4567-2025"
+ *   "01jcxy4567"
  * );
- * console.log(path); // "content/collabo-cafe/jujutsu-kaisen/01jcxy4567-2025.mdx"
+ * console.log(path); // "content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx"
  * ```
  */
 export function generateMdxFilePath(

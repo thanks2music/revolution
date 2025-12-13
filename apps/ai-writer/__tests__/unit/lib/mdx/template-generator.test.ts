@@ -37,7 +37,7 @@ describe('generateMdxFrontmatter', () => {
     expect(frontmatter.event_title).toBe('コラボカフェ');
     expect(frontmatter.work_title).toBe('呪術廻戦');
     expect(frontmatter.work_slug).toBe('jujutsu-kaisen');
-    expect(frontmatter.slug).toBe('01jcxy4567-2025');
+    expect(frontmatter.slug).toBe('01jcxy4567');
     expect(frontmatter.title).toBe('呪術廻戦×BOX cafe&space2025が東京・大阪で開催');
     expect(frontmatter.categories).toEqual(['呪術廻戦', 'コラボカフェ']);
     expect(frontmatter.excerpt).toBe('呪術廻戦とBOX cafe&spaceのコラボイベントが実現。');
@@ -64,9 +64,9 @@ describe('generateMdxFrontmatter', () => {
     expect(frontmatter.ogImage).toBe('/images/custom-og.png');
   });
 
-  it('should generate slug in format {postId}-{year}', () => {
+  it('should generate slug equal to postId', () => {
     const frontmatter = generateMdxFrontmatter(baseInput);
-    expect(frontmatter.slug).toBe('01jcxy4567-2025');
+    expect(frontmatter.slug).toBe('01jcxy4567');
   });
 
   it('should throw error for missing required fields', () => {
@@ -123,7 +123,7 @@ describe('serializeFrontmatter', () => {
     expect(yaml).toContain('event_title: "コラボカフェ"');
     expect(yaml).toContain('work_title: "呪術廻戦"');
     expect(yaml).toContain('work_slug: "jujutsu-kaisen"');
-    expect(yaml).toContain('slug: "01jcxy4567-2025"');
+    expect(yaml).toContain('slug: "01jcxy4567"');
   });
 
   it('should escape quotes in title and excerpt', () => {
@@ -178,26 +178,26 @@ describe('serializeFrontmatter', () => {
 
 describe('generateMdxFilePath', () => {
   it('should generate correct file path', () => {
-    const path = generateMdxFilePath('collabo-cafe', 'jujutsu-kaisen', '01jcxy4567-2025');
+    const path = generateMdxFilePath('collabo-cafe', 'jujutsu-kaisen', '01jcxy4567');
 
-    expect(path).toBe('content/collabo-cafe/jujutsu-kaisen/01jcxy4567-2025.mdx');
+    expect(path).toBe('apps/ai-writer/content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx');
   });
 
   it('should handle custom base directory', () => {
     const path = generateMdxFilePath(
       'collabo-cafe',
       'jujutsu-kaisen',
-      '01jcxy4567-2025',
+      '01jcxy4567',
       'custom-content'
     );
 
-    expect(path).toBe('custom-content/collabo-cafe/jujutsu-kaisen/01jcxy4567-2025.mdx');
+    expect(path).toBe('custom-content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx');
   });
 
   it('should handle different event types', () => {
-    const path = generateMdxFilePath('pop-up-store', 'spy-family', '01abcdefgh-2024');
+    const path = generateMdxFilePath('pop-up-store', 'spy-family', '01abcdefgh');
 
-    expect(path).toBe('content/pop-up-store/spy-family/01abcdefgh-2024.mdx');
+    expect(path).toBe('apps/ai-writer/content/pop-up-store/spy-family/01abcdefgh.mdx');
   });
 });
 
@@ -244,13 +244,13 @@ describe('generateMdxArticle', () => {
   it('should generate correct file path', () => {
     const article = generateMdxArticle(input, articleContent);
 
-    expect(article.filePath).toBe('content/collabo-cafe/jujutsu-kaisen/01jcxy4567-2025.mdx');
+    expect(article.filePath).toBe('apps/ai-writer/content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx');
   });
 
   it('should handle custom base directory', () => {
     const article = generateMdxArticle(input, articleContent, 'custom-dir');
 
-    expect(article.filePath).toBe('custom-dir/collabo-cafe/jujutsu-kaisen/01jcxy4567-2025.mdx');
+    expect(article.filePath).toBe('custom-dir/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx');
   });
 
   it('should produce valid MDX structure', () => {
@@ -346,7 +346,7 @@ describe('Integration: Full MDX Generation Flow', () => {
 
     // Validate file path structure
     expect(article.filePath).toMatch(
-      /^content\/collabo-cafe\/jujutsu-kaisen\/[0-9a-z]{10}-\d{4}\.mdx$/
+      /^apps\/ai-writer\/content\/collabo-cafe\/jujutsu-kaisen\/[0-9a-z]{10}\.mdx$/
     );
 
     // Validate content structure

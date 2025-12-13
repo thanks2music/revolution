@@ -12,7 +12,7 @@
 
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getAdminDb } from '../firebase/admin'; // Firebase Admin SDK初期化用
-import { generateSlugWithYear } from '../ulid/generate-post-id';
+import { generatePostId } from '../ulid/generate-post-id';
 import { generateCanonicalKeyFromNames } from './canonical-key';
 import type {
   EventCanonicalKey,
@@ -171,8 +171,8 @@ export async function registerNewEvent(
     eventType = result.components.eventType;
   }
 
-  // Generate post ID
-  const postId = input.postId || generateSlugWithYear(year);
+  // Generate post ID (pure ULID without year suffix)
+  const postId = input.postId || generatePostId();
 
   // Create document
   const now = Timestamp.now();

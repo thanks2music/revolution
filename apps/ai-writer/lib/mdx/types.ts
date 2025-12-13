@@ -18,10 +18,10 @@
  * Used in Next.js for static site generation
  *
  * File path structure:
- *   content/collabo-cafe/{work-slug}/{post-id}-{year}.mdx
+ *   content/collabo-cafe/{work-slug}/{post-id}.mdx
  *
  * Example file:
- *   content/collabo-cafe/jujutsu-kaisen/01jcxy4567-2025.mdx
+ *   content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx
  *
  * @example
  * ```yaml
@@ -32,7 +32,7 @@
  * event_title: "コラボカフェ"
  * work_title: "呪術廻戦"
  * work_slug: "jujutsu-kaisen"
- * slug: "01jcxy4567-2025"
+ * slug: "01jcxy4567"
  * title: "呪術廻戦×アニメイトカフェ2025が東京・大阪・福岡で開催決定"
  * date: "2025-11-19"
  * categories: ['呪術廻戦', 'コラボカフェ']
@@ -80,9 +80,8 @@ export interface MdxFrontmatter {
   work_slug: string;
 
   /**
-   * Article slug with year suffix
-   * Format: {post-id}-{year}
-   * @example "01jcxy4567-2025"
+   * Article slug (same as post_id)
+   * @example "01jcxy4567"
    */
   slug: string;
 
@@ -258,8 +257,8 @@ export interface MdxArticle {
 
   /**
    * File path for MDX file
-   * Format: content/{event-type}/{work-slug}/{slug}.mdx
-   * @example "content/collabo-cafe/jujutsu-kaisen/01jcxy4567-2025.mdx"
+   * Format: content/{event-type}/{work-slug}/{post-id}.mdx
+   * @example "content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx"
    */
   filePath: string;
 }
