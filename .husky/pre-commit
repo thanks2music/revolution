@@ -1,6 +1,14 @@
 #!/bin/sh
 
 # gitleaks でシークレットスキャン（ステージングファイルのみ）
+# CI環境など gitleaks がインストールされていない場合はスキップ
+
+# gitleaks がインストールされているか確認
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⏭️  gitleaks not found, skipping secret scan (install with: brew install gitleaks)"
+  exit 0
+fi
+
 echo "🔍 Scanning staged files for secrets..."
 
 if ! gitleaks protect --staged --config .gitleaks.toml; then
