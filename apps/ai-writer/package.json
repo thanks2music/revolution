@@ -51,7 +51,7 @@
     "graphql-tag": "^2.12.6",
     "jose": "^6.1.0",
     "js-yaml": "^4.1.1",
-    "lucide-react": "^0.544.0",
+    "lucide-react": "^0.561.0",
     "next": "^15.5.9",
     "openai": "^6.9.1",
     "pino": "^9.11.0",
