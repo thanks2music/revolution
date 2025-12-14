@@ -31,10 +31,10 @@ async function testSlugGeneration() {
   };
 
     const testTitles = [
-      '呪術廻戦',
-      '魔法少女まどか☆マギカ',
-      '鬼滅の刃',
-      'Attack on Titan'
+      '作品名A',
+      '作品名B',
+      '架空作品C',
+      'Sample Title'
     ];
 
     for (const title of testTitles) {

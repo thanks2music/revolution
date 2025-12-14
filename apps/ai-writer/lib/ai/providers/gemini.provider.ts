@@ -115,9 +115,9 @@ export class GeminiProvider implements AiProvider {
   /**
    * Generate URL-friendly slug from text (typically Japanese)
    *
-   * @param title - Text to convert to slug (e.g., "呪術廻戦")
+   * @param title - Text to convert to slug (e.g., "作品名")
    * @param context - Optional context hint (e.g., "anime title")
-   * @returns URL-friendly slug (e.g., "jujutsu-kaisen")
+   * @returns URL-friendly slug (e.g., "sample-work")
    */
   async generateSlug(title: string, context?: string): Promise<string> {
     const prompt = `Convert the following Japanese title to a URL-friendly slug (lowercase alphanumeric characters and hyphens only).
@@ -135,9 +135,10 @@ Requirements:
 Output format: Return ONLY the slug, nothing else. Do NOT include markdown formatting, code blocks, or explanations.
 
 Examples:
-- 魔法少女まどか☆マギカ → madoka-magica
-- 呪術廻戦 → jujutsu-kaisen
-- 鬼滅の刃 → kimetsu-no-yaiba
+ - 呪術廻戦 → jujutsu-kaisen
+ - チェンソーマン → chainsaw-man
+ - 鬼滅の刃 → kimetsu-no-yaiba
+ - ハイキュー!! → haikyu
 
 Slug:`;
 

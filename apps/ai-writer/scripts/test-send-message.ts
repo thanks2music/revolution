@@ -45,7 +45,7 @@ async function main() {
     console.log('📝 Test 1: Basic Text Response');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    const textPrompt = '「呪術廻戦」をURL-friendlyな英語スラグに変換してください。スラグのみを出力し、説明は不要です。';
+    const textPrompt = '「作品名」をURL-friendlyな英語スラグに変換してください。スラグのみを出力し、説明は不要です。';
     console.log(`Prompt: "${textPrompt}"`);
 
     const textResult = await aiProvider.sendMessage(textPrompt, {
@@ -68,7 +68,7 @@ async function main() {
 
     const jsonPrompt = `以下のテキストからカテゴリを抽出してください。
 
-テキスト: 呪術廻戦とコラボカフェが東京で開催
+テキスト: 作品名とコラボカフェが東京で開催
 
 JSON形式でのみ出力してください:
 {

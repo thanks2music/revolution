@@ -70,9 +70,9 @@ export interface TokenUsage {
  * RSS extraction result
  */
 export interface RssExtractionResult {
-  /** Extracted work title (e.g., "呪術廻戦") */
+  /** Extracted work title (e.g., "作品名") */
   workTitle: string;
-  /** Extracted store/brand name (e.g., "BOX cafe&space") */
+  /** Extracted store/brand name (e.g., "店舗名") */
   storeName: string;
   /** Extracted event type name (e.g., "コラボカフェ") */
   eventTypeName: string;
@@ -147,9 +147,9 @@ export interface AiProvider {
   /**
    * Generate URL-friendly slug from text (typically Japanese)
    *
-   * @param title - Text to convert to slug (e.g., "呪術廻戦")
+   * @param title - Text to convert to slug (e.g., "作品名")
    * @param context - Optional context hint (e.g., "anime title")
-   * @returns URL-friendly slug (e.g., "jujutsu-kaisen")
+   * @returns URL-friendly slug (e.g., "sample-work")
    */
   generateSlug(title: string, context?: string): Promise<string>;
 

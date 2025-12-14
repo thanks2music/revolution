@@ -21,7 +21,7 @@
  *   content/collabo-cafe/{work-slug}/{post-id}.mdx
  *
  * Example file:
- *   content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx
+ *   content/collabo-cafe/sample-work/01jcxy4567.mdx
  *
  * @example
  * ```yaml
@@ -30,13 +30,13 @@
  * year: 2025
  * event_type: "collabo-cafe"
  * event_title: "コラボカフェ"
- * work_title: "呪術廻戦"
- * work_slug: "jujutsu-kaisen"
+ * work_title: "作品名"
+ * work_slug: "work-slug"
  * slug: "01jcxy4567"
- * title: "呪術廻戦×アニメイトカフェ2025が東京・大阪・福岡で開催決定"
+ * title: "作品名×店舗名2025が東京・大阪・福岡で開催決定"
  * date: "2025-11-19"
- * categories: ['呪術廻戦', 'コラボカフェ']
- * excerpt: "呪術廻戦とアニメイトカフェのコラボイベントが2025年12月25日から..."
+ * categories: ['作品名', 'カテゴリ名']
+ * excerpt: "作品名と店舗名のコラボイベントが2025年12月25日から..."
  * author: "thanks2music"
  * ogImage: "/images/og-image-compressed.png"
  * ---
@@ -69,13 +69,13 @@ export interface MdxFrontmatter {
 
   /**
    * Work title (Japanese)
-   * @example "呪術廻戦"
+   * @example "作品名"
    */
   work_title: string;
 
   /**
    * Work slug (romanized)
-   * @example "jujutsu-kaisen"
+   * @example "work-slug"
    */
   work_slug: string;
 
@@ -87,7 +87,7 @@ export interface MdxFrontmatter {
 
   /**
    * Article title (SEO-optimized)
-   * @example "呪術廻戦×アニメイトカフェ2025が東京・大阪・福岡で開催決定"
+   * @example "作品名×店舗名2025が東京・大阪・福岡で開催決定"
    */
   title: string;
 
@@ -99,13 +99,13 @@ export interface MdxFrontmatter {
 
   /**
    * Categories for taxonomy
-   * @example ['呪術廻戦', 'コラボカフェ']
+   * @example ['作品名', 'カテゴリ名']
    */
   categories: string[];
 
   /**
    * Article excerpt/summary for SEO and previews
-   * @example "呪術廻戦とアニメイトカフェのコラボイベントが..."
+   * @example "作品名と店舗名のコラボイベントが..."
    */
   excerpt: string;
 
@@ -153,7 +153,7 @@ export interface MdxFrontmatter {
    * Optional: SEO tags (将来拡張用)
    * カテゴリとは別に、検索・フィルタリング用の補助キーワード
    * @see taxonomy.yaml tag_rules
-   * @example ['アニメ', 'アニメイトカフェ', '芥見下々']
+   * @example ['アニメ', '店舗名', '作者名']
    */
   tags?: string[];
 }
@@ -236,7 +236,7 @@ export interface GenerateMdxFrontmatterInput {
 
   /**
    * Optional: SEO tags (将来拡張用)
-   * @example ['アニメ', 'アニメイトカフェ']
+   * @example ['アニメ', '店舗名']
    */
   tags?: string[];
 }
@@ -258,7 +258,7 @@ export interface MdxArticle {
   /**
    * File path for MDX file
    * Format: content/{event-type}/{work-slug}/{post-id}.mdx
-   * @example "content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx"
+   * @example "content/collabo-cafe/sample-work/01jcxy4567.mdx"
    */
   filePath: string;
 }

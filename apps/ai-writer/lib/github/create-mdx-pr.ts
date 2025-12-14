@@ -35,7 +35,7 @@ export interface CreateMdxPrParams {
   mdxContent: string;
 
   /**
-   * ファイルパス (例: content/collabo-cafe/jujutsu-kaisen/01kaek3mh9.mdx)
+   * ファイルパス (例: content/collabo-cafe/sample-work/01kaek3mh9.mdx)
    */
   filePath: string;
 
@@ -50,7 +50,7 @@ export interface CreateMdxPrParams {
   body: string;
 
   /**
-   * ブランチ名 (例: content/mdx-jujutsu-kaisen-01kaek3mh9)
+   * ブランチ名 (例: content/mdx-sample-work-01kaek3mh9)
    */
   branchName: string;
 
@@ -163,19 +163,19 @@ async function checkDuplicateOpenPr(branchName: string): Promise<boolean> {
  * @example
  * ```typescript
  * const result = await createMdxPr({
- *   mdxContent: '---\nslug: jujutsu-kaisen-cafe-2025\n...',
- *   filePath: 'content/collabo-cafe/jujutsu-kaisen/01kaek3mh9.mdx',
+ *   mdxContent: '---\nslug: sample-work-cafe-2025\n...',
+ *   filePath: 'content/collabo-cafe/sample-work/01kaek3mh9.mdx',
  *   title: '✨ Generate MDX (AI Writer): ${extraction.eventTypeName}/${eventRecord.postId}`',
  *   body: '## 概要\nAI Writerが自動生成した記事です...',
- *   branchName: 'content/mdx-jujutsu-kaisen-01kaek3mh9',
+ *   branchName: 'content/mdx-sample-work-01kaek3mh9',
  *   context: {
- *     workTitle: '呪術廻戦',
- *     storeName: 'アニメイトカフェ',
+ *     workTitle: '作品名',
+ *     storeName: '店舗名',
  *     eventTypeName: 'コラボカフェ',
  *     year: 2025,
  *     postId: '01kaek3mh9',
- *     workSlug: 'jujutsu-kaisen',
- *     canonicalKey: 'jujutsu-kaisen:animate-cafe:collabo-cafe:2025'
+ *     workSlug: 'sample-work',
+ *     canonicalKey: 'sample-work:animate-cafe:collabo-cafe:2025'
  *   }
  * });
  *

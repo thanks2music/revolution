@@ -35,8 +35,8 @@ import { FIRESTORE_COLLECTIONS } from './types';
  * @example
  * ```typescript
  * const result = await checkEventDuplication({
- *   workTitle: "呪術廻戦",
- *   storeName: "BOX cafe&space",
+ *   workTitle: "作品名",
+ *   storeName: "店舗名",
  *   eventTypeName: "コラボカフェ",
  *   year: 2025
  * });
@@ -112,12 +112,12 @@ export async function checkEventDuplication(
  * @example
  * ```typescript
  * const doc = await registerNewEvent({
- *   workTitle: "呪術廻戦",
- *   storeName: "BOX cafe&space",
+ *   workTitle: "作品名",
+ *   storeName: "店舗名",
  *   eventTypeName: "コラボカフェ",
  *   year: 2025
  * });
- * console.log(doc.canonicalKey); // "jujutsu-kaisen:avail:collabo-cafe:2025"
+ * console.log(doc.canonicalKey); // "sample-work:avail:collabo-cafe:2025"
  * console.log(doc.status); // "pending"
  * ```
  *
@@ -215,13 +215,13 @@ export async function registerNewEvent(
  * ```typescript
  * // Mark as successfully generated
  * await updateEventStatus(
- *   "jujutsu-kaisen:avail:collabo-cafe:2025",
+ *   "sample-work:avail:collabo-cafe:2025",
  *   "generated"
  * );
  *
  * // Mark as failed with error message
  * await updateEventStatus(
- *   "jujutsu-kaisen:avail:collabo-cafe:2025",
+ *   "sample-work:avail:collabo-cafe:2025",
  *   "failed",
  *   "Claude API timeout"
  * );
@@ -262,7 +262,7 @@ export async function updateEventStatus(
  * @example
  * ```typescript
  * const retryCount = await incrementRetryCount(
- *   "jujutsu-kaisen:avail:collabo-cafe:2025",
+ *   "sample-work:avail:collabo-cafe:2025",
  *   "Network timeout"
  * );
  * console.log(`Retry count: ${retryCount}`);
@@ -303,7 +303,7 @@ export async function incrementRetryCount(
  * @example
  * ```typescript
  * const event = await getEventByCanonicalKey(
- *   "jujutsu-kaisen:avail:collabo-cafe:2025"
+ *   "sample-work:avail:collabo-cafe:2025"
  * );
  * if (event) {
  *   console.log(event.status);
@@ -333,7 +333,7 @@ export async function getEventByCanonicalKey(
  *
  * @example
  * ```typescript
- * await deleteEvent("jujutsu-kaisen:avail:collabo-cafe:2025");
+ * await deleteEvent("sample-work:avail:collabo-cafe:2025");
  * ```
  *
  * @internal Use only for testing or manual cleanup

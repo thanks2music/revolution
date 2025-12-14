@@ -31,11 +31,11 @@ import { MDX_DEFAULTS } from './types';
  *   year: 2025,
  *   eventType: "collabo-cafe",
  *   eventTitle: "コラボカフェ",
- *   workTitle: "呪術廻戦",
- *   workSlug: "jujutsu-kaisen",
- *   title: "呪術廻戦×アニメイトカフェ2025が東京で開催",
- *   excerpt: "呪術廻戦とアニメイトカフェのコラボが実現...",
- *   categories: ['呪術廻戦', 'コラボカフェ']
+ *   workTitle: "作品名",
+ *   workSlug: "work-slug",
+ *   title: "作品名×店舗名2025が東京で開催",
+ *   excerpt: "作品名と店舗名のコラボが実現...",
+ *   categories: ['作品名', 'カテゴリ名']
  * });
  * ```
  */
@@ -203,10 +203,10 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
  *
  * @description
  * Format: content/{event-type}/{work-slug}/{post-id}.mdx
- * Example: content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx
+ * Example: content/collabo-cafe/sample-work/01jcxy4567.mdx
  *
  * @param {string} eventType - Event type slug (e.g., "collabo-cafe")
- * @param {string} workSlug - Work slug (e.g., "jujutsu-kaisen")
+ * @param {string} workSlug - Work slug (e.g., "sample-work")
  * @param {string} slug - Article slug (e.g., "01jcxy4567")
  * @param {string} baseDir - Base directory (defaults to "content")
  * @returns {string} Full file path
@@ -215,10 +215,10 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
  * ```typescript
  * const path = generateMdxFilePath(
  *   "collabo-cafe",
- *   "jujutsu-kaisen",
+ *   "sample-work",
  *   "01jcxy4567"
  * );
- * console.log(path); // "content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx"
+ * console.log(path); // "content/collabo-cafe/sample-work/01jcxy4567.mdx"
  * ```
  */
 export function generateMdxFilePath(
@@ -246,13 +246,13 @@ export function generateMdxFilePath(
  *     year: 2025,
  *     eventType: "collabo-cafe",
  *     eventTitle: "コラボカフェ",
- *     workTitle: "呪術廻戦",
- *     workSlug: "jujutsu-kaisen",
- *     title: "呪術廻戦×アニメイトカフェ2025",
+ *     workTitle: "作品名",
+ *     workSlug: "work-slug",
+ *     title: "作品名×店舗名2025",
  *     excerpt: "...",
- *     categories: ['呪術廻戦', 'コラボカフェ']
- *   },
- *   "## イベント概要\n\n呪術廻戦とアニメイトカフェのコラボが実現..."
+ *     categories: ['作品名', 'カテゴリ名']
+  *   },
+ *   "## イベント概要\n\n作品名と店舗名のコラボが実現..."
  * );
  *
  * console.log(article.filePath);

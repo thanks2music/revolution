@@ -26,7 +26,7 @@ describe('generateArticleMetadata', () => {
   const baseInput: GenerateMetadataInput = {
     content: `## イベント概要
 
-呪術廻戦とBOX cafe&spaceのコラボイベントが開催されます。
+作品名と店舗名のコラボイベントが開催されます。
 
 ## 開催期間
 
@@ -34,11 +34,11 @@ describe('generateArticleMetadata', () => {
 
 ## メニュー
 
-- 虎杖悠仁のカツ丼
-- 伏黒恵のおにぎりセット
-- 釘崎野薔薇のデザート`,
-    title: '呪術廻戦×BOX cafe&space2025が東京・大阪で開催',
-    workTitle: '呪術廻戦',
+- 主人公をイメージしたフード
+- キャラクターをイメージしたドリンク
+- 世界観に合わせたデザート`,
+    title: '作品名×店舗名2025が東京・大阪で開催',
+    workTitle: '作品名',
     eventType: 'コラボカフェ',
   };
 

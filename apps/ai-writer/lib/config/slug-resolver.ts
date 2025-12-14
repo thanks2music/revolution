@@ -23,16 +23,16 @@ import type { CostTrackerService } from '@/lib/ai/cost';
  * If not found in YAML, uses fallback chain: Claude API → ASCII slugify
  * Used for URL construction: /collabo-cafe/{work-slug}/...
  *
- * @param {string} japaneseTitle - Japanese title (e.g., "呪術廻戦")
+ * @param {string} japaneseTitle - Japanese title (e.g., "作品名")
  * @param {boolean} enableFallback - Enable fallback to Claude API + ASCII (default: true)
  * @param {CostTrackerService} costTracker - Optional cost tracker for recording API usage
- * @returns {Promise<string | null>} Romaji slug (e.g., "jujutsu-kaisen") or null if not found and fallback disabled
+ * @returns {Promise<string | null>} Romaji slug (e.g., "sample-work") or null if not found and fallback disabled
  *
  * @example
  * ```typescript
  * // With YAML match
- * const slug = await resolveWorkSlug("呪術廻戦");
- * console.log(slug); // "jujutsu-kaisen" (from YAML)
+ * const slug = await resolveWorkSlug("作品名");
+ * console.log(slug); // "work-slug" (from YAML)
  *
  * // Without YAML match, fallback to Claude
  * const slug2 = await resolveWorkSlug("新作アニメ");
@@ -333,7 +333,7 @@ export function resolveCitySlug(cityName: string): string | null {
  * @example
  * ```typescript
  * const titles = getAllWorkTitles();
- * console.log(titles); // ["呪術廻戦", "SPY×FAMILY", ...]
+ * console.log(titles); // ["作品名", "別作品", ...]
  * ```
  */
 export function getAllWorkTitles(): string[] {
@@ -406,7 +406,7 @@ export function getAllPrefectureNames(): string[] {
  *
  * @example
  * ```typescript
- * console.log(isValidWorkTitle("呪術廻戦")); // true
+ * console.log(isValidWorkTitle("作品名")); // true
  * console.log(isValidWorkTitle("Unknown")); // false
  * ```
  */

@@ -19,8 +19,8 @@
  * @example
  * ```yaml
  * titles:
- *   "呪術廻戦": jujutsu-kaisen
- *   "SPY×FAMILY": spy-family
+ *   "作品名": work-slug
+ *   "作品別カテゴリ": work-category-slug
  * ```
  */
 export interface TitleRomajiMapping {

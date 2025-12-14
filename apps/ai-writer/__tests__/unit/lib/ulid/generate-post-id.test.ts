@@ -135,7 +135,7 @@ describe('Integration: Real-world usage scenarios', () => {
 
   it('should work in canonical key generation scenario', () => {
     // Simulate generating canonicalKey components
-    const workSlug = 'jujutsu-kaisen';
+    const workSlug = 'sample-work';
     const storeSlug = 'animate-cafe';
     const eventType = 'collabo-cafe';
     const year = 2025;
@@ -145,7 +145,7 @@ describe('Integration: Real-world usage scenarios', () => {
     // Canonical key format: workSlug:storeSlug:eventType:year
     const canonicalKey = `${workSlug}:${storeSlug}:${eventType}:${year}`;
 
-    expect(canonicalKey).toBe('jujutsu-kaisen:animate-cafe:collabo-cafe:2025');
+    expect(canonicalKey).toBe('sample-work:animate-cafe:collabo-cafe:2025');
     expect(isValidPostId(postId)).toBe(true);
   });
 });

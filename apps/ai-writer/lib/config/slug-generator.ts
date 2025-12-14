@@ -20,15 +20,15 @@ import type { CostTrackerService } from '@/lib/ai/cost';
 /**
  * Generate URL-friendly slug from Japanese text using AI API
  *
- * @param japaneseText - Japanese text (e.g., "呪術廻戦", "BOX cafe&space")
+ * @param japaneseText - Japanese text (e.g., "作品名", "店舗名")
  * @param context - Context hint for AI (e.g., "anime title", "cafe name")
  * @param costTracker - Optional cost tracker for recording API usage
- * @returns URL-friendly slug (e.g., "jujutsu-kaisen", "box-cafe-and-space")
+ * @returns URL-friendly slug (e.g., "work-slug", "store-slug")
  *
  * @example
  * ```typescript
- * const slug = await generateSlugWithAI("呪術廻戦", "anime title");
- * console.log(slug); // "jujutsu-kaisen"
+ * const slug = await generateSlugWithAI("作品名", "anime title");
+ * console.log(slug); // "work-slug"
  * ```
  */
 export async function generateSlugWithAI(
@@ -56,8 +56,8 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 スラグのみを出力してください。説明は不要です。
 
 例:
-- 入力: "呪術廻戦" → 出力: "jujutsu-kaisen"
-- 入力: "BOX cafe&space" → 出力: "box-cafe-and-space"
+- 入力: "作品名" → 出力: "work-slug"
+- 入力: "店舗名" → 出力: "store-slug"
 - 入力: "アベイル" → 出力: "avail"`;
 
   // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
@@ -137,8 +137,8 @@ export function generateAsciiSlug(text: string): string {
  *
  * @example
  * ```typescript
- * const slug = await generateSlugWithFallback("呪術廻戦", "anime title");
- * console.log(slug); // "jujutsu-kaisen" (from AI API)
+ * const slug = await generateSlugWithFallback("作品名", "anime title");
+ * console.log(slug); // "work-slug" (from AI API)
  * ```
  */
 export async function generateSlugWithFallback(

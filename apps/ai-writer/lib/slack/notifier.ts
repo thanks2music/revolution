@@ -229,10 +229,10 @@ function getSlackWebhookUrl(): string {
  *   error: new Error('GitHub API rate limit exceeded'),
  *   context: {
  *     postId: '01kaek3mh9',
- *     workSlug: 'jujutsu-kaisen',
- *     title: '呪術廻戦×アニメイトカフェ2025',
- *     branchName: 'content/mdx-jujutsu-kaisen-01kaek3mh9',
- *     filePath: 'content/collabo-cafe/jujutsu-kaisen/01kaek3mh9.mdx'
+ *     workSlug: 'sample-work',
+ *     title: '作品名×店舗名2025',
+ *     branchName: 'content/mdx-sample-work-01kaek3mh9',
+ *     filePath: 'content/collabo-cafe/sample-work/01kaek3mh9.mdx'
  *   }
  * });
  * ```

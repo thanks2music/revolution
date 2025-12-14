@@ -30,14 +30,14 @@ import { METADATA_DEFAULTS } from './types';
  * @example
  * ```typescript
  * const metadata = await generateArticleMetadata({
- *   content: "## イベント概要\n\n呪術廻戦とBOX cafe&spaceのコラボ...",
- *   title: "呪術廻戦×BOX cafe&space2025が東京で開催",
- *   workTitle: "呪術廻戦",
+ *   content: "## イベント概要\n\n作品名と店舗名のコラボイベント概要...",
+ *   title: "作品名×店舗名2025が東京で開催",
+ *   workTitle: "作品名",
  *   eventType: "コラボカフェ"
  * });
  *
- * console.log(metadata.categories); // ['呪術廻戦', 'コラボカフェ']
- * console.log(metadata.excerpt);    // "呪術廻戦とBOX cafe&spaceのコラボイベントが..."
+ * console.log(metadata.categories); // ['作品名', 'カテゴリ名']
+ * console.log(metadata.excerpt);    // "作品名と店舗名のコラボイベントが..."
  * ```
  */
 export async function generateArticleMetadata(

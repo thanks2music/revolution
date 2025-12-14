@@ -27,7 +27,7 @@ export interface GenerateMetadataInput {
   title: string;
 
   /**
-   * Work title (Japanese, e.g., "呪術廻戦")
+   * Work title (Japanese, e.g., "作品名")
    * Used as context for category generation
    */
   workTitle: string;
@@ -64,13 +64,13 @@ export interface TokenUsage {
 export interface ArticleMetadata {
   /**
    * Categories for taxonomy
-   * @example ['呪術廻戦', 'コラボカフェ']
+   * @example ['作品名', 'カテゴリ名']
    */
   categories: string[];
 
   /**
    * Article excerpt/summary for SEO
-   * @example "呪術廻戦とBOX cafe&spaceのコラボイベントが2025年12月25日から開催されます。"
+   * @example "作品名と店舗名のコラボイベントが2025年12月25日から開催されます。"
    */
   excerpt: string;
 

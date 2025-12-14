@@ -23,7 +23,7 @@ const REPO_CONFIG = {
  *
  * @example
  * ```typescript
- * const hasOpenPr = await checkOpenPrByCanonicalKey("jujutsu-kaisen:avail:collabo-cafe:2025");
+ * const hasOpenPr = await checkOpenPrByCanonicalKey("sample-work:avail:collabo-cafe:2025");
  * if (hasOpenPr) {
  *   console.log("Open PR exists");
  * }
@@ -54,7 +54,7 @@ export async function checkOpenPrByCanonicalKey(canonicalKey: string): Promise<b
  *
  * @example
  * ```typescript
- * const status = await getPrStatusByCanonicalKey("jujutsu-kaisen:avail:collabo-cafe:2025");
+ * const status = await getPrStatusByCanonicalKey("sample-work:avail:collabo-cafe:2025");
  * if (status.hasClosedPr && !status.hasOpenPr) {
  *   console.log("PR was closed, allowing regeneration");
  * }

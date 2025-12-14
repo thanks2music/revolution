@@ -73,7 +73,7 @@ export class ConfigLoaderService {
 
   /**
    * 店舗名からスラッグを解決
-   * @param storeName 店舗名（例: "BOX cafe&space"）
+   * @param storeName 店舗名（例: "店舗名"）
    * @returns スラッグ（例: "box-cafe-and-space"）、見つからない場合はnull
    */
   async resolveStoreSlug(storeName: string): Promise<string | null> {

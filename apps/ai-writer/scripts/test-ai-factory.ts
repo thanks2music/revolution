@@ -51,7 +51,7 @@ async function main() {
 
     // Test 2: Slug Generation
     console.log('🔤 Test 2: Slug Generation');
-    const testTitle = '呪術廻戦';
+    const testTitle = '作品名';
     console.log(`Input: "${testTitle}"`);
     const slug = await aiProvider.generateSlug(testTitle);
     console.log(`Result: "${slug}"\n`);

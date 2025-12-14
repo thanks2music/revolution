@@ -31,7 +31,7 @@ export type EventStatus = 'pending' | 'generated' | 'failed' | 'retryable';
  * Firestore document structure for event deduplication
  *
  * Collection: `event_canonical_keys`
- * Document ID: canonicalKey (e.g., "jujutsu-kaisen:avail:collabo-cafe:2025")
+ * Document ID: canonicalKey (e.g., "sample-work:avail:collabo-cafe:2025")
  *
  * Purpose:
  * - Prevent duplicate article generation for the same event
@@ -41,8 +41,8 @@ export type EventStatus = 'pending' | 'generated' | 'failed' | 'retryable';
  * @example
  * ```typescript
  * const doc: EventCanonicalKey = {
- *   canonicalKey: "jujutsu-kaisen:avail:collabo-cafe:2025",
- *   workSlug: "jujutsu-kaisen",
+ *   canonicalKey: "sample-work:avail:collabo-cafe:2025",
+ *   workSlug: "sample-work",
  *   storeSlug: "avail",
  *   eventType: "collabo-cafe",
  *   year: 2025,
@@ -56,13 +56,13 @@ export type EventStatus = 'pending' | 'generated' | 'failed' | 'retryable';
 export interface EventCanonicalKey {
   /**
    * Canonical key format: {workSlug}:{storeSlug}:{eventType}:{year}
-   * @example "jujutsu-kaisen:avail:collabo-cafe:2025"
+   * @example "sample-work:avail:collabo-cafe:2025"
    */
   canonicalKey: string;
 
   /**
    * Work slug (romanized anime/manga title)
-   * @example "jujutsu-kaisen"
+   * @example "sample-work"
    */
   workSlug: string;
 
@@ -126,7 +126,7 @@ export interface EventCanonicalKey {
  * @example
  * ```typescript
  * const resolvedSlugs: ResolvedSlugs = {
- *   workSlug: "jujutsu-kaisen",
+ *   workSlug: "sample-work",
  *   storeSlug: "avail",
  *   eventType: "collabo-cafe"
  * };
@@ -135,7 +135,7 @@ export interface EventCanonicalKey {
 export interface ResolvedSlugs {
   /**
    * Work slug (romanized anime/manga title)
-   * @example "jujutsu-kaisen"
+   * @example "sample-work"
    */
   workSlug: string;
 
@@ -157,12 +157,12 @@ export interface ResolvedSlugs {
  */
 export interface CreateEventCanonicalKeyInput {
   /**
-   * Work title in Japanese (e.g., "呪術廻戦")
+   * Work title in Japanese (e.g., "作品名")
    */
   workTitle: string;
 
   /**
-   * Store/brand name in Japanese (e.g., "アニメイトカフェ")
+   * Store/brand name in Japanese (e.g., "店舗名")
    */
   storeName: string;
 

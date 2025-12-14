@@ -37,12 +37,12 @@ export type { RssExtractionInput, RssExtractionResult };
  * ```typescript
  * // Using default provider (based on AI_PROVIDER env var)
  * const result = await extractFromRss({
- *   title: "呪術廻戦×BOX cafe&space2025が開催",
+ *   title: "作品名×店舗名2025が開催",
  *   content: "今年も「渋谷事変」のコラボレーションカフェが開催決定..."
  * });
  *
- * console.log(result.workTitle); // "呪術廻戦"
- * console.log(result.storeName); // "BOX cafe&space"
+ * console.log(result.workTitle); // "作品名"
+ * console.log(result.storeName); // "店舗名"
  * console.log(result.eventTypeName); // "コラボカフェ"
  * ```
  */

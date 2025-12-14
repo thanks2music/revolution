@@ -27,9 +27,9 @@ describe('resolveWorkSlug', () => {
   });
 
   it('should resolve Japanese title to romaji slug', () => {
-    expect(resolveWorkSlug('呪術廻戦')).toBe('jujutsu-kaisen');
-    expect(resolveWorkSlug('SPY×FAMILY')).toBe('spy-family');
-    expect(resolveWorkSlug('鬼滅の刃')).toBe('kimetsu-no-yaiba');
+    expect(resolveWorkSlug('作品名A')).toBe('work-a');
+    expect(resolveWorkSlug('作品名B')).toBe('work-b');
+    expect(resolveWorkSlug('作品名C')).toBe('work-c');
   });
 
   it('should return null for unknown title', () => {
@@ -37,8 +37,8 @@ describe('resolveWorkSlug', () => {
   });
 
   it('should handle exact match only (case sensitive)', () => {
-    expect(resolveWorkSlug('呪術廻戦')).toBe('jujutsu-kaisen');
-    expect(resolveWorkSlug('呪術回戦')).toBeNull(); // Different kanji
+    expect(resolveWorkSlug('作品名A')).toBe('work-a');
+    expect(resolveWorkSlug('作品名a')).toBeNull(); // Different casing
   });
 });
 
@@ -144,8 +144,8 @@ describe('getAllWorkTitles', () => {
 
     expect(Array.isArray(titles)).toBe(true);
     expect(titles.length).toBeGreaterThan(0);
-    expect(titles).toContain('呪術廻戦');
-    expect(titles).toContain('SPY×FAMILY');
+    expect(titles).toContain('作品名A');
+    expect(titles).toContain('作品名B');
   });
 
   it('should return consistent results on multiple calls', () => {
@@ -208,8 +208,8 @@ describe('isValidWorkTitle', () => {
   });
 
   it('should return true for valid titles', () => {
-    expect(isValidWorkTitle('呪術廻戦')).toBe(true);
-    expect(isValidWorkTitle('SPY×FAMILY')).toBe(true);
+    expect(isValidWorkTitle('作品名A')).toBe(true);
+    expect(isValidWorkTitle('作品名B')).toBe(true);
   });
 
   it('should return false for invalid titles', () => {
@@ -254,21 +254,21 @@ describe('Integration: Canonical Key Generation', () => {
   });
 
   it('should generate canonical key components correctly', () => {
-    const workSlug = resolveWorkSlug('呪術廻戦');
+    const workSlug = resolveWorkSlug('作品名A');
     const storeSlug = resolveStoreSlug('アベイル');
     const eventType = resolveEventTypeSlug('コラボカフェ');
     const year = 2025;
 
-    expect(workSlug).toBe('jujutsu-kaisen');
+    expect(workSlug).toBe('work-a');
     expect(storeSlug).toBe('avail');
     expect(eventType).toBe('collabo-cafe');
 
     const canonicalKey = `${workSlug}:${storeSlug}:${eventType}:${year}`;
-    expect(canonicalKey).toBe('jujutsu-kaisen:avail:collabo-cafe:2025');
+    expect(canonicalKey).toBe('work-a:avail:collabo-cafe:2025');
   });
 
   it('should handle synonym event types in canonical key', () => {
-    const workSlug = resolveWorkSlug('呪術廻戦');
+    const workSlug = resolveWorkSlug('作品名A');
     const storeSlug = resolveStoreSlug('しまむら');
     const eventType1 = resolveEventTypeSlug('コラボカフェ');
     const eventType2 = resolveEventTypeSlug('カフェコラボ'); // Synonym
@@ -279,7 +279,7 @@ describe('Integration: Canonical Key Generation', () => {
 
     // Both synonyms should produce the same canonical key
     expect(key1).toBe(key2);
-    expect(key1).toBe('jujutsu-kaisen:shimamura:collabo-cafe:2025');
+    expect(key1).toBe('work-a:shimamura:collabo-cafe:2025');
   });
 });
 
@@ -288,23 +288,23 @@ describe('Caching behavior', () => {
     clearConfigCache();
 
     // First call loads from file
-    const slug1 = resolveWorkSlug('呪術廻戦');
+    const slug1 = resolveWorkSlug('作品名A');
 
     // Second call should use cache
-    const slug2 = resolveWorkSlug('呪術廻戦');
+    const slug2 = resolveWorkSlug('作品名A');
 
     expect(slug1).toBe(slug2);
-    expect(slug1).toBe('jujutsu-kaisen');
+    expect(slug1).toBe('work-a');
   });
 
   it('should reload after cache clear', () => {
-    const slug1 = resolveWorkSlug('呪術廻戦');
+    const slug1 = resolveWorkSlug('作品名A');
 
     clearConfigCache('TITLE_ROMAJI');
 
-    const slug2 = resolveWorkSlug('呪術廻戦');
+    const slug2 = resolveWorkSlug('作品名A');
 
     expect(slug1).toBe(slug2);
-    expect(slug1).toBe('jujutsu-kaisen');
+    expect(slug1).toBe('work-a');
   });
 });

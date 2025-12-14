@@ -59,7 +59,7 @@ if (isMdxMode()) {
 
 形式: `${workSlug}:${storeSlug}:${eventType}:${year}`
 
-例: `jujutsu-kaisen:box-cafe-and-space:collabo-cafe:2025`
+例: `sample-work:box-cafe-and-space:collabo-cafe:2025`
 
 ## 環境変数
 

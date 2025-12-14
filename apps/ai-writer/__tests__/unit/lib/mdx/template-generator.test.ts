@@ -21,11 +21,11 @@ describe('generateMdxFrontmatter', () => {
     year: 2025,
     eventType: 'collabo-cafe',
     eventTitle: 'コラボカフェ',
-    workTitle: '呪術廻戦',
-    workSlug: 'jujutsu-kaisen',
-    title: '呪術廻戦×BOX cafe&space2025が東京・大阪で開催',
-    excerpt: '呪術廻戦とBOX cafe&spaceのコラボイベントが実現。',
-    categories: ['呪術廻戦', 'コラボカフェ'],
+    workTitle: '作品名',
+    workSlug: 'sample-work',
+    title: '作品名×店舗名2025が東京・大阪で開催',
+    excerpt: '作品名と店舗名のコラボイベントが実現。',
+    categories: ['作品名', 'コラボカフェ'],
   };
 
   it('should generate valid frontmatter with required fields', () => {
@@ -35,12 +35,12 @@ describe('generateMdxFrontmatter', () => {
     expect(frontmatter.year).toBe(2025);
     expect(frontmatter.event_type).toBe('collabo-cafe');
     expect(frontmatter.event_title).toBe('コラボカフェ');
-    expect(frontmatter.work_title).toBe('呪術廻戦');
-    expect(frontmatter.work_slug).toBe('jujutsu-kaisen');
+    expect(frontmatter.work_title).toBe('作品名');
+    expect(frontmatter.work_slug).toBe('sample-work');
     expect(frontmatter.slug).toBe('01jcxy4567');
-    expect(frontmatter.title).toBe('呪術廻戦×BOX cafe&space2025が東京・大阪で開催');
-    expect(frontmatter.categories).toEqual(['呪術廻戦', 'コラボカフェ']);
-    expect(frontmatter.excerpt).toBe('呪術廻戦とBOX cafe&spaceのコラボイベントが実現。');
+    expect(frontmatter.title).toBe('作品名×店舗名2025が東京・大阪で開催');
+    expect(frontmatter.categories).toEqual(['作品名', 'コラボカフェ']);
+    expect(frontmatter.excerpt).toBe('作品名と店舗名のコラボイベントが実現。');
   });
 
   it('should use default values for optional fields', () => {
@@ -105,11 +105,11 @@ describe('serializeFrontmatter', () => {
     year: 2025,
     eventType: 'collabo-cafe',
     eventTitle: 'コラボカフェ',
-    workTitle: '呪術廻戦',
-    workSlug: 'jujutsu-kaisen',
-    title: '呪術廻戦×BOX cafe&space2025',
+    workTitle: '作品名',
+    workSlug: 'sample-work',
+    title: '作品名×店舗名2025',
     excerpt: 'テスト記事の概要です。',
-    categories: ['呪術廻戦', 'コラボカフェ'],
+    categories: ['作品名', 'コラボカフェ'],
     date: '2025-11-19',
   });
 
@@ -121,8 +121,8 @@ describe('serializeFrontmatter', () => {
     expect(yaml).toContain('year: 2025');
     expect(yaml).toContain('event_type: "collabo-cafe"');
     expect(yaml).toContain('event_title: "コラボカフェ"');
-    expect(yaml).toContain('work_title: "呪術廻戦"');
-    expect(yaml).toContain('work_slug: "jujutsu-kaisen"');
+    expect(yaml).toContain('work_title: "作品名"');
+    expect(yaml).toContain('work_slug: "sample-work"');
     expect(yaml).toContain('slug: "01jcxy4567"');
   });
 
@@ -132,8 +132,8 @@ describe('serializeFrontmatter', () => {
       year: 2025,
       eventType: 'collabo-cafe',
       eventTitle: 'コラボカフェ',
-      workTitle: '呪術廻戦',
-      workSlug: 'jujutsu-kaisen',
+      workTitle: '作品名',
+      workSlug: 'sample-work',
       title: 'Title with "quotes" inside',
       excerpt: 'Excerpt with "quotes" too',
       categories: ['Category'],
@@ -149,7 +149,7 @@ describe('serializeFrontmatter', () => {
   it('should serialize categories as YAML array', () => {
     const yaml = serializeFrontmatter(frontmatter);
 
-    expect(yaml).toContain('categories: ["呪術廻戦", "コラボカフェ"]');
+    expect(yaml).toContain('categories: ["作品名", "コラボカフェ"]');
   });
 
   it('should end with --- and two empty lines', () => {
@@ -178,26 +178,26 @@ describe('serializeFrontmatter', () => {
 
 describe('generateMdxFilePath', () => {
   it('should generate correct file path', () => {
-    const path = generateMdxFilePath('collabo-cafe', 'jujutsu-kaisen', '01jcxy4567');
+    const path = generateMdxFilePath('collabo-cafe', 'sample-work', '01jcxy4567');
 
-    expect(path).toBe('apps/ai-writer/content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx');
+    expect(path).toBe('apps/ai-writer/content/collabo-cafe/sample-work/01jcxy4567.mdx');
   });
 
   it('should handle custom base directory', () => {
     const path = generateMdxFilePath(
       'collabo-cafe',
-      'jujutsu-kaisen',
+      'sample-work',
       '01jcxy4567',
       'custom-content'
     );
 
-    expect(path).toBe('custom-content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx');
+    expect(path).toBe('custom-content/collabo-cafe/sample-work/01jcxy4567.mdx');
   });
 
   it('should handle different event types', () => {
-    const path = generateMdxFilePath('pop-up-store', 'spy-family', '01abcdefgh');
+    const path = generateMdxFilePath('pop-up-store', 'another-work', '01abcdefgh');
 
-    expect(path).toBe('apps/ai-writer/content/pop-up-store/spy-family/01abcdefgh.mdx');
+    expect(path).toBe('apps/ai-writer/content/pop-up-store/another-work/01abcdefgh.mdx');
   });
 });
 
@@ -207,17 +207,17 @@ describe('generateMdxArticle', () => {
     year: 2025,
     eventType: 'collabo-cafe',
     eventTitle: 'コラボカフェ',
-    workTitle: '呪術廻戦',
-    workSlug: 'jujutsu-kaisen',
-    title: '呪術廻戦×BOX cafe&space2025',
+    workTitle: '作品名',
+    workSlug: 'sample-work',
+    title: '作品名×店舗名2025',
     excerpt: 'テスト記事の概要',
-    categories: ['呪術廻戦', 'コラボカフェ'],
+    categories: ['作品名', 'コラボカフェ'],
     date: '2025-11-19',
   };
 
   const articleContent = `## イベント概要
 
-呪術廻戦とBOX cafe&spaceのコラボイベントが開催されます。
+作品名と店舗名のコラボイベントが開催されます。
 
 ## 開催期間
 
@@ -244,13 +244,13 @@ describe('generateMdxArticle', () => {
   it('should generate correct file path', () => {
     const article = generateMdxArticle(input, articleContent);
 
-    expect(article.filePath).toBe('apps/ai-writer/content/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx');
+    expect(article.filePath).toBe('apps/ai-writer/content/collabo-cafe/sample-work/01jcxy4567.mdx');
   });
 
   it('should handle custom base directory', () => {
     const article = generateMdxArticle(input, articleContent, 'custom-dir');
 
-    expect(article.filePath).toBe('custom-dir/collabo-cafe/jujutsu-kaisen/01jcxy4567.mdx');
+    expect(article.filePath).toBe('custom-dir/collabo-cafe/sample-work/01jcxy4567.mdx');
   });
 
   it('should produce valid MDX structure', () => {
@@ -276,8 +276,8 @@ describe('isValidMdxFrontmatter', () => {
     year: 2025,
     eventType: 'collabo-cafe',
     eventTitle: 'コラボカフェ',
-    workTitle: '呪術廻戦',
-    workSlug: 'jujutsu-kaisen',
+    workTitle: '作品名',
+    workSlug: 'sample-work',
     title: 'Test Title',
     excerpt: 'Test excerpt',
     categories: ['Category'],
@@ -317,26 +317,26 @@ describe('isValidMdxFrontmatter', () => {
 describe('Integration: Full MDX Generation Flow', () => {
   it('should generate valid MDX file from start to finish', () => {
     const input: GenerateMdxFrontmatterInput = {
-      postId: '01jcxy4567',
-      year: 2025,
-      eventType: 'collabo-cafe',
-      eventTitle: 'コラボカフェ',
-      workTitle: '呪術廻戦',
-      workSlug: 'jujutsu-kaisen',
-      title: '呪術廻戦×BOX cafe&space2025が東京・大阪で開催決定',
-      excerpt: '呪術廻戦とBOX cafe&spaceのコラボイベントが2025年12月25日から開催されます。',
-      categories: ['呪術廻戦', 'コラボカフェ'],
+    postId: '01jcxy4567',
+    year: 2025,
+    eventType: 'collabo-cafe',
+    eventTitle: 'コラボカフェ',
+    workTitle: '作品名',
+    workSlug: 'sample-work',
+    title: '作品名×店舗名2025が東京・大阪で開催決定',
+    excerpt: '作品名と店舗名のコラボイベントが2025年12月25日から開催されます。',
+    categories: ['作品名', 'コラボカフェ'],
       date: '2025-11-19',
     };
 
     const content = `## イベント概要
 
-呪術廻戦とBOX cafe&spaceのコラボイベント。
+作品名と店舗名のコラボイベント。
 
 ## 開催情報
 
 - **期間**: 2025年12月25日〜2026年1月15日
-- **場所**: BOX cafe&space池袋店、大阪日本橋店
+- **場所**: 主要都市の会場一覧
 `;
 
     const article = generateMdxArticle(input, content);
@@ -346,7 +346,7 @@ describe('Integration: Full MDX Generation Flow', () => {
 
     // Validate file path structure
     expect(article.filePath).toMatch(
-      /^apps\/ai-writer\/content\/collabo-cafe\/jujutsu-kaisen\/[0-9a-z]{10}\.mdx$/
+      /^apps\/ai-writer\/content\/collabo-cafe\/sample-work\/[0-9a-z]{10}\.mdx$/
     );
 
     // Validate content structure

@@ -123,7 +123,7 @@ async function main() {
     let workSlug = null;
 
     if (pathParts.length >= 3) {
-      // 通常のイベント記事: content/collabo-cafe/jujutsu-kaisen/01kafsdmvd-2025.mdx
+      // 通常のイベント記事: content/collabo-cafe/sample-work/01kafsdmvd.mdx
       eventType = pathParts[0];
       workSlug = pathParts[1];
     } else if (pathParts.length === 2 && pathParts[0] === 'articles') {
