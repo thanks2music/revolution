@@ -1,7 +1,23 @@
 {
-  "generatedAt": "2025-12-14T08:15:11.387Z",
-  "totalArticles": 1,
+  "generatedAt": "2025-12-14T12:55:41.178Z",
+  "totalArticles": 2,
   "articles": [
+    {
+      "slug": "01kceetv26",
+      "title": "機動戦士ガンダム 鉄血のオルフェンズ カフェ in 東京ソラマチ 12月18日よりコラボ開催",
+      "date": "2025-12-14T12:54:27.151Z",
+      "excerpt": "東京ソラマチで開催される期間限定のコラボカフェ「機動戦士ガンダム 鉄血のオルフェンズ10周年」では、キャラクターと一緒に楽しめるスペシャルメニューやグッズが登場します。",
+      "categories": [
+        "機動戦士ガンダム 鉄血のオルフェンズ",
+        "コラボカフェ",
+        "期間限定イベント"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/kidou-senshi-gundam-tetsu-x-no-orufenz/01kceetv26.mdx",
+      "eventType": "collabo-cafe",
+      "workSlug": "kidou-senshi-gundam-tetsu-x-no-orufenz"
+    },
     {
       "slug": "01kafsdmvd",
       "title": "作品名 × 店舗名2025が主要都市で開催決定",
