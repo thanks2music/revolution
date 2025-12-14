@@ -278,6 +278,137 @@ ${request.officialHtml.substring(0, 5000)}${request.officialHtml.length > 5000 ?
   }
 
   /**
+   * 不正なJSONを修正する
+   * AIが生成するJSONには不正なエスケープ文字が含まれることがある
+   */
+  private fixMalformedJson(jsonStr: string): string {
+    // 文字列を行ごとに処理
+    const lines = jsonStr.split('\n');
+    const result: string[] = [];
+    let inContentField = false;
+    let contentBuffer: string[] = [];
+
+    for (const line of lines) {
+      // "content": " で始まる行を検出
+      if (line.match(/^\s*"content"\s*:\s*"/)) {
+        inContentField = true;
+        contentBuffer = [line];
+        // この行で完結している場合（"content": "..." で終わる）
+        if (line.match(/"\s*,?\s*$/)) {
+          result.push(line);
+          inContentField = false;
+          contentBuffer = [];
+        }
+        continue;
+      }
+
+      if (inContentField) {
+        contentBuffer.push(line);
+        // "generatedSections" または "skippedSections" または } で終わる行を検出
+        if (line.match(/"\s*,?\s*"(?:generatedSections|skippedSections)"/) || line.match(/"\s*\}\s*$/)) {
+          // contentフィールドの内容を結合してエスケープ処理
+          const contentStr = contentBuffer.join('\n');
+          const escapedContent = this.escapeContentField(contentStr);
+          result.push(escapedContent);
+          inContentField = false;
+          contentBuffer = [];
+        }
+      } else {
+        result.push(line);
+      }
+    }
+
+    // バッファに残っている場合
+    if (contentBuffer.length > 0) {
+      const contentStr = contentBuffer.join('\n');
+      const escapedContent = this.escapeContentField(contentStr);
+      result.push(escapedContent);
+    }
+
+    return result.join('\n');
+  }
+
+  /**
+   * contentフィールドの値をエスケープ
+   */
+  private escapeContentField(contentStr: string): string {
+    // "content": "..." の形式を抽出
+    const match = contentStr.match(/^(\s*"content"\s*:\s*")([\s\S]*?)("(?:\s*,\s*"(?:generatedSections|skippedSections)"|\s*\})?[\s\S]*)$/);
+
+    if (!match) {
+      return contentStr;
+    }
+
+    const [, prefix, value, suffix] = match;
+
+    // 値部分の不正な文字をエスケープ
+    const escapedValue = value
+      // 既にエスケープされている \n, \t, \" は一時的に置換
+      .replace(/\\n/g, '\u0000NEWLINE\u0000')
+      .replace(/\\t/g, '\u0000TAB\u0000')
+      .replace(/\\"/g, '\u0000QUOTE\u0000')
+      .replace(/\\\\/g, '\u0000BACKSLASH\u0000')
+      // 未エスケープの特殊文字をエスケープ
+      .replace(/\\/g, '\\\\')
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\t/g, '\\t')
+      // 文字列内の未エスケープのダブルクォートをエスケープ
+      // （ただし最後の " は除く）
+      .replace(/(?<!\\)"/g, '\\"')
+      // 一時置換を復元
+      .replace(/\u0000NEWLINE\u0000/g, '\\n')
+      .replace(/\u0000TAB\u0000/g, '\\t')
+      .replace(/\u0000QUOTE\u0000/g, '\\"')
+      .replace(/\u0000BACKSLASH\u0000/g, '\\\\');
+
+    return prefix + escapedValue + suffix;
+  }
+
+  /**
+   * JSONレスポンスをサニタイズ（不正なエスケープ文字を修正）
+   * @deprecated Use fixMalformedJson instead
+   */
+  private sanitizeJsonResponse(response: string): string {
+    // 1. コードブロックから抽出
+    let jsonStr = response.trim();
+    const jsonMatch =
+      jsonStr.match(/```json\n([\s\S]*?)\n```/) ||
+      jsonStr.match(/```\n([\s\S]*?)\n```/);
+
+    if (jsonMatch) {
+      jsonStr = jsonMatch[1];
+    }
+
+    // 2. JSON文字列内の不正なエスケープを修正
+    // content フィールド内の改行を \n にエスケープ
+    try {
+      // まず "content": "..." の部分を見つけて、その中の改行を処理
+      jsonStr = jsonStr.replace(
+        /"content"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"generatedSections|"\s*,\s*"skippedSections|"\s*\})/,
+        (match, content) => {
+          // content内の実際の改行を \n にエスケープ
+          const escapedContent = content
+            .replace(/\\/g, '\\\\') // バックスラッシュをエスケープ
+            .replace(/\n/g, '\\n')   // 改行をエスケープ
+            .replace(/\r/g, '\\r')   // キャリッジリターンをエスケープ
+            .replace(/\t/g, '\\t')   // タブをエスケープ
+            .replace(/"/g, '\\"');   // ダブルクォートをエスケープ（既にエスケープされているものを除く）
+
+          // マッチした終端部分を復元
+          const endPart = match.substring(match.lastIndexOf('"'));
+          return `"content": "${escapedContent}${endPart}`;
+        }
+      );
+    } catch {
+      // サニタイズに失敗した場合は元の文字列を返す
+      console.warn('[ContentGeneration] JSON sanitization failed, using original');
+    }
+
+    return jsonStr;
+  }
+
+  /**
    * AI APIからのレスポンスをパース
    */
   private parseResponse(
@@ -291,10 +422,19 @@ ${request.officialHtml.substring(0, 5000)}${request.officialHtml.length > 5000 ?
         skippedSections?: string[];
       };
 
+      // デバッグ: 生のレスポンスを出力
+      if (process.env.DEBUG_CONTENT_RESPONSE === 'true') {
+        console.log('\n[ContentGeneration] === 生のAIレスポンス ===');
+        console.log(response);
+        console.log('[ContentGeneration] === 生レスポンス終了 ===\n');
+      }
+
       // JSONを抽出してパース
       try {
         jsonData = JSON.parse(response.trim());
       } catch (directParseError) {
+        console.log('[ContentGeneration] Direct parse failed, trying extraction...');
+
         // マークダウンコードブロックから抽出を試みる
         const jsonMatch =
           response.match(/```json\n([\s\S]*?)\n```/) ||
@@ -302,11 +442,21 @@ ${request.officialHtml.substring(0, 5000)}${request.officialHtml.length > 5000 ?
           response.match(/\{[\s\S]*\}/);
 
         if (!jsonMatch) {
-          console.error('[ContentGeneration] JSON not found in response:', response);
+          console.error('[ContentGeneration] JSON not found in response:', response.substring(0, 500));
           throw new Error('No JSON found in response');
         }
 
-        jsonData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+        const extracted = jsonMatch[1] || jsonMatch[0];
+
+        try {
+          jsonData = JSON.parse(extracted);
+        } catch (extractParseError) {
+          console.log('[ContentGeneration] Extracted parse failed, trying manual fix...');
+
+          // JSONの手動修正を試みる
+          const fixedJson = this.fixMalformedJson(extracted);
+          jsonData = JSON.parse(fixedJson);
+        }
       }
 
       // 必須フィールドの検証
