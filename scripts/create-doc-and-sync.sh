@@ -38,14 +38,14 @@ fi
 # 使用方法を表示
 show_usage() {
     echo "使用方法:"
-    echo "  $0 <docs|private> <relative_path>"
+    echo "  $0 <docs|notes> <relative_path>"
     echo ""
     echo "例:"
-    echo "  $0 docs 04-backend/BE-new-feature.md"
-    echo "  $0 private 04-backend/BE-secret-new-feature.md"
+    echo "  $0 docs README.md"
+    echo "  $0 notes 01-project-docs/00-meta/META-04-new-rule.md"
     echo ""
     echo "  docs: パブリックドキュメント (docs/)"
-    echo "  private: 機密ドキュメント (.claude/)"
+    echo "  notes: プライベートノート (notes/)"
 }
 
 # 引数チェック
@@ -71,7 +71,7 @@ log_error() {
 }
 
 # ドキュメントタイプの検証
-if [[ "$DOC_TYPE" != "docs" && "$DOC_TYPE" != "private" ]]; then
+if [[ "$DOC_TYPE" != "docs" && "$DOC_TYPE" != "notes" ]]; then
     log_error "無効なドキュメントタイプ: $DOC_TYPE"
     show_usage
     exit 1
@@ -83,9 +83,9 @@ fi
 if [[ "$DOC_TYPE" == "docs" ]]; then
     FULL_PATH="$PROJECT_ROOT/docs/$RELATIVE_PATH"
     log_info "📄 パブリックドキュメントを確認: $RELATIVE_PATH"
-elif [[ "$DOC_TYPE" == "private" ]]; then
-    FULL_PATH="$PROJECT_ROOT/.claude/$RELATIVE_PATH"
-    log_info "🔐 機密ドキュメントを確認: $RELATIVE_PATH"
+elif [[ "$DOC_TYPE" == "notes" ]]; then
+    FULL_PATH="$PROJECT_ROOT/notes/$RELATIVE_PATH"
+    log_info "📝 プライベートノートを確認: $RELATIVE_PATH"
 fi
 
 # ファイル存在確認
@@ -119,8 +119,8 @@ log_success "🎉 完了！iPadで確認できます。"
 # iPad用のパス情報表示（相対パスで表示）
 if [[ "$DOC_TYPE" == "docs" ]]; then
     IPAD_PATH="We Are All One/Revolution/docs/$RELATIVE_PATH"
-elif [[ "$DOC_TYPE" == "private" ]]; then
-    IPAD_PATH="We Are All One/Revolution/dot-claude/$RELATIVE_PATH"
+elif [[ "$DOC_TYPE" == "notes" ]]; then
+    IPAD_PATH="We Are All One/Revolution/notes/$RELATIVE_PATH"
 fi
 
 log_info "📱 iPad MWebでのパス: $IPAD_PATH"

@@ -37,6 +37,8 @@ id_ed25519*
 **/*secret*
 **/*token*
 **/*key*
+# Exception: canonical-key.ts is a legitimate source file (not an API key)
+!**/canonical-key.ts
 .npmrc
 .yarnrc.yml
 
@@ -267,6 +269,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# デバッグ出力
+debug-logs/
+**/debug-logs/
+
 # 一時ファイル
 tmp/
 temp/
@@ -349,6 +355,12 @@ apps/frontend/.env.production.local
 apps/ai-writer/.env
 apps/ai-writer/.env.local
 apps/ai-writer/.env.deploy
+## AI Writerの設定ファイル
+apps/ai-writer/config/*
+
+# AI Writerテンプレート（プライベートリポジトリから同期）
+apps/ai-writer/templates/
+apps/ai-writer/config/
 
 # GraphQL Code Generator生成ファイル
 # Note: Generated files are committed for CI compatibility
@@ -357,9 +369,13 @@ apps/ai-writer/.env.deploy
 ## AI Documents
 CLAUDE.md
 GEMINI.md
-.claude/**/*
+
+# Claude Code設定（settings.json以外を無視）
+.claude/*
+!.claude/settings.json
+
+# サブディレクトリの.claude（全て無視）
 **/.claude/**/*
-.clinerules/**/*
 **/.clinerules/**/*
 
 # カスタム設定
@@ -405,7 +421,10 @@ reference/**
 # 📝 学習・開発メモ
 # ========================================
 
-# 個人メモ
+# 個人メモディレクトリ（iCloud同期用）
+notes/
+
+# 個人メモファイル
 NOTES.md
 TODO.md
 TODOs.md

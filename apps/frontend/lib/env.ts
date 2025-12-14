@@ -27,10 +27,16 @@ export const env = createEnv({
    * ブラウザでもアクセス可能（バンドルに含まれる）
    */
   client: {
+    // 公開用サイトURL（OGPやサイトマップで使用）
+    NEXT_PUBLIC_SITE_URL: z.string().url({
+      message: "NEXT_PUBLIC_SITE_URL must be a valid URL (e.g., https://example.com)"
+    }).optional(),
+
     // WordPress GraphQL エンドポイント（公開用）
+    // MDX専用モードでは任意（WordPress統合時は必須）
     NEXT_PUBLIC_WP_ENDPOINT: z.string().url({
       message: "NEXT_PUBLIC_WP_ENDPOINT must be a valid URL (e.g., https://example.com/graphql)"
-    }),
+    }).optional(),
 
     // WordPress サイトURL（OGP画像等で使用）
     NEXT_PUBLIC_WP_URL: z.string().url({
@@ -79,6 +85,7 @@ export const env = createEnv({
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
     WORDPRESS_GRAPHQL_ENDPOINT: process.env.WORDPRESS_GRAPHQL_ENDPOINT,
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_WP_ENDPOINT: process.env.NEXT_PUBLIC_WP_ENDPOINT,
     NEXT_PUBLIC_WP_URL: process.env.NEXT_PUBLIC_WP_URL,
     NEXT_PUBLIC_ALLOWED_IMAGE_HOST: process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST,

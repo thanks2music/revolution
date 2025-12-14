@@ -1,0 +1,45 @@
+title = "revolution gitleaks config"
+
+[allowlist]
+	description = "Revolution project allowlist"
+
+	# スキャン除外パス
+	paths = [
+		# ビルド成果物・依存関係
+		"^\\.git/",
+		"^node_modules/",
+		"^\\.turbo/",
+		"^\\.next/",
+		"^dist/",
+		"^build/",
+		"^out/",
+		"^coverage/",
+
+		# ロックファイル（大量の誤検知防止）
+		"pnpm-lock\\.yaml$",
+		"package-lock\\.json$",
+		"yarn\\.lock$",
+
+		# 静的アセット
+		"^apps/frontend/public/images/",
+
+		# AI生成コンテンツ（記事データ）
+		"^apps/ai-writer/content/",
+	]
+
+	# プレースホルダー・サンプル値
+	regexes = [
+		# 汎用プレースホルダー
+		"your[_-]?api[_-]?key",
+		"your[_-]?secret",
+		"your[_-]?password",
+		"your[_-]?project[_-]?id",
+		"REPLACE[_-]?ME",
+		"xxxxxxx+",
+		"<[A-Z_]+>",
+
+		# .env.sample 内のサンプル値
+		"your_anthropic_api_key",
+		"your_openai_api_key",
+		"admin@example\\.com",
+	]

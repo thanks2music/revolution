@@ -1,8 +1,8 @@
 #!/bin/sh
 
-# Check if any docs or .claude markdown files were changed in the last commit
-if git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^(docs/.*\.md|\.claude/.*\.md)$' > /dev/null; then
-  echo "📝 Markdown files changed in docs or .claude, syncing to iCloud..."
+# Check if any docs or notes markdown files were changed in the last commit
+if git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^(docs/.*\.md$|notes/.*\.md$)' > /dev/null; then
+  echo "📝 Markdown files changed in docs or notes, syncing to iCloud..."
   ./scripts/sync-docs-to-icloud.sh
 else
   echo "ℹ️  No docs markdown files changed, skipping sync"

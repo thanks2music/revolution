@@ -20,7 +20,7 @@ async function testMediaUpload() {
   try {
     const result = await service.uploadMediaFromUrl(
       testImageUrl,
-      'test-jujutsu-kaisen-cafe.jpg',
+      'test-sample-work-cafe.jpg',
       'Test: Jujutsu Kaisen Collaboration Cafe',
       'Test upload for debugging media upload functionality'
     );

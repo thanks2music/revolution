@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "next dev --turbo --port 4444",
-    "build": "next build",
+    "build": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
     "validate-env": "tsx scripts/validate-env.ts",
@@ -21,6 +21,8 @@
     "@heroicons/react": "v1",
     "@t3-oss/env-nextjs": "^0.13.8",
     "next": "14.2.35",
+    "@vercel/og": "^0.8.5",
+    "next-mdx-remote": "^5.0.0",
     "react": "^18",
     "react-dom": "^18",
     "sanitize-html": "^2.17.0",

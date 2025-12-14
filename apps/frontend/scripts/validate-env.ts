@@ -14,6 +14,7 @@ const envSchema = z.object({
     .url('WordPress GraphQL エンドポイントは有効なURLである必要があります'),
 
   // 任意環境変数（デフォルト値あり）
+  NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
   NEXT_PUBLIC_WP_URL: z.string().url().optional(),
   NEXT_PUBLIC_ALLOWED_IMAGE_HOST: z.string().optional(),
   NEXT_PUBLIC_GCS_IMAGE_HOST: z.string().optional(),
@@ -48,6 +49,7 @@ function validateEnv(): Env {
     console.log('✅ 環境変数の検証に成功しました\n');
     console.log('📋 設定値:');
     console.log(`  NEXT_PUBLIC_WP_ENDPOINT: ${env.NEXT_PUBLIC_WP_ENDPOINT}`);
+    console.log(`  NEXT_PUBLIC_SITE_URL: ${env.NEXT_PUBLIC_SITE_URL || '(未設定)'}`);
     console.log(`  NEXT_PUBLIC_WP_URL: ${env.NEXT_PUBLIC_WP_URL || '(未設定)'}`);
     console.log(
       `  NEXT_PUBLIC_ALLOWED_IMAGE_HOST: ${env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST || '(未設定)'}`

@@ -71,7 +71,7 @@ fi
 
 # iCloudディレクトリ構造を作成
 mkdir -p "$ICLOUD_BASE/docs"
-mkdir -p "$ICLOUD_BASE/dot-claude"
+mkdir -p "$ICLOUD_BASE/notes"
 
 log_info "📄 パブリックドキュメント（docs/）を同期中..."
 
@@ -92,30 +92,29 @@ else
     log_warning "docs/ディレクトリが見つかりません"
 fi
 
-log_info "🔐 機密ドキュメント（.claude/）を同期中..."
+log_info "📝 プライベートノート（notes/）を同期中..."
 
-# .claude/ の同期（.mdファイルのみ）
-if [[ -d "$PROJECT_ROOT/.claude" ]]; then
+# notes/ の同期（.mdファイルのみ）
+if [[ -d "$PROJECT_ROOT/notes" ]]; then
     # .mdファイルのみを同期（ディレクトリ構造も保持）
     rsync -av --delete \
         --include='*/' \
         --include='*.md' \
         --exclude='*' \
-        --exclude='*.json' \
-        "$PROJECT_ROOT/.claude/" \
-        "$ICLOUD_BASE/dot-claude/"
+        "$PROJECT_ROOT/notes/" \
+        "$ICLOUD_BASE/notes/"
 
     # 同期されたファイル数を数える
-    claude_count=$(find "$ICLOUD_BASE/dot-claude" -name "*.md" -type f | wc -l)
-    log_success "機密ドキュメント同期完了: ${claude_count}個のMarkdownファイル"
+    notes_count=$(find "$ICLOUD_BASE/notes" -name "*.md" -type f | wc -l)
+    log_success "プライベートノート同期完了: ${notes_count}個のMarkdownファイル"
 else
-    log_warning ".claude/ディレクトリが見つかりません"
+    log_warning "notes/ディレクトリが見つかりません"
 fi
 
 # 同期統計情報
 log_info "📊 同期統計情報："
 echo "  📁 パブリック: $(find "$ICLOUD_BASE/docs" -name "*.md" -type f | wc -l | tr -d ' ')個のファイル"
-echo "  🔐 機密情報: $(find "$ICLOUD_BASE/dot-claude" -name "*.md" -type f | wc -l | tr -d ' ')個のファイル"
+echo "  📝 プライベート: $(find "$ICLOUD_BASE/notes" -name "*.md" -type f | wc -l | tr -d ' ')個のファイル"
 echo "  💾 同期先: $ICLOUD_BASE"
 
 # 最新の同期時刻を記録

@@ -5,6 +5,7 @@
 import { initializeTestEnvironment, RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { Firestore } from 'firebase-admin/firestore';
+import { DEFAULT_CLAUDE_MODEL } from '../../lib/config/claude-models';
 
 // Firebase Emulator接続設定
 export const setupFirebaseEmulator = async (): Promise<RulesTestEnvironment> => {
@@ -98,7 +99,7 @@ export const createMockClaudeResponse = (overrides = {}) => ({
     wordCount: 600,
     language: 'ja',
     generatedAt: new Date().toISOString(),
-    model: 'claude-3-7-sonnet',
+    model: DEFAULT_CLAUDE_MODEL,
   },
   ...overrides,
 });

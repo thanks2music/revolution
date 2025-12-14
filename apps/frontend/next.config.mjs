@@ -35,6 +35,25 @@ const nextConfig = {
   },
 
   /**
+   * リダイレクト設定
+   * - WordPress互換パスからMDX記事パスへリダイレクト
+   */
+  async redirects() {
+    return [
+      {
+        source: '/post/:slug',
+        destination: '/articles/:slug',
+        permanent: true, // 301リダイレクト（SEO考慮）
+      },
+      {
+        source: '/category/:slug',
+        destination: '/articles', // カテゴリページは記事一覧へ
+        permanent: true,
+      },
+    ];
+  },
+
+  /**
    * セキュリティヘッダーの設定
    * - CSP (Content Security Policy)
    * - HSTS (HTTP Strict Transport Security)

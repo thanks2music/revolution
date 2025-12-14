@@ -22,18 +22,39 @@
 
 ## 📖 概要
 
-**Revolution**は、AI記事生成機能を備えたモダンなJamstack構成の次世代Webメディアシステムを個人開発で挑戦するソロプロジェクトです。
+**Revolution**は、[@thanks2music](https://github.com/thanks2music)が個人開発で取り組む、LLMを活用したAI記事生成機能を備えた Jamstack構成の次世代Webメディアシステムです。
+これまで手動で1万記事以上を作成してきた経験をもとに、その知見をAIと組み合わせることで、記事制作から公開までを自動化するモダンな Web アプリケーションの構築に挑戦しています。
 
 ---
 
 ## ✨ 主要機能
 
-- 🤖 **AIコンテンツパイプライン**: RSS収集 → Claude API記事生成 → WordPress自動投稿 (DBレスに変更予定)
+### MDX ベース記事生成システム（現行版）
+
+- 🤖 **AI 記事生成パイプライン**: RSS/URL → Nステップパイプライン → MDX ファイル → GitHub PR
+- 🔄 **マルチ AI プロバイダー**: 環境変数で切り替え可能
+  - Claude (Anthropic) - デフォルト
+  - Gemini (Google)
+  - OpenAI (GPT)
+
+- 📝 **YAML テンプレートシステム**: [@thanks2music](https://github.com/thanks2music)の暗黙知をモジュール化したYAMLでプロンプト管理
+- ⚡ **静的サイト生成（SSG）最適化**:
+  - MDX による DBレス アーキテクチャ
+  - `article-index.json` による高速記事検索
+  - Vercel へのシームレスなデプロイ
+
+- 🔐 **セキュア認証**: Firebase Authentication + カスタムクレーム
+- 🧪 **テストカバレッジ**: Jest + Firebase Emulator による包括的テスト
+- 📊 **モノレポ管理**: pnpm + Turbo による効率的なワークスペース管理
+
+### 🗂️ Legacy Headless CMS Architecture
+
+- 🤖 **AIコンテンツパイプライン**: RSS収集 → Claude, ChatGPT, Gemini API記事生成(Phase0.1), Grok → LLM(Claude, ChatGPT, Gemini)記事生成(Phase1)
+  - Phase 0.1 以降は 「MDX 専用」とする。
 - ⚡ **ヘッドレスCMS**: WordPress GraphQL API と Next.js SSG/ISR
+  - 「Headless WordPress」は、 git tag: `headless-wp-mvp-final-20251103` まで。レガシー版として開発中止。
+  - 「Headless WordPress 版を復旧したい場合は、上記タグを参照」
 - ☁️ **クラウドネイティブ**: Google Cloud Run上のコンテナ化WordPress
-- 🔐 **セキュア**: Firebase認証とカスタムクレーム
-- 🧪 **テストカバレッジ**: Jest + Firebase Emulator による包括的なユニットテスト
-- 📊 **モノレポ**: pnpm + Turbo による効率的なワークスペース管理
 
 ---
 
@@ -100,7 +121,282 @@ ALLOWED_IMAGE_HOST=localhost
 
 ## 🏗️ アーキテクチャ
 
-### システム構成図
+### MDX パイプライン アーキテクチャ（現行版）
+
+現在の AI Writer は **MDX ベースの記事生成パイプライン** を使用しています。
+
+#### パイプライン概要図
+
+```mermaid
+flowchart TB
+    subgraph Input["📥 入力"]
+        RSS[("RSS フィード")]
+        URL["記事 URL"]
+    end
+
+    subgraph Pipeline["🔄 MDX パイプライン (9 Steps)"]
+        direction TB
+        S0["Step 0.5<br/>記事選別"]
+        S1["Step 1<br/>情報抽出"]
+        S2["Step 2<br/>Slug 解決"]
+        S3["Step 3<br/>重複チェック"]
+        S4["Step 4<br/>メタデータ生成"]
+        S45["Step 4.5<br/>タイトル生成"]
+        S5["Step 5<br/>MDX 生成"]
+        S6["Step 6<br/>GitHub PR 作成"]
+        S7["Step 7<br/>ステータス更新"]
+
+        S0 --> S1 --> S2 --> S3 --> S4 --> S45 --> S5 --> S6 --> S7
+    end
+
+    subgraph External["🌐 外部サービス"]
+        AI["AI Provider<br/>(Claude/Gemini/OpenAI)"]
+        FS[("Firestore<br/>イベント管理")]
+        GH["GitHub API<br/>PR 作成"]
+        YAML["YAML テンプレート<br/>(モジュール化)"]
+    end
+
+    subgraph Output["📤 出力"]
+        MDX["MDX ファイル"]
+        PR["GitHub PR"]
+    end
+
+    RSS --> S0
+    URL --> S0
+    S0 <--> AI
+    S1 <--> AI
+    S2 <--> YAML
+    S3 <--> FS
+    S4 <--> AI
+    S45 <--> AI
+    S45 <--> YAML
+    S6 --> GH
+    S7 --> FS
+    S5 --> MDX
+    S6 --> PR
+
+    style S0 fill:#e3f2fd
+    style S1 fill:#e3f2fd
+    style S4 fill:#e3f2fd
+    style S45 fill:#e3f2fd
+    style AI fill:#fff9c4
+    style FS fill:#ffe0b2
+    style GH fill:#c8e6c9
+    style YAML fill:#f3e5f5
+```
+
+#### 詳細パイプラインフロー
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as ユーザー
+    participant MDX as MDX Service
+    participant HTML as HTML Extractor
+    participant Select as ArticleSelection Service
+    participant Extract as extractFromRss
+    participant Slug as Slug Resolver
+    participant FS as Firestore
+    participant GH as GitHub API
+    participant Meta as Metadata Generator
+    participant TitleSvc as TitleGeneration Service
+    participant AI as AI Provider (Claude/Gemini/OpenAI)
+    participant YAML as YAML Template
+
+    User->>MDX: generateMdxFromRSS(rssItem)
+
+    Note over MDX,AI: Step 0.5 記事選別
+    MDX->>HTML: 記事HTML取得
+    HTML-->>MDX: articleHtml
+    MDX->>Select: shouldGenerateArticle()
+    Select->>YAML: loadModularTemplate('EVENT_TYPE','1-selection')
+    YAML-->>Select: template
+    Select->>AI: sendMessage(prompt)
+    AI-->>Select: JSON response
+    Select-->>MDX: should_generate, official_urls
+
+    alt should_generate = false
+        MDX-->>User: スキップ (公式URLなし)
+    end
+
+    Note over MDX,AI: Step 1 情報抽出
+    MDX->>Extract: extractFromRss(rssItem)
+    Extract->>AI: RSS から抽出
+    AI-->>Extract: workTitle, storeName, eventTypeName
+    Extract-->>MDX: extraction
+
+    Note over MDX,Slug: Step 2 Slug 解決
+    MDX->>Slug: resolveWorkSlug(workTitle)
+    MDX->>Slug: resolveStoreSlug(storeName)
+    MDX->>Slug: resolveEventTypeSlug(eventTypeName)
+    Slug-->>MDX: workSlug, storeSlug, eventType
+
+    Note over MDX,FS: Step 3 重複チェック & 登録
+    MDX->>FS: checkEventDuplication()
+    FS-->>MDX: isDuplicate, canonicalKey
+    alt isDuplicate
+        MDX->>GH: getPrStatusByCanonicalKey()
+        GH-->>MDX: hasOpenPr
+        alt hasOpenPr
+            MDX-->>User: DuplicateSlugError
+        else closed
+            MDX->>FS: deleteEvent()
+        end
+    end
+    MDX->>FS: registerNewEvent()
+    FS-->>MDX: eventRecord
+
+    Note over MDX,AI: Step 4 メタデータ生成
+    MDX->>Meta: generateArticleMetadata()
+    Meta->>AI: カテゴリ/抜粋生成
+    AI-->>Meta: categories, excerpt
+    Meta-->>MDX: metadata
+
+    Note over MDX,AI: Step 4.5 タイトル生成
+    MDX->>TitleSvc: generateTitle()
+    TitleSvc->>YAML: loadModularTemplate('EVENT_TYPE','3-title')
+    YAML-->>TitleSvc: template rules
+    TitleSvc->>AI: sendMessage(prompt)
+    AI-->>TitleSvc: title
+    TitleSvc-->>MDX: title, length, is_valid
+
+    Note over MDX,GH: Step 5-7 MDX生成 & PR作成
+    MDX->>MDX: generateMdxArticle()
+    MDX->>GH: createMdxPr()
+    GH-->>MDX: prNumber, prUrl
+    MDX->>FS: updateEventStatus('generated')
+
+    MDX-->>User: success, mdxArticle, prResult
+```
+
+#### サービス依存関係図
+
+```mermaid
+graph LR
+    subgraph Services["サービス層"]
+        AGMS["ArticleGeneration<br/>MdxService"]
+        ASS["ArticleSelection<br/>Service"]
+        TGS["TitleGeneration<br/>Service"]
+        YTLS["YamlTemplateLoader<br/>Service"]
+    end
+
+    subgraph AI["AI プロバイダー層"]
+        AIF["AI Factory"]
+        ANT["Anthropic<br/>Provider"]
+        GEM["Gemini<br/>Provider"]
+        OAI["OpenAI<br/>Provider"]
+    end
+
+    subgraph Data["データ層"]
+        FS[("Firestore")]
+        GH["GitHub API"]
+        YAML[("YAML<br/>Templates")]
+    end
+
+    subgraph Utils["ユーティリティ"]
+        EFR["extractFromRss"]
+        GAM["generateArticle<br/>Metadata"]
+        SR["Slug Resolver"]
+        HE["HTML Extractor"]
+    end
+
+    AGMS --> ASS
+    AGMS --> TGS
+    AGMS --> EFR
+    AGMS --> GAM
+    AGMS --> SR
+    AGMS --> HE
+    AGMS --> FS
+    AGMS --> GH
+
+    ASS --> YTLS
+    ASS --> AIF
+    TGS --> YTLS
+    TGS --> AIF
+
+    YTLS --> YAML
+
+    AIF --> ANT
+    AIF --> GEM
+    AIF --> OAI
+
+    EFR --> AIF
+    GAM --> AIF
+
+    style AGMS fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style AIF fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+    style YAML fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+```
+
+#### YAML テンプレート モジュール構造
+
+```mermaid
+graph TB
+    subgraph Templates["templates/EVENT_TYPE/"]
+        META["{META}.yaml<br/>メタ情報・順序定義"]
+
+        subgraph Shared["shared/"]
+            PH["placeholders.yaml<br/>プレースホルダー定義"]
+            CONS["constraints.yaml<br/>文字数制約・バリデーション"]
+        end
+
+        subgraph Pipeline["pipeline/"]
+            P1["1-selection.yaml<br/>記事選別"]
+            P2["2-extraction.yaml<br/>情報抽出"]
+            P3["3-title.yaml<br/>タイトル生成"]
+            P4["4-content.yaml<br/>本文生成"]
+        end
+
+        subgraph Sections["sections/"]
+            S1["01-example.yaml"]
+            S2["02-example.yaml"]
+            S3["03-example.yaml"]
+            S4["..."]
+        end
+    end
+
+    META --> Shared
+    META --> Pipeline
+    META --> Sections
+
+    style META fill:#ffecb3
+    style Shared fill:#e1f5fe
+    style Pipeline fill:#f3e5f5
+    style Sections fill:#c8e6c9
+```
+
+#### マルチプロバイダー切り替え
+
+```mermaid
+flowchart LR
+    ENV["AI_PROVIDER<br/>環境変数"]
+
+    subgraph Factory["AI Factory"]
+        direction TB
+        CREATE["createAiProvider()"]
+    end
+
+    subgraph Providers["プロバイダー"]
+        ANT["🟣 Anthropic<br/>Claude"]
+        GEM["🔵 Gemini<br/>Google"]
+        OAI["🟢 OpenAI<br/>GPT"]
+    end
+
+    ENV --> CREATE
+    CREATE --> ANT
+    CREATE --> GEM
+    CREATE --> OAI
+
+    ANT -.->|"default"| CREATE
+
+    style ANT fill:#d1c4e9
+    style GEM fill:#bbdefb
+    style OAI fill:#c8e6c9
+```
+
+---
+
+### システム構成図 (レガシー版)
 
 ```mermaid
 graph TB
@@ -123,7 +419,7 @@ graph TB
 
     subgraph "データ層 (GCP)"
         DB[(Cloud SQL<br/>MySQL 8.0)]
-        GCS[Cloud Storage<br/>メディアファイル<br/>⚠️ Vercel Blobへ移行予定]
+        GCS[Cloud Storage<br/>メディアファイル]
     end
 
     subgraph "AI & 認証"
@@ -152,7 +448,7 @@ graph TB
     style FB fill:#ffccbc
 ```
 
-### データフロー: AI記事生成
+### データフロー: AI記事生成（レガシー: Headless WordPress版）
 
 ```mermaid
 sequenceDiagram
@@ -176,6 +472,8 @@ sequenceDiagram
     WP-->>AIWriter: 投稿IDを返す
     AIWriter-->>User: 成功
 ```
+
+> ⚠️ **注意**: 上記は WordPress 版（レガシー）のフローです。現在は MDX パイプラインが主流です。
 
 ---
 
@@ -322,11 +620,9 @@ docker-compose down           # コンテナを停止
 ./scripts/deploy.sh           # Cloud Runへデプロイ
 ```
 
-詳細な開発ガイド: [docs/06-ops/](docs/06-ops/)
-
 ---
 
-## 🚢 デプロイ
+## 🚢 デプロイ (TODO)
 
 ### フロントエンド（Vercel）
 
@@ -348,8 +644,6 @@ cd apps/backend
 pnpm deploy:backend
 ```
 
-**⚠️ 重要**: リポジトリルートの `scripts/deploy.sh` は未完成です。必ず `apps/backend/scripts/deploy.sh` を使用してください。
-
 ### AI Writer（Vercel）
 
 ```bash
@@ -357,95 +651,7 @@ cd apps/ai-writer
 ./scripts/deploy.sh
 ```
 
-詳細なデプロイガイド: [docs/08-cicd/](docs/08-cicd/)
-
 ---
-
-## ⚠️ トラブルシューティング
-
-### 開発サーバーが起動しない
-
-**症状**: `pnpm dev` でエラーが発生
-
-**解決策**:
-1. Node.jsバージョン確認: `node --version` (20.0.0以上が必要)
-2. 依存関係の再インストール: `pnpm fresh`
-3. ポート競合確認: `lsof -i :7777` (AI Writer) / `lsof -i :3000` (Frontend)
-4. 強制終了後に再起動: `pnpm restart`
-
-### WordPress GraphQLエンドポイントに接続できない
-
-**症状**: `Failed to fetch from WordPress GraphQL`
-
-**解決策**:
-1. WordPressコンテナが起動中か確認:
-   ```bash
-   docker ps | grep wordpress
-   ```
-
-2. GraphQLエンドポイントをテスト:
-   ```bash
-   curl -X POST http://localhost:8080/graphql \
-     -H "Content-Type: application/json" \
-     -d '{"query": "{ posts { edges { node { title } } } }"}'
-   ```
-
-3. 環境変数を確認:
-   ```bash
-   # apps/ai-writer/.env.local または apps/frontend/.env.local
-   NEXT_PUBLIC_WP_ENDPOINT=http://localhost:8080/graphql
-   ```
-
-### Firebase認証エラー
-
-**症状**: `Firebase: Error (auth/invalid-api-key)`
-
-**解決策**:
-1. Firebase設定を確認: `apps/ai-writer/.env.local`
-2. Firebase Admin SDKの環境変数を確認:
-   ```bash
-   FIREBASE_PROJECT_ID=your_project_id
-   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----..."
-   FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your_project.iam.gserviceaccount.com
-   ```
-3. 管理者セットアップ: `cd apps/ai-writer && pnpm admin:setup`
-
-### ポート8080の競合
-
-**症状**: `Error: listen EADDRINUSE: address already in use :::8080`
-
-**解決策**:
-```bash
-# 使用中のプロセスを確認
-lsof -i :8080
-
-# プロセスを終了
-kill -9 <PID>
-
-# またはDockerコンテナを停止
-docker-compose down
-```
-
-### 本番環境でのデバッグログ
-
-**セキュリティ注意**: 本番デプロイ前にデバッグログを削除してください:
-
-```typescript
-// apps/ai-writer/lib/firebase/admin.ts
-// ❌ 本番環境では削除
-console.log('[Firebase Admin] Project ID:', process.env.FIREBASE_PROJECT_ID);
-```
-
-詳細なトラブルシューティング: [docs/06-ops/OPS-troubleshooting.md](docs/06-ops/)
-
----
-
-## 開発ワークフロー
-
-1. フィーチャーブランチを作成: `git checkout -b feature/your-feature-name`
-2. コンベンショナルコミットで変更: `git commit -m "feat: add new feature"`
-3. テストを実行: `pnpm test`
-4. `main`へプルリクエストを作成
 
 ### コミット規約
 

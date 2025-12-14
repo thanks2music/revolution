@@ -1,5 +1,6 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { extract } from '@extractus/article-extractor';
+import { DEFAULT_CLAUDE_MODEL } from '../config/claude-models';
 
 // Types for article generation
 export interface ArticleGenerationRequest {
@@ -29,7 +30,7 @@ export interface GeneratedArticle {
 
 export class ClaudeAPIService {
   private client: Anthropic;
-  private model: string = 'claude-3-7-sonnet-20250219';
+  private model: string = DEFAULT_CLAUDE_MODEL;
   private apiKey?: string;
 
   constructor(apiKey?: string) {
@@ -50,7 +51,7 @@ export class ClaudeAPIService {
     if (!this.apiKey) {
       throw new Error(
         'Anthropic API key is required. ' +
-        'Set ANTHROPIC_API_KEY environment variable or pass it as parameter to the constructor.'
+          'Set ANTHROPIC_API_KEY environment variable or pass it as parameter to the constructor.'
       );
     }
   }
@@ -71,10 +72,15 @@ export class ClaudeAPIService {
         messages: [
           {
             role: 'user',
-            content: prompt
-          }
-        ]
+            content: prompt,
+          },
+        ],
       });
+
+      // Handle refusal stop reason (Claude 4.5+)
+      if (response.stop_reason === 'refusal') {
+        throw new Error('Claude refused to generate content due to safety policies');
+      }
 
       const content = response.content[0];
       if (content.type !== 'text') {
@@ -84,7 +90,9 @@ export class ClaudeAPIService {
       return this.parseArticleResponse(content.text, request);
     } catch (error) {
       console.error('Claude API Error:', error);
-      throw new Error(`Failed to generate article: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to generate article: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -101,9 +109,9 @@ export class ClaudeAPIService {
         messages: [
           {
             role: 'user',
-            content: 'Hello, please respond with "API connection successful"'
-          }
-        ]
+            content: 'Hello, please respond with "API connection successful"',
+          },
+        ],
       });
 
       const content = response.content[0];
@@ -141,7 +149,10 @@ export class ClaudeAPIService {
   /**
    * Generate an article from a URL by extracting content and processing with Claude
    */
-  async generateArticleFromURL(url: string, request: Partial<ArticleGenerationRequest>): Promise<GeneratedArticle> {
+  async generateArticleFromURL(
+    url: string,
+    request: Partial<ArticleGenerationRequest>
+  ): Promise<GeneratedArticle> {
     this.ensureApiKey();
 
     try {
@@ -168,7 +179,7 @@ export class ClaudeAPIService {
         keywords: request.keywords || [],
         targetLength: request.targetLength || 800,
         tone: request.tone || 'professional',
-        language: request.language || 'ja'
+        language: request.language || 'ja',
       };
 
       // 抽出したコンテンツが短すぎる場合の警告
@@ -178,10 +189,11 @@ export class ClaudeAPIService {
 
       // Claude APIで記事生成
       return await this.generateArticle(generationRequest);
-
     } catch (error) {
       console.error('Failed to generate article from URL:', error);
-      throw new Error(`URL記事生成失敗: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `URL記事生成失敗: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -211,12 +223,13 @@ export class ClaudeAPIService {
         description: extractedData.description || '',
         author: extractedData.author || '',
         publishedTime: extractedData.published || '',
-        source: url
+        source: url,
       };
-
     } catch (error) {
       console.error('Content extraction failed:', error);
-      throw new Error(`コンテンツ抽出失敗: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `コンテンツ抽出失敗: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -241,10 +254,15 @@ ${content}
         messages: [
           {
             role: 'user',
-            content: prompt
-          }
-        ]
+            content: prompt,
+          },
+        ],
       });
+
+      // Handle refusal stop reason (Claude 4.5+)
+      if (response.stop_reason === 'refusal') {
+        throw new Error('Claude refused to generate excerpt due to safety policies');
+      }
 
       const responseContent = response.content[0];
       if (responseContent.type !== 'text') {
@@ -254,7 +272,9 @@ ${content}
       return responseContent.text.trim();
     } catch (error) {
       console.error('Failed to generate excerpt:', error);
-      throw new Error(`Failed to generate excerpt: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to generate excerpt: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -271,8 +291,8 @@ ${content}
 Title: ${title}
 
 Requirements:
-- Use English transliteration or common English title if available (e.g., "魔法少女まどか☆マギカ" → "madoka-magica", "呪術廻戦" → "jujutsu-kaisen")
-- If no English title exists, use Romaji (e.g., "鬼滅の刃" → "kimetsu-no-yaiba")
+    - Use English transliteration or common English title if available (e.g., "作品名A" → "work-a", "作品名" → "work-slug")
+    - If no English title exists, use Romaji (e.g., "作品名B" → "work-b")
 - All lowercase, words separated by hyphens
 - Remove special characters
 - Keep it simple and memorable
@@ -280,9 +300,10 @@ Requirements:
 Output format: Return ONLY the slug, nothing else. Do NOT include markdown formatting, code blocks, or explanations.
 
 Examples:
-- 魔法少女まどか☆マギカ → madoka-magica
-- 呪術廻戦 → jujutsu-kaisen
-- 鬼滅の刃 → kimetsu-no-yaiba
+	- 呪術廻戦 → jujutsu-kaisen
+	- チェンソーマン → chainsaw-man
+	- 鬼滅の刃 → kimetsu-no-yaiba
+	- ハイキュー!! → haikyu
 
 Slug:`;
 
@@ -296,12 +317,21 @@ Slug:`;
         messages: [
           {
             role: 'user',
-            content: prompt
-          }
-        ]
+            content: prompt,
+          },
+        ],
       });
 
-      console.log(`🔍 [generateSlug] Claude API response received:`, JSON.stringify(response, null, 2));
+      console.log(
+        `🔍 [generateSlug] Claude API response received:`,
+        JSON.stringify(response, null, 2)
+      );
+
+      // Handle refusal stop reason (Claude 4.5+)
+      if (response.stop_reason === 'refusal') {
+        console.warn(`⚠️ Claude refused to generate slug for title: ${title}`);
+        return this.generateFallbackSlug(title);
+      }
 
       const responseContent = response.content[0];
       if (responseContent.type !== 'text') {
@@ -309,7 +339,9 @@ Slug:`;
       }
 
       const rawResponse = responseContent.text.trim();
-      console.log(`🔍 [generateSlug] Raw response text: "${rawResponse}" (length: ${rawResponse.length})`);
+      console.log(
+        `🔍 [generateSlug] Raw response text: "${rawResponse}" (length: ${rawResponse.length})`
+      );
 
       // Claude APIが空または空白のみを返した場合、即座にフォールバック
       if (!rawResponse || rawResponse.length === 0) {
@@ -321,10 +353,10 @@ Slug:`;
 
       // サニタイズ（ハイフンを保持）
       const sanitizedSlug = slug
-        .replace(/[^\w\s-]/g, '')  // 英数字、空白、ハイフン以外を削除
-        .replace(/[\s_]+/g, '-')   // 空白とアンダースコアをハイフンに
-        .replace(/^-+|-+$/g, '')   // 先頭と末尾のハイフンを削除
-        .replace(/-{2,}/g, '-');   // 連続するハイフンを1つに
+        .replace(/[^\w\s-]/g, '') // 英数字、空白、ハイフン以外を削除
+        .replace(/[\s_]+/g, '-') // 空白とアンダースコアをハイフンに
+        .replace(/^-+|-+$/g, '') // 先頭と末尾のハイフンを削除
+        .replace(/-{2,}/g, '-'); // 連続するハイフンを1つに
 
       // サニタイゼーション後も空の場合はフォールバック
       if (!sanitizedSlug || sanitizedSlug.length === 0) {
@@ -335,7 +367,9 @@ Slug:`;
       return sanitizedSlug;
     } catch (error) {
       console.error('Failed to generate slug:', error);
-      throw new Error(`Failed to generate slug: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to generate slug: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -388,7 +422,6 @@ ${request.keywords.join(', ')}`;
   "tags": ["タグ1", "タグ2", "タグ3"],
   "categories": ["カテゴリ1", "カテゴリ2"]
 }`;
-
     } else {
       // English version
       prompt = `You are an expert English content writer. Create a high-quality article following these requirements:
@@ -439,18 +472,26 @@ Respond ONLY with JSON format. No other text should be included.
    */
   private getToneDescription(tone: string): string {
     switch (tone) {
-      case 'professional': return 'プロフェッショナルで信頼性の高い文体';
-      case 'casual': return '親しみやすくカジュアルな文体';
-      case 'technical': return '技術的で専門性の高い文体';
-      case 'friendly': return 'フレンドリーで読みやすい文体';
-      default: return 'プロフェッショナルで信頼性の高い文体';
+      case 'professional':
+        return 'プロフェッショナルで信頼性の高い文体';
+      case 'casual':
+        return '親しみやすくカジュアルな文体';
+      case 'technical':
+        return '技術的で専門性の高い文体';
+      case 'friendly':
+        return 'フレンドリーで読みやすい文体';
+      default:
+        return 'プロフェッショナルで信頼性の高い文体';
     }
   }
 
   /**
    * Parse Claude's response and extract article data
    */
-  private parseArticleResponse(response: string, request: ArticleGenerationRequest): GeneratedArticle {
+  private parseArticleResponse(
+    response: string,
+    request: ArticleGenerationRequest
+  ): GeneratedArticle {
     try {
       let articleData: any;
 
@@ -459,7 +500,10 @@ Respond ONLY with JSON format. No other text should be included.
         articleData = JSON.parse(response.trim());
       } catch (directParseError) {
         // If direct parsing fails, try to extract JSON from markdown code blocks
-        const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/) || response.match(/```\n([\s\S]*?)\n```/) || response.match(/\{[\s\S]*\}/);
+        const jsonMatch =
+          response.match(/```json\n([\s\S]*?)\n```/) ||
+          response.match(/```\n([\s\S]*?)\n```/) ||
+          response.match(/\{[\s\S]*\}/);
 
         if (!jsonMatch) {
           console.error('Claude response that could not be parsed:', response);
@@ -480,9 +524,10 @@ Respond ONLY with JSON format. No other text should be included.
       }
 
       // Count words (approximate for Japanese)
-      const wordCount = request.language === 'ja'
-        ? articleData.content.replace(/<[^>]*>/g, '').length
-        : articleData.content.replace(/<[^>]*>/g, '').split(/\s+/).length;
+      const wordCount =
+        request.language === 'ja'
+          ? articleData.content.replace(/<[^>]*>/g, '').length
+          : articleData.content.replace(/<[^>]*>/g, '').split(/\s+/).length;
 
       return {
         title: articleData.title,
@@ -495,12 +540,14 @@ Respond ONLY with JSON format. No other text should be included.
           sourceUrl: request.sourceUrl,
           generatedAt: new Date().toISOString(),
           wordCount,
-          model: this.model
-        }
+          model: this.model,
+        },
       };
     } catch (error) {
       console.error('Failed to parse Claude response:', error);
-      throw new Error(`Failed to parse article response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to parse article response: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
   /**
