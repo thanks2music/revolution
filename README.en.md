@@ -27,18 +27,44 @@ A modern Jamstack platform with AI-powered article generation. A personal challe
 
 ## 📖 Overview
 
-**Revolution** is a comprehensive web platform combining headless WordPress as a CMS with Next.js for the frontend, enhanced by AI-powered content generation capabilities. Built as a monorepo, it demonstrates modern full-stack development practices with cloud-native architecture.
+**Revolution** is a next-generation Jamstack-based web media system developed as a personal project by [@thanks2music](https://github.com/thanks2music). It features an AI-powered article generation pipeline leveraging LLMs.
+
+Built on the experience of manually creating over 10,000 articles, this project combines that practical knowledge with AI to explore a modern web application architecture that automates the entire workflow—from content creation to publication.
 
 ---
 
-## ✨ Key Features
+## ✨ Core Features
 
-- 🤖 **AI Content Pipeline**: RSS Collection → Claude API Article Generation → WordPress Auto-Publishing
+### MDX-Based Article Generation System (Current)
+
+- 🤖 **AI Article Generation Pipeline**: RSS/URL → multi-step pipeline → MDX files → GitHub PRs
+- 🔄 **Multi AI Provider Support**: Switchable via environment variables
+  - Claude (Anthropic) — default
+  - Gemini (Google)
+  - OpenAI (GPT)
+
+- 📝 **YAML Template System**: Prompt management using modular YAML that encapsulates the tacit knowledge of [@thanks2music](https://github.com/thanks2music)
+- ⚡ **Static Site Generation (SSG) Optimized**:
+  - DB-less architecture powered by MDX
+  - High-speed article lookup via `article-index.json`
+  - Seamless deployment to Vercel
+
+- 🔐 **Secure Authentication**: Firebase Authentication with custom claims
+- 🧪 **Test Coverage**: Comprehensive testing with Jest and Firebase Emulator
+- 📊 **Monorepo Management**: Efficient workspace management using pnpm and Turbo
+
+### 🗂️ Legacy Headless CMS Architecture
+
+- 🤖 **AI Content Pipeline**: RSS ingestion → article generation via Claude, ChatGPT, Gemini APIs (Phase 0.1), Grok → LLM-based article generation (Claude, ChatGPT, Gemini) (Phase 1)
+  - From Phase 0.1 onward, the pipeline is **MDX-only**.
 - ⚡ **Headless CMS**: WordPress GraphQL API with Next.js SSG/ISR
-- ☁️ **Cloud Native**: Containerized WordPress on Google Cloud Run
-- 🔐 **Secure**: Firebase Authentication with Custom Claims
-- 🧪 **Test Coverage**: Comprehensive unit tests with Jest + Firebase Emulator
-- 📊 **Monorepo**: Efficient workspace management with pnpm + Turbo
+  - “Headless WordPress” development was discontinued after git tag: `headless-wp-mvp-final-20251103` and is maintained as a legacy version.
+  - To restore the Headless WordPress version, refer to the tag above.
+  - ☁️ **Cloud-Native**: Containerized WordPress running on Google Cloud Run
+- 🔐 **Security**: Firebase Authentication with custom claims
+- 🧪 **Test Coverage**: Comprehensive unit testing with Jest and Firebase Emulator
+- 📊 **Monorepo**: Efficient workspace management using pnpm and Turbo
+
 
 ---
 
