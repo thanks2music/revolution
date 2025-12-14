@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# gitleaks でシークレットスキャン（ステージングファイルのみ）
+echo "🔍 Scanning staged files for secrets..."
+
+if ! gitleaks protect --staged --config .gitleaks.toml; then
+  echo ""
+  echo "❌ gitleaks detected potential secrets in staged files!"
+  echo "   Please review the findings above and remove any secrets before committing."
+  echo ""
+  echo "   To bypass this check (use with caution):"
+  echo "   git commit --no-verify"
+  echo ""
+  exit 1
+fi
+
+echo "✅ No secrets detected"
