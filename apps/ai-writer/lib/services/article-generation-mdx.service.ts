@@ -80,10 +80,17 @@ export interface MdxGenerationRequest {
   };
   /**
    * ドライランモード
-   * true の場合、Firestore登録とGitHub PR作成をスキップ
+   * true の場合、Firestore登録、GitHub PR作成、画像アップロードをすべてスキップ
    * AI処理（記事選別、情報抽出、メタデータ生成）のみ実行
    */
   dryRun?: boolean;
+  /**
+   * ローカル保存モード
+   * true の場合、Firestore登録とGitHub PR作成をスキップ
+   * ただし、画像アップロード（R2）は実行する
+   * デバッグ時に画像アップロードをテストしつつ、PRは作成しない場合に使用
+   */
+  localOnly?: boolean;
 }
 
 /**
@@ -163,8 +170,14 @@ export class ArticleGenerationMdxService {
    * AI_PROVIDER環境変数でプロバイダーを切り替え可能
    */
   async generateMdxFromRSS(request: MdxGenerationRequest): Promise<MdxGenerationResult> {
-    const { rssItem, dryRun = false } = request;
+    const { rssItem, dryRun = false, localOnly = false } = request;
     const year = new Date().getFullYear();
+
+    // モード判定用のヘルパー変数
+    // skipExternalOps: Firestore/GitHub操作をスキップ（dryRun OR localOnly）
+    // skipImageUpload: 画像アップロードをスキップ（dryRunのみ、localOnlyでは実行）
+    const skipExternalOps = dryRun || localOnly;
+    const skipImageUpload = dryRun && !localOnly;
 
     // Get configured AI provider for logging
     const providerName = getConfiguredProvider();
@@ -177,7 +190,9 @@ export class ArticleGenerationMdxService {
     console.log('========== MDXパイプライン: 記事生成開始 ==========');
     console.log(`🤖 Using AI Provider: ${providerDisplayName}`);
     if (dryRun) {
-      console.log('🧪 ドライランモード: Firestore登録・GitHub PR作成をスキップします');
+      console.log('🧪 ドライランモード: Firestore登録・GitHub PR作成・画像アップロードをスキップします');
+    } else if (localOnly) {
+      console.log('💾 ローカル保存モード: Firestore登録・GitHub PR作成をスキップ（画像アップロードは実行）');
     }
     console.log('RSS記事:', { title: rssItem.title, link: rssItem.link });
 
@@ -428,9 +443,10 @@ export class ArticleGenerationMdxService {
       // Step 3: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
 
-      if (dryRun) {
-        // ドライランモード: 重複チェック・登録をスキップ
-        console.log('\n[Step 3/11] Firestore重複チェック（ドライランのためスキップ）...');
+      if (skipExternalOps) {
+        // ドライラン/ローカル保存モード: 重複チェック・登録をスキップ
+        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
+        console.log(`\n[Step 3/11] Firestore重複チェック（${modeLabel}のためスキップ）...`);
 
         // ダミーの postId を生成（タイムスタンプベース）
         const dryRunPostId = `dry-run-${Date.now()}`;
@@ -449,10 +465,12 @@ export class ArticleGenerationMdxService {
           updatedAt: null as any, // ドライラン用ダミー値
         };
 
-        console.log('🧪 ドライラン: ダミーイベントレコード生成:', {
+        const modeEmoji = localOnly ? '💾' : '🧪';
+        const modeName = localOnly ? 'ローカル保存' : 'ドライラン';
+        console.log(`${modeEmoji} ${modeName}: ダミーイベントレコード生成:`, {
           canonicalKey: eventRecord.canonicalKey,
           postId: eventRecord.postId,
-          status: 'dry-run (not saved)',
+          status: `${modeName} (not saved)`,
         });
       } else {
         // 通常モード: 重複チェック + 登録
@@ -626,7 +644,7 @@ export class ArticleGenerationMdxService {
             {
               folder: `${eventType}/${year}/${eventRecord.postId}`,
               articleSlug: eventRecord.postId,
-              dryRun,
+              dryRun: skipImageUpload, // localOnlyモードでは実際にアップロード
             }
           );
 
@@ -656,7 +674,7 @@ export class ArticleGenerationMdxService {
 
               for (const sourceUrl of sourceUrls) {
                 try {
-                  if (dryRun) {
+                  if (skipImageUpload) {
                     const dryRunUrl = `[DRY RUN] ${process.env.R2_PUBLIC_URL}/${baseFolder}/${category}/${Date.now()}.jpg`;
                     uploadedCategoryR2Images[category].push(dryRunUrl);
                     console.log(`  🔍 [DRY RUN] ${sourceUrl}`);
@@ -686,7 +704,7 @@ export class ArticleGenerationMdxService {
                 articleSlug: eventRecord.postId,
                 eventType,
                 year,
-                dryRun,
+                dryRun: skipImageUpload, // localOnlyモードでは実際にアップロード
                 uploadOgImage: false, // OG画像は既にアップロード済み
                 uploadBodyImages: true,
               }
@@ -767,10 +785,12 @@ export class ArticleGenerationMdxService {
       // Step 7: Create GitHub PR
       let prResult: CreateMdxPrResult | undefined;
 
-      if (dryRun) {
-        // ドライランモード: GitHub PR作成をスキップ
-        console.log('\n[Step 7/11] GitHub PR作成（ドライランのためスキップ）...');
-        console.log('🧪 ドライラン: PR作成をスキップしました');
+      if (skipExternalOps) {
+        // ドライラン/ローカル保存モード: GitHub PR作成をスキップ
+        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
+        const modeEmoji = localOnly ? '💾' : '🧪';
+        console.log(`\n[Step 7/11] GitHub PR作成（${modeLabel}のためスキップ）...`);
+        console.log(`${modeEmoji} ${modeLabel}: PR作成をスキップしました`);
 
         // MDX記事の内容をプレビュー表示
         console.log('\n📄 生成されたMDX記事のプレビュー:');
@@ -823,10 +843,12 @@ export class ArticleGenerationMdxService {
       }
 
       // Step 8: Update Firestore status to 'generated'
-      if (dryRun) {
-        // ドライランモード: ステータス更新をスキップ
-        console.log('\n[Step 8/11] Firestoreステータス更新（ドライランのためスキップ）...');
-        console.log('🧪 ドライラン: ステータス更新をスキップしました');
+      if (skipExternalOps) {
+        // ドライラン/ローカル保存モード: ステータス更新をスキップ
+        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
+        const modeEmoji = localOnly ? '💾' : '🧪';
+        console.log(`\n[Step 8/11] Firestoreステータス更新（${modeLabel}のためスキップ）...`);
+        console.log(`${modeEmoji} ${modeLabel}: ステータス更新をスキップしました`);
       } else {
         // 通常モード: ステータス更新
         console.log('\n[Step 8/11] Firestoreのステータスを更新...');
@@ -841,7 +863,9 @@ export class ArticleGenerationMdxService {
         costTracker.logSummary();
       }
 
-      console.log(`========== MDXパイプライン: ${dryRun ? 'ドライラン' : '記事生成'}完了 ==========\n`);
+      // 完了メッセージ
+      const completionLabel = dryRun ? 'ドライラン' : localOnly ? 'ローカル保存' : '記事生成';
+      console.log(`========== MDXパイプライン: ${completionLabel}完了 ==========\n`);
 
       return {
         success: true,

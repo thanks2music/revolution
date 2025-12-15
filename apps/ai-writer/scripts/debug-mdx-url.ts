@@ -9,19 +9,27 @@
  * 使用方法:
  *   pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html
  *   pnpm debug:mdx --dry-run https://animeanime.jp/article/2025/11/24/94010.html
+ *   pnpm debug:mdx --local https://animeanime.jp/article/2025/11/24/94010.html
+ *   pnpm debug:mdx --upload-images https://animeanime.jp/article/2025/11/24/94010.html
  *
  * オプション:
- *   --dry-run    Firestore登録とGitHub PR作成をスキップ（AI処理のみ実行）
+ *   --dry-run        Firestore登録、GitHub PR作成、画像アップロードをすべてスキップ（AI処理のみ実行）
+ *   --local          ローカル環境にMDXファイルを保存（--dry-run を自動的に有効化）
+ *                    保存先: apps/ai-writer/content/{eventType}/{workSlug}/{postId}.mdx
+ *   --upload-images  画像をR2にアップロードしつつローカル保存（--local + R2アップロード）
+ *                    Firestore登録とGitHub PR作成はスキップ
  *
  * 前提条件:
- *   - .env.local に GITHUB_PAT を設定（--dry-run時は不要）
+ *   - .env.local に GITHUB_PAT を設定（--dry-run/--local/--upload-images時は不要）
  *   - .env.local に ANTHROPIC_API_KEY を設定
- *   - Firebase Admin SDK の認証情報を設定（--dry-run時は不要）
+ *   - .env.local に R2_* 環境変数を設定（--upload-images時に必要）
+ *   - Firebase Admin SDK の認証情報を設定（--dry-run/--local/--upload-images時は不要）
  */
 
 import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { mkdir, writeFile } from 'fs/promises';
 
 // ES Module で __dirname を取得
 const __filename = fileURLToPath(import.meta.url);
@@ -40,20 +48,38 @@ import type { MdxGenerationRequest } from '../lib/services/article-generation-md
 /**
  * コマンドライン引数をパース
  */
-function parseArgs(): { url: string; dryRun: boolean } {
+function parseArgs(): { url: string; dryRun: boolean; local: boolean; uploadImages: boolean } {
   const args = process.argv.slice(2);
   let dryRun = false;
+  let local = false;
+  let uploadImages = false;
   let url = '';
 
   for (const arg of args) {
     if (arg === '--dry-run') {
       dryRun = true;
+    } else if (arg === '--local') {
+      local = true;
+    } else if (arg === '--upload-images') {
+      uploadImages = true;
     } else if (!arg.startsWith('-')) {
       url = arg;
     }
   }
 
-  return { url, dryRun };
+  // --local は --dry-run を自動的に有効化（Firestore/GitHub操作をスキップ、画像アップロードもスキップ）
+  if (local) {
+    dryRun = true;
+  }
+
+  // --upload-images は local モードを有効化（ファイル保存は実行）、ただし dryRun は false のまま
+  // これにより、R2アップロードは実行されるが、Firestore/GitHub操作はスキップされる
+  if (uploadImages) {
+    local = true;
+    dryRun = false; // dryRunをfalseにしてR2アップロードを有効化
+  }
+
+  return { url, dryRun, local, uploadImages };
 }
 
 /**
@@ -61,32 +87,48 @@ function parseArgs(): { url: string; dryRun: boolean } {
  */
 async function main() {
   // コマンドライン引数をパース
-  const { url, dryRun } = parseArgs();
+  const { url, dryRun, local, uploadImages } = parseArgs();
 
   if (!url) {
     console.error('\n❌ エラー: URLが指定されていません\n');
     console.log('使用方法:');
     console.log('  pnpm debug:mdx <URL>');
-    console.log('  pnpm debug:mdx --dry-run <URL>\n');
+    console.log('  pnpm debug:mdx --dry-run <URL>');
+    console.log('  pnpm debug:mdx --local <URL>');
+    console.log('  pnpm debug:mdx --upload-images <URL>\n');
     console.log('オプション:');
-    console.log('  --dry-run    Firestore登録とGitHub PR作成をスキップ\n');
+    console.log('  --dry-run        Firestore登録、GitHub PR作成、画像アップロードをすべてスキップ');
+    console.log('  --local          ローカル環境にMDXファイルを保存（--dry-runを自動有効化）');
+    console.log('                   保存先: apps/ai-writer/content/{eventType}/{workSlug}/{postId}.mdx');
+    console.log('  --upload-images  画像をR2にアップロードしつつローカル保存');
+    console.log('                   Firestore登録とGitHub PR作成はスキップ\n');
     console.log('例:');
     console.log('  pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html');
-    console.log('  pnpm debug:mdx --dry-run https://animeanime.jp/article/2025/11/24/94010.html\n');
+    console.log('  pnpm debug:mdx --dry-run https://animeanime.jp/article/2025/11/24/94010.html');
+    console.log('  pnpm debug:mdx --local https://animeanime.jp/article/2025/11/24/94010.html');
+    console.log('  pnpm debug:mdx --upload-images https://animeanime.jp/article/2025/11/24/94010.html\n');
     process.exit(1);
   }
 
   console.log('🔍 URLからMDX記事生成デバッグ開始\n');
   console.log('='.repeat(80));
-  if (dryRun) {
-    console.log('🧪 ドライランモード（Firestore/GitHub スキップ）');
+  if (uploadImages) {
+    console.log('🖼️  画像アップロードモード（Firestore/GitHub スキップ + R2アップロード + ファイル保存）');
+  } else if (local) {
+    console.log('💾 ローカル保存モード（Firestore/GitHub/R2 すべてスキップ + ファイル保存）');
+  } else if (dryRun) {
+    console.log('🧪 ドライランモード（Firestore/GitHub/R2 すべてスキップ）');
   } else {
     console.log('URL指定デバッグモード');
   }
   console.log('='.repeat(80));
   console.log(`URL: ${url}`);
-  if (dryRun) {
-    console.log('モード: --dry-run（Firestore登録・GitHub PR作成をスキップ）');
+  if (uploadImages) {
+    console.log('モード: --upload-images（R2に画像をアップロード + ローカルにMDXファイルを保存）');
+  } else if (local) {
+    console.log('モード: --local（ローカルにMDXファイルを保存、画像アップロードなし）');
+  } else if (dryRun) {
+    console.log('モード: --dry-run（Firestore登録・GitHub PR作成・画像アップロードをスキップ）');
   }
   console.log();
 
@@ -109,15 +151,22 @@ async function main() {
     console.log('🤖 STEP 2: MDX記事生成パイプライン実行中...');
     console.log('  → 記事選別（公式URL検出）');
     console.log('  → 作品/店舗/イベント情報抽出');
-    if (dryRun) {
+    if (dryRun || uploadImages) {
       console.log('  → Firestore重複チェック（登録スキップ）');
     } else {
       console.log('  → Firestore重複チェック');
     }
     console.log('  → カテゴリ/抜粋生成');
     console.log('  → タイトル生成');
+    if (uploadImages) {
+      console.log('  → 画像アップロード（R2にアップロード）');
+    } else if (dryRun) {
+      console.log('  → 画像アップロード（スキップ）');
+    } else {
+      console.log('  → 画像アップロード');
+    }
     console.log('  → MDX記事生成');
-    if (dryRun) {
+    if (dryRun || uploadImages) {
       console.log('  → GitHub PR作成（スキップ）');
     } else {
       console.log('  → GitHub PR作成');
@@ -135,6 +184,8 @@ async function main() {
         pubDate: new Date().toISOString(),
       },
       dryRun, // ドライランモードをサービスに渡す
+      // --upload-images モード: localOnly=true を渡すことで、Firestore/GitHub はスキップしつつ R2 アップロードを実行
+      localOnly: uploadImages,
     };
 
     const result = await service.generateMdxFromRSS(request);
@@ -170,6 +221,9 @@ async function main() {
     console.log('\n✅ MDX記事生成成功！');
     console.log();
 
+    // ローカル保存変数（後で結果表示に使用）
+    let savedFilePath: string | undefined;
+
     if (result.mdxArticle) {
       console.log('📝 記事情報:');
       // 生成されたMDXタイトル（frontmatter.title）を表示。RSSタイトルではない。
@@ -177,6 +231,29 @@ async function main() {
       console.log(`  ファイルパス: ${result.mdxArticle.filePath}`);
       console.log(`  ファイルサイズ: ${result.mdxArticle.content?.length || 0}文字`);
       console.log();
+
+      // --local または --upload-images オプション: ローカルにMDXファイルを保存
+      if ((local || uploadImages) && result.mdxArticle.content) {
+        console.log('💾 ローカルファイル保存中...');
+
+        // filePath は 'apps/ai-writer/content/...' の形式
+        // スクリプトは 'apps/ai-writer/scripts/' にあるので、親ディレクトリに戻って解決
+        const absolutePath = resolve(
+          __dirname,
+          '..',
+          result.mdxArticle.filePath.replace('apps/ai-writer/', '')
+        );
+
+        // 親ディレクトリを作成（存在しない場合）
+        await mkdir(dirname(absolutePath), { recursive: true });
+
+        // MDXファイルを書き込み
+        await writeFile(absolutePath, result.mdxArticle.content, 'utf-8');
+
+        savedFilePath = absolutePath;
+        console.log(`✅ ローカルに保存しました: ${absolutePath}`);
+        console.log();
+      }
     }
 
     if (result.prResult) {
@@ -185,6 +262,9 @@ async function main() {
       console.log(`  PR URL: ${result.prResult.prUrl}`);
       console.log(`  ブランチ: ${result.prResult.branchName}`);
       console.log(`  コミットSHA: ${result.prResult.commitSha}`);
+      console.log();
+    } else if (uploadImages) {
+      console.log('🔀 GitHub PR: （画像アップロードモードのためスキップ）');
       console.log();
     } else if (dryRun) {
       console.log('🔀 GitHub PR: （ドライランのためスキップ）');
@@ -203,17 +283,62 @@ async function main() {
     }
 
     console.log('='.repeat(80));
-    if (dryRun) {
-      console.log('✅ ドライラン完了！（Firestore/GitHub操作なし）');
+    if (uploadImages) {
+      console.log('✅ 画像アップロード + ローカル保存完了！（Firestore/GitHub操作なし）');
+    } else if (local) {
+      console.log('✅ ローカル保存完了！（Firestore/GitHub/R2 すべてスキップ）');
+    } else if (dryRun) {
+      console.log('✅ ドライラン完了！（Firestore/GitHub/R2 すべてスキップ）');
     } else {
       console.log('✅ デバッグ完了！');
     }
     console.log('='.repeat(80));
     console.log();
 
-    if (dryRun) {
+    if (uploadImages) {
+      console.log('📊 画像アップロード + ローカル保存結果:');
+      console.log('  - AI処理（記事選別、情報抽出、メタデータ生成）: 完了');
+      console.log('  - R2画像アップロード: 完了');
+      console.log('  - Firestore登録: スキップ');
+      console.log('  - GitHub PR作成: スキップ');
+      console.log(`  - ローカル保存: ${savedFilePath ? '完了' : '失敗'}`);
+      console.log();
+      if (savedFilePath) {
+        console.log('💡 次のステップ:');
+        console.log(`  1. 保存されたMDXファイルを確認: ${savedFilePath}`);
+        console.log('  2. 画像URLが正しくR2のURLになっているか確認');
+        console.log('  3. 記事インデックスを再生成: pnpm generate:article-index');
+        console.log('  4. 開発サーバーで確認: pnpm dev');
+        console.log();
+        console.log('💡 本番実行するには --upload-images を外して実行してください:');
+        console.log(`  pnpm debug:mdx ${url}`);
+        console.log();
+      }
+    } else if (local) {
+      console.log('📊 ローカル保存結果:');
+      console.log('  - AI処理（記事選別、情報抽出、メタデータ生成）: 完了');
+      console.log('  - R2画像アップロード: スキップ');
+      console.log('  - Firestore登録: スキップ');
+      console.log('  - GitHub PR作成: スキップ');
+      console.log(`  - ローカル保存: ${savedFilePath ? '完了' : '失敗'}`);
+      console.log();
+      if (savedFilePath) {
+        console.log('💡 次のステップ:');
+        console.log(`  1. 保存されたMDXファイルを確認: ${savedFilePath}`);
+        console.log('  2. 記事インデックスを再生成: pnpm generate:article-index');
+        console.log('  3. 開発サーバーで確認: pnpm dev');
+        console.log();
+        console.log('💡 画像をR2にアップロードしたい場合:');
+        console.log(`  pnpm debug:mdx --upload-images ${url}`);
+        console.log();
+        console.log('💡 本番実行するには --local を外して実行してください:');
+        console.log(`  pnpm debug:mdx ${url}`);
+        console.log();
+      }
+    } else if (dryRun) {
       console.log('📊 ドライラン結果:');
       console.log('  - AI処理（記事選別、情報抽出、メタデータ生成）: 完了');
+      console.log('  - R2画像アップロード: スキップ');
       console.log('  - Firestore登録: スキップ');
       console.log('  - GitHub PR作成: スキップ');
       console.log();
