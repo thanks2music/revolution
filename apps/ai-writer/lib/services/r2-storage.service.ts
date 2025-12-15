@@ -323,14 +323,15 @@ export class R2StorageService {
 
   /**
    * ユニークなキーを生成
+   *
+   * @description
+   * URL構造: {folder}/{uuid}.{ext}
+   * folderには eventType/year/postId が含まれる想定
+   * year/monthは追加しない（postIdがULIDなので時系列ソート可能）
    */
   private generateKey(folder: string, ext: string): string {
     const uuid = uuidv4();
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-
-    return `${folder}/${year}/${month}/${uuid}.${ext}`;
+    return `${folder}/${uuid}.${ext}`;
   }
 
   /**
