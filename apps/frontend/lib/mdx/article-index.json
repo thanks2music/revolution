@@ -3,6 +3,40 @@
   "totalArticles": 2,
   "articles": [
     {
+      "slug": "dry-run-1765762506009",
+      "title": "らんま1/2 カフェ in 池袋・梅田 11月7日よりコラボ開催",
+      "date": "2025-12-15T01:34:52.233Z",
+      "excerpt": "高橋留美子の名作らんま1/2の2期アニメ放送記念の期間限定コラボカフェが東京と大阪で開催。キャラクターをイメージした楽しいメニューやグッズも充実しています。",
+      "categories": [
+        "らんま1/2",
+        "コラボカフェ",
+        "アニメ・キャラクターイベント"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2025/dry-run-1765762506009/0d8f1c9c-764f-467a-bc2e-b9a3f8592207.png",
+      "filePath": "apps/ai-writer/content/collabo-cafe/ranma/dry-run-1765762506009.mdx",
+      "eventType": "collabo-cafe",
+      "workSlug": "ranma"
+    },
+    {
+      "slug": "dry-run-1765736982675",
+      "title": "ブルーロック カフェ in 東京・大阪・名古屋・仙台 11月7日よりコラボ開催",
+      "date": "2025-12-14T18:29:24.531Z",
+      "excerpt": "2025年11月から開催のブルーロックコラボカフェではキャラクター7人の旅をテーマにしたオリジナルメニューやグッズを楽しめます。東京、大阪、名古屋など全国で順次開催予定です。",
+      "categories": [
+        "ブルーロック",
+        "コラボカフェ",
+        "アニメ・キャラクター"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "ogImage": "[DRY RUN] https://images.anime-events.com/collabo-cafe/2025/dry-run-1765736982675/dry-run-1765736982675/og-image.jpg",
+      "filePath": "apps/ai-writer/content/collabo-cafe/blue-lock/dry-run-1765736982675.mdx",
+      "eventType": "collabo-cafe",
+      "workSlug": "blue-lock"
+    },
+    {
       "slug": "01kceetv26",
       "title": "機動戦士ガンダム 鉄血のオルフェンズ カフェ in 東京ソラマチ 12月18日よりコラボ開催",
       "date": "2025-12-14T12:54:27.151Z",
@@ -14,6 +48,7 @@
       ],
       "tags": [],
       "author": "thanks2music",
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2025/01kceetv26/01kceetv26/2025/12/d45178bf-b1c3-440c-bb8b-7420bdad61ad.png",
       "filePath": "apps/ai-writer/content/collabo-cafe/kidou-senshi-gundam-tetsu-x-no-orufenz/01kceetv26.mdx",
       "eventType": "collabo-cafe",
       "workSlug": "kidou-senshi-gundam-tetsu-x-no-orufenz"
@@ -30,6 +65,7 @@
       ],
       "tags": [],
       "author": "thanks2music",
+      "ogImage": "/images/og-image-compressed.png",
       "filePath": "apps/ai-writer/content/collabo-cafe/sample-work/01kafsdmvd.mdx",
       "eventType": "collabo-cafe",
       "workSlug": "sample-work"
