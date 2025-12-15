@@ -1,7 +1,23 @@
 {
-  "generatedAt": "2025-12-14T12:55:41.178Z",
-  "totalArticles": 2,
+  "generatedAt": "2025-12-15T01:31:38.828Z",
+  "totalArticles": 3,
   "articles": [
+    {
+      "slug": "01kcft3622",
+      "title": "らんま1/2 カフェ in 池袋・大阪 11月7日よりコラボ開催",
+      "date": "2025-12-15T01:30:22.149Z",
+      "excerpt": "高橋留美子の名作「らんま1/2」の2期アニメ放送開始を記念した期間限定コラボカフェが東京と大阪で開催。キャラクターをイメージした楽しいメニューやグッズも充実しています。",
+      "categories": [
+        "らんま1/2",
+        "コラボカフェ",
+        "アニメ・キャラクターイベント"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/ranma/01kcft3622.mdx",
+      "eventType": "collabo-cafe",
+      "workSlug": "ranma"
+    },
     {
       "slug": "01kceetv26",
       "title": "機動戦士ガンダム 鉄血のオルフェンズ カフェ in 東京ソラマチ 12月18日よりコラボ開催",
