@@ -8,6 +8,7 @@ import {
 import { CustomMDX } from '@/components/mdx';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { parseFrontmatter } from '@/lib/mdx/utils';
 import { generateArticleMetadata } from '@/lib/metadata';
 
@@ -76,6 +77,20 @@ export default async function ArticlePage({
           <h1 className="text-4xl md:text-5xl font-bold mb-4 text-gray-900 dark:text-gray-100">
             {article.title}
           </h1>
+
+          {/* Hero Image */}
+          {article.ogImage && (
+            <figure className="mb-6">
+              <Image
+                src={article.ogImage}
+                alt={article.title}
+                width={1200}
+                height={630}
+                priority
+                className="rounded-lg w-full h-auto"
+              />
+            </figure>
+          )}
 
           {/* Metadata */}
           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-6">

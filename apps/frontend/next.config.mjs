@@ -31,6 +31,11 @@ const nextConfig = {
               : '/**',
           }]
         : []),
+      // Cloudflare R2画像用の設定（ogImage等）
+      {
+        protocol: 'https',
+        hostname: 'images.anime-events.com',
+      },
     ],
   },
 

@@ -140,6 +140,7 @@ async function main() {
       categories: frontmatter.categories || [],
       tags: frontmatter.tags || [],
       author: frontmatter.author || 'Revolution AI Writer',
+      ogImage: frontmatter.ogImage || null,
       filePath: path.relative(REPO_ROOT, filePath),
       eventType,
       workSlug,
