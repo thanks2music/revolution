@@ -399,6 +399,7 @@ private-config.yml
 # README.mdは常に除外しない
 !docs/README.md
 !docs/**/*.md
+llm-context/
 
 # ただし、機密ファイルは個別に除外
 docs/*secret*.md
