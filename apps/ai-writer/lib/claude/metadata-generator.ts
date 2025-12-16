@@ -2,13 +2,17 @@
  * Article Metadata Generator Module
  *
  * Purpose:
- *   - Generate article metadata (categories + excerpt) using AI API
+ *   - Generate article excerpt using AI API
  *   - Support Phase 0.1 MVP article generation
- *   - Efficient single-call generation for both metadata fields
  *
  * @description
  * マルチプロバイダー対応済み（2025-12-07）
  * AI_PROVIDER環境変数でプロバイダーを切り替え可能
+ *
+ * taxonomy.yaml v1.1 対応（2025-12-17）
+ * categories は buildCategories() で決定論的に生成するため、AI 生成から除外
+ * @see lib/utils/category-builder.ts
+ * @see notes/01-project-docs/05-ai-writer/mdx/AI-Writer-Deterministic-Category-Generation.md
  *
  * @module lib/claude/metadata-generator
  */
@@ -18,11 +22,15 @@ import type { GenerateMetadataInput, ArticleMetadata, AiMetadataResponse } from 
 import { METADATA_DEFAULTS } from './types';
 
 /**
- * Generate article metadata (categories + excerpt) using AI API
+ * Generate article excerpt using AI API
+ *
+ * @description
+ * taxonomy.yaml v1.1 以降、categories は buildCategories() で決定論的に生成するため、
+ * この関数は excerpt のみを生成します。
  *
  * @param {GenerateMetadataInput} input - Metadata generation parameters
  * @param {string} _apiKey - Deprecated: API key is now managed by AI provider factory
- * @returns {Promise<ArticleMetadata>} Generated metadata
+ * @returns {Promise<ArticleMetadata>} Generated metadata (excerpt only)
  *
  * @throws {Error} If AI API request fails
  * @throws {Error} If response parsing fails
@@ -36,8 +44,11 @@ import { METADATA_DEFAULTS } from './types';
  *   eventType: "コラボカフェ"
  * });
  *
- * console.log(metadata.categories); // ['作品名', 'カテゴリ名']
  * console.log(metadata.excerpt);    // "作品名と店舗名のコラボイベントが..."
+ *
+ * // categories は buildCategories() で別途生成
+ * import { buildCategories } from '@/lib/utils/category-builder';
+ * const categories = buildCategories({ workTitle: "作品名", eventTitle: "コラボカフェ" });
  * ```
  */
 export async function generateArticleMetadata(
@@ -112,8 +123,12 @@ export async function generateArticleMetadata(
 }
 
 /**
- * Build prompt for AI API metadata generation
+ * Build prompt for AI API excerpt generation
+ *
  * @internal
+ * @description
+ * taxonomy.yaml v1.1 以降、categories は buildCategories() で決定論的に生成するため、
+ * このプロンプトは excerpt のみを生成します。
  */
 function buildMetadataPrompt(params: {
   content: string;
@@ -121,13 +136,13 @@ function buildMetadataPrompt(params: {
   workTitle: string;
   eventType: string;
   maxExcerptLength: number;
-  maxCategories: number;
+  maxCategories: number; // kept for backward compatibility, not used
 }): string {
-  const { content, title, workTitle, eventType, maxExcerptLength, maxCategories } = params;
+  const { content, title, workTitle, eventType, maxExcerptLength } = params;
 
-  return `あなたは日本語記事のメタデータ生成を専門とするアシスタントです。
+  return `あなたは日本語記事の要約生成を専門とするアシスタントです。
 
-以下の記事から、カテゴリとexcerpt（要約）を生成してください。
+以下の記事から、SEO向けの要約（excerpt）を生成してください。
 
 ## 記事タイトル
 ${title}
@@ -143,13 +158,6 @@ ${content}
 
 ## 生成要件
 
-### カテゴリ（categories）
-- ${METADATA_DEFAULTS.MIN_CATEGORIES}〜${maxCategories}個のカテゴリを生成してください
-- 必ず「${workTitle}」をカテゴリに含めてください
-- 必ず「${eventType}」をカテゴリに含めてください
-- 日本語で出力してください
-- 読者が興味を持ちやすいカテゴリを選んでください
-
 ### 要約（excerpt）
 - ${maxExcerptLength}文字以内で簡潔な要約を作成してください
 - SEOを意識した魅力的な要約にしてください
@@ -161,12 +169,11 @@ ${content}
 必ず以下のJSON形式のみで回答してください。他のテキストは一切含めないでください。
 
 {
-  "categories": ["カテゴリ1", "カテゴリ2", "カテゴリ3"],
   "excerpt": "記事の要約文（${maxExcerptLength}文字以内）"
 }
 
 ## 重要な注意事項
-- 日本語全角記号の引用符 ” “ ’ ‘ 〝 〟 ゛ ❝ ❞ は禁止です。
+- 日本語全角記号の引用符 " " ' ' 〝 〟 ゛ ❝ ❞ は禁止です。
 - 半角英数のシングルクォート = ' も禁止です。
 - 半角英数のダブルクォート = " も禁止です。
 - クォート（' や "）ではなく、かぎ括弧「」を使用してください。強調・目立たせたい箇所には日本語のかぎ括弧「」で囲んでください。`;
@@ -174,7 +181,11 @@ ${content}
 
 /**
  * Parse AI API response to metadata
+ *
  * @internal
+ * @description
+ * taxonomy.yaml v1.1 以降、categories は AI 生成から除外されたため、
+ * excerpt のみを必須フィールドとして検証します。
  */
 function parseMetadataResponse(response: string): ArticleMetadata {
   try {
@@ -240,20 +251,14 @@ function parseMetadataResponse(response: string): ArticleMetadata {
       }
     }
 
-    // Validate required fields
-    if (
-      !metadataData.categories ||
-      !Array.isArray(metadataData.categories) ||
-      metadataData.categories.length === 0
-    ) {
-      throw new Error('Missing or invalid categories in AI response');
-    }
-
+    // Validate required fields (excerpt only, categories is now optional)
+    // Note: categories は buildCategories() で決定論的に生成するため、AI 生成から除外
     if (!metadataData.excerpt || typeof metadataData.excerpt !== 'string') {
       throw new Error('Missing or invalid excerpt in AI response');
     }
 
     return {
+      // categories は AI が返しても無視（後方互換性のため undefined を設定しない）
       categories: metadataData.categories,
       excerpt: metadataData.excerpt.trim(),
     };
@@ -267,35 +272,20 @@ function parseMetadataResponse(response: string): ArticleMetadata {
 
 /**
  * Validate generated metadata
+ *
  * @internal
+ * @description
+ * taxonomy.yaml v1.1 以降、categories は buildCategories() で決定論的に生成するため、
+ * この関数では excerpt のみを検証します。
  */
 function validateMetadata(
   metadata: ArticleMetadata,
   constraints: { maxCategories: number; maxExcerptLength: number }
 ): void {
-  const { maxCategories, maxExcerptLength } = constraints;
+  const { maxExcerptLength } = constraints;
 
-  // Validate categories count
-  if (metadata.categories.length < METADATA_DEFAULTS.MIN_CATEGORIES) {
-    throw new Error(
-      `Too few categories: expected at least ${METADATA_DEFAULTS.MIN_CATEGORIES}, got ${metadata.categories.length}`
-    );
-  }
-
-  if (metadata.categories.length > maxCategories) {
-    // Truncate categories if too many (non-fatal)
-    console.warn(
-      `Too many categories (${metadata.categories.length}), truncating to ${maxCategories}`
-    );
-    metadata.categories = metadata.categories.slice(0, maxCategories);
-  }
-
-  // Validate categories are non-empty strings
-  for (const category of metadata.categories) {
-    if (!category || typeof category !== 'string' || category.trim() === '') {
-      throw new Error('Categories must be non-empty strings');
-    }
-  }
+  // Note: categories 検証は taxonomy.yaml v1.1 以降スキップ
+  // categories は buildCategories() で決定論的に生成するため
 
   // Validate excerpt length
   if (metadata.excerpt.length > maxExcerptLength) {
