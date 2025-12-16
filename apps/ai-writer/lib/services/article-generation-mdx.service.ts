@@ -62,6 +62,41 @@ import {
 } from '@/lib/ai/cost';
 
 /**
+ * taxonomy.yaml v1.1 の category_rules に従って categories を決定論的に構築
+ *
+ * @description
+ * AI の自由生成ではなく、既存フィールドから決定論的にカテゴリを生成する。
+ * taxonomy.yaml v1.1 の category_rules.generation_order に準拠:
+ *   1. work_title（必須）
+ *   2. event_title（必須）
+ *
+ * 注意: prefectures は categories に含めず、別フィールド（prefectures[]）で管理
+ *
+ * @see templates/config/taxonomy.yaml
+ * @see notes/work-report/2025-12/2025-12-16-カテゴリの改善案について改めて行った調査内容.md
+ */
+function buildCategories(params: {
+  workTitle: string;
+  eventTitle: string;
+}): string[] {
+  const categories: string[] = [];
+
+  // Priority 1: 作品名（必須）
+  if (params.workTitle) {
+    categories.push(params.workTitle);
+  }
+
+  // Priority 2: イベント種別名（必須）
+  if (params.eventTitle) {
+    categories.push(params.eventTitle);
+  }
+
+  // 制約: 2件固定（taxonomy.yaml v1.1 constraints）
+  // prefectures は別フィールドで管理するため、ここでは含めない
+  return categories;
+}
+
+/**
  * RSS記事からMDX記事を生成するためのリクエスト
  */
 export interface MdxGenerationRequest {
@@ -533,9 +568,12 @@ export class ArticleGenerationMdxService {
         });
       }
 
-      // Step 4: Generate categories and excerpt using AI API
-      console.log(`\n[Step 4/11] AI API (${providerDisplayName}) でカテゴリ/抜粋を生成...`);
+      // Step 4: Generate excerpt using AI API + build categories deterministically
+      // Note: categories は AI 生成ではなく、taxonomy.yaml ルールに従って決定論的に構築
+      // @see notes/work-report/2025-12/2025-12-16-カテゴリの改善案について改めて行った調査内容.md
+      console.log(`\n[Step 4/11] AI API (${providerDisplayName}) で抜粋を生成 + カテゴリを構築...`);
 
+      // 4a: AI API で excerpt のみ生成（categories は使用しない）
       const metadata = await generateArticleMetadata({
         content: rssItem.content || rssItem.contentSnippet || '',
         title: rssItem.title,
@@ -543,8 +581,17 @@ export class ArticleGenerationMdxService {
         eventType: extraction.eventTypeName,
       });
 
+      // 4b: categories は buildCategories() で決定論的に構築（2件固定）
+      // taxonomy.yaml v1.1 の category_rules に準拠
+      // Note: prefectures は categories に含めず、別フィールドで管理
+      const categories = buildCategories({
+        workTitle: extraction.workTitle,
+        eventTitle: extraction.eventTypeName,
+      });
+
       console.log('メタデータ生成完了:', {
-        categories: metadata.categories,
+        categories: categories, // 決定論的に構築
+        categoriesSource: 'buildCategories (taxonomy.yaml rules)',
         excerptLength: metadata.excerpt.length,
       });
 
@@ -768,7 +815,7 @@ export class ArticleGenerationMdxService {
           workTitle: extraction.workTitle,
           workSlug,
           title: titleResult.title, // YAMLテンプレートで生成されたタイトルを使用
-          categories: metadata.categories,
+          categories: categories, // buildCategories() で決定論的に構築
           excerpt: metadata.excerpt,
           date: rssItem.pubDate || new Date().toISOString().split('T')[0],
           author: 'thanks2music',
@@ -811,7 +858,7 @@ export class ArticleGenerationMdxService {
         const prBody = this.generatePrBody({
           rssItem,
           extraction,
-          metadata,
+          metadata: { categories, excerpt: metadata.excerpt }, // 決定論的に構築した categories を使用
           eventRecord,
           workSlug,
           storeSlug,
