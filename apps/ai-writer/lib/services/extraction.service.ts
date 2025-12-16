@@ -146,6 +146,13 @@ export interface ExtractionResult {
   グッズ名: string[] | null;
   /** 店舗の住所（1店舗の場合のみ） */
   店舗の住所: string | null;
+  /**
+   * 開催都道府県（日本語正式名称の配列）
+   * @description 店舗名・住所から特定された都道府県
+   * @see taxonomy.yaml axes.areas
+   * @example ["東京都", "大阪府"]
+   */
+  開催都道府県: string[] | null;
   /** コピーライト表記 */
   コピーライト: string | null;
   /** 公式X（Twitter）の投稿URL */
@@ -163,6 +170,8 @@ export interface ExtractionResult {
     原作タイプ?: string;
     /** 原作者名の判断理由（敬称選択ロジック含む） */
     原作者名?: string;
+    /** 開催都道府県の特定根拠（店舗名/住所/明示的記載から） */
+    開催都道府県?: string;
   };
   /** Model used for extraction */
   model?: string;
@@ -463,6 +472,7 @@ ${schemaStr}
         メニュー種類数: jsonData.メニュー種類数 || null,
         グッズ名: jsonData.グッズ名 || null,
         店舗の住所: jsonData.店舗の住所 || null,
+        開催都道府県: jsonData.開催都道府県 || null,
         コピーライト: jsonData.コピーライト || null,
         TwitterURL: jsonData.TwitterURL || null,
         _reasoning: jsonData._reasoning || undefined,
