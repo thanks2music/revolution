@@ -42,6 +42,7 @@ import { extractFromRss } from '../../../../lib/claude/rss-extractor';
 import { generateArticleMetadata } from '../../../../lib/claude/metadata-generator';
 import { generateMdxArticle } from '../../../../lib/mdx/template-generator';
 import { resolveWorkSlug, resolveStoreSlug, resolveEventTypeSlug } from '../../../../lib/config';
+import { buildCategories } from '../../../../lib/utils/category-builder';
 
 /**
  * Cron認証キーをSecret Managerから取得 (キャッシュ)
@@ -292,7 +293,8 @@ async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
     canonicalKey: eventRecord.canonicalKey,
   });
 
-  // 5. Claude API で categories/excerpt 生成
+  // 5. Claude API で excerpt 生成 + categories を決定論的に構築
+  // Note: categories は AI 生成ではなく、taxonomy.yaml v1.1 ルールに従って buildCategories() で構築
   console.log('[MDX Pipeline] Generating metadata with Claude API...');
   const metadata = await generateArticleMetadata({
     content: rssItem.content || rssItem.contentSnippet || '',
@@ -301,8 +303,15 @@ async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
     eventType: extraction.eventTypeName,
   });
 
+  // categories を決定論的に構築（2件固定: work_title + event_title）
+  const categories = buildCategories({
+    workTitle: extraction.workTitle,
+    eventTitle: extraction.eventTypeName,
+  });
+
   console.log('[MDX Pipeline] Metadata generated:', {
-    categories: metadata.categories,
+    categories, // buildCategories() で構築
+    categoriesSource: 'buildCategories (taxonomy.yaml v1.1 rules)',
     excerptLength: metadata.excerpt.length,
   });
 
@@ -317,7 +326,7 @@ async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
       workTitle: extraction.workTitle,
       workSlug,
       title: rssItem.title,
-      categories: metadata.categories,
+      categories, // buildCategories() で決定論的に構築
       excerpt: metadata.excerpt,
     },
     rssItem.content || rssItem.contentSnippet || ''
@@ -348,7 +357,7 @@ async function runMdxPipeline(feedUrl: string): Promise<NextResponse> {
 
 ## 📊 メタデータ
 
-- **カテゴリ**: ${metadata.categories.join(', ')}
+- **カテゴリ**: ${categories.join(', ')}
 - **要約**: ${metadata.excerpt.substring(0, 100)}...
 
 ---

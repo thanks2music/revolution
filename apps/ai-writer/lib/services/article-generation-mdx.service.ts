@@ -60,41 +60,7 @@ import {
   createCostTracker,
   type CostTrackerService,
 } from '@/lib/ai/cost';
-
-/**
- * taxonomy.yaml v1.1 の category_rules に従って categories を決定論的に構築
- *
- * @description
- * AI の自由生成ではなく、既存フィールドから決定論的にカテゴリを生成する。
- * taxonomy.yaml v1.1 の category_rules.generation_order に準拠:
- *   1. work_title（必須）
- *   2. event_title（必須）
- *
- * 注意: prefectures は categories に含めず、別フィールド（prefectures[]）で管理
- *
- * @see templates/config/taxonomy.yaml
- * @see notes/work-report/2025-12/2025-12-16-カテゴリの改善案について改めて行った調査内容.md
- */
-function buildCategories(params: {
-  workTitle: string;
-  eventTitle: string;
-}): string[] {
-  const categories: string[] = [];
-
-  // Priority 1: 作品名（必須）
-  if (params.workTitle) {
-    categories.push(params.workTitle);
-  }
-
-  // Priority 2: イベント種別名（必須）
-  if (params.eventTitle) {
-    categories.push(params.eventTitle);
-  }
-
-  // 制約: 2件固定（taxonomy.yaml v1.1 constraints）
-  // prefectures は別フィールドで管理するため、ここでは含めない
-  return categories;
-}
+import { buildCategories } from '@/lib/utils/category-builder';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
