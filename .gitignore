@@ -301,6 +301,9 @@ test-results/
 playwright-report/
 test-artifacts/
 
+# AI Writer dry-run出力（テスト生成MDX）
+**/dry-run-*.mdx
+
 # カバレッジ
 coverage/
 .nyc_output/
