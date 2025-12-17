@@ -8,7 +8,12 @@ import {
   deleteEvent,
 } from '../firestore/event-deduplication';
 import { type EventCanonicalKey } from '../firestore/types';
-import { resolveWorkSlug, resolveStoreSlug, resolveEventTypeSlug } from '../config/slug-resolver';
+import {
+  resolveWorkSlug,
+  resolveStoreSlug,
+  resolveEventTypeSlug,
+  resolvePrefectureSlugs,
+} from '../config/slug-resolver';
 import { DuplicateSlugError } from '../errors/github';
 import { getPrStatusByCanonicalKey } from '../github/pr-status';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
@@ -561,6 +566,24 @@ export class ArticleGenerationMdxService {
         excerptLength: metadata.excerpt.length,
       });
 
+      // Step 4c: 開催都道府県を解決（taxonomy.yaml v1.1 areas軸対応）
+      let prefectures: string[] = [];
+      let prefectureSlugs: string[] = [];
+
+      if (detailedExtraction?.開催都道府県 && detailedExtraction.開催都道府県.length > 0) {
+        const resolved = resolvePrefectureSlugs(detailedExtraction.開催都道府県);
+        prefectures = resolved.prefectures;
+        prefectureSlugs = resolved.slugs;
+
+        console.log('[Step 4c] 開催都道府県を解決:', {
+          input: detailedExtraction.開催都道府県,
+          prefectures,
+          prefectureSlugs,
+        });
+      } else {
+        console.log('[Step 4c] 開催都道府県: なし（抽出されていない or null）');
+      }
+
       // コストを記録（Step 4: MetadataGeneration）
       if (metadata.model && metadata.usage) {
         costTracker.recordUsage(
@@ -786,6 +809,9 @@ export class ArticleGenerationMdxService {
           date: rssItem.pubDate || new Date().toISOString().split('T')[0],
           author: 'thanks2music',
           ogImage: ogImageUrl, // R2にアップロードしたOG画像URL
+          // Phase 1+ 対応: 開催都道府県（taxonomy.yaml v1.1 areas軸）
+          prefectures: prefectures.length > 0 ? prefectures : undefined,
+          prefectureSlugs: prefectureSlugs.length > 0 ? prefectureSlugs : undefined,
         },
         finalContent // プレースホルダー置換済みの本文を使用
       );
@@ -793,6 +819,8 @@ export class ArticleGenerationMdxService {
       console.log('MDX組み立て完了:', {
         filePath: mdxArticle.filePath,
         contentLength: mdxArticle.content.length,
+        prefectures: prefectures.length > 0 ? prefectures : 'なし',
+        prefectureSlugs: prefectureSlugs.length > 0 ? prefectureSlugs : 'なし',
       });
 
       // Step 7: Create GitHub PR
