@@ -25,6 +25,101 @@
 import * as cheerio from 'cheerio';
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import { Agent } from 'undici';
+
+/**
+ * SSL証明書エラーのコード一覧
+ * これらのエラーが発生した場合、SSL検証をスキップしてリトライする
+ */
+const SSL_CERTIFICATE_ERROR_CODES = [
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE', // 中間証明書が不完全
+  'CERT_HAS_EXPIRED', // 証明書期限切れ
+  'DEPTH_ZERO_SELF_SIGNED_CERT', // 自己署名証明書
+  'SELF_SIGNED_CERT_IN_CHAIN', // チェーン内に自己署名証明書
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', // ローカルで発行者証明書を取得できない
+] as const;
+
+/**
+ * SSL証明書エラーかどうかを判定
+ *
+ * @param error キャッチしたエラー
+ * @returns SSL証明書関連のエラーの場合 true
+ */
+function isCertificateError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  // Node.js fetch のエラー構造: error.cause.code
+  const cause = (error as { cause?: { code?: string } }).cause;
+  if (cause?.code && SSL_CERTIFICATE_ERROR_CODES.includes(cause.code as typeof SSL_CERTIFICATE_ERROR_CODES[number])) {
+    return true;
+  }
+
+  // エラーメッセージでも判定（フォールバック）
+  const message = (error as { message?: string }).message || '';
+  return SSL_CERTIFICATE_ERROR_CODES.some(code =>
+    message.includes(code) || message.includes('certificate')
+  );
+}
+
+/**
+ * SSL検証をスキップする Agent
+ * 証明書チェーンに問題があるサイト用
+ */
+const sslSkipAgent = new Agent({
+  connect: {
+    rejectUnauthorized: false,
+  },
+});
+
+/**
+ * SSL検証をスキップして fetch を実行
+ *
+ * @param url フェッチ先URL
+ * @param options fetch オプション
+ * @returns Response
+ */
+async function fetchWithSSLSkip(url: string, options: RequestInit = {}): Promise<Response> {
+  // undici の dispatcher オプションで Agent を指定
+  return fetch(url, {
+    ...options,
+    // @ts-expect-error - Node.js の fetch は dispatcher をサポート
+    dispatcher: sslSkipAgent,
+  });
+}
+
+/**
+ * SSL証明書エラー時に自動リトライする fetch ラッパー
+ *
+ * 1. まず通常の SSL 検証でリクエスト
+ * 2. SSL証明書エラーの場合のみ、検証スキップでリトライ
+ * 3. リトライ時は警告ログを出力
+ *
+ * @param url フェッチ先URL
+ * @param options fetch オプション
+ * @returns Response
+ */
+async function fetchWithSSLFallback(url: string, options: RequestInit = {}): Promise<Response> {
+  try {
+    // 通常の SSL 検証で試行
+    return await fetch(url, options);
+  } catch (error) {
+    // SSL 証明書エラーの場合のみリトライ
+    if (isCertificateError(error)) {
+      const hostname = new URL(url).hostname;
+      console.warn(
+        `⚠️ [HTMLExtractor] SSL証明書エラー検出 (${hostname}): 検証スキップでリトライします`
+      );
+      console.warn(
+        `   → 原因: サーバー側の証明書チェーン設定不備の可能性があります`
+      );
+
+      return await fetchWithSSLSkip(url, options);
+    }
+
+    // その他のエラーはそのまま throw
+    throw error;
+  }
+}
 
 /**
  * セレクタ優先順位
@@ -69,6 +164,14 @@ const HEAD_KEEP_SELECTORS = [
  * HTMLフェッチのタイムアウト設定（ミリ秒）
  */
 const FETCH_TIMEOUT_MS = 10000;
+
+/**
+ * ブラウザライクな User-Agent
+ * 一部のサイトはボット User-Agent をブロックするため、
+ * ブラウザに近い User-Agent を使用する
+ */
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /**
  * 異常に小さいHTMLと判定する閾値（bytes）
@@ -170,11 +273,10 @@ export async function extractArticleHtml(url: string): Promise<string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(actualUrl, {
+    const response = await fetchWithSSLFallback(actualUrl, {
       signal: controller.signal,
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (compatible; RevolutionBot/1.0; +https://revolution.example.com/bot)',
+        'User-Agent': BROWSER_USER_AGENT,
       },
     });
 
@@ -309,11 +411,10 @@ export async function extractArticleData(url: string): Promise<{
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(actualUrl, {
+    const response = await fetchWithSSLFallback(actualUrl, {
       signal: controller.signal,
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (compatible; RevolutionBot/1.0; +https://revolution.example.com/bot)',
+        'User-Agent': BROWSER_USER_AGENT,
       },
     });
 
@@ -493,11 +594,10 @@ export async function extractContentHtml(url: string): Promise<string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(actualUrl, {
+    const response = await fetchWithSSLFallback(actualUrl, {
       signal: controller.signal,
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (compatible; RevolutionBot/1.0; +https://revolution.example.com/bot)',
+        'User-Agent': BROWSER_USER_AGENT,
       },
     });
 
