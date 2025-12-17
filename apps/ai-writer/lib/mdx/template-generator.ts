@@ -48,6 +48,7 @@ export function generateMdxFrontmatter(
     eventType,
     eventTitle,
     workTitle,
+    workTitles,
     workSlug,
     title,
     excerpt,
@@ -89,6 +90,11 @@ export function generateMdxFrontmatter(
     author,
     ogImage,
   };
+
+  // Add optional work_titles (複数作品コラボ対応)
+  if (workTitles && workTitles.length > 0) {
+    frontmatter.work_titles = workTitles;
+  }
 
   // Add optional Phase 1+ fields (URL設計v1.1 areas軸対応)
   if (prefectures && prefectures.length > 0) {
@@ -133,6 +139,15 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
   lines.push(`event_type: "${frontmatter.event_type}"`);
   lines.push(`event_title: "${frontmatter.event_title}"`);
   lines.push(`work_title: "${frontmatter.work_title}"`);
+
+  // Optional: work_titles array (複数作品コラボ対応)
+  if (frontmatter.work_titles && frontmatter.work_titles.length > 0) {
+    const workTitlesYaml = frontmatter.work_titles
+      .map((title) => `"${title.replace(/"/g, '\\"')}"`)
+      .join(', ');
+    lines.push(`work_titles: [${workTitlesYaml}]`);
+  }
+
   lines.push(`work_slug: "${frontmatter.work_slug}"`);
   lines.push(`slug: "${frontmatter.slug}"`);
 
@@ -330,8 +345,18 @@ export function isValidMdxFrontmatter(data: unknown): data is MdxFrontmatter {
     return false;
   }
 
-  // Optional fields validation (Phase 1+ - URL設計v1.1 areas軸対応)
-  // prefectures: optional string array
+  // Optional fields validation
+
+  // work_titles: optional string array (複数作品コラボ対応)
+  if (
+    fm.work_titles !== undefined &&
+    (!Array.isArray(fm.work_titles) ||
+      !fm.work_titles.every((t) => typeof t === 'string'))
+  ) {
+    return false;
+  }
+
+  // prefectures: optional string array (Phase 1+ - URL設計v1.1 areas軸対応)
   if (
     fm.prefectures !== undefined &&
     (!Array.isArray(fm.prefectures) ||

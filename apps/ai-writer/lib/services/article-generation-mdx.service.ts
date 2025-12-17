@@ -802,6 +802,9 @@ export class ArticleGenerationMdxService {
       // Step 6: MDX記事を組み立て
       console.log('\n[Step 6/11] MDX記事を組み立て...');
 
+      // 複数作品コラボ対応: works[] から全作品タイトルを抽出
+      const workTitles = detailedExtraction?.works?.map((w) => w.title) || [];
+
       const mdxArticle = generateMdxArticle(
         {
           postId: eventRecord.postId,
@@ -809,6 +812,8 @@ export class ArticleGenerationMdxService {
           eventType,
           eventTitle: extraction.eventTypeName,
           workTitle: extraction.workTitle,
+          // 複数作品コラボ対応: 全作品タイトルを含める（SEO/検索性向上）
+          workTitles: workTitles.length > 0 ? workTitles : undefined,
           workSlug,
           title: titleResult.title, // YAMLテンプレートで生成されたタイトルを使用
           categories: categories, // buildCategories() で決定論的に構築
@@ -826,6 +831,7 @@ export class ArticleGenerationMdxService {
       console.log('MDX組み立て完了:', {
         filePath: mdxArticle.filePath,
         contentLength: mdxArticle.content.length,
+        workTitles: workTitles.length > 0 ? workTitles : 'なし（単一作品）',
         prefectures: prefectures.length > 0 ? prefectures : 'なし',
         prefectureSlugs: prefectureSlugs.length > 0 ? prefectureSlugs : 'なし',
       });
