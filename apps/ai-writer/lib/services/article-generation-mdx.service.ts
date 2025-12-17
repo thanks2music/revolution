@@ -66,6 +66,7 @@ import {
   type CostTrackerService,
 } from '@/lib/ai/cost';
 import { buildCategories } from '@/lib/utils/category-builder';
+import { validateStoreName } from '@/lib/utils/store-name-validator';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -375,7 +376,8 @@ export class ArticleGenerationMdxService {
 
           // 下層ページを検出
           const subpageService = getSubpageDetectorService();
-          const storeName = detailedExtraction?.店舗名 || extraction.storeName;
+          // 店舗名: Step 1.5 の結果を検証し、不適切な場合は Step 1 にフォールバック
+          const storeName = validateStoreName(detailedExtraction?.店舗名) || extraction.storeName;
 
           subpageDetection = await subpageService.detectSubpages(
             selectionResult.primary_official_url,
