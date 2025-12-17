@@ -294,6 +294,11 @@ export class ArticleGenerationMdxService {
           });
 
           console.log('詳細抽出結果:', {
+            // 新構造（複数作品コラボ対応 v1.2.0）
+            works: detailedExtraction.works,
+            store: detailedExtraction.store,
+            is_multi_work_collaboration: detailedExtraction.is_multi_work_collaboration,
+            // 後方互換性フィールド（実際に下流処理で使用）
             作品名: detailedExtraction.作品名,
             メディアタイプ: detailedExtraction.メディアタイプ,
             原作タイプ: detailedExtraction.原作タイプ,

@@ -109,10 +109,65 @@ export interface TokenUsage {
 }
 
 /**
+ * 作品エントリ（複数作品コラボ対応）
+ * @since v1.2.0 - 複数作品コラボ対応
+ * @see 03-02-複数作品対応の実装方針案.md
+ */
+export interface WorkEntry {
+  /** 日本語作品名 */
+  title: string;
+  /** 英語タイトル（slug 生成用、オプション） */
+  title_en?: string;
+  /** 主作品フラグ（URL slug に使用する作品） */
+  is_primary: boolean;
+}
+
+/**
+ * 店舗エントリ
+ * @since v1.2.0 - 複数作品コラボ対応
+ */
+export interface StoreEntry {
+  /** 店舗名 */
+  name: string;
+  /** 複数店舗フラグ */
+  multiple_locations: boolean;
+}
+
+/**
  * 抽出結果
+ * @description
+ * v1.2.0 以降、複数作品コラボに対応するため `works[]` と `store` を追加。
+ * 後方互換性のため、旧フィールド（`作品名`, `店舗名`）も維持。
  */
 export interface ExtractionResult {
-  /** 作品名 */
+  // === 新構造（複数作品コラボ対応 v1.2.0） ===
+
+  /**
+   * 作品配列（1〜4件）
+   * @since v1.2.0
+   * @description is_primary: true が1つ必須。URL slug に使用する作品を示す。
+   */
+  works?: WorkEntry[];
+
+  /**
+   * 店舗情報
+   * @since v1.2.0
+   */
+  store?: StoreEntry;
+
+  /**
+   * 複数作品コラボ判定フラグ
+   * @since v1.2.0
+   * @description works.length > 1 の場合に true
+   */
+  is_multi_work_collaboration?: boolean;
+
+  // === 後方互換性フィールド ===
+
+  /**
+   * 作品名
+   * @deprecated v1.2.0 以降は works[].find(w => w.is_primary).title を優先使用
+   */
   作品名: string;
   /** メディアタイプ（作品がどのメディア形態で展開されているか） */
   メディアタイプ: MediaType;
@@ -122,7 +177,10 @@ export interface ExtractionResult {
   原作者有無: boolean;
   /** 原作者名（「○○先生」または「○○さん」形式、不要な場合はnull） */
   原作者名: string | null;
-  /** 店舗名（複数の場合は「、」区切り） */
+  /**
+   * 店舗名（複数の場合は「、」区切り）
+   * @deprecated v1.2.0 以降は store.name を優先使用
+   */
   店舗名: string;
   /** 開催期間 */
   開催期間: EventPeriod;
@@ -399,12 +457,33 @@ ${schemaStr}
         jsonData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
       }
 
-      // 必須フィールドの検証
-      if (!jsonData.作品名) {
-        throw new Error('Missing required field: 作品名');
+      // === 新構造の取得（複数作品コラボ対応 v1.2.0） ===
+      const works: WorkEntry[] | undefined = jsonData.works;
+      const store: StoreEntry | undefined = jsonData.store;
+      const isMultiWork = works ? works.length > 1 : false;
+
+      // === 後方互換性: derived_variables からの値取得 + フォールバック ===
+      let workTitle = jsonData.作品名;
+      let storeName = jsonData.店舗名;
+
+      // 新構造から後方互換性フィールドを導出（derived_variables が適用されていない場合）
+      if (!workTitle && works && works.length > 0) {
+        const primaryWork = works.find(w => w.is_primary) || works[0];
+        workTitle = primaryWork.title;
+        console.log('[Extraction] 後方互換性: works[] から作品名を導出:', workTitle);
       }
-      if (!jsonData.店舗名) {
-        throw new Error('Missing required field: 店舗名');
+
+      if (!storeName && store) {
+        storeName = store.name;
+        console.log('[Extraction] 後方互換性: store から店舗名を導出:', storeName);
+      }
+
+      // === 必須フィールドの検証（新旧両対応） ===
+      if (!workTitle) {
+        throw new Error('Missing required field: 作品名 (or works[].title with is_primary)');
+      }
+      if (!storeName) {
+        throw new Error('Missing required field: 店舗名 (or store.name)');
       }
       if (!jsonData.開催期間) {
         throw new Error('Missing required field: 開催期間');
@@ -426,12 +505,23 @@ ${schemaStr}
 
       // パース済みデータをログ出力
       console.log('\n[Extraction] === パース済みデータ ===');
-      console.log('作品名:', jsonData.作品名);
+
+      // 新構造のログ（存在する場合）
+      if (works) {
+        console.log('🆕 works[] (v1.2.0):', JSON.stringify(works, null, 2));
+        console.log('🆕 is_multi_work_collaboration:', isMultiWork);
+      }
+      if (store) {
+        console.log('🆕 store (v1.2.0):', JSON.stringify(store, null, 2));
+      }
+
+      // 後方互換性フィールドのログ
+      console.log('作品名:', workTitle);
       console.log('メディアタイプ:', jsonData.メディアタイプ);
       console.log('原作タイプ:', jsonData.原作タイプ);
       console.log('原作者有無:', jsonData.原作者有無);
       console.log('原作者名:', jsonData.原作者名);
-      console.log('店舗名:', jsonData.店舗名);
+      console.log('店舗名:', storeName);
       console.log('開催期間:', JSON.stringify(eventPeriod, null, 2));
 
       // _reasoning があればログ出力（デバッグ用）
@@ -455,12 +545,18 @@ ${schemaStr}
       console.log('[Extraction] === 詳細終了 ===\n');
 
       return {
-        作品名: jsonData.作品名,
+        // === 新構造（複数作品コラボ対応 v1.2.0） ===
+        works,
+        store,
+        is_multi_work_collaboration: isMultiWork,
+
+        // === 後方互換性フィールド ===
+        作品名: workTitle,
         メディアタイプ: jsonData.メディアタイプ || 'anime',
         原作タイプ: jsonData.原作タイプ || 'other',
         原作者有無: jsonData.原作者有無 ?? false,
         原作者名: jsonData.原作者名 || null,
-        店舗名: jsonData.店舗名,
+        店舗名: storeName,
         開催期間: eventPeriod,
         公式サイトURL: officialUrl,
         略称: jsonData.略称 || null,
