@@ -146,6 +146,13 @@ ${request.site_domain ? `- site_domain: ${request.site_domain}` : ''}
 ${template.logic.official_url_detection}`);
     }
 
+    // primary_official_url 選択の優先順位（logic.primary_url_priority）
+    if (template.logic?.primary_url_priority) {
+      sections.push(`## primary_official_url 選択の優先順位（必須）
+
+${template.logic.primary_url_priority}`);
+    }
+
     // 出力形式の定義（output.schema）
     if (template.output?.schema) {
       // schema がオブジェクトの場合は JSON 文字列に変換
