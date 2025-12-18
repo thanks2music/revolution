@@ -13,6 +13,7 @@ import {
   resolveStoreSlug,
   resolveEventTypeSlug,
   resolvePrefectureSlugs,
+  getShortTitle,
 } from '../config/slug-resolver';
 import { DuplicateSlugError } from '../errors/github';
 import { getPrStatusByCanonicalKey } from '../github/pr-status';
@@ -613,6 +614,12 @@ export class ArticleGenerationMdxService {
         extractedStoreName: detailedExtraction?.店舗名,
         // 作品名は Step 1 の workTitle を canonical として使用
         extractedWorkName: canonicalWorkTitle,
+        // v2.4.0: 作品名の略称（10文字以上の作品のみ設定）
+        extractedWorkNameShort: canonicalWorkTitle
+          ? getShortTitle(canonicalWorkTitle) ?? undefined
+          : undefined,
+        // v2.3.0: 開催回数（第N弾形式）
+        extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
       });
 
       // コストを記録

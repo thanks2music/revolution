@@ -157,15 +157,33 @@ ${extractedDataSection}
   /**
    * 抽出済みデータセクションを構築
    * Step 1.5 で抽出済みの情報がある場合、AIに優先的に使用させる
+   *
+   * @since v2.3.0 extractedEventNumber 追加
+   * @since v2.4.0 extractedWorkNameShort 追加
    */
   private buildExtractedDataSection(request: TitleGenerationRequest): string {
     const parts: string[] = [];
 
-    if (request.extractedPeriod || request.extractedStoreName || request.extractedWorkName) {
+    // 抽出済みデータがあるかチェック
+    const hasExtractedData =
+      request.extractedPeriod ||
+      request.extractedStoreName ||
+      request.extractedWorkName ||
+      request.extractedWorkNameShort ||
+      request.extractedEventNumber;
+
+    if (hasExtractedData) {
       parts.push('\n## 抽出済みデータ（以下の情報は検証済みのため、優先的に使用してください）');
 
+      // 作品名（正式名称）
       if (request.extractedWorkName) {
         parts.push(`- 作品名（確定）: ${request.extractedWorkName}`);
+      }
+
+      // 作品名（略称）- v2.4.0 追加
+      if (request.extractedWorkNameShort) {
+        parts.push(`- 作品名（略称）: ${request.extractedWorkNameShort}`);
+        parts.push(`  ※ タイトルが40文字を超える場合のみ使用。10文字未満の作品は略称不可`);
       }
 
       if (request.extractedStoreName) {
@@ -190,6 +208,12 @@ ${extractedDataSection}
         if (startDateForTitle) {
           parts.push(`- ⚠️ 重要: タイトルの開始日は「${startDateForTitle}」を使用してください。月のみ（例: 12月）ではなく、日付まで含めてください。`);
         }
+      }
+
+      // 開催回数 - v2.3.0 追加
+      if (request.extractedEventNumber) {
+        parts.push(`- 開催回数: ${request.extractedEventNumber}`);
+        parts.push(`  ※ タイトル末尾に配置。形式: 「〜より第N弾コラボ開催」or「〜より第N弾開催」`);
       }
 
       parts.push('');
