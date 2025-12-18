@@ -30,6 +30,13 @@ export interface TitleEntry {
   english_title?: string;
   /** Alternative spellings, abbreviations, variants */
   aliases?: string[];
+  /**
+   * Short title for SEO title generation
+   * @since v2.4.0
+   * @description Used when original title is 10+ characters to keep SEO title concise
+   * @example "あの花" for "あの日見た花の名前を僕達はまだ知らない。"
+   */
+  short_title?: string;
 }
 
 /**

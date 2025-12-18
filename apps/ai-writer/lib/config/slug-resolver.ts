@@ -520,6 +520,99 @@ export function getEnglishTitle(japaneseTitle: string): string | null {
 }
 
 /**
+ * Get short title for SEO-friendly title generation
+ *
+ * @description
+ * Looks up short_title field in TitleEntry.
+ * Used when original title is 10+ characters to keep SEO titles concise.
+ * Supports both direct title match and alias lookup.
+ *
+ * @param {string} japaneseTitle - Japanese title or alias
+ * @returns {string | null} Short title or null if not defined
+ *
+ * @since v2.4.0
+ * @see 3-title.yaml title_shortening_rules
+ *
+ * @example
+ * ```typescript
+ * getShortTitle("あの日見た花の名前を僕達はまだ知らない。"); // → "あの花"
+ * getShortTitle("この素晴らしい世界に祝福を!");              // → "このすば"
+ * getShortTitle("Re:ゼロから始める異世界生活");              // → "リゼロ"
+ * getShortTitle("呪術廻戦");                                  // → null (< 10 chars)
+ * ```
+ */
+export function getShortTitle(japaneseTitle: string): string | null {
+  const config = loadYamlConfig('TITLE_ROMAJI');
+
+  // 直接マッチ
+  const directMatch = config.titles[japaneseTitle];
+  if (directMatch && isTitleEntry(directMatch)) {
+    if (directMatch.short_title) {
+      console.log(
+        `[Slug Resolver] 📝 Short title found: "${japaneseTitle}" → "${directMatch.short_title}"`
+      );
+      return directMatch.short_title;
+    }
+  }
+
+  // エイリアスからも検索
+  for (const [title, value] of Object.entries(config.titles)) {
+    if (isTitleEntry(value) && value.aliases?.includes(japaneseTitle)) {
+      if (value.short_title) {
+        console.log(
+          `[Slug Resolver] 📝 Short title found via alias: "${japaneseTitle}" → "${title}" → "${value.short_title}"`
+        );
+        return value.short_title;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Get short title if original is 10+ characters, otherwise return original
+ *
+ * @description
+ * Convenience function for title generation that applies the 10-character rule.
+ * Returns short_title only if:
+ * 1. Original title is 10+ characters
+ * 2. short_title is defined in YAML
+ * Otherwise returns the original title.
+ *
+ * @param {string} japaneseTitle - Japanese title
+ * @returns {string} Short title or original title
+ *
+ * @since v2.4.0
+ * @see 3-title.yaml title_shortening_rules
+ *
+ * @example
+ * ```typescript
+ * getDisplayTitle("あの日見た花の名前を僕達はまだ知らない。"); // → "あの花" (18 chars → short)
+ * getDisplayTitle("呪術廻戦");                                  // → "呪術廻戦" (4 chars → as-is)
+ * getDisplayTitle("機動戦士ガンダム 水星の魔女");              // → "水星の魔女" (13 chars, has short)
+ * getDisplayTitle("進撃の巨人");                                // → "進撃の巨人" (5 chars, no short needed)
+ * ```
+ */
+export function getDisplayTitle(japaneseTitle: string): string {
+  // 10文字未満の場合はそのまま返す
+  if (japaneseTitle.length < 10) {
+    return japaneseTitle;
+  }
+
+  // 10文字以上の場合、short_title があれば使用
+  const shortTitle = getShortTitle(japaneseTitle);
+  if (shortTitle) {
+    console.log(
+      `[Slug Resolver] 📝 Using short title for "${japaneseTitle}" (${japaneseTitle.length} chars) → "${shortTitle}"`
+    );
+    return shortTitle;
+  }
+
+  return japaneseTitle;
+}
+
+/**
  * Find canonical (main) title from alias or direct match
  *
  * @description
