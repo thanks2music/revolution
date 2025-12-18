@@ -194,6 +194,13 @@ export interface ExtractionResult {
   キャラクター名: string[] | null;
   /** 描き下ろしイラストのテーマ名 */
   テーマ名: string | null;
+  /**
+   * 開催回数（第N弾形式に統一）
+   * @since v2.3.0
+   * @example "第2弾", "第3弾"
+   * @description Vol.N, Season N 等は全て「第N弾」形式に変換される
+   */
+  開催回数: string | null;
   /** 特典ノベルティの名称 */
   ノベルティ名: string | null;
   /** ノベルティ種類数（「全N種」形式） */
@@ -563,6 +570,7 @@ ${schemaStr}
         複数店舗情報: jsonData.複数店舗情報 || null,
         キャラクター名: jsonData.キャラクター名 || null,
         テーマ名: jsonData.テーマ名 || null,
+        開催回数: jsonData.開催回数 || null,
         ノベルティ名: jsonData.ノベルティ名 || null,
         ノベルティ種類数: jsonData.ノベルティ種類数 || null,
         メニュー種類数: jsonData.メニュー種類数 || null,
