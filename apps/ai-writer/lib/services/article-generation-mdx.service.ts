@@ -63,6 +63,10 @@ import {
   type PlaceholderReplacementResult,
 } from './image-placeholder-replacer.service';
 import {
+  getTextPlaceholderReplacerService,
+  type TextPlaceholderReplacementResult,
+} from './text-placeholder-replacer.service';
+import {
   createCostTracker,
   type CostTrackerService,
 } from '@/lib/ai/cost';
@@ -135,8 +139,10 @@ export interface MdxGenerationResult {
   categoryImages?: CategoryImages;
   // カテゴリ別R2画像URL（Step 5.5b後）
   categoryR2Images?: CategoryR2Images;
-  // プレースホルダー置換結果（Step 5.7）
+  // 画像プレースホルダー置換結果（Step 5.7）
   placeholderReplacement?: PlaceholderReplacementResult;
+  // テキストプレースホルダー置換結果（Step 5.8）
+  textPlaceholderReplacement?: TextPlaceholderReplacementResult;
 }
 
 /**
@@ -803,7 +809,47 @@ export class ArticleGenerationMdxService {
           console.warn('[Step 5.7] ⚠️ 未置換プレースホルダー:', placeholderReplacement.unreplacedPlaceholders);
         }
       } else {
-        console.log('[Step 5.7] カテゴリ別R2画像なし、プレースホルダー置換をスキップ');
+        console.log('[Step 5.7] カテゴリ別R2画像なし、画像プレースホルダー置換をスキップ');
+      }
+
+      // Step 5.8: テキストプレースホルダー置換
+      console.log('\n[Step 5.8/11] テキストプレースホルダー置換...');
+
+      let textPlaceholderReplacement: TextPlaceholderReplacementResult | undefined;
+
+      if (detailedExtraction) {
+        const textReplacer = getTextPlaceholderReplacerService();
+        textPlaceholderReplacement = textReplacer.replaceAll(finalContent, {
+          作品名: detailedExtraction.作品名,
+          店舗名: detailedExtraction.店舗名,
+          メディアタイプ: detailedExtraction.メディアタイプ,
+          原作タイプ: detailedExtraction.原作タイプ,
+          原作者有無: detailedExtraction.原作者有無,
+          原作者名: detailedExtraction.原作者名,
+          略称: detailedExtraction.略称,
+          開催回数: detailedExtraction.開催回数 ?? undefined,
+          公式サイトURL: selectionResult.primary_official_url ?? undefined,
+          キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
+          テーマ名: detailedExtraction.テーマ名 ?? undefined,
+          ノベルティ名: detailedExtraction.ノベルティ名 ?? undefined,
+          グッズ名: detailedExtraction.グッズ名 ?? undefined,
+          開催期間: detailedExtraction.開催期間,
+          works: detailedExtraction.works || [],
+          store: detailedExtraction.store || { name: detailedExtraction.店舗名 },
+        });
+
+        finalContent = textPlaceholderReplacement.content;
+
+        console.log('[Step 5.8] テキストプレースホルダー置換結果:', {
+          replacedCount: textPlaceholderReplacement.replacedCount,
+          unreplacedCount: textPlaceholderReplacement.unreplacedPlaceholders.length,
+        });
+
+        if (textPlaceholderReplacement.unreplacedPlaceholders.length > 0) {
+          console.warn('[Step 5.8] ⚠️ 未置換プレースホルダー:', textPlaceholderReplacement.unreplacedPlaceholders);
+        }
+      } else {
+        console.log('[Step 5.8] detailedExtraction がないため、テキストプレースホルダー置換をスキップ');
       }
 
       // Step 6: MDX記事を組み立て
@@ -949,6 +995,7 @@ export class ArticleGenerationMdxService {
         categoryImages,
         categoryR2Images: uploadedCategoryR2Images,
         placeholderReplacement,
+        textPlaceholderReplacement,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
