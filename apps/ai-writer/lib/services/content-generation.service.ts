@@ -230,13 +230,24 @@ ${request.officialHtml.substring(0, 5000)}${request.officialHtml.length > 5000 ?
       return '';
     }
 
-    const sections: string[] = ['## セクション定義'];
+    const sections: string[] = [
+      '## セクション定義',
+      '',
+      '【重要：セクションIDと見出しの扱い】',
+      '- 以下のセクションID（01-lead, 02-menu 等）は**内部識別子**です',
+      '- **本文にセクションIDを見出しとして出力しないでください**',
+      '- 各セクションの「テンプレート例」に定義されている見出し形式を使用してください',
+      '- **リード文（lead）は見出しなし**で本文を開始してください',
+      '- メニュー/ノベルティ/グッズ/まとめセクションはテンプレート内の `## ○○` 形式の見出しを使用してください',
+      '',
+    ];
 
     for (const [sectionId, sectionTemplate] of Object.entries(template._sections.templates)) {
       const section = sectionTemplate as SectionTemplate;
       const sectionInfo: string[] = [];
 
-      sectionInfo.push(`### ${sectionId}: ${section.section?.name || sectionId}`);
+      // セクションIDは識別子として表示（本文には使用しない旨を明記）
+      sectionInfo.push(`### セクション「${section.section?.name || sectionId}」（識別子: ${sectionId}）`);
 
       // スキップ条件
       if (section.skip_if) {
