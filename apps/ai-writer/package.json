@@ -32,7 +32,7 @@
     "generate:article-index": "tsx scripts/generate-article-index.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.63.0",
+    "@anthropic-ai/sdk": "^0.71.2",
     "@aws-sdk/client-s3": "^3.948.0",
     "@extractus/article-extractor": "^8.0.20",
     "@google-cloud/secret-manager": "^5.6.0",
