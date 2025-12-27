@@ -18,6 +18,7 @@ export const PLACEHOLDERS = {
   menu: '{ここにメニューの画像を入れる}',
   novelty: '{ここにノベルティの画像を入れる}',
   goods: '{ここにグッズの画像を入れる}',
+  eyecatch: '{ここに記事アイキャッチの画像を入れる}',
 } as const;
 
 /**
@@ -30,6 +31,8 @@ export interface CategoryR2Images {
   novelty: string[];
   /** グッズ画像のR2 URL配列 */
   goods: string[];
+  /** アイキャッチ画像のR2 URL（単一、オプション） */
+  eyecatch?: string;
 }
 
 /**
@@ -43,6 +46,7 @@ export interface PlaceholderReplacementResult {
     menu: number;
     novelty: number;
     goods: number;
+    eyecatch: number;
     total: number;
   };
   /** 削除されたセクション */
@@ -64,9 +68,21 @@ export class ImagePlaceholderReplacerService {
    */
   replaceAll(content: string, images: CategoryR2Images): PlaceholderReplacementResult {
     let result = content;
-    const replacedCount = { menu: 0, novelty: 0, goods: 0, total: 0 };
+    const replacedCount = { menu: 0, novelty: 0, goods: 0, eyecatch: 0, total: 0 };
     const removedSections: ('menu' | 'novelty' | 'goods')[] = [];
     const unreplacedPlaceholders: string[] = [];
+
+    // アイキャッチ画像のプレースホルダーを置換（単一画像）
+    if (images.eyecatch) {
+      const eyecatchPlaceholder = PLACEHOLDERS.eyecatch;
+      if (result.includes(eyecatchPlaceholder)) {
+        const imageMarkdown = `![アイキャッチ](${images.eyecatch})`;
+        result = result.replace(eyecatchPlaceholder, imageMarkdown);
+        replacedCount.eyecatch = 1;
+        replacedCount.total += 1;
+        console.log(`[ImagePlaceholderReplacer] eyecatch: 画像で置換`);
+      }
+    }
 
     // 各カテゴリのプレースホルダーを置換
     for (const category of ['menu', 'novelty', 'goods'] as const) {
