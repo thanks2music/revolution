@@ -688,6 +688,7 @@ export class ArticleGenerationMdxService {
         menu: [],
         novelty: [],
         goods: [],
+        eyecatch: undefined, // OG画像アップロード後に設定
       };
 
       if (selectionResult.primary_official_url) {
@@ -706,6 +707,8 @@ export class ArticleGenerationMdxService {
 
           if (ogImageUpload.success && ogImageUpload.r2Url) {
             ogImageUrl = ogImageUpload.r2Url;
+            // Step 5.7 でアイキャッチプレースホルダー置換に使用
+            uploadedCategoryR2Images.eyecatch = ogImageUpload.r2Url;
             console.log(`✅ OG画像アップロード完了: ${ogImageUrl}`);
           } else {
             console.log(`⚠️ OG画像アップロード失敗、デフォルト画像を使用: ${ogImageUpload.error || '不明なエラー'}`);
@@ -784,14 +787,15 @@ export class ArticleGenerationMdxService {
       let placeholderReplacement: PlaceholderReplacementResult | undefined;
       let finalContent = contentGeneration.content;
 
-      // カテゴリ別R2画像がある場合のみ置換を実行
-      // uploadedCategoryR2Images は Step 5.5b でアップロードされた画像のR2 URL
-      const hasCategoryR2Images =
+      // カテゴリ別R2画像またはアイキャッチ画像がある場合のみ置換を実行
+      // uploadedCategoryR2Images は Step 5.5 でアップロードされた画像のR2 URL
+      const hasR2Images =
         uploadedCategoryR2Images.menu.length > 0 ||
         uploadedCategoryR2Images.novelty.length > 0 ||
-        uploadedCategoryR2Images.goods.length > 0;
+        uploadedCategoryR2Images.goods.length > 0 ||
+        !!uploadedCategoryR2Images.eyecatch;
 
-      if (hasCategoryR2Images) {
+      if (hasR2Images) {
         const placeholderReplacer = getImagePlaceholderReplacerService();
         placeholderReplacement = placeholderReplacer.replaceAll(
           contentGeneration.content,
@@ -809,7 +813,7 @@ export class ArticleGenerationMdxService {
           console.warn('[Step 5.7] ⚠️ 未置換プレースホルダー:', placeholderReplacement.unreplacedPlaceholders);
         }
       } else {
-        console.log('[Step 5.7] カテゴリ別R2画像なし、画像プレースホルダー置換をスキップ');
+        console.log('[Step 5.7] R2画像（カテゴリ別・アイキャッチ）なし、画像プレースホルダー置換をスキップ');
       }
 
       // Step 5.8: テキストプレースホルダー置換
@@ -851,6 +855,13 @@ export class ArticleGenerationMdxService {
       } else {
         console.log('[Step 5.8] detailedExtraction がないため、テキストプレースホルダー置換をスキップ');
       }
+
+      // Step 5.9: 記事末尾プレースホルダー削除
+      // Note: ナビゲーション（ピラーページリンク、注意事項）は Frontend で表示
+      // @see notes/04-review/2025-12-22-Do-not-forget-YAGNI原則-AI-Writer-and-FrontEnd.md
+      console.log('\n[Step 5.9/11] 記事末尾プレースホルダー削除（Frontend で表示）...');
+
+      finalContent = this.removeFooterPlaceholder(finalContent);
 
       // Step 6: MDX記事を組み立て
       console.log('\n[Step 6/11] MDX記事を組み立て...');
@@ -899,15 +910,10 @@ export class ArticleGenerationMdxService {
         console.log(`\n[Step 7/11] GitHub PR作成（${modeLabel}のためスキップ）...`);
         console.log(`${modeEmoji} ${modeLabel}: PR作成をスキップしました`);
 
-        // MDX記事の内容をプレビュー表示
+        // MDX記事の内容をプレビュー表示（全文）
         console.log('\n📄 生成されたMDX記事のプレビュー:');
         console.log('-'.repeat(60));
-        // 先頭50行を表示
-        const previewLines = mdxArticle.content.split('\n').slice(0, 50);
-        console.log(previewLines.join('\n'));
-        if (mdxArticle.content.split('\n').length > 50) {
-          console.log('... (以下省略)');
-        }
+        console.log(mdxArticle.content);
         console.log('-'.repeat(60));
       } else {
         // 通常モード: GitHub PR作成
@@ -1071,6 +1077,42 @@ export class ArticleGenerationMdxService {
 
 🤖 このPRは [AI Writer](https://github.com/thanks2music/revolution/tree/main/apps/ai-writer) によって自動生成されました。
 `;
+  }
+
+  /**
+   * 記事末尾ナビゲーションプレースホルダーを削除
+   *
+   * @param content MDXコンテンツ
+   * @returns プレースホルダー削除後のコンテンツ
+   *
+   * @description
+   * 記事末尾のナビゲーション（ピラーページリンク、注意事項等）は
+   * Frontend の責務として表示するため、AI Writer ではプレースホルダーを
+   * 削除するのみとする。
+   *
+   * @see notes/04-review/2025-12-22-Do-not-forget-YAGNI原則-AI-Writer-and-FrontEnd.md
+   * @private
+   */
+  private removeFooterPlaceholder(content: string): string {
+    // 削除対象のプレースホルダー（新名と旧名の両方に対応）
+    const placeholders = [
+      '{ここに記事末尾ナビゲーション}',
+      '{ここに本文を終了するための補足や注意事項を記載}',
+    ];
+
+    let result = content;
+    for (const placeholder of placeholders) {
+      if (result.includes(placeholder)) {
+        // プレースホルダーを削除（Frontend が表示するため）
+        result = result.replace(placeholder, '');
+        console.log(`[FooterPlaceholder] 削除: ${placeholder} (Frontend で表示)`);
+      }
+    }
+
+    // 削除後に生じる可能性のある連続空行を整理
+    result = result.replace(/\n{3,}/g, '\n\n');
+
+    return result;
   }
 
   /**
