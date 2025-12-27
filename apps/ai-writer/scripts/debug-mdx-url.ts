@@ -9,11 +9,13 @@
  * 使用方法:
  *   pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html
  *   pnpm debug:mdx --dry-run https://animeanime.jp/article/2025/11/24/94010.html
+ *   pnpm debug:mdx --dry-run --log https://animeanime.jp/article/2025/11/24/94010.html
  *   pnpm debug:mdx --local https://animeanime.jp/article/2025/11/24/94010.html
  *   pnpm debug:mdx --upload-images https://animeanime.jp/article/2025/11/24/94010.html
  *
  * オプション:
  *   --dry-run        Firestore登録、GitHub PR作成、画像アップロードをすべてスキップ（AI処理のみ実行）
+ *   --log            実行ログをファイルに出力（logs/{日付}-{ドメイン}-{連番}.log）
  *   --local          ローカル環境にMDXファイルを保存（--dry-run を自動的に有効化）
  *                    保存先: apps/ai-writer/content/{eventType}/{workSlug}/{postId}.mdx
  *   --upload-images  画像をR2にアップロードしつつローカル保存（--local + R2アップロード）
@@ -29,7 +31,8 @@
 import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, writeFile, readdir } from 'fs/promises';
+import { existsSync, createWriteStream, type WriteStream } from 'fs';
 
 // ES Module で __dirname を取得
 const __filename = fileURLToPath(import.meta.url);
@@ -48,11 +51,12 @@ import type { MdxGenerationRequest } from '../lib/services/article-generation-md
 /**
  * コマンドライン引数をパース
  */
-function parseArgs(): { url: string; dryRun: boolean; local: boolean; uploadImages: boolean } {
+function parseArgs(): { url: string; dryRun: boolean; local: boolean; uploadImages: boolean; log: boolean } {
   const args = process.argv.slice(2);
   let dryRun = false;
   let local = false;
   let uploadImages = false;
+  let log = false;
   let url = '';
 
   for (const arg of args) {
@@ -62,6 +66,8 @@ function parseArgs(): { url: string; dryRun: boolean; local: boolean; uploadImag
       local = true;
     } else if (arg === '--upload-images') {
       uploadImages = true;
+    } else if (arg === '--log') {
+      log = true;
     } else if (!arg.startsWith('-')) {
       url = arg;
     }
@@ -79,7 +85,95 @@ function parseArgs(): { url: string; dryRun: boolean; local: boolean; uploadImag
     dryRun = false; // dryRunをfalseにしてR2アップロードを有効化
   }
 
-  return { url, dryRun, local, uploadImages };
+  return { url, dryRun, local, uploadImages, log };
+}
+
+/**
+ * URLからドメイン名を抽出（ログファイル名用）
+ * 例: https://prtimes.jp/main/html/... → prtimes-jp
+ */
+function extractDomainForFilename(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    // ドットをハイフンに変換（例: prtimes.jp → prtimes-jp）
+    return urlObj.hostname.replace(/\./g, '-');
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * ログファイルパスを生成
+ * 形式: logs/{YYYY-MM-DD}-{domain}-{連番}.log
+ * 例: logs/2025-12-21-prtimes-jp-01.log
+ */
+async function generateLogFilePath(url: string): Promise<string> {
+  const logsDir = resolve(__dirname, '../logs');
+
+  // logsディレクトリが存在しない場合は作成
+  if (!existsSync(logsDir)) {
+    await mkdir(logsDir, { recursive: true });
+  }
+
+  // 日付とドメイン
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const domain = extractDomainForFilename(url);
+  const prefix = `${today}-${domain}`;
+
+  // 既存のログファイルをチェックして連番を決定
+  const files = await readdir(logsDir);
+  const existingLogs = files.filter(f => f.startsWith(prefix) && f.endsWith('.log'));
+
+  let sequence = 1;
+  if (existingLogs.length > 0) {
+    // 既存の連番を抽出して最大値+1を使用
+    const sequences = existingLogs.map(f => {
+      const match = f.match(/-(\d+)\.log$/);
+      return match ? parseInt(match[1], 10) : 0;
+    });
+    sequence = Math.max(...sequences) + 1;
+  }
+
+  const sequenceStr = sequence.toString().padStart(2, '0');
+  return resolve(logsDir, `${prefix}-${sequenceStr}.log`);
+}
+
+/**
+ * コンソール出力をファイルにも書き込むようにラップ
+ */
+function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
+  const logStream: WriteStream = createWriteStream(logFilePath, { flags: 'a' });
+
+  // 元のconsole.logとconsole.errorを保存
+  const originalLog = console.log;
+  const originalError = console.error;
+
+  // console.logをラップ
+  console.log = (...args: unknown[]) => {
+    const message = args.map(arg =>
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+    logStream.write(message + '\n');
+    originalLog.apply(console, args);
+  };
+
+  // console.errorをラップ
+  console.error = (...args: unknown[]) => {
+    const message = args.map(arg =>
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+    logStream.write('[ERROR] ' + message + '\n');
+    originalError.apply(console, args);
+  };
+
+  // クリーンアップ関数
+  const cleanup = () => {
+    console.log = originalLog;
+    console.error = originalError;
+    logStream.end();
+  };
+
+  return { cleanup };
 }
 
 /**
@@ -87,17 +181,19 @@ function parseArgs(): { url: string; dryRun: boolean; local: boolean; uploadImag
  */
 async function main() {
   // コマンドライン引数をパース
-  const { url, dryRun, local, uploadImages } = parseArgs();
+  const { url, dryRun, local, uploadImages, log } = parseArgs();
 
   if (!url) {
     console.error('\n❌ エラー: URLが指定されていません\n');
     console.log('使用方法:');
     console.log('  pnpm debug:mdx <URL>');
     console.log('  pnpm debug:mdx --dry-run <URL>');
+    console.log('  pnpm debug:mdx --dry-run --log <URL>');
     console.log('  pnpm debug:mdx --local <URL>');
     console.log('  pnpm debug:mdx --upload-images <URL>\n');
     console.log('オプション:');
     console.log('  --dry-run        Firestore登録、GitHub PR作成、画像アップロードをすべてスキップ');
+    console.log('  --log            実行ログをファイルに出力（logs/{日付}-{ドメイン}-{連番}.log）');
     console.log('  --local          ローカル環境にMDXファイルを保存（--dry-runを自動有効化）');
     console.log('                   保存先: apps/ai-writer/content/{eventType}/{workSlug}/{postId}.mdx');
     console.log('  --upload-images  画像をR2にアップロードしつつローカル保存');
@@ -105,9 +201,21 @@ async function main() {
     console.log('例:');
     console.log('  pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html');
     console.log('  pnpm debug:mdx --dry-run https://animeanime.jp/article/2025/11/24/94010.html');
+    console.log('  pnpm debug:mdx --dry-run --log https://animeanime.jp/article/2025/11/24/94010.html');
     console.log('  pnpm debug:mdx --local https://animeanime.jp/article/2025/11/24/94010.html');
     console.log('  pnpm debug:mdx --upload-images https://animeanime.jp/article/2025/11/24/94010.html\n');
     process.exit(1);
+  }
+
+  // ログファイル出力のセットアップ
+  let logCleanup: (() => void) | undefined;
+  let logFilePath: string | undefined;
+
+  if (log) {
+    logFilePath = await generateLogFilePath(url);
+    const logging = setupConsoleLogging(logFilePath);
+    logCleanup = logging.cleanup;
+    console.log(`📝 ログファイル: ${logFilePath}`);
   }
 
   console.log('🔍 URLからMDX記事生成デバッグ開始\n');
@@ -353,6 +461,18 @@ async function main() {
       console.log();
     }
 
+    // ログファイルの保存完了メッセージ
+    if (logFilePath) {
+      console.log('='.repeat(80));
+      console.log(`📝 ログファイル保存完了: ${logFilePath}`);
+      console.log('='.repeat(80));
+    }
+
+    // ログのクリーンアップ
+    if (logCleanup) {
+      logCleanup();
+    }
+
   } catch (error) {
     console.error('\n❌ エラー発生:', error);
     if (error instanceof Error) {
@@ -371,6 +491,17 @@ async function main() {
     console.log('  4. DEBUG_HTML_EXTRACTION=true でHTML抽出をデバッグ');
     console.log('='.repeat(80));
     console.log();
+
+    // エラー時もログファイルを保存
+    if (logFilePath) {
+      console.log(`📝 ログファイル保存完了: ${logFilePath}`);
+    }
+
+    // ログのクリーンアップ
+    if (logCleanup) {
+      logCleanup();
+    }
+
     process.exit(1);
   }
 }
