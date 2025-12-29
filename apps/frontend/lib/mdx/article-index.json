@@ -1,7 +1,22 @@
 {
-  "generatedAt": "2025-12-14T12:55:41.178Z",
-  "totalArticles": 2,
+  "generatedAt": "2025-12-29T05:46:06.279Z",
+  "totalArticles": 3,
   "articles": [
+    {
+      "slug": "01kdma79tx",
+      "title": "鉄血のオルフェンズ カフェ in 東京ソラマチ 12月18日よりコラボ開催",
+      "date": "2025-12-29T05:45:00.586Z",
+      "excerpt": "『機動戦士ガンダム鉄血のオルフェンズ』10周年を記念した期間限定カフェが東京ソラマチで2025年12月から開催。キャラクターをテーマにした限定メニューやグッズ、特典も充実し、ファン必見のイベントです。",
+      "categories": [
+        "機動戦士ガンダム 鉄血のオルフェンズ",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/gundam-iron-blooded-orphans/01kdma79tx.mdx",
+      "eventType": "collabo-cafe",
+      "workSlug": "gundam-iron-blooded-orphans"
+    },
     {
       "slug": "01kceetv26",
       "title": "機動戦士ガンダム 鉄血のオルフェンズ カフェ in 東京ソラマチ 12月18日よりコラボ開催",
