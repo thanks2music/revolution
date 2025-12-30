@@ -803,9 +803,11 @@ export class ArticleGenerationMdxService {
 
       if (hasR2Images) {
         const placeholderReplacer = getImagePlaceholderReplacerService();
+        // titleResult.title を渡して alt 属性に記事タイトルを含める
         placeholderReplacement = placeholderReplacer.replaceAll(
           contentGeneration.content,
-          uploadedCategoryR2Images
+          uploadedCategoryR2Images,
+          titleResult.title
         );
         finalContent = placeholderReplacement.content;
 
