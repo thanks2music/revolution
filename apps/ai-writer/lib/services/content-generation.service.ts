@@ -182,7 +182,7 @@ ${request.generatedTitle}
 ${request.officialHtml ? `### 参考: 公式サイトの内容（一部）
 ${request.officialHtml.substring(0, 5000)}${request.officialHtml.length > 5000 ? '\n...(truncated)' : ''}` : ''}
 
-${this.buildCategoryImagesSection(request.categoryImages)}
+${this.buildCategoryImagesSection(template, request.categoryImages)}
 
 ---
 
@@ -307,33 +307,65 @@ ${this.buildCategoryImagesSection(request.categoryImages)}
   /**
    * カテゴリ別画像情報セクションを構築
    * セクションスキップの判断に画像有無を使用するための情報を提供
+   *
+   * @description
+   * v2.3.0 以降: YAMLテンプレート(4-content.yaml)の logic.category_images_instruction から
+   * 指示文を読み込み、{{category_images_table}} プレースホルダーを動的テーブルに置換する。
+   * YAML に該当フィールドがない場合はフォールバックとして空文字列を返す。
+   *
+   * @param template モジュール化YAMLテンプレート
+   * @param categoryImages カテゴリ別画像情報
+   * @returns カテゴリ別画像情報セクション文字列
    */
-  private buildCategoryImagesSection(categoryImages?: CategoryImages): string {
+  private buildCategoryImagesSection(
+    template: MergedModularTemplate,
+    categoryImages?: CategoryImages
+  ): string {
     if (!categoryImages) {
       return '';
     }
 
+    // YAML から category_images_instruction を取得
+    const instructionTemplate = template.logic?.category_images_instruction;
+
+    if (!instructionTemplate) {
+      // フォールバック: YAML に定義がない場合は空文字列を返す
+      console.warn(
+        '[ContentGeneration] ⚠️ logic.category_images_instruction が YAML に定義されていません'
+      );
+      return '';
+    }
+
+    // 動的テーブルを構築
+    const categoryImagesTable = this.buildCategoryImagesTable(categoryImages);
+
+    // {{category_images_table}} プレースホルダーを動的テーブルに置換
+    const result = instructionTemplate.replace(
+      '{{category_images_table}}',
+      categoryImagesTable
+    );
+
+    return result;
+  }
+
+  /**
+   * カテゴリ別画像情報のMarkdownテーブルを構築
+   *
+   * @param categoryImages カテゴリ別画像情報
+   * @returns Markdownテーブル形式の文字列
+   */
+  private buildCategoryImagesTable(categoryImages: CategoryImages): string {
     const { menu, novelty, goods } = categoryImages;
-    const sections: string[] = [
-      '### カテゴリ別画像情報（Step 1.7 で抽出）',
-      '',
-      '**重要**: 以下の画像情報に基づいてセクションのスキップを判断してください。',
-      '- 画像が1件以上ある場合 → セクションを生成し、プレースホルダーを出力',
-      '- 画像が0件の場合 → セクションをスキップ',
-      '',
-      '| カテゴリ | 画像数 | セクション生成 |',
-      '|----------|--------|----------------|',
-      `| menu (メニュー) | ${menu.length}件 | ${menu.length > 0 ? '✅ 生成する' : '❌ スキップ'} |`,
-      `| novelty (ノベルティ) | ${novelty.length}件 | ${novelty.length > 0 ? '✅ 生成する' : '❌ スキップ'} |`,
-      `| goods (グッズ) | ${goods.length}件 | ${goods.length > 0 ? '✅ 生成する' : '❌ スキップ'} |`,
-      '',
-      '**プレースホルダー出力ルール**:',
-      '- menu セクション生成時: `{ここにメニューの画像を入れる}` を必ず含める',
-      '- novelty セクション生成時: `{ここにノベルティの画像を入れる}` を必ず含める',
-      '- goods セクション生成時: `{ここにグッズの画像を入れる}` を必ず含める',
+
+    const tableRows = [
+      '| カテゴリ | 画像数 | アクション |',
+      '|----------|--------|------------|',
+      `| メニュー | ${menu.length}件 | ${menu.length > 0 ? 'セクション生成' : 'スキップ'} |`,
+      `| ノベルティ | ${novelty.length}件 | ${novelty.length > 0 ? 'セクション生成' : 'スキップ'} |`,
+      `| グッズ | ${goods.length}件 | ${goods.length > 0 ? 'セクション生成' : 'スキップ'} |`,
     ];
 
-    return sections.join('\n');
+    return tableRows.join('\n');
   }
 
   /**
