@@ -28,6 +28,18 @@ export interface TokenUsage {
 }
 
 /**
+ * カテゴリ別画像情報
+ */
+export interface CategoryImages {
+  /** メニュー画像のURL配列 */
+  menu: string[];
+  /** ノベルティ画像のURL配列 */
+  novelty: string[];
+  /** グッズ画像のURL配列 */
+  goods: string[];
+}
+
+/**
  * コンテンツ生成リクエスト
  */
 export interface ContentGenerationRequest {
@@ -37,6 +49,8 @@ export interface ContentGenerationRequest {
   generatedTitle: string;
   /** 公式サイトのHTMLコンテンツ（参考情報） */
   officialHtml?: string;
+  /** カテゴリ別画像情報（Step 1.7 で抽出） */
+  categoryImages?: CategoryImages;
 }
 
 /**
@@ -168,6 +182,8 @@ ${request.generatedTitle}
 ${request.officialHtml ? `### 参考: 公式サイトの内容（一部）
 ${request.officialHtml.substring(0, 5000)}${request.officialHtml.length > 5000 ? '\n...(truncated)' : ''}` : ''}
 
+${this.buildCategoryImagesSection(request.categoryImages)}
+
 ---
 
 上記の入力データとルールに従い、JSON形式でのみ出力してください。
@@ -286,6 +302,38 @@ ${request.officialHtml.substring(0, 5000)}${request.officialHtml.length > 5000 ?
     }
 
     return sections.join('\n\n');
+  }
+
+  /**
+   * カテゴリ別画像情報セクションを構築
+   * セクションスキップの判断に画像有無を使用するための情報を提供
+   */
+  private buildCategoryImagesSection(categoryImages?: CategoryImages): string {
+    if (!categoryImages) {
+      return '';
+    }
+
+    const { menu, novelty, goods } = categoryImages;
+    const sections: string[] = [
+      '### カテゴリ別画像情報（Step 1.7 で抽出）',
+      '',
+      '**重要**: 以下の画像情報に基づいてセクションのスキップを判断してください。',
+      '- 画像が1件以上ある場合 → セクションを生成し、プレースホルダーを出力',
+      '- 画像が0件の場合 → セクションをスキップ',
+      '',
+      '| カテゴリ | 画像数 | セクション生成 |',
+      '|----------|--------|----------------|',
+      `| menu (メニュー) | ${menu.length}件 | ${menu.length > 0 ? '✅ 生成する' : '❌ スキップ'} |`,
+      `| novelty (ノベルティ) | ${novelty.length}件 | ${novelty.length > 0 ? '✅ 生成する' : '❌ スキップ'} |`,
+      `| goods (グッズ) | ${goods.length}件 | ${goods.length > 0 ? '✅ 生成する' : '❌ スキップ'} |`,
+      '',
+      '**プレースホルダー出力ルール**:',
+      '- menu セクション生成時: `{ここにメニューの画像を入れる}` を必ず含める',
+      '- novelty セクション生成時: `{ここにノベルティの画像を入れる}` を必ず含める',
+      '- goods セクション生成時: `{ここにグッズの画像を入れる}` を必ず含める',
+    ];
+
+    return sections.join('\n');
   }
 
   /**

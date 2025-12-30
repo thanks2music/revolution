@@ -646,10 +646,16 @@ export class ArticleGenerationMdxService {
 
       try {
         // Step 1.5 で取得した officialHtml を再利用（再取得不要）
+        // categoryImages を渡して、画像有無でセクションスキップを判断させる
         contentGeneration = await contentService.generateContent({
           extractedData: detailedExtraction,
           generatedTitle: titleResult.title,
           officialHtml: officialHtml, // Step 1.5 で取得済みのHTMLを再利用
+          categoryImages: categoryImages ? {
+            menu: categoryImages.menu,
+            novelty: categoryImages.novelty,
+            goods: categoryImages.goods,
+          } : undefined,
         });
 
         console.log('コンテンツ生成完了:', {
