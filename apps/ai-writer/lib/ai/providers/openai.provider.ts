@@ -51,8 +51,8 @@ const OPENAI_MODELS = {
   TURBO: 'gpt-4-turbo',
 } as const;
 
-/** Default model with best cost-performance ratio */
-const DEFAULT_MODEL = OPENAI_MODELS.GPT41_NANO;
+/** Default model - using GPT-4.1-mini for better instruction following */
+const DEFAULT_MODEL = OPENAI_MODELS.GPT41_MINI;
 
 /**
  * OpenAI Provider
