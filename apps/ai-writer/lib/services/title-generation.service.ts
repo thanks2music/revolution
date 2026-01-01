@@ -72,7 +72,7 @@ export class TitleGenerationService {
 
       // タイトルの文字数を検証
       const length = this.countCharacters(title);
-      const is_valid = length >= 28 && length <= 40;
+      const is_valid = length >= 28 && length <= 42;
 
       console.log('[TitleGeneration] タイトル生成完了:', {
         title,
@@ -90,7 +90,7 @@ export class TitleGenerationService {
 
       if (!is_valid) {
         console.warn(
-          `[TitleGeneration] タイトルが文字数制約（28〜40文字）を満たしていません: ${length}文字`
+          `[TitleGeneration] タイトルが文字数制約（28〜42文字）を満たしていません: ${length}文字`
         );
       }
 
@@ -148,7 +148,7 @@ ${extractedDataSection}
 以下のJSON形式で出力してください:
 \`\`\`json
 {
-  "title": "生成したタイトル（28〜40文字）",
+  "title": "生成したタイトル（28〜42文字）",
   "_reasoning": "タイトル生成の判断理由（適用したルール、日付の選択理由など）"
 }
 \`\`\``;
@@ -183,7 +183,7 @@ ${extractedDataSection}
       // 作品名（略称）- v2.4.0 追加
       if (request.extractedWorkNameShort) {
         parts.push(`- 作品名（略称）: ${request.extractedWorkNameShort}`);
-        parts.push(`  ※ タイトルが40文字を超える場合のみ使用。10文字未満の作品は略称不可`);
+        parts.push(`  ※ タイトルが42文字を超える場合のみ使用。10文字未満の作品は略称不可`);
       }
 
       if (request.extractedStoreName) {
