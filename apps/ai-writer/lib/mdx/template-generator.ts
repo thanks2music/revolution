@@ -56,6 +56,9 @@ export function generateMdxFrontmatter(
     date = new Date().toISOString().split('T')[0], // YYYY-MM-DD
     author = MDX_DEFAULTS.AUTHOR,
     ogImage = MDX_DEFAULTS.OG_IMAGE,
+    // AI metadata (optional)
+    aiProvider,
+    aiModel,
     // Phase 1+ optional fields (URL設計v1.1 areas軸対応)
     prefectures,
     prefectureSlugs,
@@ -108,6 +111,15 @@ export function generateMdxFrontmatter(
   // Add optional tags (将来拡張用)
   if (tags && tags.length > 0) {
     frontmatter.tags = tags;
+  }
+
+  // Add AI metadata (optional)
+  if (aiProvider) {
+    frontmatter.ai_provider = aiProvider;
+  }
+
+  if (aiModel) {
+    frontmatter.ai_model = aiModel;
   }
 
   return frontmatter;
@@ -167,6 +179,17 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
   lines.push(`excerpt: "${escapedExcerpt}"`);
   lines.push(`author: "${frontmatter.author}"`);
   lines.push(`ogImage: "${frontmatter.ogImage}"`);
+
+  // AI metadata (optional)
+  if (frontmatter.ai_provider) {
+    const escapedProvider = frontmatter.ai_provider.replace(/"/g, '\\"');
+    lines.push(`ai_provider: "${escapedProvider}"`);
+  }
+
+  if (frontmatter.ai_model) {
+    const escapedModel = frontmatter.ai_model.replace(/"/g, '\\"');
+    lines.push(`ai_model: "${escapedModel}"`);
+  }
 
   // Optional fields - venues (legacy)
   if (frontmatter.venues && frontmatter.venues.length > 0) {
@@ -379,6 +402,16 @@ export function isValidMdxFrontmatter(data: unknown): data is MdxFrontmatter {
     fm.tags !== undefined &&
     (!Array.isArray(fm.tags) || !fm.tags.every((t) => typeof t === 'string'))
   ) {
+    return false;
+  }
+
+  // ai_provider: optional string
+  if (fm.ai_provider !== undefined && typeof fm.ai_provider !== 'string') {
+    return false;
+  }
+
+  // ai_model: optional string
+  if (fm.ai_model !== undefined && typeof fm.ai_model !== 'string') {
     return false;
   }
 

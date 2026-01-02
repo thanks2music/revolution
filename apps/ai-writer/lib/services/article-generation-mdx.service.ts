@@ -254,6 +254,16 @@ export class ArticleGenerationMdxService {
         );
       }
 
+      // AI メタデータを記録（Step 0.5 のモデル情報を使用）
+      // CRITICAL FIX: Handle undefined model with fallback
+      const aiModel = selectionResult.model || 'unknown';
+
+      console.log('🤖 AI メタデータ:', {
+        provider: providerName,
+        model: aiModel,
+        modelSource: selectionResult.model ? 'Step 0.5 (ArticleSelection)' : 'フォールバック (unknown)',
+      });
+
       // Step 1: Extract work/store/event information from RSS
       console.log(`\n[Step 1/11] AI API (${providerDisplayName}) でRSS記事から作品/店舗/イベント情報を抽出...`);
 
@@ -896,6 +906,9 @@ export class ArticleGenerationMdxService {
           // Phase 1+ 対応: 開催都道府県（taxonomy.yaml v1.1 areas軸）
           prefectures: prefectures.length > 0 ? prefectures : undefined,
           prefectureSlugs: prefectureSlugs.length > 0 ? prefectureSlugs : undefined,
+          // AI メタデータ（記事生成に使用したプロバイダーとモデル）
+          aiProvider: providerName,
+          aiModel: aiModel,
         },
         finalContent // プレースホルダー置換済みの本文を使用
       );

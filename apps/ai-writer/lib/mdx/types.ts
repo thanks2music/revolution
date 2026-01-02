@@ -164,6 +164,20 @@ export interface MdxFrontmatter {
    * @example ['アニメ', '店舗名', '作者名']
    */
   tags?: string[];
+
+  /**
+   * Optional: AI provider used for article generation (Debug metadata)
+   * Records which LLM provider was used to generate this article
+   * @example "gemini", "anthropic", "openai"
+   */
+  ai_provider?: string;
+
+  /**
+   * Optional: AI model name used for article generation (Debug metadata)
+   * Records the specific model version used for generation
+   * @example "gemini-2.0-flash-exp", "claude-3-5-sonnet-20241022", "gpt-4o-mini"
+   */
+  ai_model?: string;
 }
 
 /**
