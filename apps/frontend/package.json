@@ -14,7 +14,9 @@
     "start": "next start",
     "lint": "next lint",
     "validate-env": "tsx scripts/validate-env.ts",
-    "validate-env:test": "tsx scripts/validate-env.ts --test-connection"
+    "validate-env:test": "tsx scripts/validate-env.ts --test-connection",
+    "deploy:prod": "vercel --prod",
+    "deploy:preview": "vercel"
   },
   "dependencies": {
     "@headlessui/react": "^2.1.2",

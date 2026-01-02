@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "npx turbo-ignore frontend-nextjs-headless-cms --fallback=HEAD^1",
   "headers": [
     {
       "source": "/(.*)",
@@ -10,18 +9,6 @@
           "value": "index, follow"
         }
       ]
-    }
-  ],
-  "redirects": [
-    {
-      "source": "/wp-admin",
-      "destination": "/",
-      "permanent": false
-    },
-    {
-      "source": "/wp-login.php",
-      "destination": "/",
-      "permanent": false
     }
   ]
 }
