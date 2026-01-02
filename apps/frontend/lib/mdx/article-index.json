@@ -1,7 +1,22 @@
 {
-  "generatedAt": "2026-01-01T07:01:00.989Z",
-  "totalArticles": 2,
+  "generatedAt": "2026-01-02T05:14:38.569Z",
+  "totalArticles": 3,
   "articles": [
+    {
+      "slug": "01kdyj0mrd",
+      "title": "サンリオキャラクターズ×KING OF PRISM カフェ in 原宿 9月1日より開催",
+      "date": "2026-01-02T05:13:36.948Z",
+      "excerpt": "「サンリオキャラクターズ」と「KING OF PRISM -Shiny Seven Stars-」のコラボカフェ第三弾が、プリズムストーンカフェ原宿店で2022年9月1日(木)～9月26日(月)まで開催決定！プリズムスタァ19人が勢揃いし、限定コラボメニューやグッズが登場。ファン必見のイベントです。",
+      "categories": [
+        "サンリオキャラクターズ×KING OF PRISM -Shiny Seven Stars-",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/sanrio-characters-king-of-prism/01kdyj0mrd.mdx",
+      "eventType": "collabo-cafe",
+      "workSlug": "sanrio-characters-king-of-prism"
+    },
     {
       "slug": "01kceetv26",
       "title": "機動戦士ガンダム 鉄血のオルフェンズ カフェ in 東京ソラマチ 12月18日よりコラボ開催",
