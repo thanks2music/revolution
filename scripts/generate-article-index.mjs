@@ -142,8 +142,8 @@ async function main() {
       author: frontmatter.author || 'Revolution AI Writer',
       ogImage: frontmatter.ogImage || null,
       filePath: path.relative(REPO_ROOT, filePath),
-      eventType,
-      workSlug,
+      event_type: eventType,
+      work_slug: workSlug,
     });
   }
 

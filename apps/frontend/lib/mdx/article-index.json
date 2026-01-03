@@ -1,70 +1,7 @@
 {
-  "generatedAt": "2026-01-02T08:34:21.174Z",
-  "totalArticles": 4,
+  "generatedAt": "2026-01-03T08:36:21.989Z",
+  "totalArticles": 1,
   "articles": [
-    {
-      "slug": "dry-run-1765762506009",
-      "title": "らんま1/2 カフェ in 池袋・梅田 11月7日よりコラボ開催",
-      "date": "2025-12-15T01:34:52.233Z",
-      "excerpt": "高橋留美子の名作らんま1/2の2期アニメ放送記念の期間限定コラボカフェが東京と大阪で開催。キャラクターをイメージした楽しいメニューやグッズも充実しています。",
-      "categories": [
-        "らんま1/2",
-        "コラボカフェ",
-        "アニメ・キャラクターイベント"
-      ],
-      "tags": [],
-      "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/ranma/dry-run-1765762506009.mdx",
-      "post_id": "dry-run-1765762506009",
-      "year": 2025,
-      "event_type": "collabo-cafe",
-      "event_title": "コラボカフェ",
-      "work_title": "らんま1/2",
-      "work_slug": "ranma",
-      "ogImage": "https://images.anime-events.com/collabo-cafe/2025/dry-run-1765762506009/0d8f1c9c-764f-467a-bc2e-b9a3f8592207.png"
-    },
-    {
-      "slug": "dry-run-1765736982675",
-      "title": "ブルーロック カフェ in 東京・大阪・名古屋・仙台 11月7日よりコラボ開催",
-      "date": "2025-12-14T18:29:24.531Z",
-      "excerpt": "2025年11月から開催のブルーロックコラボカフェではキャラクター7人の旅をテーマにしたオリジナルメニューやグッズを楽しめます。東京、大阪、名古屋など全国で順次開催予定です。",
-      "categories": [
-        "ブルーロック",
-        "コラボカフェ",
-        "アニメ・キャラクター"
-      ],
-      "tags": [],
-      "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/blue-lock/dry-run-1765736982675.mdx",
-      "post_id": "dry-run-1765736982675",
-      "year": 2025,
-      "event_type": "collabo-cafe",
-      "event_title": "コラボカフェ",
-      "work_title": "ブルーロック",
-      "work_slug": "blue-lock",
-      "ogImage": "[DRY RUN] https://images.anime-events.com/collabo-cafe/2025/dry-run-1765736982675/dry-run-1765736982675/og-image.jpg"
-    },
-    {
-      "slug": "01kceetv26",
-      "title": "機動戦士ガンダム 鉄血のオルフェンズ カフェ in 東京ソラマチ 12月18日よりコラボ開催",
-      "date": "2025-12-14T12:54:27.151Z",
-      "excerpt": "東京ソラマチで開催される期間限定のコラボカフェ「機動戦士ガンダム 鉄血のオルフェンズ10周年」では、キャラクターと一緒に楽しめるスペシャルメニューやグッズが登場します。",
-      "categories": [
-        "機動戦士ガンダム 鉄血のオルフェンズ",
-        "コラボカフェ",
-        "期間限定イベント"
-      ],
-      "tags": [],
-      "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/kidou-senshi-gundam-tetsu-x-no-orufenz/01kceetv26.mdx",
-      "post_id": "01kceetv26",
-      "year": 2025,
-      "event_type": "collabo-cafe",
-      "event_title": "コラボカフェ",
-      "work_title": "機動戦士ガンダム 鉄血のオルフェンズ",
-      "work_slug": "kidou-senshi-gundam-tetsu-x-no-orufenz",
-      "ogImage": "https://images.anime-events.com/collabo-cafe/2025/01kceetv26/01kceetv26/2025/12/d45178bf-b1c3-440c-bb8b-7420bdad61ad.png"
-    },
     {
       "slug": "01kafsdmvd",
       "title": "作品名 × 店舗名2025が主要都市で開催決定",
@@ -77,14 +14,10 @@
       ],
       "tags": [],
       "author": "thanks2music",
+      "ogImage": "/images/og-image-compressed.png",
       "filePath": "apps/ai-writer/content/collabo-cafe/sample-work/01kafsdmvd.mdx",
-      "post_id": "01kafsdmvd",
-      "year": 2025,
       "event_type": "collabo-cafe",
-      "event_title": "コラボカフェ",
-      "work_title": "作品名",
-      "work_slug": "sample-work",
-      "ogImage": "/images/og-image-compressed.png"
+      "work_slug": "sample-work"
     }
   ]
 }

@@ -59,8 +59,8 @@ export interface ArticleIndexItem {
   author: string;
   filePath: string;
   ogImage?: string;
-  eventType: string | null;
-  workSlug: string | null;
+  event_type: string | null;
+  work_slug: string | null;
 }
 
 /**
@@ -167,7 +167,7 @@ export function getLatestArticles(limit = 10): ArticleIndexItem[] {
  * URL設計: /{event_type}/{work_slug}/{slug}
  * 例: /collabo-cafe/sample-work/01kafsdmvd
  *
- * レガシー記事（eventType='articles', workSlug=null）の場合:
+ * レガシー記事（event_type='articles', work_slug=null）の場合:
  * 例: /articles/hello-mdx
  */
 export function getArticleUrl(article: ArticleIndexItem): string {
