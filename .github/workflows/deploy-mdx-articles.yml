@@ -157,7 +157,7 @@ jobs:
 
       - name: Comment PR with deployment URL
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           DEPLOYMENT_URL: ${{ env.VERCEL_DEPLOYMENT_URL }}
         with:
