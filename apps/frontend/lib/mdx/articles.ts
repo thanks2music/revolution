@@ -171,15 +171,15 @@ export function getLatestArticles(limit = 10): ArticleIndexItem[] {
  * 例: /articles/hello-mdx
  */
 export function getArticleUrl(article: ArticleIndexItem): string {
-  if (!article.eventType) {
+  if (!article.event_type) {
     return `/articles/${article.slug}`;
   }
 
-  if (article.eventType === 'articles' || !article.workSlug) {
+  if (article.event_type === 'articles' || !article.work_slug) {
     return `/articles/${article.slug}`;
   }
 
-  return `/${article.eventType}/${article.workSlug}/${article.slug}`;
+  return `/${article.event_type}/${article.work_slug}/${article.slug}`;
 }
 
 /**
@@ -198,7 +198,7 @@ export function getArticleByPath(
   return (
     index.articles.find(
       article =>
-        article.eventType === eventType && article.workSlug === workSlug && article.slug === slug
+        article.event_type === eventType && article.work_slug === workSlug && article.slug === slug
     ) || null
   );
 }

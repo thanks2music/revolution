@@ -16,10 +16,10 @@ import { generateArticleMetadata } from '@/lib/metadata';
 export async function generateStaticParams() {
   const articles = getAllArticles();
   return articles
-    .filter((article) => article.eventType && article.workSlug)
+    .filter((article) => article.event_type && article.work_slug)
     .map((article) => ({
-      event_type: article.eventType!,
-      work_slug: article.workSlug!,
+      event_type: article.event_type!,
+      work_slug: article.work_slug!,
       slug: article.slug,
     }));
 }
