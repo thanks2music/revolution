@@ -49,6 +49,7 @@ jobs:
           echo "pnpm version: $(pnpm --version)"
 
           cd apps/ai-writer && pnpm generate:article-index
+          cd ../..  # リポジトリルートに戻る
 
           if [ -f "apps/frontend/lib/mdx/article-index.json" ]; then
             echo "✅ Article index generated successfully"
@@ -60,7 +61,7 @@ jobs:
           else
             echo "❌ Article index not found"
             echo "📂 Directory contents:"
-            ls -la apps/frontend/lib/mdx/
+            ls -la apps/frontend/lib/mdx/ || echo "Directory does not exist"
             exit 1
           fi
 
