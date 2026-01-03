@@ -31,7 +31,7 @@ export default async function Image({
   // Find article from imported index (Edge-compatible)
   const article = articleIndex.articles.find(
     (a) =>
-      a.eventType === event_type && a.workSlug === work_slug && a.slug === slug
+      a.event_type === event_type && a.workSlug === work_slug && a.slug === slug
   );
 
   // Fallback if article not found
