@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-01-03T08:36:21.989Z",
+  "generatedAt": "2026-01-03T08:57:07.710Z",
   "totalArticles": 1,
   "articles": [
     {
@@ -14,10 +14,17 @@
       ],
       "tags": [],
       "author": "thanks2music",
-      "ogImage": "/images/og-image-compressed.png",
       "filePath": "apps/ai-writer/content/collabo-cafe/sample-work/01kafsdmvd.mdx",
+      "post_id": "01kafsdmvd",
+      "year": 2025,
       "event_type": "collabo-cafe",
-      "work_slug": "sample-work"
+      "event_title": "コラボカフェ",
+      "work_title": "作品名",
+      "work_titles": [],
+      "work_slug": "sample-work",
+      "prefectures": [],
+      "prefecture_slugs": [],
+      "ogImage": "/images/og-image-compressed.png"
     }
   ]
 }
