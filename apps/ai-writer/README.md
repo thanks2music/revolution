@@ -114,8 +114,14 @@ URL から直接 MDX 記事を生成するデバッグスクリプトです。
 # 基本使用法
 pnpm debug:mdx <URL>
 
-# ドライランモード（Firestore/GitHub 操作をスキップ）
+# ドライランモード（Firestore/GitHub/R2 すべてスキップ）
 pnpm debug:mdx --dry-run <URL>
+
+# ローカル保存モード（Firestore/GitHub/R2 スキップ + ローカルにMDXファイル保存）
+pnpm debug:mdx --local <URL>
+
+# 画像アップロードモード（R2にアップロード + ローカル保存、Firestore/GitHub はスキップ）
+pnpm debug:mdx --upload-images <URL>
 ```
 
 **コマンドライン引数**
@@ -123,17 +129,41 @@ pnpm debug:mdx --dry-run <URL>
 | 引数 | 説明 |
 |------|------|
 | `<URL>` | 記事生成元の URL（必須） |
-| `--dry-run` | Firestore 登録と GitHub PR 作成をスキップ。AI 処理のみ実行 |
+| `--dry-run` | Firestore 登録、GitHub PR 作成、R2 画像アップロードをすべてスキップ。AI 処理のみ実行 |
+| `--local` | ローカルに MDX ファイルを保存。R2 画像アップロードもスキップ。保存先: `apps/ai-writer/content/{eventType}/{workSlug}/{postId}.mdx` |
+| `--upload-images` | R2 に画像をアップロードしつつローカル保存。Firestore 登録と GitHub PR 作成はスキップ。画像 URL の動作確認に最適 |
 
 **使用例**
 
 ```bash
-# 本番実行（Firestore登録 + GitHub PR作成）
+# 本番実行（Firestore登録 + GitHub PR作成 + R2アップロード）
 pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html
 
 # ドライラン（AI処理のみ、外部サービスへの書き込みなし）
 pnpm debug:mdx --dry-run https://g-tekketsu.theme-cafe.jp/
+
+# ローカル保存（MDXファイルをローカルに保存、画像はスキップ）
+pnpm debug:mdx --local https://g-tekketsu.theme-cafe.jp/
+
+# 画像アップロード + ローカル保存（画像URLの動作確認に最適）
+pnpm debug:mdx --upload-images https://g-tekketsu.theme-cafe.jp/
 ```
+
+> **💡 `--local` の利用シーン**
+>
+> - MDX 生成結果を実際のファイルとして確認したい場合
+> - フロントエンドとの統合テストをローカルで行いたい場合
+> - GitHub PR を作成せずに記事内容を検証したい場合
+>
+> ローカル保存後は `pnpm generate:article-index` で記事インデックスを再生成し、`pnpm dev` で開発サーバーを起動して確認できます。
+
+> **💡 `--upload-images` の利用シーン**
+>
+> - 画像アップロード機能の動作確認をしたい場合
+> - R2 に保存された画像 URL が MDX に正しく埋め込まれるか確認したい場合
+> - 画像関連の修正を本番 PR を作成せずにテストしたい場合
+>
+> このモードでは、画像は実際に R2 にアップロードされますが、Firestore 登録と GitHub PR 作成はスキップされます。
 
 ### 環境変数オプション
 

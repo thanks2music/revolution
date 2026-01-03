@@ -8,7 +8,13 @@ import {
   deleteEvent,
 } from '../firestore/event-deduplication';
 import { type EventCanonicalKey } from '../firestore/types';
-import { resolveWorkSlug, resolveStoreSlug, resolveEventTypeSlug } from '../config/slug-resolver';
+import {
+  resolveWorkSlug,
+  resolveStoreSlug,
+  resolveEventTypeSlug,
+  resolvePrefectureSlugs,
+  getShortTitle,
+} from '../config/slug-resolver';
 import { DuplicateSlugError } from '../errors/github';
 import { getPrStatusByCanonicalKey } from '../github/pr-status';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
@@ -57,9 +63,15 @@ import {
   type PlaceholderReplacementResult,
 } from './image-placeholder-replacer.service';
 import {
+  getTextPlaceholderReplacerService,
+  type TextPlaceholderReplacementResult,
+} from './text-placeholder-replacer.service';
+import {
   createCostTracker,
   type CostTrackerService,
 } from '@/lib/ai/cost';
+import { buildCategories } from '@/lib/utils/category-builder';
+import { validateStoreName } from '@/lib/utils/store-name-validator';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -80,10 +92,17 @@ export interface MdxGenerationRequest {
   };
   /**
    * ドライランモード
-   * true の場合、Firestore登録とGitHub PR作成をスキップ
+   * true の場合、Firestore登録、GitHub PR作成、画像アップロードをすべてスキップ
    * AI処理（記事選別、情報抽出、メタデータ生成）のみ実行
    */
   dryRun?: boolean;
+  /**
+   * ローカル保存モード
+   * true の場合、Firestore登録とGitHub PR作成をスキップ
+   * ただし、画像アップロード（R2）は実行する
+   * デバッグ時に画像アップロードをテストしつつ、PRは作成しない場合に使用
+   */
+  localOnly?: boolean;
 }
 
 /**
@@ -120,8 +139,10 @@ export interface MdxGenerationResult {
   categoryImages?: CategoryImages;
   // カテゴリ別R2画像URL（Step 5.5b後）
   categoryR2Images?: CategoryR2Images;
-  // プレースホルダー置換結果（Step 5.7）
+  // 画像プレースホルダー置換結果（Step 5.7）
   placeholderReplacement?: PlaceholderReplacementResult;
+  // テキストプレースホルダー置換結果（Step 5.8）
+  textPlaceholderReplacement?: TextPlaceholderReplacementResult;
 }
 
 /**
@@ -163,8 +184,14 @@ export class ArticleGenerationMdxService {
    * AI_PROVIDER環境変数でプロバイダーを切り替え可能
    */
   async generateMdxFromRSS(request: MdxGenerationRequest): Promise<MdxGenerationResult> {
-    const { rssItem, dryRun = false } = request;
+    const { rssItem, dryRun = false, localOnly = false } = request;
     const year = new Date().getFullYear();
+
+    // モード判定用のヘルパー変数
+    // skipExternalOps: Firestore/GitHub操作をスキップ（dryRun OR localOnly）
+    // skipImageUpload: 画像アップロードをスキップ（dryRunのみ、localOnlyでは実行）
+    const skipExternalOps = dryRun || localOnly;
+    const skipImageUpload = dryRun && !localOnly;
 
     // Get configured AI provider for logging
     const providerName = getConfiguredProvider();
@@ -177,7 +204,9 @@ export class ArticleGenerationMdxService {
     console.log('========== MDXパイプライン: 記事生成開始 ==========');
     console.log(`🤖 Using AI Provider: ${providerDisplayName}`);
     if (dryRun) {
-      console.log('🧪 ドライランモード: Firestore登録・GitHub PR作成をスキップします');
+      console.log('🧪 ドライランモード: Firestore登録・GitHub PR作成・画像アップロードをスキップします');
+    } else if (localOnly) {
+      console.log('💾 ローカル保存モード: Firestore登録・GitHub PR作成をスキップ（画像アップロードは実行）');
     }
     console.log('RSS記事:', { title: rssItem.title, link: rssItem.link });
 
@@ -224,6 +253,16 @@ export class ArticleGenerationMdxService {
           selectionResult.usage
         );
       }
+
+      // AI メタデータを記録（Step 0.5 のモデル情報を使用）
+      // CRITICAL FIX: Handle undefined model with fallback
+      const aiModel = selectionResult.model || 'unknown';
+
+      console.log('🤖 AI メタデータ:', {
+        provider: providerName,
+        model: aiModel,
+        modelSource: selectionResult.model ? 'Step 0.5 (ArticleSelection)' : 'フォールバック (unknown)',
+      });
 
       // Step 1: Extract work/store/event information from RSS
       console.log(`\n[Step 1/11] AI API (${providerDisplayName}) でRSS記事から作品/店舗/イベント情報を抽出...`);
@@ -273,6 +312,11 @@ export class ArticleGenerationMdxService {
           });
 
           console.log('詳細抽出結果:', {
+            // 新構造（複数作品コラボ対応 v1.2.0）
+            works: detailedExtraction.works,
+            store: detailedExtraction.store,
+            is_multi_work_collaboration: detailedExtraction.is_multi_work_collaboration,
+            // 後方互換性フィールド（実際に下流処理で使用）
             作品名: detailedExtraction.作品名,
             メディアタイプ: detailedExtraction.メディアタイプ,
             原作タイプ: detailedExtraction.原作タイプ,
@@ -349,7 +393,8 @@ export class ArticleGenerationMdxService {
 
           // 下層ページを検出
           const subpageService = getSubpageDetectorService();
-          const storeName = detailedExtraction?.店舗名 || extraction.storeName;
+          // 店舗名: Step 1.5 の結果を検証し、不適切な場合は Step 1 にフォールバック
+          const storeName = validateStoreName(detailedExtraction?.店舗名) || extraction.storeName;
 
           subpageDetection = await subpageService.detectSubpages(
             selectionResult.primary_official_url,
@@ -428,9 +473,10 @@ export class ArticleGenerationMdxService {
       // Step 3: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
 
-      if (dryRun) {
-        // ドライランモード: 重複チェック・登録をスキップ
-        console.log('\n[Step 3/11] Firestore重複チェック（ドライランのためスキップ）...');
+      if (skipExternalOps) {
+        // ドライラン/ローカル保存モード: 重複チェック・登録をスキップ
+        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
+        console.log(`\n[Step 3/11] Firestore重複チェック（${modeLabel}のためスキップ）...`);
 
         // ダミーの postId を生成（タイムスタンプベース）
         const dryRunPostId = `dry-run-${Date.now()}`;
@@ -449,10 +495,12 @@ export class ArticleGenerationMdxService {
           updatedAt: null as any, // ドライラン用ダミー値
         };
 
-        console.log('🧪 ドライラン: ダミーイベントレコード生成:', {
+        const modeEmoji = localOnly ? '💾' : '🧪';
+        const modeName = localOnly ? 'ローカル保存' : 'ドライラン';
+        console.log(`${modeEmoji} ${modeName}: ダミーイベントレコード生成:`, {
           canonicalKey: eventRecord.canonicalKey,
           postId: eventRecord.postId,
-          status: 'dry-run (not saved)',
+          status: `${modeName} (not saved)`,
         });
       } else {
         // 通常モード: 重複チェック + 登録
@@ -515,9 +563,12 @@ export class ArticleGenerationMdxService {
         });
       }
 
-      // Step 4: Generate categories and excerpt using AI API
-      console.log(`\n[Step 4/11] AI API (${providerDisplayName}) でカテゴリ/抜粋を生成...`);
+      // Step 4: Generate excerpt using AI API + build categories deterministically
+      // Note: categories は AI 生成ではなく、taxonomy.yaml ルールに従って決定論的に構築
+      // @see notes/work-report/2025-12/2025-12-16-カテゴリの改善案について改めて行った調査内容.md
+      console.log(`\n[Step 4/11] AI API (${providerDisplayName}) で抜粋を生成 + カテゴリを構築...`);
 
+      // 4a: AI API で excerpt のみ生成（categories は使用しない）
       const metadata = await generateArticleMetadata({
         content: rssItem.content || rssItem.contentSnippet || '',
         title: rssItem.title,
@@ -525,10 +576,37 @@ export class ArticleGenerationMdxService {
         eventType: extraction.eventTypeName,
       });
 
+      // 4b: categories は buildCategories() で決定論的に構築（2件固定）
+      // taxonomy.yaml v1.1 の category_rules に準拠
+      // Note: prefectures は categories に含めず、別フィールドで管理
+      const categories = buildCategories({
+        workTitle: extraction.workTitle,
+        eventTitle: extraction.eventTypeName,
+      });
+
       console.log('メタデータ生成完了:', {
-        categories: metadata.categories,
+        categories: categories, // 決定論的に構築
+        categoriesSource: 'buildCategories (taxonomy.yaml rules)',
         excerptLength: metadata.excerpt.length,
       });
+
+      // Step 4c: 開催都道府県を解決（taxonomy.yaml v1.1 areas軸対応）
+      let prefectures: string[] = [];
+      let prefectureSlugs: string[] = [];
+
+      if (detailedExtraction?.開催都道府県 && detailedExtraction.開催都道府県.length > 0) {
+        const resolved = resolvePrefectureSlugs(detailedExtraction.開催都道府県);
+        prefectures = resolved.prefectures;
+        prefectureSlugs = resolved.slugs;
+
+        console.log('[Step 4c] 開催都道府県を解決:', {
+          input: detailedExtraction.開催都道府県,
+          prefectures,
+          prefectureSlugs,
+        });
+      } else {
+        console.log('[Step 4c] 開催都道府県: なし（抽出されていない or null）');
+      }
 
       // コストを記録（Step 4: MetadataGeneration）
       if (metadata.model && metadata.usage) {
@@ -552,6 +630,12 @@ export class ArticleGenerationMdxService {
         extractedStoreName: detailedExtraction?.店舗名,
         // 作品名は Step 1 の workTitle を canonical として使用
         extractedWorkName: canonicalWorkTitle,
+        // v2.4.0: 作品名の略称（10文字以上の作品のみ設定）
+        extractedWorkNameShort: canonicalWorkTitle
+          ? getShortTitle(canonicalWorkTitle) ?? undefined
+          : undefined,
+        // v2.3.0: 開催回数（第N弾形式）
+        extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
       });
 
       // コストを記録
@@ -572,10 +656,16 @@ export class ArticleGenerationMdxService {
 
       try {
         // Step 1.5 で取得した officialHtml を再利用（再取得不要）
+        // categoryImages を渡して、画像有無でセクションスキップを判断させる
         contentGeneration = await contentService.generateContent({
           extractedData: detailedExtraction,
           generatedTitle: titleResult.title,
           officialHtml: officialHtml, // Step 1.5 で取得済みのHTMLを再利用
+          categoryImages: categoryImages ? {
+            menu: categoryImages.menu,
+            novelty: categoryImages.novelty,
+            goods: categoryImages.goods,
+          } : undefined,
         });
 
         console.log('コンテンツ生成完了:', {
@@ -614,6 +704,7 @@ export class ArticleGenerationMdxService {
         menu: [],
         novelty: [],
         goods: [],
+        eyecatch: undefined, // OG画像アップロード後に設定
       };
 
       if (selectionResult.primary_official_url) {
@@ -626,12 +717,14 @@ export class ArticleGenerationMdxService {
             {
               folder: `${eventType}/${year}/${eventRecord.postId}`,
               articleSlug: eventRecord.postId,
-              dryRun,
+              dryRun: skipImageUpload, // localOnlyモードでは実際にアップロード
             }
           );
 
           if (ogImageUpload.success && ogImageUpload.r2Url) {
             ogImageUrl = ogImageUpload.r2Url;
+            // Step 5.7 でアイキャッチプレースホルダー置換に使用
+            uploadedCategoryR2Images.eyecatch = ogImageUpload.r2Url;
             console.log(`✅ OG画像アップロード完了: ${ogImageUrl}`);
           } else {
             console.log(`⚠️ OG画像アップロード失敗、デフォルト画像を使用: ${ogImageUpload.error || '不明なエラー'}`);
@@ -656,7 +749,7 @@ export class ArticleGenerationMdxService {
 
               for (const sourceUrl of sourceUrls) {
                 try {
-                  if (dryRun) {
+                  if (skipImageUpload) {
                     const dryRunUrl = `[DRY RUN] ${process.env.R2_PUBLIC_URL}/${baseFolder}/${category}/${Date.now()}.jpg`;
                     uploadedCategoryR2Images[category].push(dryRunUrl);
                     console.log(`  🔍 [DRY RUN] ${sourceUrl}`);
@@ -686,7 +779,7 @@ export class ArticleGenerationMdxService {
                 articleSlug: eventRecord.postId,
                 eventType,
                 year,
-                dryRun,
+                dryRun: skipImageUpload, // localOnlyモードでは実際にアップロード
                 uploadOgImage: false, // OG画像は既にアップロード済み
                 uploadBodyImages: true,
               }
@@ -710,18 +803,21 @@ export class ArticleGenerationMdxService {
       let placeholderReplacement: PlaceholderReplacementResult | undefined;
       let finalContent = contentGeneration.content;
 
-      // カテゴリ別R2画像がある場合のみ置換を実行
-      // uploadedCategoryR2Images は Step 5.5b でアップロードされた画像のR2 URL
-      const hasCategoryR2Images =
+      // カテゴリ別R2画像またはアイキャッチ画像がある場合のみ置換を実行
+      // uploadedCategoryR2Images は Step 5.5 でアップロードされた画像のR2 URL
+      const hasR2Images =
         uploadedCategoryR2Images.menu.length > 0 ||
         uploadedCategoryR2Images.novelty.length > 0 ||
-        uploadedCategoryR2Images.goods.length > 0;
+        uploadedCategoryR2Images.goods.length > 0 ||
+        !!uploadedCategoryR2Images.eyecatch;
 
-      if (hasCategoryR2Images) {
+      if (hasR2Images) {
         const placeholderReplacer = getImagePlaceholderReplacerService();
+        // titleResult.title を渡して alt 属性に記事タイトルを含める
         placeholderReplacement = placeholderReplacer.replaceAll(
           contentGeneration.content,
-          uploadedCategoryR2Images
+          uploadedCategoryR2Images,
+          titleResult.title
         );
         finalContent = placeholderReplacement.content;
 
@@ -735,11 +831,61 @@ export class ArticleGenerationMdxService {
           console.warn('[Step 5.7] ⚠️ 未置換プレースホルダー:', placeholderReplacement.unreplacedPlaceholders);
         }
       } else {
-        console.log('[Step 5.7] カテゴリ別R2画像なし、プレースホルダー置換をスキップ');
+        console.log('[Step 5.7] R2画像（カテゴリ別・アイキャッチ）なし、画像プレースホルダー置換をスキップ');
       }
+
+      // Step 5.8: テキストプレースホルダー置換
+      console.log('\n[Step 5.8/11] テキストプレースホルダー置換...');
+
+      let textPlaceholderReplacement: TextPlaceholderReplacementResult | undefined;
+
+      if (detailedExtraction) {
+        const textReplacer = getTextPlaceholderReplacerService();
+        textPlaceholderReplacement = textReplacer.replaceAll(finalContent, {
+          作品名: detailedExtraction.作品名,
+          店舗名: detailedExtraction.店舗名,
+          メディアタイプ: detailedExtraction.メディアタイプ,
+          原作タイプ: detailedExtraction.原作タイプ,
+          原作者有無: detailedExtraction.原作者有無,
+          原作者名: detailedExtraction.原作者名,
+          略称: detailedExtraction.略称,
+          開催回数: detailedExtraction.開催回数 ?? undefined,
+          公式サイトURL: selectionResult.primary_official_url ?? undefined,
+          キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
+          テーマ名: detailedExtraction.テーマ名 ?? undefined,
+          ノベルティ名: detailedExtraction.ノベルティ名 ?? undefined,
+          グッズ名: detailedExtraction.グッズ名 ?? undefined,
+          開催期間: detailedExtraction.開催期間,
+          works: detailedExtraction.works || [],
+          store: detailedExtraction.store || { name: detailedExtraction.店舗名 },
+        });
+
+        finalContent = textPlaceholderReplacement.content;
+
+        console.log('[Step 5.8] テキストプレースホルダー置換結果:', {
+          replacedCount: textPlaceholderReplacement.replacedCount,
+          unreplacedCount: textPlaceholderReplacement.unreplacedPlaceholders.length,
+        });
+
+        if (textPlaceholderReplacement.unreplacedPlaceholders.length > 0) {
+          console.warn('[Step 5.8] ⚠️ 未置換プレースホルダー:', textPlaceholderReplacement.unreplacedPlaceholders);
+        }
+      } else {
+        console.log('[Step 5.8] detailedExtraction がないため、テキストプレースホルダー置換をスキップ');
+      }
+
+      // Step 5.9: 記事末尾プレースホルダー削除
+      // Note: ナビゲーション（ピラーページリンク、注意事項）は Frontend で表示
+      // @see notes/04-review/2025-12-22-Do-not-forget-YAGNI原則-AI-Writer-and-FrontEnd.md
+      console.log('\n[Step 5.9/11] 記事末尾プレースホルダー削除（Frontend で表示）...');
+
+      finalContent = this.removeFooterPlaceholder(finalContent);
 
       // Step 6: MDX記事を組み立て
       console.log('\n[Step 6/11] MDX記事を組み立て...');
+
+      // 複数作品コラボ対応: works[] から全作品タイトルを抽出
+      const workTitles = detailedExtraction?.works?.map((w) => w.title) || [];
 
       const mdxArticle = generateMdxArticle(
         {
@@ -748,13 +894,21 @@ export class ArticleGenerationMdxService {
           eventType,
           eventTitle: extraction.eventTypeName,
           workTitle: extraction.workTitle,
+          // 複数作品コラボ対応: 全作品タイトルを含める（SEO/検索性向上）
+          workTitles: workTitles.length > 0 ? workTitles : undefined,
           workSlug,
           title: titleResult.title, // YAMLテンプレートで生成されたタイトルを使用
-          categories: metadata.categories,
+          categories: categories, // buildCategories() で決定論的に構築
           excerpt: metadata.excerpt,
           date: rssItem.pubDate || new Date().toISOString().split('T')[0],
           author: 'thanks2music',
           ogImage: ogImageUrl, // R2にアップロードしたOG画像URL
+          // Phase 1+ 対応: 開催都道府県（taxonomy.yaml v1.1 areas軸）
+          prefectures: prefectures.length > 0 ? prefectures : undefined,
+          prefectureSlugs: prefectureSlugs.length > 0 ? prefectureSlugs : undefined,
+          // AI メタデータ（記事生成に使用したプロバイダーとモデル）
+          aiProvider: providerName,
+          aiModel: aiModel,
         },
         finalContent // プレースホルダー置換済みの本文を使用
       );
@@ -762,25 +916,25 @@ export class ArticleGenerationMdxService {
       console.log('MDX組み立て完了:', {
         filePath: mdxArticle.filePath,
         contentLength: mdxArticle.content.length,
+        workTitles: workTitles.length > 0 ? workTitles : 'なし（単一作品）',
+        prefectures: prefectures.length > 0 ? prefectures : 'なし',
+        prefectureSlugs: prefectureSlugs.length > 0 ? prefectureSlugs : 'なし',
       });
 
       // Step 7: Create GitHub PR
       let prResult: CreateMdxPrResult | undefined;
 
-      if (dryRun) {
-        // ドライランモード: GitHub PR作成をスキップ
-        console.log('\n[Step 7/11] GitHub PR作成（ドライランのためスキップ）...');
-        console.log('🧪 ドライラン: PR作成をスキップしました');
+      if (skipExternalOps) {
+        // ドライラン/ローカル保存モード: GitHub PR作成をスキップ
+        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
+        const modeEmoji = localOnly ? '💾' : '🧪';
+        console.log(`\n[Step 7/11] GitHub PR作成（${modeLabel}のためスキップ）...`);
+        console.log(`${modeEmoji} ${modeLabel}: PR作成をスキップしました`);
 
-        // MDX記事の内容をプレビュー表示
+        // MDX記事の内容をプレビュー表示（全文）
         console.log('\n📄 生成されたMDX記事のプレビュー:');
         console.log('-'.repeat(60));
-        // 先頭50行を表示
-        const previewLines = mdxArticle.content.split('\n').slice(0, 50);
-        console.log(previewLines.join('\n'));
-        if (mdxArticle.content.split('\n').length > 50) {
-          console.log('... (以下省略)');
-        }
+        console.log(mdxArticle.content);
         console.log('-'.repeat(60));
       } else {
         // 通常モード: GitHub PR作成
@@ -791,7 +945,7 @@ export class ArticleGenerationMdxService {
         const prBody = this.generatePrBody({
           rssItem,
           extraction,
-          metadata,
+          metadata: { categories, excerpt: metadata.excerpt }, // 決定論的に構築した categories を使用
           eventRecord,
           workSlug,
           storeSlug,
@@ -823,10 +977,12 @@ export class ArticleGenerationMdxService {
       }
 
       // Step 8: Update Firestore status to 'generated'
-      if (dryRun) {
-        // ドライランモード: ステータス更新をスキップ
-        console.log('\n[Step 8/11] Firestoreステータス更新（ドライランのためスキップ）...');
-        console.log('🧪 ドライラン: ステータス更新をスキップしました');
+      if (skipExternalOps) {
+        // ドライラン/ローカル保存モード: ステータス更新をスキップ
+        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
+        const modeEmoji = localOnly ? '💾' : '🧪';
+        console.log(`\n[Step 8/11] Firestoreステータス更新（${modeLabel}のためスキップ）...`);
+        console.log(`${modeEmoji} ${modeLabel}: ステータス更新をスキップしました`);
       } else {
         // 通常モード: ステータス更新
         console.log('\n[Step 8/11] Firestoreのステータスを更新...');
@@ -841,7 +997,9 @@ export class ArticleGenerationMdxService {
         costTracker.logSummary();
       }
 
-      console.log(`========== MDXパイプライン: ${dryRun ? 'ドライラン' : '記事生成'}完了 ==========\n`);
+      // 完了メッセージ
+      const completionLabel = dryRun ? 'ドライラン' : localOnly ? 'ローカル保存' : '記事生成';
+      console.log(`========== MDXパイプライン: ${completionLabel}完了 ==========\n`);
 
       return {
         success: true,
@@ -864,6 +1022,7 @@ export class ArticleGenerationMdxService {
         categoryImages,
         categoryR2Images: uploadedCategoryR2Images,
         placeholderReplacement,
+        textPlaceholderReplacement,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -939,6 +1098,42 @@ export class ArticleGenerationMdxService {
 
 🤖 このPRは [AI Writer](https://github.com/thanks2music/revolution/tree/main/apps/ai-writer) によって自動生成されました。
 `;
+  }
+
+  /**
+   * 記事末尾ナビゲーションプレースホルダーを削除
+   *
+   * @param content MDXコンテンツ
+   * @returns プレースホルダー削除後のコンテンツ
+   *
+   * @description
+   * 記事末尾のナビゲーション（ピラーページリンク、注意事項等）は
+   * Frontend の責務として表示するため、AI Writer ではプレースホルダーを
+   * 削除するのみとする。
+   *
+   * @see notes/04-review/2025-12-22-Do-not-forget-YAGNI原則-AI-Writer-and-FrontEnd.md
+   * @private
+   */
+  private removeFooterPlaceholder(content: string): string {
+    // 削除対象のプレースホルダー（新名と旧名の両方に対応）
+    const placeholders = [
+      '{ここに記事末尾ナビゲーション}',
+      '{ここに本文を終了するための補足や注意事項を記載}',
+    ];
+
+    let result = content;
+    for (const placeholder of placeholders) {
+      if (result.includes(placeholder)) {
+        // プレースホルダーを削除（Frontend が表示するため）
+        result = result.replace(placeholder, '');
+        console.log(`[FooterPlaceholder] 削除: ${placeholder} (Frontend で表示)`);
+      }
+    }
+
+    // 削除後に生じる可能性のある連続空行を整理
+    result = result.replace(/\n{3,}/g, '\n\n');
+
+    return result;
   }
 
   /**

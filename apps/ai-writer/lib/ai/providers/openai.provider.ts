@@ -51,8 +51,8 @@ const OPENAI_MODELS = {
   TURBO: 'gpt-4-turbo',
 } as const;
 
-/** Default model with best cost-performance ratio */
-const DEFAULT_MODEL = OPENAI_MODELS.GPT41_NANO;
+/** Default model - using GPT-4.1-mini for better instruction following */
+const DEFAULT_MODEL = OPENAI_MODELS.GPT41_MINI;
 
 /**
  * OpenAI Provider
@@ -560,12 +560,21 @@ Respond ONLY with JSON format. No other text should be included.
       // Add user message
       messages.push({ role: 'user', content: prompt });
 
-      const completion = await this.client.chat.completions.create({
+      // Build API request options
+      const createOptions: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
         model: this.modelName,
         messages,
         max_tokens: options?.maxTokens ?? 2048,
         temperature: options?.temperature ?? 0,
-      });
+      };
+
+      // Enable JSON mode when responseFormat is 'json'
+      // This ensures the model outputs valid, parseable JSON
+      if (options?.responseFormat === 'json') {
+        createOptions.response_format = { type: 'json_object' };
+      }
+
+      const completion = await this.client.chat.completions.create(createOptions);
 
       const responseText = completion.choices[0]?.message?.content || '';
 

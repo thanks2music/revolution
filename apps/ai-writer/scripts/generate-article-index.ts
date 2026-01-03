@@ -37,8 +37,11 @@ interface CliArgs {
 /**
  * ArticleIndexItem - 記事インデックスの項目
  * apps/frontend/lib/mdx/articles.ts の型定義と一致させる
+ *
+ * 全17フィールド（MDX Frontmatter の全項目を保存）
  */
 interface ArticleIndexItem {
+  // 必須フィールド（基本情報）
   slug: string;
   title: string;
   date: string;
@@ -47,8 +50,20 @@ interface ArticleIndexItem {
   tags: string[];
   author: string;
   filePath: string;
-  eventType?: string;
-  workSlug?: string;
+
+  // 必須フィールド（MDX パイプライン固有）
+  post_id: string;           // ULID（10文字）
+  year: number;              // 年度フィルタリング用
+  event_type: string;        // イベントタイプ（例: collabo-cafe）
+  event_title: string;       // イベント日本語名（例: コラボカフェ）
+  work_title: string;        // 作品公式名（例: らんま1/2）
+  work_titles: string[];     // 作品名リスト（複数作品コラボ対応）
+  work_slug: string;         // 作品スラッグ
+  prefectures: string[];     // 開催都道府県リスト
+  prefecture_slugs: string[]; // 都道府県スラッグリスト
+
+  // オプショナルフィールド
+  ogImage: string | null;    // OG画像URL（.mjs から追加）
 }
 
 /**
@@ -69,7 +84,10 @@ interface MdxFrontmatter {
   event_type: string;
   event_title: string;
   work_title: string;
+  work_titles?: string[];
   work_slug: string;
+  prefectures?: string[];
+  prefecture_slugs?: string[];
   slug: string;
   title: string;
   date: string;
@@ -89,6 +107,34 @@ function parseArgs(): CliArgs {
     dryRun: args.includes('--dry-run'),
     verbose: args.includes('--verbose'),
   };
+}
+
+/**
+ * 必須フィールドのバリデーション
+ */
+function validateFrontmatter(frontmatter: MdxFrontmatter, filePath: string): string[] {
+  const requiredFields: (keyof MdxFrontmatter)[] = [
+    'post_id',
+    'year',
+    'event_type',
+    'event_title',
+    'work_title',
+    'work_slug',
+    'slug',
+    'title',
+    'date',
+  ];
+
+  const missingFields = requiredFields.filter(
+    (field) => frontmatter[field] === undefined || frontmatter[field] === null
+  );
+
+  if (missingFields.length > 0) {
+    console.error(`❌ Missing required fields in ${filePath}:`);
+    console.error(`   ${missingFields.join(', ')}`);
+  }
+
+  return missingFields;
 }
 
 /**
@@ -185,10 +231,11 @@ async function processmdxFile(
       return null;
     }
 
-    // 必須フィールドのチェック
-    if (!frontmatter.slug || !frontmatter.title) {
+    // 必須フィールドのバリデーション
+    const missingFields = validateFrontmatter(frontmatter, filePath);
+    if (missingFields.length > 0) {
       if (verbose) {
-        console.log(`  ⚠️  必須フィールド不足: ${filePath}`);
+        console.log(`  ⚠️  必須フィールド不足（スキップ）: ${filePath}`);
       }
       return null;
     }
@@ -197,7 +244,9 @@ async function processmdxFile(
     const repoRoot = resolve(__dirname, '../../..');
     const relativeFilePath = relative(repoRoot, filePath);
 
+    // 全17フィールドを含む ArticleIndexItem を生成
     const item: ArticleIndexItem = {
+      // 基本情報
       slug: frontmatter.slug,
       title: frontmatter.title,
       date: frontmatter.date || new Date().toISOString().split('T')[0],
@@ -206,15 +255,21 @@ async function processmdxFile(
       tags: frontmatter.tags || [],
       author: frontmatter.author || 'thanks2music',
       filePath: relativeFilePath,
-    };
 
-    // オプショナルフィールド
-    if (frontmatter.event_type) {
-      item.eventType = frontmatter.event_type;
-    }
-    if (frontmatter.work_slug) {
-      item.workSlug = frontmatter.work_slug;
-    }
+      // MDX パイプライン固有フィールド（必須）
+      post_id: frontmatter.post_id,
+      year: typeof frontmatter.year === 'number' ? frontmatter.year : Number(frontmatter.year),
+      event_type: frontmatter.event_type,
+      event_title: frontmatter.event_title,
+      work_title: frontmatter.work_title,
+      work_titles: frontmatter.work_titles || [],
+      work_slug: frontmatter.work_slug || '',
+      prefectures: frontmatter.prefectures || [],
+      prefecture_slugs: frontmatter.prefecture_slugs || [],
+
+      // オプショナルフィールド
+      ogImage: frontmatter.ogImage || null,  // .mjs から追加
+    };
 
     return item;
   } catch (error) {

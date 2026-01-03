@@ -71,7 +71,8 @@ fi
 
 # iCloudディレクトリ構造を作成
 mkdir -p "$ICLOUD_BASE/docs"
-mkdir -p "$ICLOUD_BASE/notes"
+# notes ディレクトリは iCloud Drive に移動させたため、コメントアウト
+# mkdir -p "$ICLOUD_BASE/notes"
 
 log_info "📄 パブリックドキュメント（docs/）を同期中..."
 
@@ -92,29 +93,31 @@ else
     log_warning "docs/ディレクトリが見つかりません"
 fi
 
-log_info "📝 プライベートノート（notes/）を同期中..."
-
-# notes/ の同期（.mdファイルのみ）
-if [[ -d "$PROJECT_ROOT/notes" ]]; then
-    # .mdファイルのみを同期（ディレクトリ構造も保持）
-    rsync -av --delete \
-        --include='*/' \
-        --include='*.md' \
-        --exclude='*' \
-        "$PROJECT_ROOT/notes/" \
-        "$ICLOUD_BASE/notes/"
-
-    # 同期されたファイル数を数える
-    notes_count=$(find "$ICLOUD_BASE/notes" -name "*.md" -type f | wc -l)
-    log_success "プライベートノート同期完了: ${notes_count}個のMarkdownファイル"
-else
-    log_warning "notes/ディレクトリが見つかりません"
-fi
+# notes ディレクトリは iCloud Drive に移動させたため、コメントアウト
+# log_info "📝 プライベートノート（notes/）を同期中..."
+#
+# # notes/ の同期（.mdファイルのみ）
+# if [[ -d "$PROJECT_ROOT/notes" ]]; then
+#     # .mdファイルのみを同期（ディレクトリ構造も保持）
+#     rsync -av --delete \
+#         --include='*/' \
+#         --include='*.md' \
+#         --exclude='*' \
+#         "$PROJECT_ROOT/notes/" \
+#         "$ICLOUD_BASE/notes/"
+#
+#     # 同期されたファイル数を数える
+#     notes_count=$(find "$ICLOUD_BASE/notes" -name "*.md" -type f | wc -l)
+#     log_success "プライベートノート同期完了: ${notes_count}個のMarkdownファイル"
+# else
+#     log_warning "notes/ディレクトリが見つかりません"
+# fi
 
 # 同期統計情報
 log_info "📊 同期統計情報："
 echo "  📁 パブリック: $(find "$ICLOUD_BASE/docs" -name "*.md" -type f | wc -l | tr -d ' ')個のファイル"
-echo "  📝 プライベート: $(find "$ICLOUD_BASE/notes" -name "*.md" -type f | wc -l | tr -d ' ')個のファイル"
+# notes ディレクトリは iCloud Drive に移動させたため、コメントアウト
+# echo "  📝 プライベート: $(find "$ICLOUD_BASE/notes" -name "*.md" -type f | wc -l | tr -d ' ')個のファイル"
 echo "  💾 同期先: $ICLOUD_BASE"
 
 # 最新の同期時刻を記録

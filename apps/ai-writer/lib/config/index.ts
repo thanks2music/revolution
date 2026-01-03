@@ -29,6 +29,7 @@ export {
   resolveStoreSlug,
   resolveEventTypeSlug,
   resolvePrefectureSlug,
+  resolvePrefectureSlugs,
   resolveCitySlug,
   getAllWorkTitles,
   getAllBrandNames,
@@ -37,6 +38,11 @@ export {
   isValidWorkTitle,
   isValidBrandName,
   isValidEventTypeName,
+  // Title metadata functions (i18n/SEO)
+  getEnglishTitle,
+  getShortTitle,
+  getDisplayTitle,
+  findCanonicalTitle,
 } from './slug-resolver';
 
 // Export slug generator functions

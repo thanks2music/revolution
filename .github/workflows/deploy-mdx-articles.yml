@@ -17,7 +17,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -44,13 +44,24 @@ jobs:
       - name: Generate article index
         run: |
           echo "📝 Generating article index..."
-          node scripts/generate-article-index.mjs
+          echo "Current directory: $(pwd)"
+          echo "Node version: $(node --version)"
+          echo "pnpm version: $(pnpm --version)"
+
+          cd apps/ai-writer && pnpm generate:article-index
+          cd ../..  # リポジトリルートに戻る
 
           if [ -f "apps/frontend/lib/mdx/article-index.json" ]; then
             echo "✅ Article index generated successfully"
-            cat apps/frontend/lib/mdx/article-index.json | jq -r '.articles | length' | xargs -I {} echo "Total articles: {}"
+            echo "📊 Index statistics:"
+            cat apps/frontend/lib/mdx/article-index.json | jq -r '.articles | length' | xargs -I {} echo "  Total articles: {}"
+            cat apps/frontend/lib/mdx/article-index.json | jq -r '.generatedAt' | xargs -I {} echo "  Generated at: {}"
+            echo "📄 File info:"
+            ls -lh apps/frontend/lib/mdx/article-index.json
           else
             echo "❌ Article index not found"
+            echo "📂 Directory contents:"
+            ls -la apps/frontend/lib/mdx/ || echo "Directory does not exist"
             exit 1
           fi
 
@@ -72,8 +83,24 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           echo "🚀 Deploying to Vercel production..."
+          echo "🔧 Environment:"
+          echo "  Vercel Org ID: ${{ secrets.VERCEL_ORG_ID }}"
+          echo "  Vercel Project ID: ${{ secrets.VERCEL_PROJECT_ID }}"
+          echo "  Working directory: $(pwd)"
           cd apps/frontend
-          npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+          # Vercel デプロイを実行し、終了コードを確認
+          echo "📤 Starting deployment..."
+          if pnpm deploy:prod --token=${{ secrets.VERCEL_TOKEN }}; then
+            echo "✅ Production deployment succeeded"
+          else
+            echo "❌ Production deployment failed"
+            echo "📋 Debug information:"
+            echo "  Exit code: $?"
+            echo "  Current directory: $(pwd)"
+            ls -la
+            exit 1
+          fi
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -82,8 +109,48 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           echo "🔍 Deploying to Vercel preview..."
+          echo "🔧 Environment:"
+          echo "  Vercel Org ID: ${{ secrets.VERCEL_ORG_ID }}"
+          echo "  Vercel Project ID: ${{ secrets.VERCEL_PROJECT_ID }}"
+          echo "  PR Number: ${{ github.event.pull_request.number }}"
+          echo "  Working directory: $(pwd)"
           cd apps/frontend
-          npx vercel --token=${{ secrets.VERCEL_TOKEN }}
+
+          # Vercel CLI の出力をキャプチャ（エラーハンドリング付き）
+          echo "📤 Starting preview deployment..."
+          set +e  # 一時的にエラー時の自動終了を無効化
+          DEPLOY_OUTPUT=$(pnpm deploy:preview --token=${{ secrets.VERCEL_TOKEN }} 2>&1)
+          DEPLOY_EXIT_CODE=$?
+          set -e  # エラー時の自動終了を再有効化
+
+          echo "📋 Deployment output:"
+          echo "$DEPLOY_OUTPUT"
+          echo ""
+
+          # デプロイが失敗した場合
+          if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
+            echo "❌ Vercel deployment failed with exit code: $DEPLOY_EXIT_CODE"
+            echo "📋 Debug information:"
+            echo "  Current directory: $(pwd)"
+            echo "  Directory contents:"
+            ls -la
+            echo "VERCEL_DEPLOYMENT_URL=Deployment failed" >> $GITHUB_ENV
+            exit 1
+          fi
+
+          # デプロイ URL を抽出して環境変数に保存
+          echo "🔍 Extracting deployment URL..."
+          DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -Eo 'https://[a-zA-Z0-9.-]+\.vercel\.app' | head -n 1)
+
+          if [ -n "$DEPLOY_URL" ]; then
+            echo "VERCEL_DEPLOYMENT_URL=$DEPLOY_URL" >> $GITHUB_ENV
+            echo "✅ Deployment URL captured: $DEPLOY_URL"
+          else
+            echo "⚠️ Failed to capture deployment URL from output"
+            echo "📋 Debug: Full output length: ${#DEPLOY_OUTPUT} characters"
+            echo "VERCEL_DEPLOYMENT_URL=URL extraction failed" >> $GITHUB_ENV
+            exit 1
+          fi
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -91,10 +158,11 @@ jobs:
       - name: Comment PR with deployment URL
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
+        env:
+          DEPLOYMENT_URL: ${{ env.VERCEL_DEPLOYMENT_URL }}
         with:
           script: |
-            const fs = require('fs');
-            const deploymentUrl = process.env.VERCEL_DEPLOYMENT_URL || 'Pending...';
+            const deploymentUrl = process.env.DEPLOYMENT_URL || 'Deployment URL not available';
 
             const comment = `## 🚀 Deployment Status
 

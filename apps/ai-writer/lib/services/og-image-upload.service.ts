@@ -98,9 +98,9 @@ export class OgImageUploadService {
       }
 
       // 2. R2にアップロード
-      const targetFolder = articleSlug ? `${folder}/${articleSlug}` : folder;
+      // Note: folderには既にarticleSlugが含まれているため、追加しない
       const r2Service = getR2StorageService();
-      const result = await r2Service.uploadFromUrl(ogImageUrl, targetFolder);
+      const result = await r2Service.uploadFromUrl(ogImageUrl, folder);
 
       console.log(`✅ OG画像をR2にアップロード完了: ${result.url}`);
 
@@ -157,9 +157,9 @@ export class OgImageUploadService {
       }
 
       // R2にアップロード
-      const targetFolder = articleSlug ? `${folder}/${articleSlug}` : folder;
+      // Note: folderには既にarticleSlugが含まれているため、追加しない
       const r2Service = getR2StorageService();
-      const result = await r2Service.uploadFromUrl(imageUrl, targetFolder);
+      const result = await r2Service.uploadFromUrl(imageUrl, folder);
 
       console.log(`✅ OG画像をR2にアップロード完了: ${result.url}`);
 

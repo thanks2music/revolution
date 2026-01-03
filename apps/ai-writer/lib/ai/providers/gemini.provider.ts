@@ -530,6 +530,10 @@ Respond ONLY with JSON format. No other text should be included.
         generationConfig: {
           maxOutputTokens: options?.maxTokens ?? 2048,
           temperature: options?.temperature ?? 0,
+          // Enable JSON mode when responseFormat is 'json'
+          // This ensures the model outputs valid, parseable JSON
+          responseMimeType:
+            options?.responseFormat === 'json' ? 'application/json' : undefined,
         },
         systemInstruction: options?.systemPrompt,
       });

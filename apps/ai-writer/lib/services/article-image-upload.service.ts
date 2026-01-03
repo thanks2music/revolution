@@ -142,7 +142,7 @@ export class ArticleImageUploadService {
       console.log('\n📤 OG画像をアップロード中...');
       const ogService = getOgImageUploadService();
       const ogResult = await ogService.uploadFromUrl(extractedImages.ogp, {
-        folder: `${eventType}/${year}/${articleSlug}/og`,
+        folder: `${eventType}/${year}/${articleSlug}`,
         articleSlug,
         dryRun,
       });
@@ -166,7 +166,7 @@ export class ArticleImageUploadService {
       console.log(`\n📤 本文画像をアップロード中 (${extractedImages.all.length}件)...`);
 
       const r2Service = getR2StorageService();
-      const folder = `${eventType}/${year}/${articleSlug}/images`;
+      const folder = `${eventType}/${year}/${articleSlug}`;
 
       // 重複URL除去
       const uniqueUrls = [...new Set(extractedImages.all)];
@@ -336,7 +336,7 @@ export class ArticleImageUploadService {
     };
 
     const r2Service = getR2StorageService();
-    const folder = `${eventType}/${year}/${articleSlug}/images`;
+    const folder = `${eventType}/${year}/${articleSlug}`;
 
     // 重複URL除去
     const uniqueUrls = [...new Set(imageUrls)];

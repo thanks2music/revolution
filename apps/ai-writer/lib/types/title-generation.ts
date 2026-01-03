@@ -61,6 +61,24 @@ export interface TitleGenerationRequest {
    * Step 1.5 で抽出済みの作品名（オプション）
    */
   extractedWorkName?: string;
+
+  /**
+   * 作品の略称（short_title）
+   * @since v2.4.0
+   * @description 10文字以上の作品のみに設定される。
+   *              タイトルが40文字を超える場合のみ使用可。
+   * @example "ヒロアカ" for "僕のヒーローアカデミア"
+   */
+  extractedWorkNameShort?: string;
+
+  /**
+   * 開催回数（第N弾形式）
+   * @since v2.3.0
+   * @description 2-extraction.yaml で抽出された開催回数。
+   *              タイトル末尾に配置: 「〜より第N弾コラボ開催」or「〜より第N弾開催」
+   * @example "第2弾", "第3弾"
+   */
+  extractedEventNumber?: string;
 }
 
 /**

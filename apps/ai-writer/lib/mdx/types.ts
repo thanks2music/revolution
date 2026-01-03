@@ -31,6 +31,7 @@
  * event_type: "collabo-cafe"
  * event_title: "コラボカフェ"
  * work_title: "作品名"
+ * work_titles: ["作品名", "サンリオキャラクターズ"]
  * work_slug: "work-slug"
  * slug: "01jcxy4567"
  * title: "作品名×店舗名2025が東京・大阪・福岡で開催決定"
@@ -68,10 +69,17 @@ export interface MdxFrontmatter {
   event_title: string;
 
   /**
-   * Work title (Japanese)
+   * Work title (Japanese) - Primary work for URL generation
    * @example "作品名"
    */
   work_title: string;
+
+  /**
+   * Work titles (Japanese) - All works in collaboration
+   * For multi-work collaborations, includes all participating works
+   * @example ["キングオブプリズムSSS", "サンリオキャラクターズ"]
+   */
+  work_titles?: string[];
 
   /**
    * Work slug (romanized)
@@ -156,6 +164,20 @@ export interface MdxFrontmatter {
    * @example ['アニメ', '店舗名', '作者名']
    */
   tags?: string[];
+
+  /**
+   * Optional: AI provider used for article generation (Debug metadata)
+   * Records which LLM provider was used to generate this article
+   * @example "gemini", "anthropic", "openai"
+   */
+  ai_provider?: string;
+
+  /**
+   * Optional: AI model name used for article generation (Debug metadata)
+   * Records the specific model version used for generation
+   * @example "gemini-2.0-flash-exp", "claude-3-5-sonnet-20241022", "gpt-4o-mini"
+   */
+  ai_model?: string;
 }
 
 /**
@@ -183,9 +205,16 @@ export interface GenerateMdxFrontmatterInput {
   eventTitle: string;
 
   /**
-   * Work title (Japanese)
+   * Work title (Japanese) - Primary work for URL generation
    */
   workTitle: string;
+
+  /**
+   * Work titles (Japanese) - All works in collaboration
+   * For multi-work collaborations, includes all participating works
+   * @example ["キングオブプリズムSSS", "サンリオキャラクターズ"]
+   */
+  workTitles?: string[];
 
   /**
    * Work slug (romanized)
@@ -239,6 +268,20 @@ export interface GenerateMdxFrontmatterInput {
    * @example ['アニメ', '店舗名']
    */
   tags?: string[];
+
+  /**
+   * Optional: AI provider used for article generation (Debug metadata)
+   * Records which LLM provider was used to generate this article
+   * @example "gemini", "anthropic", "openai"
+   */
+  aiProvider?: string;
+
+  /**
+   * Optional: AI model name used for article generation (Debug metadata)
+   * Records the specific model version used for generation
+   * @example "gemini-2.0-flash-exp", "claude-3-5-sonnet-20241022", "gpt-4o-mini"
+   */
+  aiModel?: string;
 }
 
 /**

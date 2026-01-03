@@ -59,8 +59,8 @@ export interface ArticleIndexItem {
   author: string;
   filePath: string;
   ogImage?: string;
-  eventType: string | null;
-  workSlug: string | null;
+  event_type: string | null;
+  work_slug: string | null;
 }
 
 /**
@@ -167,19 +167,19 @@ export function getLatestArticles(limit = 10): ArticleIndexItem[] {
  * URL設計: /{event_type}/{work_slug}/{slug}
  * 例: /collabo-cafe/sample-work/01kafsdmvd
  *
- * レガシー記事（eventType='articles', workSlug=null）の場合:
+ * レガシー記事（event_type='articles', work_slug=null）の場合:
  * 例: /articles/hello-mdx
  */
 export function getArticleUrl(article: ArticleIndexItem): string {
-  if (!article.eventType) {
+  if (!article.event_type) {
     return `/articles/${article.slug}`;
   }
 
-  if (article.eventType === 'articles' || !article.workSlug) {
+  if (article.event_type === 'articles' || !article.work_slug) {
     return `/articles/${article.slug}`;
   }
 
-  return `/${article.eventType}/${article.workSlug}/${article.slug}`;
+  return `/${article.event_type}/${article.work_slug}/${article.slug}`;
 }
 
 /**
@@ -198,7 +198,7 @@ export function getArticleByPath(
   return (
     index.articles.find(
       article =>
-        article.eventType === eventType && article.workSlug === workSlug && article.slug === slug
+        article.event_type === eventType && article.work_slug === workSlug && article.slug === slug
     ) || null
   );
 }

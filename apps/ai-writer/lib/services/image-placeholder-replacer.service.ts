@@ -18,6 +18,7 @@ export const PLACEHOLDERS = {
   menu: '{ここにメニューの画像を入れる}',
   novelty: '{ここにノベルティの画像を入れる}',
   goods: '{ここにグッズの画像を入れる}',
+  eyecatch: '{ここに記事アイキャッチの画像を入れる}',
 } as const;
 
 /**
@@ -30,6 +31,8 @@ export interface CategoryR2Images {
   novelty: string[];
   /** グッズ画像のR2 URL配列 */
   goods: string[];
+  /** アイキャッチ画像のR2 URL（単一、オプション） */
+  eyecatch?: string;
 }
 
 /**
@@ -43,6 +46,7 @@ export interface PlaceholderReplacementResult {
     menu: number;
     novelty: number;
     goods: number;
+    eyecatch: number;
     total: number;
   };
   /** 削除されたセクション */
@@ -60,13 +64,32 @@ export class ImagePlaceholderReplacerService {
    *
    * @param content MDXコンテンツ
    * @param images カテゴリ別R2画像URL
+   * @param articleTitle 記事タイトル（alt属性に使用）
    * @returns 置換結果
    */
-  replaceAll(content: string, images: CategoryR2Images): PlaceholderReplacementResult {
+  replaceAll(
+    content: string,
+    images: CategoryR2Images,
+    articleTitle?: string
+  ): PlaceholderReplacementResult {
     let result = content;
-    const replacedCount = { menu: 0, novelty: 0, goods: 0, total: 0 };
+    const replacedCount = { menu: 0, novelty: 0, goods: 0, eyecatch: 0, total: 0 };
     const removedSections: ('menu' | 'novelty' | 'goods')[] = [];
     const unreplacedPlaceholders: string[] = [];
+
+    // アイキャッチ画像のプレースホルダーを置換（単一画像）
+    if (images.eyecatch) {
+      const eyecatchPlaceholder = PLACEHOLDERS.eyecatch;
+      if (result.includes(eyecatchPlaceholder)) {
+        // alt属性: 記事タイトルがあれば使用、なければ「アイキャッチ」
+        const eyecatchAlt = articleTitle ? `${articleTitle} アイキャッチ` : 'アイキャッチ';
+        const imageMarkdown = `![${eyecatchAlt}](${images.eyecatch})`;
+        result = result.replace(eyecatchPlaceholder, imageMarkdown);
+        replacedCount.eyecatch = 1;
+        replacedCount.total += 1;
+        console.log(`[ImagePlaceholderReplacer] eyecatch: 画像で置換`);
+      }
+    }
 
     // 各カテゴリのプレースホルダーを置換
     for (const category of ['menu', 'novelty', 'goods'] as const) {
@@ -75,7 +98,7 @@ export class ImagePlaceholderReplacerService {
 
       if (urls.length > 0) {
         // 画像がある場合: マークダウン画像に置換
-        const imageMarkdown = this.generateImageMarkdown(urls, category);
+        const imageMarkdown = this.generateImageMarkdown(urls, category, articleTitle);
         result = result.replace(placeholder, imageMarkdown);
         replacedCount[category] = urls.length;
         replacedCount.total += urls.length;
@@ -117,21 +140,33 @@ export class ImagePlaceholderReplacerService {
    *
    * @param urls 画像URL配列
    * @param category カテゴリ名
+   * @param articleTitle 記事タイトル（alt属性に使用）
    * @returns マークダウン形式の画像
    */
-  private generateImageMarkdown(urls: string[], category: string): string {
-    const altPrefix = this.getCategoryAltText(category);
+  private generateImageMarkdown(
+    urls: string[],
+    category: string,
+    articleTitle?: string
+  ): string {
+    const categoryLabel = this.getCategoryLabel(category);
 
     // 複数画像の場合は縦に並べる
+    // alt属性形式: 「{記事タイトル} {カテゴリラベル}{番号}」
+    // 例: 「機動戦士ガンダム 鉄血のオルフェンズ コラボメニュー1」
     return urls
-      .map((url, index) => `![${altPrefix}${index + 1}](${url})`)
+      .map((url, index) => {
+        const altText = articleTitle
+          ? `${articleTitle} ${categoryLabel}${index + 1}`
+          : `${categoryLabel}${index + 1}`;
+        return `![${altText}](${url})`;
+      })
       .join('\n\n');
   }
 
   /**
-   * カテゴリに応じたalt属性のプレフィックスを取得
+   * カテゴリに応じたラベルを取得
    */
-  private getCategoryAltText(category: string): string {
+  private getCategoryLabel(category: string): string {
     switch (category) {
       case 'menu':
         return 'コラボメニュー';

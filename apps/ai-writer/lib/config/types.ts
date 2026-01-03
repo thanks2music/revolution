@@ -11,21 +11,57 @@
  */
 
 /**
- * Title Romaji Mapping Configuration
+ * Title Entry with detailed metadata (v2.0+)
  *
- * Maps Japanese anime/manga titles to romanized slugs
+ * @since v2.0.0
+ * @example
+ * ```yaml
+ * "進撃の巨人":
+ *   slug: attack-on-titan
+ *   english_title: "Attack on Titan"
+ *   aliases:
+ *     - "進撃"
+ * ```
+ */
+export interface TitleEntry {
+  /** URL-friendly slug (required) */
+  slug: string;
+  /** Official English title for i18n/Phase2 */
+  english_title?: string;
+  /** Alternative spellings, abbreviations, variants */
+  aliases?: string[];
+  /**
+   * Short title for SEO title generation
+   * @since v2.4.0
+   * @description Used when original title is 10+ characters to keep SEO title concise
+   * @example "あの花" for "あの日見た花の名前を僕達はまだ知らない。"
+   */
+  short_title?: string;
+}
+
+/**
+ * Title Romaji Mapping Configuration (v2.0)
+ *
+ * Supports both:
+ * - Simple string mapping (backward compatible): "作品名": "slug"
+ * - Detailed TitleEntry object: { slug, english_title?, aliases? }
+ *
  * Source: /revolution-templates/ai-writer/config/title-romaji-mapping.yaml
  *
  * @example
  * ```yaml
  * titles:
- *   "作品名": work-slug
- *   "作品別カテゴリ": work-category-slug
+ *   "真・侍伝 YAIBA": yaiba                    # Simple (v1.0)
+ *   "進撃の巨人":                              # TitleEntry (v2.0)
+ *     slug: attack-on-titan
+ *     english_title: "Attack on Titan"
+ *     aliases:
+ *       - "進撃"
  * ```
  */
 export interface TitleRomajiMapping {
   titles: {
-    [japaneseTitle: string]: string; // romaji slug
+    [japaneseTitle: string]: string | TitleEntry; // romaji slug or TitleEntry
   };
 }
 

@@ -38,7 +38,34 @@ export async function generateSlugWithAI(
 ): Promise<string> {
   const aiProvider = createAiProvider();
 
-  const prompt = `あなたはURL生成エキスパートです。以下の日本語テキストをURL-friendlyな英語スラグに変換してください。
+  // コンテキストに応じてプロンプトを分岐
+  const isAnimeTitle = context?.includes('anime') || context?.includes('manga') || context?.includes('title');
+
+  const prompt = isAnimeTitle
+    ? `あなたはアニメ・漫画の公式英語タイトルに詳しいエキスパートです。
+
+## タスク
+以下の日本語作品タイトルの**公式英語タイトル**をベースにURL-friendlyなスラグを生成してください。
+
+## 重要ルール
+1. **公式英語タイトルを優先**: Wikipedia英語版で使用されている正式名称を使用
+   - 例: 「機動戦士ガンダム 鉄血のオルフェンズ」→ "Mobile Suit Gundam: Iron-Blooded Orphans" → "gundam-iron-blooded-orphans"
+   - 例: 「ブルーロック」→ "Blue Lock" → "blue-lock"
+   - 例: 「らんま1/2」→ "Ranma ½" → "ranma"
+   - 例: 「鬼滅の刃」→ "Demon Slayer" → "demon-slayer"
+   - 例: 「進撃の巨人」→ "Attack on Titan" → "attack-on-titan"
+2. 公式英語タイトルが不明な場合のみローマ字変換（ヘボン式）
+3. 小文字のみ、単語区切りはハイフン（-）、英数字とハイフンのみ
+4. 連続するハイフンは1つに統合、先頭・末尾のハイフンは削除
+5. 冠詞（the, a, an）や副題は省略可（短く簡潔に）
+
+## 入力
+**作品タイトル**: ${japaneseText}
+
+## 出力形式
+スラグのみを出力してください。説明は不要です。
+公式英語タイトルが不明で自信がない場合は "UNKNOWN" と出力してください。`
+    : `あなたはURL生成エキスパートです。以下の日本語テキストをURL-friendlyな英語スラグに変換してください。
 
 ## 変換ルール
 1. 日本語をローマ字（またはよく知られた英語表記）に変換
@@ -56,9 +83,9 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 スラグのみを出力してください。説明は不要です。
 
 例:
-- 入力: "作品名" → 出力: "work-slug"
-- 入力: "店舗名" → 出力: "store-slug"
-- 入力: "アベイル" → 出力: "avail"`;
+- 入力: "BOX cafe&space" → 出力: "box-cafe-and-space"
+- 入力: "アベイル" → 出力: "avail"
+- 入力: "しまむら" → 出力: "shimamura"`;
 
   // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
   const response = await aiProvider.sendMessage(prompt, {
@@ -74,6 +101,12 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 
   // Clean up response (remove any extra whitespace or formatting)
   const slug = response.content.trim().toLowerCase();
+
+  // Check for UNKNOWN response (AI couldn't determine official English title)
+  if (slug === 'unknown') {
+    console.log(`[Slug Generator] ⚠️ AI returned UNKNOWN for "${japaneseText}" - will try fallback`);
+    throw new Error(`AI could not determine official English title for "${japaneseText}"`);
+  }
 
   // Validate slug format (alphanumeric + hyphens only)
   if (!/^[a-z0-9-]+$/.test(slug)) {
