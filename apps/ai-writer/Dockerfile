@@ -80,13 +80,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/.next/standalone .
 COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/.next/static ./apps/ai-writer/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/public ./apps/ai-writer/public
 
-# Firebase設定ファイルをコピー（必要な場合）
-COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/firebase.json ./firebase.json
-COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/.firebaserc ./.firebaserc
-COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/firestore.rules ./firestore.rules
-COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/firestore.indexes.json ./firestore.indexes.json
-COPY --from=builder --chown=nextjs:nodejs /app/apps/ai-writer/storage.rules ./storage.rules
-
 USER nextjs
 
 EXPOSE 8080
