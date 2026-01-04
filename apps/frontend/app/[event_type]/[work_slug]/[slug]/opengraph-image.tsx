@@ -16,7 +16,7 @@ export const contentType = 'image/png';
  * @description
  * Generates Open Graph images dynamically for each article using next/og.
  * Displays title, author, date, and categories with Revolution branding.
- * Uses direct JSON import for Edge Runtime compatibility (no fs/path).
+ * Uses article-index.json for efficient data access.
  *
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image
  */
@@ -177,6 +177,3 @@ export default async function Image({
     }
   );
 }
-
-// Edge Runtime for optimal performance
-export const runtime = 'edge';
