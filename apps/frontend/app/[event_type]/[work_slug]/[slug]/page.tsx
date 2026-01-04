@@ -25,11 +25,12 @@ export async function generateStaticParams() {
 }
 
 // Dynamic metadata
-export async function generateMetadata({
-  params,
-}: {
-  params: { event_type: string; work_slug: string; slug: string };
-}) {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ event_type: string; work_slug: string; slug: string }>;
+  }
+) {
+  const params = await props.params;
   const { event_type, work_slug, slug } = params;
   const article = getArticleByPath(event_type, work_slug, slug);
 
@@ -51,11 +52,12 @@ export async function generateMetadata({
   });
 }
 
-export default async function ArticlePage({
-  params,
-}: {
-  params: { event_type: string; work_slug: string; slug: string };
-}) {
+export default async function ArticlePage(
+  props: {
+    params: Promise<{ event_type: string; work_slug: string; slug: string }>;
+  }
+) {
+  const params = await props.params;
   const { event_type, work_slug, slug } = params;
 
   // Get article metadata from index
