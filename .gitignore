@@ -35,7 +35,10 @@ id_ed25519*
 # API Keys & Tokens
 **/secrets/
 **/*secret*
-**/*token*
+**/*token*.env
+**/*token*.json
+**/*token*.key
+**/*token*.txt
 **/*key*
 # Exception: canonical-key.ts is a legitimate source file (not an API key)
 !**/canonical-key.ts
