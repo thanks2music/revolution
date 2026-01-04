@@ -78,8 +78,8 @@ jobs:
             --concurrency 80 \
             --max-instances 10 \
             --min-instances 1 \
-            --set-env-vars "NODE_ENV=production" \
-            --set-secrets "ALLOWED_EMAILS=ALLOWED_EMAILS:latest,FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest,FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest,FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest,GITHUB_OWNER=GITHUB_OWNER:latest,GITHUB_REPO=GITHUB_REPO:latest,GITHUB_BASE_BRANCH=GITHUB_BASE_BRANCH:latest"
+            --set-env-vars "NODE_ENV=production,GITHUB_OWNER=${{ github.repository_owner }},GITHUB_REPO=${{ github.event.repository.name }},GITHUB_BASE_BRANCH=main" \
+            --set-secrets "ALLOWED_EMAILS=revo-allowed-emails:latest,GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest"
 
       - name: Health check
         run: |
