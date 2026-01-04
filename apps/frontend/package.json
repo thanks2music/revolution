@@ -12,7 +12,7 @@
     "dev": "next dev --turbo --port 4444",
     "build": "NODE_ENV=production next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "validate-env": "tsx scripts/validate-env.ts",
     "validate-env:test": "tsx scripts/validate-env.ts --test-connection",
     "deploy:prod": "vercel --prod",
@@ -22,29 +22,35 @@
     "@headlessui/react": "^2.1.2",
     "@heroicons/react": "v1",
     "@t3-oss/env-nextjs": "^0.13.8",
-    "next": "14.2.35",
+    "next": "16.1.1",
     "@vercel/og": "^0.8.5",
     "next-mdx-remote": "^5.0.0",
-    "react": "^18",
-    "react-dom": "^18",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "sanitize-html": "^2.17.0",
     "swr": "^2.2.5",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
     "@types/sanitize-html": "^2.16.0",
     "autoprefixer": "^10.4.21",
     "axios": "^1.7.2",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.4",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.1",
     "eslint-plugin-prettier": "^5.5.4",
     "postcss": "^8",
     "sass": "^1.77.6",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.20.6",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "19.2.7",
+      "@types/react-dom": "19.2.3"
+    }
   }
 }
