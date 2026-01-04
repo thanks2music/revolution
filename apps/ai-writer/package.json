@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --port 7777",
     "dev:express": "tsx watch src/index.ts",
-    "build": "next build",
+    "build": "NODE_ENV=production next build",
     "start": "next start --port 7777",
     "restart": "lsof -ti :7777 | xargs kill -9 2>/dev/null; sleep 1 && next dev --port 7777",
     "stop": "lsof -ti :7777 | xargs kill -9 2>/dev/null && echo '✓ Next.js stopped on port 7777' || echo '✗ No process found on port 7777'",
@@ -49,11 +49,11 @@
     "jose": "^6.1.0",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.544.0",
-    "next": "^15.5.9",
+    "next": "16.1.1",
     "openai": "^6.9.1",
     "pino": "^9.11.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "rss-parser": "^3.13.0",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.3.1",
@@ -74,8 +74,8 @@
     "@types/form-data": "^2.5.2",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.5.2",
-    "@types/react": "^19.1.14",
-    "@types/react-dom": "^19.1.9",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
     "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "^8.44.0",
     "@typescript-eslint/parser": "^8.44.0",
@@ -94,5 +94,11 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "undici": "^7.16.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "19.2.7",
+      "@types/react-dom": "19.2.3"
+    }
   }
 }

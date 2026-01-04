@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
   },
 
   images: {
+    // v16 で変更されたデフォルト値を明示的に設定（現行動作を維持）
+    minimumCacheTTL: 60, // v16 default: 4 hours → 現行の 60 秒を維持
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384], // v16 でデフォルトから 16 が削除されたため明示
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     remotePatterns: [
       {
         protocol: 'https',
