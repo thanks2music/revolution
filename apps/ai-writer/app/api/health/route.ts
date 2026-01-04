@@ -56,6 +56,7 @@ export async function GET() {
 
   try {
     // Check Firebase configuration
+    // Note: NEXT_PUBLIC_* variables are embedded at build time, not required at runtime
     const firebaseKeys = [
       'NEXT_PUBLIC_FIREBASE_API_KEY',
       'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
@@ -69,21 +70,25 @@ export async function GET() {
     );
 
     if (missingFirebaseKeys.length > 0) {
-      healthCheck.checks.firebase.status = 'fail';
-      healthCheck.checks.firebase.message = `Missing Firebase keys: ${missingFirebaseKeys.join(', ')}`;
-      healthCheck.status = 'degraded';
+      // Client-side Firebase keys are embedded at build time, so runtime absence is acceptable
+      healthCheck.checks.firebase.message = `Client Firebase keys embedded at build time (runtime check: ${missingFirebaseKeys.length} not in env)`;
     }
 
     // Check required secrets
+    // Note: Firebase credentials can be provided as JSON or individual variables
+    const hasFirebaseJson = !!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+
     const requiredSecrets = [
       'ALLOWED_EMAILS',
-      'FIREBASE_PRIVATE_KEY',
-      'FIREBASE_CLIENT_EMAIL',
-      'FIREBASE_PROJECT_ID',
       'GITHUB_PAT',
       'GITHUB_OWNER',
       'GITHUB_REPO',
     ];
+
+    // Only require individual Firebase variables if JSON not provided
+    if (!hasFirebaseJson) {
+      requiredSecrets.push('FIREBASE_PRIVATE_KEY', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PROJECT_ID');
+    }
 
     const missingSecrets = requiredSecrets.filter(
       (key) => !process.env[key]
@@ -91,8 +96,10 @@ export async function GET() {
 
     if (missingSecrets.length > 0) {
       healthCheck.checks.secrets.status = 'fail';
-      healthCheck.checks.secrets.message = `Missing secrets: ${missingSecrets.join(', ')}`;
+      healthCheck.checks.secrets.message = `Missing secrets: ${missingSecrets.join(', ')}${hasFirebaseJson ? ' (Firebase: using JSON)' : ''}`;
       healthCheck.status = 'degraded';
+    } else if (hasFirebaseJson) {
+      healthCheck.checks.secrets.message = 'Required secrets available (Firebase: using JSON credentials)';
     }
 
     // Check AI provider configuration
