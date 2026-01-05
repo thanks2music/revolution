@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-// Import article index directly (Edge Runtime compatible)
+// Import article index directly for efficient data access
 import articleIndex from '@/lib/mdx/article-index.json';
 
 // Image metadata
@@ -25,10 +25,10 @@ export default async function Image({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  // Await params (Next.js 14+ requirement for metadata routes)
+  // Await params (Next.js 16 requirement for metadata routes)
   const { slug } = await params;
 
-  // Find article from imported index (Edge-compatible)
+  // Find article from imported index
   const article = articleIndex.articles.find((a) => a.slug === slug);
 
   // Fallback if article not found
