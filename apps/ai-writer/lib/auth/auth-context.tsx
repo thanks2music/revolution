@@ -90,8 +90,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }),
       } as unknown as User;
 
-      setUser(mockUser);
-      setLoading(false);
+      // 非同期化してカスケードレンダリングを防ぐ
+      Promise.resolve().then(() => {
+        setUser(mockUser);
+        setLoading(false);
+      });
 
       // 開発環境では認証リスナーを設定しない
       return () => {

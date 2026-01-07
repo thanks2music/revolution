@@ -6,13 +6,14 @@ import { useEffect, useState } from 'react';
 
 export default function DebugPage() {
   const { user, loading } = useAuth();
-  const [cookies, setCookies] = useState<string>('');
-  const [localStorage, setLocalStorage] = useState<Record<string, string>>({});
-  const [firebaseConfig, setFirebaseConfig] = useState<any>(null);
+  const [debugInfo, setDebugInfo] = useState({
+    cookies: '',
+    localStorage: {} as Record<string, string>,
+    firebaseConfig: null as any,
+  });
 
   useEffect(() => {
-    setCookies(document.cookie);
-
+    // localStorageの読み取り
     const storage: Record<string, string> = {};
     for (let i = 0; i < window.localStorage.length; i++) {
       const key = window.localStorage.key(i);
@@ -20,19 +21,28 @@ export default function DebugPage() {
         storage[key] = window.localStorage.getItem(key) || '';
       }
     }
-    setLocalStorage(storage);
 
     // Firebase App の設定を取得（lazy initialization）
+    let firebaseConfig: any = null;
     try {
       const auth = getFirebaseAuth();
-      setFirebaseConfig({
+      firebaseConfig = {
         name: auth.app.name,
         options: auth.app.options,
-      });
+      };
     } catch (error) {
       console.error('Firebase initialization error:', error);
-      setFirebaseConfig({ error: String(error) });
+      firebaseConfig = { error: String(error) };
     }
+
+    // 非同期化してカスケードレンダリングを防ぐ
+    Promise.resolve().then(() => {
+      setDebugInfo({
+        cookies: document.cookie,
+        localStorage: storage,
+        firebaseConfig: firebaseConfig,
+      });
+    });
   }, []);
 
   return (
@@ -56,7 +66,7 @@ export default function DebugPage() {
           <div className="bg-white p-6 rounded-lg shadow">
             <h2 className="text-lg font-semibold mb-4">Firebase App 初期化状態</h2>
             <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
-              {firebaseConfig ? JSON.stringify(firebaseConfig, null, 2) : 'Loading...'}
+              {debugInfo.firebaseConfig ? JSON.stringify(debugInfo.firebaseConfig, null, 2) : 'Loading...'}
             </pre>
           </div>
 
@@ -80,14 +90,14 @@ export default function DebugPage() {
           <div className="bg-white p-6 rounded-lg shadow">
             <h2 className="text-lg font-semibold mb-4">Cookies</h2>
             <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
-              {cookies || 'No cookies'}
+              {debugInfo.cookies || 'No cookies'}
             </pre>
           </div>
 
           <div className="bg-white p-6 rounded-lg shadow">
             <h2 className="text-lg font-semibold mb-4">LocalStorage</h2>
             <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
-              {JSON.stringify(localStorage, null, 2)}
+              {JSON.stringify(debugInfo.localStorage, null, 2)}
             </pre>
           </div>
         </div>
