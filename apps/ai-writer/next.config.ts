@@ -12,10 +12,15 @@ const nextConfig: NextConfig = {
   },
 
   images: {
+    // v16 で変更されたデフォルト値を明示的に設定（現行動作を維持）
+    minimumCacheTTL: 60, // Override Next.js 16 default (4 hours) to 60s for faster content updates
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384], // v16 でデフォルトから 16 が削除されたため明示
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     remotePatterns: [
+      // Cloudflare R2 (production image hosting)
       {
         protocol: 'https',
-        hostname: '**',
+        hostname: 'images.anime-events.com',
       },
     ],
   },

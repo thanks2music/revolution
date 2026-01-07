@@ -1,11 +1,10 @@
 import Layout from '@/components/templates/Layout';
 import { Metadata } from 'next';
-import { ISR_CONFIG } from '@/lib/swrConfig';
 import { getLatestArticles, getArticleUrl } from '@/lib/mdx/articles';
 import Link from 'next/link';
 
 // ISR設定をexport
-export const revalidate = ISR_CONFIG.revalidate; // 120秒
+export const revalidate = 120; // 120秒 (ISR)
 
 // New metadata API
 export const metadata: Metadata = {

@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-// Import article index directly (Edge Runtime compatible)
+// Import article index directly for efficient data access
 import articleIndex from '@/lib/mdx/article-index.json';
 
 // Image metadata
@@ -16,7 +16,7 @@ export const contentType = 'image/png';
  * @description
  * Generates Open Graph images dynamically for each article using next/og.
  * Displays title, author, date, and categories with Revolution branding.
- * Uses direct JSON import for Edge Runtime compatibility (no fs/path).
+ * Uses article-index.json for efficient data access.
  *
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image
  */
@@ -25,10 +25,10 @@ export default async function Image({
 }: {
   params: Promise<{ event_type: string; work_slug: string; slug: string }>;
 }) {
-  // Await params (Next.js 14+ requirement for metadata routes)
+  // Await params (Next.js 16 requirement for metadata routes)
   const { event_type, work_slug, slug } = await params;
 
-  // Find article from imported index (Edge-compatible)
+  // Find article from imported index
   const article = articleIndex.articles.find(
     (a) =>
       a.event_type === event_type && a.work_slug === work_slug && a.slug === slug
@@ -177,6 +177,3 @@ export default async function Image({
     }
   );
 }
-
-// Edge Runtime for optimal performance
-export const runtime = 'edge';

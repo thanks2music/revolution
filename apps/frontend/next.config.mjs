@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
 
   /**
    * 画像最適化設定
@@ -14,6 +13,7 @@ const nextConfig = {
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     minimumCacheTTL: 60, // 60秒（ISRと整合）
+    qualities: [75], // Next.js 16 デフォルト設定
     remotePatterns: [
       // 開発環境: HTTPを許可（localhostのみ）
       ...(process.env.NODE_ENV === 'development'
