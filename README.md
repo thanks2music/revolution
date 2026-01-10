@@ -11,12 +11,13 @@
 - [概要](#-概要)
 - [主要機能](#-主要機能)
 - [クイックスタート](#-クイックスタート)
-- [アーキテクチャ](#️-アーキテクチャ)
 - [技術スタック](#️-技術スタック)
 - [プロジェクト構造](#-プロジェクト構造)
+- [アップデート情報](#-アップデート情報)
 - [開発](#-開発)
 - [デプロイ](#-デプロイ)
-- [トラブルシューティング](#️-トラブルシューティング)
+- [アーキテクチャ](#️-アーキテクチャ)
+- [謝辞](#-謝辞)
 
 ---
 
@@ -47,24 +48,14 @@
 - 🧪 **テストカバレッジ**: Jest + Firebase Emulator による包括的テスト
 - 📊 **モノレポ管理**: pnpm + Turbo による効率的なワークスペース管理
 
-### 🗂️ Legacy Headless CMS Architecture
-
-- 🤖 **AIコンテンツパイプライン**: RSS収集 → Claude, ChatGPT, Gemini API記事生成(Phase0.1), Grok → LLM(Claude, ChatGPT, Gemini)記事生成(Phase1)
-  - Phase 0.1 以降は 「MDX 専用」とする。
-- ⚡ **ヘッドレスCMS**: WordPress GraphQL API と Next.js SSG/ISR
-  - 「Headless WordPress」は、 git tag: `headless-wp-mvp-final-20251103` まで。レガシー版として開発中止。
-  - 「Headless WordPress 版を復旧したい場合は、上記タグを参照」
-- ☁️ **クラウドネイティブ**: Google Cloud Run上のコンテナ化WordPress
-
 ---
 
 ## 🚀 クイックスタート
 
 ### 前提条件
 
-- **Node.js**: 20.0.0以上
+- **Node.js**: 22.0.0以上
 - **pnpm**: 10.0.0以上
-- **Docker**: ローカルWordPress開発用
 - **Google Cloud SDK**: Cloud Runデプロイ用（オプション）
 
 ### インストール
@@ -97,25 +88,103 @@ NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
 
 # Anthropic API
 ANTHROPIC_API_KEY=your_anthropic_api_key
-
-# WordPress GraphQLエンドポイント
-NEXT_PUBLIC_WP_ENDPOINT=http://localhost:8080/graphql
-
-# 管理者メールアドレス（カンマ区切り）
-ADMIN_EMAILS=admin@example.com
 ```
 
 #### Frontend (`apps/frontend/.env.local`)
 
 ```bash
-# WordPress GraphQLエンドポイント
-NEXT_PUBLIC_WP_ENDPOINT=http://localhost:8080/graphql
-
 # 画像最適化
 ALLOWED_IMAGE_HOST=localhost
 ```
 
 詳細は各ワークスペースの `.env.sample` を参照してください。
+
+---
+
+## 🛠️ 技術スタック
+
+### フロントエンドアプリケーション
+
+| コンポーネント | 技術 | バージョン | 用途 |
+|-----------|-----------|----------|---------|
+| **メインフロントエンド** | Next.js / React / TypeScript | 16.1.1 / 19 / 5 | 公開Webサイト |
+| **AI Writer** | Next.js / React / TypeScript | 16.1.1 / 19 / 5 | コンテンツ生成管理画面 |
+| **スタイリング** | Tailwind CSS | Latest | UIデザイン |
+| **状態管理** | SWR | 2.2+ | データフェッチング |
+
+### バックエンド & インフラストラクチャ
+
+| コンポーネント | 技術 | 詳細 |
+|-----------|-----------|---------|
+| **コンテナ** | Docker / Cloud Run | マルチステージビルド |
+| **認証** | Firebase Authentication | 認可用カスタムクレーム |
+| **CDN** | CloudFlare | 静的アセット配信 |
+
+### 生成AI & 統合 & 自動化
+
+| サービス | 用途 | パッケージ |
+|---------|---------|---------|
+| **Claude API** | 記事生成 | `@anthropic-ai/sdk` |
+| **ChatGPT API** | 記事生成 | `@modelcontextprotocol/sdk` |
+| **Gemini API** | 記事生成 | `@google/genai` |
+| **Grok API** |  | `TRD` |
+| **RSS Parser** | フィード収集 | `rss-parser` |
+| **Article Extractor** | URLコンテンツ抽出 | `@extractus/article-extractor` |
+
+### 開発ツール
+
+| ツール | バージョン | 用途 |
+|------|---------|---------|
+| **pnpm** | 10.11.0+ | 高速パッケージマネージャー |
+| **Turbo** | 2.5+ | モノレポビルドシステム |
+| **Jest** | 30.2+ | ユニットテスト |
+| **Firebase Emulator** | Latest | ローカル認証/DBテスト |
+| **ESLint + Prettier** | Latest | コード品質 |
+
+### LLM CLI
+
+| ツール | バージョン | 開発元 |
+|------|---------|---------|
+| **Claude Code** | Latest | Anthropic |
+| **Codex** | Latest | OpenAI |
+| **Gemini CLI** | Latest | Google |
+| **MCP Server Tools** | Latest | Various |
+
+---
+
+## 📁 プロジェクト構造
+
+```
+revolution/
+├── apps/
+│   ├── ai-writer/              # AIコンテンツ生成管理アプリ (Next.js 16.1.1 / React 19)
+│   ├── frontend/               # メインNext.js Webサイト (Next.js 16.1.1 / React 19)
+│   └── mcp-gcp-server/         # Model Context Protocolサーバー
+│
+├── docs/                       # 公開用ドキュメント
+│   ├── 00-blog/                # 技術ブログ記事
+│   ├── 01-frontend/            # フロントエンド関連ドキュメント
+│   ├── 02-backend/             # バックエンド関連（レガシー）
+│   ├── 03-infrastructure/      # インフラ構築記録
+│   └── 04-llm/                 # LLM活用事例
+│
+├── shared/                     # ワークスペース間で共有されるコード
+│   ├── types/                  # 共通TypeScript型定義
+│   └── utils/                  # ユーティリティ関数
+│
+├── scripts/                    # 自動化スクリプト
+│
+├── .github/                    # GitHub Actions ワークフロー
+│   └── workflows/
+│       ├── deploy-ai-writer.yml  # AI Writer 自動デプロイ
+│       └── ci.yml                # CI/CD パイプライン
+│
+├── package.json                # ルートパッケージ設定
+├── pnpm-workspace.yaml         # ワークスペース設定
+└── turbo.json                  # Turboキャッシュ設定
+```
+
+**注**: `apps/backend/` ディレクトリは PR #117 で削除されました（WordPress 完全削除）
 
 ---
 
@@ -396,7 +465,10 @@ flowchart LR
 
 ---
 
-### システム構成図 (レガシー版)
+### レガシー版アーキテクチャ（WordPress / 開発終了）
+
+> ⚠️ **アーカイブ情報**: 以下は WordPress ベースのレガシーアーキテクチャです。
+> 2025年11月3日に開発終了し、完全削除されました（96MB のコード削減）。
 
 ```mermaid
 graph TB
@@ -409,8 +481,8 @@ graph TB
     end
 
     subgraph "フロントエンド層 (Vercel)"
-        FE1[Next.js Frontend<br/>v14.2 / React 18]
-        FE2[AI Writer App<br/>v15.5 / React 19<br/>Port 7777]
+        FE1[Next.js Frontend<br/>v16.1.1 / React 19]
+        FE2[AI Writer App<br/>v16.1.1 / React 19<br/>Port 7777]
     end
 
     subgraph "バックエンド層 (Cloud Run)"
@@ -473,88 +545,66 @@ sequenceDiagram
     AIWriter-->>User: 成功
 ```
 
-> ⚠️ **注意**: 上記は WordPress 版（レガシー）のフローです。現在は MDX パイプラインが主流です。
+> ⚠️ **注意**: 上記は WordPress 版（レガシー）のフローです。2025年11月3日に開発終了しました。
+> 現在の Revolution は **MDX パイプライン** のみを使用しています。
 
 ---
 
-## 🛠️ 技術スタック
+## 🆕 アップデート情報
 
-### フロントエンドアプリケーション
+### Next.js 16.1.1 アップグレード（2026-01-10）
 
-| コンポーネント | 技術 | バージョン | 用途 |
-|-----------|-----------|----------|---------|
-| **メインフロントエンド** | Next.js / React / TypeScript | 14.2 / 18 / 5 | 公開Webサイト |
-| **AI Writer** | Next.js / React / TypeScript | 15.5 / 19 / 5 | コンテンツ生成管理画面 |
-| **スタイリング** | Tailwind CSS | Latest | UIデザイン |
-| **状態管理** | SWR | 2.2+ | データフェッチング |
+**PR #122**: モノレポ全体を Next.js 16.1.1 / React 19 にアップグレード
 
-### バックエンド & インフラストラクチャ
+#### 主な変更点
 
-| コンポーネント | 技術 | 詳細 |
-|-----------|-----------|---------|
-| **CMS** | WordPress 6.7 / PHP 8.4 | GraphQLを使用したヘッドレスモード |
-| **データベース** | Cloud SQL (MySQL 8.0) | コスト最適化ティア |
-| **ストレージ** | Cloud Storage | 公開メディアファイル（Vercel Blob移行予定） |
-| **コンテナ** | Docker / Cloud Run | マルチステージビルド |
-| **認証** | Firebase Authentication | 認可用カスタムクレーム |
-| **CDN** | CloudFlare | 静的アセット配信 |
+| カテゴリ | 内容 |
+|---------|------|
+| **Async Request APIs** | `params`, `searchParams`, `cookies()`, `headers()`, `draftMode()` が Promise に変更 |
+| **Turbopack デフォルト化** | `--turbo` フラグ不要、開発サーバー起動が高速化 |
+| **ESLint 9 Flat Config** | `.eslintrc.json` → `eslint.config.mjs` へ移行 |
+| **TypeScript 型定義一元管理** | 共通型定義で一元管理 |
+| **Pages Router 削除** | App Router のみに完全移行 |
 
-### AI & 統合
+#### 検証結果
 
-| サービス | 用途 | パッケージ |
-|---------|---------|---------|
-| **Claude API** | 記事生成 | `@anthropic-ai/sdk` |
-| **Grok API** | Coming soon | `TRD` |
-| **RSS Parser** | フィード収集 | `rss-parser` |
-| **Article Extractor** | URLコンテンツ抽出 | `@extractus/article-extractor` |
-| **GraphQL Codegen** | 型安全なWordPress API | `@graphql-codegen/*` |
+| 項目 | 結果 | 備考 |
+|------|------|------|
+| 開発サーバー起動 | ✅ PASS | 741ms で起動成功 |
+| 型チェック | ✅ PASS | エラー0件 |
+| ビルド + 本番モード | ✅ PASS | 8.3秒でビルド完了 |
+| 画像最適化 | ✅ PASS | q=75 正常動作 |
+| ISR (120秒) | ✅ PASS | 設定値正常 |
 
-### 開発ツール
-
-| ツール | バージョン | 用途 |
-|------|---------|---------|
-| **pnpm** | 10.11.0+ | 高速パッケージマネージャー |
-| **Turbo** | 2.5+ | モノレポビルドシステム |
-| **Jest** | 30.2+ | ユニットテスト |
-| **Firebase Emulator** | Latest | ローカル認証/DBテスト |
-| **ESLint + Prettier** | Latest | コード品質 |
-
-### LLM for Coding
-
-| ツール | バージョン | 開発元 |
-|------|---------|---------|
-| **Claude Code** | Latest | Anthropic |
-| **Codex** | Latest | OpenAI |
-| **Gemini CLI** | Latest | Google |
-| **MCP Server Tools** | Latest | Various |
+**参照**: [Next.js 16 Upgrade Guide](https://nextjs.org/docs/app/building-your-application/upgrading/version-16)
 
 ---
 
-## 📁 プロジェクト構造
+### WordPress バックエンド完全削除（2026-01-03）
 
-```
-revolution/
-├── apps/
-│   ├── ai-writer/              # AIコンテンツ生成管理アプリ (Next.js 15.5)
-│   ├── backend/                # WordPressヘッドレスCMS (Cloud Run)
-│   ├── frontend/               # メインNext.js Webサイト (Next.js 14.2)
-│   └── mcp-gcp-server/         # Model Context Protocolサーバー
-│
-├── docs/                       # 公開用ドキュメント
-│   └── {number}-{genre}/       # Frontend, Backend, Infra, CI/CD, LLM...etc
-│
-├── shared/                     # ワークスペース間で共有されるコード
-│   ├── types/                  # 共通TypeScript型定義
-│   └── utils/                  # ユーティリティ関数
-│
-├── scripts/                    # 自動化スクリプト
-│   ├── sync-docs-to-icloud.sh  # ドキュメント同期
-│   └── create-doc-and-sync.sh  # ドキュメント作成ヘルパー
-│
-├── package.json                # ルートパッケージ設定
-├── pnpm-workspace.yaml         # ワークスペース設定
-└── turbo.json                  # Turboキャッシュ設定
-```
+**PR #117**: WordPress バックエンドを完全削除し、MDX パイプラインに一本化
+
+#### 🗂️ Legacy Headless CMS Architecture
+
+- 🤖 **AIコンテンツパイプライン**: RSS収集 → Claude, ChatGPT, Gemini API記事生成(Phase0.1), Grok → LLM(Claude, ChatGPT, Gemini)記事生成(Phase1)
+  - Phase 0.1 以降は 「MDX 専用」とする。
+- ⚡ **ヘッドレスCMS**: WordPress GraphQL API と Next.js SSG/ISR
+  - 「Headless WordPress」は、 git tag: `headless-wp-mvp-final-20251103` まで。レガシー版として開発中止。
+  - 「Headless WordPress 版を復旧したい場合は、上記タグを参照」
+- ☁️ **クラウドネイティブ**: Google Cloud Run上のコンテナ化WordPress
+
+#### 削除内容
+
+- `apps/backend/` ディレクトリ全体（96MB）
+- WordPress 関連依存パッケージ
+- GraphQL Codegen 設定
+- Docker Compose 設定
+
+#### 効果
+
+- **リポジトリサイズ削減**: 96MB 削減
+- **保守性向上**: 単一パイプライン（MDX のみ）に統一
+- **デプロイ簡素化**: Cloud Run への自動デプロイ実装
 
 ---
 
@@ -598,31 +648,122 @@ pnpm test             # Jestテストを実行
 pnpm test:watch       # ウォッチモード
 pnpm test:coverage    # カバレッジレポート
 
-# GraphQLコード生成
-pnpm codegen          # スキーマから型を生成
-
 # Firebase管理者
 pnpm admin:setup      # 管理者ユーザーをセットアップ
 pnpm admin:list       # 管理者をリスト表示
 ```
 
-### バックエンド（WordPress）
+### Frontend アプリ
 
 ```bash
-cd apps/backend
+cd apps/frontend
 
-# ローカル開発
-docker-compose up -d          # コンテナを起動
-docker-compose logs -f        # ログを表示
-docker-compose down           # コンテナを停止
+# 開発
+pnpm dev              # ポート4444で起動（Turbopack デフォルト）
 
-# デプロイ
-./scripts/deploy.sh           # Cloud Runへデプロイ
+# ビルド & 検証
+pnpm build            # 本番ビルド
+pnpm start            # 本番モードで起動
+pnpm type-check       # TypeScript型チェック
+pnpm lint             # ESLint 9 Flat Config
+pnpm validate-env     # 環境変数検証
 ```
+
+#### TypeScript 型定義の一元管理
+
+Next.js 16 の Async Request APIs 対応のため、ページ Props 型を一元管理しています。
+
+**中央集約ファイル**: `apps/frontend/types/page-props.ts`
+
+**定義されている型**:
+
+| 型名 | 用途 | 使用ルート |
+|------|------|-----------|
+| `PageProps<TParams>` | 汎用ページ Props 型 | すべての動的ルート |
+| `ArticlePageParams` | レガシールート用パラメータ | `/articles/[slug]` |
+| `ArticlePageParamsNew` | 新ルート用パラメータ | `/[event_type]/[work_slug]/[slug]` |
+| `ArticlePageProps` | レガシールート用 Props | `/articles/[slug]/page.tsx`, `opengraph-image.tsx` |
+| `ArticlePagePropsNew` | 新ルート用 Props | `/[event_type]/[work_slug]/[slug]/page.tsx`, `opengraph-image.tsx` |
+
+**使用例**:
+
+```typescript
+import type { ArticlePageProps } from '@/types/page-props';
+
+export default async function ArticlePage({ params }: ArticlePageProps) {
+  const { slug } = await params; // Next.js 16: params は Promise
+  // ...
+}
+```
+
+**メリット**:
+- 将来の Next.js アップグレード時の型変更に一元対応
+- 型定義の一貫性が保たれる
+- 重複コードの削減
+
+**参照**: [Next.js 16 Upgrade Guide - Async Request APIs](https://nextjs.org/docs/app/building-your-application/upgrading/version-16#async-request-apis)
 
 ---
 
 ## 🚢 デプロイ (TODO)
+
+### AI Writer（Cloud Run 自動デプロイ）
+
+**PR #117** で実装された GitHub Actions による自動デプロイフロー
+
+#### ワークフロー概要
+
+```mermaid
+flowchart LR
+    PUSH[main ブランチへプッシュ]
+    BUILD[Docker イメージビルド]
+    PUSH_AR[Artifact Registry へプッシュ]
+    DEPLOY[Cloud Run へデプロイ]
+    HEALTH[ヘルスチェック]
+
+    PUSH --> BUILD
+    BUILD --> PUSH_AR
+    PUSH_AR --> DEPLOY
+    DEPLOY --> HEALTH
+```
+
+**ワークフローファイル**: `.github/workflows/deploy-ai-writer.yml`
+
+#### 技術スタック
+
+| 項目 | 説明 |
+|------|------|
+| **コンテナレジストリ** | Google Cloud Artifact Registry |
+| **デプロイ先** | Google Cloud Run（サーバーレスコンテナ） |
+| **認証方式** | Workload Identity Federation（キーレス認証） |
+| **ヘルスチェック** | `/api/health` エンドポイントで自動検証 |
+
+#### Workload Identity Federation (WIF)
+
+GitHub Actions は WIF を使用してキーレス認証を実現しています。
+
+**必要な GitHub Secrets**（名前のみ記載、値は非公開）:
+
+| Secret 名 | 説明 |
+|-----------|------|
+| `GCP_PROJECT_ID` | GCP プロジェクト ID |
+| `GCP_REGION` | デプロイリージョン |
+| `GAR_REPOSITORY` | Artifact Registry リポジトリ名 |
+| `CLOUD_RUN_SERVICE_NAME` | Cloud Run サービス名 |
+| `WIF_PROVIDER` | Workload Identity Federation プロバイダー |
+| `WIF_SERVICE_ACCOUNT` | WIF サービスアカウント |
+
+#### ヘルスチェック仕様
+
+デプロイ後、以下の項目を自動検証:
+
+- Firebase 接続確認
+- Secrets Manager アクセス確認
+- AI プロバイダー（Claude/Gemini/OpenAI）接続確認
+
+**参照**: [Google Cloud Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation)
+
+---
 
 ### フロントエンド（Vercel）
 
@@ -634,22 +775,7 @@ vercel --prod
 pnpm deploy:frontend
 ```
 
-### バックエンド（Cloud Run）
-
-```bash
-cd apps/backend
-./scripts/deploy.sh
-
-# またはルートから
-pnpm deploy:backend
-```
-
-### AI Writer（Vercel）
-
-```bash
-cd apps/ai-writer
-./scripts/deploy.sh
-```
+**環境変数**: Vercel Dashboard で設定
 
 ---
 
@@ -673,8 +799,8 @@ cd apps/ai-writer
 以下を使用して構築:
 
 - [Next.js](https://nextjs.org/) - Reactフレームワーク
-- [WordPress](https://wordpress.org/) - CMS
-- [WPGraphQL](https://www.wpgraphql.com/) - WordPress用GraphQL
+- [WordPress](https://wordpress.org/) - CMS (Legacy - 2025年11月まで使用)
+- [WPGraphQL](https://www.wpgraphql.com/) - WordPress用GraphQL (Legacy)
 - [Anthropic Claude](https://www.anthropic.com/) - AI API
 - [Firebase](https://firebase.google.com/) - 認証
 - [Google Cloud](https://cloud.google.com/) - インフラストラクチャ
