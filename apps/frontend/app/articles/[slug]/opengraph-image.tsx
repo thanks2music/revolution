@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og';
 // Import article index directly for efficient data access
 import articleIndex from '@/lib/mdx/article-index.json';
+import type { ArticlePageParams } from '@/types/page-props';
 
 // Image metadata
 export const alt = 'Article OG Image';
@@ -23,7 +24,7 @@ export const contentType = 'image/png';
 export default async function Image({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<ArticlePageParams>;
 }) {
   // Await params (Next.js 16 requirement for metadata routes)
   const { slug } = await params;

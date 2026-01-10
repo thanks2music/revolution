@@ -11,6 +11,7 @@ import { Metadata } from 'next';
 import Link from 'next/link';
 import { parseFrontmatter } from '@/lib/mdx/utils';
 import { generateArticleMetadata } from '@/lib/metadata';
+import type { ArticlePageProps } from '@/types/page-props';
 
 // Generate static params for all articles
 export async function generateStaticParams() {
@@ -22,9 +23,7 @@ export async function generateStaticParams() {
 
 // Dynamic metadata
 export async function generateMetadata(
-  props: {
-    params: Promise<{ slug: string }>;
-  }
+  props: ArticlePageProps
 ): Promise<Metadata> {
   const params = await props.params;
   const article = getArticleBySlug(params.slug);
@@ -47,7 +46,7 @@ export async function generateMetadata(
   });
 }
 
-export default async function ArticlePage(props: { params: Promise<{ slug: string }> }) {
+export default async function ArticlePage(props: ArticlePageProps) {
   const params = await props.params;
   // Get article metadata from index
   const article = getArticleBySlug(params.slug);

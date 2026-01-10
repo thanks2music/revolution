@@ -11,6 +11,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { parseFrontmatter } from '@/lib/mdx/utils';
 import { generateArticleMetadata } from '@/lib/metadata';
+import type { ArticlePagePropsNew } from '@/types/page-props';
 
 // Generate static params for all articles (new URL structure)
 export async function generateStaticParams() {
@@ -26,9 +27,7 @@ export async function generateStaticParams() {
 
 // Dynamic metadata
 export async function generateMetadata(
-  props: {
-    params: Promise<{ event_type: string; work_slug: string; slug: string }>;
-  }
+  props: ArticlePagePropsNew
 ) {
   const params = await props.params;
   const { event_type, work_slug, slug } = params;
@@ -53,9 +52,7 @@ export async function generateMetadata(
 }
 
 export default async function ArticlePage(
-  props: {
-    params: Promise<{ event_type: string; work_slug: string; slug: string }>;
-  }
+  props: ArticlePagePropsNew
 ) {
   const params = await props.params;
   const { event_type, work_slug, slug } = params;
