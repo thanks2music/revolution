@@ -37,6 +37,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import yaml from 'js-yaml';
+import { z } from 'zod';
 
 /**
  * メディアタイプ設定の型定義
@@ -79,6 +80,50 @@ export interface MediaTypeMappingConfig {
 }
 
 /**
+ * MediaTypeMapping の Zod スキーマ
+ */
+const MediaTypeMappingSchema = z.object({
+  label: z
+    .string()
+    .min(1, 'Label must not be empty')
+    .max(20, 'Label must be 20 characters or less'),
+  character_separator: z
+    .string()
+    .min(1, 'Character separator must not be empty')
+    .max(10, 'Character separator must be 10 characters or less'),
+  description: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+/**
+ * MediaTypeMappingConfig の Zod スキーマ
+ */
+const MediaTypeMappingConfigSchema = z.object({
+  version: z.string().regex(/^\d+\.\d+\.\d+$/, 'Version must be in semver format (e.g., "1.0.0")'),
+  last_updated: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  media_type_mappings: z
+    .record(z.string(), MediaTypeMappingSchema)
+    .refine(
+      (mappings) => Object.keys(mappings).length > 0,
+      'At least one media type mapping is required'
+    ),
+  separator_rules: z
+    .object({
+      default: z.string(),
+      idol_utaite: z.string(),
+      reason: z.string(),
+    })
+    .optional(),
+  author_name_rules: z
+    .object({
+      separator: z.string(),
+      applies_to_media_types: z.boolean(),
+      reason: z.string(),
+    })
+    .optional(),
+});
+
+/**
  * Media Type Mapper Service
  *
  * @description
@@ -116,11 +161,31 @@ export class MediaTypeMapperService {
       );
     }
 
-    const fileContent = fs.readFileSync(this.configPath, 'utf-8');
-    this.config = yaml.load(fileContent) as MediaTypeMappingConfig;
+    try {
+      const fileContent = fs.readFileSync(this.configPath, 'utf-8');
+      this.config = yaml.load(fileContent) as MediaTypeMappingConfig;
 
-    // 設定ファイルのバリデーション
-    this.validateConfig();
+      // YAML構造の基本チェック
+      if (!this.config || typeof this.config !== 'object') {
+        throw new Error('Invalid YAML structure: config must be an object');
+      }
+
+      // 設定ファイルのバリデーション
+      this.validateConfig();
+    } catch (error) {
+      // YAMLパースエラーの場合
+      if (error instanceof yaml.YAMLException) {
+        throw new Error(
+          `YAML syntax error in media-type-mapping.yaml:\n` +
+            `  Line ${error.mark.line + 1}, Column ${error.mark.column + 1}\n` +
+            `  ${error.reason}\n` +
+            `Please check YAML syntax.`
+        );
+      }
+
+      // その他のエラーは再スロー
+      throw error;
+    }
   }
 
   /**
@@ -131,29 +196,39 @@ export class MediaTypeMapperService {
    * @throws {Error} フォーマットが不正な場合
    *
    * @description
-   * 各メディアタイプに以下のフィールドが存在することを確認:
-   * - `label` (必須)
-   * - `character_separator` (必須)
+   * Zod スキーマを使用して設定ファイルの厳密な検証を行います。
+   * 以下の項目を検証:
+   * - 必須フィールドの存在チェック
+   * - セパレーターの長さチェック
+   * - ラベルの長さチェック
+   * - バージョン形式チェック (semver)
+   * - 日付形式チェック (YYYY-MM-DD)
    */
   private validateConfig(): void {
-    if (!this.config.media_type_mappings) {
-      throw new Error(
-        'Invalid media-type-mapping.yaml: missing "media_type_mappings" field'
-      );
+    try {
+      // Zodによる厳密な検証
+      MediaTypeMappingConfigSchema.parse(this.config);
+    } catch (error) {
+      // Zodエラーの場合、人間が読みやすい形式に変換
+      if (error && typeof error === 'object' && 'errors' in error && Array.isArray(error.errors)) {
+        const zodError = error as z.ZodError;
+        const errorMessages = zodError.errors
+          .map((err) => {
+            const path = err.path.join('.');
+            return `  - ${path}: ${err.message}`;
+          })
+          .join('\n');
+
+        throw new Error(
+          `Invalid media-type-mapping.yaml:\n` +
+            `${errorMessages}\n` +
+            `Please fix the configuration file.`
+        );
+      }
+
+      // その他のエラーは再スロー
+      throw error;
     }
-
-    const requiredFields: (keyof MediaTypeMapping)[] = ['label', 'character_separator'];
-
-    Object.entries(this.config.media_type_mappings).forEach(([mediaType, mapping]) => {
-      requiredFields.forEach((field) => {
-        if (!mapping[field]) {
-          throw new Error(
-            `Invalid media-type-mapping.yaml: ` +
-              `Missing required field '${field}' for media type '${mediaType}'`
-          );
-        }
-      });
-    });
   }
 
   /**

@@ -50,6 +50,11 @@ media_type_mappings:
 separator_rules:
   default: '・'
   idol_utaite: ' / '
+  reason: 'アイドル・歌い手業界では、メンバー名を " / " で区切る慣例があります。'
+author_name_rules:
+  separator: ' / '
+  applies_to_media_types: false
+  reason: '原作者名は作品のクリエイターであり、キャラクターやメンバーとは異なります。'
 `;
 
     // Singleton インスタンスをリセット
@@ -113,6 +118,7 @@ separator_rules:
       it('必須フィールド（media_type_mappings）がない場合はエラーを投げること', () => {
         const invalidYaml = `
 version: '1.0.0'
+last_updated: '2026-01-12'
 # media_type_mappings がない
 `;
         const fixturesDir = path.dirname(testConfigPath);
@@ -123,12 +129,13 @@ version: '1.0.0'
 
         expect(() => {
           new MediaTypeMapperService(testConfigPath);
-        }).toThrow('missing "media_type_mappings" field');
+        }).toThrow('media_type_mappings');
       });
 
       it('必須フィールド（label）がないメディアタイプがある場合はエラーを投げること', () => {
         const invalidYaml = `
 version: '1.0.0'
+last_updated: '2026-01-12'
 media_type_mappings:
   anime:
     # label がない
@@ -142,7 +149,7 @@ media_type_mappings:
 
         expect(() => {
           new MediaTypeMapperService(testConfigPath);
-        }).toThrow("Missing required field 'label' for media type 'anime'");
+        }).toThrow('label');
       });
 
       it('必須フィールド（character_separator）がないメディアタイプがある場合はエラーを投げること', () => {
@@ -161,7 +168,147 @@ media_type_mappings:
 
         expect(() => {
           new MediaTypeMapperService(testConfigPath);
-        }).toThrow("Missing required field 'character_separator' for media type 'anime'");
+        }).toThrow("character_separator");
+      });
+
+      it('YAMLシンタックスエラーを適切に検出すること', () => {
+        const invalidYaml = `
+version: '1.0.0'
+last_updated: '2026-01-12'
+media_type_mappings:
+  anime:
+    label: "アニメ
+    character_separator: '・'
+`;
+        const fixturesDir = path.dirname(testConfigPath);
+        if (!fs.existsSync(fixturesDir)) {
+          fs.mkdirSync(fixturesDir, { recursive: true });
+        }
+        fs.writeFileSync(testConfigPath, invalidYaml, 'utf-8');
+
+        expect(() => {
+          new MediaTypeMapperService(testConfigPath);
+        }).toThrow('YAML syntax error');
+      });
+
+      it('空文字列のセパレーターを検出すること', () => {
+        const invalidYaml = `
+version: '1.0.0'
+last_updated: '2026-01-12'
+media_type_mappings:
+  anime:
+    label: 'アニメ'
+    character_separator: ''
+`;
+        const fixturesDir = path.dirname(testConfigPath);
+        if (!fs.existsSync(fixturesDir)) {
+          fs.mkdirSync(fixturesDir, { recursive: true });
+        }
+        fs.writeFileSync(testConfigPath, invalidYaml, 'utf-8');
+
+        expect(() => {
+          new MediaTypeMapperService(testConfigPath);
+        }).toThrow('Character separator must not be empty');
+      });
+
+      it('空文字列のラベルを検出すること', () => {
+        const invalidYaml = `
+version: '1.0.0'
+last_updated: '2026-01-12'
+media_type_mappings:
+  anime:
+    label: ''
+    character_separator: '・'
+`;
+        const fixturesDir = path.dirname(testConfigPath);
+        if (!fs.existsSync(fixturesDir)) {
+          fs.mkdirSync(fixturesDir, { recursive: true });
+        }
+        fs.writeFileSync(testConfigPath, invalidYaml, 'utf-8');
+
+        expect(() => {
+          new MediaTypeMapperService(testConfigPath);
+        }).toThrow('Label must not be empty');
+      });
+
+      it('不正なバージョン形式を検出すること', () => {
+        const invalidYaml = `
+version: 'invalid-version'
+last_updated: '2026-01-12'
+media_type_mappings:
+  anime:
+    label: 'アニメ'
+    character_separator: '・'
+`;
+        const fixturesDir = path.dirname(testConfigPath);
+        if (!fs.existsSync(fixturesDir)) {
+          fs.mkdirSync(fixturesDir, { recursive: true });
+        }
+        fs.writeFileSync(testConfigPath, invalidYaml, 'utf-8');
+
+        expect(() => {
+          new MediaTypeMapperService(testConfigPath);
+        }).toThrow('Version must be in semver format');
+      });
+
+      it('不正な日付形式を検出すること', () => {
+        const invalidYaml = `
+version: '1.0.0'
+last_updated: '2026/01/12'
+media_type_mappings:
+  anime:
+    label: 'アニメ'
+    character_separator: '・'
+`;
+        const fixturesDir = path.dirname(testConfigPath);
+        if (!fs.existsSync(fixturesDir)) {
+          fs.mkdirSync(fixturesDir, { recursive: true });
+        }
+        fs.writeFileSync(testConfigPath, invalidYaml, 'utf-8');
+
+        expect(() => {
+          new MediaTypeMapperService(testConfigPath);
+        }).toThrow('Date must be in YYYY-MM-DD format');
+      });
+
+      it('長すぎるラベル（20文字超）を検出すること', () => {
+        const invalidYaml = `
+version: '1.0.0'
+last_updated: '2026-01-12'
+media_type_mappings:
+  anime:
+    label: 'これは20文字を超える非常に長いラベル名です'
+    character_separator: '・'
+`;
+        const fixturesDir = path.dirname(testConfigPath);
+        if (!fs.existsSync(fixturesDir)) {
+          fs.mkdirSync(fixturesDir, { recursive: true });
+        }
+        fs.writeFileSync(testConfigPath, invalidYaml, 'utf-8');
+
+        expect(() => {
+          new MediaTypeMapperService(testConfigPath);
+        }).toThrow('Label must be 20 characters or less');
+      });
+
+      it('長すぎるセパレーター（10文字超）を検出すること', () => {
+        const invalidYaml = `
+version: '1.0.0'
+last_updated: '2026-01-12'
+media_type_mappings:
+  anime:
+    label: 'アニメ'
+    character_separator: '12345678901'
+`;
+        const fixturesDir = path.dirname(testConfigPath);
+        if (!fs.existsSync(fixturesDir)) {
+          fs.mkdirSync(fixturesDir, { recursive: true });
+        }
+        fs.writeFileSync(testConfigPath, invalidYaml, 'utf-8');
+
+        expect(() => {
+          new MediaTypeMapperService(testConfigPath);
+        }).toThrow('Character separator must be 10 characters or less');
       });
     });
   });
@@ -395,6 +542,7 @@ media_type_mappings:
       it('ハイフンを含むメディアタイプでも動作すること', () => {
         const yamlWithHyphen = `
 version: '1.0.0'
+last_updated: '2026-01-12'
 media_type_mappings:
   light-novel:
     label: 'ライトノベル'
