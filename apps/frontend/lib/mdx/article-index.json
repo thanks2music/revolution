@@ -1,7 +1,36 @@
 {
-  "generatedAt": "2026-01-03T08:57:07.710Z",
-  "totalArticles": 1,
+  "generatedAt": "2026-01-12T12:48:23.124Z",
+  "totalArticles": 2,
   "articles": [
+    {
+      "slug": "01kes3xx1q",
+      "title": "機動戦士ガンダム 鉄血のオルフェンズ カフェ in 東京 12月18日よりコラボ開催",
+      "date": "2026-01-12T12:46:37.016Z",
+      "excerpt": "機動戦士ガンダム鉄血のオルフェンズの10周年を記念した期間限定コラボカフェが東京ソラマチにオープン。描きおろしイラストを使用したカジュアルなダイナーで特別メニューや限定グッズを楽しめる。",
+      "categories": [
+        "機動戦士ガンダム 鉄血のオルフェンズ",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/gundam-iron-blooded-orphans/01kes3xx1q.mdx",
+      "post_id": "01kes3xx1q",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "機動戦士ガンダム 鉄血のオルフェンズ",
+      "work_titles": [
+        "機動戦士ガンダム 鉄血のオルフェンズ"
+      ],
+      "work_slug": "gundam-iron-blooded-orphans",
+      "prefectures": [
+        "東京都"
+      ],
+      "prefecture_slugs": [
+        "tokyo"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01kes3xx1q/f66c792d-420d-46f7-88ac-d50e37e16936.png"
+    },
     {
       "slug": "01kafsdmvd",
       "title": "作品名 × 店舗名2025が主要都市で開催決定",
