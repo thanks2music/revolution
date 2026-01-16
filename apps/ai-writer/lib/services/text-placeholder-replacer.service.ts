@@ -178,6 +178,27 @@ export class TextPlaceholderReplacerService {
     const replacementLog: Array<{ placeholder: string; value: string }> = [];
     let replacedCount = 0;
 
+    // デバッグ: 置換対象プレースホルダーの値を出力
+    if (process.env.DEBUG_PLACEHOLDER_REPLACEMENT === 'true') {
+      console.log('\n[PlaceholderReplacer] === 置換対象プレースホルダー ===');
+      console.log('作品名:', data.作品名);
+      console.log('店舗名:', data.店舗名);
+      console.log('メディアタイプ:', data.メディアタイプ);
+      console.log('原作タイプ:', data.原作タイプ);
+      console.log('原作者有無:', data.原作者有無);
+      console.log('原作者名:', data.原作者名);
+      console.log('キャラクター名:', data.キャラクター名);
+      console.log('メンバー名:', data.メンバー名);
+      console.log('テーマ名:', data.テーマ名);
+      console.log('開催期間:', JSON.stringify(data.開催期間, null, 2));
+      console.log('works:', JSON.stringify(data.works, null, 2));
+      console.log('[PlaceholderReplacer] === データ終了 ===\n');
+
+      console.log('[PlaceholderReplacer] === 置換前テンプレート（先頭500文字） ===');
+      console.log(content.substring(0, 500));
+      console.log('[PlaceholderReplacer] === テンプレート終了 ===\n');
+    }
+
     // 派生変数を計算
     const enrichedData = this.computeDerivedVariables(data);
 
@@ -206,6 +227,22 @@ export class TextPlaceholderReplacerService {
 
     // 未置換プレースホルダーを検出
     const unreplacedPlaceholders = this.detectUnreplacedPlaceholders(result);
+
+    // デバッグ: 置換後テンプレートと置換結果を出力
+    if (process.env.DEBUG_PLACEHOLDER_REPLACEMENT === 'true') {
+      console.log('\n[PlaceholderReplacer] === 置換後テンプレート（先頭500文字） ===');
+      console.log(result.substring(0, 500));
+      console.log('[PlaceholderReplacer] === テンプレート終了 ===\n');
+
+      console.log('[PlaceholderReplacer] === 置換結果サマリー ===');
+      console.log('置換数:', replacedCount);
+      console.log('未置換プレースホルダー:', unreplacedPlaceholders);
+      console.log('置換詳細（先頭10件）:');
+      replacementLog.slice(0, 10).forEach((log, i) => {
+        console.log(`  ${i + 1}. ${log.placeholder} → ${log.value.substring(0, 50)}${log.value.length > 50 ? '...' : ''}`);
+      });
+      console.log('[PlaceholderReplacer] === サマリー終了 ===\n');
+    }
 
     return {
       content: result,

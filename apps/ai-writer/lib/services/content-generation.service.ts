@@ -101,6 +101,28 @@ export class ContentGenerationService {
         { includeSections: true }
       );
 
+      // デバッグ: 読み込んだテンプレート情報を出力
+      if (process.env.DEBUG_TEMPLATE_LOADING === 'true') {
+        console.log('\n[ContentGeneration] === 読み込んだテンプレート情報 ===');
+        console.log('Template ID:', this.templateId);
+        console.log('Pipeline ID:', this.pipelineId);
+
+        if (template._sections?.templates) {
+          console.log('利用可能なセクション:');
+          for (const [sectionId, sectionTemplate] of Object.entries(template._sections.templates)) {
+            const section = sectionTemplate as any;
+            console.log(`  - ${sectionId}: ${section.section?.name || 'unnamed'}`);
+
+            // 各セクションの利用可能なテンプレート一覧
+            if (section.templates) {
+              const templateIds = Object.keys(section.templates);
+              console.log(`    テンプレート: ${templateIds.join(', ')}`);
+            }
+          }
+        }
+        console.log('[ContentGeneration] === テンプレート情報終了 ===\n');
+      }
+
       // プロンプトを構築（YAMLテンプレート全体を含む）
       const prompt = this.buildPrompt(template, request);
 
