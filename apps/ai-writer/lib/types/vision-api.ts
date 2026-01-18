@@ -160,8 +160,8 @@ export interface VisionExtractionResult {
     /** Extracted goods items */
     goodsItems: GoodsItem[];
 
-    /** Extracted novelty item (single or null) */
-    noveltyItem: NoveltyItem | null;
+    /** Extracted novelty items (array) */
+    noveltyItems: NoveltyItem[];
 
     /** Optional metadata */
     metadata?: {
@@ -192,6 +192,15 @@ export interface MenuItem {
 
   /** Description */
   description?: string;
+
+  /** Notes (e.g., food allergy information) */
+  notes?: string;
+
+  /** Remarks (e.g., ingredients, nutritional information) */
+  remarks?: string;
+
+  /** Confidence score for this item (0.0-1.0) */
+  confidence?: number;
 }
 
 /**
@@ -222,13 +231,19 @@ export interface NoveltyItem {
   name: string;
 
   /** Condition to receive (e.g., "1ドリンク注文につき1枚ランダム配布") */
-  condition: string;
+  condition?: string;
 
   /** Number of variants */
   variantCount?: number;
 
   /** Character name */
   characterName?: string;
+
+  /** Notes (e.g., "絵柄は選べません") */
+  notes?: string;
+
+  /** Remarks (e.g., "無くなり次第終了") */
+  remarks?: string;
 }
 
 /**

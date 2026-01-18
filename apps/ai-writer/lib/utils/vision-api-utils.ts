@@ -79,13 +79,20 @@ export function crossCheckVisionResult(
   }
 
   // Issue 2: No HTML data but excessive Vision API extraction
+  // Note: Only flag if BOTH conditions are met:
+  // 1. Extracted many items (> 10) without any HTML data
+  // 2. High confidence (> 0.7) suggests possible hallucination
+  // Low confidence (≤ 0.7) indicates Vision API is uncertain, which is acceptable
   if (
     htmlExtraction.menuItemCount === 0 &&
     htmlExtraction.priceCount === 0
   ) {
-    if (visionExtraction.menuItems.length > 5) {
+    if (
+      visionExtraction.menuItems.length > 10 &&
+      visionExtraction.confidence > 0.7
+    ) {
       issues.push(
-        `Suspicious: Generated ${visionExtraction.menuItems.length} menu items without any HTML data`
+        `Suspicious: Generated ${visionExtraction.menuItems.length} menu items with high confidence (${visionExtraction.confidence.toFixed(2)}) but no HTML data`
       );
     }
   }

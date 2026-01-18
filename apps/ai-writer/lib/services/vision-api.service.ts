@@ -21,6 +21,8 @@
  */
 
 import OpenAI from 'openai';
+import * as fs from 'fs';
+import * as path from 'path';
 import type {
   VisionExtractionResult,
   MenuItem,
@@ -56,9 +58,13 @@ interface RawVisionResponse {
   confidence?: number;
   menuItems?: Array<Record<string, unknown>>;
   goodsItems?: Array<Record<string, unknown>>;
-  noveltyItem?: Record<string, unknown> | null;
+  noveltyItems?: Array<Record<string, unknown>>;
   characterName?: string;
-  hasComingSoonNotice?: boolean;
+  metadata?: {
+    imageQuality?: string;
+    hasComingSoonNotice?: boolean;
+    extractionDifficulty?: string;
+  };
 }
 
 /**
@@ -81,6 +87,7 @@ interface RawVisionResponse {
 export class VisionApiService {
   private client: OpenAI;
   private modelName: string = 'gpt-4o-mini';
+  private logDir: string;
 
   constructor(apiKey?: string) {
     const key = apiKey || process.env.OPENAI_API_KEY;
@@ -92,6 +99,14 @@ export class VisionApiService {
     }
 
     this.client = new OpenAI({ apiKey: key });
+
+    // Initialize log directory
+    // Use __dirname to reliably resolve path from service file location
+    // apps/ai-writer/lib/services -> apps/ai-writer -> logs
+    this.logDir = path.join(__dirname, '..', '..', 'logs');
+    if (!fs.existsSync(this.logDir)) {
+      fs.mkdirSync(this.logDir, { recursive: true });
+    }
   }
 
   /**
@@ -210,19 +225,19 @@ export class VisionApiService {
       },
     ];
 
-    // Add all images with detail=low
+    // Add all images with detail=high (TEMPORARY: Testing for better Japanese OCR)
     for (const imageUrl of imageUrls) {
       content.push({
         type: 'image_url',
         image_url: {
           url: imageUrl,
-          detail: 'low', // Cost optimization: 85 tokens per image
+          detail: 'high', // TEMPORARY: Testing high detail for Japanese text extraction
         },
       });
     }
 
     console.log(
-      `[VisionApiService] Calling OpenAI Vision API with ${imageUrls.length} images (detail=low)`
+      `[VisionApiService] Calling OpenAI Vision API with ${imageUrls.length} images (detail=high)`
     );
 
     const response = await this.client.chat.completions.create({
@@ -255,6 +270,9 @@ export class VisionApiService {
       );
     }
 
+    // Save debug log
+    await this.saveLogToFile(imageUrls, prompt, category, response, rawJson);
+
     // Convert raw response to typed VisionExtractionResult
     const result = this.convertToVisionExtractionResult(rawJson, category);
 
@@ -284,9 +302,9 @@ export class VisionApiService {
       this.convertToGoodsItem(item)
     );
 
-    const noveltyItem: NoveltyItem | null = raw.noveltyItem
-      ? this.convertToNoveltyItem(raw.noveltyItem)
-      : null;
+    const noveltyItems: NoveltyItem[] = (raw.noveltyItems ?? []).map((item) =>
+      this.convertToNoveltyItem(item)
+    );
 
     return {
       visionExtraction: {
@@ -295,9 +313,9 @@ export class VisionApiService {
         timestamp: new Date().toISOString(),
         menuItems,
         goodsItems,
-        noveltyItem,
+        noveltyItems,
         metadata: {
-          hasComingSoonNotice: raw.hasComingSoonNotice ?? false,
+          hasComingSoonNotice: raw.metadata?.hasComingSoonNotice ?? false,
           totalImagesAnalyzed: 0, // Will be set by caller
         },
       },
@@ -314,6 +332,9 @@ export class VisionApiService {
       characterName: raw.characterName ? String(raw.characterName) : undefined,
       bonus: raw.bonus ? String(raw.bonus) : undefined,
       description: raw.description ? String(raw.description) : undefined,
+      notes: raw.notes ? String(raw.notes) : undefined,
+      remarks: raw.remarks ? String(raw.remarks) : undefined,
+      confidence: typeof raw.confidence === 'number' ? raw.confidence : undefined,
     };
   }
 
@@ -336,10 +357,70 @@ export class VisionApiService {
   private convertToNoveltyItem(raw: Record<string, unknown>): NoveltyItem {
     return {
       name: String(raw.name || ''),
-      condition: String(raw.condition || ''),
+      condition: raw.condition ? String(raw.condition) : undefined,
       variantCount: typeof raw.variantCount === 'number' ? raw.variantCount : undefined,
       characterName: raw.characterName ? String(raw.characterName) : undefined,
+      notes: raw.notes ? String(raw.notes) : undefined,
+      remarks: raw.remarks ? String(raw.remarks) : undefined,
     };
+  }
+
+  /**
+   * Generate interim Vision API prompt
+   *
+   * @description
+   * TEMPORARY: This is a hardcoded fallback prompt until YAML template is ready.
+   * TODO: Move to Templates repository (1.5-vision-extraction.yaml)
+   *
+   * @param category - Category being extracted (menu, goods, novelty)
+   * @returns Simplified prompt for Japanese text extraction
+   */
+  private buildInterimPrompt(category: string): string {
+    return `あなたはコラボカフェのメニュー情報を抽出する専門家です。
+指定した画像内に書かれている日本語の文字列を抽出してください。
+
+想定される日本語の情報:
+- メニュー名
+- 金額 (メニューの料金)
+- キャラクター名 (メニュー名に含まれる場合は分離して抽出)
+- その他の文字列情報 (出現頻度が高い例: ノベルティ情報)
+
+# 抽出ルール
+
+- メニュー名にキャラクター名が含まれる場合、characterName フィールドに分離する
+  例: 「場地と千冬のマカロンパフェ」→ name: "マカロンパフェ", characterName: "場地と千冬"
+- キャラクター名が不明な場合は、characterName を空文字列にする
+
+# 出力形式
+
+必ず以下のJSON形式のみで回答してください。他のテキストは一切含めないでください。
+
+{
+  "menuItems": [
+    {
+      "name": "メニュー名",
+      "price": 1200,
+      "characterName": "キャラクター名",
+      "description": "コラボメニューのコンセプトや説明が書かれている場合",
+      "notes": "注意点が記載されている場合 (例: 食品アレルギー表記など)",
+      "remarks": "補足情報が記載されている場合 (例: 食材名や栄養成分など)",
+      "confidence": 0.95
+    }
+  ],
+  "noveltyItems": [
+    {
+      "name": "ノベルティ名称",
+      "condition": "ノベルティ条件が記載されている場合",
+      "notes": "注意点が記載されている場合 (例: 絵柄は選べませんなど)",
+      "remarks": "補足情報が記載されている場合 (例: 無くなり次第終了など)"
+    }
+  ],
+  "metadata": {
+    "imageQuality": "high",
+    "hasComingSoonNotice": false,
+    "extractionDifficulty": "easy"
+  }
+}`;
   }
 
   /**
@@ -347,6 +428,125 @@ export class VisionApiService {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Extract domain from URL
+   *
+   * @example
+   * extractDomain('https://www.pripricafe.com/event/cafe/img/menu.webp')
+   * // => 'pripricafe-com'
+   */
+  private extractDomain(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      // Remove 'www.' prefix and replace dots with hyphens
+      return urlObj.hostname
+        .replace(/^www\./, '')
+        .replace(/\./g, '-');
+    } catch {
+      return 'unknown-domain';
+    }
+  }
+
+  /**
+   * Get next log sequence number for today
+   *
+   * @example
+   * // If 2026-01-18-VisionAPI-OpenAI-pripricafe-com-01.log exists
+   * getNextLogSequence('2026-01-18', 'OpenAI', 'pripricafe-com')
+   * // => 2
+   */
+  private getNextLogSequence(
+    dateStr: string,
+    provider: string,
+    domain: string
+  ): number {
+    const prefix = `${dateStr}-VisionAPI-${provider}-${domain}-`;
+    const files = fs.readdirSync(this.logDir);
+
+    const matchingFiles = files.filter((file) => file.startsWith(prefix));
+
+    if (matchingFiles.length === 0) {
+      return 1;
+    }
+
+    // Extract sequence numbers and find max
+    const sequences = matchingFiles
+      .map((file) => {
+        const match = file.match(/-(\d{2})\.log$/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((seq) => !isNaN(seq));
+
+    const maxSeq = Math.max(...sequences, 0);
+    return maxSeq + 1;
+  }
+
+  /**
+   * Save Vision API request/response to log file
+   */
+  private async saveLogToFile(
+    imageUrls: string[],
+    prompt: string,
+    category: string,
+    response: OpenAI.Chat.Completions.ChatCompletion,
+    rawJson: RawVisionResponse
+  ): Promise<void> {
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const provider = 'OpenAI';
+    const domain = this.extractDomain(imageUrls[0] || 'unknown');
+    const sequence = this.getNextLogSequence(dateStr, provider, domain);
+
+    const fileName = `${dateStr}-VisionAPI-${provider}-${domain}-${sequence.toString().padStart(2, '0')}.log`;
+    const filePath = path.join(this.logDir, fileName);
+
+    const logContent = [
+      '='.repeat(80),
+      'Vision API Debug Log',
+      '='.repeat(80),
+      '',
+      '## Timestamp',
+      now.toISOString(),
+      '',
+      '## Request Info',
+      `Category: ${category}`,
+      `Model: ${this.modelName}`,
+      `Image Count: ${imageUrls.length}`,
+      '',
+      '## Image URLs',
+      ...imageUrls.map((url, idx) => `${idx + 1}. ${url}`),
+      '',
+      '## Prompt',
+      '-'.repeat(80),
+      prompt,
+      '-'.repeat(80),
+      '',
+      '## Response Metadata',
+      `Model: ${response.model}`,
+      `Finish Reason: ${response.choices[0]?.finish_reason || 'unknown'}`,
+      `Total Tokens: ${response.usage?.total_tokens || 'N/A'}`,
+      `Prompt Tokens: ${response.usage?.prompt_tokens || 'N/A'}`,
+      `Completion Tokens: ${response.usage?.completion_tokens || 'N/A'}`,
+      '',
+      '## Raw JSON Response',
+      '-'.repeat(80),
+      JSON.stringify(rawJson, null, 2),
+      '-'.repeat(80),
+      '',
+      '## Extracted Items Summary',
+      `Menu Items: ${rawJson.menuItems?.length || 0}`,
+      `Goods Items: ${rawJson.goodsItems?.length || 0}`,
+      `Novelty Items: ${rawJson.noveltyItems?.length || 0}`,
+      `Confidence: ${rawJson.confidence ?? 0.5}`,
+      `Has Coming Soon Notice: ${rawJson.metadata?.hasComingSoonNotice ?? false}`,
+      '',
+      '='.repeat(80),
+    ].join('\n');
+
+    fs.writeFileSync(filePath, logContent, 'utf-8');
+    console.log(`[VisionApiService] Log saved: ${fileName}`);
   }
 }
 
