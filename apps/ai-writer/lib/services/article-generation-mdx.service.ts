@@ -72,6 +72,19 @@ import {
 } from '@/lib/ai/cost';
 import { buildCategories } from '@/lib/utils/category-builder';
 import { validateStoreName } from '@/lib/utils/store-name-validator';
+import { VisionApiService } from './vision-api.service';
+import { YamlTemplateLoaderService } from './yaml-template-loader.service';
+import {
+  crossCheckVisionResult,
+  detectHallucination,
+  selectFallbackLevel,
+  validateBusinessRules,
+  type HtmlExtractionData,
+} from '@/lib/utils/vision-api-utils';
+import type {
+  VisionExtractionResult,
+  FallbackLevelType,
+} from '@/lib/types/vision-api';
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -143,6 +156,15 @@ export interface MdxGenerationResult {
   placeholderReplacement?: PlaceholderReplacementResult;
   // テキストプレースホルダー置換結果（Step 5.8）
   textPlaceholderReplacement?: TextPlaceholderReplacementResult;
+  // Vision API 統合結果（Step 1.8）
+  visionApiResult?: {
+    called: boolean;
+    htmlSufficiencyCheck?: HtmlExtractionData;
+    visionExtraction?: VisionExtractionResult;
+    fallbackLevel?: FallbackLevelType;
+    hallucinationDetected?: boolean;
+    crossCheckPassed?: boolean;
+  };
 }
 
 /**
@@ -442,6 +464,165 @@ export class ArticleGenerationMdxService {
         }
       } else {
         console.log('[Step 1.6/1.7] 公式サイトHTMLがないため、下層ページ検出をスキップ');
+      }
+
+      // Step 1.8: Vision API Integration (conditional)
+      console.log(`\n[Step 1.8/11] Vision API統合（HTML充足性チェック + 条件付き呼び出し）...`);
+
+      let visionApiResult: {
+        called: boolean;
+        htmlSufficiencyCheck?: HtmlExtractionData;
+        visionExtraction?: VisionExtractionResult;
+        fallbackLevel?: FallbackLevelType;
+        hallucinationDetected?: boolean;
+        crossCheckPassed?: boolean;
+      } = { called: false };
+
+      // Phase 1: 全 collabo-cafe イベントで Vision API 統合
+      if (!detailedExtraction) {
+        console.log('[Step 1.8] detailedExtraction がないため、Vision API をスキップ');
+      } else {
+        // HTML充足性チェック
+        const htmlSufficiency: HtmlExtractionData = this.calculateHtmlSufficiency(detailedExtraction);
+        visionApiResult.htmlSufficiencyCheck = htmlSufficiency;
+
+        console.log('[Step 1.8] HTML充足性チェック結果:', {
+          menuItemCount: htmlSufficiency.menuItemCount,
+          priceCount: htmlSufficiency.priceCount,
+          sufficiencyRate: `${(htmlSufficiency.htmlSufficiencyRate * 100).toFixed(1)}%`,
+        });
+
+        // 充足性判定（閾値: menuItemCount >= 3, priceCount >= 2, sufficiencyRate >= 20%）
+        const isSufficient =
+          htmlSufficiency.menuItemCount >= 3 &&
+          htmlSufficiency.priceCount >= 2 &&
+          htmlSufficiency.htmlSufficiencyRate >= 0.2;
+
+        if (isSufficient) {
+          console.log('[Step 1.8] ✅ HTML充足 → Vision API をスキップ');
+        } else {
+          console.log('[Step 1.8] ❌ HTML不足 → Vision API を呼び出し');
+          visionApiResult.called = true;
+
+          try {
+            // カテゴリ別画像URLを取得
+            const imageUrls: string[] = categoryImages?.all || [];
+
+            if (imageUrls.length === 0) {
+              console.warn('[Step 1.8] ⚠️ カテゴリ別画像なし、Vision API をスキップ');
+            } else {
+              // YAML テンプレートを読み込み
+              const yamlLoader = new YamlTemplateLoaderService();
+              const visionTemplate = await yamlLoader.loadVisionApiTemplate('collabo-cafe');
+
+              console.log('[Step 1.8] Vision API テンプレート読み込み完了');
+
+              // Vision API サービスを初期化
+              const visionService = new VisionApiService();
+
+              // Vision API を呼び出し（メニュー抽出）
+              console.log(`[Step 1.8] Vision API 呼び出し中（画像: ${imageUrls.length}件）...`);
+
+              const visionExtraction = await visionService.extractFromImages({
+                imageUrls,
+                prompt: visionTemplate.prompts.menu_extraction.content,
+                category: 'menu',
+                maxRetries: 3,
+                timeout: 30000,
+              });
+
+              visionApiResult.visionExtraction = visionExtraction;
+
+              console.log('[Step 1.8] Vision API 抽出完了:', {
+                confidence: visionExtraction.visionExtraction.confidence,
+                menuItems: visionExtraction.visionExtraction.menuItems.length,
+                goodsItems: visionExtraction.visionExtraction.goodsItems.length,
+              });
+
+              // Cost tracking (gpt-4o-mini with detail=low)
+              // Input: 85 tokens per image + ~300 tokens for prompt
+              // Output: ~500-1000 tokens for JSON response (estimated)
+              const estimatedInputTokens = imageUrls.length * 85 + 300;
+              const estimatedOutputTokens = 750; // Average estimate
+              const estimatedTotalTokens = estimatedInputTokens + estimatedOutputTokens;
+
+              const costResult = costTracker.recordUsage('Step1.8_VisionAPI', 'gpt-4o-mini', {
+                promptTokens: estimatedInputTokens,
+                completionTokens: estimatedOutputTokens,
+                totalTokens: estimatedTotalTokens,
+              });
+
+              console.log('[Step 1.8] Vision API コスト追跡:', {
+                model: 'gpt-4o-mini (vision)',
+                promptTokens: estimatedInputTokens,
+                completionTokens: estimatedOutputTokens,
+                totalTokens: estimatedTotalTokens,
+                cost: `$${costResult.usd.toFixed(6)} (¥${costResult.jpy.toFixed(2)})`,
+              });
+
+              // Cross-check（HTML vs Vision API）
+              const crossCheckResult = crossCheckVisionResult(visionExtraction, htmlSufficiency);
+              visionApiResult.crossCheckPassed = crossCheckResult.passed;
+
+              console.log('[Step 1.8] Cross-check 結果:', {
+                passed: crossCheckResult.passed,
+                issues: crossCheckResult.issues,
+              });
+
+              if (!crossCheckResult.passed) {
+                console.warn('[Step 1.8] ⚠️ Cross-check 失敗:', crossCheckResult.issues);
+              }
+
+              // Hallucination detection
+              const hallucinationResult = detectHallucination(visionExtraction, htmlSufficiency);
+              visionApiResult.hallucinationDetected = hallucinationResult.detected;
+
+              if (hallucinationResult.detected) {
+                console.error(`[Step 1.8] 🚨 Hallucination 検出:`, {
+                  type: hallucinationResult.type,
+                  reason: hallucinationResult.reason,
+                });
+
+                // Hallucination が検出された場合は記事生成を中止
+                return {
+                  success: false,
+                  skipped: true,
+                  skipReason: `Vision API でハルシネーション検出: ${hallucinationResult.reason}`,
+                  detailedExtraction,
+                  visionApiResult,
+                };
+              }
+
+              console.log('[Step 1.8] ✅ Hallucination なし');
+
+              // Fallback level selection
+              const fallbackLevel = selectFallbackLevel(visionExtraction);
+              visionApiResult.fallbackLevel = fallbackLevel;
+
+              console.log('[Step 1.8] Fallback レベル:', fallbackLevel);
+
+              // Business rules validation
+              const businessValidation = validateBusinessRules(visionExtraction);
+
+              if (businessValidation.issues.length > 0) {
+                console.warn('[Step 1.8] ⚠️ Business rules 違反:', businessValidation.issues);
+
+                // 信頼度を調整
+                visionExtraction.visionExtraction.confidence = businessValidation.adjustedConfidence;
+
+                console.log('[Step 1.8] 信頼度調整:', {
+                  original: visionExtraction.visionExtraction.confidence,
+                  adjusted: businessValidation.adjustedConfidence,
+                });
+              }
+
+              console.log('[Step 1.8] ✅ Vision API 統合完了');
+            }
+          } catch (visionError) {
+            console.error('[Step 1.8] ❌ Vision API 呼び出し失敗:', visionError);
+            console.log('[Step 1.8] HTML抽出結果のみで記事生成を続行');
+          }
+        }
       }
 
       // Step 2: Resolve slugs (YAML config → AI API → ASCII fallback)
@@ -1023,6 +1204,7 @@ export class ArticleGenerationMdxService {
         categoryR2Images: uploadedCategoryR2Images,
         placeholderReplacement,
         textPlaceholderReplacement,
+        visionApiResult, // Step 1.8 Vision API integration result
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -1134,6 +1316,91 @@ export class ArticleGenerationMdxService {
     result = result.replace(/\n{3,}/g, '\n\n');
 
     return result;
+  }
+
+  /**
+   * HTML充足性を計算
+   *
+   * @param extraction AI拡張された抽出結果
+   * @returns HTML抽出データ（menuItemCount, priceCount, htmlSufficiencyRate）
+   *
+   * @description
+   * ExtractionResultから利用可能なデータポイントをカウントし、
+   * HTML充足性を推定します。実際のHTML解析ではなく、
+   * AI抽出結果に含まれるデータの充実度を評価します。
+   *
+   * 評価基準:
+   * - キャラクター名の有無とカウント
+   * - メニュー種類数の有無
+   * - グッズ名の有無とカウント
+   * - ノベルティ名の有無
+   *
+   * 充足率計算:
+   * - 期待データポイント数: 10
+   *   - キャラクター名配列 (最大3ポイント)
+   *   - メニュー種類数 (1ポイント)
+   *   - グッズ名配列 (最大3ポイント)
+   *   - ノベルティ名 (1ポイント)
+   *   - テーマ名 (1ポイント)
+   *   - 開催回数 (1ポイント)
+   * - 実際のポイント数 / 期待ポイント数 = 充足率
+   *
+   * @private
+   */
+  private calculateHtmlSufficiency(extraction: ExtractionResult): HtmlExtractionData {
+    // メニューアイテム数（キャラクター名を代用）
+    const characterNames = extraction.キャラクター名 || [];
+    const menuItemCount = characterNames.length;
+
+    // 価格カウント（メニュー種類数から推定）
+    let priceCount = 0;
+    if (extraction.メニュー種類数) {
+      // "計10種" → 10 を抽出
+      const match = extraction.メニュー種類数.match(/\d+/);
+      if (match) {
+        priceCount = parseInt(match[0], 10);
+      }
+    }
+
+    // データポイントカウント（充足率計算用）
+    let actualPoints = 0;
+    const expectedPoints = 10;
+
+    // キャラクター名（最大3ポイント）
+    actualPoints += Math.min(characterNames.length, 3);
+
+    // メニュー種類数（1ポイント）
+    if (extraction.メニュー種類数) {
+      actualPoints += 1;
+    }
+
+    // グッズ名（最大3ポイント）
+    const goodsNames = extraction.グッズ名 || [];
+    actualPoints += Math.min(goodsNames.length, 3);
+
+    // ノベルティ名（1ポイント）
+    if (extraction.ノベルティ名) {
+      actualPoints += 1;
+    }
+
+    // テーマ名（1ポイント）
+    if (extraction.テーマ名) {
+      actualPoints += 1;
+    }
+
+    // 開催回数（1ポイント）
+    if (extraction.開催回数) {
+      actualPoints += 1;
+    }
+
+    // 充足率計算
+    const htmlSufficiencyRate = actualPoints / expectedPoints;
+
+    return {
+      menuItemCount,
+      priceCount,
+      htmlSufficiencyRate,
+    };
   }
 
   /**

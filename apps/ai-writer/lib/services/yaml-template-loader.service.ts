@@ -435,6 +435,81 @@ export class YamlTemplateLoaderService {
       return [];
     }
   }
+
+  // ===============================================
+  // Vision API Template Loading (Action #6)
+  // ===============================================
+
+  /**
+   * Vision API テンプレートを読み込む
+   *
+   * @description
+   * `1.5-vision-extraction.yaml` を読み込み、Vision API 統合用のテンプレートを返す。
+   * このテンプレートは HTML extraction が不十分な場合にのみ使用される。
+   *
+   * @param templateId テンプレートID（例: "collabo-cafe"）
+   * @returns Vision API テンプレート
+   *
+   * @throws {Error} テンプレートファイルが存在しない、または不正な形式の場合
+   *
+   * @example
+   * ```typescript
+   * const visionTemplate = await loader.loadVisionApiTemplate('collabo-cafe');
+   * const menuPrompt = visionTemplate.prompts.menu_extraction.content;
+   * ```
+   */
+  async loadVisionApiTemplate(templateId: string): Promise<import('@/lib/types/vision-api').VisionApiTemplate> {
+    const visionTemplatePath = path.join(
+      this.templatesDir,
+      templateId,
+      'pipeline',
+      '1.5-vision-extraction.yaml'
+    );
+
+    try {
+      console.log(`[YamlTemplateLoader] Loading Vision API template: ${templateId}/1.5-vision-extraction`);
+
+      const content = await this.loadYamlFile(visionTemplatePath);
+
+      // 必須フィールドの検証
+      if (!content.version || !content.name) {
+        throw new Error('Invalid Vision API template: missing version or name');
+      }
+
+      if (!content.prompts || typeof content.prompts !== 'object') {
+        throw new Error('Invalid Vision API template: missing prompts');
+      }
+
+      const requiredPrompts = ['menu_extraction', 'goods_extraction', 'novelty_extraction'];
+      for (const promptKey of requiredPrompts) {
+        if (!(content.prompts as Record<string, unknown>)[promptKey]) {
+          throw new Error(`Invalid Vision API template: missing prompt "${promptKey}"`);
+        }
+      }
+
+      if (!content.output_schema) {
+        throw new Error('Invalid Vision API template: missing output_schema');
+      }
+
+      if (!content.fallback) {
+        throw new Error('Invalid Vision API template: missing fallback');
+      }
+
+      console.log(`[YamlTemplateLoader] Vision API template loaded: ${content.name} (v${content.version})`);
+
+      return content as unknown as import('@/lib/types/vision-api').VisionApiTemplate;
+    } catch (error) {
+      console.error(
+        `[YamlTemplateLoader] Failed to load Vision API template ${templateId}/1.5-vision-extraction:`,
+        error
+      );
+      throw new Error(
+        `Failed to load Vision API template "${templateId}/1.5-vision-extraction": ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      );
+    }
+  }
 }
 
 /**
