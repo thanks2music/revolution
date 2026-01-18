@@ -210,10 +210,9 @@ export class MediaTypeMapperService {
       MediaTypeMappingConfigSchema.parse(this.config);
     } catch (error) {
       // Zodエラーの場合、人間が読みやすい形式に変換
-      if (error && typeof error === 'object' && 'errors' in error && Array.isArray(error.errors)) {
-        const zodError = error as z.ZodError;
-        const errorMessages = zodError.errors
-          .map((err) => {
+      if (error instanceof z.ZodError) {
+        const errorMessages = error.issues
+          .map((err: z.ZodIssue) => {
             const path = err.path.join('.');
             return `  - ${path}: ${err.message}`;
           })
