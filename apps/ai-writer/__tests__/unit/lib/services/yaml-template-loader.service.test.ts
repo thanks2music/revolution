@@ -626,4 +626,190 @@ template:
       expect(defaultService).toBeInstanceOf(YamlTemplateLoaderService);
     });
   });
+
+  // ===============================================
+  // loadVisionApiTemplate() - Vision API 専用テンプレート
+  // ===============================================
+
+  describe('loadVisionApiTemplate', () => {
+    const mockVisionApiYaml = `
+version: "1.5.0"
+name: "Vision API Integration Template"
+description: "OpenAI Vision API integration for image-only content extraction"
+
+metadata:
+  phase: "extraction"
+  order: 1.5
+  requires:
+    - "1-extraction"
+  outputs:
+    - "visionExtraction"
+
+conditions:
+  trigger:
+    description: "HTML extraction insufficient"
+    logic: "menuItemCount < 3 AND priceCount < 2 AND htmlSufficiencyRate < 0.2"
+
+prompts:
+  menu_extraction:
+    description: "Extract menu items from images"
+    content: |
+      Extract all menu items from the provided images.
+      Include: name, price, character name, bonus information.
+      Output as JSON.
+  goods_extraction:
+    description: "Extract goods items from images"
+    content: |
+      Extract all goods items from the provided images.
+      Include: name, price, variant count, character name.
+      Output as JSON.
+  novelty_extraction:
+    description: "Extract novelty item from images"
+    content: |
+      Extract novelty item information from the provided images.
+      Include: name, condition, variant count.
+      Output as JSON.
+
+output_schema:
+  type: object
+  required:
+    - visionExtraction
+  properties:
+    visionExtraction:
+      type: object
+      required:
+        - confidence
+        - provider
+        - timestamp
+        - menuItems
+        - goodsItems
+        - noveltyItem
+      properties:
+        confidence:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+        provider:
+          type: string
+          enum:
+            - openai
+            - claude
+
+fallback:
+  level_a:
+    trigger:
+      - "confidence >= 0.85"
+      - "has menu items OR goods items"
+    template: "detailed_extraction"
+  level_b:
+    trigger:
+      - "0.70 <= confidence < 0.85"
+      - "has character names"
+    template: "partial_extraction"
+  level_c:
+    trigger:
+      - "confidence < 0.70"
+      - "insufficient data"
+    template: "generic_expression"
+
+business_rules:
+  price_validation:
+    menu:
+      min: 500
+      max: 5000
+    goods:
+      min: 300
+      max: 10000
+  variant_count_validation:
+    goods:
+      max: 100
+    novelty:
+      max: 50
+`;
+
+    beforeEach(() => {
+      mockReadFile.mockImplementation(((filePath: any) => {
+        const pathStr = typeof filePath === 'string' ? filePath : String(filePath);
+        if (pathStr.includes('1.5-vision-extraction.yaml')) {
+          return Promise.resolve(mockVisionApiYaml);
+        }
+        return Promise.reject(new Error(`ENOENT: ${pathStr}`));
+      }) as any);
+    });
+
+    it('should load Vision API template with all prompts', async () => {
+      const result = await service.loadVisionApiTemplate('collabo-cafe');
+
+      // メタデータの検証
+      expect(result.version).toBe('1.5.0');
+      expect(result.name).toBe('Vision API Integration Template');
+      expect(result.metadata.phase).toBe('extraction');
+
+      // プロンプトの検証
+      expect(result.prompts.menu_extraction).toBeDefined();
+      expect(result.prompts.menu_extraction.description).toBe(
+        'Extract menu items from images'
+      );
+      expect(result.prompts.menu_extraction.content).toContain('Extract all menu items');
+
+      expect(result.prompts.goods_extraction).toBeDefined();
+      expect(result.prompts.novelty_extraction).toBeDefined();
+    });
+
+    it('should validate fallback strategy (Level A/B/C)', async () => {
+      const result = await service.loadVisionApiTemplate('collabo-cafe');
+
+      // フォールバック戦略の検証
+      expect(result.fallback.level_a).toBeDefined();
+      expect(result.fallback.level_a.trigger).toContain('confidence >= 0.85');
+      expect(result.fallback.level_a.template).toBe('detailed_extraction');
+
+      expect(result.fallback.level_b).toBeDefined();
+      expect(result.fallback.level_b.trigger).toContain('0.70 <= confidence < 0.85');
+      expect(result.fallback.level_b.template).toBe('partial_extraction');
+
+      expect(result.fallback.level_c).toBeDefined();
+      expect(result.fallback.level_c.trigger).toContain('confidence < 0.70');
+      expect(result.fallback.level_c.template).toBe('generic_expression');
+    });
+
+    it('should validate business rules', async () => {
+      const result = await service.loadVisionApiTemplate('collabo-cafe');
+
+      // ビジネスルールの検証
+      expect(result.business_rules.price_validation.menu.min).toBe(500);
+      expect(result.business_rules.price_validation.menu.max).toBe(5000);
+      expect(result.business_rules.price_validation.goods.min).toBe(300);
+      expect(result.business_rules.price_validation.goods.max).toBe(10000);
+
+      expect(result.business_rules.variant_count_validation.goods.max).toBe(100);
+      expect(result.business_rules.variant_count_validation.novelty.max).toBe(50);
+    });
+
+    it('should validate output schema structure', async () => {
+      const result = await service.loadVisionApiTemplate('collabo-cafe');
+
+      // 出力スキーマの検証
+      expect(result.output_schema.type).toBe('object');
+      expect(result.output_schema.required).toContain('visionExtraction');
+
+      const visionExtractionSchema = result.output_schema.properties.visionExtraction;
+      expect(visionExtractionSchema.type).toBe('object');
+      expect(visionExtractionSchema.required).toContain('confidence');
+      expect(visionExtractionSchema.required).toContain('provider');
+      expect(visionExtractionSchema.required).toContain('menuItems');
+      expect(visionExtractionSchema.required).toContain('goodsItems');
+      expect(visionExtractionSchema.required).toContain('noveltyItem');
+    });
+
+    it('should throw error when Vision API template is missing', async () => {
+      mockReadFile.mockImplementation(() =>
+        Promise.reject(new Error('ENOENT: file not found'))
+      );
+
+      await expect(
+        service.loadVisionApiTemplate('nonexistent')
+      ).rejects.toThrow('Failed to load Vision API template');
+    });
+  });
 });
