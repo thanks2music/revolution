@@ -23,11 +23,15 @@ import { TextEncoder, TextDecoder } from 'util';
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
 
-// 簡単なfetchモック（undiciを使わない）
-global.fetch = jest.fn();
-global.Headers = jest.fn();
-global.Request = jest.fn();
-global.Response = jest.fn();
+// undici を使用して実際の fetch/Headers 実装を提供
+// これにより E2E テストでも OpenAI SDK が正常に動作する
+// 参照: /notes/03-report/2026-01/2026-01-18-08-E2Eテスト問題の2つのレビュー結果を踏まえた推奨アクション方針まとめ.md
+import { fetch, Headers, Request, Response } from 'undici';
+
+global.fetch = fetch;
+global.Headers = Headers;
+global.Request = Request;
+global.Response = Response;
 
 // Firebase Admin SDKのモック（テスト中は実際のFirebaseに接続しない）
 jest.mock('firebase-admin', () => ({
