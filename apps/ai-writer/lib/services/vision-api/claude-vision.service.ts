@@ -29,6 +29,7 @@ import type {
   GoodsItem,
   NoveltyItem,
 } from '@/lib/types/vision-api';
+import { calculateCost, formatCost } from '@/lib/ai/cost';
 
 interface RawClaudeResponse {
   confidence?: number;
@@ -241,6 +242,16 @@ export class ClaudeVisionService implements IVisionApiService {
       throw apiError;
     }
 
+    // Calculate and display cost
+    const cost = calculateCost(this.modelName, {
+      promptTokens: response.usage.input_tokens,
+      completionTokens: response.usage.output_tokens,
+      totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+      cachedTokens: 0, // Claude SDK doesn't return cached tokens separately
+    });
+    const costStr = formatCost(cost);
+    console.log(`[ClaudeVisionService] 💰 Cost: ${costStr}`);
+
     // Debug: Log response structure
     console.log('[ClaudeVisionService] Raw response object:', JSON.stringify(response, null, 2));
     console.log('[ClaudeVisionService] Response type:', typeof response);
@@ -281,8 +292,8 @@ export class ClaudeVisionService implements IVisionApiService {
       );
     }
 
-    // Save debug log
-    await this.saveLogToFile(imageUrls, prompt, category, response, rawJson);
+    // Save debug log with cost information
+    await this.saveLogToFile(imageUrls, prompt, category, response, rawJson, cost);
 
     // Convert raw response to typed VisionExtractionResult
     const result = this.convertToVisionExtractionResult(rawJson, category);
@@ -481,7 +492,8 @@ export class ClaudeVisionService implements IVisionApiService {
     prompt: string,
     category: string,
     response: Anthropic.Messages.Message,
-    rawJson: RawClaudeResponse
+    rawJson: RawClaudeResponse,
+    cost: { usd: number; jpy: number; breakdown: { inputCost: number; outputCost: number; cachedCost: number } }
   ): Promise<void> {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -518,6 +530,12 @@ export class ClaudeVisionService implements IVisionApiService {
       `Stop Reason: ${response.stop_reason || 'unknown'}`,
       `Input Tokens: ${response.usage.input_tokens}`,
       `Output Tokens: ${response.usage.output_tokens}`,
+      '',
+      '## Cost Analysis',
+      `Total Cost: $${cost.usd.toFixed(5)} (約¥${cost.jpy.toFixed(2)})`,
+      `  - Input Cost: $${cost.breakdown.inputCost.toFixed(5)}`,
+      `  - Output Cost: $${cost.breakdown.outputCost.toFixed(5)}`,
+      `  - Cached Cost: $${cost.breakdown.cachedCost.toFixed(5)}`,
       '',
       '## Raw JSON Response',
       '-'.repeat(80),

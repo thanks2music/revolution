@@ -97,6 +97,12 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     outputPer1M: 15.0,
     provider: 'anthropic',
   },
+  'claude-sonnet-4-5-20250929': {
+    inputPer1M: 3.0,
+    cachedInputPer1M: 0.3,
+    outputPer1M: 15.0,
+    provider: 'anthropic',
+  },
   'claude-3-5-haiku-20241022': {
     inputPer1M: 0.8,
     cachedInputPer1M: 0.08,
