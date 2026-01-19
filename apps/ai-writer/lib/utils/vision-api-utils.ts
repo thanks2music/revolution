@@ -16,6 +16,8 @@ import type {
   FallbackLevelType,
   CrossCheckResult,
   HallucinationDetectionResult,
+  VisionProvider,
+  TokenCalculationResult,
 } from '@/lib/types/vision-api';
 
 /**
@@ -173,15 +175,18 @@ export function detectHallucination(
   }
 
   // Type 2: Excessive Detail Without HTML
+  // NOTE: Only flag as hallucination if HTML sufficiency is >= 20% (above Vision API threshold).
+  // When HTML sufficiency is < 20%, Vision API is the primary source and many extracted items is expected.
   if (
     htmlExtraction.menuItemCount === 0 &&
     htmlExtraction.priceCount === 0 &&
+    htmlExtraction.htmlSufficiencyRate >= 0.20 &&
     visionExtraction.menuItems.length > 10
   ) {
     return {
       detected: true,
       type: 'excessive_detail_without_html',
-      reason: `Generated ${visionExtraction.menuItems.length} menu items without any HTML data`,
+      reason: `Generated ${visionExtraction.menuItems.length} menu items without any HTML data (HTML sufficiency: ${(htmlExtraction.htmlSufficiencyRate * 100).toFixed(1)}%)`,
       confidence: visionExtraction.confidence,
     };
   }
@@ -359,4 +364,93 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
     adjustedConfidence,
     issues,
   };
+}
+
+/**
+ * Calculate tokens for Vision API request (provider-specific)
+ *
+ * @description
+ * Calculates token consumption based on provider and image specifications.
+ *
+ * OpenAI calculation:
+ * - detail=low: 85 tokens per image (fixed)
+ * - detail=high: ~1,105 tokens per image (estimated based on Princess Cafe test)
+ *
+ * Claude calculation:
+ * - tokens = (width × height) / 750
+ * - Conservative estimate: 2,560 tokens per image (typical collaboration cafe menu)
+ *
+ * @param provider - Vision API provider ('openai' or 'claude')
+ * @param imageUrls - Image URLs to analyze
+ * @param detail - Detail level for OpenAI (default: 'high')
+ * @returns Token calculation result with cost estimation
+ *
+ * @example
+ * ```typescript
+ * const openaiTokens = await calculateVisionTokens('openai', imageUrls, 'high');
+ * console.log(`Estimated cost: $${openaiTokens.estimatedCost}`);
+ *
+ * const claudeTokens = await calculateVisionTokens('claude', imageUrls);
+ * console.log(`Estimated cost: $${claudeTokens.estimatedCost}`);
+ * ```
+ */
+export async function calculateVisionTokens(
+  provider: VisionProvider,
+  imageUrls: string[],
+  detail: 'low' | 'high' | 'auto' = 'high'
+): Promise<TokenCalculationResult> {
+  if (provider === 'openai') {
+    // OpenAI token calculation
+    if (detail === 'low') {
+      const imageTokens = imageUrls.length * 85;
+      const promptTokens = 100; // Estimated
+      const totalTokens = imageTokens + promptTokens;
+      const estimatedCost = (totalTokens / 1_000_000) * 0.15; // $0.15/1M tokens
+
+      return {
+        provider: 'openai',
+        totalTokens,
+        breakdown: {
+          imageTokens,
+          promptTokens,
+        },
+        estimatedCost,
+      };
+    }
+
+    // detail=high or auto: conservative estimate
+    const imageTokens = imageUrls.length * 1105; // Based on Princess Cafe test
+    const promptTokens = 100; // Estimated
+    const totalTokens = imageTokens + promptTokens;
+    const estimatedCost = (totalTokens / 1_000_000) * 0.15; // $0.15/1M tokens
+
+    return {
+      provider: 'openai',
+      totalTokens,
+      breakdown: {
+        imageTokens,
+        promptTokens,
+      },
+      estimatedCost,
+    };
+  } else if (provider === 'claude') {
+    // Claude token calculation
+    // Conservative estimate: 2,560 tokens per image (typical collaboration cafe menu)
+    const imageTokens = imageUrls.length * 2560;
+    const promptTokens = 100; // Estimated
+    const totalTokens = imageTokens + promptTokens;
+    const estimatedCost = (totalTokens / 1_000_000) * 3.0; // $3.00/1M tokens
+
+    return {
+      provider: 'claude',
+      totalTokens,
+      breakdown: {
+        imageTokens,
+        promptTokens,
+      },
+      estimatedCost,
+    };
+  }
+
+  throw new Error(`Unknown provider: ${provider}`);
 }
