@@ -496,7 +496,9 @@ export class ClaudeVisionService implements IVisionApiService {
     cost: { usd: number; jpy: number; breakdown: { inputCost: number; outputCost: number; cachedCost: number } }
   ): Promise<void> {
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    // JST (UTC+9) タイムスタンプ
+    const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const dateStr = jstDate.toISOString().split('T')[0]; // YYYY-MM-DD
     const provider = 'Claude';
     const domain = this.extractDomain(imageUrls[0] || 'unknown');
     const sequence = this.getNextLogSequence(dateStr, provider, domain);
@@ -510,7 +512,7 @@ export class ClaudeVisionService implements IVisionApiService {
       '='.repeat(80),
       '',
       '## Timestamp',
-      now.toISOString(),
+      jstDate.toISOString().replace('Z', '+09:00'), // JST format
       '',
       '## Request Info',
       `Category: ${category}`,

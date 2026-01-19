@@ -20,6 +20,7 @@ import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
 import type {
+  IVisionApiService,
   VisionExtractionResult,
   MenuItem,
   GoodsItem,
@@ -405,7 +406,7 @@ export class OpenAiVisionService implements IVisionApiService {
   /**
    * Convert raw item to MenuItem
    */
-  private convertToMenuItem(item: RawVisionResponse['menuItems'][0]): MenuItem {
+  private convertToMenuItem(item: NonNullable<RawVisionResponse['menuItems']>[number]): MenuItem {
     return {
       name: item.name,
       price: item.price,
@@ -421,7 +422,7 @@ export class OpenAiVisionService implements IVisionApiService {
   /**
    * Convert raw item to GoodsItem
    */
-  private convertToGoodsItem(item: RawVisionResponse['goodsItems'][0]): GoodsItem {
+  private convertToGoodsItem(item: NonNullable<RawVisionResponse['goodsItems']>[number]): GoodsItem {
     return {
       name: item.name,
       price: item.price,
@@ -434,7 +435,7 @@ export class OpenAiVisionService implements IVisionApiService {
   /**
    * Convert raw item to NoveltyItem
    */
-  private convertToNoveltyItem(item: RawVisionResponse['noveltyItems'][0]): NoveltyItem {
+  private convertToNoveltyItem(item: NonNullable<RawVisionResponse['noveltyItems']>[number]): NoveltyItem {
     return {
       name: item.name,
       condition: item.condition,
@@ -502,7 +503,10 @@ export class OpenAiVisionService implements IVisionApiService {
     elapsedTime: number,
     cost: { usd: number; jpy: number; breakdown: { inputCost: number; outputCost: number; cachedCost: number } }
   ): Promise<void> {
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    // JST (UTC+9) タイムスタンプ
+    const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const today = jstDate.toISOString().split('T')[0];
     const sequence = this.getNextLogSequence(domain, category);
     const sequenceStr = sequence.toString().padStart(2, '0');
 
@@ -511,7 +515,7 @@ export class OpenAiVisionService implements IVisionApiService {
 
     const logContent = `
 =================================================================
-OpenAI Vision API Log - ${new Date().toISOString()}
+OpenAI Vision API Log - ${jstDate.toISOString().replace('Z', '+09:00')}
 =================================================================
 
 Provider: openai
