@@ -246,8 +246,15 @@ export class OpenAiVisionService implements IVisionApiService {
       }
     }
 
+    // Rethrow the original error to preserve the error message pattern
+    // (e.g., "Vision API call timed out after Xms")
+    if (lastError) {
+      throw lastError;
+    }
+
+    // This should never be reached, but for type safety
     throw new Error(
-      `[OpenAiVisionService] Failed after ${maxRetries} attempts. Last error: ${lastError?.message}`
+      `[OpenAiVisionService] Failed after ${maxRetries} attempts with no error captured`
     );
   }
 
@@ -264,7 +271,7 @@ export class OpenAiVisionService implements IVisionApiService {
       this.callVisionApi(imageUrls, prompt, category),
       new Promise<never>((_, reject) =>
         setTimeout(
-          () => reject(new Error(`Vision API call timed out after ${timeout}ms`)),
+          () => reject(new Error(`Vision API timeout after ${timeout}ms`)),
           timeout
         )
       ),
