@@ -400,3 +400,139 @@ export interface HallucinationDetectionResult {
   /** Confidence score that triggered detection */
   confidence?: number;
 }
+
+/**
+ * Vision API Provider Type
+ *
+ * @description
+ * Supported Vision API providers for dual-provider architecture.
+ */
+export type VisionProvider = 'openai' | 'claude';
+
+/**
+ * Vision API Configuration
+ *
+ * @description
+ * Configuration options for Vision API service initialization.
+ * Used by VisionApiServiceFactory to create provider-specific implementations.
+ */
+export interface VisionApiConfig {
+  /** Provider to use (openai or claude) */
+  provider: VisionProvider;
+
+  /** API key (optional, defaults to environment variable) */
+  apiKey?: string;
+
+  /** Model name override (optional, defaults to provider-specific default) */
+  model?: string;
+
+  /** Detail level for OpenAI (optional, defaults to 'high') */
+  detail?: 'low' | 'high' | 'auto';
+
+  /** Max tokens (optional, defaults to 4096) */
+  maxTokens?: number;
+
+  /** Temperature (optional, defaults to 0.1) */
+  temperature?: number;
+}
+
+/**
+ * Token Calculation Result
+ *
+ * @description
+ * Result of token calculation for Vision API calls.
+ * Provides detailed breakdown and cost estimation.
+ */
+export interface TokenCalculationResult {
+  /** Provider used for calculation */
+  provider: VisionProvider;
+
+  /** Total tokens consumed */
+  totalTokens: number;
+
+  /** Token calculation breakdown */
+  breakdown: {
+    /** Image tokens */
+    imageTokens: number;
+
+    /** Prompt tokens */
+    promptTokens: number;
+
+    /** Completion tokens (if available) */
+    completionTokens?: number;
+  };
+
+  /** Cost estimation in USD */
+  estimatedCost: number;
+}
+
+/**
+ * Vision API Service Interface
+ *
+ * @description
+ * Abstract interface for Vision API service implementations.
+ * Both OpenAI and Claude implementations must conform to this interface.
+ *
+ * @example
+ * ```typescript
+ * const service: IVisionApiService = VisionApiServiceFactory.create('openai');
+ * const result = await service.extractFromImages({
+ *   imageUrls: ['https://example.com/menu.jpg'],
+ *   prompt: 'Extract menu items',
+ *   category: 'menu'
+ * });
+ * ```
+ */
+export interface IVisionApiService {
+  /**
+   * Extract menu/goods/novelty information from images
+   *
+   * @param options - Vision API call options
+   * @returns Extraction result with menu/goods/novelty items
+   */
+  extractFromImages(options: VisionApiCallOptions): Promise<VisionExtractionResult>;
+
+  /**
+   * Get provider name
+   *
+   * @returns Provider name ('openai' or 'claude')
+   */
+  getProviderName(): VisionProvider;
+
+  /**
+   * Calculate tokens for image analysis
+   *
+   * @param imageUrls - Array of image URLs to analyze
+   * @returns Token calculation result with cost estimation
+   */
+  calculateTokens(imageUrls: string[]): Promise<TokenCalculationResult>;
+}
+
+/**
+ * Vision API Call Options (Extended)
+ *
+ * @description
+ * Extended options for Vision API calls with provider-specific parameters.
+ */
+export interface VisionApiCallOptions {
+  /** Image URLs to analyze */
+  imageUrls: string[];
+
+  /** Prompt for extraction */
+  prompt: string;
+
+  /** Category being extracted (menu, goods, novelty) */
+  category: 'menu' | 'goods' | 'novelty';
+
+  /** Maximum retry attempts (default: 3) */
+  maxRetries?: number;
+
+  /** Timeout in milliseconds (default: 30000) */
+  timeout?: number;
+
+  /** Provider override (optional, defaults to config) */
+  provider?: VisionProvider;
+
+  /** Detail level for OpenAI (optional, defaults to 'high') */
+  detail?: 'low' | 'high' | 'auto';
+}
