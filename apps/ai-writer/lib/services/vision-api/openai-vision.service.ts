@@ -28,6 +28,8 @@ import type {
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
+import { buildInterimVisionPrompt } from './prompts';
+import { calculateCost, formatCost } from '@/lib/ai/cost';
 
 /**
  * Raw Vision API Response (Internal Type)
@@ -280,7 +282,9 @@ export class OpenAiVisionService implements IVisionApiService {
     const startTime = Date.now();
 
     // Build interim prompt (will be replaced with Templates YAML in future)
-    const fullPrompt = this.buildInterimPrompt(prompt, category);
+    const fullPrompt = buildInterimVisionPrompt(
+      category as 'menu' | 'novelty' | 'goods'
+    );
 
     // Build content array with images
     const content: OpenAI.ChatCompletionContentPart[] = [
@@ -321,7 +325,17 @@ export class OpenAiVisionService implements IVisionApiService {
 
     const rawContent = response.choices[0]?.message?.content || '{}';
 
-    // Save log
+    // Calculate and display cost
+    const cost = calculateCost(this.modelName, {
+      promptTokens: response.usage?.prompt_tokens || 0,
+      completionTokens: response.usage?.completion_tokens || 0,
+      totalTokens: response.usage?.total_tokens || 0,
+      cachedTokens: 0, // OpenAI SDK doesn't return cached tokens separately
+    });
+    const costStr = formatCost(cost);
+    console.log(`[OpenAiVisionService] 💰 Cost: ${costStr}`);
+
+    // Save log with cost information
     const domain = this.extractDomain(imageUrls[0]);
     await this.saveLogToFile(
       domain,
@@ -330,7 +344,8 @@ export class OpenAiVisionService implements IVisionApiService {
       fullPrompt,
       rawContent,
       response.usage,
-      elapsedTime
+      elapsedTime,
+      cost
     );
 
     console.log(
@@ -423,71 +438,6 @@ export class OpenAiVisionService implements IVisionApiService {
     };
   }
 
-  /**
-   * Build interim prompt (TEMPORARY: Will be replaced with Templates YAML)
-   *
-   * @description
-   * This is a temporary hardcoded prompt until Templates YAML is ready.
-   * See: /Users/yoshi/work/dev/my-projects/revolution/notes/03-report/2026-01/2026-01-18-12-Templates側へのVision-API-YAML作成依頼.md
-   */
-  private buildInterimPrompt(basePrompt: string, category: string): string {
-    return `あなたはコラボカフェのメニュー情報を抽出する専門家です。
-指定した画像内に書かれている日本語の文字列を抽出してください。
-
-想定される日本語の情報:
-- メニュー名
-- 金額 (メニューの料金)
-- キャラクター名 (メニュー名に含まれる場合は分離して抽出)
-- その他の文字列情報 (出現頻度が高い例: ノベルティ情報)
-
-# 抽出ルール
-
-- メニュー名にキャラクター名が含まれる場合、characterName フィールドに分離する
-  例: 「場地と千冬のマカロンパフェ」→ name: "マカロンパフェ", characterName: "場地と千冬"
-- キャラクター名が不明な場合は、characterName を空文字列にする
-
-# 出力形式
-
-必ず以下のJSON形式で出力してください:
-
-{
-  "menuItems": [
-    {
-      "name": "メニュー名",
-      "price": 1200,
-      "characterName": "キャラクター名",
-      "description": "コラボメニューのコンセプトや説明が書かれている場合",
-      "notes": "注意点が記載されている場合 (例: 食品アレルギー表記など)",
-      "remarks": "補足情報が記載されている場合 (例: 食材名や栄養成分など)",
-      "confidence": 0.95
-    }
-  ],
-  "goodsItems": [
-    {
-      "name": "グッズ名",
-      "price": 1500,
-      "variantCount": 6,
-      "variantDetails": "全6種",
-      "characterName": "キャラクター名"
-    }
-  ],
-  "noveltyItems": [
-    {
-      "name": "ノベルティ名称",
-      "condition": "ノベルティ条件が記載されている場合",
-      "variantCount": 8,
-      "characterName": "キャラクター名",
-      "notes": "注意点が記載されている場合 (例: 絵柄は選べませんなど)",
-      "remarks": "補足情報が記載されている場合 (例: 無くなり次第終了など)"
-    }
-  ],
-  "metadata": {
-    "imageQuality": "high",
-    "hasComingSoonNotice": false,
-    "extractionDifficulty": "easy"
-  }
-}`;
-  }
 
   /**
    * Sleep utility
@@ -542,7 +492,8 @@ export class OpenAiVisionService implements IVisionApiService {
     prompt: string,
     response: string,
     usage: OpenAI.CompletionUsage | undefined,
-    elapsedTime: number
+    elapsedTime: number,
+    cost: { usd: number; jpy: number; breakdown: { inputCost: number; outputCost: number; cachedCost: number } }
   ): Promise<void> {
     const today = new Date().toISOString().split('T')[0];
     const sequence = this.getNextLogSequence(domain, category);
@@ -587,6 +538,15 @@ Elapsed Time: ${elapsedTime}ms
 Total Tokens: ${usage?.total_tokens || 'unknown'}
 Prompt Tokens: ${usage?.prompt_tokens || 'unknown'}
 Completion Tokens: ${usage?.completion_tokens || 'unknown'}
+
+=================================================================
+COST ANALYSIS
+=================================================================
+
+Total Cost: $${cost.usd.toFixed(5)} (約¥${cost.jpy.toFixed(2)})
+  - Input Cost: $${cost.breakdown.inputCost.toFixed(5)}
+  - Output Cost: $${cost.breakdown.outputCost.toFixed(5)}
+  - Cached Cost: $${cost.breakdown.cachedCost.toFixed(5)}
 
 =================================================================
 `;

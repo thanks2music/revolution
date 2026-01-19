@@ -73,6 +73,7 @@ import {
 import { buildCategories } from '@/lib/utils/category-builder';
 import { validateStoreName } from '@/lib/utils/store-name-validator';
 import { VisionApiService } from './vision-api.service';
+import { buildInterimVisionPrompt } from './vision-api/prompts';
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import {
   crossCheckVisionResult,
@@ -511,21 +512,21 @@ export class ArticleGenerationMdxService {
             if (imageUrls.length === 0) {
               console.warn('[Step 1.8] ⚠️ カテゴリ別画像なし、Vision API をスキップ');
             } else {
-              // YAML テンプレートを読み込み
-              const yamlLoader = new YamlTemplateLoaderService();
-              const visionTemplate = await yamlLoader.loadVisionApiTemplate('collabo-cafe');
-
-              console.log('[Step 1.8] Vision API テンプレート読み込み完了');
-
               // Vision API サービスを初期化
               const visionService = new VisionApiService();
+
+              // 暫定プロンプトを生成（Phase 0 PoC対応）
+              // TODO: Templates側でvision-api.yamlが完成次第、YAML読み込みに切り替え
+              const interimPrompt = buildInterimVisionPrompt('menu');
+
+              console.log('[Step 1.8] Vision API 暫定プロンプト生成完了');
 
               // Vision API を呼び出し（メニュー抽出）
               console.log(`[Step 1.8] Vision API 呼び出し中（画像: ${imageUrls.length}件）...`);
 
               const visionExtraction = await visionService.extractFromImages({
                 imageUrls,
-                prompt: visionTemplate.prompts.menu_extraction.content,
+                prompt: interimPrompt,
                 category: 'menu',
                 maxRetries: 3,
                 timeout: 30000,

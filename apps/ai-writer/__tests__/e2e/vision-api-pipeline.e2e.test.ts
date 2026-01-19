@@ -30,6 +30,7 @@ jest.unmock('@anthropic-ai/sdk');
 
 import { VisionApiServiceFactory } from '@/lib/services/vision-api/vision-api-service.factory';
 import type { IVisionApiService, VisionProvider } from '@/lib/types/vision-api';
+import { buildInterimVisionPrompt } from '@/lib/services/vision-api/prompts';
 import { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
 import {
   crossCheckVisionResult,
@@ -91,56 +92,12 @@ describe.each(PROVIDERS_TO_TEST)(
     expect(isSufficient).toBe(false);
     console.log('[E2E Test] Step 2: HTML sufficiency check:', { isSufficient });
 
-    // Step 3: Use interim simplified prompt
+    // Step 3: Use interim simplified prompt (shared utility)
     // NOTE: Waiting for Templates repository to create 1.5-vision-extraction.yaml
-    // Interim prompt focuses on simple Japanese text extraction with character name separation
-    const interimPrompt = `あなたはコラボカフェのメニュー情報を抽出する専門家です。
-指定した画像内に書かれている日本語の文字列を抽出してください。
+    // Using shared buildInterimVisionPrompt() to ensure E2E tests and production use identical prompts
+    const interimPrompt = buildInterimVisionPrompt('menu');
 
-想定される日本語の情報:
-- メニュー名
-- 金額 (メニューの料金)
-- キャラクター名 (メニュー名に含まれる場合は分離して抽出)
-- その他の文字列情報 (出現頻度が高い例: ノベルティ情報)
-
-# 抽出ルール
-
-- メニュー名にキャラクター名が含まれる場合、characterName フィールドに分離する
-  例: 「場地と千冬のマカロンパフェ」→ name: "マカロンパフェ", characterName: "場地と千冬"
-- キャラクター名が不明な場合は、characterName を空文字列にする
-
-# 出力形式
-
-必ず以下のJSON形式のみで回答してください。他のテキストは一切含めないでください。
-
-{
-  "menuItems": [
-    {
-      "name": "メニュー名",
-      "price": 1200,
-      "characterName": "キャラクター名",
-      "description": "コラボメニューのコンセプトや説明が書かれている場合",
-      "notes": "注意点が記載されている場合 (例: 食品アレルギー表記など)",
-      "remarks": "補足情報が記載されている場合 (例: 食材名や栄養成分など)",
-      "confidence": 0.95
-    }
-  ],
-  "noveltyItems": [
-    {
-      "name": "ノベルティ名称",
-      "condition": "ノベルティ条件が記載されている場合",
-      "notes": "注意点が記載されている場合 (例: 絵柄は選べませんなど)",
-      "remarks": "補足情報が記載されている場合 (例: 無くなり次第終了など)"
-    }
-  ],
-  "metadata": {
-    "imageQuality": "high",
-    "hasComingSoonNotice": false,
-    "extractionDifficulty": "easy"
-  }
-}`;
-
-    console.log('[E2E Test] Step 3: Using interim simplified prompt');
+    console.log('[E2E Test] Step 3: Using shared interim prompt utility');
 
     // Step 4: Call Vision API
     // Using Princess Cafe (Tokyo Revengers) menu images
