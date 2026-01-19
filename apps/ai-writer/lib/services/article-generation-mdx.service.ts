@@ -72,7 +72,7 @@ import {
 } from '@/lib/ai/cost';
 import { buildCategories } from '@/lib/utils/category-builder';
 import { validateStoreName } from '@/lib/utils/store-name-validator';
-import { VisionApiService } from './vision-api.service';
+import { VisionApiServiceFactory } from './vision-api/vision-api-service.factory';
 import { buildInterimVisionPrompt } from './vision-api/prompts';
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import {
@@ -512,8 +512,8 @@ export class ArticleGenerationMdxService {
             if (imageUrls.length === 0) {
               console.warn('[Step 1.8] ⚠️ カテゴリ別画像なし、Vision API をスキップ');
             } else {
-              // Vision API サービスを初期化
-              const visionService = new VisionApiService();
+              // Vision API サービスを初期化（環境変数 VISION_API_PROVIDER で切り替え）
+              const visionService = VisionApiServiceFactory.create();
 
               // 暫定プロンプトを生成（Phase 0 PoC対応）
               // TODO: Templates側でvision-api.yamlが完成次第、YAML読み込みに切り替え
