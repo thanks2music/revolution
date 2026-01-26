@@ -2,6 +2,10 @@ import '@testing-library/jest-dom';
 import dotenv from 'dotenv';
 import path from 'path';
 
+// Note: TextEncoder/TextDecoder and fetch API are now polyfilled in jest.polyfills.mjs
+// which runs BEFORE the test environment is set up. This ensures they're available
+// when undici and other modules are imported.
+
 // テスト環境用の環境変数を読み込み
 dotenv.config({ path: path.resolve(process.cwd(), '.env.test') });
 
@@ -17,21 +21,6 @@ global.console = {
 // Next.js環境変数のモック
 process.env.NODE_ENV = 'test';
 process.env.NEXT_PUBLIC_WP_ENDPOINT = process.env.NEXT_PUBLIC_WP_ENDPOINT || 'http://localhost:8080/graphql';
-
-// Node.js環境でのfetch APIサポート
-import { TextEncoder, TextDecoder } from 'util';
-global.TextEncoder = TextEncoder;
-global.TextDecoder = TextDecoder;
-
-// undici を使用して実際の fetch/Headers 実装を提供
-// これにより E2E テストでも OpenAI SDK が正常に動作する
-// 参照: /notes/03-report/2026-01/2026-01-18-08-E2Eテスト問題の2つのレビュー結果を踏まえた推奨アクション方針まとめ.md
-import { fetch, Headers, Request, Response } from 'undici';
-
-global.fetch = fetch;
-global.Headers = Headers;
-global.Request = Request;
-global.Response = Response;
 
 // Firebase Admin SDKのモック（テスト中は実際のFirebaseに接続しない）
 jest.mock('firebase-admin', () => ({

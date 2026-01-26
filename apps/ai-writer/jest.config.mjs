@@ -10,7 +10,16 @@ const config = {
   coverageProvider: 'v8',
   testEnvironment: 'jsdom',
 
-  // Add more setup options before each test is run
+  // Configure jsdom to include Node.js globals
+  testEnvironmentOptions: {
+    customExportConditions: ['node', 'node-addons'],
+  },
+
+  // Setup files that run BEFORE the test environment is set up
+  // This is where we polyfill TextEncoder/TextDecoder and fetch API
+  setupFiles: ['<rootDir>/jest.polyfills.mjs'],
+
+  // Add more setup options AFTER each test framework is installed
   setupFilesAfterEnv: ['<rootDir>/jest.setup.mjs'],
 
   // カバレッジ設定
