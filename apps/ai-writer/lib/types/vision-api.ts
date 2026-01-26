@@ -178,14 +178,14 @@ export interface VisionExtractionResult {
  * Menu Item Structure
  */
 export interface MenuItem {
-  /** Menu item name (exact, no truncation) */
+  /** Menu item name (as written in the image, exact text) */
   name: string;
 
   /** Price (tax-included preferred) */
   price?: number;
 
-  /** Character name (if identifiable) */
-  characterName?: string;
+  /** Character names (array, empty array if no characters) */
+  characterName: string[];
 
   /** Bonus/novelty information */
   bonus?: string;

@@ -36,9 +36,27 @@ export function buildInterimVisionPrompt(
 
 # 抽出ルール
 
-- メニュー名にキャラクター名が含まれる場合、characterName フィールドに分離する
-  例: 「場地と千冬のマカロンパフェ」→ name: "マカロンパフェ", characterName: "場地と千冬"
-- キャラクター名が不明な場合は、characterName を空文字列にする
+- メニュー名（name）は画像に記載されているままの文字列を抽出してください
+- メニュー名にキャラクター名が含まれる場合、characterName フィールドに**配列形式**でキャラクター名を個別に抽出してください
+- キャラクター名から装飾記号（★、♡、括弧など）や修飾語（ver、版など）は除去してください
+
+  例1: 「場地と千冬のマカロンパフェ」
+       → name: "場地と千冬のマカロンパフェ"
+       → characterName: ["場地", "千冬"]
+
+  例2: 「武道とマイキーのショートケーキ」
+       → name: "武道とマイキーのショートケーキ"
+       → characterName: ["武道", "マイキー"]
+
+  例3: 「場地（制服ver）のドリンク」
+       → name: "場地（制服ver）のドリンク"
+       → characterName: ["場地"]  ※ 括弧と ver を除去
+
+  例4: 「フライドポテト」（キャラクター名なし）
+       → name: "フライドポテト"
+       → characterName: []
+
+- キャラクター名が含まれていない場合は、characterName を空配列 [] にしてください
 
 # 出力形式
 
@@ -47,9 +65,9 @@ export function buildInterimVisionPrompt(
 {
   "menuItems": [
     {
-      "name": "メニュー名（キャラクター名を含まない）",
+      "name": "メニュー名（画像に記載されているまま）",
       "price": 金額（数値のみ、例: 1200）,
-      "characterName": "キャラクター名（例: 場地と千冬）または空文字列",
+      "characterName": ["キャラクター1", "キャラクター2"] または [],
       "description": "メニューの説明（可能な限り）",
       "hasNovelty": true または false,
       "noveltyCondition": "ノベルティの配布条件（記載があれば）",
@@ -67,6 +85,7 @@ export function buildInterimVisionPrompt(
 
 - 画像に「近日公開」「Coming Soon」と記載されている場合は、menuItems を空配列 [] で返してください
 - 価格が記載されていない場合は null を設定してください
-- キャラクター名が明確でない場合は空文字列 "" を設定してください
+- characterName は必ず配列形式で返してください（文字列ではありません）
+- キャラクター名が含まれていない場合は空配列 [] を設定してください
 - confidence は抽出した情報の確実性を 0.0-1.0 で評価してください`;
 }

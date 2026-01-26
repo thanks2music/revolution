@@ -129,7 +129,8 @@ export class OpenAiVisionService implements IVisionApiService {
     this.detailLevel = config?.detail || 'high';
 
     // Log directory path (adjusted for subdirectory location)
-    this.logDir = path.join(__dirname, '..', '..', '..', 'logs');
+    // Note: Use process.cwd() instead of __dirname for ES Module compatibility
+    this.logDir = path.join(process.cwd(), 'logs');
 
     if (!fs.existsSync(this.logDir)) {
       fs.mkdirSync(this.logDir, { recursive: true });
@@ -410,13 +411,71 @@ export class OpenAiVisionService implements IVisionApiService {
     return {
       name: item.name,
       price: item.price,
-      characterName: item.characterName,
+      characterName: this.parseCharacterNameArray(item.characterName, item.name),
       bonus: item.bonus,
       description: item.description,
       notes: item.notes,
       remarks: item.remarks,
       confidence: item.confidence || 0.5,
     };
+  }
+
+  /**
+   * Parse characterName field to string array
+   *
+   * @description
+   * Expects array format from LLM. Applies minimal cleaning for robustness.
+   * Legacy string format is NOT supported (development phase only).
+   *
+   * @param value - Raw characterName value from LLM response
+   * @param menuName - Menu name for logging purposes
+   * @returns Cleaned character names array (empty array if no characters)
+   */
+  private parseCharacterNameArray(value: unknown, menuName: unknown): string[] {
+    // Case 1: Array (expected)
+    if (Array.isArray(value)) {
+      return value
+        .map(v => this.cleanCharacterName(String(v)))
+        .filter(v => v.length > 0);
+    }
+
+    // Case 2: Unexpected string format (should not happen in new implementation)
+    if (typeof value === 'string' && value.length > 0) {
+      console.warn(
+        `[OpenAiVisionService] Unexpected string format for characterName: "${value}". ` +
+        `Expected array format. Menu name: "${menuName || 'unknown'}". ` +
+        `Returning empty array.`
+      );
+      return [];
+    }
+
+    // Case 3: No character name or invalid
+    return [];
+  }
+
+  /**
+   * Clean character name (minimal decorations removal)
+   *
+   * @description
+   * Removes common decorative symbols and parentheses.
+   * Note: Assumes character names appear outside parentheses in menu names.
+   *
+   * Examples:
+   * - "場地（制服ver）" → "場地"
+   * - "千冬★" → "千冬"
+   * - "マイキー♡" → "マイキー"
+   *
+   * @param name - Character name string
+   * @returns Cleaned character name
+   */
+  private cleanCharacterName(name: string): string {
+    return name
+      // Remove decorative symbols
+      .replace(/[★☆♪♡【】]/g, '')
+      // Remove parentheses and their contents (e.g., "場地（制服ver）" → "場地")
+      .replace(/[（(][^）)]*[）)]/g, '')
+      // Trim whitespace
+      .trim();
   }
 
   /**

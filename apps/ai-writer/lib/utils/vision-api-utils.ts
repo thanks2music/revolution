@@ -256,8 +256,8 @@ export function selectFallbackLevel(
   // Level B: Partial extraction (character names only)
   if (confidence >= 0.70 && confidence < 0.85) {
     const hasCharacterName =
-      menuItems.some((item) => item.characterName) ||
-      goodsItems.some((item) => item.characterName);
+      menuItems.some((item) => item.characterName.length > 0) ||
+      goodsItems.some((item) => item.characterName.length > 0);
 
     if (hasCharacterName) {
       console.log(
@@ -307,7 +307,7 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
   const issues: string[] = [];
   let confidencePenalty = 0;
 
-  const { menuItems, goodsItems, noveltyItem, confidence } = visionResult.visionExtraction;
+  const { menuItems, goodsItems, noveltyItems, confidence } = visionResult.visionExtraction;
 
   // Validate menu prices
   for (const item of menuItems) {
@@ -344,11 +344,13 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
   }
 
   // Validate novelty variant count
-  if (noveltyItem?.variantCount && noveltyItem.variantCount > 50) {
-    issues.push(
-      `Novelty variant count suspicious: ${noveltyItem.name} = ${noveltyItem.variantCount} variants (max: 50)`
-    );
-    confidencePenalty += 0.1;
+  for (const item of noveltyItems) {
+    if (item.variantCount && item.variantCount > 50) {
+      issues.push(
+        `Novelty variant count suspicious: ${item.name} = ${item.variantCount} variants (max: 50)`
+      );
+      confidencePenalty += 0.1;
+    }
   }
 
   // Adjust confidence (minimum: 0.0)

@@ -200,11 +200,17 @@ describe.each(PROVIDERS_TO_TEST)(
     expect(visionResult.visionExtraction.confidence).toBeLessThanOrEqual(1.0);
 
     // Character name validation (critical for Tokyo Revengers collaboration)
-    // Princess Cafe menus typically include character names (e.g., "マイキーのパフェ")
+    // Princess Cafe menus typically include character names (e.g., "武道とマイキーのパフェ")
     const menusWithCharacterName = visionResult.visionExtraction.menuItems.filter(
-      (item) => item.characterName
+      (item) => item.characterName.length > 0
     );
     expect(menusWithCharacterName.length).toBeGreaterThan(0);
+
+    // Validate characterName is array type
+    const firstItemWithCharacter = menusWithCharacterName[0];
+    expect(firstItemWithCharacter.characterName).toBeInstanceOf(Array);
+    expect(firstItemWithCharacter.characterName.length).toBeGreaterThan(0);
+
     console.log('[E2E Test] Character names extracted:', {
       total: visionResult.visionExtraction.menuItems.length,
       withCharacterName: menusWithCharacterName.length,

@@ -329,13 +329,45 @@ export class VisionApiService {
     return {
       name: String(raw.name || ''),
       price: typeof raw.price === 'number' ? raw.price : undefined,
-      characterName: raw.characterName ? String(raw.characterName) : undefined,
+      characterName: this.parseCharacterNameArray(raw.characterName, raw.name),
       bonus: raw.bonus ? String(raw.bonus) : undefined,
       description: raw.description ? String(raw.description) : undefined,
       notes: raw.notes ? String(raw.notes) : undefined,
       remarks: raw.remarks ? String(raw.remarks) : undefined,
       confidence: typeof raw.confidence === 'number' ? raw.confidence : undefined,
     };
+  }
+
+  /**
+   * Parse characterName field to string array
+   */
+  private parseCharacterNameArray(value: unknown, menuName: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value
+        .map(v => this.cleanCharacterName(String(v)))
+        .filter(v => v.length > 0);
+    }
+
+    if (typeof value === 'string' && value.length > 0) {
+      console.warn(
+        `[VisionApiService] Unexpected string format for characterName: "${value}". ` +
+        `Expected array format. Menu name: "${menuName || 'unknown'}". ` +
+        `Returning empty array.`
+      );
+      return [];
+    }
+
+    return [];
+  }
+
+  /**
+   * Clean character name
+   */
+  private cleanCharacterName(name: string): string {
+    return name
+      .replace(/[★☆♪♡【】]/g, '')
+      .replace(/[（(][^）)]*[）)]/g, '')
+      .trim();
   }
 
   /**
