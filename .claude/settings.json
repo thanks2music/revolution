@@ -164,7 +164,6 @@
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "chrome-devtools",
-    "deepwiki",
     "gcloud",
     "observability",
     "playwright",
