@@ -94,7 +94,7 @@
     "ts-jest": "^29.4.4",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
-    "undici": "^7.16.0"
+    "undici": "^7.18.2"
   },
   "pnpm": {
     "overrides": {
