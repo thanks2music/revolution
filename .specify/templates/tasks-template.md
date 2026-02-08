@@ -3,6 +3,16 @@
 description: "Task list template for feature implementation"
 ---
 
+<!--
+AI LANGUAGE INSTRUCTION / AI言語指示
+=====================================
+This template is used by AI agents to generate content.
+AI MUST respond in JAPANESE (日本語) for all content generation.
+
+このテンプレートはAIエージェントがコンテンツ生成に使用します。
+AIはすべてのコンテンツ生成において日本語で応答しなければなりません。
+-->
+
 # Tasks: [FEATURE NAME]
 
 **Input**: Design documents from `/specs/[###-feature-name]/`
