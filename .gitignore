@@ -386,6 +386,8 @@ GEMINI.md
 ## Speckit
 .specify/memory
 .specify/memory/*
+specs/
+!specs/.gitkeep
 
 # カスタム設定
 local-config.json
