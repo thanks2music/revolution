@@ -380,9 +380,10 @@ GEMINI.md
 .claude/*
 !.claude/settings.json
 
-# サブディレクトリの.claude（全て無視）
-**/.claude/**/*
-**/.clinerules/**/*
+## Speckit
+# グローバル .gitignore で *.claude を指定していたが、Speckitに合わせて解除した
+!.claude/commands
+!.claude/commands/*
 
 # カスタム設定
 local-config.json
