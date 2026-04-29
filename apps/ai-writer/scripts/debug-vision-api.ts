@@ -140,8 +140,9 @@ Vision API デバッグツール
 注意:
   - OpenAI VisionAPI は日本語の解析精度が低いため、Claude（デフォルト）の使用を推奨
   - Phase 1 は menu カテゴリのみ対応
-  - Vision API サービスが自動的にログファイルを生成します
-    ログパス: logs/YYYY-MM-DD-VisionAPI-{Provider}-{Domain}-{Sequence}.log
+  - Vision API サービスが自動的にログファイルを生成します（NODE_ENV != production 時のみ）
+    OpenAI: logs/YYYY-MM-DD-VisionAPI-OpenAI-{domain}-{category}-{ms}.log
+    Claude: logs/YYYY-MM-DD-VisionAPI-Claude-{domain}-{ms}.log
 `);
 }
 
@@ -296,12 +297,15 @@ async function main() {
     displayResults(result, provider, args.imageUrls);
 
     // 8. ログファイルパス表示（Vision API サービスが自動生成）
+    // Filename pattern (post commits 300f485 / cd9df62, sequence replaced by ms timestamp):
+    //   OpenAI : logs/YYYY-MM-DD-VisionAPI-OpenAI-<domain>-<category>-<ms>.log
+    //   Claude : logs/YYYY-MM-DD-VisionAPI-Claude-<domain>-<ms>.log
     const today = new Date().toISOString().split('T')[0];
     const domain = extractDomainForFilename(args.imageUrls[0]);
     const providerCapitalized = provider.charAt(0).toUpperCase() + provider.slice(1);
 
-    console.log(`📝 Vision API ログ: logs/${today}-VisionAPI-${providerCapitalized}-${domain}-01.log`);
-    console.log('   （実際の連番はログディレクトリで確認してください）\n');
+    console.log(`📝 Vision API ログ: logs/${today}-VisionAPI-${providerCapitalized}-${domain}-*.log`);
+    console.log('   （実際のファイル名は ms タイムスタンプ。最新ファイルは "ls -lt logs/" で確認してください）\n');
 
   } catch (error) {
     console.error('\n❌ エラー発生:', error instanceof Error ? error.message : error);

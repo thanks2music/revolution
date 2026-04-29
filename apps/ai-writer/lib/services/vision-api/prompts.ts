@@ -23,7 +23,11 @@
  * @example
  * ```typescript
  * const prompt = buildInterimVisionPrompt('menu');
- * const result = await visionApiService.extractMenuItems(imageUrls, prompt, 'menu');
+ * const result = await visionApiService.extractFromImages({
+ *   imageUrls,
+ *   prompt,
+ *   category: 'menu',
+ * });
  * ```
  */
 export function buildInterimVisionPrompt(
