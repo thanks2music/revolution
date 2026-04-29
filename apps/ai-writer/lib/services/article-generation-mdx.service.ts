@@ -626,9 +626,17 @@ export class ArticleGenerationMdxService {
               if (businessValidation.issues.length > 0) {
                 console.warn('[Step 1.8] ⚠️ Business rules 違反:', businessValidation.issues);
 
-                // 信頼度を調整（元の値を退避してから上書き）
+                // 信頼度を調整: 元の `visionExtraction` オブジェクトは mutate せず、
+                // visionApiResult.visionExtraction だけを spread copy で差し替える。
+                // これにより、API 結果（unchanged）と記録用結果（adjusted）が分離される。
                 const originalConfidence = visionExtraction.visionExtraction.confidence;
-                visionExtraction.visionExtraction.confidence = businessValidation.adjustedConfidence;
+                visionApiResult.visionExtraction = {
+                  ...visionExtraction,
+                  visionExtraction: {
+                    ...visionExtraction.visionExtraction,
+                    confidence: businessValidation.adjustedConfidence,
+                  },
+                };
 
                 console.log('[Step 1.8] 信頼度調整:', {
                   original: originalConfidence,
