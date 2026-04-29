@@ -114,8 +114,10 @@ describe('Vision API Utilities', () => {
 
     describe('Issue 2: Excessive Detail Without HTML', () => {
       it('should detect suspicious extraction when no HTML data but excessive Vision items', () => {
+        // Threshold is `menuItems.length > 10` (relaxed in commit a311a61).
+        // Use 11 items to cross that boundary; 8 items would (correctly) be tolerated.
         const visionResult = createMockVisionResult({
-          menuItems: Array(8).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array(11).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -128,7 +130,7 @@ describe('Vision API Utilities', () => {
         expect(result.passed).toBe(false);
         expect(result.issues).toHaveLength(1);
         expect(result.issues[0]).toContain('Suspicious');
-        expect(result.issues[0]).toContain('without any HTML data');
+        expect(result.issues[0]).toContain('no HTML data');
       });
 
       it('should pass when no HTML data but reasonable Vision item count', () => {
