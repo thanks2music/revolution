@@ -269,15 +269,21 @@ export class OpenAiVisionService implements IVisionApiService {
     category: string,
     timeout: number
   ): Promise<RawVisionResponse> {
-    return Promise.race([
-      this.callVisionApi(imageUrls, prompt, category),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error(`Vision API timeout after ${timeout}ms`)),
-          timeout
-        )
-      ),
-    ]);
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timerId = setTimeout(
+        () => reject(new Error(`Vision API timeout after ${timeout}ms`)),
+        timeout
+      );
+    });
+    try {
+      return await Promise.race([
+        this.callVisionApi(imageUrls, prompt, category),
+        timeoutPromise,
+      ]);
+    } finally {
+      if (timerId !== undefined) clearTimeout(timerId);
+    }
   }
 
   /**
