@@ -195,7 +195,7 @@ function displayResults(
 
   items.forEach((item, index) => {
     const price = item.price !== null ? ` / ¥${item.price.toLocaleString()}` : '';
-    const char = item.characterName?.length
+    const char = item.characterName.length > 0
       ? ` (${formatCharacterNames(item.characterName)})`
       : '';
     const conf = item.confidence ? `${(item.confidence * 100).toFixed(1)}%` : 'N/A';

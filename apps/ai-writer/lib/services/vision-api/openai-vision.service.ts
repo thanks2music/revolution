@@ -39,7 +39,7 @@ interface RawVisionResponse {
   menuItems?: Array<{
     name: string;
     price?: number;
-    characterName?: string;
+    characterName?: unknown;
     bonus?: string;
     description?: string;
     notes?: string;
@@ -50,7 +50,7 @@ interface RawVisionResponse {
     name: string;
     condition?: string;
     variantCount?: number;
-    characterName?: string;
+    characterName?: unknown;
     notes?: string;
     remarks?: string;
   }>;
@@ -59,7 +59,7 @@ interface RawVisionResponse {
     price?: number;
     variantCount?: number;
     variantDetails?: string;
-    characterName?: string;
+    characterName?: unknown;
   }>;
   metadata?: {
     imageQuality?: string;
@@ -487,7 +487,7 @@ export class OpenAiVisionService implements IVisionApiService {
       price: item.price,
       variantCount: item.variantCount,
       variantDetails: item.variantDetails,
-      characterName: item.characterName,
+      characterName: this.parseCharacterNameArray(item.characterName, item.name),
     };
   }
 
@@ -499,7 +499,7 @@ export class OpenAiVisionService implements IVisionApiService {
       name: item.name,
       condition: item.condition,
       variantCount: item.variantCount,
-      characterName: item.characterName,
+      characterName: this.parseCharacterNameArray(item.characterName, item.name),
       notes: item.notes,
       remarks: item.remarks,
     };

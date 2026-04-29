@@ -74,7 +74,7 @@ describe('VisionApiService', () => {
                 {
                   name: 'テストメニュー',
                   price: 1000,
-                  characterName: 'キャラクター名',
+                  characterName: ['キャラクター名'],
                 },
               ],
               goodsItems: [],

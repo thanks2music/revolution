@@ -373,7 +373,7 @@ describe('Vision API Utilities', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.88,
           goodsItems: [
-            { name: 'グッズ1', price: 2000, variantCount: 3 },
+            { name: 'グッズ1', price: 2000, variantCount: 3, characterName: [] },
           ],
         });
 
@@ -532,7 +532,7 @@ describe('Vision API Utilities', () => {
       it('should detect goods prices below minimum (300円)', () => {
         const visionResult = createMockVisionResult({
           goodsItems: [
-            { name: 'グッズ1', price: 200 }, // Too low
+            { name: 'グッズ1', price: 200, characterName: [] }, // Too low
           ],
         });
 
@@ -546,7 +546,7 @@ describe('Vision API Utilities', () => {
       it('should detect goods prices above maximum (10000円)', () => {
         const visionResult = createMockVisionResult({
           goodsItems: [
-            { name: 'グッズ1', price: 15000 }, // Too high
+            { name: 'グッズ1', price: 15000, characterName: [] }, // Too high
           ],
         });
 
@@ -562,7 +562,7 @@ describe('Vision API Utilities', () => {
       it('should detect suspicious goods variant count (> 100)', () => {
         const visionResult = createMockVisionResult({
           goodsItems: [
-            { name: 'グッズ1', variantCount: 150 }, // Suspicious
+            { name: 'グッズ1', variantCount: 150, characterName: [] }, // Suspicious
           ],
         });
 
@@ -580,6 +580,7 @@ describe('Vision API Utilities', () => {
               name: 'ノベルティ',
               condition: '1ドリンク注文につき1枚',
               variantCount: 80, // Suspicious
+              characterName: [],
             },
           ],
         });
@@ -594,14 +595,15 @@ describe('Vision API Utilities', () => {
       it('should pass when variant counts are reasonable', () => {
         const visionResult = createMockVisionResult({
           goodsItems: [
-            { name: 'グッズ1', variantCount: 5 },
-            { name: 'グッズ2', variantCount: 12 },
+            { name: 'グッズ1', variantCount: 5, characterName: [] },
+            { name: 'グッズ2', variantCount: 12, characterName: [] },
           ],
           noveltyItems: [
             {
               name: 'ノベルティ',
               condition: '1ドリンク注文につき1枚',
               variantCount: 10,
+              characterName: [],
             },
           ],
         });
@@ -622,7 +624,7 @@ describe('Vision API Utilities', () => {
             { name: 'メニュー2', price: 6000, characterName: [] }, // -0.05 penalty
           ],
           goodsItems: [
-            { name: 'グッズ1', variantCount: 150 }, // -0.10 penalty
+            { name: 'グッズ1', variantCount: 150, characterName: [] }, // -0.10 penalty
           ],
         });
 

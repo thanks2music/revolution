@@ -219,8 +219,8 @@ export interface GoodsItem {
   /** Variant details (e.g., "全6種") */
   variantDetails?: string;
 
-  /** Character name */
-  characterName?: string;
+  /** Character names (array, empty array if no characters) */
+  characterName: string[];
 }
 
 /**
@@ -236,8 +236,8 @@ export interface NoveltyItem {
   /** Number of variants */
   variantCount?: number;
 
-  /** Character name */
-  characterName?: string;
+  /** Character names (array, empty array if no characters) */
+  characterName: string[];
 
   /** Notes (e.g., "絵柄は選べません") */
   notes?: string;

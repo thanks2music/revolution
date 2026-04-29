@@ -379,7 +379,7 @@ export class VisionApiService {
       price: typeof raw.price === 'number' ? raw.price : undefined,
       variantCount: typeof raw.variantCount === 'number' ? raw.variantCount : undefined,
       variantDetails: raw.variantDetails ? String(raw.variantDetails) : undefined,
-      characterName: raw.characterName ? String(raw.characterName) : undefined,
+      characterName: this.parseCharacterNameArray(raw.characterName, raw.name),
     };
   }
 
@@ -391,7 +391,7 @@ export class VisionApiService {
       name: String(raw.name || ''),
       condition: raw.condition ? String(raw.condition) : undefined,
       variantCount: typeof raw.variantCount === 'number' ? raw.variantCount : undefined,
-      characterName: raw.characterName ? String(raw.characterName) : undefined,
+      characterName: this.parseCharacterNameArray(raw.characterName, raw.name),
       notes: raw.notes ? String(raw.notes) : undefined,
       remarks: raw.remarks ? String(raw.remarks) : undefined,
     };
