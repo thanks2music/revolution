@@ -383,7 +383,8 @@ export class TextPlaceholderReplacerService {
       const dynamicPattern = /\{\{キャラクター名\|join:([a-zA-Z_]\w*)\}\}/g;
       result = result.replace(dynamicPattern, (match, separatorKey) => {
         // データから動的セパレーターを取得（フォールバック: '・'）
-        const separator = (data as any)[separatorKey] || '・';
+        const rawSeparator = (data as any)[separatorKey];
+        const separator = typeof rawSeparator === 'string' ? rawSeparator : '・';
         const value = data.キャラクター名!.join(separator);
         count++;
         log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
@@ -405,7 +406,8 @@ export class TextPlaceholderReplacerService {
       const dynamicPattern = /\{\{グッズ名\|join:([a-zA-Z_]\w*)\}\}/g;
       result = result.replace(dynamicPattern, (match, separatorKey) => {
         // データから動的セパレーターを取得（フォールバック: '・'）
-        const separator = (data as any)[separatorKey] || '・';
+        const rawSeparator = (data as any)[separatorKey];
+        const separator = typeof rawSeparator === 'string' ? rawSeparator : '・';
         const value = data.グッズ名!.join(separator);
         count++;
         log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
@@ -429,7 +431,8 @@ export class TextPlaceholderReplacerService {
       const dynamicPattern = /\{\{メンバー名\|join:([a-zA-Z_]\w*)\}\}/g;
       result = result.replace(dynamicPattern, (match, separatorKey) => {
         // データから動的セパレーターを取得（フォールバック: '・'）
-        const separator = (data as any)[separatorKey] || '・';
+        const rawSeparator = (data as any)[separatorKey];
+        const separator = typeof rawSeparator === 'string' ? rawSeparator : '・';
         const value = data.メンバー名!.join(separator);
         count++;
         log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
