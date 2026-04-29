@@ -178,8 +178,9 @@ export class ClaudeVisionService implements IVisionApiService {
     category: string,
     timeoutMs: number
   ): Promise<VisionExtractionResult> {
+    let timerId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(
+      timerId = setTimeout(
         () => reject(new Error(`Claude Vision API timeout after ${timeoutMs}ms`)),
         timeoutMs
       );
@@ -187,7 +188,11 @@ export class ClaudeVisionService implements IVisionApiService {
 
     const apiPromise = this.callClaudeVisionApi(imageUrls, prompt, category);
 
-    return Promise.race([apiPromise, timeoutPromise]);
+    try {
+      return await Promise.race([apiPromise, timeoutPromise]);
+    } finally {
+      if (timerId !== undefined) clearTimeout(timerId);
+    }
   }
 
   /**
@@ -223,9 +228,13 @@ export class ClaudeVisionService implements IVisionApiService {
       `[ClaudeVisionService] Calling Claude Vision API with ${imageUrls.length} images`
     );
 
+    const isDebug = process.env.DEBUG_VISION_API === 'true';
+
     let response;
     try {
-      console.log('[ClaudeVisionService] Content structure:', JSON.stringify(content, null, 2));
+      if (isDebug) {
+        console.log('[ClaudeVisionService] Content structure:', JSON.stringify(content, null, 2));
+      }
       response = await this.client.messages.create({
         model: this.modelName,
         max_tokens: 4096, // Reasonable limit for extraction
@@ -253,17 +262,20 @@ export class ClaudeVisionService implements IVisionApiService {
     const costStr = formatCost(cost);
     console.log(`[ClaudeVisionService] 💰 Cost: ${costStr}`);
 
-    // Debug: Log response structure
-    console.log('[ClaudeVisionService] Raw response object:', JSON.stringify(response, null, 2));
-    console.log('[ClaudeVisionService] Response type:', typeof response);
-    console.log('[ClaudeVisionService] Response has content?:', response && 'content' in response);
+    if (isDebug) {
+      console.log('[ClaudeVisionService] Raw response object:', JSON.stringify(response, null, 2));
+      console.log('[ClaudeVisionService] Response type:', typeof response);
+      console.log('[ClaudeVisionService] Response has content?:', response && 'content' in response);
+    }
 
     if (!response || !response.content) {
       throw new Error(`Invalid response from Claude API: response=${!!response}, content=${!!(response?.content)}`);
     }
 
-    console.log('[ClaudeVisionService] Response content blocks:', response.content.length);
-    console.log('[ClaudeVisionService] Response content types:', response.content.map((block) => block.type));
+    if (isDebug) {
+      console.log('[ClaudeVisionService] Response content blocks:', response.content.length);
+      console.log('[ClaudeVisionService] Response content types:', response.content.map((block) => block.type));
+    }
 
     // Extract text content from response
     const textContent = response.content.find((block) => block.type === 'text');
@@ -297,7 +309,7 @@ export class ClaudeVisionService implements IVisionApiService {
     await this.saveLogToFile(imageUrls, prompt, category, response, rawJson, cost);
 
     // Convert raw response to typed VisionExtractionResult
-    const result = this.convertToVisionExtractionResult(rawJson, category);
+    const result = this.convertToVisionExtractionResult(rawJson, category, imageUrls.length);
 
     console.log(
       `[ClaudeVisionService] Extracted ${category}: confidence=${result.visionExtraction.confidence}`
@@ -311,7 +323,8 @@ export class ClaudeVisionService implements IVisionApiService {
    */
   private convertToVisionExtractionResult(
     raw: RawClaudeResponse,
-    category: string
+    category: string,
+    totalImagesAnalyzed: number
   ): VisionExtractionResult {
     // Convert raw items to typed arrays
     const menuItems: MenuItem[] = (raw.menuItems ?? []).map((item) =>
@@ -339,7 +352,7 @@ export class ClaudeVisionService implements IVisionApiService {
         noveltyItems,
         metadata: {
           hasComingSoonNotice: raw.metadata?.hasComingSoonNotice ?? false,
-          totalImagesAnalyzed: 0, // Will be set by caller
+          totalImagesAnalyzed,
         },
       },
     };
