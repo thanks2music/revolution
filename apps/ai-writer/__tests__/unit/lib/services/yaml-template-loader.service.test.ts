@@ -683,7 +683,7 @@ output_schema:
         - timestamp
         - menuItems
         - goodsItems
-        - noveltyItem
+        - noveltyItems
       properties:
         confidence:
           type: number
@@ -799,7 +799,7 @@ business_rules:
       expect(visionExtractionSchema.required).toContain('provider');
       expect(visionExtractionSchema.required).toContain('menuItems');
       expect(visionExtractionSchema.required).toContain('goodsItems');
-      expect(visionExtractionSchema.required).toContain('noveltyItem');
+      expect(visionExtractionSchema.required).toContain('noveltyItems');
     });
 
     it('should throw error when Vision API template is missing', async () => {
