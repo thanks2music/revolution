@@ -175,8 +175,20 @@ export interface ExtractionResult {
   原作タイプ: SourceType;
   /** 原作者有無（個人クリエイターが存在するか） */
   原作者有無: boolean;
-  /** 原作者名（「○○先生」または「○○さん」形式、不要な場合はnull） */
-  原作者名: string | null;
+  /**
+   * 原作者名（「○○先生」または「○○さん」形式、不要な場合はnull）
+   * @since v1.4.0 複数原作者対応: `string | string[]` に拡張
+   * @example
+   * // 単一原作者
+   * 原作者名: '尾田栄一郎先生'
+   *
+   * // 複数原作者（v1.4.0以降）
+   * 原作者名: ['CLAMP先生', '新條まゆ先生']
+   *
+   * // 原作者なし
+   * 原作者名: null
+   */
+  原作者名: string | string[] | null;
   /**
    * 店舗名（複数の場合は「、」区切り）
    * @deprecated v1.2.0 以降は store.name を優先使用

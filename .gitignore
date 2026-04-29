@@ -379,10 +379,15 @@ GEMINI.md
 # Claude Code設定（settings.json以外を無視）
 .claude/*
 !.claude/settings.json
+# グローバル .gitignore で *.claude を指定していたが、Speckitに合わせて解除した
+!.claude/commands
+!.claude/commands/*
 
-# サブディレクトリの.claude（全て無視）
-**/.claude/**/*
-**/.clinerules/**/*
+## Speckit
+.specify/memory
+.specify/memory/*
+specs/
+!specs/.gitkeep
 
 # カスタム設定
 local-config.json

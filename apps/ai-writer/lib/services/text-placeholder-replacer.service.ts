@@ -13,6 +13,10 @@
  * @see /notes/03-report/2025-12/2025-12-21-MDX本文改善-TextPlaceholderReplacerService実装方針.md
  */
 
+// v1.4.0: Type Guard & Media Type Mapper imports
+import { formatAuthorName, hasMultipleAuthors } from '../utils/author-formatter';
+import { getMediaTypeMapperService } from './media-type-mapper.service';
+
 /**
  * 開催期間の型定義
  */
@@ -55,11 +59,28 @@ export interface TextPlaceholderData {
   メディアタイプ?: string;
   原作タイプ?: string;
   原作者有無?: boolean;
-  原作者名?: string | null;
+  /**
+   * 原作者名（単一 | 複数 | null）
+   * @since v1.4.0 複数原作者対応: `string | string[]` に拡張
+   * @example
+   * // 単一原作者
+   * 原作者名: '尾田栄一郎先生'
+   *
+   * // 複数原作者（v1.4.0以降）
+   * 原作者名: ['CLAMP先生', '新條まゆ先生']
+   */
+  原作者名?: string | string[] | null;
   略称?: string | null;
   開催回数?: string | null;
   公式サイトURL?: string | null;
   キャラクター名?: string[] | null;
+  /**
+   * メンバー名（アイドル・歌い手グループのメンバー）
+   * @since v1.4.0
+   * @description idol/utaiteメディアタイプで使用。動的セパレーター対応。
+   * @example ['田中', '佐藤', '鈴木']
+   */
+  メンバー名?: string[] | null;
   テーマ名?: string | null;
   ノベルティ名?: string | null;
   グッズ名?: string[] | null;
@@ -78,6 +99,51 @@ export interface TextPlaceholderData {
   secondary_works?: WorkInfo[];
   is_multi_work?: boolean;
   コラボ作品名?: string;
+
+  // v1.4.0: メディアタイプ派生変数
+  /**
+   * idol/utaite判定フラグ
+   * @since v1.4.0
+   * @description メディアタイプが idol または utaite の場合 true
+   */
+  is_idol_or_utaite?: boolean;
+
+  /**
+   * メンバー/キャラクター名の結合セパレーター
+   * @since v1.4.0
+   * @description
+   * - idol/utaite: ' / '
+   * - その他: '・'
+   */
+  member_separator?: string;
+
+  /**
+   * メディアタイプの表示ラベル（日本語）
+   * @since v1.4.0
+   * @example 'アイドル', 'アニメ', 'ゲーム'
+   */
+  メディアタイプ_label?: string;
+
+  // v1.4.0: 複数原作者派生変数
+  /**
+   * 原作者名の統一フォーマット（常に " / " で結合）
+   * @since v1.4.0
+   * @description
+   * - 単一原作者: そのまま
+   * - 複数原作者: " / " で結合
+   * - null: 空文字列
+   * @example
+   * 原作者名: '尾田栄一郎先生' → '尾田栄一郎先生'
+   * 原作者名: ['CLAMP先生', '新條まゆ先生'] → 'CLAMP先生 / 新條まゆ先生'
+   */
+  原作者名_formatted?: string;
+
+  /**
+   * 複数原作者判定フラグ
+   * @since v1.4.0
+   * @description 原作者が2人以上の場合 true
+   */
+  has_multiple_authors?: boolean;
 }
 
 /**
@@ -112,6 +178,27 @@ export class TextPlaceholderReplacerService {
     const replacementLog: Array<{ placeholder: string; value: string }> = [];
     let replacedCount = 0;
 
+    // デバッグ: 置換対象プレースホルダーの値を出力
+    if (process.env.DEBUG_PLACEHOLDER_REPLACEMENT === 'true') {
+      console.log('\n[PlaceholderReplacer] === 置換対象プレースホルダー ===');
+      console.log('作品名:', data.作品名);
+      console.log('店舗名:', data.店舗名);
+      console.log('メディアタイプ:', data.メディアタイプ);
+      console.log('原作タイプ:', data.原作タイプ);
+      console.log('原作者有無:', data.原作者有無);
+      console.log('原作者名:', data.原作者名);
+      console.log('キャラクター名:', data.キャラクター名);
+      console.log('メンバー名:', data.メンバー名);
+      console.log('テーマ名:', data.テーマ名);
+      console.log('開催期間:', JSON.stringify(data.開催期間, null, 2));
+      console.log('works:', JSON.stringify(data.works, null, 2));
+      console.log('[PlaceholderReplacer] === データ終了 ===\n');
+
+      console.log('[PlaceholderReplacer] === 置換前テンプレート（先頭500文字） ===');
+      console.log(content.substring(0, 500));
+      console.log('[PlaceholderReplacer] === テンプレート終了 ===\n');
+    }
+
     // 派生変数を計算
     const enrichedData = this.computeDerivedVariables(data);
 
@@ -140,6 +227,22 @@ export class TextPlaceholderReplacerService {
 
     // 未置換プレースホルダーを検出
     const unreplacedPlaceholders = this.detectUnreplacedPlaceholders(result);
+
+    // デバッグ: 置換後テンプレートと置換結果を出力
+    if (process.env.DEBUG_PLACEHOLDER_REPLACEMENT === 'true') {
+      console.log('\n[PlaceholderReplacer] === 置換後テンプレート（先頭500文字） ===');
+      console.log(result.substring(0, 500));
+      console.log('[PlaceholderReplacer] === テンプレート終了 ===\n');
+
+      console.log('[PlaceholderReplacer] === 置換結果サマリー ===');
+      console.log('置換数:', replacedCount);
+      console.log('未置換プレースホルダー:', unreplacedPlaceholders);
+      console.log('置換詳細（先頭10件）:');
+      replacementLog.slice(0, 10).forEach((log, i) => {
+        console.log(`  ${i + 1}. ${log.placeholder} → ${log.value.substring(0, 50)}${log.value.length > 50 ? '...' : ''}`);
+      });
+      console.log('[PlaceholderReplacer] === サマリー終了 ===\n');
+    }
 
     return {
       content: result,
@@ -179,6 +282,28 @@ export class TextPlaceholderReplacerService {
       computed.コラボ作品名 = data.作品名;
     }
 
+    // v1.4.0: メディアタイプ派生変数
+    if (data.メディアタイプ) {
+      const mediaTypeMapper = getMediaTypeMapperService();
+
+      // idol/utaite判定
+      computed.is_idol_or_utaite = mediaTypeMapper.isIdolOrUtaite(data.メディアタイプ);
+
+      // キャラクター/メンバー名の結合セパレーター
+      computed.member_separator = mediaTypeMapper.getSeparator(data.メディアタイプ);
+
+      // メディアタイプの表示ラベル
+      computed.メディアタイプ_label = mediaTypeMapper.getLabel(data.メディアタイプ);
+    }
+
+    // v1.4.0: 複数原作者派生変数
+    // 原作者名の統一フォーマット（常に " / " で結合）
+    // formatAuthorName と hasMultipleAuthors は null を処理可能
+    computed.原作者名_formatted = formatAuthorName(data.原作者名);
+
+    // 複数原作者判定
+    computed.has_multiple_authors = hasMultipleAuthors(data.原作者名);
+
     return computed;
   }
 
@@ -199,13 +324,25 @@ export class TextPlaceholderReplacerService {
       店舗名: data.店舗名,
       メディアタイプ: data.メディアタイプ,
       原作タイプ: data.原作タイプ,
-      原作者名: data.原作者名 ?? undefined,
+      // v1.4.0: Type Guard を使用して string | string[] → string に変換
+      原作者名: formatAuthorName(data.原作者名),
       略称: data.略称 ?? undefined,
       開催回数: data.開催回数 ?? undefined,
       公式サイトURL: data.公式サイトURL ?? undefined,
       テーマ名: data.テーマ名 ?? undefined,
       ノベルティ名: data.ノベルティ名 ?? undefined,
       コラボ作品名: data.コラボ作品名,
+
+      // v1.4.0: メディアタイプ派生変数
+      is_idol_or_utaite:
+        data.is_idol_or_utaite !== undefined ? String(data.is_idol_or_utaite) : undefined,
+      member_separator: data.member_separator,
+      メディアタイプ_label: data.メディアタイプ_label,
+
+      // v1.4.0: 複数原作者派生変数
+      原作者名_formatted: data.原作者名_formatted,
+      has_multiple_authors:
+        data.has_multiple_authors !== undefined ? String(data.has_multiple_authors) : undefined,
     };
 
     for (const [varName, value] of Object.entries(simpleVariables)) {
@@ -230,23 +367,75 @@ export class TextPlaceholderReplacerService {
       }
     }
 
-    // 配列のjoin処理: {{キャラクター名|join:'・'}}
+    // 配列のjoin処理: {{配列名|join:'・'}} or {{配列名|join:member_separator}}
+    // v1.4.0: 動的セパレーター対応（リテラル文字列とデータフィールドの両方をサポート）
     if (data.キャラクター名 && data.キャラクター名.length > 0) {
-      const joinPattern = /\{\{キャラクター名\|join:'([^']+)'\}\}/g;
-      result = result.replace(joinPattern, (match, separator) => {
+      // パターン1: リテラルセパレーター {{キャラクター名|join:'・'}}
+      const literalPattern = /\{\{キャラクター名\|join:'([^']+)'\}\}/g;
+      result = result.replace(literalPattern, (match, separator) => {
         const value = data.キャラクター名!.join(separator);
         count++;
         log.push({ placeholder: match, value });
         return value;
       });
+
+      // パターン2: 動的セパレーター {{キャラクター名|join:member_separator}}
+      const dynamicPattern = /\{\{キャラクター名\|join:([a-zA-Z_]\w*)\}\}/g;
+      result = result.replace(dynamicPattern, (match, separatorKey) => {
+        // データから動的セパレーターを取得（フォールバック: '・'）
+        const rawSeparator = (data as any)[separatorKey];
+        const separator = typeof rawSeparator === 'string' ? rawSeparator : '・';
+        const value = data.キャラクター名!.join(separator);
+        count++;
+        log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
+        return value;
+      });
     }
 
     if (data.グッズ名 && data.グッズ名.length > 0) {
-      const joinPattern = /\{\{グッズ名\|join:'([^']+)'\}\}/g;
-      result = result.replace(joinPattern, (match, separator) => {
+      // パターン1: リテラルセパレーター {{グッズ名|join:'・'}}
+      const literalPattern = /\{\{グッズ名\|join:'([^']+)'\}\}/g;
+      result = result.replace(literalPattern, (match, separator) => {
         const value = data.グッズ名!.join(separator);
         count++;
         log.push({ placeholder: match, value });
+        return value;
+      });
+
+      // パターン2: 動的セパレーター {{グッズ名|join:member_separator}}
+      const dynamicPattern = /\{\{グッズ名\|join:([a-zA-Z_]\w*)\}\}/g;
+      result = result.replace(dynamicPattern, (match, separatorKey) => {
+        // データから動的セパレーターを取得（フォールバック: '・'）
+        const rawSeparator = (data as any)[separatorKey];
+        const separator = typeof rawSeparator === 'string' ? rawSeparator : '・';
+        const value = data.グッズ名!.join(separator);
+        count++;
+        log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
+        return value;
+      });
+    }
+
+    // v1.4.0: メンバー名のjoin処理（新規追加）
+    // idol/utaiteの場合は " / "、その他は "・" で結合
+    if (data.メンバー名 && Array.isArray(data.メンバー名) && data.メンバー名.length > 0) {
+      // パターン1: リテラルセパレーター {{メンバー名|join:'・'}}
+      const literalPattern = /\{\{メンバー名\|join:'([^']+)'\}\}/g;
+      result = result.replace(literalPattern, (match, separator) => {
+        const value = data.メンバー名!.join(separator);
+        count++;
+        log.push({ placeholder: match, value });
+        return value;
+      });
+
+      // パターン2: 動的セパレーター {{メンバー名|join:member_separator}}
+      const dynamicPattern = /\{\{メンバー名\|join:([a-zA-Z_]\w*)\}\}/g;
+      result = result.replace(dynamicPattern, (match, separatorKey) => {
+        // データから動的セパレーターを取得（フォールバック: '・'）
+        const rawSeparator = (data as any)[separatorKey];
+        const separator = typeof rawSeparator === 'string' ? rawSeparator : '・';
+        const value = data.メンバー名!.join(separator);
+        count++;
+        log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
         return value;
       });
     }

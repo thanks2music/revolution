@@ -9,7 +9,7 @@
  * @see https://www.anthropic.com/pricing
  * @see https://ai.google.dev/pricing
  *
- * Last updated: 2025-12-12
+ * Last updated: 2026-04-30
  */
 
 export interface ModelPricing {
@@ -48,7 +48,7 @@ export const USD_TO_JPY_RATE = 150;
 
 /**
  * Model pricing table (Standard tier, per 1M tokens)
- * Last updated: 2025-12-12
+ * Last updated: 2026-04-30
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   // OpenAI GPT-5 series
@@ -92,6 +92,12 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   },
   // Anthropic Claude series
   'claude-sonnet-4-5-20250514': {
+    inputPer1M: 3.0,
+    cachedInputPer1M: 0.3,
+    outputPer1M: 15.0,
+    provider: 'anthropic',
+  },
+  'claude-sonnet-4-5-20250929': {
     inputPer1M: 3.0,
     cachedInputPer1M: 0.3,
     outputPer1M: 15.0,

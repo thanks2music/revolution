@@ -279,11 +279,11 @@ import { fileURLToPath } from 'url';
 
 // ES Module で __dirname を取得
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const configDir = dirname(__filename);
 
 // プロジェクトルートからの相対パスで設定ファイルを参照
 // 同期スクリプトで revolution-templates から apps/ai-writer/templates/config にコピーされる
-const CONFIG_DIR = resolve(__dirname, '../../templates/config');
+const CONFIG_DIR = resolve(configDir, '../../templates/config');
 
 export const CONFIG_PATHS = {
   TITLE_ROMAJI: resolve(CONFIG_DIR, 'title-romaji-mapping.yaml'),
