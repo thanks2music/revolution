@@ -528,35 +528,6 @@ export class ClaudeVisionService implements IVisionApiService {
   }
 
   /**
-   * Get next log sequence number for today
-   */
-  private getNextLogSequence(
-    dateStr: string,
-    provider: string,
-    domain: string
-  ): number {
-    const prefix = `${dateStr}-VisionAPI-${provider}-${domain}-`;
-    const files = fs.readdirSync(this.logDir);
-
-    const matchingFiles = files.filter((file) => file.startsWith(prefix));
-
-    if (matchingFiles.length === 0) {
-      return 1;
-    }
-
-    // Extract sequence numbers and find max
-    const sequences = matchingFiles
-      .map((file) => {
-        const match = file.match(/-(\d{2})\.log$/);
-        return match ? parseInt(match[1], 10) : 0;
-      })
-      .filter((seq) => !isNaN(seq));
-
-    const maxSeq = Math.max(...sequences, 0);
-    return maxSeq + 1;
-  }
-
-  /**
    * Save Claude Vision API request/response to log file
    */
   private async saveLogToFile(
@@ -573,9 +544,11 @@ export class ClaudeVisionService implements IVisionApiService {
     const dateStr = jstDate.toISOString().split('T')[0]; // YYYY-MM-DD
     const provider = 'Claude';
     const domain = this.extractDomain(imageUrls[0] || 'unknown');
-    const sequence = this.getNextLogSequence(dateStr, provider, domain);
+    // Monotonic millisecond timestamp avoids TOCTOU + blocking readdirSync seen in
+    // the previous getNextLogSequence implementation.
+    const tsSuffix = now.getTime().toString();
 
-    const fileName = `${dateStr}-VisionAPI-${provider}-${domain}-${sequence.toString().padStart(2, '0')}.log`;
+    const fileName = `${dateStr}-VisionAPI-${provider}-${domain}-${tsSuffix}.log`;
     const filePath = path.join(this.logDir, fileName);
 
     const logContent = [
