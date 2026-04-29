@@ -308,8 +308,20 @@ export class ClaudeVisionService implements IVisionApiService {
     // Save debug log with cost information
     await this.saveLogToFile(imageUrls, prompt, category, response, rawJson, cost);
 
+    // Capture actual token usage from the API response (used by upstream cost tracking)
+    const tokensUsed = {
+      promptTokens: response.usage.input_tokens,
+      completionTokens: response.usage.output_tokens,
+      totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+    };
+
     // Convert raw response to typed VisionExtractionResult
-    const result = this.convertToVisionExtractionResult(rawJson, category, imageUrls.length);
+    const result = this.convertToVisionExtractionResult(
+      rawJson,
+      category,
+      imageUrls.length,
+      tokensUsed
+    );
 
     console.log(
       `[ClaudeVisionService] Extracted ${category}: confidence=${result.visionExtraction.confidence}`
@@ -324,7 +336,8 @@ export class ClaudeVisionService implements IVisionApiService {
   private convertToVisionExtractionResult(
     raw: RawClaudeResponse,
     category: string,
-    totalImagesAnalyzed: number
+    totalImagesAnalyzed: number,
+    tokensUsed: { promptTokens: number; completionTokens: number; totalTokens: number }
   ): VisionExtractionResult {
     // Convert raw items to typed arrays
     const menuItems: MenuItem[] = (raw.menuItems ?? []).map((item) =>
@@ -353,6 +366,7 @@ export class ClaudeVisionService implements IVisionApiService {
         metadata: {
           hasComingSoonNotice: raw.metadata?.hasComingSoonNotice ?? false,
           totalImagesAnalyzed,
+          tokensUsed,
         },
       },
     };

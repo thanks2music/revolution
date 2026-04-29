@@ -541,27 +541,41 @@ export class ArticleGenerationMdxService {
                 goodsItems: visionExtraction.visionExtraction.goodsItems.length,
               });
 
-              // Cost tracking (provider-aware via IVisionApiService.calculateTokens())
-              const tokenCalc = await visionService.calculateTokens(imageUrls);
+              // Cost tracking (use actual token usage from API response, fall back to
+              // calculateTokens() estimates only if the service didn't surface usage)
               const provider = visionService.getProviderName();
               const modelName = provider === 'claude' ? 'claude-sonnet-4-5-20250929' : 'gpt-4o-mini';
-              const estimatedOutputTokens = tokenCalc.breakdown.completionTokens ?? 750;
-              const estimatedInputTokens =
-                tokenCalc.breakdown.imageTokens + tokenCalc.breakdown.promptTokens;
-              const estimatedTotalTokens = estimatedInputTokens + estimatedOutputTokens;
+
+              const actualUsage = visionExtraction.visionExtraction.metadata?.tokensUsed;
+              let promptTokens: number;
+              let completionTokens: number;
+              let totalTokens: number;
+              let usageSource: 'actual' | 'estimated';
+
+              if (actualUsage) {
+                ({ promptTokens, completionTokens, totalTokens } = actualUsage);
+                usageSource = 'actual';
+              } else {
+                const tokenCalc = await visionService.calculateTokens(imageUrls);
+                completionTokens = tokenCalc.breakdown.completionTokens ?? 750;
+                promptTokens = tokenCalc.breakdown.imageTokens + tokenCalc.breakdown.promptTokens;
+                totalTokens = promptTokens + completionTokens;
+                usageSource = 'estimated';
+              }
 
               const costResult = costTracker.recordUsage('Step1.8_VisionAPI', modelName, {
-                promptTokens: estimatedInputTokens,
-                completionTokens: estimatedOutputTokens,
-                totalTokens: estimatedTotalTokens,
+                promptTokens,
+                completionTokens,
+                totalTokens,
               });
 
               console.log('[Step 1.8] Vision API コスト追跡:', {
                 provider,
                 model: modelName,
-                promptTokens: estimatedInputTokens,
-                completionTokens: estimatedOutputTokens,
-                totalTokens: estimatedTotalTokens,
+                usageSource,
+                promptTokens,
+                completionTokens,
+                totalTokens,
                 cost: `$${costResult.usd.toFixed(6)} (¥${costResult.jpy.toFixed(2)})`,
               });
 

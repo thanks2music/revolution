@@ -227,14 +227,14 @@ export class OpenAiVisionService implements IVisionApiService {
           `[OpenAiVisionService] Attempt ${attempt + 1}/${maxRetries} for category: ${category}`
         );
 
-        const rawResponse = await this.callVisionApiWithTimeout(
+        const { raw: rawResponse, usage } = await this.callVisionApiWithTimeout(
           imageUrls,
           prompt,
           category,
           timeout
         );
 
-        const result = this.convertToVisionExtractionResult(rawResponse, imageUrls.length);
+        const result = this.convertToVisionExtractionResult(rawResponse, imageUrls.length, usage);
 
         console.log(
           `[OpenAiVisionService] ✅ Extraction successful: ${result.visionExtraction.menuItems.length} menu items, ${result.visionExtraction.noveltyItems.length} novelty items, ${result.visionExtraction.goodsItems.length} goods items`
@@ -275,7 +275,10 @@ export class OpenAiVisionService implements IVisionApiService {
     prompt: string,
     category: string,
     timeout: number
-  ): Promise<RawVisionResponse> {
+  ): Promise<{
+    raw: RawVisionResponse;
+    usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+  }> {
     let timerId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timerId = setTimeout(
@@ -300,7 +303,10 @@ export class OpenAiVisionService implements IVisionApiService {
     imageUrls: string[],
     prompt: string,
     category: string
-  ): Promise<RawVisionResponse> {
+  ): Promise<{
+    raw: RawVisionResponse;
+    usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+  }> {
     const startTime = Date.now();
 
     // Use the caller-provided prompt as-is (per IVisionApiService contract).
@@ -370,12 +376,22 @@ export class OpenAiVisionService implements IVisionApiService {
       `[OpenAiVisionService] ✅ API call completed in ${elapsedTime}ms (tokens: ${response.usage?.total_tokens || 'unknown'})`
     );
 
+    let parsed: RawVisionResponse;
     try {
-      return JSON.parse(rawContent);
+      parsed = JSON.parse(rawContent);
     } catch (error) {
       console.error('[OpenAiVisionService] Failed to parse JSON response:', rawContent);
       throw new Error(`Invalid JSON response from OpenAI Vision API: ${rawContent}`);
     }
+
+    return {
+      raw: parsed,
+      usage: {
+        promptTokens: response.usage?.prompt_tokens || 0,
+        completionTokens: response.usage?.completion_tokens || 0,
+        totalTokens: response.usage?.total_tokens || 0,
+      },
+    };
   }
 
   /**
@@ -383,7 +399,8 @@ export class OpenAiVisionService implements IVisionApiService {
    */
   private convertToVisionExtractionResult(
     raw: RawVisionResponse,
-    totalImages: number
+    totalImages: number,
+    tokensUsed: { promptTokens: number; completionTokens: number; totalTokens: number }
   ): VisionExtractionResult {
     const menuItems: MenuItem[] =
       raw.menuItems?.map((item) => this.convertToMenuItem(item)) || [];
@@ -408,6 +425,7 @@ export class OpenAiVisionService implements IVisionApiService {
         metadata: {
           hasComingSoonNotice: raw.metadata?.hasComingSoonNotice || false,
           totalImagesAnalyzed: totalImages,
+          tokensUsed,
         },
       },
     };

@@ -173,6 +173,17 @@ export interface VisionExtractionResult {
 
       /** Total images analyzed */
       totalImagesAnalyzed?: number;
+
+      /**
+       * Actual token usage from the Vision API response (not estimates).
+       * Populated by the provider service after the API call returns.
+       * Used by upstream cost tracking to record real cost per request.
+       */
+      tokensUsed?: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+      };
     };
   };
 }
