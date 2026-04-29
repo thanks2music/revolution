@@ -59,10 +59,10 @@ export class ClaudeVisionService implements IVisionApiService {
 
     this.client = new Anthropic({ apiKey: key });
 
-    // Initialize log directory
-    // Note: Use process.cwd() instead of __dirname for ES Module compatibility
+    // Log directory for non-production debug logs only
+    // (Cloud Run has ephemeral FS; production relies on console.log → Cloud Logging)
     this.logDir = path.join(process.cwd(), 'logs');
-    if (!fs.existsSync(this.logDir)) {
+    if (process.env.NODE_ENV !== 'production' && !fs.existsSync(this.logDir)) {
       fs.mkdirSync(this.logDir, { recursive: true });
     }
   }
@@ -538,6 +538,13 @@ export class ClaudeVisionService implements IVisionApiService {
     rawJson: RawClaudeResponse,
     cost: { usd: number; jpy: number; breakdown: { inputCost: number; outputCost: number; cachedCost: number } }
   ): Promise<void> {
+    // Skip file logging in production (Cloud Run has ephemeral filesystem;
+    // logs would be lost on restart). Inline console.log/error elsewhere in
+    // this file is auto-captured by Cloud Logging.
+    if (process.env.NODE_ENV === 'production') {
+      return;
+    }
+
     const now = new Date();
     // JST (UTC+9) タイムスタンプ
     const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
