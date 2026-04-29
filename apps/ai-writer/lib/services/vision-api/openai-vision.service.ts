@@ -88,12 +88,16 @@ interface OpenAiVisionConfig {
  *
  * @description
  * OpenAI-specific implementation of Vision API service.
- * Uses gpt-4o-mini with configurable detail level.
+ * Uses gpt-4o-mini with configurable detail level (default: 'low' for cost).
  *
- * Token pricing (as of 2026-01):
- * - Input: $0.15/1M tokens
- * - detail=low: 85 tokens per image (fixed)
- * - detail=high: ~1,105 tokens per image (estimated)
+ * Token pricing (per OpenAI official docs as of 2026-04):
+ * - Input: $0.15/1M tokens (gpt-4o-mini)
+ * - detail=low : 85 tokens per image (fixed, 512×512 low-res representation)
+ * - detail=high: base + N × (512px tile cost) — scaled to fit 2048×2048,
+ *                shortest side 768px. Typically 10–20× costlier than low.
+ *
+ * Default = 'low' (cost-optimized). Use 'high' opt-in via VISION_API_DETAIL=high
+ * env or explicit config when Japanese OCR accuracy is required.
  *
  * @example
  * ```typescript
@@ -126,7 +130,9 @@ export class OpenAiVisionService implements IVisionApiService {
 
     this.client = new OpenAI({ apiKey });
     this.modelName = config?.model || 'gpt-4o-mini';
-    this.detailLevel = config?.detail || 'high';
+    // Default to 'low' (cost-optimized, ~85 tokens/image per OpenAI spec).
+    // 'high' opt-in requires explicit config or VISION_API_DETAIL=high env var via Factory.
+    this.detailLevel = config?.detail || 'low';
 
     // Log directory path (adjusted for subdirectory location)
     // Note: Use process.cwd() instead of __dirname for ES Module compatibility
@@ -156,10 +162,13 @@ export class OpenAiVisionService implements IVisionApiService {
    * @description
    * Estimates token count and cost for OpenAI Vision API calls.
    *
-   * Token calculation:
-   * - detail=low: 85 tokens per image (fixed by OpenAI)
-   * - detail=high: ~1,105 tokens per image (estimated average)
-   * - Prompt tokens: ~100 (estimated)
+   * Token calculation (per OpenAI official spec):
+   * - detail=low : 85 tokens per image (fixed, 512×512 representation)
+   * - detail=high: base + N × (512px tile cost), scaled to fit 2048×2048
+   *                with shortest side 768px. ~1,105 tokens/image is a rough
+   *                average for typical menu photos; actual count depends on
+   *                input dimensions.
+   * - Prompt tokens: ~100 (rough estimate for the system+user prompt)
    *
    * @param imageUrls - Array of image URLs to analyze
    * @returns Token calculation result with cost estimation

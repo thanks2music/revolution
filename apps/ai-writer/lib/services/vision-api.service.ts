@@ -230,19 +230,20 @@ export class VisionApiService {
       },
     ];
 
-    // Add all images with detail=high (TEMPORARY: Testing for better Japanese OCR)
+    // Add all images with detail=low (cost-optimized per OpenAI spec: 85 tokens/image fixed).
+    // For Japanese OCR accuracy, prefer the new OpenAiVisionService with detail=high opt-in.
     for (const imageUrl of imageUrls) {
       content.push({
         type: 'image_url',
         image_url: {
           url: imageUrl,
-          detail: 'high', // TEMPORARY: Testing high detail for Japanese text extraction
+          detail: 'low',
         },
       });
     }
 
     console.log(
-      `[VisionApiService] Calling OpenAI Vision API with ${imageUrls.length} images (detail=high)`
+      `[VisionApiService] Calling OpenAI Vision API with ${imageUrls.length} images (detail=low)`
     );
 
     const response = await this.client.chat.completions.create({

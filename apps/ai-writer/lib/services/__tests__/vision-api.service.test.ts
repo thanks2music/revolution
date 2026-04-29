@@ -104,7 +104,7 @@ describe('VisionApiService', () => {
       expect(result.visionExtraction.menuItems[0].name).toBe('テストメニュー');
     });
 
-    it('should use detail=high for all images (Japanese OCR accuracy)', async () => {
+    it('should use detail=low for all images (cost optimization)', async () => {
       const multiImageOptions: VisionApiCallOptions = {
         ...mockOptions,
         imageUrls: [
@@ -119,11 +119,11 @@ describe('VisionApiService', () => {
       const callArgs = (mockOpenAIClient.chat.completions.create as jest.Mock).mock.calls[0][0];
       const content = callArgs.messages[0].content;
 
-      // Check all images have detail=high (legacy class hardcodes 'high' for Japanese OCR accuracy)
+      // Check all images have detail=low (legacy class restored to cost-optimized default)
       const imageUrls = content.filter((c: any) => c.type === 'image_url');
       expect(imageUrls).toHaveLength(3);
       imageUrls.forEach((img: any) => {
-        expect(img.image_url.detail).toBe('high');
+        expect(img.image_url.detail).toBe('low');
       });
     });
 

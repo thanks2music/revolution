@@ -64,9 +64,13 @@ export class VisionApiServiceFactory {
 
     switch (selectedProvider) {
       case 'openai':
+        // Detail resolution order: explicit config > VISION_API_DETAIL env > 'low' (cost-optimized default)
+        // 'high' opt-in is intended for cases where Japanese OCR accuracy is required.
+        // detail=high costs ~10x more tokens than detail=low (per OpenAI pricing).
+        const envDetail = process.env.VISION_API_DETAIL as 'low' | 'high' | 'auto' | undefined;
         return new OpenAiVisionService({
           apiKey: config?.apiKey,
-          detail: config?.detail || 'high',
+          detail: config?.detail ?? envDetail ?? 'low',
         });
 
       case 'claude':
