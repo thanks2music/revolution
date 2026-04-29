@@ -118,9 +118,12 @@ export interface VisionOutputSchema {
             properties: Record<string, unknown>;
           };
         };
-        noveltyItem: {
-          type: ['object', 'null'];
-          properties: Record<string, unknown>;
+        noveltyItems: {
+          type: 'array';
+          items: {
+            type: 'object';
+            properties: Record<string, unknown>;
+          };
         };
         metadata?: {
           type: 'object';
