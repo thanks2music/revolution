@@ -47,9 +47,27 @@ import type { VisionApiTemplate } from '@/lib/types/vision-api';
  */
 const PROVIDERS_TO_TEST: VisionProvider[] = ['openai', 'claude'];
 
+/**
+ * Per-provider API key requirement
+ * E2E tests hit real APIs and require the corresponding key to be set.
+ * Without keys (e.g. CI without secrets), the provider's tests are skipped.
+ */
+const PROVIDER_API_KEY_ENV: Record<VisionProvider, string> = {
+  openai: 'OPENAI_API_KEY',
+  claude: 'ANTHROPIC_API_KEY',
+};
+
 describe.each(PROVIDERS_TO_TEST)(
   'Vision API E2E Test - Princess Cafe (Tokyo Revengers) - Provider: %s',
   (provider: VisionProvider) => {
+    const apiKeyEnv = PROVIDER_API_KEY_ENV[provider];
+    const hasApiKey = Boolean(process.env[apiKeyEnv]);
+
+    if (!hasApiKey) {
+      it.skip(`(skipped: ${apiKeyEnv} not set, real API call required)`, () => {});
+      return;
+    }
+
     let visionApiService: IVisionApiService;
     let yamlTemplateLoaderService: YamlTemplateLoaderService;
 
