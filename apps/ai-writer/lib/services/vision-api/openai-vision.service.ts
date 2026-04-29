@@ -29,7 +29,6 @@ import type {
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
-import { buildInterimVisionPrompt } from './prompts';
 import { calculateCost, formatCost } from '@/lib/ai/cost';
 
 /**
@@ -305,16 +304,12 @@ export class OpenAiVisionService implements IVisionApiService {
   ): Promise<RawVisionResponse> {
     const startTime = Date.now();
 
-    // Build interim prompt (will be replaced with Templates YAML in future)
-    const fullPrompt = buildInterimVisionPrompt(
-      category as 'menu' | 'novelty' | 'goods'
-    );
-
-    // Build content array with images
+    // Use the caller-provided prompt as-is (per IVisionApiService contract).
+    // Callers may supply a Templates v3 YAML prompt or the interim prompt utility.
     const content: OpenAI.ChatCompletionContentPart[] = [
       {
         type: 'text',
-        text: fullPrompt,
+        text: prompt,
       },
     ];
 
@@ -365,7 +360,7 @@ export class OpenAiVisionService implements IVisionApiService {
       domain,
       category,
       imageUrls,
-      fullPrompt,
+      prompt,
       rawContent,
       response.usage,
       elapsedTime,
@@ -541,30 +536,6 @@ export class OpenAiVisionService implements IVisionApiService {
   }
 
   /**
-   * Get next log sequence number for the day
-   */
-  private getNextLogSequence(domain: string, category: string): number {
-    const today = new Date().toISOString().split('T')[0];
-    const prefix = `${today}-VisionAPI-OpenAI-${domain.replace(/\./g, '-')}-${category}`;
-
-    const files = fs.readdirSync(this.logDir);
-    const matchingFiles = files.filter((file) => file.startsWith(prefix));
-
-    if (matchingFiles.length === 0) {
-      return 1;
-    }
-
-    const sequences = matchingFiles
-      .map((file) => {
-        const match = file.match(/-(\d{2})\.log$/);
-        return match ? parseInt(match[1], 10) : 0;
-      })
-      .filter((seq) => seq > 0);
-
-    return sequences.length > 0 ? Math.max(...sequences) + 1 : 1;
-  }
-
-  /**
    * Save detailed log to file
    */
   private async saveLogToFile(
@@ -581,10 +552,11 @@ export class OpenAiVisionService implements IVisionApiService {
     // JST (UTC+9) タイムスタンプ
     const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
     const today = jstDate.toISOString().split('T')[0];
-    const sequence = this.getNextLogSequence(domain, category);
-    const sequenceStr = sequence.toString().padStart(2, '0');
+    // Monotonic millisecond timestamp avoids TOCTOU + blocking readdirSync seen in
+    // the previous getNextLogSequence implementation.
+    const tsSuffix = now.getTime().toString();
 
-    const filename = `${today}-VisionAPI-OpenAI-${domain.replace(/\./g, '-')}-${category}-${sequenceStr}.log`;
+    const filename = `${today}-VisionAPI-OpenAI-${domain.replace(/\./g, '-')}-${category}-${tsSuffix}.log`;
     const logPath = path.join(this.logDir, filename);
 
     const logContent = `
@@ -597,7 +569,7 @@ Model: ${this.modelName}
 Detail Level: ${this.detailLevel}
 Domain: ${domain}
 Category: ${category}
-Sequence: ${sequenceStr}
+Timestamp: ${tsSuffix}
 
 =================================================================
 REQUEST
