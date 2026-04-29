@@ -82,6 +82,7 @@ import {
   validateBusinessRules,
   type HtmlExtractionData,
 } from '@/lib/utils/vision-api-utils';
+import { checkExtractionSufficiency } from '@/lib/config/vision-api-thresholds';
 import type {
   VisionExtractionResult,
   FallbackLevelType,
@@ -493,16 +494,17 @@ export class ArticleGenerationMdxService {
           sufficiencyRate: `${(htmlSufficiency.htmlSufficiencyRate * 100).toFixed(1)}%`,
         });
 
-        // 充足性判定（閾値: menuItemCount >= 3, priceCount >= 2, sufficiencyRate >= 20%）
-        const isSufficient =
-          htmlSufficiency.menuItemCount >= 3 &&
-          htmlSufficiency.priceCount >= 2 &&
-          htmlSufficiency.htmlSufficiencyRate >= 0.2;
+        // 充足性判定（閾値は VISION_API_THRESHOLDS に集約、checkExtractionSufficiency() を使用）
+        const sufficiencyResult = checkExtractionSufficiency(
+          htmlSufficiency.menuItemCount,
+          htmlSufficiency.priceCount,
+          htmlSufficiency.htmlSufficiencyRate,
+        );
 
-        if (isSufficient) {
-          console.log('[Step 1.8] ✅ HTML充足 → Vision API をスキップ');
+        if (sufficiencyResult.isSufficient) {
+          console.log('[Step 1.8] ✅ HTML充足 → Vision API をスキップ', { reason: sufficiencyResult.reason });
         } else {
-          console.log('[Step 1.8] ❌ HTML不足 → Vision API を呼び出し');
+          console.log('[Step 1.8] ❌ HTML不足 → Vision API を呼び出し', { reason: sufficiencyResult.reason });
           visionApiResult.called = true;
 
           try {
@@ -540,21 +542,24 @@ export class ArticleGenerationMdxService {
                 goodsItems: visionExtraction.visionExtraction.goodsItems.length,
               });
 
-              // Cost tracking (gpt-4o-mini with detail=low)
-              // Input: 85 tokens per image + ~300 tokens for prompt
-              // Output: ~500-1000 tokens for JSON response (estimated)
-              const estimatedInputTokens = imageUrls.length * 85 + 300;
-              const estimatedOutputTokens = 750; // Average estimate
+              // Cost tracking (provider-aware via IVisionApiService.calculateTokens())
+              const tokenCalc = await visionService.calculateTokens(imageUrls);
+              const provider = visionService.getProviderName();
+              const modelName = provider === 'claude' ? 'claude-sonnet-4-5-20250929' : 'gpt-4o-mini';
+              const estimatedOutputTokens = tokenCalc.breakdown.completionTokens ?? 750;
+              const estimatedInputTokens =
+                tokenCalc.breakdown.imageTokens + tokenCalc.breakdown.promptTokens;
               const estimatedTotalTokens = estimatedInputTokens + estimatedOutputTokens;
 
-              const costResult = costTracker.recordUsage('Step1.8_VisionAPI', 'gpt-4o-mini', {
+              const costResult = costTracker.recordUsage('Step1.8_VisionAPI', modelName, {
                 promptTokens: estimatedInputTokens,
                 completionTokens: estimatedOutputTokens,
                 totalTokens: estimatedTotalTokens,
               });
 
               console.log('[Step 1.8] Vision API コスト追跡:', {
-                model: 'gpt-4o-mini (vision)',
+                provider,
+                model: modelName,
                 promptTokens: estimatedInputTokens,
                 completionTokens: estimatedOutputTokens,
                 totalTokens: estimatedTotalTokens,
@@ -608,11 +613,12 @@ export class ArticleGenerationMdxService {
               if (businessValidation.issues.length > 0) {
                 console.warn('[Step 1.8] ⚠️ Business rules 違反:', businessValidation.issues);
 
-                // 信頼度を調整
+                // 信頼度を調整（元の値を退避してから上書き）
+                const originalConfidence = visionExtraction.visionExtraction.confidence;
                 visionExtraction.visionExtraction.confidence = businessValidation.adjustedConfidence;
 
                 console.log('[Step 1.8] 信頼度調整:', {
-                  original: visionExtraction.visionExtraction.confidence,
+                  original: originalConfidence,
                   adjusted: businessValidation.adjustedConfidence,
                 });
               }
