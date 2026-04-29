@@ -120,7 +120,7 @@ export function crossCheckVisionResult(
       htmlMenuCount: htmlExtraction.menuItemCount,
       visionMenuCount: visionExtraction.menuItems.length,
       htmlPriceCount: htmlExtraction.priceCount,
-      visionPriceCount: visionExtraction.menuItems.filter((item) => item.price).length,
+      visionPriceCount: visionExtraction.menuItems.filter((item) => item.price != null).length,
       hasComingSoonNotice: visionExtraction.metadata?.hasComingSoonNotice ?? false,
       confidenceScore: visionExtraction.confidence,
     },
@@ -311,7 +311,7 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
 
   // Validate menu prices
   for (const item of menuItems) {
-    if (item.price) {
+    if (item.price != null) {
       if (item.price < 500 || item.price > 5000) {
         issues.push(
           `Menu price out of range: ${item.name} = ${item.price}円 (expected: 500-5000円)`
@@ -323,7 +323,7 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
 
   // Validate goods prices
   for (const item of goodsItems) {
-    if (item.price) {
+    if (item.price != null) {
       if (item.price < 300 || item.price > 10000) {
         issues.push(
           `Goods price out of range: ${item.name} = ${item.price}円 (expected: 300-10000円)`
@@ -335,7 +335,7 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
 
   // Validate goods variant count
   for (const item of goodsItems) {
-    if (item.variantCount && item.variantCount > 100) {
+    if (item.variantCount != null && item.variantCount > 100) {
       issues.push(
         `Goods variant count suspicious: ${item.name} = ${item.variantCount} variants (max: 100, likely OCR error)`
       );
@@ -345,7 +345,7 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
 
   // Validate novelty variant count
   for (const item of noveltyItems) {
-    if (item.variantCount && item.variantCount > 50) {
+    if (item.variantCount != null && item.variantCount > 50) {
       issues.push(
         `Novelty variant count suspicious: ${item.name} = ${item.variantCount} variants (max: 50)`
       );
