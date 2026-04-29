@@ -197,8 +197,9 @@ export class VisionApiService {
     category: string,
     timeoutMs: number
   ): Promise<VisionExtractionResult> {
+    let timerId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(
+      timerId = setTimeout(
         () => reject(new Error(`Vision API timeout after ${timeoutMs}ms`)),
         timeoutMs
       );
@@ -206,7 +207,11 @@ export class VisionApiService {
 
     const apiPromise = this.callVisionApi(imageUrls, prompt, category);
 
-    return Promise.race([apiPromise, timeoutPromise]);
+    try {
+      return await Promise.race([apiPromise, timeoutPromise]);
+    } finally {
+      if (timerId !== undefined) clearTimeout(timerId);
+    }
   }
 
   /**
@@ -581,8 +586,3 @@ export class VisionApiService {
     console.log(`[VisionApiService] Log saved: ${fileName}`);
   }
 }
-
-/**
- * Singleton instance
- */
-export const visionApiService = new VisionApiService();
