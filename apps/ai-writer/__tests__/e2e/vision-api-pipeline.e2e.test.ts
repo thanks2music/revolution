@@ -39,7 +39,7 @@ import {
   validateBusinessRules,
 } from '@/lib/utils/vision-api-utils';
 import type { HtmlExtractionData } from '@/lib/utils/vision-api-utils';
-import type { VisionApiTemplate } from '@/lib/types/vision-api';
+import { checkExtractionSufficiency } from '@/lib/config/vision-api-thresholds';
 
 /**
  * Providers to test
@@ -101,14 +101,15 @@ describe.each(PROVIDERS_TO_TEST)(
 
     console.log('[E2E Test] Step 1: HTML extraction result:', htmlExtraction);
 
-    // Step 2: Sufficiency check
-    const isSufficient =
-      htmlExtraction.menuItemCount >= 3 &&
-      htmlExtraction.priceCount >= 2 &&
-      htmlExtraction.htmlSufficiencyRate >= 0.2;
+    // Step 2: Sufficiency check (single source: checkExtractionSufficiency / VISION_API_THRESHOLDS)
+    const sufficiencyResult = checkExtractionSufficiency(
+      htmlExtraction.menuItemCount,
+      htmlExtraction.priceCount,
+      htmlExtraction.htmlSufficiencyRate,
+    );
 
-    expect(isSufficient).toBe(false);
-    console.log('[E2E Test] Step 2: HTML sufficiency check:', { isSufficient });
+    expect(sufficiencyResult.isSufficient).toBe(false);
+    console.log('[E2E Test] Step 2: HTML sufficiency check:', sufficiencyResult);
 
     // Step 3: Use interim simplified prompt (shared utility)
     // NOTE: Waiting for Templates repository to create 1.5-vision-extraction.yaml

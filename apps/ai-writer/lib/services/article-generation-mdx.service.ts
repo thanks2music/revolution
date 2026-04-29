@@ -74,7 +74,6 @@ import { buildCategories } from '@/lib/utils/category-builder';
 import { validateStoreName } from '@/lib/utils/store-name-validator';
 import { VisionApiServiceFactory } from './vision-api/vision-api-service.factory';
 import { buildInterimVisionPrompt } from './vision-api/prompts';
-import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import {
   crossCheckVisionResult,
   detectHallucination,
