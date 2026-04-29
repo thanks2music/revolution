@@ -11,10 +11,14 @@
  */
 
 /**
- * Vision API 暫定プロンプト生成
+ * Vision API 暫定プロンプト生成（Phase 0: menu カテゴリのみ）
  *
- * @param category - 抽出カテゴリ (menu / novelty / goods)
- * @returns 暫定プロンプト
+ * @description
+ * Phase 0 (PoC) では menu カテゴリのみ対応。goods/novelty は Templates v3 の
+ * 1.5-vision-extraction.yaml が完全統合された時点で本ファイルごと削除予定。
+ *
+ * @param category - 抽出カテゴリ。Phase 0 では `'menu'` のみ受理
+ * @returns 暫定プロンプト（menu 用）
  *
  * @example
  * ```typescript
@@ -23,7 +27,7 @@
  * ```
  */
 export function buildInterimVisionPrompt(
-  category: 'menu' | 'novelty' | 'goods'
+  category: 'menu'
 ): string {
   return `あなたはコラボカフェのメニュー情報を抽出する専門家です。
 指定した画像内に書かれている日本語の文字列を抽出してください。
