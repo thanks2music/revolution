@@ -39,7 +39,7 @@ interface RawVisionResponse {
   menuItems?: Array<{
     name: string;
     price?: number;
-    characterName?: unknown;
+    characterName?: string[] | string;
     bonus?: string;
     description?: string;
     notes?: string;
@@ -50,7 +50,7 @@ interface RawVisionResponse {
     name: string;
     condition?: string;
     variantCount?: number;
-    characterName?: unknown;
+    characterName?: string[] | string;
     notes?: string;
     remarks?: string;
   }>;
@@ -59,7 +59,7 @@ interface RawVisionResponse {
     price?: number;
     variantCount?: number;
     variantDetails?: string;
-    characterName?: unknown;
+    characterName?: string[] | string;
   }>;
   metadata?: {
     imageQuality?: string;
@@ -428,10 +428,10 @@ export class OpenAiVisionService implements IVisionApiService {
    * Legacy string format is NOT supported (development phase only).
    *
    * @param value - Raw characterName value from LLM response
-   * @param menuName - Menu name for logging purposes
+   * @param itemName - Item name (menu/goods/novelty) for logging purposes
    * @returns Cleaned character names array (empty array if no characters)
    */
-  private parseCharacterNameArray(value: unknown, menuName: unknown): string[] {
+  private parseCharacterNameArray(value: unknown, itemName: unknown): string[] {
     // Case 1: Array (expected)
     if (Array.isArray(value)) {
       return value
@@ -443,7 +443,7 @@ export class OpenAiVisionService implements IVisionApiService {
     if (typeof value === 'string' && value.length > 0) {
       console.warn(
         `[OpenAiVisionService] Unexpected string format for characterName: "${value}". ` +
-        `Expected array format. Menu name: "${menuName || 'unknown'}". ` +
+        `Expected array format. Item name: "${itemName || 'unknown'}". ` +
         `Returning empty array.`
       );
       return [];

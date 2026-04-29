@@ -341,7 +341,7 @@ export class VisionApiService {
   /**
    * Parse characterName field to string array
    */
-  private parseCharacterNameArray(value: unknown, menuName: unknown): string[] {
+  private parseCharacterNameArray(value: unknown, itemName: unknown): string[] {
     if (Array.isArray(value)) {
       return value
         .map(v => this.cleanCharacterName(String(v)))
@@ -351,7 +351,7 @@ export class VisionApiService {
     if (typeof value === 'string' && value.length > 0) {
       console.warn(
         `[VisionApiService] Unexpected string format for characterName: "${value}". ` +
-        `Expected array format. Menu name: "${menuName || 'unknown'}". ` +
+        `Expected array format. Item name: "${itemName || 'unknown'}". ` +
         `Returning empty array.`
       );
       return [];
