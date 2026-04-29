@@ -514,6 +514,16 @@ export interface IVisionApiService {
   getProviderName(): VisionProvider;
 
   /**
+   * Get the underlying model identifier used for the API call.
+   * Callers (e.g. cost trackers) should use this instead of hardcoding
+   * model names per provider to avoid silent drift when the service
+   * upgrades its default model.
+   *
+   * @returns Model identifier (e.g. 'gpt-4o-mini', 'claude-sonnet-4-5-20250929')
+   */
+  getModelName(): string;
+
+  /**
    * Calculate tokens for image analysis
    *
    * @param imageUrls - Array of image URLs to analyze

@@ -542,9 +542,11 @@ export class ArticleGenerationMdxService {
               });
 
               // Cost tracking (use actual token usage from API response, fall back to
-              // calculateTokens() estimates only if the service didn't surface usage)
+              // calculateTokens() estimates only if the service didn't surface usage).
+              // Model name comes from the service itself (avoids drift when the service
+              // upgrades its default model — e.g. Sonnet 4.5 → 4.6).
               const provider = visionService.getProviderName();
-              const modelName = provider === 'claude' ? 'claude-sonnet-4-5-20250929' : 'gpt-4o-mini';
+              const modelName = visionService.getModelName();
 
               const actualUsage = visionExtraction.visionExtraction.metadata?.tokensUsed;
               let promptTokens: number;

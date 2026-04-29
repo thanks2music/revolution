@@ -30,6 +30,7 @@ import type {
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
 import { calculateCost, formatCost } from '@/lib/ai/cost';
+import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 /**
  * Raw Vision API Response (Internal Type)
@@ -155,6 +156,13 @@ export class OpenAiVisionService implements IVisionApiService {
   }
 
   /**
+   * Get the underlying model identifier used for API calls and cost tracking.
+   */
+  getModelName(): string {
+    return this.modelName;
+  }
+
+  /**
    * Calculate tokens for image analysis
    *
    * @description
@@ -214,6 +222,10 @@ export class OpenAiVisionService implements IVisionApiService {
    */
   async extractFromImages(options: VisionApiCallOptions): Promise<VisionExtractionResult> {
     const { imageUrls, prompt, category, maxRetries = 3, timeout = 30000 } = options;
+
+    // Defense-in-depth: reject non-http(s) URLs (file://, data:, etc.) before
+    // they reach the OpenAI API to avoid opaque errors and unintended fetches.
+    assertHttpImageUrls(imageUrls);
 
     console.log(
       `[OpenAiVisionService] Extracting ${category} from ${imageUrls.length} images (detail: ${this.detailLevel})`

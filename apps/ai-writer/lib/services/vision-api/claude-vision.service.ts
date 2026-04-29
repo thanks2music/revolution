@@ -30,6 +30,7 @@ import type {
   NoveltyItem,
 } from '@/lib/types/vision-api';
 import { calculateCost, formatCost } from '@/lib/ai/cost';
+import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 interface RawClaudeResponse {
   confidence?: number;
@@ -72,6 +73,13 @@ export class ClaudeVisionService implements IVisionApiService {
    */
   getProviderName(): VisionProvider {
     return 'claude';
+  }
+
+  /**
+   * Get the underlying model identifier used for API calls and cost tracking.
+   */
+  getModelName(): string {
+    return this.modelName;
   }
 
   /**
@@ -121,6 +129,10 @@ export class ClaudeVisionService implements IVisionApiService {
       maxRetries = 3,
       timeout = 30000,
     } = options;
+
+    // Defense-in-depth: reject non-http(s) URLs (file://, data:, etc.) before
+    // they reach the Anthropic API to avoid opaque errors and unintended fetches.
+    assertHttpImageUrls(imageUrls);
 
     console.log(
       `[ClaudeVisionService] Extracting ${category} from ${imageUrls.length} images`
