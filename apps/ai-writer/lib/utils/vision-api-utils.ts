@@ -21,6 +21,34 @@ import type {
 } from '@/lib/types/vision-api';
 
 /**
+ * Validate that all image URLs use http(s) scheme.
+ * Rejects file://, data:, javascript:, and other non-network schemes that
+ * could cause opaque API errors or, in adversarial inputs, server-side
+ * fetches against unintended targets (SSRF).
+ *
+ * Throws on the first invalid URL with an error that names the offending
+ * value so callers can attribute the failure.
+ *
+ * @param imageUrls - Array of image URLs to validate
+ * @throws {Error} when any URL is malformed or its scheme is not http(s)
+ */
+export function assertHttpImageUrls(imageUrls: string[]): void {
+  for (const url of imageUrls) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`Invalid image URL: "${url}" (not a valid URL)`);
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(
+        `Invalid image URL scheme "${parsed.protocol}" for "${url}" (expected http or https)`
+      );
+    }
+  }
+}
+
+/**
  * HTML Extraction Result (for cross-check)
  */
 export interface HtmlExtractionData {
