@@ -164,7 +164,7 @@ function formatCharacterNames(names: string[]): string {
 }
 
 /**
- * 抽出結果を表示（簡潔版）
+ * 抽出結果を表示（全カテゴリ: menu / goods / novelty）
  */
 function displayResults(
   result: VisionExtractionResult,
@@ -179,31 +179,73 @@ function displayResults(
   console.log(`🖼️  画像数: ${imageUrls.length}枚`);
   console.log(`✨ 信頼度: ${(result.visionExtraction.confidence * 100).toFixed(1)}%\n`);
 
-  const items = result.visionExtraction.menuItems;
-  if (items.length === 0) {
-    console.log('⚠️  抽出されたメニューアイテムはありません\n');
+  // Phase 0 制限の注意（暫定プロンプトは menu のみ抽出する設計）
+  console.log('⚠️  Phase 0 暫定プロンプトは menu カテゴリのみ抽出します');
+  console.log('    goods / novelty 画像を渡しても 0 件になる可能性があります');
+  console.log('    Templates v3 の YAML 統合後にカテゴリ別抽出に移行予定\n');
 
-    // Coming Soon チェック
-    if (result.visionExtraction.metadata?.hasComingSoonNotice) {
-      console.log('💡 画像に「Coming Soon」の表示が含まれています\n');
-    }
+  const { menuItems, goodsItems, noveltyItems, metadata } = result.visionExtraction;
 
-    return;
+  // Coming Soon チェック（全カテゴリで共通）
+  if (metadata?.hasComingSoonNotice) {
+    console.log('💡 画像に「Coming Soon」の表示が含まれています\n');
   }
 
-  console.log(`📋 メニューアイテム (${items.length}件):\n`);
+  // メニュー
+  console.log(`📋 メニューアイテム (${menuItems.length}件):`);
+  if (menuItems.length === 0) {
+    console.log('  （抽出なし）\n');
+  } else {
+    console.log('');
+    menuItems.forEach((item, index) => {
+      const price = item.price != null ? ` / ¥${item.price.toLocaleString()}` : '';
+      const char = item.characterName.length > 0
+        ? ` (${formatCharacterNames(item.characterName)})`
+        : '';
+      const conf = item.confidence ? `${(item.confidence * 100).toFixed(1)}%` : 'N/A';
 
-  items.forEach((item, index) => {
-    const price = item.price !== null ? ` / ¥${item.price.toLocaleString()}` : '';
-    const char = item.characterName.length > 0
-      ? ` (${formatCharacterNames(item.characterName)})`
-      : '';
-    const conf = item.confidence ? `${(item.confidence * 100).toFixed(1)}%` : 'N/A';
+      console.log(`  ${index + 1}. ${item.name}${char}${price} [確信度: ${conf}]`);
+    });
+    console.log('');
+  }
 
-    console.log(`  ${index + 1}. ${item.name}${char}${price} [確信度: ${conf}]`);
-  });
+  // グッズ
+  console.log(`🛍️  グッズアイテム (${goodsItems.length}件):`);
+  if (goodsItems.length === 0) {
+    console.log('  （抽出なし）\n');
+  } else {
+    console.log('');
+    goodsItems.forEach((item, index) => {
+      const price = item.price != null ? ` / ¥${item.price.toLocaleString()}` : '';
+      const variants = item.variantCount != null ? ` / 全${item.variantCount}種` : '';
+      const char = item.characterName.length > 0
+        ? ` (${formatCharacterNames(item.characterName)})`
+        : '';
 
-  console.log('\n' + '='.repeat(80) + '\n');
+      console.log(`  ${index + 1}. ${item.name}${char}${price}${variants}`);
+    });
+    console.log('');
+  }
+
+  // ノベルティ
+  console.log(`🎁 ノベルティアイテム (${noveltyItems.length}件):`);
+  if (noveltyItems.length === 0) {
+    console.log('  （抽出なし）\n');
+  } else {
+    console.log('');
+    noveltyItems.forEach((item, index) => {
+      const variants = item.variantCount != null ? ` / 全${item.variantCount}種` : '';
+      const char = item.characterName.length > 0
+        ? ` (${formatCharacterNames(item.characterName)})`
+        : '';
+      const cond = item.condition ? ` 条件: ${item.condition}` : '';
+
+      console.log(`  ${index + 1}. ${item.name}${char}${variants}${cond}`);
+    });
+    console.log('');
+  }
+
+  console.log('='.repeat(80) + '\n');
 }
 
 /**
