@@ -122,6 +122,14 @@
       "WebFetch(domain:graphql.org)"
     ],
     "deny": [
+      "Read(.env)",
+      "Read(.env.local)",
+      "Read(.env.production)",
+      "Read(.env.*.local)",
+      "Read(apps/**/.env)",
+      "Read(apps/**/.env.local)",
+      "Read(apps/**/.env.production)",
+      "Read(apps/**/.env.*.local)",
       "Read(secrets/**)",
       "Read(**/secrets/**)",
       "Read(**/*secret*)",
