@@ -430,6 +430,18 @@ reference/
 reference/**
 
 # ========================================
+# SDD
+# ========================================
+docs/plan
+docs/report
+docs/review
+docs/approach
+docs/tasks
+docs/specs
+docs/guide
+docs/temp
+
+# ========================================
 # 📝 学習・開発メモ
 # ========================================
 
