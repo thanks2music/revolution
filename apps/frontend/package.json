@@ -23,7 +23,7 @@
     "@heroicons/react": "v1",
     "@t3-oss/env-nextjs": "^0.13.8",
     "next": "16.2.3",
-    "@vercel/og": "^0.8.5",
+    "@vercel/og": "^0.11.1",
     "next-mdx-remote": "^6.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
