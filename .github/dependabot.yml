@@ -4,11 +4,19 @@ updates:
   - package-ecosystem: "npm"
     directory: "/apps/frontend"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      # Monthly schedule reduces routine PR noise. Security advisories
+      # bypass this and arrive immediately regardless. Dependabot's
+      # `monthly` interval runs on day 1 of each month by default.
+      interval: "monthly"
       time: "09:00"
       timezone: "Asia/Tokyo"
-    open-pull-requests-limit: 5
+    # Keep PR queue throttled. Security advisories are not counted.
+    open-pull-requests-limit: 2
+    # Wait 7 days before bumping freshly-released versions; 14 days for majors.
+    # Lets the ecosystem catch obvious regressions before we eat them.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     reviewers:
       - "thanks2music"
     labels:
@@ -21,44 +29,51 @@ updates:
       - dependency-name: "@types/node"
         versions:
           - ">=25.0.0"
-    # Group patch updates together to reduce PR noise
+    # Group all non-major updates (patch + minor) into a single PR per app.
+    # Majors stay as individual PRs for review.
     groups:
-      patch-updates:
+      non-major-updates:
         patterns:
           - "*"
         update-types:
           - "patch"
+          - "minor"
 
   # Backend app (WordPress)
   - package-ecosystem: "npm"
     directory: "/apps/backend"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "09:00"
       timezone: "Asia/Tokyo"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     reviewers:
       - "thanks2music"
     labels:
       - "dependencies"
       - "backend"
     groups:
-      patch-updates:
+      non-major-updates:
         patterns:
           - "*"
         update-types:
           - "patch"
+          - "minor"
 
   # AI Writer app (Next.js)
   - package-ecosystem: "npm"
     directory: "/apps/ai-writer"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "09:00"
       timezone: "Asia/Tokyo"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     reviewers:
       - "thanks2music"
     labels:
@@ -72,17 +87,25 @@ updates:
         versions:
           - ">=25.0.0"
     groups:
-      patch-updates:
+      non-major-updates:
         patterns:
           - "*"
         update-types:
           - "patch"
+          - "minor"
 
   # GitHub Actions
+  # Note: `cooldown` is not supported for the `github-actions` ecosystem
+  # (Dependabot rejects `cooldown.semver-major-days` here even though it
+  # works for `npm`). Action major bumps are infrequent and we manually
+  # review them anyway, so the absence of cooldown here is acceptable.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 2
     labels:
       - "dependencies"
       - "github-actions"
