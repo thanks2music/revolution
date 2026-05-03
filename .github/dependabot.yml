@@ -14,7 +14,9 @@ updates:
     labels:
       - "dependencies"
       - "frontend"
-    # Skip non-LTS Node.js type bumps. Stay on Active LTS (24.x).
+    # Ignore `@types/node` v25+ (odd-numbered Node releases are non-LTS).
+    # This rule only blocks v25+; it does not enforce a specific LTS
+    # version — current Active LTS lines (v22, v24) remain bumpable.
     ignore:
       - dependency-name: "@types/node"
         versions:
@@ -62,7 +64,9 @@ updates:
     labels:
       - "dependencies"
       - "ai-writer"
-    # Skip non-LTS Node.js type bumps. Stay on Active LTS (24.x).
+    # Ignore `@types/node` v25+ (odd-numbered Node releases are non-LTS).
+    # This rule only blocks v25+; it does not enforce a specific LTS
+    # version — current Active LTS lines (v22, v24) remain bumpable.
     ignore:
       - dependency-name: "@types/node"
         versions:
