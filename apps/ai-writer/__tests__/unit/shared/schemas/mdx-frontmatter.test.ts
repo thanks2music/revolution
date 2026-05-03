@@ -55,12 +55,12 @@ describe('MdxFrontmatterSchema', () => {
       expect(result.success).toBe(true);
     });
 
-    it('post_id が ULID 10 char (01kes3xx1q) の形式で OK', () => {
+    it('post_id が 10 char ULID 文字列 (01kes3xx1q) で OK (schema 制約は min(1) のみ)', () => {
       const result = MdxFrontmatterSchema.safeParse(validFrontmatterSample1);
       expect(result.success).toBe(true);
     });
 
-    it('post_id が ULID + 年号サフィックス (01kc224njw-2025) の形式で OK', () => {
+    it('post_id が ULID + 年号サフィックス (01kc224njw-2025) でも OK (schema は形式制約なし)', () => {
       const result = MdxFrontmatterSchema.safeParse(validFrontmatterSample7);
       expect(result.success).toBe(true);
     });
@@ -93,6 +93,7 @@ describe('MdxFrontmatterSchema', () => {
 
   describe('OPTIONAL フィールド省略可能', () => {
     const optionalFields = [
+      'tags',
       'work_titles',
       'prefectures',
       'prefecture_slugs',
@@ -137,6 +138,57 @@ describe('MdxFrontmatterSchema', () => {
       const result = MdxFrontmatterSchema.safeParse({
         ...validFrontmatterSample7,
         date: '2025-12-30T05:10:23Z',
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('ogImage の nullability', () => {
+    it('ogImage: null で成功 (generate-article-index.ts が null を出力するため)', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        ogImage: null,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('ogImage: 文字列で成功', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        ogImage: 'https://example.com/og.png',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('ogImage が undefined だと失敗 (nullable は null のみ許容、欠落は不可)', () => {
+      const partial: Record<string, unknown> = { ...validFrontmatterSample7 };
+      delete partial.ogImage;
+      const result = MdxFrontmatterSchema.safeParse(partial);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('tags の OPTIONAL 検証', () => {
+    it('tags: 文字列配列で成功', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        tags: ['anime', 'cafe'],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('tags: 空配列で成功 (article-index.json 現物が空配列のため)', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        tags: [],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('tags: 数値配列だと失敗', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        tags: [1, 2, 3],
       });
       expect(result.success).toBe(false);
     });

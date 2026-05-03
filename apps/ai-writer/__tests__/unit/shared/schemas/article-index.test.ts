@@ -97,6 +97,22 @@ describe('ArticleIndexItemSchema', () => {
       const result = ArticleIndexItemSchema.safeParse(partial);
       expect(result.success).toBe(true);
     });
+
+    it('ogImage: null で成功 (継承元の nullable 制約)', () => {
+      const result = ArticleIndexItemSchema.safeParse({
+        ...validItem,
+        ogImage: null,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('tags: [] (空配列) で成功 (継承元の OPTIONAL)', () => {
+      const result = ArticleIndexItemSchema.safeParse({
+        ...validItem,
+        tags: [],
+      });
+      expect(result.success).toBe(true);
+    });
   });
 });
 

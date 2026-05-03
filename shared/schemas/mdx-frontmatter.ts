@@ -19,8 +19,9 @@ export const MdxFrontmatterSchema = z.object({
   categories: z.array(z.string()),
   excerpt: z.string(),
   author: z.string(),
-  ogImage: z.string(),
+  ogImage: z.string().nullable(),
 
+  tags: z.array(z.string()).optional(),
   work_titles: z.array(z.string()).optional(),
   prefectures: z.array(z.string()).optional(),
   prefecture_slugs: z.array(z.string()).optional(),
