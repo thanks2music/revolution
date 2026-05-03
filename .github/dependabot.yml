@@ -14,6 +14,13 @@ updates:
     labels:
       - "dependencies"
       - "frontend"
+    # Ignore `@types/node` v25+ (odd-numbered Node releases are non-LTS).
+    # This rule only blocks v25+; it does not enforce a specific LTS
+    # version — current Active LTS lines (v22, v24) remain bumpable.
+    ignore:
+      - dependency-name: "@types/node"
+        versions:
+          - ">=25.0.0"
     # Group patch updates together to reduce PR noise
     groups:
       patch-updates:
@@ -57,6 +64,13 @@ updates:
     labels:
       - "dependencies"
       - "ai-writer"
+    # Ignore `@types/node` v25+ (odd-numbered Node releases are non-LTS).
+    # This rule only blocks v25+; it does not enforce a specific LTS
+    # version — current Active LTS lines (v22, v24) remain bumpable.
+    ignore:
+      - dependency-name: "@types/node"
+        versions:
+          - ">=25.0.0"
     groups:
       patch-updates:
         patterns:
