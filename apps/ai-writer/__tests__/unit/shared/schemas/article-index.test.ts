@@ -6,7 +6,7 @@ import {
 } from '../../../../../../shared/schemas/article-index';
 
 describe('ArticleIndexItemSchema', () => {
-  // 過去 PR から抽出した実 frontmatter + filePath で構成
+  // 過去 PR から抽出した実 frontmatter + filePath + generator が常時出力する空配列
   const validItem: ArticleIndexItem = {
     post_id: '01kes3xx1q',
     year: 2026,
@@ -26,6 +26,7 @@ describe('ArticleIndexItemSchema', () => {
     ai_model: 'gpt-4.1-mini',
     prefectures: ['東京都'],
     prefecture_slugs: ['tokyo'],
+    tags: [],
     filePath:
       'apps/ai-writer/content/collabo-cafe/gundam-iron-blooded-orphans/01kes3xx1q.mdx',
   };
@@ -36,7 +37,7 @@ describe('ArticleIndexItemSchema', () => {
       expect(result.success).toBe(true);
     });
 
-    it('OPTIONAL 最小構成 (Sample 7 + filePath) で成功', () => {
+    it('generator 最小出力 (空配列を持つ) で成功', () => {
       const minimalItem = {
         post_id: '01kc224njw-2025',
         year: 2025,
@@ -52,10 +53,28 @@ describe('ArticleIndexItemSchema', () => {
         author: 'thanks2music',
         ogImage: '/images/og-image-compressed.png',
         filePath: 'apps/ai-writer/content/collabo-cafe/zootopia-2/01kc224njw-2025.mdx',
+        tags: [],
+        work_titles: [],
+        prefectures: [],
+        prefecture_slugs: [],
       };
       const result = ArticleIndexItemSchema.safeParse(minimalItem);
       expect(result.success).toBe(true);
     });
+  });
+
+  describe('ArticleIndex 専用の required override', () => {
+    const requiredArrayFields = ['tags', 'work_titles', 'prefectures', 'prefecture_slugs'] as const;
+
+    it.each(requiredArrayFields)(
+      '%s が欠けると失敗 (generator 常時出力のため required override)',
+      (fieldName) => {
+        const partial: Record<string, unknown> = { ...validItem };
+        delete partial[fieldName];
+        const result = ArticleIndexItemSchema.safeParse(partial);
+        expect(result.success).toBe(false);
+      },
+    );
   });
 
   describe('filePath 必須', () => {
@@ -89,13 +108,6 @@ describe('ArticleIndexItemSchema', () => {
         date: '2025-11-20',
       });
       expect(result.success).toBe(false);
-    });
-
-    it('OPTIONAL (work_titles) が欠けても成功', () => {
-      const partial: Record<string, unknown> = { ...validItem };
-      delete partial.work_titles;
-      const result = ArticleIndexItemSchema.safeParse(partial);
-      expect(result.success).toBe(true);
     });
 
     it('ogImage: null で成功 (継承元の nullable 制約)', () => {
@@ -132,6 +144,10 @@ describe('ArticleIndexSchema', () => {
     author: 'thanks2music',
     ogImage: '/images/og.png',
     filePath: 'apps/ai-writer/content/collabo-cafe/test-work/01kes3xx1q.mdx',
+    tags: [],
+    work_titles: [],
+    prefectures: [],
+    prefecture_slugs: [],
   };
 
   describe('正常系', () => {
@@ -235,6 +251,35 @@ describe('ArticleIndexSchema', () => {
         generatedAt: '2026-01-03T08:57:07.710Z',
         totalArticles: 0,
         articles: validItem,
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('totalArticles invariant (refine)', () => {
+    it('totalArticles と articles.length が一致すると成功', () => {
+      const result = ArticleIndexSchema.safeParse({
+        generatedAt: '2026-01-03T08:57:07.710Z',
+        totalArticles: 2,
+        articles: [validItem, validItem],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('totalArticles が articles.length より大きいと失敗 (silent bug 防止)', () => {
+      const result = ArticleIndexSchema.safeParse({
+        generatedAt: '2026-01-03T08:57:07.710Z',
+        totalArticles: 99,
+        articles: [],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('totalArticles が articles.length より小さいと失敗', () => {
+      const result = ArticleIndexSchema.safeParse({
+        generatedAt: '2026-01-03T08:57:07.710Z',
+        totalArticles: 0,
+        articles: [validItem, validItem],
       });
       expect(result.success).toBe(false);
     });

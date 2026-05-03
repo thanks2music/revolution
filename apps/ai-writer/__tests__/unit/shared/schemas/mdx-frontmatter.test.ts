@@ -194,6 +194,35 @@ describe('MdxFrontmatterSchema', () => {
     });
   });
 
+  describe('ai_provider の enum 検証', () => {
+    it.each(['anthropic', 'gemini', 'openai'] as const)(
+      'ai_provider: %s で成功',
+      (provider) => {
+        const result = MdxFrontmatterSchema.safeParse({
+          ...validFrontmatterSample7,
+          ai_provider: provider,
+        });
+        expect(result.success).toBe(true);
+      },
+    );
+
+    it('ai_provider: 未知のプロバイダ名だと失敗', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        ai_provider: 'cohere',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('ai_provider: 大文字小文字違いで失敗 (Anthropic は不可)', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        ai_provider: 'Anthropic',
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe('型不一致', () => {
     it('categories が文字列単体だと失敗', () => {
       const result = MdxFrontmatterSchema.safeParse({

@@ -25,7 +25,7 @@ export const MdxFrontmatterSchema = z.object({
   work_titles: z.array(z.string()).optional(),
   prefectures: z.array(z.string()).optional(),
   prefecture_slugs: z.array(z.string()).optional(),
-  ai_provider: z.string().optional(),
+  ai_provider: z.enum(['anthropic', 'gemini', 'openai']).optional(),
   ai_model: z.string().optional(),
 });
 
