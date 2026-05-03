@@ -8,13 +8,14 @@ name: Auto-fix pnpm lockfile
 # This workflow runs on every Dependabot PR sync, regenerates the lockfile,
 # and pushes the fix back to the PR branch automatically.
 #
-# Security note:
-# `pull_request_target` is used so the workflow has the secrets needed to
-# push back to the PR branch. We restrict the `if:` condition to
-# `github.actor == 'dependabot[bot]'`, and Dependabot only creates
-# branches in this repo (not from forks), so injection via head.ref is
-# not a concern. PR head ref is only consumed by `actions/checkout` (not
-# shell `run:` blocks), so command injection is not possible.
+# Security hardening (defense in depth):
+# 1. `if:` gates on three conditions to ensure we only run for legitimate
+#    Dependabot PRs from the same repository (Dependabot does not fork).
+# 2. `pnpm install --ignore-scripts` prevents lifecycle scripts from any
+#    new transitive dependency from running with the write-capable token.
+#    For lockfile regeneration we don't need scripts to execute.
+# 3. PR head ref is only consumed by `actions/checkout` (not interpolated
+#    into shell `run:` blocks), so command injection is not possible.
 
 on:
   pull_request_target:
@@ -28,16 +29,19 @@ jobs:
   fix-lockfile:
     name: Regenerate pnpm-lock.yaml
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    # Triple gating: actor, PR author, and same-repo head all must be
+    # Dependabot. Belt-and-braces against unexpected trigger paths.
+    if: |
+      github.actor == 'dependabot[bot]'
+      && github.event.pull_request.user.login == 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -53,7 +57,7 @@ jobs:
       - name: Regenerate lockfile
         id: regen
         run: |
-          pnpm install --no-frozen-lockfile
+          pnpm install --no-frozen-lockfile --ignore-scripts
           if git diff --quiet pnpm-lock.yaml; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "::notice::pnpm-lock.yaml already in sync; no changes needed"

@@ -5,9 +5,9 @@ updates:
     directory: "/apps/frontend"
     schedule:
       # Monthly schedule reduces routine PR noise. Security advisories
-      # bypass this and arrive immediately regardless.
+      # bypass this and arrive immediately regardless. Dependabot's
+      # `monthly` interval runs on day 1 of each month by default.
       interval: "monthly"
-      day: "first-monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
     # Keep PR queue throttled. Security advisories are not counted.
@@ -44,7 +44,6 @@ updates:
     directory: "/apps/backend"
     schedule:
       interval: "monthly"
-      day: "first-monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
     open-pull-requests-limit: 2
@@ -69,7 +68,6 @@ updates:
     directory: "/apps/ai-writer"
     schedule:
       interval: "monthly"
-      day: "first-monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
     open-pull-requests-limit: 2
@@ -101,7 +99,6 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
-      day: "first-monday"
       time: "09:00"
       timezone: "Asia/Tokyo"
     open-pull-requests-limit: 2
