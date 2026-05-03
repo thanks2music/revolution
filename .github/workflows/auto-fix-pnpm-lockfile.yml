@@ -1,0 +1,75 @@
+name: Auto-fix pnpm lockfile
+
+# Why this workflow exists:
+# Dependabot has a known limitation with pnpm workspaces: when grouped
+# updates bump dependencies in `apps/*/package.json`, the root
+# `pnpm-lock.yaml` is not regenerated, causing CI's
+# `pnpm install --frozen-lockfile` to fail with ERR_PNPM_OUTDATED_LOCKFILE.
+# This workflow runs on every Dependabot PR sync, regenerates the lockfile,
+# and pushes the fix back to the PR branch automatically.
+#
+# Security note:
+# `pull_request_target` is used so the workflow has the secrets needed to
+# push back to the PR branch. We restrict the `if:` condition to
+# `github.actor == 'dependabot[bot]'`, and Dependabot only creates
+# branches in this repo (not from forks), so injection via head.ref is
+# not a concern. PR head ref is only consumed by `actions/checkout` (not
+# shell `run:` blocks), so command injection is not possible.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  fix-lockfile:
+    name: Regenerate pnpm-lock.yaml
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Regenerate lockfile
+        id: regen
+        run: |
+          pnpm install --no-frozen-lockfile
+          if git diff --quiet pnpm-lock.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::pnpm-lock.yaml already in sync; no changes needed"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::pnpm-lock.yaml updated; will commit"
+          fi
+
+      - name: Commit and push lockfile
+        if: steps.regen.outputs.changed == 'true'
+        env:
+          AUTHOR_NAME: github-actions[bot]
+          AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          git config user.name "$AUTHOR_NAME"
+          git config user.email "$AUTHOR_EMAIL"
+          git add pnpm-lock.yaml
+          git commit -m "🔧 chore(deps): regenerate pnpm-lock.yaml [auto]"
+          git push
