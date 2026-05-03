@@ -14,6 +14,11 @@ updates:
     labels:
       - "dependencies"
       - "frontend"
+    # Skip non-LTS Node.js type bumps. Stay on Active LTS (24.x).
+    ignore:
+      - dependency-name: "@types/node"
+        versions:
+          - ">=25.0.0"
     # Group patch updates together to reduce PR noise
     groups:
       patch-updates:
@@ -57,6 +62,11 @@ updates:
     labels:
       - "dependencies"
       - "ai-writer"
+    # Skip non-LTS Node.js type bumps. Stay on Active LTS (24.x).
+    ignore:
+      - dependency-name: "@types/node"
+        versions:
+          - ">=25.0.0"
     groups:
       patch-updates:
         patterns:
