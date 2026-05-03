@@ -384,6 +384,7 @@ GEMINI.md
 !.claude/commands/*
 
 ## Speckit
+.specify/
 .specify/memory
 .specify/memory/*
 specs/
