@@ -3,7 +3,7 @@ import {
   TokenUsageSchema,
   type SendMessageResult,
   type TokenUsage,
-} from '../../../../../../shared/schemas/ai-provider-response';
+} from '@revolution/schemas/ai-provider-response';
 
 describe('TokenUsageSchema', () => {
   describe('正常系', () => {

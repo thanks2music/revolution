@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  // Next.js 公式推奨: shared/schemas/ workspace の .ts ファイルを直接 transpile する
+  transpilePackages: ['@revolution/schemas'],
+
   /**
    * 画像最適化設定
    * - AVIF/WebP形式をサポート

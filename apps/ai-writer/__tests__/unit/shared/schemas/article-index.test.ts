@@ -3,7 +3,7 @@ import {
   ArticleIndexSchema,
   type ArticleIndex,
   type ArticleIndexItem,
-} from '../../../../../../shared/schemas/article-index';
+} from '@revolution/schemas/article-index';
 
 describe('ArticleIndexItemSchema', () => {
   // 過去 PR から抽出した実 frontmatter + filePath + generator が常時出力する空配列

@@ -1,7 +1,7 @@
 import {
   MdxFrontmatterSchema,
   type MdxFrontmatter,
-} from '../../../../../../shared/schemas/mdx-frontmatter';
+} from '@revolution/schemas/mdx-frontmatter';
 
 describe('MdxFrontmatterSchema', () => {
   // 過去 PR から抽出した実 frontmatter（Sample 1: gundam-iron-blooded-orphans）

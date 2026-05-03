@@ -44,6 +44,12 @@ const config = {
     '!**/__tests__/test-helpers/**',
   ],
 
+  // モジュール解決のエイリアス
+  // shared/schemas/ workspace への deep import を short alias で参照可能にする
+  moduleNameMapper: {
+    '^@revolution/schemas/(.*)$': '<rootDir>/../../shared/schemas/$1',
+  },
+
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
