@@ -1,0 +1,12 @@
+{
+  "name": "@revolution/schemas",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Schema-SDD truth source: shared zod schemas consumed by both apps/ai-writer and apps/frontend",
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.1.13"
+  }
+}

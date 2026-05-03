@@ -358,6 +358,12 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
 
+  shared/schemas:
+    devDependencies:
+      zod:
+        specifier: ^4.1.13
+        version: 4.4.2
+
 packages:
 
   '@adobe/css-tools@4.4.4':

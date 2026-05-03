@@ -1,0 +1,31 @@
+import { z } from 'zod';
+
+/**
+ * Schema-SDD 真実源: MDX frontmatter 構造
+ *
+ * Truth basis: 過去 11 件の "Generate MDX" PR から抽出した実 frontmatter
+ * SoC 境界: 構造はパブリック (本ファイル)、slug の真実値は revolution-templates の YAML
+ */
+export const MdxFrontmatterSchema = z.object({
+  post_id: z.string().min(1),
+  year: z.number().int(),
+  event_type: z.string(),
+  event_title: z.string(),
+  work_title: z.string(),
+  work_slug: z.string(),
+  slug: z.string().min(1),
+  title: z.string().min(1),
+  date: z.string().datetime({ precision: 3, offset: true }),
+  categories: z.array(z.string()),
+  excerpt: z.string(),
+  author: z.string(),
+  ogImage: z.string(),
+
+  work_titles: z.array(z.string()).optional(),
+  prefectures: z.array(z.string()).optional(),
+  prefecture_slugs: z.array(z.string()).optional(),
+  ai_provider: z.string().optional(),
+  ai_model: z.string().optional(),
+});
+
+export type MdxFrontmatter = z.infer<typeof MdxFrontmatterSchema>;
