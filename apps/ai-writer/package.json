@@ -39,6 +39,7 @@
     "@octokit/plugin-retry": "^8.0.3",
     "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.1",
+    "@revolution/schemas": "workspace:*",
     "@types/js-yaml": "^4.0.9",
     "cheerio": "^1.1.2",
     "class-variance-authority": "^0.7.1",

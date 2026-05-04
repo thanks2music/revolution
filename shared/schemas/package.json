@@ -1,0 +1,18 @@
+{
+  "name": "@revolution/schemas",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Schema-SDD truth source: shared zod schemas consumed by both apps/ai-writer and apps/frontend",
+  "exports": {
+    "./mdx-frontmatter": "./mdx-frontmatter.ts",
+    "./ai-provider-response": "./ai-provider-response.ts",
+    "./article-index": "./article-index.ts"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.1.13"
+  }
+}
