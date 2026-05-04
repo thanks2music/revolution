@@ -474,35 +474,17 @@ describe('generate-article-index.ts', () => {
     });
   });
 
-  // Schema-SDD 契約 (PR #206) との整合を担保するための回帰テスト
-  // commit 済みの article-index.json を直接検証することで、CI で違反を即時検出
-  describe('Date format (Schema-SDD compliance)', () => {
-    const ISO_8601_MS_REGEX =
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})$/;
-    const ARTICLE_INDEX_PATH = join(
-      __dirname,
-      '../../../frontend/lib/mdx/article-index.json'
-    );
-
-    it('should emit ISO 8601 ms format for all articles[].date', () => {
-      const indexData = JSON.parse(readFileSync(ARTICLE_INDEX_PATH, 'utf-8'));
-      indexData.articles.forEach((article: { date: string }) => {
-        expect(article.date).toMatch(ISO_8601_MS_REGEX);
-      });
-    });
-
-    it('should emit ISO 8601 ms format for generatedAt', () => {
-      const indexData = JSON.parse(readFileSync(ARTICLE_INDEX_PATH, 'utf-8'));
-      expect(indexData.generatedAt).toMatch(ISO_8601_MS_REGEX);
-    });
-
-    // ラテラル 3 由来: schema 直接 import で CI 回帰防止
-    it('should pass ArticleIndexSchema.safeParse', () => {
-      const indexData = JSON.parse(readFileSync(ARTICLE_INDEX_PATH, 'utf-8'));
+  // commit 済みの article-index.json (出荷物) が schema 契約に適合するかを検証する回帰テスト
+  describe('Schema-SDD compliance', () => {
+    it('article-index.json should pass ArticleIndexSchema.safeParse', () => {
+      const articleIndexPath = join(
+        __dirname,
+        '../../../frontend/lib/mdx/article-index.json'
+      );
+      const indexData = JSON.parse(readFileSync(articleIndexPath, 'utf-8'));
       const result = ArticleIndexSchema.safeParse(indexData);
       if (!result.success) {
-        // safeParse 失敗時に詳細な error issues を表示してデバッグを容易にする
-        console.error('safeParse issues:', JSON.stringify(result.error.issues, null, 2));
+        expect(result.error.issues).toEqual([]);
       }
       expect(result.success).toBe(true);
     });
