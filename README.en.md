@@ -53,9 +53,12 @@ pnpm install
 cp apps/ai-writer/.env.sample apps/ai-writer/.env.local
 cp apps/frontend/.env.sample apps/frontend/.env.local
 
-# Start the dev environment (all workspaces)
-pnpm dev
+# Start dev servers per workspace
+pnpm dev:frontend             # Public frontend (http://localhost:4444)
+cd apps/ai-writer && pnpm dev # AI Writer admin (http://localhost:7777)
 ```
+
+> ⚠️ The root `pnpm dev` / `pnpm build` / `pnpm clean` scripts still delegate to a pre-PR-#117 `Makefile` that references the now-removed `apps/backend` workspace, so they currently fail. A follow-up PR will clean them up.
 
 See [`docs/07-build/BUILD-commands.md`](./docs/07-build/BUILD-commands.md) for the full command reference.
 

@@ -25,11 +25,13 @@
 | サービス | 用途 | パッケージ |
 |---------|---------|---------|
 | **Claude API** | 記事生成 | `@anthropic-ai/sdk` |
-| **ChatGPT API** | 記事生成 | `@modelcontextprotocol/sdk` |
-| **Gemini API** | 記事生成 | `@google/genai` |
-| **Grok API** | （調査中） | `TBD` |
+| **OpenAI API** (ChatGPT) | 記事生成 | `openai` |
+| **Gemini API** | 記事生成 | `@google/generative-ai` |
 | **RSS Parser** | フィード収集 | `rss-parser` |
 | **Article Extractor** | URL コンテンツ抽出 | `@extractus/article-extractor` |
+| **Secret Manager** | シークレット取得 | `@google-cloud/secret-manager` |
+
+> Grok API は将来候補として検討対象に挙がっていますが、現時点で `apps/ai-writer/package.json` には含まれていません。
 
 ## 開発ツール
 

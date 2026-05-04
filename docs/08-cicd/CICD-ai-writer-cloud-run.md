@@ -49,13 +49,30 @@ GitHub Actions は WIF を使用して**キーレス認証**で GCP に接続し
 
 ## ヘルスチェック仕様
 
-デプロイ後、ワークフローは `/api/health` エンドポイントを叩いて以下を自動検証します:
+デプロイ後、ワークフローは 30 秒待機してから `/api/health` エンドポイントを 1 回 curl し、HTTP 200 が返るかどうかだけを判定します（[`.github/workflows/deploy-ai-writer.yml`](../../.github/workflows/deploy-ai-writer.yml) の "Health check" ステップ）。
 
-- Firebase 接続確認
-- Secrets Manager アクセス確認
-- AI プロバイダー（Claude / Gemini / OpenAI）接続確認
+`/api/health` の実装（[`apps/ai-writer/app/api/health/route.ts`](../../apps/ai-writer/app/api/health/route.ts)）が実際に検証しているのは以下のみで、いずれも **環境変数の存在確認** であり外部サービスへの実接続はしていません:
 
-ヘルスチェックが失敗した場合、デプロイはロールバックせず Cloud Run の前バージョンが引き続き稼働します（Cloud Run のトラフィック制御に従う）。
+- **Firebase 設定**: `NEXT_PUBLIC_FIREBASE_*` 6 種の env var が存在するか（ビルド時に埋め込まれる値のため、runtime での欠落は許容）
+- **必須シークレット**: `ALLOWED_EMAILS` / `GITHUB_PAT` / `GITHUB_OWNER` / `GITHUB_REPO`、および `GOOGLE_APPLICATION_CREDENTIALS_JSON` か個別 Firebase 変数のいずれか — Cloud Run が Secret Manager から注入した env var の有無で代用（Secret Manager API への直接接続テストは行わない）
+- **AI プロバイダー**: `AI_PROVIDER`（デフォルト `anthropic`）で選択された **1 プロバイダー** の API キー env var が存在するか — 全 3 プロバイダー（Claude / Gemini / OpenAI）を網羅的に検証するわけではない
+
+failed checks の数で `200 / 503` を返し分けます（1 件失敗まで `degraded` として 200、2 件以上で 503）。
+
+## ロールバック挙動（重要）
+
+`gcloud run deploy` は新リビジョンをデプロイした直後に **トラフィックを 100% 新リビジョンへ移行** します。その後にワークフローの "Health check" ステップが実行されるため、ヘルスチェックが失敗した時点では既に新リビジョンが本番で稼働しています。
+
+ワークフローはヘルスチェック失敗時に `exit 1` するだけで、`gcloud run services update-traffic` 等によるロールバックは行いません。**壊れたリビジョンが本番に残り続ける可能性がある** ため、失敗時は手動で前のリビジョンにトラフィックを戻す必要があります:
+
+```bash
+# 直近の安定リビジョンに 100% 戻す例
+gcloud run services update-traffic SERVICE_NAME \
+  --region REGION \
+  --to-revisions PREVIOUS_REVISION=100
+```
+
+将来的には `--no-traffic` でデプロイ → ヘルスチェック → `update-traffic` で段階的に切り替える blue/green 方式への移行が望ましい改善余地です。
 
 ## フロントエンド（Vercel）
 
