@@ -49,7 +49,9 @@
 
 import { describe, it, expect } from '@jest/globals';
 import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { ArticleIndexSchema } from '@revolution/schemas/article-index';
 
 const SCRIPT_PATH = join(__dirname, '../../scripts/generate-article-index.ts');
 
@@ -469,6 +471,21 @@ describe('generate-article-index.ts', () => {
         // 年は±1年の範囲内であることを許容（年末年始のケース）
         expect(Math.abs(dateYear - article.year)).toBeLessThanOrEqual(1);
       });
+    });
+  });
+
+  // commit 済みの article-index.json (出荷物) が schema 契約に適合するかを検証する回帰テスト
+  describe('Schema-SDD compliance', () => {
+    it('article-index.json should pass ArticleIndexSchema.safeParse', () => {
+      const articleIndexPath = join(
+        __dirname,
+        '../../../frontend/lib/mdx/article-index.json'
+      );
+      const indexData = JSON.parse(readFileSync(articleIndexPath, 'utf-8'));
+      const result = ArticleIndexSchema.safeParse(indexData);
+      // result.error?.issues を [] と比較することで失敗時に Jest が diff として
+      // issues を表示。1 expect で「成功確認」と「失敗時の詳細」を兼ねる。
+      expect(result.error?.issues ?? []).toEqual([]);
     });
   });
 });

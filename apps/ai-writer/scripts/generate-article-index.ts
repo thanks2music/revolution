@@ -21,6 +21,7 @@
 import { fileURLToPath } from 'url';
 import { dirname, resolve, join, relative } from 'path';
 import { readdir, readFile, writeFile, stat } from 'fs/promises';
+import { toIsoMsDate } from '../lib/utils/date';
 
 // ES Module で __dirname を取得
 const __filename = fileURLToPath(import.meta.url);
@@ -249,7 +250,7 @@ async function processmdxFile(
       // 基本情報
       slug: frontmatter.slug,
       title: frontmatter.title,
-      date: frontmatter.date || new Date().toISOString().split('T')[0],
+      date: toIsoMsDate(frontmatter.date),
       excerpt: frontmatter.excerpt || '',
       categories: frontmatter.categories || [],
       tags: frontmatter.tags || [],
