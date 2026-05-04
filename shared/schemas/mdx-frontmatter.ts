@@ -16,7 +16,7 @@ export const MdxFrontmatterSchema = z.object({
   slug: z.string().min(1),
   title: z.string().min(1),
   date: z.string().datetime({ precision: 3, offset: true }),
-  categories: z.array(z.string()),
+  categories: z.array(z.string().min(1)),
   excerpt: z.string().min(1),
   author: z.string().min(1),
   ogImage: z.string().nullable(),

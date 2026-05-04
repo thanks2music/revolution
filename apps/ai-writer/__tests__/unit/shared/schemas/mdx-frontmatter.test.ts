@@ -240,6 +240,22 @@ describe('MdxFrontmatterSchema', () => {
       expect(result.success).toBe(false);
     });
 
+    it('categories の要素に空文字が含まれると失敗 (z.string().min(1))', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        categories: ['valid', ''],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('categories: [""] (空文字単体) で失敗', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        categories: [''],
+      });
+      expect(result.success).toBe(false);
+    });
+
     it('year が文字列だと失敗', () => {
       const result = MdxFrontmatterSchema.safeParse({
         ...validFrontmatterSample7,
