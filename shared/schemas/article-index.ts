@@ -10,11 +10,12 @@ import { MdxFrontmatterSchema } from './mdx-frontmatter';
  *     (MdxFrontmatter 真実源 = 過去 PR 実態 / ArticleIndex 真実源 = generator 出力 と分離)。
  */
 export const ArticleIndexItemSchema = MdxFrontmatterSchema.extend({
-  filePath: z.string(),
-  tags: z.array(z.string()),
-  work_titles: z.array(z.string()),
-  prefectures: z.array(z.string()),
-  prefecture_slugs: z.array(z.string()),
+  filePath: z.string().min(1),
+  // generator が常時空配列で出力するため required override + 要素 .min(1)
+  tags: z.array(z.string().min(1)),
+  work_titles: z.array(z.string().min(1)),
+  prefectures: z.array(z.string().min(1)),
+  prefecture_slugs: z.array(z.string().min(1)),
 });
 
 export const ArticleIndexSchema = z

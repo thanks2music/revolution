@@ -5,32 +5,33 @@ import {
   type ArticleIndexItem,
 } from '@revolution/schemas/article-index';
 
-describe('ArticleIndexItemSchema', () => {
-  // 過去 PR から抽出した実 frontmatter + filePath + generator が常時出力する空配列
-  const validItem: ArticleIndexItem = {
-    post_id: '01kes3xx1q',
-    year: 2026,
-    event_type: 'collabo-cafe',
-    event_title: 'コラボカフェ',
-    work_title: '機動戦士ガンダム 鉄血のオルフェンズ',
-    work_titles: ['機動戦士ガンダム 鉄血のオルフェンズ'],
-    work_slug: 'gundam-iron-blooded-orphans',
-    slug: '01kes3xx1q',
-    title: '機動戦士ガンダム 鉄血のオルフェンズ カフェ in 東京',
-    date: '2026-01-12T12:46:37.016Z',
-    categories: ['機動戦士ガンダム 鉄血のオルフェンズ', 'コラボカフェ'],
-    excerpt: 'テスト抜粋',
-    author: 'thanks2music',
-    ogImage: 'https://images.anime-events.com/.../sample.png',
-    ai_provider: 'openai',
-    ai_model: 'gpt-4.1-mini',
-    prefectures: ['東京都'],
-    prefecture_slugs: ['tokyo'],
-    tags: [],
-    filePath:
-      'apps/ai-writer/content/collabo-cafe/gundam-iron-blooded-orphans/01kes3xx1q.mdx',
-  };
+// 過去 PR から抽出した実 frontmatter + filePath + generator が常時出力する空配列
+// (両 describe で共有してテスト fixture の重複を避ける)
+const validItem: ArticleIndexItem = {
+  post_id: '01kes3xx1q',
+  year: 2026,
+  event_type: 'collabo-cafe',
+  event_title: 'コラボカフェ',
+  work_title: '機動戦士ガンダム 鉄血のオルフェンズ',
+  work_titles: ['機動戦士ガンダム 鉄血のオルフェンズ'],
+  work_slug: 'gundam-iron-blooded-orphans',
+  slug: '01kes3xx1q',
+  title: '機動戦士ガンダム 鉄血のオルフェンズ カフェ in 東京',
+  date: '2026-01-12T12:46:37.016Z',
+  categories: ['機動戦士ガンダム 鉄血のオルフェンズ', 'コラボカフェ'],
+  excerpt: 'テスト抜粋',
+  author: 'thanks2music',
+  ogImage: 'https://images.anime-events.com/.../sample.png',
+  ai_provider: 'openai',
+  ai_model: 'gpt-4.1-mini',
+  prefectures: ['東京都'],
+  prefecture_slugs: ['tokyo'],
+  tags: [],
+  filePath:
+    'apps/ai-writer/content/collabo-cafe/gundam-iron-blooded-orphans/01kes3xx1q.mdx',
+};
 
+describe('ArticleIndexItemSchema', () => {
   describe('正常系', () => {
     it('過去 PR + filePath の fixture で成功', () => {
       const result = ArticleIndexItemSchema.safeParse(validItem);
@@ -92,6 +93,14 @@ describe('ArticleIndexItemSchema', () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it('filePath が空文字だと失敗 (.min(1))', () => {
+      const result = ArticleIndexItemSchema.safeParse({
+        ...validItem,
+        filePath: '',
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe('MdxFrontmatter 継承の検証', () => {
@@ -118,7 +127,7 @@ describe('ArticleIndexItemSchema', () => {
       expect(result.success).toBe(true);
     });
 
-    it('tags: [] (空配列) で成功 (継承元の OPTIONAL)', () => {
+    it('tags: [] (空配列) で成功 (required override だが空配列は許容)', () => {
       const result = ArticleIndexItemSchema.safeParse({
         ...validItem,
         tags: [],
@@ -126,30 +135,29 @@ describe('ArticleIndexItemSchema', () => {
       expect(result.success).toBe(true);
     });
   });
+
+  describe('配列要素の .min(1) 検証 (required override 後の整合性)', () => {
+    const arrayFields = ['tags', 'work_titles', 'prefectures', 'prefecture_slugs'] as const;
+
+    it.each(arrayFields)('%s に空文字要素が含まれると失敗', (fieldName) => {
+      const result = ArticleIndexItemSchema.safeParse({
+        ...validItem,
+        [fieldName]: ['valid', ''],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it.each(arrayFields)('%s が [""] (空文字単体) で失敗', (fieldName) => {
+      const result = ArticleIndexItemSchema.safeParse({
+        ...validItem,
+        [fieldName]: [''],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
 });
 
 describe('ArticleIndexSchema', () => {
-  const validItem: ArticleIndexItem = {
-    post_id: '01kes3xx1q',
-    year: 2026,
-    event_type: 'collabo-cafe',
-    event_title: 'コラボカフェ',
-    work_title: 'テスト作品',
-    work_slug: 'test-work',
-    slug: '01kes3xx1q',
-    title: 'テストタイトル',
-    date: '2026-01-12T12:46:37.016Z',
-    categories: ['テスト'],
-    excerpt: '抜粋',
-    author: 'thanks2music',
-    ogImage: '/images/og.png',
-    filePath: 'apps/ai-writer/content/collabo-cafe/test-work/01kes3xx1q.mdx',
-    tags: [],
-    work_titles: [],
-    prefectures: [],
-    prefecture_slugs: [],
-  };
-
   describe('正常系', () => {
     it('1 件の article を持つ index で成功', () => {
       const result = ArticleIndexSchema.safeParse({

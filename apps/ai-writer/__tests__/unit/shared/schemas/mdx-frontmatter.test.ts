@@ -141,6 +141,32 @@ describe('MdxFrontmatterSchema', () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it('ISO 8601 ms with negative offset (2026-01-12T12:46:37.016-05:00) は OK', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        date: '2026-01-12T12:46:37.016-05:00',
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('year レンジの境界値', () => {
+    it.each([2000, 2026, 2050, 2100])('year: %d は OK', (year) => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        year,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it.each([1999, 2101, 0, -1])('year: %d は失敗 (範囲外)', (year) => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        year,
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe('ogImage の nullability', () => {
