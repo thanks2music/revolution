@@ -1,30 +1,35 @@
 {
-  "generatedAt": "2026-01-03T08:57:07.710Z",
+  "generatedAt": "2026-05-04T02:02:04.311Z",
   "totalArticles": 1,
   "articles": [
     {
-      "slug": "01kafsdmvd",
-      "title": "作品名 × 店舗名2025が主要都市で開催決定",
-      "date": "2025-11-20",
-      "excerpt": "架空の作品と店舗がコラボする期間限定カフェイベント。主要都市で開催され、限定メニューや来店特典が用意されています。",
+      "slug": "dry-run-1777859987178",
+      "title": "薬屋のひとりごと カフェ in 池袋 5月14日よりコラボ開催",
+      "date": "2026-05-04T01:59:14.830Z",
+      "excerpt": "『薬屋のひとりごと』原作小説カフェが東京・大阪で期間限定開催。作品に登場する料理をテーマにしたメニューやオリジナルグッズを楽しめ、公式レシピを原作者監修で再現。事前予約も受付中。",
       "categories": [
-        "作品名",
-        "コラボカフェ",
-        "アニメイベント"
+        "薬屋のひとりごと",
+        "コラボカフェ"
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/sample-work/01kafsdmvd.mdx",
-      "post_id": "01kafsdmvd",
-      "year": 2025,
+      "filePath": "apps/ai-writer/content/collabo-cafe/kusuriyanohitorigoto/dry-run-1777859987178.mdx",
+      "post_id": "dry-run-1777859987178",
+      "year": 2026,
       "event_type": "collabo-cafe",
       "event_title": "コラボカフェ",
-      "work_title": "作品名",
-      "work_titles": [],
-      "work_slug": "sample-work",
-      "prefectures": [],
-      "prefecture_slugs": [],
-      "ogImage": "/images/og-image-compressed.png"
+      "work_title": "薬屋のひとりごと",
+      "work_titles": [
+        "薬屋のひとりごと"
+      ],
+      "work_slug": "kusuriyanohitorigoto",
+      "prefectures": [
+        "東京都"
+      ],
+      "prefecture_slugs": [
+        "tokyo"
+      ],
+      "ogImage": "[DRY RUN] https://images.anime-events.com/collabo-cafe/2026/dry-run-1777859987178/dry-run-1777859987178/og-image.jpg"
     }
   ]
 }
