@@ -53,7 +53,7 @@ export function generateMdxFrontmatter(
     title,
     excerpt,
     categories,
-    date = new Date().toISOString().split('T')[0], // YYYY-MM-DD
+    date = new Date().toISOString(), // ISO 8601 ms (Schema-SDD MdxFrontmatterSchema 適合)
     author = MDX_DEFAULTS.AUTHOR,
     ogImage = MDX_DEFAULTS.OG_IMAGE,
     // AI metadata (optional)

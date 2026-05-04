@@ -48,7 +48,7 @@ describe('generateMdxFrontmatter', () => {
 
     expect(frontmatter.author).toBe(MDX_DEFAULTS.AUTHOR);
     expect(frontmatter.ogImage).toBe(MDX_DEFAULTS.OG_IMAGE);
-    expect(frontmatter.date).toMatch(/^\d{4}-\d{2}-\d{2}$/); // YYYY-MM-DD
+    expect(frontmatter.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})$/); // ISO 8601 ms (Schema-SDD MdxFrontmatterSchema 適合)
   });
 
   it('should accept custom date, author, and ogImage', () => {

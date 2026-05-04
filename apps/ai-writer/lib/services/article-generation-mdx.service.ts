@@ -22,6 +22,7 @@ import { generateArticleMetadata } from '../claude/metadata-generator';
 import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
+import { toIsoMsDate } from '../utils/date';
 import { ArticleSelectionService } from './article-selection.service';
 import {
   type ArticleSelectionRequest,
@@ -1111,7 +1112,7 @@ export class ArticleGenerationMdxService {
           title: titleResult.title, // YAMLテンプレートで生成されたタイトルを使用
           categories: categories, // buildCategories() で決定論的に構築
           excerpt: metadata.excerpt,
-          date: new Date(rssItem.pubDate || Date.now()).toISOString(),
+          date: toIsoMsDate(rssItem.pubDate),
           author: 'thanks2music',
           ogImage: ogImageUrl, // R2にアップロードしたOG画像URL
           // Phase 1+ 対応: 開催都道府県（taxonomy.yaml v1.1 areas軸）
