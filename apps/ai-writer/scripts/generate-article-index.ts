@@ -249,7 +249,7 @@ async function processmdxFile(
       // 基本情報
       slug: frontmatter.slug,
       title: frontmatter.title,
-      date: frontmatter.date || new Date().toISOString().split('T')[0],
+      date: frontmatter.date || new Date().toISOString(),
       excerpt: frontmatter.excerpt || '',
       categories: frontmatter.categories || [],
       tags: frontmatter.tags || [],
