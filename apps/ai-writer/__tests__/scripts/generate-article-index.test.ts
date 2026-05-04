@@ -483,10 +483,9 @@ describe('generate-article-index.ts', () => {
       );
       const indexData = JSON.parse(readFileSync(articleIndexPath, 'utf-8'));
       const result = ArticleIndexSchema.safeParse(indexData);
-      if (!result.success) {
-        expect(result.error.issues).toEqual([]);
-      }
-      expect(result.success).toBe(true);
+      // result.error?.issues を [] と比較することで失敗時に Jest が diff として
+      // issues を表示。1 expect で「成功確認」と「失敗時の詳細」を兼ねる。
+      expect(result.error?.issues ?? []).toEqual([]);
     });
   });
 });
