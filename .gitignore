@@ -10,6 +10,12 @@
 apps/frontend/.env.local
 apps/backend/.env
 
+# git worktree 並行作業用 (scripts/setup-worktree.sh が生成)
+.worktree.env
+**/.worktree.env
+apps/ai-writer/firebase.worktree.json
+.claude/worktrees/.port-registry
+
 # Google Cloud認証
 **/service-account-key.json
 **/gcp-credentials.json

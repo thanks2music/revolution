@@ -1,0 +1,197 @@
+#!/bin/bash
+# git worktree 並行作業セットアップスクリプト
+# main 側の env ファイル / firebase.json に一切変更を加えず、
+# .claude/worktrees/<dir-name> に独立した作業環境を構築する。
+#
+# Usage:
+#   bash scripts/setup-worktree.sh [--skip-install] <branch-name> [base-branch]
+#
+# Example:
+#   bash scripts/setup-worktree.sh refactor/pipeline
+#   bash scripts/setup-worktree.sh fix/test-bug main
+#   bash scripts/setup-worktree.sh --skip-install test/dry-run main
+#
+# 仕様:
+# - <branch-name> は新規作成。既存ブランチを再利用したい場合は git worktree add を直接使う
+# - <base-branch> 省略時は main
+# - --skip-install 指定で pnpm install を skip (検証・動作確認用)
+# - port offset は worktree dir 名の SHA1 ハッシュから決定 (1000-9000 の 1000 単位)
+# - main 側の .env.local / firebase.json は無改変、symlink + 独立 firebase.worktree.json で対応
+
+set -euo pipefail
+
+# ----- 引数バリデーション -----
+SKIP_INSTALL=0
+if [[ "${1:-}" == "--skip-install" ]]; then
+  SKIP_INSTALL=1
+  shift
+fi
+
+if [[ $# -lt 1 ]]; then
+  echo "Error: branch name required" >&2
+  echo "Usage: bash scripts/setup-worktree.sh [--skip-install] <branch-name> [base-branch]" >&2
+  exit 1
+fi
+
+BRANCH_NAME="$1"
+BASE_BRANCH="${2:-main}"
+
+# ----- main repo root 検出 -----
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MAIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# このスクリプトは main 側からのみ実行可能
+GIT_DIR="$(git -C "$MAIN_ROOT" rev-parse --git-dir)"
+GIT_COMMON_DIR="$(git -C "$MAIN_ROOT" rev-parse --git-common-dir)"
+if [[ "$GIT_DIR" != "$GIT_COMMON_DIR" ]]; then
+  echo "Error: must be run from the main repository (not from a worktree)" >&2
+  echo "  Current dir: $MAIN_ROOT" >&2
+  exit 1
+fi
+
+# ----- worktree dir 名導出 -----
+DIR_NAME="$(echo "$BRANCH_NAME" | tr '/' '-')"
+WORKTREE_PATH="$MAIN_ROOT/.claude/worktrees/$DIR_NAME"
+
+if [[ -e "$WORKTREE_PATH" ]]; then
+  echo "Error: worktree path already exists: $WORKTREE_PATH" >&2
+  exit 1
+fi
+
+# ----- port offset 計算 (SHA1 hash ベース、1000-9000 の 1000 単位) -----
+HASH_HEX="$(printf '%s' "$DIR_NAME" | shasum -a 1 | cut -c 1-8)"
+HASH_DEC="$((16#$HASH_HEX))"
+OFFSET_INDEX="$(( (HASH_DEC % 9) + 1 ))"
+PORT_OFFSET="$((OFFSET_INDEX * 1000))"
+
+FRONTEND_PORT="$((4444 + PORT_OFFSET))"
+AI_WRITER_PORT="$((7777 + PORT_OFFSET))"
+FB_AUTH_PORT="$((9099 + PORT_OFFSET))"
+FB_FIRESTORE_PORT="$((8088 + PORT_OFFSET))"
+FB_STORAGE_PORT="$((9199 + PORT_OFFSET))"
+FB_UI_PORT="$((4000 + PORT_OFFSET))"
+
+echo "================================================================"
+echo " git worktree setup"
+echo "================================================================"
+echo "  Branch:        $BRANCH_NAME (from $BASE_BRANCH)"
+echo "  Worktree dir:  $WORKTREE_PATH"
+echo "  Port offset:   +$PORT_OFFSET"
+echo "    frontend:    $FRONTEND_PORT"
+echo "    ai-writer:   $AI_WRITER_PORT"
+echo "    fb auth:     $FB_AUTH_PORT"
+echo "    fb firestore:$FB_FIRESTORE_PORT"
+echo "    fb storage:  $FB_STORAGE_PORT"
+echo "    fb ui:       $FB_UI_PORT"
+echo "================================================================"
+echo ""
+
+# ----- git worktree add -----
+echo "[1/5] git worktree add..."
+mkdir -p "$MAIN_ROOT/.claude/worktrees"
+git -C "$MAIN_ROOT" worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" "$BASE_BRANCH"
+echo ""
+
+# ----- env ファイルへの symlink 作成 -----
+echo "[2/5] symlink env files..."
+ENV_FILES=(
+  ".env.local"
+  "apps/ai-writer/.env.local"
+  "apps/ai-writer/.env.deploy"
+  "apps/frontend/.env.local"
+  "apps/frontend/.env.production.local"
+)
+
+for relpath in "${ENV_FILES[@]}"; do
+  src="$MAIN_ROOT/$relpath"
+  dst="$WORKTREE_PATH/$relpath"
+
+  if [[ ! -f "$src" ]]; then
+    echo "  [skip] $relpath (main 側に存在しません)"
+    continue
+  fi
+
+  if [[ -e "$dst" ]]; then
+    echo "  [skip] $relpath (worktree 側に既存)"
+    continue
+  fi
+
+  dst_parent="$(dirname "$dst")"
+  if [[ ! -d "$dst_parent" ]]; then
+    echo "  [skip] $relpath (worktree 側の親ディレクトリ無し)"
+    continue
+  fi
+
+  ln -s "$src" "$dst"
+  echo "  [link] $relpath -> $src"
+done
+echo ""
+
+# ----- firebase.worktree.json 生成 -----
+echo "[3/5] generate firebase.worktree.json..."
+FIREBASE_SRC="$MAIN_ROOT/apps/ai-writer/firebase.json"
+FIREBASE_DST="$WORKTREE_PATH/apps/ai-writer/firebase.worktree.json"
+
+if [[ ! -f "$FIREBASE_SRC" ]]; then
+  echo "  [skip] main 側に firebase.json なし"
+elif ! command -v jq >/dev/null 2>&1; then
+  echo "  [warn] jq が見つかりません (brew install jq)。firebase.worktree.json は手動生成してください"
+else
+  jq \
+    --argjson auth "$FB_AUTH_PORT" \
+    --argjson firestore "$FB_FIRESTORE_PORT" \
+    --argjson storage "$FB_STORAGE_PORT" \
+    --argjson ui "$FB_UI_PORT" \
+    '.emulators.auth.port = $auth |
+     .emulators.firestore.port = $firestore |
+     .emulators.storage.port = $storage |
+     .emulators.ui.port = $ui |
+     .emulators.singleProjectMode = false' \
+    "$FIREBASE_SRC" > "$FIREBASE_DST"
+  echo "  [gen]  apps/ai-writer/firebase.worktree.json"
+fi
+echo ""
+
+# ----- .worktree.env 生成 -----
+echo "[4/5] generate .worktree.env..."
+cat > "$WORKTREE_PATH/.worktree.env" <<EOF
+# Auto-generated by scripts/setup-worktree.sh — do not commit
+# Worktree: $DIR_NAME
+# Branch:   $BRANCH_NAME
+# Created:  $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+WORKTREE_NAME=$DIR_NAME
+PORT_OFFSET=$PORT_OFFSET
+FRONTEND_PORT=$FRONTEND_PORT
+AI_WRITER_PORT=$AI_WRITER_PORT
+FB_AUTH_PORT=$FB_AUTH_PORT
+FB_FIRESTORE_PORT=$FB_FIRESTORE_PORT
+FB_STORAGE_PORT=$FB_STORAGE_PORT
+FB_UI_PORT=$FB_UI_PORT
+EOF
+echo "  [gen]  .worktree.env"
+echo ""
+
+# ----- pnpm install -----
+if [[ "$SKIP_INSTALL" == "1" ]]; then
+  echo "[5/5] pnpm install ... [skipped (--skip-install)]"
+  echo "  → 後で worktree 内で 'pnpm install' を手動実行してください"
+else
+  echo "[5/5] pnpm install (3-5 minutes)..."
+  (cd "$WORKTREE_PATH" && pnpm install)
+fi
+echo ""
+
+# ----- 完了メッセージ -----
+echo "================================================================"
+echo " ✅ Worktree setup complete"
+echo "================================================================"
+echo ""
+echo "次のステップ:"
+echo "  cd $WORKTREE_PATH"
+echo "  bash scripts/worktree-dev.sh frontend    # http://localhost:$FRONTEND_PORT"
+echo "  bash scripts/worktree-dev.sh ai-writer   # http://localhost:$AI_WRITER_PORT"
+echo "  bash scripts/worktree-dev.sh emulator    # Firebase UI: http://localhost:$FB_UI_PORT"
+echo ""
+echo "削除する場合:"
+echo "  bash scripts/worktree-cleanup.sh $DIR_NAME"
