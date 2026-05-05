@@ -43,7 +43,6 @@ id_ed25519*
 # Exception: canonical-key.ts is a legitimate source file (not an API key)
 !**/canonical-key.ts
 !**/canonical-key.test.ts
-!**/canonical-key.*.ts
 .npmrc
 .yarnrc.yml
 
