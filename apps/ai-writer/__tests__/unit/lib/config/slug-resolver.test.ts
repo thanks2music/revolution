@@ -9,6 +9,15 @@
  * @module __tests__/unit/lib/config/slug-resolver
  */
 
+// Mock slug-generator to control AI/ASCII fallback chain in Layer 2 contract tests
+jest.mock('../../../../lib/config/slug-generator', () => {
+  const actual = jest.requireActual('../../../../lib/config/slug-generator');
+  return {
+    ...actual,
+    generateSlugWithFallback: jest.fn(),
+  };
+});
+
 // Mock yaml-loader with test fixtures (must come before imports that use it)
 jest.mock('../../../../lib/config/yaml-loader', () => {
   const actual = jest.requireActual('../../../../lib/config/yaml-loader');
@@ -86,6 +95,11 @@ import {
   isValidEventTypeName,
   clearConfigCache,
 } from '../../../../lib/config';
+import { generateSlugWithFallback } from '../../../../lib/config/slug-generator';
+
+const mockGenerateSlugWithFallback = generateSlugWithFallback as jest.MockedFunction<
+  typeof generateSlugWithFallback
+>;
 
 describe('resolveWorkSlug', () => {
   beforeEach(() => {
@@ -372,5 +386,35 @@ describe('Caching behavior', () => {
 
     expect(slug1).toBe(slug2);
     expect(slug1).toBe('work-a');
+  });
+});
+
+describe('resolveWorkSlug with AI fallback (Layer 2 contract)', () => {
+  beforeEach(() => {
+    clearConfigCache();
+    mockGenerateSlugWithFallback.mockReset();
+  });
+
+  it('should return AI-generated slug for unknown title with fallback enabled', async () => {
+    mockGenerateSlugWithFallback.mockResolvedValueOnce('unknown-fallback-slug');
+
+    const result = await resolveWorkSlug('完全に未知の新作', true);
+
+    expect(result).toBe('unknown-fallback-slug');
+    expect(mockGenerateSlugWithFallback).toHaveBeenCalledWith(
+      '完全に未知の新作',
+      'anime/manga title',
+      undefined
+    );
+  });
+
+  it('should return null when AI fallback throws (caught and propagated as null)', async () => {
+    mockGenerateSlugWithFallback.mockRejectedValueOnce(
+      new Error('API quota exceeded')
+    );
+
+    const result = await resolveWorkSlug('完全に未知の新作', true);
+
+    expect(result).toBeNull();
   });
 });
