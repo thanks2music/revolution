@@ -54,12 +54,14 @@ describe('generateMdxFrontmatter', () => {
   it('should accept custom date, author, and ogImage', () => {
     const frontmatter = generateMdxFrontmatter({
       ...baseInput,
+      // toIsoMsDate normalizes any parseable Date input to ISO 8601 ms
+      // (Schema-SDD MdxFrontmatterSchema.date contract)
       date: '2025-12-25',
       author: 'custom-author',
       ogImage: '/images/custom-og.png',
     });
 
-    expect(frontmatter.date).toBe('2025-12-25');
+    expect(frontmatter.date).toBe('2025-12-25T00:00:00.000Z');
     expect(frontmatter.author).toBe('custom-author');
     expect(frontmatter.ogImage).toBe('/images/custom-og.png');
   });
