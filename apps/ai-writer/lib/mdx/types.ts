@@ -10,9 +10,10 @@
  */
 
 // Re-export MdxFrontmatter type from shared/schemas (Schema-SDD Phase 2)
-export type { MdxFrontmatter } from '@revolution/schemas/mdx-frontmatter';
 import type { MdxFrontmatter } from '@revolution/schemas/mdx-frontmatter';
 import type { AiProviderType } from '../ai/providers/ai-provider.interface';
+
+export type { MdxFrontmatter };
 
 /**
  * Input parameters for generating MDX frontmatter

@@ -312,6 +312,16 @@ describe('isValidMdxFrontmatter', () => {
     const invalid = { ...validFrontmatter, categories: 'not-an-array' };
     expect(isValidMdxFrontmatter(invalid)).toBe(false);
   });
+
+  it('should accept ogImage: null (schema is nullable, generator may emit null)', () => {
+    const withNullOgImage = { ...validFrontmatter, ogImage: null };
+    expect(isValidMdxFrontmatter(withNullOgImage)).toBe(true);
+  });
+
+  it('should reject missing ogImage key (schema is non-optional)', () => {
+    const { ogImage: _ogImage, ...withoutOgImage } = validFrontmatter;
+    expect(isValidMdxFrontmatter(withoutOgImage)).toBe(false);
+  });
 });
 
 describe('Integration: Full MDX Generation Flow', () => {
