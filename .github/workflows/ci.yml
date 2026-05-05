@@ -36,7 +36,7 @@ jobs:
       - name: Lint
         run: pnpm exec turbo run lint --filter='!mcp-gcp-server'
 
-  # Job 2: Build TypeScript apps (skip backend Docker build)
+  # Job 2: Build TypeScript apps
   build:
     name: Build Apps
     runs-on: ubuntu-latest
@@ -124,15 +124,3 @@ jobs:
             echo "✅ No dummy Firebase config found"
           fi
 
-          # WordPress endpoint check (legacy)
-          echo ""
-          echo "🔍 Checking for WordPress endpoint (legacy)..."
-          if grep -r "localhost:8080/graphql" apps/ai-writer/.next/static/ 2>/dev/null; then
-            echo "⚠️  WARNING: WordPress endpoint found in client bundle (legacy)"
-            echo "This should not prevent deployment, but consider removing WordPress code in Phase 3."
-          else
-            echo "✅ No WordPress endpoint found"
-          fi
-
-      # Note: Backend Docker build is skipped in CI
-      # Docker builds are handled in deployment workflows
