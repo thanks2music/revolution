@@ -51,12 +51,15 @@ pnpm install
 cp apps/ai-writer/.env.sample apps/ai-writer/.env.local
 cp apps/frontend/.env.sample apps/frontend/.env.local
 
-# 開発サーバーの起動（ワークスペース個別）
-pnpm dev:frontend             # 公開フロントエンド (http://localhost:4444)
-cd apps/ai-writer && pnpm dev # AI Writer 管理画面 (http://localhost:7777)
+# 開発サーバーの起動（ルートから一括）
+pnpm dev                      # フロントエンド (http://localhost:4444) + AI Writer (http://localhost:7777) を並行起動
+
+# 個別起動も可能
+pnpm dev:frontend             # 公開フロントエンドのみ
+pnpm dev:ai-writer            # AI Writer のみ
 ```
 
-> ⚠️ ルートの `pnpm dev` / `pnpm build` / `pnpm clean` は WordPress 削除前 (PR #117 以前) の `Makefile` がそのまま残っており、削除済みの `apps/backend` を参照するため現状動作しません。クリーンアップは別 PR で対応予定。
+> 💡 複数 worktree で同時に dev サーバーを動かす場合は port 衝突を避けるため、`bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` を使ってください。`pnpm dev` は常にデフォルト port (4444 / 7777) で起動します。
 
 詳細は [`docs/07-build/BUILD-commands.md`](./docs/07-build/BUILD-commands.md) を参照してください。
 

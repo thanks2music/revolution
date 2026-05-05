@@ -53,12 +53,15 @@ pnpm install
 cp apps/ai-writer/.env.sample apps/ai-writer/.env.local
 cp apps/frontend/.env.sample apps/frontend/.env.local
 
-# Start dev servers per workspace
-pnpm dev:frontend             # Public frontend (http://localhost:4444)
-cd apps/ai-writer && pnpm dev # AI Writer admin (http://localhost:7777)
+# Start dev servers from the repo root (one shot)
+pnpm dev                      # Frontend (http://localhost:4444) + AI Writer (http://localhost:7777) in parallel
+
+# Or start them individually
+pnpm dev:frontend             # Public frontend only
+pnpm dev:ai-writer            # AI Writer only
 ```
 
-> ⚠️ The root `pnpm dev` / `pnpm build` / `pnpm clean` scripts still delegate to a pre-PR-#117 `Makefile` that references the now-removed `apps/backend` workspace, so they currently fail. A follow-up PR will clean them up.
+> 💡 If you run multiple worktrees in parallel, use `bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` to avoid port collisions. `pnpm dev` always uses the default ports (4444 / 7777).
 
 See [`docs/07-build/BUILD-commands.md`](./docs/07-build/BUILD-commands.md) for the full command reference.
 
