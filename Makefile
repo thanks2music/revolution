@@ -1,7 +1,7 @@
 # Revolution Project - Root Makefile
 # Turbo を介して ai-writer + frontend を統合管理
 
-.PHONY: help dev build clean test stop stop-frontend stop-ai-writer status docs-sync docs-create
+.PHONY: help dev build clean test stop stop-frontend stop-ai-writer restart status docs-sync docs-create
 
 help:
 	@echo "🚀 Revolution Project - 統合コマンド"
@@ -11,6 +11,7 @@ help:
 	@echo "  make build        - 両アプリをビルド"
 	@echo "  make clean        - turbo キャッシュ・ビルド成果物クリーン"
 	@echo "  make stop         - 全 dev サーバー停止"
+	@echo "  make restart      - 全 dev サーバー再起動 (= stop + dev)"
 	@echo "  make status       - dev サーバー稼働確認"
 	@echo ""
 	@echo "🔧 個別起動:"
@@ -40,6 +41,10 @@ test:
 
 stop: stop-frontend stop-ai-writer
 	@echo "🛑 All dev servers stopped"
+
+restart:
+	@$(MAKE) stop
+	@$(MAKE) dev
 
 stop-frontend:
 	@echo "⚛️  Stopping frontend on port 4444..."
