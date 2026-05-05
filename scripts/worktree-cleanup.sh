@@ -44,18 +44,37 @@ echo ""
 # setup-worktree.sh が生成した既知ファイル (gitignore 対象) を先に削除
 # こうすることで git worktree remove が untracked を理由に拒否しない一方、
 # ユーザーが追加した未コミット変更があれば worktree remove が安全側に倒れる
-GENERATED_FILES=(
+
+# (1) setup-worktree.sh が「実体ファイル」として生成するもの
+#     存在すれば常に削除可。jq が無くて生成 skip された場合もある
+GENERATED_REAL_FILES=(
   "$WORKTREE_PATH/.worktree.env"
   "$WORKTREE_PATH/apps/ai-writer/firebase.worktree.json"
+)
+
+# (2) setup-worktree.sh が「symlink」として生成するもの
+#     ユーザーが symlink を実体ファイルに置き換えた場合は誤削除を防ぐため symlink に限定削除
+#     (Copilot review C4: 無条件 rm は手動で配置した実体 env を消してしまう)
+GENERATED_SYMLINKS=(
   "$WORKTREE_PATH/.env.local"
   "$WORKTREE_PATH/apps/ai-writer/.env.local"
   "$WORKTREE_PATH/apps/ai-writer/.env.deploy"
   "$WORKTREE_PATH/apps/frontend/.env.local"
   "$WORKTREE_PATH/apps/frontend/.env.production.local"
 )
-for f in "${GENERATED_FILES[@]}"; do
-  if [[ -L "$f" ]] || [[ -e "$f" && ! -d "$f" ]]; then
+
+for f in "${GENERATED_REAL_FILES[@]}"; do
+  if [[ -e "$f" && ! -d "$f" ]]; then
     rm -f "$f"
+  fi
+done
+
+for f in "${GENERATED_SYMLINKS[@]}"; do
+  # -L: symlink (壊れていても true)、-e は壊れた symlink で false なので両方判定
+  if [[ -L "$f" ]]; then
+    rm -f "$f"
+  elif [[ -e "$f" ]]; then
+    echo "  [keep] $f (実体ファイル化されているため誤削除回避)"
   fi
 done
 
@@ -65,6 +84,8 @@ echo ""
 
 read -r -p "ブランチ '$BRANCH_NAME' も削除しますか？ [y/N]: " REPLY
 if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+  # -d (lowercase) は merge 済みでないと拒否する。意図的: 未マージ作業を誤って失わないため
+  # 強制削除したい場合はユーザーが明示的に `git branch -D` を実行する
   git -C "$MAIN_ROOT" branch -d "$BRANCH_NAME"
   echo "✅ ブランチ削除完了"
 else
