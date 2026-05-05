@@ -16,6 +16,8 @@
 # - <base-branch> 省略時は main
 # - --skip-install 指定で pnpm install を skip (検証・動作確認用)
 # - port offset は worktree dir 名の SHA1 ハッシュから決定 (1000-9000 の 1000 単位)
+#   port range: frontend 5444-13444 / ai-writer 8777-16777 / fb auth 10099-18099 /
+#               fb firestore 9088-17088 / fb storage 10199-18199 / fb ui 5000-13000
 # - main 側の .env.local / firebase.json は無改変、symlink + 独立 firebase.worktree.json で対応
 
 set -euo pipefail
@@ -84,10 +86,24 @@ FB_UI_PORT="$((4000 + PORT_OFFSET))"
 
 # ----- port 衝突の事前検査 (LISTEN 状態の port が既に使われていないか) -----
 PORT_WARNINGS=()
+LSOF_SKIPPED=false
 if command -v lsof >/dev/null 2>&1; then
   for port in "$FRONTEND_PORT" "$AI_WRITER_PORT" "$FB_AUTH_PORT" "$FB_FIRESTORE_PORT" "$FB_STORAGE_PORT" "$FB_UI_PORT"; do
     if lsof -i "tcp:$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
       PORT_WARNINGS+=("$port")
+    fi
+  done
+else
+  LSOF_SKIPPED=true
+fi
+
+# ----- 既存 worktree の PORT_OFFSET 衝突検査 -----
+# birthday paradox: 9 buckets だと ~4 worktree で 50% 衝突確率
+OFFSET_COLLISIONS=()
+if compgen -G "$MAIN_ROOT/.claude/worktrees/*/.worktree.env" >/dev/null; then
+  for existing_env in "$MAIN_ROOT/.claude/worktrees/"*/.worktree.env; do
+    if grep -q "^PORT_OFFSET=$PORT_OFFSET$" "$existing_env" 2>/dev/null; then
+      OFFSET_COLLISIONS+=("$(dirname "$existing_env" | xargs basename)")
     fi
   done
 fi
@@ -104,12 +120,30 @@ echo "    fb auth:     $FB_AUTH_PORT"
 echo "    fb firestore:$FB_FIRESTORE_PORT"
 echo "    fb storage:  $FB_STORAGE_PORT"
 echo "    fb ui:       $FB_UI_PORT"
+if [[ "$LSOF_SKIPPED" == "true" ]]; then
+  echo "  ℹ Skipping port collision check (lsof not found / lsof 未インストール)"
+fi
 if [[ ${#PORT_WARNINGS[@]} -gt 0 ]]; then
-  echo "  ⚠ Port already in use: ${PORT_WARNINGS[*]}"
-  echo "    別 worktree か別プロセスが使用中。続行は可能ですが起動時に衝突します"
+  echo "  ⚠ Port already in use / 使用中: ${PORT_WARNINGS[*]}"
+  echo "    Another worktree or process is bound. Setup continues but dev servers will conflict on start."
+fi
+if [[ ${#OFFSET_COLLISIONS[@]} -gt 0 ]]; then
+  echo "  ⚠ PORT_OFFSET=$PORT_OFFSET collides with existing worktree(s): ${OFFSET_COLLISIONS[*]}"
+  echo "    Hash buckets are 1000-9000 (9 slots) so collisions are likely past ~4 worktrees."
 fi
 echo "================================================================"
 echo ""
+
+# ----- 失敗時の partial setup ガイド -----
+# pnpm install 等で失敗した場合に半端な worktree を残さないため、
+# recovery コマンドを案内する。trap は ERR で発動
+cleanup_on_error() {
+  local rc=$?
+  echo "" >&2
+  echo "Setup failed (exit $rc). To remove the partial worktree:" >&2
+  echo "  bash scripts/worktree-cleanup.sh $DIR_NAME" >&2
+}
+trap cleanup_on_error ERR
 
 # ----- git worktree add -----
 echo "[1/5] git worktree add..."
@@ -216,7 +250,9 @@ echo ""
 # ----- pnpm install -----
 if [[ "$SKIP_INSTALL" == "true" ]]; then
   echo "[5/5] pnpm install ... [skipped (--skip-install)]"
-  echo "  → 後で worktree 内で 'pnpm install' を手動実行してください"
+  echo "  → 後で worktree 内で手動実行してください:"
+  echo "      cd $WORKTREE_PATH && pnpm install"
+  echo "    (setup-worktree.sh の再実行は worktree 既存エラーで失敗します)"
 else
   echo "[5/5] pnpm install (3-5 minutes)..."
   (cd "$WORKTREE_PATH" && pnpm install)
