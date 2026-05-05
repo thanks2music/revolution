@@ -11,12 +11,14 @@
  */
 
 import { join } from 'path';
+import { MdxFrontmatterSchema } from '@revolution/schemas/mdx-frontmatter';
 import type {
   MdxFrontmatter,
   MdxArticle,
   GenerateMdxFrontmatterInput,
 } from './types';
 import { MDX_DEFAULTS } from './types';
+import { toIsoMsDate } from '../utils/date';
 
 /**
  * Generates MDX frontmatter from input parameters
@@ -78,6 +80,8 @@ export function generateMdxFrontmatter(
   const slug = postId;
 
   // Build frontmatter object with required fields
+  // toIsoMsDate enforces Schema-SDD MdxFrontmatterSchema.date contract
+  // (datetime({ precision: 3, offset: true })) regardless of caller-provided format
   const frontmatter: MdxFrontmatter = {
     post_id: postId,
     year,
@@ -87,7 +91,7 @@ export function generateMdxFrontmatter(
     work_slug: workSlug,
     slug,
     title,
-    date,
+    date: toIsoMsDate(date),
     categories,
     excerpt,
     author,
@@ -342,78 +346,5 @@ export function generateMdxArticle(
  * ```
  */
 export function isValidMdxFrontmatter(data: unknown): data is MdxFrontmatter {
-  if (!data || typeof data !== 'object') {
-    return false;
-  }
-
-  const fm = data as Partial<MdxFrontmatter>;
-
-  // Required fields validation
-  const hasRequiredFields =
-    typeof fm.post_id === 'string' &&
-    typeof fm.year === 'number' &&
-    typeof fm.event_type === 'string' &&
-    typeof fm.event_title === 'string' &&
-    typeof fm.work_title === 'string' &&
-    typeof fm.work_slug === 'string' &&
-    typeof fm.slug === 'string' &&
-    typeof fm.title === 'string' &&
-    typeof fm.date === 'string' &&
-    Array.isArray(fm.categories) &&
-    typeof fm.excerpt === 'string' &&
-    typeof fm.author === 'string' &&
-    typeof fm.ogImage === 'string';
-
-  if (!hasRequiredFields) {
-    return false;
-  }
-
-  // Optional fields validation
-
-  // work_titles: optional string array (複数作品コラボ対応)
-  if (
-    fm.work_titles !== undefined &&
-    (!Array.isArray(fm.work_titles) ||
-      !fm.work_titles.every((t) => typeof t === 'string'))
-  ) {
-    return false;
-  }
-
-  // prefectures: optional string array (Phase 1+ - URL設計v1.1 areas軸対応)
-  if (
-    fm.prefectures !== undefined &&
-    (!Array.isArray(fm.prefectures) ||
-      !fm.prefectures.every((p) => typeof p === 'string'))
-  ) {
-    return false;
-  }
-
-  // prefecture_slugs: optional string array
-  if (
-    fm.prefecture_slugs !== undefined &&
-    (!Array.isArray(fm.prefecture_slugs) ||
-      !fm.prefecture_slugs.every((p) => typeof p === 'string'))
-  ) {
-    return false;
-  }
-
-  // tags: optional string array (将来拡張用)
-  if (
-    fm.tags !== undefined &&
-    (!Array.isArray(fm.tags) || !fm.tags.every((t) => typeof t === 'string'))
-  ) {
-    return false;
-  }
-
-  // ai_provider: optional string
-  if (fm.ai_provider !== undefined && typeof fm.ai_provider !== 'string') {
-    return false;
-  }
-
-  // ai_model: optional string
-  if (fm.ai_model !== undefined && typeof fm.ai_model !== 'string') {
-    return false;
-  }
-
-  return true;
+  return MdxFrontmatterSchema.safeParse(data).success;
 }
