@@ -53,8 +53,7 @@ GENERATED_REAL_FILES=(
 )
 
 # (2) setup-worktree.sh が「symlink」として生成するもの
-#     ユーザーが symlink を実体ファイルに置き換えた場合は誤削除を防ぐため symlink に限定削除
-#     (Copilot review C4: 無条件 rm は手動で配置した実体 env を消してしまう)
+#     symlink に限定削除し、実体ファイルに置き換えられていれば手動配置の env として保持
 GENERATED_SYMLINKS=(
   "$WORKTREE_PATH/.env.local"
   "$WORKTREE_PATH/apps/ai-writer/.env.local"

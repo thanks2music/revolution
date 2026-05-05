@@ -57,7 +57,7 @@ case "$CMD" in
     echo "Starting Firebase Emulator (auth:$FB_AUTH_PORT, firestore:$FB_FIRESTORE_PORT, storage:$FB_STORAGE_PORT, ui:$FB_UI_PORT)..."
     cd "$WORKTREE_ROOT/apps/ai-writer"
     # firebase-tools は apps/ai-writer の devDependencies に固定されているため、
-    # pnpm exec 経由で workspace のバージョンを使う (Copilot review C1)
+    # pnpm exec 経由で workspace のバージョンを使う
     exec pnpm exec firebase emulators:start --config "$FIREBASE_CONFIG_NAME"
     ;;
   *)

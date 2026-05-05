@@ -50,7 +50,6 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# このスクリプトは main 側からのみ実行可能
 GIT_DIR="$(git -C "$MAIN_ROOT" rev-parse --git-dir)"
 GIT_COMMON_DIR="$(git -C "$MAIN_ROOT" rev-parse --git-common-dir)"
 if [[ "$GIT_DIR" != "$GIT_COMMON_DIR" ]]; then
@@ -129,7 +128,6 @@ ENV_FILES=(
 )
 
 # worktree から main を指す相対パス (リポジトリ全体を移動しても壊れない)
-# .claude/worktrees/<dir>/<file> から ../../../<file> = MAIN_ROOT
 REL_TO_MAIN="../../.."
 
 for relpath in "${ENV_FILES[@]}"; do
@@ -152,8 +150,7 @@ for relpath in "${ENV_FILES[@]}"; do
     continue
   fi
 
-  # dst の階層に応じた相対 prefix を計算
-  # `apps/ai-writer/.env.local` のように 2 階層下なら `../../` を REL_TO_MAIN に追加
+  # 各 env ファイルの階層数だけ ../ を積む
   depth="$(echo "$relpath" | tr -cd '/' | wc -c | tr -d ' ')"
   prefix=""
   for ((i=0; i<depth; i++)); do
