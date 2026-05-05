@@ -211,6 +211,8 @@ async function processmdxFile(
     }
 
     // 必須フィールドのバリデーション
+    // TODO(schema-sdd-phase-3): replace with MdxFrontmatterSchema.safeParse once
+    // the simplified YAML parser above can faithfully round-trip schema-strict input.
     const missingFields = validateFrontmatter(frontmatter, filePath);
     if (missingFields.length > 0) {
       if (verbose) {
