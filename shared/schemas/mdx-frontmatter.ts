@@ -34,6 +34,10 @@ export const MdxFrontmatterSchema = z.object({
   prefecture_slugs: z.array(z.string().min(1)).optional(),
   ai_provider: z.enum(['anthropic', 'gemini', 'openai']).optional(),
   ai_model: z.string().optional(),
+
+  // Legacy: 過去 MDX 互換のため optional として温存 (現行 generator は prefectures/prefecture_slugs を使用)
+  venues: z.array(z.string().min(1)).optional(),
+  venue_slugs: z.array(z.string().min(1)).optional(),
 });
 
 export type MdxFrontmatter = z.infer<typeof MdxFrontmatterSchema>;

@@ -99,6 +99,8 @@ describe('MdxFrontmatterSchema', () => {
       'prefecture_slugs',
       'ai_provider',
       'ai_model',
+      'venues',
+      'venue_slugs',
     ] as const;
 
     it.each(optionalFields)('%s が欠けても成功', (fieldName) => {
@@ -215,6 +217,40 @@ describe('MdxFrontmatterSchema', () => {
       const result = MdxFrontmatterSchema.safeParse({
         ...validFrontmatterSample7,
         tags: [1, 2, 3],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('venues / venue_slugs の OPTIONAL 検証 (legacy)', () => {
+    it('venues: 文字列配列で成功', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        venues: ['東京', '大阪'],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('venue_slugs: 文字列配列で成功', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        venue_slugs: ['tokyo', 'osaka'],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('venues の要素に空文字が含まれると失敗 (z.string().min(1))', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        venues: ['東京', ''],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('venue_slugs が数値配列だと失敗', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        venue_slugs: [1, 2],
       });
       expect(result.success).toBe(false);
     });
