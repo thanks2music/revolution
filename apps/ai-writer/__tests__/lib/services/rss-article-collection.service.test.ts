@@ -2,7 +2,6 @@
  * RSS記事収集サービスのテスト
  */
 
-import { jest } from '@jest/globals';
 import RssArticleCollectionService from '../../../lib/services/rss-article-collection.service';
 import { RssFeedService } from '../../../lib/services/rss-feed.service';
 import type { RssFeed, ValidationConfig } from '../../../lib/types/rss-feed';
@@ -17,7 +16,16 @@ jest.mock('rss-parser', () => {
     parseURL: mockParseURL
   }));
 });
-jest.mock('../../../lib/services/rss-feed.service');
+jest.mock('../../../lib/services/rss-feed.service', () => ({
+  __esModule: true,
+  RssFeedService: {
+    createFeed: jest.fn(),
+    updateFeed: jest.fn(),
+    deleteFeed: jest.fn(),
+    getFeed: jest.fn(),
+    listFeeds: jest.fn(),
+  },
+}));
 
 // モック用のテストデータ
 const mockFeed: RssFeed = {
