@@ -34,11 +34,34 @@ if [[ "$GIT_DIR" != "$GIT_COMMON_DIR" ]]; then
   exit 1
 fi
 
-BRANCH_NAME="$(git -C "$WORKTREE_PATH" rev-parse --abbrev-ref HEAD)"
+# worktree に紐づくブランチを git worktree list --porcelain から取得する
+# rev-parse --abbrev-ref HEAD だと detached HEAD で `HEAD` を返したり、
+# worktree 内で別ブランチに checkout 済みだと現在のブランチを返してしまう
+BRANCH_NAME=""
+while IFS= read -r line; do
+  case "$line" in
+    "worktree $WORKTREE_PATH"*)
+      capture=true
+      ;;
+    "worktree "*)
+      capture=false
+      ;;
+    "branch refs/heads/"*)
+      if [[ "${capture:-false}" == "true" ]]; then
+        BRANCH_NAME="${line#branch refs/heads/}"
+        break
+      fi
+      ;;
+  esac
+done < <(git -C "$MAIN_ROOT" worktree list --porcelain)
 
 echo "Removing worktree:"
 echo "  Path:   $WORKTREE_PATH"
-echo "  Branch: $BRANCH_NAME"
+if [[ -n "$BRANCH_NAME" ]]; then
+  echo "  Branch: $BRANCH_NAME"
+else
+  echo "  Branch: (detached HEAD — branch deletion will be skipped)"
+fi
 echo ""
 
 # setup-worktree.sh が生成した既知ファイル (gitignore 対象) を先に削除
@@ -77,15 +100,28 @@ for f in "${GENERATED_SYMLINKS[@]}"; do
   fi
 done
 
-git -C "$MAIN_ROOT" worktree remove "$WORKTREE_PATH"
+if ! git -C "$MAIN_ROOT" worktree remove "$WORKTREE_PATH"; then
+  echo "" >&2
+  echo "  Tip: worktree に未コミットの変更があると拒否されます。" >&2
+  echo "       commit/stash するか、強制削除するなら:" >&2
+  echo "         git worktree remove --force $WORKTREE_PATH" >&2
+  exit 1
+fi
 echo "✅ worktree removed"
 echo ""
+
+# detached HEAD だった場合はブランチ削除プロンプトを skip
+if [[ -z "$BRANCH_NAME" ]]; then
+  echo "ブランチ削除はスキップしました (detached HEAD)"
+  exit 0
+fi
 
 read -r -p "ブランチ '$BRANCH_NAME' も削除しますか？ [y/N]: " REPLY
 if [[ "$REPLY" =~ ^[Yy]$ ]]; then
   # -d (lowercase) は merge 済みでないと拒否する。意図的: 未マージ作業を誤って失わないため
   # 強制削除したい場合はユーザーが明示的に `git branch -D` を実行する
-  git -C "$MAIN_ROOT" branch -d "$BRANCH_NAME"
+  # `--` でブランチ名を引数として明示的に終端 (`-` 始まりの名前を hyphen-leading option と誤認させない)
+  git -C "$MAIN_ROOT" branch -d -- "$BRANCH_NAME"
   echo "✅ ブランチ削除完了"
 else
   echo "ブランチは残しました: $BRANCH_NAME"
