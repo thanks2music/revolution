@@ -43,11 +43,15 @@ stop: stop-frontend stop-ai-writer
 
 stop-frontend:
 	@echo "⚛️  Stopping frontend on port 4444..."
+	@lsof -ti:4444 | xargs kill 2>/dev/null || true
+	@sleep 1
 	@lsof -ti:4444 | xargs kill -9 2>/dev/null || true
 	@echo "✅ Frontend stopped"
 
 stop-ai-writer:
 	@echo "🤖 Stopping ai-writer on port 7777..."
+	@lsof -ti:7777 | xargs kill 2>/dev/null || true
+	@sleep 1
 	@lsof -ti:7777 | xargs kill -9 2>/dev/null || true
 	@echo "✅ AI Writer stopped"
 
