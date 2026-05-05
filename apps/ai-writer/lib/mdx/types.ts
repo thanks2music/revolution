@@ -2,183 +2,17 @@
  * MDX Types Module
  *
  * Purpose:
- *   - Define TypeScript interfaces for MDX frontmatter
- *   - Ensure type safety for article generation
- *   - Support MVP Phase 0.1 article structure
+ *   - Re-export MdxFrontmatter from @revolution/schemas (Schema-SDD truth source)
+ *   - Define app-local types for MDX article generation (input camelCase / file path / defaults)
  *
  * @module lib/mdx/types
- * @see {@link /notes/02-backlog/super-mvp-scope.md} for specification
+ * @see shared/schemas/mdx-frontmatter.ts for the canonical MdxFrontmatter definition
  */
 
-/**
- * MDX Frontmatter for Phase 0.1
- *
- * @description
- * Metadata structure for MDX article files
- * Used in Next.js for static site generation
- *
- * File path structure:
- *   content/collabo-cafe/{work-slug}/{post-id}.mdx
- *
- * Example file:
- *   content/collabo-cafe/sample-work/01jcxy4567.mdx
- *
- * @example
- * ```yaml
- * ---
- * post_id: "01jcxy4567"
- * year: 2025
- * event_type: "collabo-cafe"
- * event_title: "コラボカフェ"
- * work_title: "作品名"
- * work_titles: ["作品名", "サンリオキャラクターズ"]
- * work_slug: "work-slug"
- * slug: "01jcxy4567"
- * title: "作品名×店舗名2025が東京・大阪・福岡で開催決定"
- * date: "2025-11-19"
- * categories: ['作品名', 'カテゴリ名']
- * excerpt: "作品名と店舗名のコラボイベントが2025年12月25日から..."
- * author: "thanks2music"
- * ogImage: "/images/og-image-compressed.png"
- * ---
- * ```
- */
-export interface MdxFrontmatter {
-  /**
-   * Post ID (10-character ULID)
-   * @example "01jcxy4567"
-   */
-  post_id: string;
-
-  /**
-   * Event year (4-digit year)
-   * @example 2025
-   */
-  year: number;
-
-  /**
-   * Event type slug
-   * @example "collabo-cafe", "pop-up-store"
-   */
-  event_type: string;
-
-  /**
-   * Event type display name (Japanese)
-   * @example "コラボカフェ"
-   */
-  event_title: string;
-
-  /**
-   * Work title (Japanese) - Primary work for URL generation
-   * @example "作品名"
-   */
-  work_title: string;
-
-  /**
-   * Work titles (Japanese) - All works in collaboration
-   * For multi-work collaborations, includes all participating works
-   * @example ["キングオブプリズムSSS", "サンリオキャラクターズ"]
-   */
-  work_titles?: string[];
-
-  /**
-   * Work slug (romanized)
-   * @example "work-slug"
-   */
-  work_slug: string;
-
-  /**
-   * Article slug (same as post_id)
-   * @example "01jcxy4567"
-   */
-  slug: string;
-
-  /**
-   * Article title (SEO-optimized)
-   * @example "作品名×店舗名2025が東京・大阪・福岡で開催決定"
-   */
-  title: string;
-
-  /**
-   * Publication date (ISO 8601 format)
-   * @example "2025-11-19"
-   */
-  date: string;
-
-  /**
-   * Categories for taxonomy
-   * @example ['作品名', 'カテゴリ名']
-   */
-  categories: string[];
-
-  /**
-   * Article excerpt/summary for SEO and previews
-   * @example "作品名と店舗名のコラボイベントが..."
-   */
-  excerpt: string;
-
-  /**
-   * Author name
-   * @example "thanks2music"
-   */
-  author: string;
-
-  /**
-   * OG Image path for social sharing
-   * Phase 0.1: Default image only
-   * Phase 0.2: Extracted from official site
-   * @example "/images/og-image-compressed.png"
-   */
-  ogImage: string;
-
-  /**
-   * Optional: Venue locations (Phase 1+)
-   * @example ['東京', '大阪', '福岡']
-   */
-  venues?: string[];
-
-  /**
-   * Optional: Venue slugs (Phase 1+)
-   * @example ['tokyo', 'osaka', 'fukuoka']
-   */
-  venue_slugs?: string[];
-
-  /**
-   * Optional: Prefecture names (Phase 1+ - URL設計v1.1 areas軸対応)
-   * @see taxonomy.yaml axes.areas
-   * @example ['東京都', '大阪府']
-   */
-  prefectures?: string[];
-
-  /**
-   * Optional: Prefecture slugs (Phase 1+ - URL設計v1.1 areas軸対応)
-   * @see jp-prefecture.yaml
-   * @example ['tokyo', 'osaka']
-   */
-  prefecture_slugs?: string[];
-
-  /**
-   * Optional: SEO tags (将来拡張用)
-   * カテゴリとは別に、検索・フィルタリング用の補助キーワード
-   * @see taxonomy.yaml tag_rules
-   * @example ['アニメ', '店舗名', '作者名']
-   */
-  tags?: string[];
-
-  /**
-   * Optional: AI provider used for article generation (Debug metadata)
-   * Records which LLM provider was used to generate this article
-   * @example "gemini", "anthropic", "openai"
-   */
-  ai_provider?: string;
-
-  /**
-   * Optional: AI model name used for article generation (Debug metadata)
-   * Records the specific model version used for generation
-   * @example "gemini-2.0-flash-exp", "claude-3-5-sonnet-20241022", "gpt-4o-mini"
-   */
-  ai_model?: string;
-}
+// Re-export MdxFrontmatter type from shared/schemas (Schema-SDD Phase 2)
+export type { MdxFrontmatter } from '@revolution/schemas/mdx-frontmatter';
+import type { MdxFrontmatter } from '@revolution/schemas/mdx-frontmatter';
+import type { AiProviderType } from '../ai/providers/ai-provider.interface';
 
 /**
  * Input parameters for generating MDX frontmatter
@@ -274,7 +108,7 @@ export interface GenerateMdxFrontmatterInput {
    * Records which LLM provider was used to generate this article
    * @example "gemini", "anthropic", "openai"
    */
-  aiProvider?: string;
+  aiProvider?: AiProviderType;
 
   /**
    * Optional: AI model name used for article generation (Debug metadata)
