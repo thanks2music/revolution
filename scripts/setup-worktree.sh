@@ -21,9 +21,9 @@
 set -euo pipefail
 
 # ----- 引数バリデーション -----
-SKIP_INSTALL=0
+SKIP_INSTALL=false
 if [[ "${1:-}" == "--skip-install" ]]; then
-  SKIP_INSTALL=1
+  SKIP_INSTALL=true
   shift
 fi
 
@@ -35,6 +35,16 @@ fi
 
 BRANCH_NAME="$1"
 BASE_BRANCH="${2:-main}"
+
+# ----- SHA1 ハッシャー検出 (macOS: shasum / Linux: sha1sum) -----
+if command -v sha1sum >/dev/null 2>&1; then
+  sha1_cmd() { sha1sum; }
+elif command -v shasum >/dev/null 2>&1; then
+  sha1_cmd() { shasum -a 1; }
+else
+  echo "Error: neither sha1sum (Linux) nor shasum (macOS) is available" >&2
+  exit 1
+fi
 
 # ----- main repo root 検出 -----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,7 +60,9 @@ if [[ "$GIT_DIR" != "$GIT_COMMON_DIR" ]]; then
 fi
 
 # ----- worktree dir 名導出 -----
-DIR_NAME="$(echo "$BRANCH_NAME" | tr '/' '-')"
+# git branch 名は `:`/`?`/`*`/`[` 等を禁止するが空白・`~`/`^` 等は許される。
+# directory 名・shell 安全な文字 (英数 + . _ -) のみ残し、それ以外は - に置換 + 連続 - を 1 つに圧縮
+DIR_NAME="$(printf '%s' "$BRANCH_NAME" | tr '/' '-' | tr -cs 'a-zA-Z0-9._-' '-')"
 WORKTREE_PATH="$MAIN_ROOT/.claude/worktrees/$DIR_NAME"
 
 if [[ -e "$WORKTREE_PATH" ]]; then
@@ -59,7 +71,7 @@ if [[ -e "$WORKTREE_PATH" ]]; then
 fi
 
 # ----- port offset 計算 (SHA1 hash ベース、1000-9000 の 1000 単位) -----
-HASH_HEX="$(printf '%s' "$DIR_NAME" | shasum -a 1 | cut -c 1-8)"
+HASH_HEX="$(printf '%s' "$DIR_NAME" | sha1_cmd | cut -c 1-8)"
 HASH_DEC="$((16#$HASH_HEX))"
 OFFSET_INDEX="$(( (HASH_DEC % 9) + 1 ))"
 PORT_OFFSET="$((OFFSET_INDEX * 1000))"
@@ -70,6 +82,16 @@ FB_AUTH_PORT="$((9099 + PORT_OFFSET))"
 FB_FIRESTORE_PORT="$((8088 + PORT_OFFSET))"
 FB_STORAGE_PORT="$((9199 + PORT_OFFSET))"
 FB_UI_PORT="$((4000 + PORT_OFFSET))"
+
+# ----- port 衝突の事前検査 (LISTEN 状態の port が既に使われていないか) -----
+PORT_WARNINGS=()
+if command -v lsof >/dev/null 2>&1; then
+  for port in "$FRONTEND_PORT" "$AI_WRITER_PORT" "$FB_AUTH_PORT" "$FB_FIRESTORE_PORT" "$FB_STORAGE_PORT" "$FB_UI_PORT"; do
+    if lsof -i "tcp:$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
+      PORT_WARNINGS+=("$port")
+    fi
+  done
+fi
 
 echo "================================================================"
 echo " git worktree setup"
@@ -83,6 +105,10 @@ echo "    fb auth:     $FB_AUTH_PORT"
 echo "    fb firestore:$FB_FIRESTORE_PORT"
 echo "    fb storage:  $FB_STORAGE_PORT"
 echo "    fb ui:       $FB_UI_PORT"
+if [[ ${#PORT_WARNINGS[@]} -gt 0 ]]; then
+  echo "  ⚠ Port already in use: ${PORT_WARNINGS[*]}"
+  echo "    別 worktree か別プロセスが使用中。続行は可能ですが起動時に衝突します"
+fi
 echo "================================================================"
 echo ""
 
@@ -101,6 +127,10 @@ ENV_FILES=(
   "apps/frontend/.env.local"
   "apps/frontend/.env.production.local"
 )
+
+# worktree から main を指す相対パス (リポジトリ全体を移動しても壊れない)
+# .claude/worktrees/<dir>/<file> から ../../../<file> = MAIN_ROOT
+REL_TO_MAIN="../../.."
 
 for relpath in "${ENV_FILES[@]}"; do
   src="$MAIN_ROOT/$relpath"
@@ -122,8 +152,17 @@ for relpath in "${ENV_FILES[@]}"; do
     continue
   fi
 
-  ln -s "$src" "$dst"
-  echo "  [link] $relpath -> $src"
+  # dst の階層に応じた相対 prefix を計算
+  # `apps/ai-writer/.env.local` のように 2 階層下なら `../../` を REL_TO_MAIN に追加
+  depth="$(echo "$relpath" | tr -cd '/' | wc -c | tr -d ' ')"
+  prefix=""
+  for ((i=0; i<depth; i++)); do
+    prefix="../$prefix"
+  done
+  rel_src="${prefix}${REL_TO_MAIN}/$relpath"
+
+  ln -s "$rel_src" "$dst"
+  echo "  [link] $relpath"
 done
 echo ""
 
@@ -137,6 +176,11 @@ if [[ ! -f "$FIREBASE_SRC" ]]; then
 elif ! command -v jq >/dev/null 2>&1; then
   echo "  [warn] jq が見つかりません (brew install jq)。firebase.worktree.json は手動生成してください"
 else
+  # .emulators キー存在を事前検証 (jq は欠損キーを無音で作成するため)
+  if ! jq -e '.emulators' "$FIREBASE_SRC" >/dev/null 2>&1; then
+    echo "  [warn] firebase.json に .emulators キー無し。生成される firebase.worktree.json は構造的に有効でも意味的に正しくない可能性あり"
+  fi
+
   jq \
     --argjson auth "$FB_AUTH_PORT" \
     --argjson firestore "$FB_FIRESTORE_PORT" \
@@ -173,7 +217,7 @@ echo "  [gen]  .worktree.env"
 echo ""
 
 # ----- pnpm install -----
-if [[ "$SKIP_INSTALL" == "1" ]]; then
+if [[ "$SKIP_INSTALL" == "true" ]]; then
   echo "[5/5] pnpm install ... [skipped (--skip-install)]"
   echo "  → 後で worktree 内で 'pnpm install' を手動実行してください"
 else
