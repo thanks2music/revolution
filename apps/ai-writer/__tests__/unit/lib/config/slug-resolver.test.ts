@@ -18,7 +18,7 @@ jest.mock('../../../../lib/config/slug-generator', () => {
   };
 });
 
-// Mock yaml-loader with test fixtures (must come before imports that use it)
+// Mock yaml-loader with test fixtures (jest.mock is hoisted automatically by babel-plugin-jest-hoist)
 jest.mock('../../../../lib/config/yaml-loader', () => {
   const actual = jest.requireActual('../../../../lib/config/yaml-loader');
   return {
