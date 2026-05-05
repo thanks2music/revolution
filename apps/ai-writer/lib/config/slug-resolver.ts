@@ -433,8 +433,12 @@ export function getAllPrefectureNames(): string[] {
 /**
  * Validates if a work title exists in the config
  *
+ * @description
+ * Synchronous YAML-only existence check (direct match + alias lookup).
+ * Does NOT trigger AI/ASCII fallback chain — for loose existence check only.
+ *
  * @param {string} japaneseTitle - Japanese title to validate
- * @returns {boolean} True if title exists in config
+ * @returns {boolean} True if title exists in YAML (direct or alias)
  *
  * @example
  * ```typescript
@@ -443,14 +447,26 @@ export function getAllPrefectureNames(): string[] {
  * ```
  */
 export function isValidWorkTitle(japaneseTitle: string): boolean {
-  return resolveWorkSlug(japaneseTitle) !== null;
+  if (!japaneseTitle) return false;
+  const config = loadYamlConfig('TITLE_ROMAJI');
+  // Direct match
+  if (config.titles[japaneseTitle]) return true;
+  // Alias match (TitleEntry.aliases)
+  for (const value of Object.values(config.titles)) {
+    if (isTitleEntry(value) && value.aliases?.includes(japaneseTitle)) return true;
+  }
+  return false;
 }
 
 /**
  * Validates if a brand name exists in the config
  *
+ * @description
+ * Synchronous YAML-only existence check.
+ * Does NOT trigger AI/ASCII fallback chain.
+ *
  * @param {string} brandName - Brand name to validate
- * @returns {boolean} True if brand exists in config
+ * @returns {boolean} True if brand exists in YAML
  *
  * @example
  * ```typescript
@@ -459,23 +475,34 @@ export function isValidWorkTitle(japaneseTitle: string): boolean {
  * ```
  */
 export function isValidBrandName(brandName: string): boolean {
-  return resolveStoreSlug(brandName) !== null;
+  if (!brandName) return false;
+  const config = loadYamlConfig('BRAND_SLUGS');
+  return Boolean(config.brand_slugs[brandName]);
 }
 
 /**
  * Validates if an event type name exists in the config
  *
+ * @description
+ * Synchronous YAML-only existence check. Synonyms are stored as flat
+ * key-value entries in event-type-slugs.yaml (e.g., 'カフェコラボ' → 'collabo-cafe'),
+ * so a direct lookup covers both canonical names and synonyms.
+ * Does NOT trigger AI/ASCII fallback chain.
+ *
  * @param {string} eventTypeName - Event type name to validate
- * @returns {boolean} True if event type exists in config
+ * @returns {boolean} True if event type exists in YAML (canonical or synonym)
  *
  * @example
  * ```typescript
- * console.log(isValidEventTypeName("コラボカフェ")); // true
- * console.log(isValidEventTypeName("Unknown")); // false
+ * console.log(isValidEventTypeName("コラボカフェ"));   // true (canonical)
+ * console.log(isValidEventTypeName("カフェコラボ"));   // true (synonym, flat mapping)
+ * console.log(isValidEventTypeName("Unknown"));        // false
  * ```
  */
 export function isValidEventTypeName(eventTypeName: string): boolean {
-  return resolveEventTypeSlug(eventTypeName) !== null;
+  if (!eventTypeName) return false;
+  const config = loadYamlConfig('EVENT_TYPE_SLUGS');
+  return Boolean(config.event_types[eventTypeName]);
 }
 
 // ============================================================================
