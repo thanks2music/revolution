@@ -55,9 +55,15 @@ case "$CMD" in
       exit 1
     fi
     echo "Starting Firebase Emulator (auth:$FB_AUTH_PORT, firestore:$FB_FIRESTORE_PORT, storage:$FB_STORAGE_PORT, ui:$FB_UI_PORT)..."
+    # `cd` is load-bearing: --config is resolved relative to CWD,
+    # so we pass basename and rely on this directory being the working tree
     cd "$WORKTREE_ROOT/apps/ai-writer"
     # firebase-tools は apps/ai-writer の devDependencies に固定されているため、
     # pnpm exec 経由で workspace のバージョンを使う
+    # NOTE: --config は firebase-tools の Commander.js global option で公式 docs 未記載のため、
+    # 将来 firebase-tools のメジャー更新で挙動が変わったら次のフォールバックを検討:
+    #   cp firebase.json firebase.json.bak && cp firebase.worktree.json firebase.json
+    #   firebase emulators:start; cp firebase.json.bak firebase.json
     exec pnpm exec firebase emulators:start --config "$FIREBASE_CONFIG_NAME"
     ;;
   *)
