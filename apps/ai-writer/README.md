@@ -24,23 +24,7 @@ GitHub PR 作成 (content/{event-type}/{work-slug}/{post-id}-{year}.mdx)
 Firestore (ステータス更新)
 ```
 
-### WordPress Pipeline (レガシー)
-
-WordPress パイプラインは `PIPELINE_TARGET=wordpress` で有効化できますが、**本番では使用しません**。
-
 ## 主要コンポーネント
-
-### パイプラインモード切り替え
-
-```typescript
-import { isMdxMode, isWordPressMode } from './lib/pipeline-mode';
-
-if (isMdxMode()) {
-  await runMdxPipeline();
-} else {
-  await runWordpressPipeline();
-}
-```
 
 ### MDX Pipeline Functions
 
@@ -64,9 +48,6 @@ if (isMdxMode()) {
 ## 環境変数
 
 ```bash
-# Pipeline Mode (MDX: 本番 | wordpress: レガシー)
-PIPELINE_TARGET=mdx
-
 # Google Cloud Project
 GOOGLE_CLOUD_PROJECT=your-project-id
 
@@ -319,7 +300,7 @@ apps/ai-writer/
 - **Phase 0.1**: MDX パイプライン実装完了
 - **Phase 0.2**: RSS 抽出ロジック実装
 - **Phase 1**: Frontend 統合
-- **Post-MVP**: WordPress コード完全削除
+- **Post-MVP**: WordPress パイプラインコード削除済み (Sprint 2 / Schema-SDD Phase 2)
 
 ## Git タグ
 
