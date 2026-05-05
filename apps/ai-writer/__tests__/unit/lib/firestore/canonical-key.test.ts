@@ -4,9 +4,46 @@
  * @module __tests__/unit/lib/firestore/canonical-key
  */
 
-// Layer 2 mock: partial-mock lib/config so resolver functions are jest.fn()
-// wrappers around the real implementation. Default behavior = real resolver.
-// Override per-test via mockResolvedValueOnce(null) to simulate unknown inputs.
+// Hermetic fixtures: keep tests independent of production YAML content.
+// `apps/ai-writer/templates/` is gitignored and synced from a private repo,
+// so depending on it would make the suite fail in clean checkouts.
+jest.mock('../../../../lib/config/yaml-loader', () => {
+  const actual = jest.requireActual('../../../../lib/config/yaml-loader');
+  return {
+    ...actual,
+    loadYamlConfig: jest.fn((key: string) => {
+      switch (key) {
+        case 'TITLE_ROMAJI':
+          return {
+            titles: {
+              '呪術廻戦': { slug: 'jujutsu-kaisen' },
+              'SPY×FAMILY': { slug: 'spy-family' },
+            },
+          };
+        case 'BRAND_SLUGS':
+          return {
+            brand_slugs: {
+              'アベイル': 'avail',
+              'しまむら': 'shimamura',
+            },
+          };
+        case 'EVENT_TYPE_SLUGS':
+          return {
+            event_types: {
+              'コラボカフェ': 'collabo-cafe',
+              'カフェコラボ': 'collabo-cafe',
+              'しまむらコラボ': 'store-collabo',
+            },
+          };
+        default:
+          return actual.loadYamlConfig(key);
+      }
+    }),
+  };
+});
+
+// Resolver functions are wrapped so individual tests can override per-call
+// behavior (e.g. force null to exercise the throw path).
 jest.mock('../../../../lib/config', () => {
   const actual = jest.requireActual<typeof import('../../../../lib/config')>(
     '../../../../lib/config'
