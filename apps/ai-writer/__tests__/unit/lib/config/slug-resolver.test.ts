@@ -1,8 +1,74 @@
 /**
- * Unit tests for Slug Resolver Module
+ * Unit tests for Slug Resolver Module (Layer 1: pure function)
+ *
+ * @description
+ * YAML config is mocked with test fixtures to isolate Layer 1 logic from
+ * production YAML data. This ensures tests are deterministic and don't break
+ * when production YAML evolves.
  *
  * @module __tests__/unit/lib/config/slug-resolver
  */
+
+// Mock yaml-loader with test fixtures (must come before imports that use it)
+jest.mock('../../../../lib/config/yaml-loader', () => {
+  const actual = jest.requireActual('../../../../lib/config/yaml-loader');
+  return {
+    ...actual,
+    loadYamlConfig: jest.fn((key: string) => {
+      switch (key) {
+        case 'TITLE_ROMAJI':
+          return {
+            titles: {
+              '作品名A': 'work-a',
+              '作品名B': { slug: 'work-b', aliases: ['作品B別名'] },
+              '作品名C': 'work-c',
+            },
+          };
+        case 'BRAND_SLUGS':
+          return {
+            brand_slugs: {
+              'アベイル': 'avail',
+              'しまむら': 'shimamura',
+              'セブン-イレブン': 'seven-eleven',
+              'ドンキホーテ': 'donki',
+              'ドン・キホーテ': 'donki',
+            },
+          };
+        case 'EVENT_TYPE_SLUGS':
+          return {
+            event_types: {
+              'コラボカフェ': 'collabo-cafe',
+              'カフェコラボ': 'collabo-cafe',
+              'スペシャルカフェ': 'collabo-cafe',
+              'ポップアップストア': 'pop-up-store',
+              'アベイルコラボ': 'store-collabo',
+              'しまむらコラボ': 'store-collabo',
+              'セブン-イレブンコラボ': 'store-collabo',
+            },
+          };
+        case 'JP_PREFECTURE':
+          return {
+            prefectures: {
+              '東京都': 'tokyo',
+              '東京': 'tokyo',
+              '都': 'tokyo',
+              '大阪府': 'osaka',
+              '福岡県': 'fukuoka',
+              '北海道': 'hokkaido',
+              '道': 'hokkaido',
+            },
+            major_cities: {
+              '新宿': 'shinjuku',
+              '渋谷': 'shibuya',
+              '池袋': 'ikebukuro',
+            },
+          };
+        default:
+          return actual.loadYamlConfig(key);
+      }
+    }),
+  };
+});
 
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import {
@@ -26,19 +92,19 @@ describe('resolveWorkSlug', () => {
     clearConfigCache();
   });
 
-  it('should resolve Japanese title to romaji slug', () => {
-    expect(resolveWorkSlug('作品名A')).toBe('work-a');
-    expect(resolveWorkSlug('作品名B')).toBe('work-b');
-    expect(resolveWorkSlug('作品名C')).toBe('work-c');
+  it('should resolve Japanese title to romaji slug', async () => {
+    expect(await resolveWorkSlug('作品名A')).toBe('work-a');
+    expect(await resolveWorkSlug('作品名B')).toBe('work-b');
+    expect(await resolveWorkSlug('作品名C')).toBe('work-c');
   });
 
-  it('should return null for unknown title', () => {
-    expect(resolveWorkSlug('Unknown Title 未知の作品')).toBeNull();
+  it('should return null for unknown title (fallback disabled)', async () => {
+    expect(await resolveWorkSlug('Unknown Title 未知の作品', false)).toBeNull();
   });
 
-  it('should handle exact match only (case sensitive)', () => {
-    expect(resolveWorkSlug('作品名A')).toBe('work-a');
-    expect(resolveWorkSlug('作品名a')).toBeNull(); // Different casing
+  it('should handle exact match only (case sensitive)', async () => {
+    expect(await resolveWorkSlug('作品名A')).toBe('work-a');
+    expect(await resolveWorkSlug('作品名a', false)).toBeNull(); // Different casing
   });
 });
 
@@ -47,19 +113,19 @@ describe('resolveStoreSlug', () => {
     clearConfigCache();
   });
 
-  it('should resolve brand name to slug', () => {
-    expect(resolveStoreSlug('アベイル')).toBe('avail');
-    expect(resolveStoreSlug('しまむら')).toBe('shimamura');
-    expect(resolveStoreSlug('セブン-イレブン')).toBe('seven-eleven');
+  it('should resolve brand name to slug', async () => {
+    expect(await resolveStoreSlug('アベイル')).toBe('avail');
+    expect(await resolveStoreSlug('しまむら')).toBe('shimamura');
+    expect(await resolveStoreSlug('セブン-イレブン')).toBe('seven-eleven');
   });
 
-  it('should handle variant names (e.g., ドンキホーテ vs ドン・キホーテ)', () => {
-    expect(resolveStoreSlug('ドンキホーテ')).toBe('donki');
-    expect(resolveStoreSlug('ドン・キホーテ')).toBe('donki');
+  it('should handle variant names (e.g., ドンキホーテ vs ドン・キホーテ)', async () => {
+    expect(await resolveStoreSlug('ドンキホーテ')).toBe('donki');
+    expect(await resolveStoreSlug('ドン・キホーテ')).toBe('donki');
   });
 
-  it('should return null for unknown brand', () => {
-    expect(resolveStoreSlug('Unknown Store')).toBeNull();
+  it('should return null for unknown brand (fallback disabled)', async () => {
+    expect(await resolveStoreSlug('Unknown Store', false)).toBeNull();
   });
 });
 
@@ -68,26 +134,26 @@ describe('resolveEventTypeSlug', () => {
     clearConfigCache();
   });
 
-  it('should resolve event type to slug', () => {
-    expect(resolveEventTypeSlug('コラボカフェ')).toBe('collabo-cafe');
-    expect(resolveEventTypeSlug('ポップアップストア')).toBe('pop-up-store');
+  it('should resolve event type to slug', async () => {
+    expect(await resolveEventTypeSlug('コラボカフェ')).toBe('collabo-cafe');
+    expect(await resolveEventTypeSlug('ポップアップストア')).toBe('pop-up-store');
   });
 
-  it('should handle synonyms mapping to same slug', () => {
+  it('should handle synonyms mapping to same slug', async () => {
     // Both should map to "collabo-cafe"
-    expect(resolveEventTypeSlug('コラボカフェ')).toBe('collabo-cafe');
-    expect(resolveEventTypeSlug('カフェコラボ')).toBe('collabo-cafe');
-    expect(resolveEventTypeSlug('スペシャルカフェ')).toBe('collabo-cafe');
+    expect(await resolveEventTypeSlug('コラボカフェ')).toBe('collabo-cafe');
+    expect(await resolveEventTypeSlug('カフェコラボ')).toBe('collabo-cafe');
+    expect(await resolveEventTypeSlug('スペシャルカフェ')).toBe('collabo-cafe');
   });
 
-  it('should handle store-collabo synonyms', () => {
-    expect(resolveEventTypeSlug('アベイルコラボ')).toBe('store-collabo');
-    expect(resolveEventTypeSlug('しまむらコラボ')).toBe('store-collabo');
-    expect(resolveEventTypeSlug('セブン-イレブンコラボ')).toBe('store-collabo');
+  it('should handle store-collabo synonyms', async () => {
+    expect(await resolveEventTypeSlug('アベイルコラボ')).toBe('store-collabo');
+    expect(await resolveEventTypeSlug('しまむらコラボ')).toBe('store-collabo');
+    expect(await resolveEventTypeSlug('セブン-イレブンコラボ')).toBe('store-collabo');
   });
 
-  it('should return null for unknown event type', () => {
-    expect(resolveEventTypeSlug('Unknown Event Type')).toBeNull();
+  it('should return null for unknown event type (fallback disabled)', async () => {
+    expect(await resolveEventTypeSlug('Unknown Event Type', false)).toBeNull();
   });
 });
 
@@ -253,10 +319,10 @@ describe('Integration: Canonical Key Generation', () => {
     clearConfigCache();
   });
 
-  it('should generate canonical key components correctly', () => {
-    const workSlug = resolveWorkSlug('作品名A');
-    const storeSlug = resolveStoreSlug('アベイル');
-    const eventType = resolveEventTypeSlug('コラボカフェ');
+  it('should generate canonical key components correctly', async () => {
+    const workSlug = await resolveWorkSlug('作品名A');
+    const storeSlug = await resolveStoreSlug('アベイル');
+    const eventType = await resolveEventTypeSlug('コラボカフェ');
     const year = 2025;
 
     expect(workSlug).toBe('work-a');
@@ -267,11 +333,11 @@ describe('Integration: Canonical Key Generation', () => {
     expect(canonicalKey).toBe('work-a:avail:collabo-cafe:2025');
   });
 
-  it('should handle synonym event types in canonical key', () => {
-    const workSlug = resolveWorkSlug('作品名A');
-    const storeSlug = resolveStoreSlug('しまむら');
-    const eventType1 = resolveEventTypeSlug('コラボカフェ');
-    const eventType2 = resolveEventTypeSlug('カフェコラボ'); // Synonym
+  it('should handle synonym event types in canonical key', async () => {
+    const workSlug = await resolveWorkSlug('作品名A');
+    const storeSlug = await resolveStoreSlug('しまむら');
+    const eventType1 = await resolveEventTypeSlug('コラボカフェ');
+    const eventType2 = await resolveEventTypeSlug('カフェコラボ'); // Synonym
     const year = 2025;
 
     const key1 = `${workSlug}:${storeSlug}:${eventType1}:${year}`;
@@ -284,25 +350,25 @@ describe('Integration: Canonical Key Generation', () => {
 });
 
 describe('Caching behavior', () => {
-  it('should use cache on subsequent calls', () => {
+  it('should use cache on subsequent calls', async () => {
     clearConfigCache();
 
     // First call loads from file
-    const slug1 = resolveWorkSlug('作品名A');
+    const slug1 = await resolveWorkSlug('作品名A');
 
     // Second call should use cache
-    const slug2 = resolveWorkSlug('作品名A');
+    const slug2 = await resolveWorkSlug('作品名A');
 
     expect(slug1).toBe(slug2);
     expect(slug1).toBe('work-a');
   });
 
-  it('should reload after cache clear', () => {
-    const slug1 = resolveWorkSlug('作品名A');
+  it('should reload after cache clear', async () => {
+    const slug1 = await resolveWorkSlug('作品名A');
 
     clearConfigCache('TITLE_ROMAJI');
 
-    const slug2 = resolveWorkSlug('作品名A');
+    const slug2 = await resolveWorkSlug('作品名A');
 
     expect(slug1).toBe(slug2);
     expect(slug1).toBe('work-a');
