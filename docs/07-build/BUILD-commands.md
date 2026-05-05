@@ -11,14 +11,18 @@
 
 ## ルートレベル（モノレポ）
 
-> ⚠️ **注意**: ルート `package.json` の `dev` / `build` / `clean` / `fresh` / `dev:backend` / `build:backend` / `deploy` / `deploy:backend` スクリプトは、PR #117 で削除された `apps/backend` を参照する `Makefile` ターゲットに依然として委譲しているため**現状動作しません**。下記の表は「動くもの / 動かないもの」を区別しています。クリーンアップは別 PR で対応予定。
-
-### 動作する root レベルコマンド
-
 ```bash
+# 統合起動（Turbo 並行実行）
+pnpm dev              # frontend (4444) + ai-writer (7777) を並行起動
+pnpm build            # 両アプリをビルド
+pnpm clean            # turbo run clean
+pnpm fresh            # clean + pnpm install
+
 # 個別ワークスペース起動（Turbo フィルタ経由）
 pnpm dev:frontend     # フロントエンドのみ (http://localhost:4444)
+pnpm dev:ai-writer    # AI Writer のみ (http://localhost:7777)
 pnpm build:frontend   # フロントエンドのみビルド
+pnpm build:ai-writer  # AI Writer のみビルド
 
 # テスト & 品質チェック（Turbo run）
 pnpm test             # 全テストを実行
@@ -29,18 +33,13 @@ pnpm type-check       # TypeScript 検証
 pnpm deploy:frontend  # apps/frontend を vercel --prod
 ```
 
-### 現状壊れている root レベルコマンド（参考）
+### Makefile wrapper
 
-| コマンド | 状態 | 原因 |
-|---|---|---|
-| `pnpm dev` | ❌ | `make dev` → 削除済み `apps/backend` を起動しようとする |
-| `pnpm dev:backend` | ❌ | `make backend` → 削除済み `apps/backend` |
-| `pnpm build` | ❌ | `make build` → `cd apps/backend && make build` |
-| `pnpm clean` | ❌ | `make clean` → `cd apps/backend && make clean` |
-| `pnpm fresh` | ❌ | `make clean &&` の段階で失敗 |
-| `pnpm deploy` / `pnpm deploy:backend` | ❌ | 同上 |
+`make dev` / `make build` / `make clean` / `make stop` / `make status` は上記 `pnpm` コマンドを呼ぶ薄い wrapper です。`make stop` は port 4444 / 7777 で listening しているプロセスを停止し、`make status` は両 port の稼働状況を表示します。
 
-各ワークスペースに `cd` してから `pnpm dev` / `pnpm build` を直接叩くか、上記の `pnpm dev:frontend` 等を使ってください。
+### worktree 並行起動時の注意
+
+複数の git worktree で同時に dev サーバーを動かす場合は port 衝突を避けるため、`bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` を使ってください。`pnpm dev` / `make dev` は常にデフォルト port (4444 / 7777) で起動します。
 
 ## AI Writer (`apps/ai-writer/`)
 
