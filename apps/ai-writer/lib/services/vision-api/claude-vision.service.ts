@@ -439,6 +439,8 @@ export class ClaudeVisionService implements IVisionApiService {
       name: String(raw.name || ''),
       price: typeof raw.price === 'number' ? raw.price : undefined,
       characterName: this.parseCharacterNameArray(raw.characterName, raw.name),
+      hasNovelty: typeof raw.hasNovelty === 'boolean' ? raw.hasNovelty : false,
+      noveltyCondition: raw.noveltyCondition ? String(raw.noveltyCondition) : undefined,
       bonus: raw.bonus ? String(raw.bonus) : undefined,
       description: raw.description ? String(raw.description) : undefined,
       notes: raw.notes ? String(raw.notes) : undefined,
@@ -515,6 +517,8 @@ export class ClaudeVisionService implements IVisionApiService {
       variantCount: typeof raw.variantCount === 'number' ? raw.variantCount : undefined,
       variantDetails: raw.variantDetails ? String(raw.variantDetails) : undefined,
       characterName: this.parseCharacterNameArray(raw.characterName, raw.name),
+      isRandomSale: typeof raw.isRandomSale === 'boolean' ? raw.isRandomSale : false,
+      confidence: typeof raw.confidence === 'number' ? raw.confidence : undefined,
     };
   }
 
@@ -527,6 +531,8 @@ export class ClaudeVisionService implements IVisionApiService {
       condition: raw.condition ? String(raw.condition) : undefined,
       variantCount: typeof raw.variantCount === 'number' ? raw.variantCount : undefined,
       characterName: this.parseCharacterNameArray(raw.characterName, raw.name),
+      isRandom: typeof raw.isRandom === 'boolean' ? raw.isRandom : false,
+      confidence: typeof raw.confidence === 'number' ? raw.confidence : undefined,
       notes: raw.notes ? String(raw.notes) : undefined,
       remarks: raw.remarks ? String(raw.remarks) : undefined,
     };

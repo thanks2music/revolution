@@ -69,8 +69,8 @@ describe('Vision API Utilities', () => {
       it('should detect hallucination when Coming Soon notice exists but menu items were generated', () => {
         const visionResult = createMockVisionResult({
           menuItems: [
-            { name: 'テストメニュー', price: 1000, characterName: [] },
-            { name: 'テストメニュー2', price: 1500, characterName: [] },
+            { name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false },
+            { name: 'テストメニュー2', price: 1500, characterName: [], hasNovelty: false },
           ],
           metadata: {
             hasComingSoonNotice: true,
@@ -117,7 +117,7 @@ describe('Vision API Utilities', () => {
         // Threshold is `menuItems.length > 10` (relaxed in commit a311a61).
         // Use 11 items to cross that boundary; 8 items would (correctly) be tolerated.
         const visionResult = createMockVisionResult({
-          menuItems: Array(11).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(11).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -135,7 +135,7 @@ describe('Vision API Utilities', () => {
 
       it('should pass when no HTML data but reasonable Vision item count', () => {
         const visionResult = createMockVisionResult({
-          menuItems: Array(3).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(3).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -154,7 +154,7 @@ describe('Vision API Utilities', () => {
       it('should detect inconsistency when high confidence but very low HTML sufficiency', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.9,
-          menuItems: Array(5).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(5).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -173,7 +173,7 @@ describe('Vision API Utilities', () => {
       it('should pass when high confidence and reasonable HTML sufficiency', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.9,
-          menuItems: Array(5).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(5).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -193,8 +193,8 @@ describe('Vision API Utilities', () => {
       it('should return detailed comparison data', () => {
         const visionResult = createMockVisionResult({
           menuItems: [
-            { name: 'メニュー1', price: 1000, characterName: [] },
-            { name: 'メニュー2', price: 1500, characterName: [] },
+            { name: 'メニュー1', price: 1000, characterName: [], hasNovelty: false },
+            { name: 'メニュー2', price: 1500, characterName: [], hasNovelty: false },
           ],
         });
 
@@ -220,7 +220,7 @@ describe('Vision API Utilities', () => {
     describe('Type 1: Coming Soon Fabrication', () => {
       it('should detect Coming Soon fabrication', () => {
         const visionResult = createMockVisionResult({
-          menuItems: Array(5).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(5).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
           metadata: {
             hasComingSoonNotice: true,
             totalImagesAnalyzed: 1,
@@ -263,7 +263,7 @@ describe('Vision API Utilities', () => {
     describe('Type 2: Excessive Detail Without HTML', () => {
       it('should detect excessive detail without HTML', () => {
         const visionResult = createMockVisionResult({
-          menuItems: Array(15).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(15).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -280,7 +280,7 @@ describe('Vision API Utilities', () => {
 
       it('should not detect when menu items count is reasonable', () => {
         const visionResult = createMockVisionResult({
-          menuItems: Array(8).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(8).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -298,7 +298,7 @@ describe('Vision API Utilities', () => {
       it('should detect confidence inconsistency', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.95, // Very high
-          menuItems: Array(5).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(5).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -318,7 +318,7 @@ describe('Vision API Utilities', () => {
       it('should not detect when confidence matches HTML sufficiency', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.7, // Medium
-          menuItems: Array(3).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(3).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -337,7 +337,7 @@ describe('Vision API Utilities', () => {
       it('should not detect hallucination for valid extraction', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.85,
-          menuItems: Array(5).fill({ name: 'テストメニュー', price: 1000, characterName: [] }),
+          menuItems: Array<MenuItem>(5).fill({ name: 'テストメニュー', price: 1000, characterName: [], hasNovelty: false }),
         });
 
         const htmlExtraction = createMockHtmlExtraction({
@@ -361,8 +361,8 @@ describe('Vision API Utilities', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.9,
           menuItems: [
-            { name: 'メニュー1', price: 1000, characterName: [] },
-            { name: 'メニュー2', price: 1500, characterName: [] },
+            { name: 'メニュー1', price: 1000, characterName: [], hasNovelty: false },
+            { name: 'メニュー2', price: 1500, characterName: [], hasNovelty: false },
           ],
         });
 
@@ -375,7 +375,7 @@ describe('Vision API Utilities', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.88,
           goodsItems: [
-            { name: 'グッズ1', price: 2000, variantCount: 3, characterName: [] },
+            { name: 'グッズ1', price: 2000, variantCount: 3, characterName: [], isRandomSale: false },
           ],
         });
 
@@ -387,7 +387,7 @@ describe('Vision API Utilities', () => {
       it('should select Level A at confidence boundary (0.85)', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.85,
-          menuItems: [{ name: 'メニュー', price: 1000, characterName: [] }],
+          menuItems: [{ name: 'メニュー', price: 1000, characterName: [], hasNovelty: false }],
         });
 
         const level = selectFallbackLevel(visionResult);
@@ -401,8 +401,8 @@ describe('Vision API Utilities', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.75,
           menuItems: [
-            { name: 'メニュー1', characterName: ['キャラクター1'] },
-            { name: 'メニュー2', characterName: ['キャラクター2'] },
+            { name: 'メニュー1', characterName: ['キャラクター1'], hasNovelty: false },
+            { name: 'メニュー2', characterName: ['キャラクター2'], hasNovelty: false },
           ],
         });
 
@@ -414,7 +414,7 @@ describe('Vision API Utilities', () => {
       it('should select Level B at lower boundary (0.70)', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.70,
-          menuItems: [{ name: 'メニュー', characterName: ['キャラクター'] }],
+          menuItems: [{ name: 'メニュー', characterName: ['キャラクター'], hasNovelty: false }],
         });
 
         const level = selectFallbackLevel(visionResult);
@@ -425,7 +425,7 @@ describe('Vision API Utilities', () => {
       it('should not select Level B when no character names despite confidence range', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.75,
-          menuItems: [{ name: 'メニュー1', characterName: [] }, { name: 'メニュー2', characterName: [] }],
+          menuItems: [{ name: 'メニュー1', characterName: [], hasNovelty: false }, { name: 'メニュー2', characterName: [], hasNovelty: false }],
         });
 
         const level = selectFallbackLevel(visionResult);
@@ -436,7 +436,7 @@ describe('Vision API Utilities', () => {
       it('should select Level B when goods items have character names', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.78,
-          goodsItems: [{ name: 'グッズ', characterName: ['キャラクター'] }],
+          goodsItems: [{ name: 'グッズ', characterName: ['キャラクター'], isRandomSale: false }],
         });
 
         const level = selectFallbackLevel(visionResult);
@@ -449,7 +449,7 @@ describe('Vision API Utilities', () => {
       it('should select Level C when confidence < 0.70', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.65,
-          menuItems: [{ name: 'メニュー', price: 1000, characterName: [] }],
+          menuItems: [{ name: 'メニュー', price: 1000, characterName: [], hasNovelty: false }],
         });
 
         const level = selectFallbackLevel(visionResult);
@@ -472,7 +472,7 @@ describe('Vision API Utilities', () => {
       it('should select Level C at confidence boundary (0.69)', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.69,
-          menuItems: [{ name: 'メニュー', price: 1000, characterName: [] }],
+          menuItems: [{ name: 'メニュー', price: 1000, characterName: [], hasNovelty: false }],
         });
 
         const level = selectFallbackLevel(visionResult);
@@ -487,8 +487,8 @@ describe('Vision API Utilities', () => {
       it('should detect menu prices below minimum (500円)', () => {
         const visionResult = createMockVisionResult({
           menuItems: [
-            { name: 'メニュー1', price: 300, characterName: [] }, // Too low
-            { name: 'メニュー2', price: 1000, characterName: [] },
+            { name: 'メニュー1', price: 300, characterName: [], hasNovelty: false }, // Too low
+            { name: 'メニュー2', price: 1000, characterName: [], hasNovelty: false },
           ],
         });
 
@@ -503,7 +503,7 @@ describe('Vision API Utilities', () => {
       it('should detect menu prices above maximum (5000円)', () => {
         const visionResult = createMockVisionResult({
           menuItems: [
-            { name: 'メニュー1', price: 6000, characterName: [] }, // Too high
+            { name: 'メニュー1', price: 6000, characterName: [], hasNovelty: false }, // Too high
           ],
         });
 
@@ -517,9 +517,9 @@ describe('Vision API Utilities', () => {
       it('should pass when menu prices are within range', () => {
         const visionResult = createMockVisionResult({
           menuItems: [
-            { name: 'メニュー1', price: 800, characterName: [] },
-            { name: 'メニュー2', price: 1500, characterName: [] },
-            { name: 'メニュー3', price: 3000, characterName: [] },
+            { name: 'メニュー1', price: 800, characterName: [], hasNovelty: false },
+            { name: 'メニュー2', price: 1500, characterName: [], hasNovelty: false },
+            { name: 'メニュー3', price: 3000, characterName: [], hasNovelty: false },
           ],
         });
 
@@ -534,7 +534,7 @@ describe('Vision API Utilities', () => {
       it('should detect goods prices below minimum (300円)', () => {
         const visionResult = createMockVisionResult({
           goodsItems: [
-            { name: 'グッズ1', price: 200, characterName: [] }, // Too low
+            { name: 'グッズ1', price: 200, characterName: [], isRandomSale: false }, // Too low
           ],
         });
 
@@ -548,7 +548,7 @@ describe('Vision API Utilities', () => {
       it('should detect goods prices above maximum (10000円)', () => {
         const visionResult = createMockVisionResult({
           goodsItems: [
-            { name: 'グッズ1', price: 15000, characterName: [] }, // Too high
+            { name: 'グッズ1', price: 15000, characterName: [], isRandomSale: false }, // Too high
           ],
         });
 
@@ -564,7 +564,7 @@ describe('Vision API Utilities', () => {
       it('should detect suspicious goods variant count (> 100)', () => {
         const visionResult = createMockVisionResult({
           goodsItems: [
-            { name: 'グッズ1', variantCount: 150, characterName: [] }, // Suspicious
+            { name: 'グッズ1', variantCount: 150, characterName: [], isRandomSale: false }, // Suspicious
           ],
         });
 
@@ -583,6 +583,7 @@ describe('Vision API Utilities', () => {
               condition: '1ドリンク注文につき1枚',
               variantCount: 80, // Suspicious
               characterName: [],
+              isRandom: false,
             },
           ],
         });
@@ -597,8 +598,8 @@ describe('Vision API Utilities', () => {
       it('should pass when variant counts are reasonable', () => {
         const visionResult = createMockVisionResult({
           goodsItems: [
-            { name: 'グッズ1', variantCount: 5, characterName: [] },
-            { name: 'グッズ2', variantCount: 12, characterName: [] },
+            { name: 'グッズ1', variantCount: 5, characterName: [], isRandomSale: false },
+            { name: 'グッズ2', variantCount: 12, characterName: [], isRandomSale: false },
           ],
           noveltyItems: [
             {
@@ -606,6 +607,7 @@ describe('Vision API Utilities', () => {
               condition: '1ドリンク注文につき1枚',
               variantCount: 10,
               characterName: [],
+              isRandom: false,
             },
           ],
         });
@@ -622,11 +624,11 @@ describe('Vision API Utilities', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.9,
           menuItems: [
-            { name: 'メニュー1', price: 300, characterName: [] }, // -0.05 penalty
-            { name: 'メニュー2', price: 6000, characterName: [] }, // -0.05 penalty
+            { name: 'メニュー1', price: 300, characterName: [], hasNovelty: false }, // -0.05 penalty
+            { name: 'メニュー2', price: 6000, characterName: [], hasNovelty: false }, // -0.05 penalty
           ],
           goodsItems: [
-            { name: 'グッズ1', variantCount: 150, characterName: [] }, // -0.10 penalty
+            { name: 'グッズ1', variantCount: 150, characterName: [], isRandomSale: false }, // -0.10 penalty
           ],
         });
 
@@ -639,7 +641,7 @@ describe('Vision API Utilities', () => {
       it('should not allow adjusted confidence below 0', () => {
         const visionResult = createMockVisionResult({
           confidence: 0.1,
-          menuItems: Array(10).fill({ name: 'メニュー', price: 100, characterName: [] }), // Heavy penalty
+          menuItems: Array<MenuItem>(10).fill({ name: 'メニュー', price: 100, characterName: [], hasNovelty: false }), // Heavy penalty
         });
 
         const result = validateBusinessRules(visionResult);

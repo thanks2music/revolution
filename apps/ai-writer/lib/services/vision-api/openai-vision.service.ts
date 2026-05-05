@@ -34,12 +34,19 @@ import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 /**
  * Raw Vision API Response (Internal Type)
+ *
+ * @description
+ * Mirrors Templates v1.2 `output_schema.visionExtraction.{menu,goods,novelty}Items[]`.
+ * v1.2 added: MenuItem.hasNovelty/noveltyCondition, GoodsItem.isRandomSale/confidence,
+ * NoveltyItem.isRandom/confidence. Optional fields tolerate older or partial responses.
  */
 interface RawVisionResponse {
   menuItems?: Array<{
     name: string;
     price?: number;
     characterName?: string[] | string;
+    hasNovelty?: boolean;
+    noveltyCondition?: string;
     bonus?: string;
     description?: string;
     notes?: string;
@@ -51,6 +58,8 @@ interface RawVisionResponse {
     condition?: string;
     variantCount?: number;
     characterName?: string[] | string;
+    isRandom?: boolean;
+    confidence?: number;
     notes?: string;
     remarks?: string;
   }>;
@@ -60,6 +69,8 @@ interface RawVisionResponse {
     variantCount?: number;
     variantDetails?: string;
     characterName?: string[] | string;
+    isRandomSale?: boolean;
+    confidence?: number;
   }>;
   metadata?: {
     imageQuality?: string;
@@ -451,6 +462,8 @@ export class OpenAiVisionService implements IVisionApiService {
       name: item.name,
       price: item.price,
       characterName: this.parseCharacterNameArray(item.characterName, item.name),
+      hasNovelty: item.hasNovelty ?? false,
+      noveltyCondition: item.noveltyCondition,
       bonus: item.bonus,
       description: item.description,
       notes: item.notes,
@@ -527,6 +540,8 @@ export class OpenAiVisionService implements IVisionApiService {
       variantCount: item.variantCount,
       variantDetails: item.variantDetails,
       characterName: this.parseCharacterNameArray(item.characterName, item.name),
+      isRandomSale: item.isRandomSale ?? false,
+      confidence: item.confidence,
     };
   }
 
@@ -539,6 +554,8 @@ export class OpenAiVisionService implements IVisionApiService {
       condition: item.condition,
       variantCount: item.variantCount,
       characterName: this.parseCharacterNameArray(item.characterName, item.name),
+      isRandom: item.isRandom ?? false,
+      confidence: item.confidence,
       notes: item.notes,
       remarks: item.remarks,
     };

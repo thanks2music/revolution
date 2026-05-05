@@ -190,6 +190,12 @@ export interface VisionExtractionResult {
 
 /**
  * Menu Item Structure
+ *
+ * @description
+ * Aligned with Templates v1.2 `output_schema.menuItems[].properties` (SoT).
+ * `hasNovelty` and `noveltyCondition` were added in v1.2 to surface menu-attached
+ * novelty information (e.g. "1 ドリンクにつき 1 枚ランダム配布") that menu prompts
+ * extract directly from the menu image.
  */
 export interface MenuItem {
   /** Menu item name (as written in the image, exact text) */
@@ -201,7 +207,24 @@ export interface MenuItem {
   /** Character names (array, empty array if no characters) */
   characterName: string[];
 
-  /** Bonus/novelty information */
+  /**
+   * Whether this menu item has an attached novelty/bonus.
+   * Source: Templates v1.2 `output_schema.menuItems[].hasNovelty`.
+   */
+  hasNovelty: boolean;
+
+  /**
+   * Distribution condition for the attached novelty (e.g. "メニュー1品注文につき1枚ランダム配布").
+   * Source: Templates v1.2 `output_schema.menuItems[].noveltyCondition`.
+   * Null/undefined when `hasNovelty` is false.
+   */
+  noveltyCondition?: string;
+
+  /**
+   * @deprecated Use `hasNovelty` + `noveltyCondition` instead (Templates v1.2 alignment).
+   * Retained for backward compatibility with pre-v1.2 prompt outputs that surface
+   * a single free-form `bonus` string. Removal candidate after Sprint 4.
+   */
   bonus?: string;
 
   /** Description */
@@ -219,6 +242,11 @@ export interface MenuItem {
 
 /**
  * Goods Item Structure
+ *
+ * @description
+ * Aligned with Templates v1.2 `output_schema.goodsItems[].properties` (SoT).
+ * `isRandomSale` and `confidence` were added in v1.2 to capture random/blind-bag
+ * distribution semantics and per-item extraction confidence (matches MenuItem).
  */
 export interface GoodsItem {
   /** Goods item name */
@@ -235,10 +263,28 @@ export interface GoodsItem {
 
   /** Character names (array, empty array if no characters) */
   characterName: string[];
+
+  /**
+   * Whether this goods item is sold via random/blind-bag distribution.
+   * Source: Templates v1.2 `output_schema.goodsItems[].isRandomSale`.
+   */
+  isRandomSale: boolean;
+
+  /**
+   * Confidence score for this item (0.0-1.0).
+   * Source: Templates v1.2 `output_schema.goodsItems[].confidence`.
+   */
+  confidence?: number;
 }
 
 /**
  * Novelty Item Structure
+ *
+ * @description
+ * Aligned with Templates v1.2 `output_schema.noveltyItems[].properties` (SoT).
+ * Templates v1.2 promoted novelty from a single object to an array (`noveltyItems[]`)
+ * to match menu/goods structure. `isRandom` and `confidence` were added in v1.2
+ * to capture random distribution semantics and per-item confidence.
  */
 export interface NoveltyItem {
   /** Novelty item name */
@@ -252,6 +298,18 @@ export interface NoveltyItem {
 
   /** Character names (array, empty array if no characters) */
   characterName: string[];
+
+  /**
+   * Whether this novelty is distributed randomly (vs. selectable).
+   * Source: Templates v1.2 `output_schema.noveltyItems[].isRandom`.
+   */
+  isRandom: boolean;
+
+  /**
+   * Confidence score for this item (0.0-1.0).
+   * Source: Templates v1.2 `output_schema.noveltyItems[].confidence`.
+   */
+  confidence?: number;
 
   /** Notes (e.g., "絵柄は選べません") */
   notes?: string;
