@@ -449,9 +449,8 @@ export function getAllPrefectureNames(): string[] {
 export function isValidWorkTitle(japaneseTitle: string): boolean {
   if (!japaneseTitle) return false;
   const config = loadYamlConfig('TITLE_ROMAJI');
-  // Direct match
-  if (config.titles[japaneseTitle]) return true;
-  // Alias match (TitleEntry.aliases)
+  // `in` checks key existence; truthy lookup would misfire on empty-string slug entries
+  if (japaneseTitle in config.titles) return true;
   for (const value of Object.values(config.titles)) {
     if (isTitleEntry(value) && value.aliases?.includes(japaneseTitle)) return true;
   }
@@ -477,7 +476,7 @@ export function isValidWorkTitle(japaneseTitle: string): boolean {
 export function isValidBrandName(brandName: string): boolean {
   if (!brandName) return false;
   const config = loadYamlConfig('BRAND_SLUGS');
-  return Boolean(config.brand_slugs[brandName]);
+  return brandName in config.brand_slugs;
 }
 
 /**
@@ -502,7 +501,7 @@ export function isValidBrandName(brandName: string): boolean {
 export function isValidEventTypeName(eventTypeName: string): boolean {
   if (!eventTypeName) return false;
   const config = loadYamlConfig('EVENT_TYPE_SLUGS');
-  return Boolean(config.event_types[eventTypeName]);
+  return eventTypeName in config.event_types;
 }
 
 // ============================================================================
