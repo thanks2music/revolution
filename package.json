@@ -14,7 +14,7 @@
     "type-check": "turbo run type-check",
     "test": "turbo run test",
     "deploy:frontend": "cd apps/frontend && vercel --prod",
-    "clean": "turbo run clean",
+    "clean": "turbo run clean && rm -rf .turbo/cache",
     "fresh": "pnpm clean && pnpm install",
     "turbo:version": "pnpm exec turbo --version",
     "turbo:gen": "pnpm exec turbo gen",
