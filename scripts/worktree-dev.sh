@@ -44,14 +44,21 @@ case "$CMD" in
     ;;
   emulator)
     FIREBASE_CONFIG="$WORKTREE_ROOT/apps/ai-writer/firebase.worktree.json"
+    FIREBASE_CONFIG_NAME="$(basename "$FIREBASE_CONFIG")"
     if [[ ! -f "$FIREBASE_CONFIG" ]]; then
       echo "Error: $FIREBASE_CONFIG not found" >&2
-      echo "  setup-worktree.sh の実行で jq が無く生成されなかった可能性があります。" >&2
+      echo "  考えられる原因:" >&2
+      echo "    1. main 側 apps/ai-writer/firebase.json が存在しない" >&2
+      echo "       → 元 firebase.json をリポジトリに追加する" >&2
+      echo "    2. setup-worktree.sh 実行時に jq が無く生成 skip された" >&2
+      echo "       → brew install jq し setup-worktree.sh を再実行 (worktree を作り直し)" >&2
       exit 1
     fi
     echo "Starting Firebase Emulator (auth:$FB_AUTH_PORT, firestore:$FB_FIRESTORE_PORT, storage:$FB_STORAGE_PORT, ui:$FB_UI_PORT)..."
     cd "$WORKTREE_ROOT/apps/ai-writer"
-    exec firebase emulators:start --config firebase.worktree.json
+    # firebase-tools は apps/ai-writer の devDependencies に固定されているため、
+    # pnpm exec 経由で workspace のバージョンを使う (Copilot review C1)
+    exec pnpm exec firebase emulators:start --config "$FIREBASE_CONFIG_NAME"
     ;;
   *)
     echo "Error: unknown command: $CMD" >&2
