@@ -21,6 +21,7 @@
 import { fileURLToPath } from 'url';
 import { dirname, resolve, join, relative } from 'path';
 import { readdir, readFile, writeFile, stat } from 'fs/promises';
+import type { MdxFrontmatter } from '@revolution/schemas/mdx-frontmatter';
 import { toIsoMsDate } from '../lib/utils/date';
 
 // ES Module で __dirname を取得
@@ -76,28 +77,13 @@ interface ArticleIndex {
   articles: ArticleIndexItem[];
 }
 
-/**
- * MDX Frontmatter
- */
-interface MdxFrontmatter {
-  post_id: string;
-  year: number;
-  event_type: string;
-  event_title: string;
-  work_title: string;
-  work_titles?: string[];
-  work_slug: string;
-  prefectures?: string[];
-  prefecture_slugs?: string[];
-  slug: string;
-  title: string;
-  date: string;
-  categories: string[];
-  tags?: string[];
-  excerpt: string;
-  author: string;
-  ogImage?: string;
-}
+// MdxFrontmatter is imported from @revolution/schemas/mdx-frontmatter
+// (Schema-SDD truth source). Validation continues to be performed by the
+// local validateFrontmatter() helper that checks required fields manually
+// — script cannot import the runtime schema here without changing the
+// build pipeline (tsx executes this script directly in Node), and the
+// downstream ArticleIndexSchema in shared/schemas/article-index.ts
+// already performs the canonical validation against the index file.
 
 /**
  * コマンドライン引数をパース
