@@ -77,14 +77,6 @@ interface ArticleIndex {
   articles: ArticleIndexItem[];
 }
 
-// MdxFrontmatter is imported from @revolution/schemas/mdx-frontmatter
-// (Schema-SDD truth source). Validation continues to be performed by the
-// local validateFrontmatter() helper that checks required fields manually
-// — script cannot import the runtime schema here without changing the
-// build pipeline (tsx executes this script directly in Node), and the
-// downstream ArticleIndexSchema in shared/schemas/article-index.ts
-// already performs the canonical validation against the index file.
-
 /**
  * コマンドライン引数をパース
  */

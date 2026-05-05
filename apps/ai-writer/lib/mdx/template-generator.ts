@@ -79,9 +79,6 @@ export function generateMdxFrontmatter(
   // slug is the same as postId (pure 10-character ULID)
   const slug = postId;
 
-  // Build frontmatter object with required fields
-  // toIsoMsDate enforces Schema-SDD MdxFrontmatterSchema.date contract
-  // (datetime({ precision: 3, offset: true })) regardless of caller-provided format
   const frontmatter: MdxFrontmatter = {
     post_id: postId,
     year,
