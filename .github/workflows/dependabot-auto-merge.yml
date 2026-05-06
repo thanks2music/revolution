@@ -32,6 +32,18 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
 
+      - name: Wait for Test job
+        # `Test` job (jest) was added in the same Sprint as this step.
+        # Default checks-discovery-timeout (60s) + fail-on-no-checks (true)
+        # apply; if the Test check is not discovered within 60s the
+        # auto-merge is blocked rather than racing past it.
+        uses: lewagon/wait-on-check-action@v1.7.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          check-name: 'Test'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
   # Then, auto-merge based on update type
   auto-merge:
     name: Auto-merge Dependabot PR

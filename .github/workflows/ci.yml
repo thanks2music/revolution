@@ -124,3 +124,39 @@ jobs:
             echo "✅ No dummy Firebase config found"
           fi
 
+  # Job 3: Run tests (jest, apps/ai-writer)
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        # Run jest directly inside apps/ai-writer rather than the root
+        # `turbo run test`, because turbo.json declares `test` with
+        # `dependsOn: ["^build"]` — invoking it here would duplicate the
+        # build that Job 2 (Build Apps) already runs in parallel.
+        # Vision API E2E tests skip themselves when the API keys are
+        # absent (existing `it.skip` pattern), so they run only when
+        # the corresponding secrets are configured in repo settings.
+        run: cd apps/ai-writer && pnpm test
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
