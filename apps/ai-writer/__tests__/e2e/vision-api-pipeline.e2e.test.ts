@@ -156,9 +156,15 @@ describe.each(PROVIDERS_TO_TEST)(
           expect(Array.isArray(item.characterName)).toBe(true);
         }
 
-        // Step 6: Cross-check (HTML vs Vision API)
+        // Step 6: Cross-check (HTML vs Vision API).
+        // For the menu category, also assert `visionMenuCount > 0` to keep a
+        // concrete signal that items were actually extracted (the legacy menu-
+        // only test exposed this via `details.visionMenuCount`).
         const crossCheck = crossCheckVisionResult(visionResult, htmlExtraction);
         expect(crossCheck.details).toBeDefined();
+        if (category === 'menu') {
+          expect(crossCheck.details.visionMenuCount).toBeGreaterThan(0);
+        }
 
         // Step 7: Hallucination detection
         const hallucination = detectHallucination(visionResult, htmlExtraction);
@@ -201,23 +207,27 @@ describe.each(PROVIDERS_TO_TEST)(
       );
     });
 
-    it(`should handle invalid image URL gracefully (${provider})`, async () => {
+    it(`should reject when image URL is unreachable (${provider})`, async () => {
       const template = await yamlTemplateLoaderService.loadVisionApiTemplate('collabo-cafe');
 
-      const result = await visionApiService.extractFromImages({
-        imageUrls: ['https://invalid-url-that-does-not-exist.com/image.jpg'],
-        prompt: template.prompts.menu_extraction.content,
-        category: 'menu',
-        maxRetries: 2,
-        timeout: 10000,
-      });
-
-      // Both providers should return empty results for invalid URLs.
-      expect(result.visionExtraction.menuItems).toHaveLength(0);
-      expect(result.visionExtraction.goodsItems).toHaveLength(0);
-      expect(result.visionExtraction.noveltyItems).toHaveLength(0);
-      expect(result.visionExtraction.confidence).toBeGreaterThanOrEqual(0);
-      expect(result.visionExtraction.confidence).toBeLessThanOrEqual(1);
+      // Both `OpenAiVisionService` and `ClaudeVisionService` retry then rethrow
+      // the last provider error after `maxRetries` (no fallback-to-empty path),
+      // so the call must reject. The pre-fix expectation of an empty result
+      // was inconsistent with the implementation and would either flake or
+      // fail depending on the upstream API's behavior for unreachable hosts.
+      await expect(
+        visionApiService.extractFromImages({
+          imageUrls: ['https://invalid-url-that-does-not-exist.com/image.jpg'],
+          prompt: template.prompts.menu_extraction.content,
+          category: 'menu',
+          maxRetries: 2,
+          timeout: 10000,
+        }),
+      ).rejects.toThrow(
+        provider === 'openai'
+          ? /OpenAI Vision API failed|Vision API|fetch/i
+          : /Claude Vision API failed|Vision API|fetch/i,
+      );
     });
 
     it(`should throw error if API key is missing (${provider})`, () => {
