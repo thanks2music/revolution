@@ -13,7 +13,7 @@ import type {
   VisionExtractionCategory,
   VisionExtractionResult,
 } from '@/lib/types/vision-api';
-import { resolveVisionPrompt } from './category-prompt-resolver';
+import { resolveVisionPrompt, VISION_CATEGORIES } from './category-prompt-resolver';
 import { mergeVisionResults, type CategoryResults } from './merge-vision-results';
 
 /**
@@ -48,8 +48,6 @@ export interface MultiCategoryVisionOptions {
   timeout?: number;
 }
 
-const CATEGORIES = ['menu', 'goods', 'novelty'] as const satisfies readonly VisionExtractionCategory[];
-
 /**
  * Run the Vision API once per category in parallel and merge the results.
  *
@@ -67,7 +65,7 @@ export async function callVisionApiForAllCategories(
   options: MultiCategoryVisionOptions = {},
 ): Promise<MultiCategoryVisionResult> {
   const settled = await Promise.allSettled(
-    CATEGORIES.map((category) =>
+    VISION_CATEGORIES.map((category) =>
       callOneCategory(service, template, category, images[category], options),
     ),
   );
@@ -80,7 +78,7 @@ export async function callVisionApiForAllCategories(
   const successful: CategoryResults = {};
 
   settled.forEach((entry, idx) => {
-    const category = CATEGORIES[idx];
+    const category = VISION_CATEGORIES[idx];
     if (entry.status === 'fulfilled') {
       const { result, skipped } = entry.value;
       perCategory[category] = skipped ? { ok: true, skipped } : { ok: true };

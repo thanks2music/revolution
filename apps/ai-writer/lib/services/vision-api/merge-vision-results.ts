@@ -14,14 +14,13 @@ import type {
   VisionExtractionCategory,
   VisionExtractionResult,
 } from '@/lib/types/vision-api';
+import { VISION_CATEGORIES } from './category-prompt-resolver';
 
 export type CategoryResults = Partial<
   Record<VisionExtractionCategory, VisionExtractionResult>
 >;
 
 const FALLBACK_CONFIDENCE = 0.5;
-
-const CATEGORIES = ['menu', 'goods', 'novelty'] as const satisfies readonly VisionExtractionCategory[];
 
 const ITEMS_FIELD = {
   menu: 'menuItems',
@@ -43,7 +42,7 @@ export function mergeVisionResults(results: CategoryResults): VisionExtractionRe
 
   warnOnCrossCategoryLeakage(results);
 
-  const allCalls = CATEGORIES
+  const allCalls = VISION_CATEGORIES
     .map((c) => results[c])
     .filter((r): r is VisionExtractionResult => r !== undefined);
 
@@ -117,10 +116,10 @@ function mergeMetadata(
 }
 
 function warnOnCrossCategoryLeakage(results: CategoryResults): void {
-  for (const own of CATEGORIES) {
+  for (const own of VISION_CATEGORIES) {
     const r = results[own];
     if (!r) continue;
-    for (const other of CATEGORIES) {
+    for (const other of VISION_CATEGORIES) {
       if (other === own) continue;
       const field = ITEMS_FIELD[other];
       const leaked = (r.visionExtraction[field] as unknown[]).length;

@@ -7,6 +7,13 @@ import type { VisionApiTemplate, VisionExtractionCategory } from '@/lib/types/vi
 
 export type { VisionExtractionCategory };
 
+/**
+ * Canonical iteration order for the three Vision extraction categories.
+ * Re-exported here (rather than redefined in each consumer) so that adding a
+ * fourth category is a single-edit change in this module.
+ */
+export const VISION_CATEGORIES = ['menu', 'goods', 'novelty'] as const satisfies readonly VisionExtractionCategory[];
+
 const CATEGORY_TO_PROMPT_KEY = {
   menu: 'menu_extraction',
   goods: 'goods_extraction',
@@ -36,6 +43,11 @@ export function resolveVisionPrompt(
   template: VisionApiTemplate,
   category: VisionExtractionCategory,
 ): string {
+  // Defensive guard: `key` is statically derived for any value of the
+  // `VisionExtractionCategory` union, so this branch is unreachable at the
+  // TypeScript level. It catches runtime type-erasure cases (e.g. a caller
+  // that bypassed the type with `as VisionExtractionCategory`) and surfaces
+  // them as a structured error rather than `undefined.content` later.
   const key = CATEGORY_TO_PROMPT_KEY[category];
   if (!key) {
     throw new UnknownVisionCategoryError(category);

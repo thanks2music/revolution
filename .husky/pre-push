@@ -7,6 +7,12 @@
 # - apps/frontend is excluded (jest not configured there yet).
 # - __tests__/e2e is excluded — live-API E2E belongs in CI, not a local
 #   pre-push gate (it needs OPENAI_API_KEY / ANTHROPIC_API_KEY and is slow).
+#
+# Husky 9 ignores the hook script's shebang and runs the file through
+# POSIX `sh`, so this script must avoid bash-only constructs (arrays,
+# `< <(...)` process substitution, etc.).
+
+set -eu
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
@@ -18,38 +24,36 @@ else
   BASE_REF='origin/main'
 fi
 
-# Collect TS/TSX/JS source files changed since BASE_REF, scoped away from
-# the frontend app. Paths are repo-root relative.
-CHANGED_FILES=$(
-  git diff --name-only --diff-filter=ACMR "$BASE_REF"..HEAD 2>/dev/null \
+# Accumulate changed source files into positional parameters so each
+# path remains a single argv to jest even if it contains whitespace.
+# The command-substitution-into-heredoc pattern keeps the loop in the
+# current shell — `... | while read` would run `set --` in a subshell
+# whose mutations are lost on exit.
+set --
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  set -- "$@" "$REPO_ROOT/$f"
+done <<EOF_FILES
+$(git diff --name-only --diff-filter=ACMR "$BASE_REF"..HEAD 2>/dev/null \
     | grep -E '\.(ts|tsx|js|jsx)$' \
     | grep -v '^apps/frontend/' \
-    | tr '\n' ' '
-)
+    || true)
+EOF_FILES
 
-# Nothing relevant to test — exit cleanly.
-if [ -z "$CHANGED_FILES" ]; then
+if [ "$#" -eq 0 ]; then
   echo "⏭️   No TS/TSX file changes detected, skipping related tests"
   exit 0
 fi
-
-# Build absolute paths: jest --findRelatedTests resolves relative paths
-# against CWD, so after `cd apps/ai-writer` repo-root paths would double up
-# (e.g. apps/ai-writer/apps/ai-writer/...). Absolute paths sidestep that.
-ABS_FILES=""
-for f in $CHANGED_FILES; do
-  ABS_FILES="$ABS_FILES $REPO_ROOT/$f"
-done
 
 # Run jest from inside apps/ai-writer (where jest.config.mjs lives).
 # No leading `--` because pnpm 10 forwards flags to the script directly;
 # inserting `--` would make jest treat `--findRelatedTests` as a positional
 # test pattern (jest 30 stops flag parsing at `--`).
 cd "$REPO_ROOT/apps/ai-writer" || exit 1
-echo "🔍 Running related tests for: $CHANGED_FILES"
+echo "🔍 Running related tests for $# file(s)"
 # `--silent` suppresses console.* noise from production code paths exercised
 # by tests, so failures stay visible. Use plain `pnpm test` for verbose runs.
-pnpm exec jest --findRelatedTests $ABS_FILES --passWithNoTests --silent \
+pnpm exec jest --findRelatedTests "$@" --passWithNoTests --silent \
   --testPathIgnorePatterns='/node_modules/' \
   --testPathIgnorePatterns='/.next/' \
   --testPathIgnorePatterns='__tests__/e2e'
