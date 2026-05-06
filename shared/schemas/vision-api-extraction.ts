@@ -1,21 +1,19 @@
 import { z } from 'zod';
+import { TokenUsageSchema, type TokenUsage } from './ai-provider-response';
 
 /**
  * Schema-SDD 真実源: Vision API extraction result (Templates v1.2 SoT).
  *
  * Truth basis: `revolution-templates/ai-writer/posts/yaml/collabo-cafe/pipeline/
- * 1.5-vision-extraction.yaml` (commit `6d31c46`):
+ * 1.5-vision-extraction.yaml`:
  *   - `output_schema.visionExtraction.{menuItems,goodsItems,noveltyItems}` shape
- *   - v1.2 で追加: `hasNovelty` / `noveltyCondition` (menu),
+ *   - v1.2 additions: `hasNovelty` / `noveltyCondition` (menu),
  *     `isRandomSale` (goods), `isRandom` (novelty), `confidence` (goods/novelty)
- *   - v1.2 で構造変更: `noveltyItem` (単一) → `noveltyItems[]` (配列)
+ *   - v1.2 structural change: `noveltyItem` (single) → `noveltyItems[]` (array)
  *
- * Revolution 側 `apps/ai-writer/lib/types/vision-api.ts` は本スキーマ由来の
- * `z.infer` 型を re-export する形に集約する (Sprint 3 PR-B / Schema-SDD Phase 3)。
- *
- * 注: `RawClaudeResponse` / `RawVisionResponse` (provider 側 raw 形) は本ファイルに
+ * `RawClaudeResponse` / `RawVisionResponse` (provider raw shape) は本ファイルに
  * 含めない。各 service 実装の internal な変換境界として apps/ai-writer 配下に閉じる。
- * shared/schemas は **typed の最終戻り値の契約** のみを保持する (SoC: 境界スキーマ集約)。
+ * shared/schemas は typed の最終戻り値の契約のみを保持する (SoC: 境界スキーマ集約)。
  */
 
 export const MenuItemSchema = z.object({
@@ -67,16 +65,16 @@ export const NoveltyItemSchema = z.object({
   remarks: z.string().optional(),
 });
 
-export const TokensUsedSchema = z.object({
-  promptTokens: z.number().int().nonnegative(),
-  completionTokens: z.number().int().nonnegative(),
-  totalTokens: z.number().int().nonnegative(),
-});
+/**
+ * Re-export from `ai-provider-response` to keep token-usage shape unified
+ * across AI Provider and Vision API contracts.
+ */
+export { TokenUsageSchema as TokensUsedSchema };
 
 export const VisionExtractionMetadataSchema = z.object({
   hasComingSoonNotice: z.boolean().optional(),
   totalImagesAnalyzed: z.number().int().nonnegative().optional(),
-  tokensUsed: TokensUsedSchema.optional(),
+  tokensUsed: TokenUsageSchema.optional(),
 });
 
 export const VisionExtractionResultSchema = z.object({
@@ -94,6 +92,6 @@ export const VisionExtractionResultSchema = z.object({
 export type MenuItem = z.infer<typeof MenuItemSchema>;
 export type GoodsItem = z.infer<typeof GoodsItemSchema>;
 export type NoveltyItem = z.infer<typeof NoveltyItemSchema>;
-export type TokensUsed = z.infer<typeof TokensUsedSchema>;
+export type TokensUsed = TokenUsage;
 export type VisionExtractionMetadata = z.infer<typeof VisionExtractionMetadataSchema>;
 export type VisionExtractionResult = z.infer<typeof VisionExtractionResultSchema>;

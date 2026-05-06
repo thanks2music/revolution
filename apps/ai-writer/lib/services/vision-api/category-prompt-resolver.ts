@@ -1,19 +1,11 @@
 /**
- * Category Prompt Resolver
- *
- * @description
- * Resolves the YAML-defined prompt content for a given Vision API extraction
- * category (menu / goods / novelty). Pure function — no side effects, no I/O.
- *
- * Sourced from `1.5-vision-extraction.yaml` (v1.2 SoT) and validated upstream by
- * `YamlTemplateLoaderService.loadVisionApiTemplate()`.
- *
- * @package revolution
- * @module services/vision-api/category-prompt-resolver
+ * Resolves the YAML prompt for a Vision API extraction category. Pure.
+ * Backed by `1.5-vision-extraction.yaml` (v1.2 SoT) and validated upstream
+ * by `YamlTemplateLoaderService.loadVisionApiTemplate()`.
  */
-import type { VisionApiTemplate } from '@/lib/types/vision-api';
+import type { VisionApiTemplate, VisionExtractionCategory } from '@/lib/types/vision-api';
 
-export type VisionExtractionCategory = 'menu' | 'goods' | 'novelty';
+export type { VisionExtractionCategory };
 
 const CATEGORY_TO_PROMPT_KEY = {
   menu: 'menu_extraction',
