@@ -6,10 +6,18 @@ import path from 'path';
 // which runs BEFORE the test environment is set up. This ensures they're available
 // when undici and other modules are imported.
 
-// テスト環境用の環境変数を読み込み
+// 環境変数の読み込み:
+// 通常は `next/jest` (jest.config.mjs:3) が `.env.test.local` > `.env.test` > `.env` の
+// 優先順位で自動処理する想定だが、turbo monorepo + Jest の組み合わせで `.env.test` が
+// 自動 load されない実機挙動があったため、明示的に dotenv.config で補強する。
+// `.env.test.local` の本物キーは next/jest が先に process.env に注入しているため、
+// dotenv default (override: false) によりここでは上書きされない (earlier wins)。
+//
 // `quiet: true` は dotenv v17 で導入された runtime banner (`◇ injected env (N) ...`)
 // を抑止する。jest が複数 suite を並列に走らせると suite 数 × 行数で出力ノイズに
 // なるため。エラー / 警告は引き続き表示される。
+//
+// 参考: https://nextjs.org/docs/pages/guides/environment-variables#test-environment-variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env.test'), quiet: true });
 
 // グローバルテスト設定

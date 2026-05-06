@@ -4,7 +4,11 @@
 
 # 環境変数ファイル
 .env
-.env.local
+# Local-only env files (Next.js convention: never committed)
+# https://nextjs.org/docs/pages/guides/environment-variables
+# Note: `.env.test.local.example` (template) is re-included near the end of
+# this file, after the `**/*.local.*` pattern (last-match-wins rule).
+.env*.local
 .env.production
 .env.staging
 apps/frontend/.env.local
@@ -425,6 +429,9 @@ docs/TOC.*.json
 
 # ローカル環境設定ファイル
 **/*.local.*
+# Re-include `.env.test.local.example` (template, no secrets).
+# Place after `**/*.local.*` because gitignore precedence is "last match wins".
+!**/.env.test.local.example
 
 ## TODO: ignoreファイルは以下にまとめる
 dotfiles/
