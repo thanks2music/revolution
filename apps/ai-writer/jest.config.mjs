@@ -44,9 +44,13 @@ const config = {
     '!**/__tests__/test-helpers/**',
   ],
 
-  // モジュール解決のエイリアス
-  // shared/schemas/ workspace への deep import を short alias で参照可能にする
+  // Module resolution aliases — must include `@/` so that
+  // `jest --findRelatedTests` can walk the dependency graph past path-aliased
+  // imports. SWC (next/jest) inlines `@/` at transform time, but the resolver
+  // used for related-test discovery does not, and would otherwise miss tests
+  // that import their source via `@/lib/...`.
   moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/$1',
     '^@revolution/schemas/(.*)$': '<rootDir>/../../shared/schemas/$1',
   },
 

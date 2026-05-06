@@ -1,10 +1,14 @@
 #!/bin/sh
 # .husky/pre-push
-# Run jest tests related to TS/TSX files changed since the last push
+# Run jest tests related to TS/TSX/JS files changed since the last push
 # (or since origin/main if no upstream is configured).
 #
-# - Skip with HUSKY=0 git push when an emergency push is required.
-# - Frontend (apps/frontend) is excluded because jest is not configured there yet.
+# - HUSKY=0 git push to bypass in an emergency.
+# - apps/frontend is excluded (jest not configured there yet).
+# - __tests__/e2e is excluded — live-API E2E belongs in CI, not a local
+#   pre-push gate (it needs OPENAI_API_KEY / ANTHROPIC_API_KEY and is slow).
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
 
 # Determine the base ref: @{push} for branches with upstream,
 # origin/main as fallback for newly created branches.
@@ -14,7 +18,8 @@ else
   BASE_REF='origin/main'
 fi
 
-# Collect TS/TSX/JS source files changed since BASE_REF, scoped to ai-writer.
+# Collect TS/TSX/JS source files changed since BASE_REF, scoped away from
+# the frontend app. Paths are repo-root relative.
 CHANGED_FILES=$(
   git diff --name-only --diff-filter=ACMR "$BASE_REF"..HEAD 2>/dev/null \
     | grep -E '\.(ts|tsx|js|jsx)$' \
@@ -28,7 +33,21 @@ if [ -z "$CHANGED_FILES" ]; then
   exit 0
 fi
 
-# Run jest --findRelatedTests inside apps/ai-writer (jest lives there).
-cd apps/ai-writer || exit 1
+# Build absolute paths: jest --findRelatedTests resolves relative paths
+# against CWD, so after `cd apps/ai-writer` repo-root paths would double up
+# (e.g. apps/ai-writer/apps/ai-writer/...). Absolute paths sidestep that.
+ABS_FILES=""
+for f in $CHANGED_FILES; do
+  ABS_FILES="$ABS_FILES $REPO_ROOT/$f"
+done
+
+# Run jest from inside apps/ai-writer (where jest.config.mjs lives).
+# No leading `--` because pnpm 10 forwards flags to the script directly;
+# inserting `--` would make jest treat `--findRelatedTests` as a positional
+# test pattern (jest 30 stops flag parsing at `--`).
+cd "$REPO_ROOT/apps/ai-writer" || exit 1
 echo "🔍 Running related tests for: $CHANGED_FILES"
-pnpm test -- --findRelatedTests $CHANGED_FILES --passWithNoTests
+pnpm exec jest --findRelatedTests $ABS_FILES --passWithNoTests \
+  --testPathIgnorePatterns='/node_modules/' \
+  --testPathIgnorePatterns='/.next/' \
+  --testPathIgnorePatterns='__tests__/e2e'
