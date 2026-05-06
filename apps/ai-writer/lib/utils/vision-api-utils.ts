@@ -148,7 +148,10 @@ export function crossCheckVisionResult(
       htmlMenuCount: htmlExtraction.menuItemCount,
       visionMenuCount: visionExtraction.menuItems.length,
       htmlPriceCount: htmlExtraction.priceCount,
-      visionPriceCount: visionExtraction.menuItems.filter((item) => item.price != null).length,
+      visionPriceCount: [
+        ...visionExtraction.menuItems,
+        ...visionExtraction.goodsItems,
+      ].filter((item) => item.price != null).length,
       hasComingSoonNotice: visionExtraction.metadata?.hasComingSoonNotice ?? false,
       confidenceScore: visionExtraction.confidence,
     },
@@ -189,15 +192,19 @@ export function detectHallucination(
 ): HallucinationDetectionResult {
   const { visionExtraction } = visionResult;
 
-  // Type 1: Coming Soon Fabrication
+  // Type 1: Coming Soon Fabrication (covers menu/goods/novelty per Templates v1.2)
+  const totalExtracted =
+    visionExtraction.menuItems.length +
+    visionExtraction.goodsItems.length +
+    visionExtraction.noveltyItems.length;
   if (
     visionExtraction.metadata?.hasComingSoonNotice === true &&
-    visionExtraction.menuItems.length > 0
+    totalExtracted > 0
   ) {
     return {
       detected: true,
       type: 'coming_soon_fabrication',
-      reason: `Generated ${visionExtraction.menuItems.length} menu items for "Coming Soon" image`,
+      reason: `Generated ${totalExtracted} item(s) for "Coming Soon" image (menu=${visionExtraction.menuItems.length}, goods=${visionExtraction.goodsItems.length}, novelty=${visionExtraction.noveltyItems.length})`,
       confidence: visionExtraction.confidence,
     };
   }
@@ -271,12 +278,17 @@ export function detectHallucination(
 export function selectFallbackLevel(
   visionResult: VisionExtractionResult
 ): FallbackLevelType {
-  const { confidence, menuItems, goodsItems } = visionResult.visionExtraction;
+  const { confidence, menuItems, goodsItems, noveltyItems } = visionResult.visionExtraction;
 
-  // Level A: Detailed extraction success (target)
-  if (confidence >= 0.85 && (menuItems.length > 0 || goodsItems.length > 0)) {
+  // Level A: Detailed extraction success (target). Templates v1.2 added noveltyItems[]
+  // so a novelty-only extraction (e.g. campaign-card events with no menu/goods)
+  // can still reach Level A on its own.
+  if (
+    confidence >= 0.85 &&
+    (menuItems.length > 0 || goodsItems.length > 0 || noveltyItems.length > 0)
+  ) {
     console.log(
-      `[VisionApiUtils] Fallback Level A: High confidence (${confidence.toFixed(2)}) with ${menuItems.length} menu items`
+      `[VisionApiUtils] Fallback Level A: High confidence (${confidence.toFixed(2)}) with menu=${menuItems.length} goods=${goodsItems.length} novelty=${noveltyItems.length}`
     );
     return 'A';
   }
@@ -285,7 +297,8 @@ export function selectFallbackLevel(
   if (confidence >= 0.70 && confidence < 0.85) {
     const hasCharacterName =
       menuItems.some((item) => item.characterName.length > 0) ||
-      goodsItems.some((item) => item.characterName.length > 0);
+      goodsItems.some((item) => item.characterName.length > 0) ||
+      noveltyItems.some((item) => item.characterName.length > 0);
 
     if (hasCharacterName) {
       console.log(

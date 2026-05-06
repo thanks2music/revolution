@@ -29,6 +29,7 @@ import type {
   GoodsItem,
   NoveltyItem,
 } from '@/lib/types/vision-api';
+import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
 import { calculateCost, formatCost } from '@/lib/ai/cost';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
@@ -364,10 +365,10 @@ export class ClaudeVisionService implements IVisionApiService {
       this.convertToNoveltyItem(item)
     );
 
-    // Calculate overall confidence from individual item confidences
-    const confidence = this.calculateOverallConfidence(raw, menuItems, goodsItems);
+    // Calculate overall confidence from individual item confidences (all 3 categories per v1.2)
+    const confidence = this.calculateOverallConfidence(raw, menuItems, goodsItems, noveltyItems);
 
-    return {
+    const result: VisionExtractionResult = {
       visionExtraction: {
         confidence,
         provider: 'claude',
@@ -382,6 +383,12 @@ export class ClaudeVisionService implements IVisionApiService {
         },
       },
     };
+
+    // Layer 2 contract validation (Schema-SDD Phase 3): throw on shape drift
+    // so that LLM output regressions surface immediately rather than silently
+    // propagating downstream. Caller's retry loop (extractFromImages) catches
+    // this and treats it as a transient failure.
+    return VisionExtractionResultSchema.parse(result);
   }
 
   /**
@@ -396,27 +403,33 @@ export class ClaudeVisionService implements IVisionApiService {
   private calculateOverallConfidence(
     raw: RawClaudeResponse,
     menuItems: MenuItem[],
-    goodsItems: GoodsItem[]
+    goodsItems: GoodsItem[],
+    noveltyItems: NoveltyItem[]
   ): number {
     // Strategy 1: Use top-level confidence if available
     if (raw.confidence !== undefined && raw.confidence !== null) {
       return raw.confidence;
     }
 
-    // Strategy 2: Calculate average from individual items
+    // Strategy 2: Calculate average from individual items across all 3 categories
+    // (Templates v1.2 added confidence to GoodsItem and NoveltyItem; previously
+    // only menu items contributed.)
     const allConfidences: number[] = [];
 
-    // Collect menu item confidences
     for (const item of menuItems) {
       if (item.confidence !== undefined && item.confidence !== null) {
         allConfidences.push(item.confidence);
       }
     }
 
-    // Collect goods item confidences (if they have confidence field in the future)
-    // Currently GoodsItem doesn't have confidence, but keeping for consistency
     for (const item of goodsItems) {
-      if ('confidence' in item && typeof item.confidence === 'number') {
+      if (item.confidence !== undefined && item.confidence !== null) {
+        allConfidences.push(item.confidence);
+      }
+    }
+
+    for (const item of noveltyItems) {
+      if (item.confidence !== undefined && item.confidence !== null) {
         allConfidences.push(item.confidence);
       }
     }

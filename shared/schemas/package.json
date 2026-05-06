@@ -7,7 +7,8 @@
   "exports": {
     "./mdx-frontmatter": "./mdx-frontmatter.ts",
     "./ai-provider-response": "./ai-provider-response.ts",
-    "./article-index": "./article-index.ts"
+    "./article-index": "./article-index.ts",
+    "./vision-api-extraction": "./vision-api-extraction.ts"
   },
   "peerDependencies": {
     "zod": "^4.0.0"
