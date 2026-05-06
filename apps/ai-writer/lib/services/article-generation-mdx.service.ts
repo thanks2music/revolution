@@ -74,7 +74,8 @@ import {
 import { buildCategories } from '@/lib/utils/category-builder';
 import { validateStoreName } from '@/lib/utils/store-name-validator';
 import { VisionApiServiceFactory } from './vision-api/vision-api-service.factory';
-import { buildInterimVisionPrompt } from './vision-api/prompts';
+import { callVisionApiForAllCategories } from './vision-api/multi-category-vision.service';
+import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import {
   crossCheckVisionResult,
   detectHallucination,
@@ -508,81 +509,77 @@ export class ArticleGenerationMdxService {
           visionApiResult.called = true;
 
           try {
-            // カテゴリ別画像URLを取得
-            const imageUrls: string[] = categoryImages?.all || [];
+            // 各カテゴリに 1 件以上の画像があるかチェック
+            const hasAnyImages =
+              !!categoryImages &&
+              (categoryImages.menu.length > 0 ||
+                categoryImages.goods.length > 0 ||
+                categoryImages.novelty.length > 0);
 
-            if (imageUrls.length === 0) {
+            if (!hasAnyImages) {
               console.warn('[Step 1.8] ⚠️ カテゴリ別画像なし、Vision API をスキップ');
             } else {
-              // Vision API サービスを初期化（環境変数 VISION_API_PROVIDER で切り替え）
+              // Vision API サービス + Templates v1.2 YAML loader を初期化
               const visionService = VisionApiServiceFactory.create();
+              const yamlLoader = new YamlTemplateLoaderService();
+              const visionTemplate = await yamlLoader.loadVisionApiTemplate('collabo-cafe');
 
-              // 暫定プロンプトを生成（Phase 0 PoC対応）
-              // TODO: Templates側でvision-api.yamlが完成次第、YAML読み込みに切り替え
-              const interimPrompt = buildInterimVisionPrompt('menu');
+              console.log('[Step 1.8] Vision API 並列呼び出し開始 (menu/goods/novelty)...');
 
-              console.log('[Step 1.8] Vision API 暫定プロンプト生成完了');
-
-              // Vision API を呼び出し（メニュー抽出）
-              console.log(`[Step 1.8] Vision API 呼び出し中（画像: ${imageUrls.length}件）...`);
-
-              const visionExtraction = await visionService.extractFromImages({
-                imageUrls,
-                prompt: interimPrompt,
-                category: 'menu',
-                maxRetries: 3,
-                timeout: 30000,
-              });
+              // 3 カテゴリ並列呼び出し (Promise.allSettled)。
+              // 各カテゴリの画像が空の場合は API 呼び出しをスキップして空配列を返す。
+              const { result: visionExtraction, perCategory } =
+                await callVisionApiForAllCategories(
+                  visionService,
+                  visionTemplate,
+                  {
+                    menu: categoryImages!.menu,
+                    goods: categoryImages!.goods,
+                    novelty: categoryImages!.novelty,
+                  },
+                  { maxRetries: 3, timeout: 30000 },
+                );
 
               visionApiResult.visionExtraction = visionExtraction;
 
-              console.log('[Step 1.8] Vision API 抽出完了:', {
+              console.log('[Step 1.8] menu/goods/novelty 並列呼び出し完了:', {
                 confidence: visionExtraction.visionExtraction.confidence,
                 menuItems: visionExtraction.visionExtraction.menuItems.length,
                 goodsItems: visionExtraction.visionExtraction.goodsItems.length,
+                noveltyItems: visionExtraction.visionExtraction.noveltyItems.length,
+                perCategory,
               });
 
-              // Cost tracking (use actual token usage from API response, fall back to
-              // calculateTokens() estimates only if the service didn't surface usage).
-              // Model name comes from the service itself (avoids drift when the service
-              // upgrades its default model — e.g. Sonnet 4.5 → 4.6).
+              // Cost tracking — record under one aggregate key (`Step1.8_VisionAPI`).
+              // The merger's `metadata.tokensUsed` is the sum across successful calls
+              // and is optional (undefined when no call surfaced usage). Per-category
+              // breakdown intentionally stays out of cost-tracker for now; recording it
+              // requires a merger signature change and is deferred to a later sprint.
               const provider = visionService.getProviderName();
               const modelName = visionService.getModelName();
-
               const actualUsage = visionExtraction.visionExtraction.metadata?.tokensUsed;
-              let promptTokens: number;
-              let completionTokens: number;
-              let totalTokens: number;
-              let usageSource: 'actual' | 'estimated';
 
               if (actualUsage) {
-                ({ promptTokens, completionTokens, totalTokens } = actualUsage);
-                usageSource = 'actual';
+                const costResult = costTracker.recordUsage(
+                  'Step1.8_VisionAPI',
+                  modelName,
+                  actualUsage,
+                );
+                console.log('[Step 1.8] Vision API コスト追跡:', {
+                  provider,
+                  model: modelName,
+                  promptTokens: actualUsage.promptTokens,
+                  completionTokens: actualUsage.completionTokens,
+                  totalTokens: actualUsage.totalTokens,
+                  cost: `$${costResult.usd.toFixed(6)} (¥${costResult.jpy.toFixed(2)})`,
+                });
               } else {
-                const tokenCalc = await visionService.calculateTokens(imageUrls);
-                completionTokens = tokenCalc.breakdown.completionTokens ?? 750;
-                promptTokens = tokenCalc.breakdown.imageTokens + tokenCalc.breakdown.promptTokens;
-                totalTokens = promptTokens + completionTokens;
-                usageSource = 'estimated';
+                console.log(
+                  '[Step 1.8] Vision API コスト追跡: tokensUsed 不在のためスキップ (全 call が usage を返さず)',
+                );
               }
 
-              const costResult = costTracker.recordUsage('Step1.8_VisionAPI', modelName, {
-                promptTokens,
-                completionTokens,
-                totalTokens,
-              });
-
-              console.log('[Step 1.8] Vision API コスト追跡:', {
-                provider,
-                model: modelName,
-                usageSource,
-                promptTokens,
-                completionTokens,
-                totalTokens,
-                cost: `$${costResult.usd.toFixed(6)} (¥${costResult.jpy.toFixed(2)})`,
-              });
-
-              // Cross-check（HTML vs Vision API）
+              // Cross-check (HTML vs merged Vision API result)
               const crossCheckResult = crossCheckVisionResult(visionExtraction, htmlSufficiency);
               visionApiResult.crossCheckPassed = crossCheckResult.passed;
 
@@ -595,7 +592,7 @@ export class ArticleGenerationMdxService {
                 console.warn('[Step 1.8] ⚠️ Cross-check 失敗:', crossCheckResult.issues);
               }
 
-              // Hallucination detection
+              // Hallucination detection (covers menu+goods+novelty per Templates v1.2)
               const hallucinationResult = detectHallucination(visionExtraction, htmlSufficiency);
               visionApiResult.hallucinationDetected = hallucinationResult.detected;
 
@@ -617,7 +614,7 @@ export class ArticleGenerationMdxService {
 
               console.log('[Step 1.8] ✅ Hallucination なし');
 
-              // Fallback level selection
+              // Fallback level selection (novelty-aware per step 3 utils 拡張)
               const fallbackLevel = selectFallbackLevel(visionExtraction);
               visionApiResult.fallbackLevel = fallbackLevel;
 
@@ -647,7 +644,7 @@ export class ArticleGenerationMdxService {
                 });
               }
 
-              console.log('[Step 1.8] ✅ Vision API 統合完了');
+              console.log('[Step 1.8] ✅ Vision API 統合完了 (3 カテゴリ並列)');
             }
           } catch (visionError) {
             console.error('[Step 1.8] ❌ Vision API 呼び出し失敗:', visionError);
