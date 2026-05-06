@@ -188,7 +188,7 @@ importers:
         specifier: ^8.44.0
         version: 8.59.1(@typescript-eslint/parser@8.59.1(eslint@9.26.0(jiti@1.21.7))(typescript@5.9.3))(eslint@9.26.0(jiti@1.21.7))(typescript@5.9.3)
       '@typescript-eslint/parser':
-        specifier: ^8.44.0
+        specifier: ^8.58.2
         version: 8.59.1(eslint@9.26.0(jiti@1.21.7))(typescript@5.9.3)
       autoprefixer:
         specifier: ^10.4.21
