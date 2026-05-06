@@ -68,9 +68,19 @@ pnpm dev:ai-writer            # AI Writer のみ
 - **Frontend**: Next.js 16 / React 19 / TypeScript 5 / Tailwind CSS / SWR
 - **AI Providers**: Claude (Anthropic) ・ Gemini (Google) ・ OpenAI（環境変数で切替）
 - **Infra**: Google Cloud Run / Firebase Authentication / Vercel / CloudFlare CDN
-- **Tooling**: pnpm 10 / Turbo 2.5 / Jest 30 / ESLint 9
+- **Tooling**: pnpm 10 / Turbo 2.5 / Jest 30 / ESLint 9 / Husky 9
 
 詳細表は [`docs/01-arch/ARCH-current-stack.md`](./docs/01-arch/ARCH-current-stack.md) にあります。
+
+## Development tooling
+
+### Husky pre-push hook
+
+`git push` 時に変更ファイル (TS/TSX/JS) に関連する jest テストを自動実行し、silent failure を未然に防ぎます。実行スコープは `apps/ai-writer` のみで、約 30-60 秒で完了する想定です。
+
+- スクリプト本体: [`.husky/pre-push`](./.husky/pre-push)
+- 緊急 skip: `HUSKY=0 git push` (緊急時のみ、原則 push 前に test を pass させてください)
+- test 失敗時の対処: 失敗を修正してから再度 push (silent failure を防ぐゲートのため、bypass は推奨しません)
 
 ## Project Structure
 

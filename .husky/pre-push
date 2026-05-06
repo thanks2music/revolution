@@ -1,0 +1,34 @@
+#!/bin/sh
+# .husky/pre-push
+# Run jest tests related to TS/TSX files changed since the last push
+# (or since origin/main if no upstream is configured).
+#
+# - Skip with HUSKY=0 git push when an emergency push is required.
+# - Frontend (apps/frontend) is excluded because jest is not configured there yet.
+
+# Determine the base ref: @{push} for branches with upstream,
+# origin/main as fallback for newly created branches.
+if git rev-parse --verify '@{push}' >/dev/null 2>&1; then
+  BASE_REF='@{push}'
+else
+  BASE_REF='origin/main'
+fi
+
+# Collect TS/TSX/JS source files changed since BASE_REF, scoped to ai-writer.
+CHANGED_FILES=$(
+  git diff --name-only --diff-filter=ACMR "$BASE_REF"..HEAD 2>/dev/null \
+    | grep -E '\.(ts|tsx|js|jsx)$' \
+    | grep -v '^apps/frontend/' \
+    | tr '\n' ' '
+)
+
+# Nothing relevant to test — exit cleanly.
+if [ -z "$CHANGED_FILES" ]; then
+  echo "⏭️   No TS/TSX file changes detected, skipping related tests"
+  exit 0
+fi
+
+# Run jest --findRelatedTests inside apps/ai-writer (jest lives there).
+cd apps/ai-writer || exit 1
+echo "🔍 Running related tests for: $CHANGED_FILES"
+pnpm test -- --findRelatedTests $CHANGED_FILES --passWithNoTests
