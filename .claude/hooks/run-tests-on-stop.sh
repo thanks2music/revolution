@@ -84,7 +84,14 @@ fi
 
 cd "$ai_writer_root" || exit 0
 
-output=$(pnpm exec jest --findRelatedTests --passWithNoTests "${related_files[@]}" 2>&1)
+# .husky/pre-push と同じフラグセットを使用する。
+# - --silent: console.* ノイズを抑制し、失敗だけが目立つようにする
+# - --testPathIgnorePatterns=__tests__/e2e: live-API E2E は CI 担当 (OPENAI_API_KEY 等を要求し遅い)
+output=$(pnpm exec jest --findRelatedTests "${related_files[@]}" \
+  --passWithNoTests --silent \
+  --testPathIgnorePatterns='/node_modules/' \
+  --testPathIgnorePatterns='/.next/' \
+  --testPathIgnorePatterns='__tests__/e2e' 2>&1)
 status=$?
 
 if [[ $status -eq 0 ]]; then
