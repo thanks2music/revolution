@@ -155,7 +155,23 @@ jobs:
         # Vision API E2E tests skip themselves when the API keys are
         # absent (existing `it.skip` pattern), so they run only when
         # the corresponding secrets are configured in repo settings.
-        run: cd apps/ai-writer && pnpm test
+        #
+        # `--testPathIgnorePatterns` excludes three suites that load real
+        # YAML fixtures from `apps/ai-writer/config/` or
+        # `apps/ai-writer/templates/`. Both directories are gitignored
+        # (synced from the private `revolution-templates` repo via
+        # `pnpm sync:templates`), so they are absent on CI runners and the
+        # `fs.existsSync` assertions inside these suites fail.
+        # Local pre-push (`.husky/pre-push`) still runs them because the
+        # fixtures are present. Refactoring these to be mock-driven (or
+        # syncing templates in CI via SSH key) is a separate backlog item.
+        run: |
+          cd apps/ai-writer && pnpm exec jest \
+            --testPathIgnorePatterns='/node_modules/' \
+            --testPathIgnorePatterns='/.next/' \
+            --testPathIgnorePatterns='__tests__/services/media-type-mapper.service.test.ts' \
+            --testPathIgnorePatterns='__tests__/services/text-placeholder-replacer.service.test.ts' \
+            --testPathIgnorePatterns='__tests__/integration/text-placeholder-v1.4.0.integration.test.ts'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
