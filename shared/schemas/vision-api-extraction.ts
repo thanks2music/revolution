@@ -80,6 +80,20 @@ export const VisionExtractionMetadataSchema = z.object({
   tokensUsed: TokenUsageSchema.optional(),
 });
 
+/**
+ * Top-level Vision API extraction result.
+ *
+ * Empty-arrays contract (intentional, do not "fix" by throwing):
+ * Anthropic and OpenAI Vision APIs return 200 OK + empty arrays for unreachable,
+ * invalid, or content-less images — they do NOT raise an exception. The service
+ * resolves with `{menuItems: [], goodsItems: [], noveltyItems: []}` and a low
+ * confidence in those cases. This is the expected contract for callers; do not
+ * add HEAD preflight or empty-detection error-throwing without explicit design
+ * review (such logic introduces false positives on legitimately empty pages).
+ *
+ * Verified by `__tests__/e2e/vision-api-pipeline.e2e.test.ts`'s
+ * "should return empty result when image URL is unreachable" (LIVE_API gated).
+ */
 export const VisionExtractionResultSchema = z.object({
   visionExtraction: z.object({
     confidence: z.number().min(0).max(1),

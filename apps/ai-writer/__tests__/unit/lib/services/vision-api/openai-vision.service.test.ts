@@ -297,9 +297,7 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       // (Unlike Claude's service, OpenAI's convertToMenuItem doesn't default name to ''.)
       mockChatCompletionsCreate.mockResolvedValue(
         buildOpenAiCompletion({
-          menuItems: [
-            { price: 800 } as unknown as Record<string, unknown>,
-          ],
+          menuItems: [{ price: 800 }],
         }),
       );
 

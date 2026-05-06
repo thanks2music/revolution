@@ -7,10 +7,11 @@ import path from 'path';
 // when undici and other modules are imported.
 
 // next/jest auto-loads `.env*` files normally, but turbo monorepo can skip
-// `.env.test` in some setups — this explicit fallback covers that case.
-// `override: false` (dotenv default) keeps `.env.test.local` real keys intact.
+// the entire env load in some setups — these two explicit calls guarantee
+// Next.js precedence (.env.test.local > .env.test) regardless.
 // `quiet: true` suppresses dotenv v17 runtime banner (noise in parallel suites).
 dotenv.config({ path: path.resolve(process.cwd(), '.env.test'), quiet: true });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.test.local'), override: true, quiet: true });
 
 // グローバルテスト設定
 global.console = {
