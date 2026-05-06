@@ -244,4 +244,82 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(item.confidence).toBeUndefined();
     });
   });
+
+  describe('error handling and retry', () => {
+    it('retries on transient error and succeeds on second attempt', async () => {
+      mockMessagesCreate
+        .mockRejectedValueOnce(new Error('network error'))
+        .mockResolvedValueOnce(
+          buildClaudeMessage({
+            confidence: 0.85,
+            menuItems: [
+              {
+                name: 'コラボドリンク',
+                price: 800,
+                characterName: ['テストキャラ'],
+                confidence: 0.85,
+              },
+            ],
+          }),
+        );
+
+      const result = await service.extractFromImages({
+        imageUrls: ['https://example.com/menu.webp'],
+        prompt: 'menu prompt',
+        category: 'menu',
+        maxRetries: 2,
+      });
+
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(2);
+      expect(result.visionExtraction.menuItems).toHaveLength(1);
+    });
+
+    it('rethrows wrapped error after exhausting all retries', async () => {
+      mockMessagesCreate.mockRejectedValue(new Error('persistent network error'));
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/menu.webp'],
+          prompt: 'menu prompt',
+          category: 'menu',
+          maxRetries: 2,
+        }),
+      ).rejects.toThrow(/Claude Vision API failed after 2 attempts/);
+
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it('rethrows ZodError immediately without retry (deterministic shape failure)', async () => {
+      // 不正な shape (confidence が範囲外 [0, 1]) を返すと
+      // `VisionExtractionResultSchema.parse` の `z.number().min(0).max(1)` で reject される。
+      // 注: Claude の `convertToMenuItem` (claude-vision.service.ts:461) は `name` を
+      // `String(raw.name || '')` で空文字デフォルトするため `name` 欠落だけでは Zod 通過する。
+      // 一方 `confidence` は `typeof raw.confidence === 'number'` の時だけ raw 値をそのまま
+      // 通すため、999 のような out-of-range 値で確実に ZodError を発火できる。
+      mockMessagesCreate.mockResolvedValue(
+        buildClaudeMessage({
+          menuItems: [
+            {
+              name: 'test',
+              hasNovelty: false,
+              characterName: [],
+              confidence: 999, // out-of-range (z.number().min(0).max(1)) → ZodError
+            },
+          ],
+        }),
+      );
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/menu.webp'],
+          prompt: 'menu prompt',
+          category: 'menu',
+          maxRetries: 3,
+        }),
+      ).rejects.toThrow();
+
+      // ZodError は deterministic shape failure としてリトライせず即 rethrow
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+    });
+  });
 });
