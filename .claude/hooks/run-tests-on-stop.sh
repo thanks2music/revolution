@@ -7,6 +7,11 @@
 
 set -uo pipefail
 
+# jq が無い環境では Stop hook の "silent" 原則を守るため、即終了する。
+if ! command -v jq >/dev/null 2>&1; then
+  exit 0
+fi
+
 input="$(cat)"
 
 stop_hook_active=$(jq -r '.stop_hook_active // false' <<<"$input")
@@ -60,18 +65,18 @@ if [[ -z "$edited_files" ]]; then
 fi
 
 ai_writer_root="$cwd/apps/ai-writer"
-declare -A seen
+# Bash 3.2 互換のため連想配列を使わず、`sort -u` で重複排除する。
 related_files=()
-while IFS= read -r f; do
-  [[ -z "$f" ]] && continue
-  if [[ "$f" == "$ai_writer_root"/* && "$f" =~ \.(ts|tsx|js|jsx|mjs|cjs)$ ]]; then
-    rel="${f#$ai_writer_root/}"
-    if [[ -z "${seen[$rel]:-}" ]]; then
-      seen[$rel]=1
-      related_files+=("$rel")
+while IFS= read -r rel; do
+  [[ -n "$rel" ]] && related_files+=("$rel")
+done < <(
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    if [[ "$f" == "$ai_writer_root"/* && "$f" =~ \.(ts|tsx|js|jsx|mjs|cjs)$ ]]; then
+      printf '%s\n' "${f#$ai_writer_root/}"
     fi
-  fi
-done <<<"$edited_files"
+  done <<<"$edited_files" | sort -u
+)
 
 if [[ ${#related_files[@]} -eq 0 ]]; then
   exit 0
