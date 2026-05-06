@@ -1,20 +1,19 @@
 /**
- * Vision API Multi-Category Result Merger
+ * Pure merger that combines per-category Vision API results (menu / goods /
+ * novelty) into a single `VisionExtractionResult`.
  *
- * @description
- * Pure function that merges per-category Vision API results (menu / goods /
- * novelty) into a single `VisionExtractionResult`. Each category contributes
- * only its own array (category-attached merge); cross-category leakage from
- * an LLM is logged as a warning but never propagated to the merged output.
- *
- * Confidence is item-count-weighted across all successful calls so a high
- * confidence on an empty category does not dominate.
- *
- * @package revolution
- * @module services/vision-api/merge-vision-results
+ * - Category-attached: only each category's own array is adopted.
+ *   Cross-category leakage from an LLM is logged and discarded.
+ * - Confidence: item-count-weighted across all successful calls.
+ * - Metadata: `tokensUsed` summed (only when at least one call reports it),
+ *   `hasComingSoonNotice` OR-combined, `totalImagesAnalyzed` summed.
+ * - `provider` / `timestamp`: from the first non-undefined call in
+ *   menu → goods → novelty order.
  */
-import type { VisionExtractionResult } from '@/lib/types/vision-api';
-import type { VisionExtractionCategory } from './category-prompt-resolver';
+import type {
+  VisionExtractionCategory,
+  VisionExtractionResult,
+} from '@/lib/types/vision-api';
 
 export type CategoryResults = Partial<
   Record<VisionExtractionCategory, VisionExtractionResult>
@@ -22,20 +21,21 @@ export type CategoryResults = Partial<
 
 const FALLBACK_CONFIDENCE = 0.5;
 
-/**
- * Merge per-category Vision API results into a single VisionExtractionResult.
- *
- * Behavior:
- * - Category-attached merge: only `results.menu.menuItems`, `results.goods.goodsItems`,
- *   `results.novelty.noveltyItems` are adopted. Cross-category leakage from an
- *   LLM is warned via console.warn and discarded.
- * - Confidence: item-count-weighted average across all successful calls.
- *   Returns FALLBACK_CONFIDENCE (0.5) when all categories are empty.
- * - Metadata: `tokensUsed` is summed; `hasComingSoonNotice` is OR-combined;
- *   `totalImagesAnalyzed` is summed.
- * - `provider` / `timestamp`: taken from the first non-undefined result in
- *   menu → goods → novelty order.
- */
+const CATEGORIES = ['menu', 'goods', 'novelty'] as const satisfies readonly VisionExtractionCategory[];
+
+const ITEMS_FIELD = {
+  menu: 'menuItems',
+  goods: 'goodsItems',
+  novelty: 'noveltyItems',
+} as const satisfies Record<VisionExtractionCategory, keyof VisionExtractionResult['visionExtraction']>;
+
+function itemCount(r: VisionExtractionResult): number {
+  return (
+    r.visionExtraction.menuItems.length +
+    r.visionExtraction.goodsItems.length +
+    r.visionExtraction.noveltyItems.length
+  );
+}
 export function mergeVisionResults(results: CategoryResults): VisionExtractionResult {
   const menuItems = results.menu?.visionExtraction.menuItems ?? [];
   const goodsItems = results.goods?.visionExtraction.goodsItems ?? [];
@@ -43,7 +43,7 @@ export function mergeVisionResults(results: CategoryResults): VisionExtractionRe
 
   warnOnCrossCategoryLeakage(results);
 
-  const allCalls = (['menu', 'goods', 'novelty'] as const)
+  const allCalls = CATEGORIES
     .map((c) => results[c])
     .filter((r): r is VisionExtractionResult => r !== undefined);
 
@@ -69,27 +69,18 @@ function computeWeightedConfidence(allCalls: VisionExtractionResult[]): number {
   if (allCalls.length === 0) {
     return FALLBACK_CONFIDENCE;
   }
-  const totalItems = allCalls.reduce(
-    (sum, r) =>
-      sum +
-      r.visionExtraction.menuItems.length +
-      r.visionExtraction.goodsItems.length +
-      r.visionExtraction.noveltyItems.length,
-    0,
-  );
+  let totalItems = 0;
+  let weighted = 0;
+  for (const r of allCalls) {
+    const items = itemCount(r);
+    totalItems += items;
+    weighted += r.visionExtraction.confidence * items;
+  }
   if (totalItems === 0) {
-    // No items extracted across any category — fall back to the first call's
-    // own confidence (which itself defaults to 0.5 when the LLM didn't
-    // surface a number) so we don't mask a low-quality extraction with 0.5.
+    // Fall back to the first call's own confidence so that a uniformly
+    // low-quality extraction is not masked by FALLBACK_CONFIDENCE (0.5).
     return allCalls[0].visionExtraction.confidence ?? FALLBACK_CONFIDENCE;
   }
-  const weighted = allCalls.reduce((sum, r) => {
-    const items =
-      r.visionExtraction.menuItems.length +
-      r.visionExtraction.goodsItems.length +
-      r.visionExtraction.noveltyItems.length;
-    return sum + r.visionExtraction.confidence * items;
-  }, 0);
   return weighted / totalItems;
 }
 
@@ -126,40 +117,18 @@ function mergeMetadata(
 }
 
 function warnOnCrossCategoryLeakage(results: CategoryResults): void {
-  if (results.menu) {
-    if (results.menu.visionExtraction.goodsItems.length > 0) {
-      console.warn(
-        `[mergeVisionResults] menu call returned ${results.menu.visionExtraction.goodsItems.length} goodsItems (ignored)`,
-      );
-    }
-    if (results.menu.visionExtraction.noveltyItems.length > 0) {
-      console.warn(
-        `[mergeVisionResults] menu call returned ${results.menu.visionExtraction.noveltyItems.length} noveltyItems (ignored)`,
-      );
-    }
-  }
-  if (results.goods) {
-    if (results.goods.visionExtraction.menuItems.length > 0) {
-      console.warn(
-        `[mergeVisionResults] goods call returned ${results.goods.visionExtraction.menuItems.length} menuItems (ignored)`,
-      );
-    }
-    if (results.goods.visionExtraction.noveltyItems.length > 0) {
-      console.warn(
-        `[mergeVisionResults] goods call returned ${results.goods.visionExtraction.noveltyItems.length} noveltyItems (ignored)`,
-      );
-    }
-  }
-  if (results.novelty) {
-    if (results.novelty.visionExtraction.menuItems.length > 0) {
-      console.warn(
-        `[mergeVisionResults] novelty call returned ${results.novelty.visionExtraction.menuItems.length} menuItems (ignored)`,
-      );
-    }
-    if (results.novelty.visionExtraction.goodsItems.length > 0) {
-      console.warn(
-        `[mergeVisionResults] novelty call returned ${results.novelty.visionExtraction.goodsItems.length} goodsItems (ignored)`,
-      );
+  for (const own of CATEGORIES) {
+    const r = results[own];
+    if (!r) continue;
+    for (const other of CATEGORIES) {
+      if (other === own) continue;
+      const field = ITEMS_FIELD[other];
+      const leaked = (r.visionExtraction[field] as unknown[]).length;
+      if (leaked > 0) {
+        console.warn(
+          `[mergeVisionResults] ${own} call returned ${leaked} ${field} (ignored)`,
+        );
+      }
     }
   }
 }

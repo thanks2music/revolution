@@ -362,20 +362,13 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
     }
   }
 
-  // Validate goods prices
   for (const item of goodsItems) {
-    if (item.price != null) {
-      if (item.price < 300 || item.price > 10000) {
-        issues.push(
-          `Goods price out of range: ${item.name} = ${item.price}円 (expected: 300-10000円)`
-        );
-        confidencePenalty += 0.05;
-      }
+    if (item.price != null && (item.price < 300 || item.price > 10000)) {
+      issues.push(
+        `Goods price out of range: ${item.name} = ${item.price}円 (expected: 300-10000円)`
+      );
+      confidencePenalty += 0.05;
     }
-  }
-
-  // Validate goods variant count
-  for (const item of goodsItems) {
     if (item.variantCount != null && item.variantCount > 100) {
       issues.push(
         `Goods variant count suspicious: ${item.name} = ${item.variantCount} variants (max: 100, likely OCR error)`

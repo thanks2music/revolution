@@ -1,32 +1,19 @@
 /**
- * Multi-Category Vision API Orchestrator
+ * Multi-category Vision API orchestrator.
  *
- * @description
- * Calls a single `IVisionApiService` instance once per category (menu / goods /
- * novelty) in parallel via `Promise.allSettled`, then merges the successful
- * results into one `VisionExtractionResult` via `mergeVisionResults`. Categories
- * with no candidate images are skipped (no API call) and reported in
- * `perCategory[cat].skipped` so callers can log per-category status without
- * inspecting the merged result.
- *
- * Failure semantics:
- * - Per-category errors do NOT short-circuit other categories (allSettled).
- * - The merged result reflects only the categories that succeeded.
- * - When every category fails or skips, the merged result is an empty
- *   `VisionExtractionResult` produced by `mergeVisionResults({})`.
- *
- * @package revolution
- * @module services/vision-api/multi-category-vision
+ * Calls one `IVisionApiService` per category (menu / goods / novelty) in
+ * parallel via `Promise.allSettled` and merges the successes via
+ * `mergeVisionResults`. Per-category errors do NOT short-circuit other
+ * categories. Categories with no images are skipped (no API call) and
+ * reported in `perCategory[cat].skipped`.
  */
 import type {
   IVisionApiService,
   VisionApiTemplate,
+  VisionExtractionCategory,
   VisionExtractionResult,
 } from '@/lib/types/vision-api';
-import {
-  resolveVisionPrompt,
-  type VisionExtractionCategory,
-} from './category-prompt-resolver';
+import { resolveVisionPrompt } from './category-prompt-resolver';
 import { mergeVisionResults, type CategoryResults } from './merge-vision-results';
 
 /**

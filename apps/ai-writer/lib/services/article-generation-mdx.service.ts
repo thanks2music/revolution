@@ -481,7 +481,6 @@ export class ArticleGenerationMdxService {
         crossCheckPassed?: boolean;
       } = { called: false };
 
-      // Phase 1: 全 collabo-cafe イベントで Vision API 統合
       if (!detailedExtraction) {
         console.log('[Step 1.8] detailedExtraction がないため、Vision API をスキップ');
       } else {
@@ -526,8 +525,6 @@ export class ArticleGenerationMdxService {
 
               console.log('[Step 1.8] Vision API 並列呼び出し開始 (menu/goods/novelty)...');
 
-              // 3 カテゴリ並列呼び出し (Promise.allSettled)。
-              // 各カテゴリの画像が空の場合は API 呼び出しをスキップして空配列を返す。
               const { result: visionExtraction, perCategory } =
                 await callVisionApiForAllCategories(
                   visionService,

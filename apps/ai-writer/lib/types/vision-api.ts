@@ -1,13 +1,16 @@
 /**
  * Vision API Integration Type Definitions
  *
- * @description
- * Type definitions for Vision API YAML template (1.5-vision-extraction.yaml)
- * and related data structures for OpenAI Vision API integration.
- *
- * @package revolution
- * @module types/vision-api
+ * Types for Vision API YAML template (1.5-vision-extraction.yaml) and the
+ * extracted result. Item / metadata / result types are re-exported from
+ * `@revolution/schemas/vision-api-extraction` (Zod source of truth).
  */
+
+/**
+ * Categories the Vision API can extract from collabo café images.
+ * Used by the YAML prompt resolver, multi-category orchestrator, and merger.
+ */
+export type VisionExtractionCategory = 'menu' | 'goods' | 'novelty';
 
 /**
  * Vision API YAML Template Structure
@@ -144,15 +147,15 @@ export interface VisionOutputSchema {
 }
 
 /**
- * Vision API typed contract — Schema-SDD Phase 3 (Sprint 3 PR-B / step 3)
+ * Vision API typed contract.
  *
  * `MenuItem`, `GoodsItem`, `NoveltyItem`, and `VisionExtractionResult` are
- * sourced from `@revolution/schemas/vision-api-extraction` (zod schema), which
- * is the SoT aligned with Templates v1.2 `1.5-vision-extraction.yaml`.
+ * sourced from `@revolution/schemas/vision-api-extraction` (zod SoT, aligned
+ * with Templates v1.2 `1.5-vision-extraction.yaml`).
  *
- * Internal-only types (e.g. `IVisionApiService`, `VisionApiCallOptions`) remain
- * defined locally in this module per SoC: `shared/schemas` holds boundary
- * contracts only; provider-internal interfaces stay in `apps/ai-writer`.
+ * Provider-internal types (`IVisionApiService`, `VisionApiCallOptions`)
+ * remain defined locally per SoC: `shared/schemas` holds boundary contracts
+ * only.
  *
  * The two-step `import type` + `export type` form is required so that types
  * referenced later in this same file (e.g. `IVisionApiService` →
@@ -453,7 +456,7 @@ export interface VisionApiCallOptions {
   prompt: string;
 
   /** Category being extracted (menu, goods, novelty) */
-  category: 'menu' | 'goods' | 'novelty';
+  category: VisionExtractionCategory;
 
   /** Maximum retry attempts (default: 3) */
   maxRetries?: number;
