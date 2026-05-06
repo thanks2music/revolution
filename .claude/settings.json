@@ -186,5 +186,18 @@
     "vercel-awesome-ai",
     "codex",
     "gemini-cli"
-  ]
+  ],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/run-tests-on-stop.sh",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
 }

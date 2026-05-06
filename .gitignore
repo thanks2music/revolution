@@ -386,6 +386,8 @@ GEMINI.md
 # グローバル .gitignore で *.claude を指定していたが、Speckitに合わせて解除した
 !.claude/commands
 !.claude/commands/*
+!.claude/hooks
+!.claude/hooks/*
 
 ## Speckit
 .specify/
