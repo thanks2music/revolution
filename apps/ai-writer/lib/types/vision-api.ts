@@ -144,179 +144,28 @@ export interface VisionOutputSchema {
 }
 
 /**
- * Vision Extraction Result (TypeScript type matching output_schema)
- */
-export interface VisionExtractionResult {
-  visionExtraction: {
-    /** Confidence score (0.0-1.0) */
-    confidence: number;
-
-    /** Provider used (openai or claude) */
-    provider: 'openai' | 'claude';
-
-    /** Extraction timestamp */
-    timestamp: string;
-
-    /** Extracted menu items */
-    menuItems: MenuItem[];
-
-    /** Extracted goods items */
-    goodsItems: GoodsItem[];
-
-    /** Extracted novelty items (array) */
-    noveltyItems: NoveltyItem[];
-
-    /** Optional metadata */
-    metadata?: {
-      /** Whether "Coming Soon" notice was detected */
-      hasComingSoonNotice?: boolean;
-
-      /** Total images analyzed */
-      totalImagesAnalyzed?: number;
-
-      /**
-       * Actual token usage from the Vision API response (not estimates).
-       * Populated by the provider service after the API call returns.
-       * Used by upstream cost tracking to record real cost per request.
-       */
-      tokensUsed?: {
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-      };
-    };
-  };
-}
-
-/**
- * Menu Item Structure
+ * Vision API typed contract — Schema-SDD Phase 3 (Sprint 3 PR-B / step 3)
  *
- * @description
- * Aligned with Templates v1.2 `output_schema.menuItems[].properties` (SoT).
- * `hasNovelty` and `noveltyCondition` were added in v1.2 to surface menu-attached
- * novelty information (e.g. "1 ドリンクにつき 1 枚ランダム配布") that menu prompts
- * extract directly from the menu image.
- */
-export interface MenuItem {
-  /** Menu item name (as written in the image, exact text) */
-  name: string;
-
-  /** Price (tax-included preferred) */
-  price?: number;
-
-  /** Character names (array, empty array if no characters) */
-  characterName: string[];
-
-  /**
-   * Whether this menu item has an attached novelty/bonus.
-   * Source: Templates v1.2 `output_schema.menuItems[].hasNovelty`.
-   */
-  hasNovelty: boolean;
-
-  /**
-   * Distribution condition for the attached novelty (e.g. "メニュー1品注文につき1枚ランダム配布").
-   * Source: Templates v1.2 `output_schema.menuItems[].noveltyCondition`.
-   * Null/undefined when `hasNovelty` is false.
-   */
-  noveltyCondition?: string;
-
-  /**
-   * @deprecated Use `hasNovelty` + `noveltyCondition` instead (Templates v1.2 alignment).
-   * Retained for backward compatibility with pre-v1.2 prompt outputs that surface
-   * a single free-form `bonus` string. Removal candidate after Sprint 4.
-   */
-  bonus?: string;
-
-  /** Description */
-  description?: string;
-
-  /** Notes (e.g., food allergy information) */
-  notes?: string;
-
-  /** Remarks (e.g., ingredients, nutritional information) */
-  remarks?: string;
-
-  /** Confidence score for this item (0.0-1.0) */
-  confidence?: number;
-}
-
-/**
- * Goods Item Structure
+ * `MenuItem`, `GoodsItem`, `NoveltyItem`, and `VisionExtractionResult` are
+ * sourced from `@revolution/schemas/vision-api-extraction` (zod schema), which
+ * is the SoT aligned with Templates v1.2 `1.5-vision-extraction.yaml`.
  *
- * @description
- * Aligned with Templates v1.2 `output_schema.goodsItems[].properties` (SoT).
- * `isRandomSale` and `confidence` were added in v1.2 to capture random/blind-bag
- * distribution semantics and per-item extraction confidence (matches MenuItem).
- */
-export interface GoodsItem {
-  /** Goods item name */
-  name: string;
-
-  /** Price */
-  price?: number;
-
-  /** Number of variants */
-  variantCount?: number;
-
-  /** Variant details (e.g., "全6種") */
-  variantDetails?: string;
-
-  /** Character names (array, empty array if no characters) */
-  characterName: string[];
-
-  /**
-   * Whether this goods item is sold via random/blind-bag distribution.
-   * Source: Templates v1.2 `output_schema.goodsItems[].isRandomSale`.
-   */
-  isRandomSale: boolean;
-
-  /**
-   * Confidence score for this item (0.0-1.0).
-   * Source: Templates v1.2 `output_schema.goodsItems[].confidence`.
-   */
-  confidence?: number;
-}
-
-/**
- * Novelty Item Structure
+ * Internal-only types (e.g. `IVisionApiService`, `VisionApiCallOptions`) remain
+ * defined locally in this module per SoC: `shared/schemas` holds boundary
+ * contracts only; provider-internal interfaces stay in `apps/ai-writer`.
  *
- * @description
- * Aligned with Templates v1.2 `output_schema.noveltyItems[].properties` (SoT).
- * Templates v1.2 promoted novelty from a single object to an array (`noveltyItems[]`)
- * to match menu/goods structure. `isRandom` and `confidence` were added in v1.2
- * to capture random distribution semantics and per-item confidence.
+ * The two-step `import type` + `export type` form is required so that types
+ * referenced later in this same file (e.g. `IVisionApiService` →
+ * `VisionExtractionResult`) resolve locally while still being re-exported.
  */
-export interface NoveltyItem {
-  /** Novelty item name */
-  name: string;
+import type {
+  MenuItem,
+  GoodsItem,
+  NoveltyItem,
+  VisionExtractionResult,
+} from '@revolution/schemas/vision-api-extraction';
 
-  /** Condition to receive (e.g., "1ドリンク注文につき1枚ランダム配布") */
-  condition?: string;
-
-  /** Number of variants */
-  variantCount?: number;
-
-  /** Character names (array, empty array if no characters) */
-  characterName: string[];
-
-  /**
-   * Whether this novelty is distributed randomly (vs. selectable).
-   * Source: Templates v1.2 `output_schema.noveltyItems[].isRandom`.
-   */
-  isRandom: boolean;
-
-  /**
-   * Confidence score for this item (0.0-1.0).
-   * Source: Templates v1.2 `output_schema.noveltyItems[].confidence`.
-   */
-  confidence?: number;
-
-  /** Notes (e.g., "絵柄は選べません") */
-  notes?: string;
-
-  /** Remarks (e.g., "無くなり次第終了") */
-  remarks?: string;
-}
+export type { MenuItem, GoodsItem, NoveltyItem, VisionExtractionResult };
 
 /**
  * Fallback Strategy (Level A/B/C)

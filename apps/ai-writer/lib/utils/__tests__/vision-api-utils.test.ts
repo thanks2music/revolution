@@ -482,6 +482,100 @@ describe('Vision API Utilities', () => {
     });
   });
 
+  describe('Templates v1.2 alignment (PR-B / Sprint 3 step 3)', () => {
+    describe('selectFallbackLevel: novelty-only extraction', () => {
+      it('should reach Level A when noveltyItems are extracted alone with high confidence', () => {
+        const visionResult = createMockVisionResult({
+          confidence: 0.9,
+          menuItems: [],
+          goodsItems: [],
+          noveltyItems: [
+            {
+              name: 'イラストカード',
+              condition: 'メニュー1品注文につき1枚',
+              characterName: ['五条悟'],
+              isRandom: true,
+            },
+          ],
+        });
+        expect(selectFallbackLevel(visionResult)).toBe('A');
+      });
+
+      it('should reach Level B when noveltyItems carry character names with medium confidence', () => {
+        const visionResult = createMockVisionResult({
+          confidence: 0.75,
+          menuItems: [],
+          goodsItems: [],
+          noveltyItems: [
+            {
+              name: 'イラストカード',
+              characterName: ['五条悟'],
+              isRandom: false,
+            },
+          ],
+        });
+        expect(selectFallbackLevel(visionResult)).toBe('B');
+      });
+    });
+
+    describe('crossCheckVisionResult.details.visionPriceCount: goods aggregation', () => {
+      it('counts both menu and goods prices (was menu-only pre-v1.2)', () => {
+        const visionResult = createMockVisionResult({
+          menuItems: [
+            { name: 'メニュー1', price: 1000, characterName: [], hasNovelty: false },
+            { name: 'メニュー2', price: 1500, characterName: [], hasNovelty: false },
+          ],
+          goodsItems: [
+            { name: 'グッズ1', price: 2000, characterName: [], isRandomSale: false },
+            { name: 'グッズ2', price: 800, characterName: [], isRandomSale: false },
+            { name: 'グッズ3 (no price)', characterName: [], isRandomSale: false },
+          ],
+        });
+        const htmlExtraction = createMockHtmlExtraction({
+          menuItemCount: 5,
+          priceCount: 3,
+        });
+
+        const result = crossCheckVisionResult(visionResult, htmlExtraction);
+
+        // 2 menu items + 2 goods items have a price; the 3rd goods item is excluded.
+        expect(result.details.visionPriceCount).toBe(4);
+      });
+    });
+
+    describe('detectHallucination Type 1: covers goods/novelty per Templates v1.2', () => {
+      it('detects Coming Soon fabrication when only goodsItems were extracted', () => {
+        const visionResult = createMockVisionResult({
+          menuItems: [],
+          goodsItems: [{ name: 'グッズ1', characterName: [], isRandomSale: false }],
+          metadata: { hasComingSoonNotice: true, totalImagesAnalyzed: 1 },
+        });
+        const htmlExtraction = createMockHtmlExtraction({ menuItemCount: 0, priceCount: 0 });
+
+        const result = detectHallucination(visionResult, htmlExtraction);
+
+        expect(result.detected).toBe(true);
+        expect(result.type).toBe('coming_soon_fabrication');
+        expect(result.reason).toContain('goods=1');
+      });
+
+      it('detects Coming Soon fabrication when only noveltyItems were extracted', () => {
+        const visionResult = createMockVisionResult({
+          menuItems: [],
+          noveltyItems: [{ name: 'ノベルティ1', characterName: [], isRandom: false }],
+          metadata: { hasComingSoonNotice: true, totalImagesAnalyzed: 1 },
+        });
+        const htmlExtraction = createMockHtmlExtraction({ menuItemCount: 0, priceCount: 0 });
+
+        const result = detectHallucination(visionResult, htmlExtraction);
+
+        expect(result.detected).toBe(true);
+        expect(result.type).toBe('coming_soon_fabrication');
+        expect(result.reason).toContain('novelty=1');
+      });
+    });
+  });
+
   describe('validateBusinessRules', () => {
     describe('Menu price validation', () => {
       it('should detect menu prices below minimum (500円)', () => {

@@ -29,6 +29,7 @@ import type {
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
+import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
 import { calculateCost, formatCost } from '@/lib/ai/cost';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
@@ -437,7 +438,7 @@ export class OpenAiVisionService implements IVisionApiService {
         ? menuItems.reduce((sum, item) => sum + (item.confidence || 0), 0) / menuItems.length
         : 0.5;
 
-    return {
+    const result: VisionExtractionResult = {
       visionExtraction: {
         confidence: averageConfidence,
         provider: 'openai',
@@ -452,6 +453,12 @@ export class OpenAiVisionService implements IVisionApiService {
         },
       },
     };
+
+    // Layer 2 contract validation (Schema-SDD Phase 3): throw on shape drift
+    // so that LLM output regressions surface immediately rather than silently
+    // propagating downstream. Caller's retry loop (extractFromImages) catches
+    // this and treats it as a transient failure.
+    return VisionExtractionResultSchema.parse(result);
   }
 
   /**
