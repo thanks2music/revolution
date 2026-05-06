@@ -19,6 +19,7 @@
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
+import { ZodError } from 'zod';
 import type {
   IVisionApiService,
   VisionExtractionResult,
@@ -266,6 +267,13 @@ export class OpenAiVisionService implements IVisionApiService {
 
         return result;
       } catch (error) {
+        // ZodError from `VisionExtractionResultSchema.parse` (boundary validation)
+        // means the LLM output shape is wrong — a deterministic programming/contract
+        // failure, not a transient network issue. Retrying would waste tokens and
+        // delay surfacing the real bug, so re-throw immediately.
+        if (error instanceof ZodError) {
+          throw error;
+        }
         lastError = error as Error;
         console.error(
           `[OpenAiVisionService] ❌ Attempt ${attempt + 1}/${maxRetries} failed: ${lastError.message}`
@@ -433,9 +441,20 @@ export class OpenAiVisionService implements IVisionApiService {
     const noveltyItems: NoveltyItem[] =
       raw.noveltyItems?.map((item) => this.convertToNoveltyItem(item)) || [];
 
+    // Aggregate per-item confidence across all 3 categories so the overall
+    // score reflects the actual extraction breadth (Templates v1.2). Mirrors
+    // claude-vision.service.ts:calculateOverallConfidence — items without an
+    // LLM-supplied confidence are skipped so they don't pull the average toward
+    // a fabricated default.
+    const allConfidences: number[] = [];
+    for (const item of [...menuItems, ...goodsItems, ...noveltyItems]) {
+      if (item.confidence != null) {
+        allConfidences.push(item.confidence);
+      }
+    }
     const averageConfidence =
-      menuItems.length > 0
-        ? menuItems.reduce((sum, item) => sum + (item.confidence || 0), 0) / menuItems.length
+      allConfidences.length > 0
+        ? allConfidences.reduce((sum, c) => sum + c, 0) / allConfidences.length
         : 0.5;
 
     const result: VisionExtractionResult = {
@@ -456,8 +475,9 @@ export class OpenAiVisionService implements IVisionApiService {
 
     // Layer 2 contract validation (Schema-SDD Phase 3): throw on shape drift
     // so that LLM output regressions surface immediately rather than silently
-    // propagating downstream. Caller's retry loop (extractFromImages) catches
-    // this and treats it as a transient failure.
+    // propagating downstream. The caller's retry loop in `extractFromImages`
+    // re-throws ZodError without retry (deterministic shape failure, not a
+    // transient network issue), surfacing the bug immediately.
     return VisionExtractionResultSchema.parse(result);
   }
 
@@ -475,7 +495,7 @@ export class OpenAiVisionService implements IVisionApiService {
       description: item.description,
       notes: item.notes,
       remarks: item.remarks,
-      confidence: item.confidence || 0.5,
+      confidence: item.confidence ?? 0.5,
     };
   }
 

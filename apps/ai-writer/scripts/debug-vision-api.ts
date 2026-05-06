@@ -253,7 +253,7 @@ function displayResults(
       const char = item.characterName.length > 0
         ? ` (${formatCharacterNames(item.characterName)})`
         : '';
-      const conf = item.confidence ? `${(item.confidence * 100).toFixed(1)}%` : 'N/A';
+      const conf = item.confidence != null ? `${(item.confidence * 100).toFixed(1)}%` : 'N/A';
       const novelty = item.hasNovelty
         ? ` 🎁${item.noveltyCondition ?? 'ノベルティあり'}`
         : '';

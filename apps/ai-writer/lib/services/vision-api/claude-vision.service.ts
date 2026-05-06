@@ -19,6 +19,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ZodError } from 'zod';
 import type {
   IVisionApiService,
   VisionApiCallOptions,
@@ -157,6 +158,13 @@ export class ClaudeVisionService implements IVisionApiService {
 
         return result;
       } catch (error) {
+        // ZodError from `VisionExtractionResultSchema.parse` (boundary validation)
+        // is a deterministic shape mismatch — re-throw without retry so the bug
+        // surfaces immediately instead of consuming three retries' worth of
+        // tokens for the same failure.
+        if (error instanceof ZodError) {
+          throw error;
+        }
         lastError = error instanceof Error ? error : new Error(String(error));
 
         console.error(
