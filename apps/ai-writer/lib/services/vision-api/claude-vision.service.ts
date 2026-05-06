@@ -394,8 +394,9 @@ export class ClaudeVisionService implements IVisionApiService {
 
     // Layer 2 contract validation (Schema-SDD Phase 3): throw on shape drift
     // so that LLM output regressions surface immediately rather than silently
-    // propagating downstream. Caller's retry loop (extractFromImages) catches
-    // this and treats it as a transient failure.
+    // propagating downstream. The caller's retry loop in `extractFromImages`
+    // re-throws ZodError without retry (deterministic shape failure, not a
+    // transient network issue), surfacing the bug immediately.
     return VisionExtractionResultSchema.parse(result);
   }
 
