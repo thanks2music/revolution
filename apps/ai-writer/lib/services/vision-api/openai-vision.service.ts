@@ -482,12 +482,18 @@ export class OpenAiVisionService implements IVisionApiService {
   }
 
   /**
-   * Convert raw item to MenuItem
+   * Convert raw item to MenuItem.
+   *
+   * Numeric fields (`price`, `confidence`) use `typeof === 'number'` checks
+   * rather than `??` so that LLM-emitted `null` or stringified numbers are
+   * coerced to `undefined` (or the `0.5` confidence default) instead of
+   * propagating to `VisionExtractionResultSchema.parse` and triggering a
+   * deterministic ZodError. Mirrors `claude-vision.service.ts`.
    */
   private convertToMenuItem(item: NonNullable<RawVisionResponse['menuItems']>[number]): MenuItem {
     return {
       name: item.name,
-      price: item.price,
+      price: typeof item.price === 'number' ? item.price : undefined,
       characterName: this.parseCharacterNameArray(item.characterName, item.name),
       hasNovelty: item.hasNovelty ?? false,
       noveltyCondition: item.noveltyCondition,
@@ -495,7 +501,7 @@ export class OpenAiVisionService implements IVisionApiService {
       description: item.description,
       notes: item.notes,
       remarks: item.remarks,
-      confidence: item.confidence ?? 0.5,
+      confidence: typeof item.confidence === 'number' ? item.confidence : 0.5,
     };
   }
 
@@ -558,31 +564,33 @@ export class OpenAiVisionService implements IVisionApiService {
   }
 
   /**
-   * Convert raw item to GoodsItem
+   * Convert raw item to GoodsItem (see `convertToMenuItem` for numeric
+   * coercion rationale).
    */
   private convertToGoodsItem(item: NonNullable<RawVisionResponse['goodsItems']>[number]): GoodsItem {
     return {
       name: item.name,
-      price: item.price,
-      variantCount: item.variantCount,
+      price: typeof item.price === 'number' ? item.price : undefined,
+      variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
       variantDetails: item.variantDetails,
       characterName: this.parseCharacterNameArray(item.characterName, item.name),
       isRandomSale: item.isRandomSale ?? false,
-      confidence: item.confidence,
+      confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
     };
   }
 
   /**
-   * Convert raw item to NoveltyItem
+   * Convert raw item to NoveltyItem (see `convertToMenuItem` for numeric
+   * coercion rationale).
    */
   private convertToNoveltyItem(item: NonNullable<RawVisionResponse['noveltyItems']>[number]): NoveltyItem {
     return {
       name: item.name,
       condition: item.condition,
-      variantCount: item.variantCount,
+      variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
       characterName: this.parseCharacterNameArray(item.characterName, item.name),
       isRandom: item.isRandom ?? false,
-      confidence: item.confidence,
+      confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
       notes: item.notes,
       remarks: item.remarks,
     };

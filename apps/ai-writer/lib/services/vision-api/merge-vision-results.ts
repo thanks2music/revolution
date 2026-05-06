@@ -28,13 +28,6 @@ const ITEMS_FIELD = {
   novelty: 'noveltyItems',
 } as const satisfies Record<VisionExtractionCategory, keyof VisionExtractionResult['visionExtraction']>;
 
-function itemCount(r: VisionExtractionResult): number {
-  return (
-    r.visionExtraction.menuItems.length +
-    r.visionExtraction.goodsItems.length +
-    r.visionExtraction.noveltyItems.length
-  );
-}
 export function mergeVisionResults(results: CategoryResults): VisionExtractionResult {
   const menuItems = results.menu?.visionExtraction.menuItems ?? [];
   const goodsItems = results.goods?.visionExtraction.goodsItems ?? [];
@@ -46,7 +39,7 @@ export function mergeVisionResults(results: CategoryResults): VisionExtractionRe
     .map((c) => results[c])
     .filter((r): r is VisionExtractionResult => r !== undefined);
 
-  const confidence = computeWeightedConfidence(allCalls);
+  const confidence = computeWeightedConfidence(results);
 
   const metadata = mergeMetadata(allCalls);
 
@@ -64,21 +57,30 @@ export function mergeVisionResults(results: CategoryResults): VisionExtractionRe
   };
 }
 
-function computeWeightedConfidence(allCalls: VisionExtractionResult[]): number {
-  if (allCalls.length === 0) {
-    return FALLBACK_CONFIDENCE;
-  }
+function computeWeightedConfidence(results: CategoryResults): number {
+  // Weight each call's confidence by the count of items it contributed in
+  // its OWN category only — leaked cross-category items are discarded by
+  // the merger (`warnOnCrossCategoryLeakage`) so weighting by them would
+  // skew the merged confidence in proportion to noise that never reaches
+  // the consumer.
   let totalItems = 0;
   let weighted = 0;
-  for (const r of allCalls) {
-    const items = itemCount(r);
-    totalItems += items;
-    weighted += r.visionExtraction.confidence * items;
+  let firstResult: VisionExtractionResult | undefined;
+  for (const cat of VISION_CATEGORIES) {
+    const r = results[cat];
+    if (!r) continue;
+    if (!firstResult) firstResult = r;
+    const ownItems = (r.visionExtraction[ITEMS_FIELD[cat]] as unknown[]).length;
+    totalItems += ownItems;
+    weighted += r.visionExtraction.confidence * ownItems;
+  }
+  if (!firstResult) {
+    return FALLBACK_CONFIDENCE;
   }
   if (totalItems === 0) {
     // Fall back to the first call's own confidence so that a uniformly
     // low-quality extraction is not masked by FALLBACK_CONFIDENCE (0.5).
-    return allCalls[0].visionExtraction.confidence ?? FALLBACK_CONFIDENCE;
+    return firstResult.visionExtraction.confidence ?? FALLBACK_CONFIDENCE;
   }
   return weighted / totalItems;
 }
