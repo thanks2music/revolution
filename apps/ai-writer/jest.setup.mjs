@@ -7,7 +7,10 @@ import path from 'path';
 // when undici and other modules are imported.
 
 // テスト環境用の環境変数を読み込み
-dotenv.config({ path: path.resolve(process.cwd(), '.env.test') });
+// `quiet: true` は dotenv v17 で導入された runtime banner (`◇ injected env (N) ...`)
+// を抑止する。jest が複数 suite を並列に走らせると suite 数 × 行数で出力ノイズに
+// なるため。エラー / 警告は引き続き表示される。
+dotenv.config({ path: path.resolve(process.cwd(), '.env.test'), quiet: true });
 
 // グローバルテスト設定
 global.console = {

@@ -47,7 +47,9 @@ done
 # test pattern (jest 30 stops flag parsing at `--`).
 cd "$REPO_ROOT/apps/ai-writer" || exit 1
 echo "🔍 Running related tests for: $CHANGED_FILES"
-pnpm exec jest --findRelatedTests $ABS_FILES --passWithNoTests \
+# `--silent` suppresses console.* noise from production code paths exercised
+# by tests, so failures stay visible. Use plain `pnpm test` for verbose runs.
+pnpm exec jest --findRelatedTests $ABS_FILES --passWithNoTests --silent \
   --testPathIgnorePatterns='/node_modules/' \
   --testPathIgnorePatterns='/.next/' \
   --testPathIgnorePatterns='__tests__/e2e'
