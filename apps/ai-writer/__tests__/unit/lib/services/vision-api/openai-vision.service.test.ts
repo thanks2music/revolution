@@ -246,4 +246,75 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(item.confidence).toBeUndefined();
     });
   });
+
+  describe('error handling and retry', () => {
+    it('retries on transient error and succeeds on second attempt', async () => {
+      mockChatCompletionsCreate
+        .mockRejectedValueOnce(new Error('network error'))
+        .mockResolvedValueOnce(
+          buildOpenAiCompletion({
+            menuItems: [
+              {
+                name: 'コラボドリンク',
+                price: 800,
+                characterName: ['テストキャラ'],
+                confidence: 0.85,
+              },
+            ],
+          }),
+        );
+
+      const result = await service.extractFromImages({
+        imageUrls: ['https://example.com/menu.webp'],
+        prompt: 'menu prompt',
+        category: 'menu',
+        maxRetries: 2,
+      });
+
+      expect(mockChatCompletionsCreate).toHaveBeenCalledTimes(2);
+      expect(result.visionExtraction.menuItems).toHaveLength(1);
+    });
+
+    it('rethrows original error after exhausting all retries (preserves message)', async () => {
+      // OpenAI service は wrap せず `throw lastError` で原因 error を直接 rethrow するため
+      // (openai-vision.service.ts:292-294)、元のメッセージで判定する
+      mockChatCompletionsCreate.mockRejectedValue(new Error('persistent network error'));
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/menu.webp'],
+          prompt: 'menu prompt',
+          category: 'menu',
+          maxRetries: 2,
+        }),
+      ).rejects.toThrow(/persistent network error/);
+
+      expect(mockChatCompletionsCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it('rethrows ZodError immediately without retry (deterministic shape failure)', async () => {
+      // 不正な shape (name 欠落) を返すと VisionExtractionResultSchema.parse が ZodError を投げる
+      // 経路: buildOpenAiCompletion → JSON.stringify → service が JSON parse →
+      //       convertToMenuItem で name=undefined のまま → MenuItemSchema.name=z.string() で reject
+      mockChatCompletionsCreate.mockResolvedValue(
+        buildOpenAiCompletion({
+          menuItems: [
+            { price: 800 } as unknown as Record<string, unknown>,
+          ],
+        }),
+      );
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/menu.webp'],
+          prompt: 'menu prompt',
+          category: 'menu',
+          maxRetries: 3,
+        }),
+      ).rejects.toThrow();
+
+      // ZodError は deterministic shape failure としてリトライせず即 rethrow
+      expect(mockChatCompletionsCreate).toHaveBeenCalledTimes(1);
+    });
+  });
 });
