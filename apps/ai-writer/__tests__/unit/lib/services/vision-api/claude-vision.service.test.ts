@@ -290,12 +290,8 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
     });
 
     it('rethrows ZodError immediately without retry (deterministic shape failure)', async () => {
-      // 不正な shape (confidence が範囲外 [0, 1]) を返すと
-      // `VisionExtractionResultSchema.parse` の `z.number().min(0).max(1)` で reject される。
-      // 注: Claude の `convertToMenuItem` (claude-vision.service.ts:461) は `name` を
-      // `String(raw.name || '')` で空文字デフォルトするため `name` 欠落だけでは Zod 通過する。
-      // 一方 `confidence` は `typeof raw.confidence === 'number'` の時だけ raw 値をそのまま
-      // 通すため、999 のような out-of-range 値で確実に ZodError を発火できる。
+      // confidence: 999 violates z.number().min(0).max(1). Note: name omission alone
+      // won't fail because Claude's convertToMenuItem defaults name to '' (line 461).
       mockMessagesCreate.mockResolvedValue(
         buildClaudeMessage({
           menuItems: [
@@ -303,7 +299,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
               name: 'test',
               hasNovelty: false,
               characterName: [],
-              confidence: 999, // out-of-range (z.number().min(0).max(1)) → ZodError
+              confidence: 999,
             },
           ],
         }),

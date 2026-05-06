@@ -293,9 +293,8 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
     });
 
     it('rethrows ZodError immediately without retry (deterministic shape failure)', async () => {
-      // 不正な shape (name 欠落) を返すと VisionExtractionResultSchema.parse が ZodError を投げる
-      // 経路: buildOpenAiCompletion → JSON.stringify → service が JSON parse →
-      //       convertToMenuItem で name=undefined のまま → MenuItemSchema.name=z.string() で reject
+      // name omission triggers ZodError at MenuItemSchema.name=z.string().
+      // (Unlike Claude's service, OpenAI's convertToMenuItem doesn't default name to ''.)
       mockChatCompletionsCreate.mockResolvedValue(
         buildOpenAiCompletion({
           menuItems: [

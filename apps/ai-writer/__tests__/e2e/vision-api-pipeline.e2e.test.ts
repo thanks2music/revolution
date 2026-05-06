@@ -207,17 +207,9 @@ describe.each(PROVIDERS_TO_TEST)(
       );
     });
 
-    // Vision API spec verification: Anthropic / OpenAI Vision APIs do NOT throw
-    // an error for unreachable URLs. They return 200 OK with an empty result
-    // ("the LLM saw nothing"), which the service correctly resolves with empty
-    // arrays and confidence ~0.5. The retry/rethrow contract is covered by Layer
-    // 2 unit tests (claude-vision.service.test.ts / openai-vision.service.test.ts
-    // `error handling and retry` blocks) without API charges.
-    //
-    // This test is gated behind LIVE_API=1 because every run incurs ~$0.026 of
-    // real API charges. Default skip; explicit run for spec regression checks
-    // (e.g. before release, on Vision API model changes, quarterly).
-    // See apps/ai-writer/docs/e2e-testing.md for run guidance.
+    // Anthropic/OpenAI Vision APIs return 200 OK + empty arrays for unreachable URLs
+    // (no exception). Gated behind LIVE_API=1 — each run hits real APIs (~$0.026).
+    // Retry/rethrow contract is covered without charge by Layer 2 unit tests.
     (process.env.LIVE_API ? it : it.skip)(
       `should return empty result when image URL is unreachable (${provider})`,
       async () => {

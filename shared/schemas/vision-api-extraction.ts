@@ -27,11 +27,7 @@ export const MenuItemSchema = z.object({
   hasNovelty: z.boolean(),
   /**
    * Distribution condition for the attached novelty. (Templates v1.2)
-   *
-   * Allow `null` because OpenAI Vision tends to return `null` (instead of
-   * omitting the key) for items without an attached novelty. Without the
-   * `nullable()` modifier this triggered a ZodError on every menu fixture
-   * that mixed novelty / non-novelty items, breaking E2E.
+   * `.nullable()` because OpenAI returns `null` (not omitted) for items with no novelty.
    */
   noveltyCondition: z.string().nullable().optional(),
   /**
