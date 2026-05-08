@@ -31,7 +31,7 @@ export interface TokenUsage {
   cachedTokens?: number;
   /**
    * Tokens written to the prompt cache on this call (priced at base * 1.25 for 5m TTL).
-   * 1h TTL is intentionally out of scope for Sprint 3.5.
+   * 1h TTL is not supported.
    */
   cacheCreationTokens?: number;
 }

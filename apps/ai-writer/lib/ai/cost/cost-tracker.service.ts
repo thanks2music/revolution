@@ -146,8 +146,6 @@ export class CostTrackerService {
         console.log(`  [${step.step}]`);
         console.log(`    Model: ${step.model}`);
         console.log(`    Tokens: ${inputTokens} in / ${outputTokens} out`);
-        // Surface prompt-cache token activity when present (Sprint 3.5).
-        // Hidden by default to keep the legacy summary compact for non-cached steps.
         if (step.usage.cacheCreationTokens) {
           console.log(
             `    Cache write: ${step.usage.cacheCreationTokens.toLocaleString()} tokens ($${step.cost.breakdown.cacheCreationCost.toFixed(5)})`

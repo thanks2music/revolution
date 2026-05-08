@@ -1,19 +1,16 @@
 /**
- * Layer 1 unit tests for `calculateCost` (Sprint 3.5 — prompt cache support).
+ * Layer 1 unit tests for `calculateCost` covering prompt-cache pricing.
  *
- * Pricing assumptions used in this test (per `model-pricing.ts`):
+ * Pricing assumptions (per `model-pricing.ts` / Anthropic public pricing):
  * - claude-sonnet-4-5-20250929: input $3.00/1M, cachedInput $0.30/1M, output $15.00/1M
- * - cache creation (5m TTL): inputPer1M * 1.25 = $3.75/1M
- *
- * The cache creation multiplier (1.25x) reflects Anthropic's official pricing
- * for `cache_control: { type: 'ephemeral', ttl: '5m' }`. The 1h TTL multiplier
- * (2x) is intentionally out of scope for this Sprint.
+ * - cache creation (5m TTL ephemeral): inputPer1M * 1.25 = $3.75/1M
  */
 
 import { describe, it, expect } from '@jest/globals';
 import {
   calculateCost,
   formatCost,
+  CACHE_WRITE_5M_MULTIPLIER,
   type TokenUsage,
 } from '@/lib/ai/cost/model-pricing';
 
@@ -21,9 +18,8 @@ const CLAUDE_MODEL = 'claude-sonnet-4-5-20250929';
 const CLAUDE_INPUT_PER_M = 3.0;
 const CLAUDE_CACHED_INPUT_PER_M = 0.3;
 const CLAUDE_OUTPUT_PER_M = 15.0;
-const CACHE_WRITE_5M_MULTIPLIER = 1.25;
 
-describe('calculateCost — Sprint 3.5 cache pricing', () => {
+describe('calculateCost — prompt cache pricing', () => {
   it('calculates regular input + output cost (baseline, no cache)', () => {
     const usage: TokenUsage = {
       promptTokens: 1_000_000,
@@ -40,7 +36,7 @@ describe('calculateCost — Sprint 3.5 cache pricing', () => {
     expect(cost.usd).toBeCloseTo(CLAUDE_INPUT_PER_M + CLAUDE_OUTPUT_PER_M, 5);
   });
 
-  it('case A: applies 1.25x multiplier when only cacheCreationTokens are present', () => {
+  it('applies 1.25x multiplier when only cacheCreationTokens are present', () => {
     const usage: TokenUsage = {
       promptTokens: 0,
       completionTokens: 0,
@@ -57,7 +53,7 @@ describe('calculateCost — Sprint 3.5 cache pricing', () => {
     expect(cost.usd).toBeCloseTo(expectedCacheCreationCost, 5);
   });
 
-  it('case B: applies cachedInputPer1M (0.1x) when only cachedTokens are present (lock-in)', () => {
+  it('applies cachedInputPer1M (0.1x) when only cachedTokens are present', () => {
     const usage: TokenUsage = {
       promptTokens: 0,
       completionTokens: 0,
@@ -73,7 +69,7 @@ describe('calculateCost — Sprint 3.5 cache pricing', () => {
     expect(cost.usd).toBeCloseTo(CLAUDE_CACHED_INPUT_PER_M, 5);
   });
 
-  it('case C: sums regular input + cache creation + cache read independently', () => {
+  it('sums regular input + cache creation + cache read independently', () => {
     const usage: TokenUsage = {
       promptTokens: 500_000,         // regular @ $3/M = $1.50
       completionTokens: 100_000,     // output @ $15/M = $1.50
@@ -91,8 +87,7 @@ describe('calculateCost — Sprint 3.5 cache pricing', () => {
     expect(cost.usd).toBeCloseTo(1.5 + 1.5 + 0.75 + 0.24, 5);
   });
 
-  it('case D: breakdown.cacheCreationCost is always present (never undefined)', () => {
-    // even when no cache tokens are passed, the field should exist as 0
+  it('exposes breakdown.cacheCreationCost as 0 when no cache tokens are passed', () => {
     const cost = calculateCost(CLAUDE_MODEL, {
       promptTokens: 1000,
       completionTokens: 200,
@@ -103,7 +98,7 @@ describe('calculateCost — Sprint 3.5 cache pricing', () => {
     expect(cost.breakdown.cacheCreationCost).toBe(0);
   });
 
-  it('case E: falls back to gpt-4o-mini pricing for unknown models (lock-in)', () => {
+  it('falls back to gpt-4o-mini pricing for unknown models', () => {
     const usage: TokenUsage = {
       promptTokens: 1_000_000,
       completionTokens: 0,

@@ -224,17 +224,10 @@ export class ClaudeVisionService implements IVisionApiService {
     prompt: string,
     category: string
   ): Promise<VisionExtractionResult> {
-    // Build content array: cached static prompt first, then per-article images.
-    //
-    // Anthropic prompt cache uses prefix caching — `cache_control` on a block
-    // marks everything from the start of the message up to and including that
-    // block as cacheable. Putting the static text prompt at content[0] (with
-    // a 5m TTL ephemeral breakpoint) keeps the per-article images outside the
-    // cache prefix so cache hits are not invalidated when the image set
-    // changes between calls. With 3 categories called in parallel via
-    // `callVisionApiForAllCategories`, the first call writes the cache (1.25x
-    // base) and the remaining two read it (0.1x base), turning the strategy
-    // black on the very first reuse.
+    // Anthropic prompt cache is prefix-based: `cache_control` on a block caches
+    // everything from the start of the message up to that block. The static
+    // text prompt must precede the per-article images so image variation does
+    // not invalidate the cache prefix.
     const content: Anthropic.Messages.MessageParam['content'] = [
       {
         type: 'text',
@@ -282,8 +275,7 @@ export class ClaudeVisionService implements IVisionApiService {
       throw apiError;
     }
 
-    // Calculate and display cost. Anthropic returns cache activity as separate
-    // fields on `usage`; both may be `null` when no cache breakpoint was used.
+    // Anthropic returns null on these fields when no cache breakpoint was used.
     const cacheCreationTokens = response.usage.cache_creation_input_tokens ?? 0;
     const cachedTokens = response.usage.cache_read_input_tokens ?? 0;
     const cost = calculateCost(this.modelName, {

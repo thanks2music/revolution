@@ -319,8 +319,8 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
     });
   });
 
-  describe('Sprint 3.5 — prompt cache (request shape)', () => {
-    it('case F: places text prompt as content[0] with cache_control 5m TTL', async () => {
+  describe('prompt cache (request shape)', () => {
+    it('places text prompt as content[0] with cache_control 5m TTL', async () => {
       mockMessagesCreate.mockResolvedValueOnce(
         buildClaudeMessage({
           menuItems: [
@@ -347,7 +347,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       });
     });
 
-    it('case G: places images after the text prompt (text-first ordering)', async () => {
+    it('places images after the text prompt (text-first ordering)', async () => {
       mockMessagesCreate.mockResolvedValueOnce(
         buildClaudeMessage({
           menuItems: [],
@@ -379,7 +379,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       });
     });
 
-    it('case I: handles null cache token usage without throwing', async () => {
+    it('handles null cache token usage without throwing', async () => {
       // Anthropic responses may return null for cache token fields when no
       // cache activity occurred. The service must treat this as 0 to avoid
       // NaN / type errors in downstream cost calculation.
@@ -419,7 +419,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(result.visionExtraction.menuItems).toHaveLength(1);
     });
 
-    it('case H: propagates cache_read_input_tokens to cost calculation', async () => {
+    it('propagates cache_read_input_tokens to cost calculation', async () => {
       const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
       mockMessagesCreate.mockResolvedValueOnce({
