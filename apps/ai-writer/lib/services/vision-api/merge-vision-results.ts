@@ -88,8 +88,15 @@ function computeWeightedConfidence(results: CategoryResults): number {
 function mergeMetadata(
   allCalls: VisionExtractionResult[],
 ): VisionExtractionResult['visionExtraction']['metadata'] {
-  const tokensUsed = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  const tokensUsed = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cachedTokens: 0,
+    cacheCreationTokens: 0,
+  };
   let anyTokenUsage = false;
+  let anyCacheActivity = false;
   let totalImagesAnalyzed = 0;
   let hasComingSoonNotice = false;
 
@@ -100,6 +107,14 @@ function mergeMetadata(
       tokensUsed.promptTokens += m.tokensUsed.promptTokens;
       tokensUsed.completionTokens += m.tokensUsed.completionTokens;
       tokensUsed.totalTokens += m.tokensUsed.totalTokens;
+      if (m.tokensUsed.cachedTokens) {
+        tokensUsed.cachedTokens += m.tokensUsed.cachedTokens;
+        anyCacheActivity = true;
+      }
+      if (m.tokensUsed.cacheCreationTokens) {
+        tokensUsed.cacheCreationTokens += m.tokensUsed.cacheCreationTokens;
+        anyCacheActivity = true;
+      }
       anyTokenUsage = true;
     }
     if (typeof m.totalImagesAnalyzed === 'number') {
@@ -110,10 +125,20 @@ function mergeMetadata(
     }
   }
 
+  // Drop cache fields entirely when no provider reported cache activity to
+  // avoid surfacing zero-valued breakdown lines for non-Anthropic calls.
+  const finalTokensUsed = anyCacheActivity
+    ? tokensUsed
+    : {
+        promptTokens: tokensUsed.promptTokens,
+        completionTokens: tokensUsed.completionTokens,
+        totalTokens: tokensUsed.totalTokens,
+      };
+
   return {
     hasComingSoonNotice,
     totalImagesAnalyzed,
-    ...(anyTokenUsage ? { tokensUsed } : {}),
+    ...(anyTokenUsage ? { tokensUsed: finalTokensUsed } : {}),
   };
 }
 

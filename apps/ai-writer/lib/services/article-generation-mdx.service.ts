@@ -568,6 +568,12 @@ export class ArticleGenerationMdxService {
                   promptTokens: actualUsage.promptTokens,
                   completionTokens: actualUsage.completionTokens,
                   totalTokens: actualUsage.totalTokens,
+                  ...(actualUsage.cacheCreationTokens
+                    ? { cacheCreationTokens: actualUsage.cacheCreationTokens }
+                    : {}),
+                  ...(actualUsage.cachedTokens
+                    ? { cachedTokens: actualUsage.cachedTokens }
+                    : {}),
                   cost: `$${costResult.usd.toFixed(6)} (¥${costResult.jpy.toFixed(2)})`,
                 });
               } else {

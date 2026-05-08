@@ -146,6 +146,16 @@ export class CostTrackerService {
         console.log(`  [${step.step}]`);
         console.log(`    Model: ${step.model}`);
         console.log(`    Tokens: ${inputTokens} in / ${outputTokens} out`);
+        if (step.usage.cacheCreationTokens) {
+          console.log(
+            `    Cache write: ${step.usage.cacheCreationTokens.toLocaleString()} tokens ($${step.cost.breakdown.cacheCreationCost.toFixed(5)})`
+          );
+        }
+        if (step.usage.cachedTokens) {
+          console.log(
+            `    Cache read:  ${step.usage.cachedTokens.toLocaleString()} tokens ($${step.cost.breakdown.cachedCost.toFixed(5)})`
+          );
+        }
         console.log(`    Cost: ${costStr}`);
       }
     } else {

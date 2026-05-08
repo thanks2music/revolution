@@ -393,6 +393,9 @@ GEMINI.md
 !.claude/hooks
 !.claude/hooks/*
 
+## MCP
+.playwright-mcp/
+
 ## Speckit
 .specify/
 .specify/memory

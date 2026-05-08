@@ -27,7 +27,13 @@ export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /** Tokens served from a prior prompt-cache write (priced at cachedInputPer1M, ~0.1x base). */
   cachedTokens?: number;
+  /**
+   * Tokens written to the prompt cache on this call (priced at base * 1.25 for 5m TTL).
+   * 1h TTL is not supported.
+   */
+  cacheCreationTokens?: number;
 }
 
 export interface CostResult {
@@ -40,8 +46,12 @@ export interface CostResult {
     inputCost: number;
     outputCost: number;
     cachedCost: number;
+    cacheCreationCost: number;
   };
 }
+
+/** Anthropic prompt-cache write multiplier for 5m TTL ephemeral cache (1.25x base input). */
+export const CACHE_WRITE_5M_MULTIPLIER = 1.25;
 
 /** USD to JPY conversion rate (reference only) */
 export const USD_TO_JPY_RATE = 150;
@@ -158,8 +168,11 @@ export function calculateCost(model: string, usage: TokenUsage): CostResult {
   const cachedCost = usage.cachedTokens
     ? (usage.cachedTokens / 1_000_000) * (pricing.cachedInputPer1M || pricing.inputPer1M)
     : 0;
+  const cacheCreationCost = usage.cacheCreationTokens
+    ? (usage.cacheCreationTokens / 1_000_000) * pricing.inputPer1M * CACHE_WRITE_5M_MULTIPLIER
+    : 0;
 
-  const totalUsd = inputCost + outputCost + cachedCost;
+  const totalUsd = inputCost + outputCost + cachedCost + cacheCreationCost;
 
   return {
     usd: totalUsd,
@@ -168,6 +181,7 @@ export function calculateCost(model: string, usage: TokenUsage): CostResult {
       inputCost,
       outputCost,
       cachedCost,
+      cacheCreationCost,
     },
   };
 }
