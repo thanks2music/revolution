@@ -227,7 +227,8 @@ export class ClaudeVisionService implements IVisionApiService {
     // Anthropic prompt cache is prefix-based: `cache_control` on a block caches
     // everything from the start of the message up to that block. The static
     // text prompt must precede the per-article images so image variation does
-    // not invalidate the cache prefix.
+    // not invalidate the cache prefix. Prompts shorter than Anthropic's
+    // 1024-token minimum cacheable size are silently not cached (no error).
     const content: Anthropic.Messages.MessageParam['content'] = [
       {
         type: 'text',
@@ -334,11 +335,19 @@ export class ClaudeVisionService implements IVisionApiService {
     // Save debug log with cost information
     await this.saveLogToFile(imageUrls, prompt, category, response, rawJson, cost);
 
-    // Capture actual token usage from the API response (used by upstream cost tracking)
+    // Capture actual token usage from the API response (used by upstream cost tracking).
+    // totalTokens follows Anthropic's official definition: input + output + cache_creation + cache_read
+    // (https://docs.claude.com/en/docs/build-with-claude/prompt-caching).
     const tokensUsed = {
       promptTokens: response.usage.input_tokens,
       completionTokens: response.usage.output_tokens,
-      totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+      totalTokens:
+        response.usage.input_tokens +
+        response.usage.output_tokens +
+        cacheCreationTokens +
+        cachedTokens,
+      cachedTokens,
+      cacheCreationTokens,
     };
 
     // Convert raw response to typed VisionExtractionResult
@@ -650,8 +659,8 @@ export class ClaudeVisionService implements IVisionApiService {
       `Total Cost: $${cost.usd.toFixed(5)} (約¥${cost.jpy.toFixed(2)})`,
       `  - Input Cost: $${cost.breakdown.inputCost.toFixed(5)}`,
       `  - Output Cost: $${cost.breakdown.outputCost.toFixed(5)}`,
-      `  - Cache Creation Cost: $${cost.breakdown.cacheCreationCost.toFixed(5)} (write @ 1.25x base)`,
-      `  - Cache Read Cost: $${cost.breakdown.cachedCost.toFixed(5)} (read @ 0.1x base)`,
+      `  - Cache Creation Cost: $${cost.breakdown.cacheCreationCost.toFixed(5)}`,
+      `  - Cache Read Cost: $${cost.breakdown.cachedCost.toFixed(5)}`,
       '',
       '## Raw JSON Response',
       '-'.repeat(80),

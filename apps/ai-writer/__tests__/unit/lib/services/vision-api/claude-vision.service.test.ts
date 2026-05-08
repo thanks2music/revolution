@@ -419,6 +419,50 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(result.visionExtraction.menuItems).toHaveLength(1);
     });
 
+    it('propagates cache tokens into metadata.tokensUsed for upstream cost tracking', async () => {
+      mockMessagesCreate.mockResolvedValueOnce({
+        id: 'msg_test',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet-4-5-20250929',
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: {
+          input_tokens: 1500,
+          output_tokens: 300,
+          cache_creation_input_tokens: 200,
+          cache_read_input_tokens: 800,
+        },
+        content: [
+          {
+            type: 'text',
+            text:
+              '```json\n' +
+              JSON.stringify({
+                menuItems: [{ name: 'x', characterName: [], confidence: 0.7 }],
+              }) +
+              '\n```',
+          },
+        ],
+      });
+
+      const result = await service.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
+
+      const tokensUsed = result.visionExtraction.metadata?.tokensUsed;
+      expect(tokensUsed).toBeDefined();
+      expect(tokensUsed?.promptTokens).toBe(1500);
+      expect(tokensUsed?.completionTokens).toBe(300);
+      // totalTokens follows Anthropic's spec: input + output + cache_creation + cache_read
+      expect(tokensUsed?.totalTokens).toBe(1500 + 300 + 200 + 800);
+      expect(tokensUsed?.cacheCreationTokens).toBe(200);
+      expect(tokensUsed?.cachedTokens).toBe(800);
+    });
+
     it('propagates cache_read_input_tokens to cost calculation', async () => {
       const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
