@@ -31,7 +31,7 @@ import type {
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
 import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
-import { calculateCost, formatCost } from '@/lib/ai/cost';
+import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 /**
@@ -627,7 +627,7 @@ export class OpenAiVisionService implements IVisionApiService {
     response: string,
     usage: OpenAI.CompletionUsage | undefined,
     elapsedTime: number,
-    cost: { usd: number; jpy: number; breakdown: { inputCost: number; outputCost: number; cachedCost: number } }
+    cost: CostResult
   ): Promise<void> {
     // Skip file logging in production (Cloud Run has ephemeral filesystem;
     // logs would be lost on restart). Inline console.log/error elsewhere in

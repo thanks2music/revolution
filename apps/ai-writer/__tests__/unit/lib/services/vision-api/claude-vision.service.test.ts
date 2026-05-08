@@ -318,4 +318,153 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('Sprint 3.5 — prompt cache (request shape)', () => {
+    it('case F: places text prompt as content[0] with cache_control 5m TTL', async () => {
+      mockMessagesCreate.mockResolvedValueOnce(
+        buildClaudeMessage({
+          menuItems: [
+            { name: 'test', characterName: [], confidence: 0.9 },
+          ],
+        }),
+      );
+
+      await service.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract menu',
+        category: 'menu',
+        maxRetries: 1,
+      });
+
+      const callArgs = mockMessagesCreate.mock.calls[0][0] as {
+        messages: Array<{ content: Array<Record<string, unknown>> }>;
+      };
+      const content = callArgs.messages[0].content;
+      expect(content[0]).toMatchObject({
+        type: 'text',
+        text: 'extract menu',
+        cache_control: { type: 'ephemeral', ttl: '5m' },
+      });
+    });
+
+    it('case G: places images after the text prompt (text-first ordering)', async () => {
+      mockMessagesCreate.mockResolvedValueOnce(
+        buildClaudeMessage({
+          menuItems: [],
+        }),
+      );
+
+      await service.extractFromImages({
+        imageUrls: [
+          'https://example.com/img1.webp',
+          'https://example.com/img2.webp',
+        ],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
+
+      const content = (mockMessagesCreate.mock.calls[0][0] as {
+        messages: Array<{ content: Array<Record<string, unknown>> }>;
+      }).messages[0].content;
+      expect(content).toHaveLength(3);
+      expect(content[0].type).toBe('text');
+      expect(content[1]).toMatchObject({
+        type: 'image',
+        source: { type: 'url', url: 'https://example.com/img1.webp' },
+      });
+      expect(content[2]).toMatchObject({
+        type: 'image',
+        source: { type: 'url', url: 'https://example.com/img2.webp' },
+      });
+    });
+
+    it('case I: handles null cache token usage without throwing', async () => {
+      // Anthropic responses may return null for cache token fields when no
+      // cache activity occurred. The service must treat this as 0 to avoid
+      // NaN / type errors in downstream cost calculation.
+      mockMessagesCreate.mockResolvedValueOnce({
+        id: 'msg_test',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet-4-5-20250929',
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 500,
+          cache_creation_input_tokens: null,
+          cache_read_input_tokens: null,
+        },
+        content: [
+          {
+            type: 'text',
+            text:
+              '```json\n' +
+              JSON.stringify({
+                menuItems: [{ name: 'x', characterName: [], confidence: 0.8 }],
+              }) +
+              '\n```',
+          },
+        ],
+      });
+
+      const result = await service.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
+
+      expect(result.visionExtraction.menuItems).toHaveLength(1);
+    });
+
+    it('case H: propagates cache_read_input_tokens to cost calculation', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+      mockMessagesCreate.mockResolvedValueOnce({
+        id: 'msg_test',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet-4-5-20250929',
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          // 1M cache-read tokens × claude cachedInputPer1M ($0.30/M) = $0.30
+          cache_read_input_tokens: 1_000_000,
+        },
+        content: [
+          {
+            type: 'text',
+            text:
+              '```json\n' +
+              JSON.stringify({
+                menuItems: [{ name: 'x', characterName: [], confidence: 0.7 }],
+              }) +
+              '\n```',
+          },
+        ],
+      });
+
+      await service.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
+
+      const costLog = logSpy.mock.calls
+        .map((args) => args.map(String).join(' '))
+        .find((line) => line.includes('💰 Cost:'));
+
+      expect(costLog).toBeDefined();
+      // 1M cache_read tokens × $0.30/M = $0.3000 in formatCost output
+      expect(costLog).toMatch(/\$0\.3/);
+
+      logSpy.mockRestore();
+    });
+  });
 });

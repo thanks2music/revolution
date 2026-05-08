@@ -31,7 +31,7 @@ import type {
   NoveltyItem,
 } from '@/lib/types/vision-api';
 import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
-import { calculateCost, formatCost } from '@/lib/ai/cost';
+import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 interface RawClaudeResponse {
@@ -224,11 +224,26 @@ export class ClaudeVisionService implements IVisionApiService {
     prompt: string,
     category: string
   ): Promise<VisionExtractionResult> {
-    // Build content array: images + text prompt
-    // Claude expects images first, then text
-    const content: Anthropic.Messages.MessageParam['content'] = [];
+    // Build content array: cached static prompt first, then per-article images.
+    //
+    // Anthropic prompt cache uses prefix caching — `cache_control` on a block
+    // marks everything from the start of the message up to and including that
+    // block as cacheable. Putting the static text prompt at content[0] (with
+    // a 5m TTL ephemeral breakpoint) keeps the per-article images outside the
+    // cache prefix so cache hits are not invalidated when the image set
+    // changes between calls. With 3 categories called in parallel via
+    // `callVisionApiForAllCategories`, the first call writes the cache (1.25x
+    // base) and the remaining two read it (0.1x base), turning the strategy
+    // black on the very first reuse.
+    const content: Anthropic.Messages.MessageParam['content'] = [
+      {
+        type: 'text',
+        text: prompt,
+        cache_control: { type: 'ephemeral', ttl: '5m' },
+      },
+    ];
 
-    // Add all images with source type = url
+    // Add all images after the cached prompt block
     for (const imageUrl of imageUrls) {
       content.push({
         type: 'image',
@@ -238,12 +253,6 @@ export class ClaudeVisionService implements IVisionApiService {
         },
       });
     }
-
-    // Add text prompt
-    content.push({
-      type: 'text',
-      text: prompt,
-    });
 
     console.log(
       `[ClaudeVisionService] Calling Claude Vision API with ${imageUrls.length} images`
@@ -273,12 +282,16 @@ export class ClaudeVisionService implements IVisionApiService {
       throw apiError;
     }
 
-    // Calculate and display cost
+    // Calculate and display cost. Anthropic returns cache activity as separate
+    // fields on `usage`; both may be `null` when no cache breakpoint was used.
+    const cacheCreationTokens = response.usage.cache_creation_input_tokens ?? 0;
+    const cachedTokens = response.usage.cache_read_input_tokens ?? 0;
     const cost = calculateCost(this.modelName, {
       promptTokens: response.usage.input_tokens,
       completionTokens: response.usage.output_tokens,
       totalTokens: response.usage.input_tokens + response.usage.output_tokens,
-      cachedTokens: 0, // Claude SDK doesn't return cached tokens separately
+      cachedTokens,
+      cacheCreationTokens,
     });
     const costStr = formatCost(cost);
     console.log(`[ClaudeVisionService] 💰 Cost: ${costStr}`);
@@ -590,7 +603,7 @@ export class ClaudeVisionService implements IVisionApiService {
     category: string,
     response: Anthropic.Messages.Message,
     rawJson: RawClaudeResponse,
-    cost: { usd: number; jpy: number; breakdown: { inputCost: number; outputCost: number; cachedCost: number } }
+    cost: CostResult
   ): Promise<void> {
     // Skip file logging in production (Cloud Run has ephemeral filesystem;
     // logs would be lost on restart). Inline console.log/error elsewhere in
@@ -638,12 +651,15 @@ export class ClaudeVisionService implements IVisionApiService {
       `Stop Reason: ${response.stop_reason || 'unknown'}`,
       `Input Tokens: ${response.usage.input_tokens}`,
       `Output Tokens: ${response.usage.output_tokens}`,
+      `Cache Creation Tokens: ${response.usage.cache_creation_input_tokens ?? 0}`,
+      `Cache Read Tokens: ${response.usage.cache_read_input_tokens ?? 0}`,
       '',
       '## Cost Analysis',
       `Total Cost: $${cost.usd.toFixed(5)} (約¥${cost.jpy.toFixed(2)})`,
       `  - Input Cost: $${cost.breakdown.inputCost.toFixed(5)}`,
       `  - Output Cost: $${cost.breakdown.outputCost.toFixed(5)}`,
-      `  - Cached Cost: $${cost.breakdown.cachedCost.toFixed(5)}`,
+      `  - Cache Creation Cost: $${cost.breakdown.cacheCreationCost.toFixed(5)} (write @ 1.25x base)`,
+      `  - Cache Read Cost: $${cost.breakdown.cachedCost.toFixed(5)} (read @ 0.1x base)`,
       '',
       '## Raw JSON Response',
       '-'.repeat(80),
