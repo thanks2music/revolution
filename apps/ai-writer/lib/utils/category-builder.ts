@@ -42,7 +42,7 @@ export interface BuildCategoriesParams {
  * ```
  *
  * @see templates/config/taxonomy.yaml
- * @see notes/work-report/2025-12/2025-12-16-カテゴリの改善案について改めて行った調査内容.md
+ * @see notes/archive/category-improvement-research-2025-12-16.md
  */
 export function buildCategories(params: BuildCategoriesParams): string[] {
   const categories: string[] = [];

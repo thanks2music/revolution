@@ -773,7 +773,7 @@ export class ArticleGenerationMdxService {
 
       // metadata-generation step: Generate excerpt using AI API + build categories deterministically
       // Note: categories は AI 生成ではなく、taxonomy.yaml ルールに従って決定論的に構築
-      // @see notes/work-report/2025-12/2025-12-16-カテゴリの改善案について改めて行った調査内容.md
+      // @see notes/archive/category-improvement-research-2025-12-16.md
       console.log(`\n${getStepDisplay('metadata-generation')} AI API (${providerDisplayName}) で抜粋を生成 + カテゴリを構築...`);
 
       // 4a: AI API で excerpt のみ生成（categories は使用しない）
