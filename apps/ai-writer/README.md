@@ -4,24 +4,33 @@
 
 ## 現行パイプライン
 
-**MDX パイプライン** が本番運用モードです（2025年1月時点）。
+**MDX パイプライン** が本番運用モードです。
 
-### MDX Pipeline フロー
+### 📐 アーキテクチャ詳細
 
-```
+パイプライン全体像、18 step + 3 sub-step の責務 / 依存関係 / Layer 別 TDD 戦略との対応は
+**[`docs/architecture/pipeline.md`](../../docs/architecture/pipeline.md)** を参照してください。
+
+ステップ ID 定義の真実源は [`lib/services/pipeline-steps.ts`](./lib/services/pipeline-steps.ts) (`PIPELINE_STEPS` 配列) です。
+
+### MDX Pipeline フロー (簡略版)
+
+主要な情報の流れだけを抜粋した簡略版です。実態は 18 step + 3 sub-step (上記詳細 doc 参照)。
+
+```text
 RSS Feed
   ↓
-Claude API (workTitle/storeName/eventType 抽出)
+[1] article-selection / [2] rss-extraction / [3] detail-extraction
   ↓
-Firestore (重複チェック + ULID生成)
+[4-6] subpage-detection / category-image-extraction / vision-api (条件付)
   ↓
-Claude API (categories/excerpt 生成)
+[7] slug-generation → [8] duplication-check (Firestore)
   ↓
-MDX Article 生成 (frontmatter + 本文)
+[9] metadata-generation / [10] title-generation / [11] content-generation
   ↓
-GitHub PR 作成 (content/{event-type}/{work-slug}/{post-id}-{year}.mdx)
+[12-15] image-upload-r2 / placeholder 置換 (画像/テキスト/末尾)
   ↓
-Firestore (ステータス更新)
+[16] mdx-assembly → [17] github-pr-creation → [18] firestore-status-update
 ```
 
 ## 主要コンポーネント
@@ -215,10 +224,10 @@ DEBUG_SELECTION_PROMPT=true pnpm debug:mdx --dry-run <URL>
 
 ```bash
 # 各ステップのプロンプトを順番に確認
-DEBUG_SELECTION_PROMPT=true pnpm debug:mdx --dry-run <URL>   # Step 0.5
-DEBUG_EXTRACTION_PROMPT=true pnpm debug:mdx --dry-run <URL>  # Step 1.5
-DEBUG_TITLE_PROMPT=true pnpm debug:mdx --dry-run <URL>       # Step 4.5
-DEBUG_CONTENT_PROMPT=true pnpm debug:mdx --dry-run <URL>     # Step 5
+DEBUG_SELECTION_PROMPT=true pnpm debug:mdx --dry-run <URL>   # article-selection step
+DEBUG_EXTRACTION_PROMPT=true pnpm debug:mdx --dry-run <URL>  # detail-extraction step
+DEBUG_TITLE_PROMPT=true pnpm debug:mdx --dry-run <URL>       # title-generation step
+DEBUG_CONTENT_PROMPT=true pnpm debug:mdx --dry-run <URL>     # content-generation step
 ```
 
 ### その他のデバッグスクリプト
@@ -270,7 +279,7 @@ gcloud run deploy ai-writer \
 
 ## アーキテクチャ
 
-```
+```text
 apps/ai-writer/
 ├── app/
 │   └── api/
@@ -307,4 +316,3 @@ apps/ai-writer/
 - `headless-wp-mvp-final-20251103`: WordPress 完全版スナップショット (レガシー保存用)
 
 ---
-

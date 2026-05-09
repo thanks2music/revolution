@@ -186,10 +186,10 @@ export interface AiProvider {
    * Service layer handles prompt construction and response parsing.
    *
    * Use cases:
-   * - Article selection evaluation (Step 0.5)
-   * - Metadata generation (Step 4)
-   * - Title generation (Step 4.5)
-   * - Slug generation (Step 2)
+   * - Article selection evaluation (article-selection step)
+   * - Metadata generation (metadata-generation step)
+   * - Title generation (title-generation step)
+   * - Slug generation (slug-generation step)
    * - Future AI features (image analysis, content verification, etc.)
    *
    * @param prompt - The prompt to send to the AI

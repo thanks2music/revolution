@@ -49,7 +49,7 @@ export interface ContentGenerationRequest {
   generatedTitle: string;
   /** 公式サイトのHTMLコンテンツ（参考情報） */
   officialHtml?: string;
-  /** カテゴリ別画像情報（Step 1.7 で抽出） */
+  /** カテゴリ別画像情報（category-image-extraction step で抽出） */
   categoryImages?: CategoryImages;
 }
 

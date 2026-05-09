@@ -15,7 +15,7 @@
  * YAML テンプレート（2-extraction.yaml）で除外ルールを定義しているが、
  * AIが100%従うとは限らないため、アプリ側でも防御的にチェックする。
  *
- * マッチした場合は null を返し、フォールバック処理（Step 1 の RSS 抽出結果）に任せる。
+ * マッチした場合は null を返し、フォールバック処理（rss-extraction step の RSS 抽出結果）に任せる。
  */
 const INVALID_STORE_NAME_PATTERNS: RegExp[] = [
   // 英語の法人格

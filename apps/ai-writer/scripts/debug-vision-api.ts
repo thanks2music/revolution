@@ -192,7 +192,7 @@ Vision API デバッグツール
 注意:
   - OpenAI VisionAPI は日本語の解析精度が低いため、Claude（デフォルト）の使用を推奨
   - --category=all では入力画像をすべて 3 カテゴリ全てに渡します
-    (本番の Step 1.8 では category-image-extractor がカテゴリ別に振り分けて渡します)
+    (本番の vision-api step では category-image-extractor がカテゴリ別に振り分けて渡します)
   - Vision API サービスが自動的にログファイルを生成します（NODE_ENV != production 時のみ）
     OpenAI: logs/YYYY-MM-DD-VisionAPI-OpenAI-{domain}-{category}-{ms}.log
     Claude: logs/YYYY-MM-DD-VisionAPI-Claude-{domain}-{ms}.log
@@ -347,7 +347,7 @@ async function main() {
       console.log('🤖 Vision API 並列呼び出し中 (menu/goods/novelty)...\n');
 
       // CLI では画像をカテゴリ別に分類していないため、すべての画像を 3 カテゴリ全てに渡す。
-      // 本番の Step 1.8 では category-image-extractor.service.ts がカテゴリ別に振り分け済の
+      // 本番の vision-api step では category-image-extractor.service.ts がカテゴリ別に振り分け済の
       // categoryImages を渡すため、本 CLI とは画像の振り分け方が異なる点に注意。
       const orchestrated = await callVisionApiForAllCategories(
         visionService,

@@ -120,7 +120,7 @@ export interface EventCanonicalKey {
  * Pre-resolved slugs to avoid redundant Claude API calls
  *
  * @description
- * When slugs are already resolved (e.g., in Step 2 of the MDX pipeline),
+ * When slugs are already resolved (e.g., in slug-generation step of the MDX pipeline),
  * pass them here to skip redundant slug resolution in subsequent steps.
  *
  * @example
@@ -185,7 +185,7 @@ export interface CreateEventCanonicalKeyInput {
    * Optional: Pre-resolved slugs to avoid redundant Claude API calls
    *
    * @description
-   * If slugs are already resolved (e.g., in MDX pipeline Step 2),
+   * If slugs are already resolved (e.g., in MDX pipeline slug-generation step),
    * pass them here to skip slug resolution in checkEventDuplication/registerNewEvent.
    * This optimization reduces Claude API costs and improves performance.
    */

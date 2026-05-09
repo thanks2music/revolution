@@ -24,6 +24,7 @@ import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factor
 import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
 import { ArticleSelectionService } from './article-selection.service';
+import { getStepDisplay, getStepContext } from './pipeline-steps';
 import {
   type ArticleSelectionRequest,
   type ArticleSelectionResult,
@@ -141,25 +142,25 @@ export interface MdxGenerationResult {
     postId: string;
     year: number;
   };
-  // 公式サイトからの詳細抽出結果（Step 1.5）
+  // 公式サイトからの詳細抽出結果（detail-extraction step）
   detailedExtraction?: ExtractionResult;
-  // コンテンツ生成結果（Step 5）
+  // コンテンツ生成結果（content-generation step）
   contentGeneration?: ContentGenerationResult;
-  // OG画像アップロード結果（Step 5.5）
+  // OG画像アップロード結果（image-upload-r2 step）
   ogImageUpload?: OgImageUploadResult;
-  // 本文画像アップロード結果（Step 5.5）
+  // 本文画像アップロード結果（image-upload-r2 step）
   bodyImagesUpload?: ArticleImageUploadResult;
-  // 下層ページ検出結果（Step 1.6）
+  // 下層ページ検出結果（subpage-detection step）
   subpageDetection?: SubpageDetectionResult;
-  // カテゴリ別画像抽出結果（Step 1.7）
+  // カテゴリ別画像抽出結果（category-image-extraction step）
   categoryImages?: CategoryImages;
-  // カテゴリ別R2画像URL（Step 5.5b後）
+  // カテゴリ別R2画像URL（image-upload-r2 step (categories sub)後）
   categoryR2Images?: CategoryR2Images;
-  // 画像プレースホルダー置換結果（Step 5.7）
+  // 画像プレースホルダー置換結果（image-placeholder-replacement step）
   placeholderReplacement?: PlaceholderReplacementResult;
-  // テキストプレースホルダー置換結果（Step 5.8）
+  // テキストプレースホルダー置換結果（text-placeholder-replacement step）
   textPlaceholderReplacement?: TextPlaceholderReplacementResult;
-  // Vision API 統合結果（Step 1.8）
+  // Vision API 統合結果（vision-api step）
   visionApiResult?: {
     called: boolean;
     htmlSufficiencyCheck?: HtmlExtractionData;
@@ -190,19 +191,14 @@ export class ArticleGenerationMdxService {
    * @param request MDX生成リクエスト
    * @returns MDX生成結果
    *
-   * 処理フロー:
-   * 0.5. AI APIで記事選別（公式URL検出、採用判定）
-   * 1. AI APIでRSS記事から作品/店舗/イベント情報を抽出
-   * 1.5. AI APIで公式サイトHTMLから詳細情報を抽出（YAMLテンプレート使用）
-   * 2. YAMLコンフィグでslugを解決（フォールバック: AI API → ASCII）
-   * 3. Firestoreで重複チェック + イベント登録（status: pending）
-   * 4. AI APIでカテゴリ/抜粋を生成
-   * 4.5. AI APIでタイトルを生成（YAMLテンプレート使用）
-   * 5. AI APIで記事本文を生成（YAMLテンプレート使用）
-   * 5.5. OG画像をR2にアップロード
-   * 6. MDX記事を組み立て
-   * 7. GitHub PRを作成
-   * 8. Firestoreのステータスを更新（status: generated）
+   * 処理フローの完全な定義・順序は `./pipeline-steps.ts` の `PIPELINE_STEPS` を参照。
+   * 主要 step (id):
+   *  - article-selection / rss-extraction / detail-extraction
+   *  - subpage-detection / category-image-extraction / vision-api
+   *  - slug-generation / duplication-check
+   *  - metadata-generation / title-generation / content-generation
+   *  - image-upload-r2 / image-placeholder-replacement / text-placeholder-replacement / footer-placeholder-cleanup
+   *  - mdx-assembly / github-pr-creation / firestore-status-update
    *
    * @description
    * マルチプロバイダー対応済み（2025-12-07）
@@ -238,12 +234,12 @@ export class ArticleGenerationMdxService {
     // コストトラッカーを初期化（記事ごとに新規作成）
     const costTracker = createCostTracker(rssItem.link);
 
-    // RSS本文を取得（Step 4.5 と Step 5 で使用）
+    // RSS本文を取得（title-generation step と content-generation step で使用）
     const rawContent = rssItem.content || rssItem.contentSnippet || '';
 
     try {
-      // Step 0.5: Article selection filter (公式URL検出 + 採用判定)
-      console.log(`\n[Step 0.5/11] AI API (${providerDisplayName}) で記事選別（公式URL検出、採用判定）...`);
+      // article-selection step: Article selection filter (公式URL検出 + 採用判定)
+      console.log(`\n${getStepDisplay('article-selection')} AI API (${providerDisplayName}) で記事選別（公式URL検出、採用判定）...`);
       console.log('記事URLからHTML取得中:', rssItem.link);
 
       const articleHtml = await extractArticleHtml(rssItem.link);
@@ -270,27 +266,27 @@ export class ArticleGenerationMdxService {
 
       console.log('✅ 記事生成対象として採用');
 
-      // コストを記録（Step 0.5: ArticleSelection）
+      // コストを記録（article-selection step: ArticleSelection）
       if (selectionResult.model && selectionResult.usage) {
         costTracker.recordUsage(
-          'Step0.5_ArticleSelection',
+          'article-selection',
           selectionResult.model,
           selectionResult.usage
         );
       }
 
-      // AI メタデータを記録（Step 0.5 のモデル情報を使用）
+      // AI メタデータを記録（article-selection step のモデル情報を使用）
       // CRITICAL FIX: Handle undefined model with fallback
       const aiModel = selectionResult.model || 'unknown';
 
       console.log('🤖 AI メタデータ:', {
         provider: providerName,
         model: aiModel,
-        modelSource: selectionResult.model ? 'Step 0.5 (ArticleSelection)' : 'フォールバック (unknown)',
+        modelSource: selectionResult.model ? 'article-selection step (ArticleSelection)' : 'フォールバック (unknown)',
       });
 
-      // Step 1: Extract work/store/event information from RSS
-      console.log(`\n[Step 1/11] AI API (${providerDisplayName}) でRSS記事から作品/店舗/イベント情報を抽出...`);
+      // rss-extraction step: Extract work/store/event information from RSS
+      console.log(`\n${getStepDisplay('rss-extraction')} AI API (${providerDisplayName}) でRSS記事から作品/店舗/イベント情報を抽出...`);
 
       const extraction =
         request.extracted ||
@@ -302,28 +298,28 @@ export class ArticleGenerationMdxService {
 
       console.log('抽出結果:', extraction);
 
-      // コストを記録（Step 1: RssExtraction）
+      // コストを記録（rss-extraction step: RssExtraction）
       // Note: request.extracted が渡された場合は AI 呼び出しがないため usage がない
       // extractFromRss の戻り値のみ model と usage を持つ
       const extractionWithUsage = extraction as RssExtractionResult;
       if (!request.extracted && extractionWithUsage.usage) {
         costTracker.recordUsage(
-          'Step1_RssExtraction',
+          'rss-extraction',
           extractionWithUsage.model,
           extractionWithUsage.usage
         );
       }
 
-      // Step 1.5: Extract detailed information from official site HTML
-      console.log(`\n[Step 1.5/11] AI API (${providerDisplayName}) で公式サイトHTMLから詳細情報を抽出...`);
+      // detail-extraction step: Extract detailed information from official site HTML
+      console.log(`\n${getStepDisplay('detail-extraction')} AI API (${providerDisplayName}) で公式サイトHTMLから詳細情報を抽出...`);
 
       let detailedExtraction: ExtractionResult | undefined;
-      // 公式サイトのHTMLを保持（Step 5 と Step 5.5 で再利用）
+      // 公式サイトのHTMLを保持（content-generation step と image-upload-r2 step で再利用）
       let officialHtml: string | undefined;
 
       if (selectionResult.primary_official_url) {
         try {
-          // 公式サイトのHTMLを1回だけ取得（Step 5 と Step 5.5 で再利用）
+          // 公式サイトのHTMLを1回だけ取得（content-generation step と image-upload-r2 step で再利用）
           console.log('公式サイトURLからHTML取得中:', selectionResult.primary_official_url);
           officialHtml = await extractContentHtml(selectionResult.primary_official_url);
           console.log('公式サイトHTML取得完了:', officialHtml.length, 'bytes');
@@ -355,7 +351,7 @@ export class ArticleGenerationMdxService {
           // コストを記録
           if (detailedExtraction.model && detailedExtraction.usage) {
             costTracker.recordUsage(
-              'Step1.5_Extraction',
+              'detail-extraction',
               detailedExtraction.model,
               detailedExtraction.usage
             );
@@ -389,23 +385,23 @@ export class ArticleGenerationMdxService {
       }
 
       // ========================================
-      // 作品名の正規化（Step 1 の workTitle を canonical として使用）
+      // 作品名の正規化（rss-extraction step の workTitle を canonical として使用）
       // ========================================
-      // Step 1.5 の「作品名」はイベント名を含む場合があるため、
-      // Step 1（RSS抽出）の workTitle を正式な作品名として採用する
+      // detail-extraction step の「作品名」はイベント名を含む場合があるため、
+      // rss-extraction step（RSS抽出）の workTitle を正式な作品名として採用する
       const canonicalWorkTitle = extraction.workTitle;
 
       // 差分があればログ出力（デバッグ用）
       if (detailedExtraction.作品名 !== canonicalWorkTitle) {
         console.log('📝 作品名の正規化:', {
-          'Step 1 (canonical)': canonicalWorkTitle,
-          'Step 1.5 (参考)': detailedExtraction.作品名,
-          '差分理由': 'Step 1.5 がイベント名を含んでいる可能性あり',
+          'rss-extraction step (canonical)': canonicalWorkTitle,
+          'detail-extraction step (参考)': detailedExtraction.作品名,
+          '差分理由': 'detail-extraction step がイベント名を含んでいる可能性あり',
         });
       }
 
-      // Step 1.6: Subpage detection（下層ページ検出）
-      console.log(`\n[Step 1.6/11] 下層ページ検出（メニュー/ノベルティ/グッズ）...`);
+      // subpage-detection step: Subpage detection（下層ページ検出）
+      console.log(`\n${getStepDisplay('subpage-detection')} 下層ページ検出（メニュー/ノベルティ/グッズ）...`);
 
       let subpageDetection: SubpageDetectionResult | undefined;
       let categoryImages: CategoryImages | undefined;
@@ -414,11 +410,11 @@ export class ArticleGenerationMdxService {
         try {
           // 公式サイトHTMLからリンクを抽出
           const pageLinks = extractPageLinks(officialHtml, selectionResult.primary_official_url);
-          console.log(`[Step 1.6] 公式サイトから${pageLinks.length}件のリンクを抽出`);
+          console.log(`${getStepContext('subpage-detection')} 公式サイトから${pageLinks.length}件のリンクを抽出`);
 
           // 下層ページを検出
           const subpageService = getSubpageDetectorService();
-          // 店舗名: Step 1.5 の結果を検証し、不適切な場合は Step 1 にフォールバック
+          // 店舗名: detail-extraction step の結果を検証し、不適切な場合は rss-extraction step にフォールバック
           const storeName = validateStoreName(detailedExtraction?.店舗名) || extraction.storeName;
 
           subpageDetection = await subpageService.detectSubpages(
@@ -427,7 +423,7 @@ export class ArticleGenerationMdxService {
             pageLinks
           );
 
-          console.log('[Step 1.6] 下層ページ検出結果:', {
+          console.log(`${getStepContext('subpage-detection')} 下層ページ検出結果:`, {
             menu: subpageDetection.categoryUrls.menu?.length || 0,
             novelty: subpageDetection.categoryUrls.novelty?.length || 0,
             goods: subpageDetection.categoryUrls.goods?.length || 0,
@@ -435,17 +431,17 @@ export class ArticleGenerationMdxService {
             methods: subpageDetection.detectionMethods,
           });
 
-          // コストを記録（Step 1.6: SubpageDetection - AI使用時のみ）
+          // コストを記録（subpage-detection step: SubpageDetection - AI使用時のみ）
           if (subpageDetection.model && subpageDetection.usage) {
             costTracker.recordUsage(
-              'Step1.6_SubpageDetection',
+              'subpage-detection',
               subpageDetection.model,
               subpageDetection.usage
             );
           }
 
-          // Step 1.7: Category image extraction（カテゴリ別画像抽出）
-          console.log(`\n[Step 1.7/11] カテゴリ別画像抽出（下層ページから画像を取得）...`);
+          // category-image-extraction step: Category image extraction（カテゴリ別画像抽出）
+          console.log(`\n${getStepDisplay('category-image-extraction')} カテゴリ別画像抽出（下層ページから画像を取得）...`);
 
           const categoryImageService = getCategoryImageExtractorService();
           categoryImages = await categoryImageService.extractCategoryImages(
@@ -454,7 +450,7 @@ export class ArticleGenerationMdxService {
             subpageDetection.categoryUrls
           );
 
-          console.log('[Step 1.7] カテゴリ別画像抽出結果:', {
+          console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {
             eyecatch: categoryImages.eyecatch ? '取得済み' : 'なし',
             menu: categoryImages.menu.length,
             novelty: categoryImages.novelty.length,
@@ -466,11 +462,11 @@ export class ArticleGenerationMdxService {
           // エラーが発生しても処理は続行（既存のトップページ画像抽出にフォールバック）
         }
       } else {
-        console.log('[Step 1.6/1.7] 公式サイトHTMLがないため、下層ページ検出をスキップ');
+        console.log(`[subpage-detection/category-image-extraction] 公式サイトHTMLがないため、下層ページ検出をスキップ`);
       }
 
-      // Step 1.8: Vision API Integration (conditional)
-      console.log(`\n[Step 1.8/11] Vision API統合（HTML充足性チェック + 条件付き呼び出し）...`);
+      // vision-api step: Vision API Integration (conditional)
+      console.log(`\n${getStepDisplay('vision-api')} Vision API統合（HTML充足性チェック + 条件付き呼び出し）...`);
 
       let visionApiResult: {
         called: boolean;
@@ -482,13 +478,13 @@ export class ArticleGenerationMdxService {
       } = { called: false };
 
       if (!detailedExtraction) {
-        console.log('[Step 1.8] detailedExtraction がないため、Vision API をスキップ');
+        console.log(`${getStepContext('vision-api')} detailedExtraction がないため、Vision API をスキップ`);
       } else {
         // HTML充足性チェック
         const htmlSufficiency: HtmlExtractionData = this.calculateHtmlSufficiency(detailedExtraction);
         visionApiResult.htmlSufficiencyCheck = htmlSufficiency;
 
-        console.log('[Step 1.8] HTML充足性チェック結果:', {
+        console.log(`${getStepContext('vision-api')} HTML充足性チェック結果:`, {
           menuItemCount: htmlSufficiency.menuItemCount,
           priceCount: htmlSufficiency.priceCount,
           sufficiencyRate: `${(htmlSufficiency.htmlSufficiencyRate * 100).toFixed(1)}%`,
@@ -502,9 +498,9 @@ export class ArticleGenerationMdxService {
         );
 
         if (sufficiencyResult.isSufficient) {
-          console.log('[Step 1.8] ✅ HTML充足 → Vision API をスキップ', { reason: sufficiencyResult.reason });
+          console.log(`${getStepContext('vision-api')} ✅ HTML充足 → Vision API をスキップ`, { reason: sufficiencyResult.reason });
         } else {
-          console.log('[Step 1.8] ❌ HTML不足 → Vision API を呼び出し', { reason: sufficiencyResult.reason });
+          console.log(`${getStepContext('vision-api')} ❌ HTML不足 → Vision API を呼び出し`, { reason: sufficiencyResult.reason });
           visionApiResult.called = true;
 
           try {
@@ -516,14 +512,14 @@ export class ArticleGenerationMdxService {
                 categoryImages.novelty.length > 0);
 
             if (!hasAnyImages) {
-              console.warn('[Step 1.8] ⚠️ カテゴリ別画像なし、Vision API をスキップ');
+              console.warn(`${getStepContext('vision-api')} ⚠️ カテゴリ別画像なし、Vision API をスキップ`);
             } else {
               // Vision API サービス + Templates v1.2 YAML loader を初期化
               const visionService = VisionApiServiceFactory.create();
               const yamlLoader = new YamlTemplateLoaderService();
               const visionTemplate = await yamlLoader.loadVisionApiTemplate('collabo-cafe');
 
-              console.log('[Step 1.8] Vision API 並列呼び出し開始 (menu/goods/novelty)...');
+              console.log(`${getStepContext('vision-api')} Vision API 並列呼び出し開始 (menu/goods/novelty)...`);
 
               const { result: visionExtraction, perCategory } =
                 await callVisionApiForAllCategories(
@@ -539,7 +535,7 @@ export class ArticleGenerationMdxService {
 
               visionApiResult.visionExtraction = visionExtraction;
 
-              console.log('[Step 1.8] menu/goods/novelty 並列呼び出し完了:', {
+              console.log(`${getStepContext('vision-api')} menu/goods/novelty 並列呼び出し完了:`, {
                 confidence: visionExtraction.visionExtraction.confidence,
                 menuItems: visionExtraction.visionExtraction.menuItems.length,
                 goodsItems: visionExtraction.visionExtraction.goodsItems.length,
@@ -547,7 +543,7 @@ export class ArticleGenerationMdxService {
                 perCategory,
               });
 
-              // Cost tracking — record under one aggregate key (`Step1.8_VisionAPI`).
+              // Cost tracking — record under one aggregate key (`vision-api`).
               // The merger's `metadata.tokensUsed` is the sum across successful calls
               // and is optional (undefined when no call surfaced usage). Per-category
               // breakdown intentionally stays out of cost-tracker for now; recording it
@@ -558,11 +554,11 @@ export class ArticleGenerationMdxService {
 
               if (actualUsage) {
                 const costResult = costTracker.recordUsage(
-                  'Step1.8_VisionAPI',
+                  'vision-api',
                   modelName,
                   actualUsage,
                 );
-                console.log('[Step 1.8] Vision API コスト追跡:', {
+                console.log(`${getStepContext('vision-api')} Vision API コスト追跡:`, {
                   provider,
                   model: modelName,
                   promptTokens: actualUsage.promptTokens,
@@ -578,7 +574,7 @@ export class ArticleGenerationMdxService {
                 });
               } else {
                 console.log(
-                  '[Step 1.8] Vision API コスト追跡: tokensUsed 不在のためスキップ (全 call が usage を返さず)',
+                  `${getStepContext('vision-api')} Vision API コスト追跡: tokensUsed 不在のためスキップ (全 call が usage を返さず)`,
                 );
               }
 
@@ -586,13 +582,13 @@ export class ArticleGenerationMdxService {
               const crossCheckResult = crossCheckVisionResult(visionExtraction, htmlSufficiency);
               visionApiResult.crossCheckPassed = crossCheckResult.passed;
 
-              console.log('[Step 1.8] Cross-check 結果:', {
+              console.log(`${getStepContext('vision-api')} Cross-check 結果:`, {
                 passed: crossCheckResult.passed,
                 issues: crossCheckResult.issues,
               });
 
               if (!crossCheckResult.passed) {
-                console.warn('[Step 1.8] ⚠️ Cross-check 失敗:', crossCheckResult.issues);
+                console.warn(`${getStepContext('vision-api')} ⚠️ Cross-check 失敗:`, crossCheckResult.issues);
               }
 
               // Hallucination detection (covers menu+goods+novelty per Templates v1.2)
@@ -600,7 +596,7 @@ export class ArticleGenerationMdxService {
               visionApiResult.hallucinationDetected = hallucinationResult.detected;
 
               if (hallucinationResult.detected) {
-                console.error(`[Step 1.8] 🚨 Hallucination 検出:`, {
+                console.error(`${getStepContext('vision-api')} 🚨 Hallucination 検出:`, {
                   type: hallucinationResult.type,
                   reason: hallucinationResult.reason,
                 });
@@ -615,19 +611,19 @@ export class ArticleGenerationMdxService {
                 };
               }
 
-              console.log('[Step 1.8] ✅ Hallucination なし');
+              console.log(`${getStepContext('vision-api')} ✅ Hallucination なし`);
 
               // Fallback level selection (novelty-aware per step 3 utils 拡張)
               const fallbackLevel = selectFallbackLevel(visionExtraction);
               visionApiResult.fallbackLevel = fallbackLevel;
 
-              console.log('[Step 1.8] Fallback レベル:', fallbackLevel);
+              console.log(`${getStepContext('vision-api')} Fallback レベル:`, fallbackLevel);
 
               // Business rules validation
               const businessValidation = validateBusinessRules(visionExtraction);
 
               if (businessValidation.issues.length > 0) {
-                console.warn('[Step 1.8] ⚠️ Business rules 違反:', businessValidation.issues);
+                console.warn(`${getStepContext('vision-api')} ⚠️ Business rules 違反:`, businessValidation.issues);
 
                 // 信頼度を調整: 元の `visionExtraction` オブジェクトは mutate せず、
                 // visionApiResult.visionExtraction だけを spread copy で差し替える。
@@ -641,23 +637,23 @@ export class ArticleGenerationMdxService {
                   },
                 };
 
-                console.log('[Step 1.8] 信頼度調整:', {
+                console.log(`${getStepContext('vision-api')} 信頼度調整:`, {
                   original: originalConfidence,
                   adjusted: businessValidation.adjustedConfidence,
                 });
               }
 
-              console.log('[Step 1.8] ✅ Vision API 統合完了 (3 カテゴリ並列)');
+              console.log(`${getStepContext('vision-api')} ✅ Vision API 統合完了 (3 カテゴリ並列)`);
             }
           } catch (visionError) {
-            console.error('[Step 1.8] ❌ Vision API 呼び出し失敗:', visionError);
-            console.log('[Step 1.8] HTML抽出結果のみで記事生成を続行');
+            console.error(`${getStepContext('vision-api')} ❌ Vision API 呼び出し失敗:`, visionError);
+            console.log(`${getStepContext('vision-api')} HTML抽出結果のみで記事生成を続行`);
           }
         }
       }
 
-      // Step 2: Resolve slugs (YAML config → AI API → ASCII fallback)
-      console.log('\n[Step 2/11] YAMLコンフィグでslugを解決...');
+      // slug-generation step: Resolve slugs (YAML config → AI API → ASCII fallback)
+      console.log(`\n${getStepDisplay('slug-generation')} YAMLコンフィグでslugを解決...`);
 
       const [workSlug, storeSlug, eventType] = await Promise.all([
         resolveWorkSlug(extraction.workTitle, true, costTracker),
@@ -682,13 +678,13 @@ export class ArticleGenerationMdxService {
       // Create resolved slugs object to pass to subsequent functions
       const resolvedSlugs = { workSlug, storeSlug, eventType };
 
-      // Step 3: Firestore duplication check + event registration
+      // duplication-check step: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
 
       if (skipExternalOps) {
         // ドライラン/ローカル保存モード: 重複チェック・登録をスキップ
         const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
-        console.log(`\n[Step 3/11] Firestore重複チェック（${modeLabel}のためスキップ）...`);
+        console.log(`\n${getStepDisplay('duplication-check')} Firestore重複チェック（${modeLabel}のためスキップ）...`);
 
         // ダミーの postId を生成（タイムスタンプベース）
         const dryRunPostId = `dry-run-${Date.now()}`;
@@ -716,7 +712,7 @@ export class ArticleGenerationMdxService {
         });
       } else {
         // 通常モード: 重複チェック + 登録
-        console.log('\n[Step 3/11] Firestoreで重複チェック...');
+        console.log(`\n${getStepDisplay('duplication-check')} Firestoreで重複チェック...`);
 
         const duplicationCheck = await checkEventDuplication({
           workTitle: extraction.workTitle,
@@ -775,10 +771,10 @@ export class ArticleGenerationMdxService {
         });
       }
 
-      // Step 4: Generate excerpt using AI API + build categories deterministically
+      // metadata-generation step: Generate excerpt using AI API + build categories deterministically
       // Note: categories は AI 生成ではなく、taxonomy.yaml ルールに従って決定論的に構築
       // @see notes/work-report/2025-12/2025-12-16-カテゴリの改善案について改めて行った調査内容.md
-      console.log(`\n[Step 4/11] AI API (${providerDisplayName}) で抜粋を生成 + カテゴリを構築...`);
+      console.log(`\n${getStepDisplay('metadata-generation')} AI API (${providerDisplayName}) で抜粋を生成 + カテゴリを構築...`);
 
       // 4a: AI API で excerpt のみ生成（categories は使用しない）
       const metadata = await generateArticleMetadata({
@@ -802,7 +798,7 @@ export class ArticleGenerationMdxService {
         excerptLength: metadata.excerpt.length,
       });
 
-      // Step 4c: 開催都道府県を解決（taxonomy.yaml v1.1 areas軸対応）
+      // metadata-generation step: 開催都道府県を解決（taxonomy.yaml v1.1 areas軸対応）
       let prefectures: string[] = [];
       let prefectureSlugs: string[] = [];
 
@@ -811,36 +807,36 @@ export class ArticleGenerationMdxService {
         prefectures = resolved.prefectures;
         prefectureSlugs = resolved.slugs;
 
-        console.log('[Step 4c] 開催都道府県を解決:', {
+        console.log(`${getStepContext('metadata-generation', '開催都道府県')} 開催都道府県を解決:`, {
           input: detailedExtraction.開催都道府県,
           prefectures,
           prefectureSlugs,
         });
       } else {
-        console.log('[Step 4c] 開催都道府県: なし（抽出されていない or null）');
+        console.log(`${getStepContext('metadata-generation', '開催都道府県')} 開催都道府県: なし（抽出されていない or null）`);
       }
 
-      // コストを記録（Step 4: MetadataGeneration）
+      // コストを記録（metadata-generation step: MetadataGeneration）
       if (metadata.model && metadata.usage) {
         costTracker.recordUsage(
-          'Step4_MetadataGeneration',
+          'metadata-generation',
           metadata.model,
           metadata.usage
         );
       }
 
-      // Step 4.5: Generate title using YAML template
-      console.log(`\n[Step 4.5/11] AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
+      // title-generation step: Generate title using YAML template
+      console.log(`\n${getStepDisplay('title-generation')} AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
 
       const titleService = new TitleGenerationService();
       const titleResult = await titleService.generateTitle({
         rss_title: rssItem.title,
         rss_content: rawContent,
         rss_link: rssItem.link,
-        // Step 1.5 で抽出済みのデータを渡す（日付エラー防止）
+        // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
         extractedPeriod: detailedExtraction?.開催期間,
         extractedStoreName: detailedExtraction?.店舗名,
-        // 作品名は Step 1 の workTitle を canonical として使用
+        // 作品名は rss-extraction step の workTitle を canonical として使用
         extractedWorkName: canonicalWorkTitle,
         // v2.4.0: 作品名の略称（10文字以上の作品のみ設定）
         extractedWorkNameShort: canonicalWorkTitle
@@ -853,26 +849,26 @@ export class ArticleGenerationMdxService {
       // コストを記録
       if (titleResult.model && titleResult.usage) {
         costTracker.recordUsage(
-          'Step4.5_TitleGeneration',
+          'title-generation',
           titleResult.model,
           titleResult.usage
         );
       }
 
-      // Step 5: Generate MDX article content using ContentGenerationService
-      console.log(`\n[Step 5/11] AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用）...`);
+      // content-generation step: Generate MDX article content using ContentGenerationService
+      console.log(`\n${getStepDisplay('content-generation')} AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用）...`);
 
       // ContentGenerationService で本文を生成
       const contentService = new ContentGenerationService();
       let contentGeneration: ContentGenerationResult;
 
       try {
-        // Step 1.5 で取得した officialHtml を再利用（再取得不要）
+        // detail-extraction step で取得した officialHtml を再利用（再取得不要）
         // categoryImages を渡して、画像有無でセクションスキップを判断させる
         contentGeneration = await contentService.generateContent({
           extractedData: detailedExtraction,
           generatedTitle: titleResult.title,
-          officialHtml: officialHtml, // Step 1.5 で取得済みのHTMLを再利用
+          officialHtml: officialHtml, // detail-extraction step で取得済みのHTMLを再利用
           categoryImages: categoryImages ? {
             menu: categoryImages.menu,
             novelty: categoryImages.novelty,
@@ -886,10 +882,10 @@ export class ArticleGenerationMdxService {
           skippedSections: contentGeneration.skippedSections,
         });
 
-        // コストを記録（Step 5: ContentGeneration）
+        // コストを記録（content-generation step: ContentGeneration）
         if (contentGeneration.model && contentGeneration.usage) {
           costTracker.recordUsage(
-            'Step5_ContentGeneration',
+            'content-generation',
             contentGeneration.model,
             contentGeneration.usage
           );
@@ -904,14 +900,14 @@ export class ArticleGenerationMdxService {
         };
       }
 
-      // Step 5.5: Upload OG image and body images to R2
-      console.log('\n[Step 5.5/11] 画像をR2にアップロード（OG画像 + 本文画像）...');
+      // image-upload-r2 step: Upload OG image and body images to R2
+      console.log(`\n${getStepDisplay('image-upload-r2')} 画像をR2にアップロード（OG画像 + 本文画像）...`);
 
       let ogImageUpload: OgImageUploadResult | undefined;
       let bodyImagesUpload: ArticleImageUploadResult | undefined;
       let ogImageUrl = '/images/og-image-compressed.png'; // デフォルト画像
 
-      // カテゴリ別R2 URLを追跡（Step 5.7 で使用するためスコープを外に出す）
+      // カテゴリ別R2 URLを追跡（image-placeholder-replacement step で使用するためスコープを外に出す）
       const uploadedCategoryR2Images: CategoryR2Images = {
         menu: [],
         novelty: [],
@@ -922,7 +918,7 @@ export class ArticleGenerationMdxService {
       if (selectionResult.primary_official_url) {
         try {
           // 5.5a: OG画像のアップロード
-          console.log('\n[Step 5.5a] OG画像をアップロード...');
+          console.log(`\n${getStepContext('image-upload-r2', 'OG')} OG画像をアップロード...`);
           const ogService = getOgImageUploadService();
           ogImageUpload = await ogService.uploadFromPageUrl(
             selectionResult.primary_official_url,
@@ -935,7 +931,7 @@ export class ArticleGenerationMdxService {
 
           if (ogImageUpload.success && ogImageUpload.r2Url) {
             ogImageUrl = ogImageUpload.r2Url;
-            // Step 5.7 でアイキャッチプレースホルダー置換に使用
+            // image-placeholder-replacement step でアイキャッチプレースホルダー置換に使用
             uploadedCategoryR2Images.eyecatch = ogImageUpload.r2Url;
             console.log(`✅ OG画像アップロード完了: ${ogImageUrl}`);
           } else {
@@ -943,7 +939,7 @@ export class ArticleGenerationMdxService {
           }
 
           // 5.5b: カテゴリ別画像のアップロード
-          console.log('\n[Step 5.5b] カテゴリ別画像をアップロード...');
+          console.log(`\n${getStepContext('image-upload-r2', 'カテゴリ別')} カテゴリ別画像をアップロード...`);
 
           if (categoryImages) {
             // categoryImagesが存在する場合は、カテゴリ別にアップロード
@@ -953,11 +949,11 @@ export class ArticleGenerationMdxService {
             for (const category of ['menu', 'novelty', 'goods'] as const) {
               const sourceUrls = categoryImages[category];
               if (sourceUrls.length === 0) {
-                console.log(`[Step 5.5b] ${category}: 画像なし`);
+                console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: 画像なし`);
                 continue;
               }
 
-              console.log(`[Step 5.5b] ${category}: ${sourceUrls.length}件の画像をアップロード中...`);
+              console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${sourceUrls.length}件の画像をアップロード中...`);
 
               for (const sourceUrl of sourceUrls) {
                 try {
@@ -978,14 +974,14 @@ export class ArticleGenerationMdxService {
                 }
               }
 
-              console.log(`[Step 5.5b] ${category}: ${uploadedCategoryR2Images[category].length}件アップロード完了`);
+              console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${uploadedCategoryR2Images[category].length}件アップロード完了`);
             }
           } else if (officialHtml) {
             // フォールバック: categoryImagesがない場合は従来のHTML抽出を使用
-            console.log('[Step 5.5b] categoryImagesがないため、HTML抽出にフォールバック');
+            console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} categoryImagesがないため、HTML抽出にフォールバック`);
             const articleImageService = getArticleImageUploadService();
             bodyImagesUpload = await articleImageService.uploadFromHtml(
-              officialHtml, // Step 1.5 で取得済みのHTMLを再利用
+              officialHtml, // detail-extraction step で取得済みのHTMLを再利用
               selectionResult.primary_official_url,
               {
                 articleSlug: eventRecord.postId,
@@ -1009,14 +1005,14 @@ export class ArticleGenerationMdxService {
         console.log('⚠️ 公式サイトURLがないため、画像アップロードをスキップします');
       }
 
-      // Step 5.7: プレースホルダー置換
-      console.log('\n[Step 5.7/11] プレースホルダー置換...');
+      // image-placeholder-replacement step: プレースホルダー置換
+      console.log(`\n${getStepDisplay('image-placeholder-replacement')} プレースホルダー置換...`);
 
       let placeholderReplacement: PlaceholderReplacementResult | undefined;
       let finalContent = contentGeneration.content;
 
       // カテゴリ別R2画像またはアイキャッチ画像がある場合のみ置換を実行
-      // uploadedCategoryR2Images は Step 5.5 でアップロードされた画像のR2 URL
+      // uploadedCategoryR2Images は image-upload-r2 step でアップロードされた画像のR2 URL
       const hasR2Images =
         uploadedCategoryR2Images.menu.length > 0 ||
         uploadedCategoryR2Images.novelty.length > 0 ||
@@ -1033,21 +1029,21 @@ export class ArticleGenerationMdxService {
         );
         finalContent = placeholderReplacement.content;
 
-        console.log('[Step 5.7] プレースホルダー置換結果:', {
+        console.log(`${getStepContext('image-placeholder-replacement')} プレースホルダー置換結果:`, {
           replacedCount: placeholderReplacement.replacedCount.total,
           removedSections: placeholderReplacement.removedSections,
           unreplacedCount: placeholderReplacement.unreplacedPlaceholders.length,
         });
 
         if (placeholderReplacement.unreplacedPlaceholders.length > 0) {
-          console.warn('[Step 5.7] ⚠️ 未置換プレースホルダー:', placeholderReplacement.unreplacedPlaceholders);
+          console.warn(`${getStepContext('image-placeholder-replacement')} ⚠️ 未置換プレースホルダー:`, placeholderReplacement.unreplacedPlaceholders);
         }
       } else {
-        console.log('[Step 5.7] R2画像（カテゴリ別・アイキャッチ）なし、画像プレースホルダー置換をスキップ');
+        console.log(`${getStepContext('image-placeholder-replacement')} R2画像（カテゴリ別・アイキャッチ）なし、画像プレースホルダー置換をスキップ`);
       }
 
-      // Step 5.8: テキストプレースホルダー置換
-      console.log('\n[Step 5.8/11] テキストプレースホルダー置換...');
+      // text-placeholder-replacement step: テキストプレースホルダー置換
+      console.log(`\n${getStepDisplay('text-placeholder-replacement')} テキストプレースホルダー置換...`);
 
       let textPlaceholderReplacement: TextPlaceholderReplacementResult | undefined;
 
@@ -1074,27 +1070,27 @@ export class ArticleGenerationMdxService {
 
         finalContent = textPlaceholderReplacement.content;
 
-        console.log('[Step 5.8] テキストプレースホルダー置換結果:', {
+        console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
           unreplacedCount: textPlaceholderReplacement.unreplacedPlaceholders.length,
         });
 
         if (textPlaceholderReplacement.unreplacedPlaceholders.length > 0) {
-          console.warn('[Step 5.8] ⚠️ 未置換プレースホルダー:', textPlaceholderReplacement.unreplacedPlaceholders);
+          console.warn(`${getStepContext('text-placeholder-replacement')} ⚠️ 未置換プレースホルダー:`, textPlaceholderReplacement.unreplacedPlaceholders);
         }
       } else {
-        console.log('[Step 5.8] detailedExtraction がないため、テキストプレースホルダー置換をスキップ');
+        console.log(`${getStepContext('text-placeholder-replacement')} detailedExtraction がないため、テキストプレースホルダー置換をスキップ`);
       }
 
-      // Step 5.9: 記事末尾プレースホルダー削除
+      // footer-placeholder-cleanup step: 記事末尾プレースホルダー削除
       // Note: ナビゲーション（ピラーページリンク、注意事項）は Frontend で表示
       // @see notes/04-review/2025-12-22-Do-not-forget-YAGNI原則-AI-Writer-and-FrontEnd.md
-      console.log('\n[Step 5.9/11] 記事末尾プレースホルダー削除（Frontend で表示）...');
+      console.log(`\n${getStepDisplay('footer-placeholder-cleanup')} 記事末尾プレースホルダー削除（Frontend で表示）...`);
 
       finalContent = this.removeFooterPlaceholder(finalContent);
 
-      // Step 6: MDX記事を組み立て
-      console.log('\n[Step 6/11] MDX記事を組み立て...');
+      // mdx-assembly step: MDX記事を組み立て
+      console.log(`\n${getStepDisplay('mdx-assembly')} MDX記事を組み立て...`);
 
       // 複数作品コラボ対応: works[] から全作品タイトルを抽出
       const workTitles = detailedExtraction?.works?.map((w) => w.title) || [];
@@ -1133,14 +1129,14 @@ export class ArticleGenerationMdxService {
         prefectureSlugs: prefectureSlugs.length > 0 ? prefectureSlugs : 'なし',
       });
 
-      // Step 7: Create GitHub PR
+      // github-pr-creation step: Create GitHub PR
       let prResult: CreateMdxPrResult | undefined;
 
       if (skipExternalOps) {
         // ドライラン/ローカル保存モード: GitHub PR作成をスキップ
         const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
         const modeEmoji = localOnly ? '💾' : '🧪';
-        console.log(`\n[Step 7/11] GitHub PR作成（${modeLabel}のためスキップ）...`);
+        console.log(`\n${getStepDisplay('github-pr-creation')} GitHub PR作成（${modeLabel}のためスキップ）...`);
         console.log(`${modeEmoji} ${modeLabel}: PR作成をスキップしました`);
 
         // MDX記事の内容をプレビュー表示（全文）
@@ -1150,7 +1146,7 @@ export class ArticleGenerationMdxService {
         console.log('-'.repeat(60));
       } else {
         // 通常モード: GitHub PR作成
-        console.log('\n[Step 7/11] GitHub PRを作成...');
+        console.log(`\n${getStepDisplay('github-pr-creation')} GitHub PRを作成...`);
 
         const branchName = `ai-writer/mdx-${eventType}-${eventRecord.postId}`;
         const prTitle = `✨ Generate MDX (AI Writer): ${eventType}/${eventRecord.postId}`;
@@ -1188,16 +1184,16 @@ export class ArticleGenerationMdxService {
         });
       }
 
-      // Step 8: Update Firestore status to 'generated'
+      // firestore-status-update step: Update Firestore status to 'generated'
       if (skipExternalOps) {
         // ドライラン/ローカル保存モード: ステータス更新をスキップ
         const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
         const modeEmoji = localOnly ? '💾' : '🧪';
-        console.log(`\n[Step 8/11] Firestoreステータス更新（${modeLabel}のためスキップ）...`);
+        console.log(`\n${getStepDisplay('firestore-status-update')} Firestoreステータス更新（${modeLabel}のためスキップ）...`);
         console.log(`${modeEmoji} ${modeLabel}: ステータス更新をスキップしました`);
       } else {
         // 通常モード: ステータス更新
-        console.log('\n[Step 8/11] Firestoreのステータスを更新...');
+        console.log(`\n${getStepDisplay('firestore-status-update')} Firestoreのステータスを更新...`);
 
         await updateEventStatus(eventRecord.canonicalKey, 'generated');
 
@@ -1235,7 +1231,7 @@ export class ArticleGenerationMdxService {
         categoryR2Images: uploadedCategoryR2Images,
         placeholderReplacement,
         textPlaceholderReplacement,
-        visionApiResult, // Step 1.8 Vision API integration result
+        visionApiResult, // vision-api step Vision API integration result
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');

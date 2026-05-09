@@ -5,12 +5,15 @@
  * Tracks LLM API costs across multiple steps in a pipeline.
  * Provides per-step and total cost aggregation.
  *
+ * Step identifiers are constrained to `PipelineStepId` from `pipeline-steps.ts`
+ * so typos and stale references are caught at compile time.
+ *
  * @example
  * ```typescript
  * const tracker = new CostTrackerService();
  *
  * // Record each API call
- * tracker.recordUsage('title_generation', 'gpt-5-nano', {
+ * tracker.recordUsage('title-generation', 'gpt-5-nano', {
  *   promptTokens: 1000,
  *   completionTokens: 200,
  *   totalTokens: 1200,
@@ -28,9 +31,10 @@ import {
   TokenUsage,
   USD_TO_JPY_RATE,
 } from './model-pricing';
+import type { PipelineStepId } from '@/lib/services/pipeline-steps';
 
 export interface StepUsage {
-  step: string;
+  step: PipelineStepId;
   model: string;
   usage: TokenUsage;
   cost: CostResult;
@@ -65,12 +69,12 @@ export class CostTrackerService {
   /**
    * Record usage for a pipeline step
    *
-   * @param step - Step identifier (e.g., 'Step1.5_Extraction')
+   * @param step - Pipeline step identifier (e.g., 'detail-extraction', 'vision-api'). See `pipeline-steps.ts`.
    * @param model - Model name (e.g., 'gpt-5-nano')
    * @param usage - Token usage from API response
    * @returns Calculated cost for this step
    */
-  recordUsage(step: string, model: string, usage: TokenUsage): CostResult {
+  recordUsage(step: PipelineStepId, model: string, usage: TokenUsage): CostResult {
     const cost = calculateCost(model, usage);
 
     this.steps.push({
@@ -91,7 +95,7 @@ export class CostTrackerService {
    * Log cost for a single step
    */
   private logStepCost(
-    step: string,
+    step: PipelineStepId,
     model: string,
     usage: TokenUsage,
     cost: CostResult

@@ -47,18 +47,18 @@ export interface TitleGenerationRequest {
   rss_link: string;
 
   /**
-   * Step 1.5 で抽出済みの開催期間（オプション）
+   * detail-extraction step で抽出済みの開催期間（オプション）
    * 指定された場合、AIはこの日付を優先して使用する
    */
   extractedPeriod?: TitleEventPeriod;
 
   /**
-   * Step 1.5 で抽出済みの店舗名（オプション）
+   * detail-extraction step で抽出済みの店舗名（オプション）
    */
   extractedStoreName?: string;
 
   /**
-   * Step 1.5 で抽出済みの作品名（オプション）
+   * detail-extraction step で抽出済みの作品名（オプション）
    */
   extractedWorkName?: string;
 

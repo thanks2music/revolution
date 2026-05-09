@@ -9,7 +9,7 @@
  * import { getCostTrackerService, calculateCost, formatCost } from '@/lib/ai/cost';
  *
  * const tracker = getCostTrackerService();
- * tracker.recordUsage('step1', 'gpt-5-nano', { promptTokens: 100, completionTokens: 50, totalTokens: 150 });
+ * tracker.recordUsage('article-selection', 'gpt-5-nano', { promptTokens: 100, completionTokens: 50, totalTokens: 150 });
  * tracker.logSummary();
  * ```
  */
