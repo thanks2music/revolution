@@ -8,7 +8,7 @@
  *   - Slack通知統合
  *
  * @module lib/github/create-mdx-pr
- * @see {@link /notes/02-backlog/super-mvp-scope.md} Task 6
+ * @see {@link /notes/archive/super-mvp-scope.md} Task 6
  */
 
 import { createGitHubClient, REPO_CONFIG, wrapNetworkError } from './client';

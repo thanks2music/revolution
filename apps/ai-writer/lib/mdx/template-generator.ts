@@ -7,7 +7,7 @@
  *   - Support Phase 0.1 article generation
  *
  * @module lib/mdx/template-generator
- * @see {@link /notes/02-backlog/super-mvp-scope.md} for specification
+ * @see {@link /notes/archive/super-mvp-scope.md} for specification
  */
 
 import { join } from 'path';

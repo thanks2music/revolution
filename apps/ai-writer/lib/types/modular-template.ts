@@ -3,7 +3,7 @@
  *
  * @description
  * YAMLテンプレートをモジュール化（pipeline + sections + shared）するための型定義。
- * 設計書: notes/01-project-docs/05-ai-writer/yaml-template/01-yaml-template-modularization-design.md
+ * 設計書: notes/archive/yaml-template-modularization-design.md
  *
  * @version 1.0.0
  * @created 2025-12-07

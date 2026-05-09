@@ -7,7 +7,7 @@
  *   - Support MVP Phase 0.1 URL structure
  *
  * @module lib/config/types
- * @see {@link /notes/02-backlog/super-mvp-scope.md} for specification
+ * @see {@link /notes/archive/super-mvp-scope.md} for specification
  */
 
 /**
@@ -139,7 +139,7 @@ export interface PrefectureConfig {
  * Defines URL axes and category/tag generation rules
  * Source: /revolution-templates/ai-writer/config/taxonomy.yaml
  *
- * @see URL設計 v1.1 (/notes/01-project-docs/01-architecture/03-url-design-v1.1.md)
+ * @see URL設計 v1.1 (/notes/url-design-v1.1.md)
  *
  * @example
  * ```yaml

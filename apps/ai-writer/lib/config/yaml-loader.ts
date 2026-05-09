@@ -7,7 +7,7 @@
  *   - Ensure type safety with TypeScript interfaces
  *
  * @module lib/config/yaml-loader
- * @see {@link /notes/02-backlog/super-mvp-scope.md} for specification
+ * @see {@link /notes/archive/super-mvp-scope.md} for specification
  */
 
 import { readFileSync } from 'fs';

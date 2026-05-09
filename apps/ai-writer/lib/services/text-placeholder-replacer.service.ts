@@ -10,7 +10,7 @@
  * - 配列アクセス: {{配列[i].プロパティ}} → 値
  * - 条件分岐: {{#if 条件}}...{{else}}...{{/if}}
  *
- * @see /notes/03-report/2025-12/2025-12-21-MDX本文改善-TextPlaceholderReplacerService実装方針.md
+ * @see /notes/archive/mdx-text-placeholder-replacer-design.md
  */
 
 // v1.4.0: Type Guard & Media Type Mapper imports

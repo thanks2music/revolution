@@ -21,7 +21,7 @@
  * // null の場合
  * formatAuthorName(null) // → ''
  *
- * @see /notes/04-review/2026-01-12-01-v1.4.0設計草案v1-修正版.md
+ * @see /notes/archive/v1.4.0-design-draft.md
  * @since v1.4.0
  */
 

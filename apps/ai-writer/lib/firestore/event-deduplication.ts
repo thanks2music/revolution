@@ -7,7 +7,7 @@
  *   - Support retry logic for failed generations
  *
  * @module lib/firestore/event-deduplication
- * @see {@link /notes/02-backlog/super-mvp-scope.md} for specification
+ * @see {@link /notes/archive/super-mvp-scope.md} for specification
  */
 
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';

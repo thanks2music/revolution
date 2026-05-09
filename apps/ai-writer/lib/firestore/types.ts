@@ -7,7 +7,7 @@
  *   - Support MVP Phase 0.1 duplication prevention
  *
  * @module lib/firestore/types
- * @see {@link /notes/02-backlog/super-mvp-scope.md} for specification
+ * @see {@link /notes/archive/super-mvp-scope.md} for specification
  */
 
 import type { Timestamp } from 'firebase-admin/firestore';

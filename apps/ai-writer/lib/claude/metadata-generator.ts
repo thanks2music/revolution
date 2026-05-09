@@ -12,7 +12,7 @@
  * taxonomy.yaml v1.1 対応（2025-12-17）
  * categories は buildCategories() で決定論的に生成するため、AI 生成から除外
  * @see lib/utils/category-builder.ts
- * @see notes/01-project-docs/05-ai-writer/mdx/AI-Writer-Deterministic-Category-Generation.md
+ * @see notes/archive/ai-writer-deterministic-category.md
  *
  * @module lib/claude/metadata-generator
  */

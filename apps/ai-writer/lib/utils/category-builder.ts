@@ -5,7 +5,7 @@
  *
  * @module lib/utils/category-builder
  * @see templates/config/taxonomy.yaml
- * @see notes/01-project-docs/05-ai-writer/mdx/AI-Writer-Deterministic-Category-Generation.md
+ * @see notes/archive/ai-writer-deterministic-category.md
  */
 
 /**

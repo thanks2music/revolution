@@ -8,7 +8,7 @@
  *   - Implement fallback chain (YAML → Claude → ASCII)
  *
  * @module lib/config/slug-resolver
- * @see {@link /notes/02-backlog/super-mvp-scope.md} for specification
+ * @see {@link /notes/archive/super-mvp-scope.md} for specification
  */
 
 import { loadYamlConfig } from './yaml-loader';

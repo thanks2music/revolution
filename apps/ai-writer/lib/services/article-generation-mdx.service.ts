@@ -1084,7 +1084,7 @@ export class ArticleGenerationMdxService {
 
       // footer-placeholder-cleanup step: 記事末尾プレースホルダー削除
       // Note: ナビゲーション（ピラーページリンク、注意事項）は Frontend で表示
-      // @see notes/04-review/2025-12-22-Do-not-forget-YAGNI原則-AI-Writer-and-FrontEnd.md
+      // @see notes/soc-anti-pattern-ai-writer-frontend.md
       console.log(`\n${getStepDisplay('footer-placeholder-cleanup')} 記事末尾プレースホルダー削除（Frontend で表示）...`);
 
       finalContent = this.removeFooterPlaceholder(finalContent);
@@ -1320,7 +1320,7 @@ export class ArticleGenerationMdxService {
    * Frontend の責務として表示するため、AI Writer ではプレースホルダーを
    * 削除するのみとする。
    *
-   * @see notes/04-review/2025-12-22-Do-not-forget-YAGNI原則-AI-Writer-and-FrontEnd.md
+   * @see notes/soc-anti-pattern-ai-writer-frontend.md
    * @private
    */
   private removeFooterPlaceholder(content: string): string {

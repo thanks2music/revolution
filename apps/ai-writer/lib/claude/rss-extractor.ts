@@ -7,7 +7,7 @@
  *   - Multi-provider support via AI Factory (Anthropic, Gemini, OpenAI)
  *
  * @module lib/claude/rss-extractor
- * @see {@link /notes/02-backlog/super-mvp-scope.md} Section: MDXパイプライン本番運用のための実装漏れについて
+ * @see {@link /notes/archive/super-mvp-scope.md} Section: MDXパイプライン本番運用のための実装漏れについて
  */
 
 import { createAiProvider } from '../ai/factory/ai-factory';

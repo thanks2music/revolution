@@ -304,7 +304,7 @@ apps/ai-writer/
 
 ## 実装仕様
 
-詳細は `/notes/02-backlog/super-mvp-scope.md` を参照してください。
+詳細は `/notes/archive/super-mvp-scope.md` を参照してください。
 
 - **Phase 0.1**: MDX パイプライン実装完了
 - **Phase 0.2**: RSS 抽出ロジック実装

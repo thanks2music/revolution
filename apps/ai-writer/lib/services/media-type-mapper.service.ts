@@ -29,7 +29,7 @@
  * // ラベル取得
  * mapper.getLabel('idol')  // → 'アイドル'
  *
- * @see /notes/04-review/2026-01-12-01-v1.4.0設計草案v1-修正版.md
+ * @see /notes/archive/v1.4.0-design-draft.md
  * @see /config/media-type-mapping.yaml
  * @since v1.4.0
  */
