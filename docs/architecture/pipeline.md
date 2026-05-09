@@ -3,7 +3,7 @@
 > Revolution の AI Writer (Discovery) が RSS / URL から MDX 記事を生成するマルチステップパイプラインの全体像と各ステップの責務を定義するドキュメント。
 >
 > **真実源 (SoT)**: `apps/ai-writer/lib/services/pipeline-steps.ts` の `PIPELINE_STEPS` 配列。
-> **id は永続契約**、表示番号 (`[N/M]`) は配列長から動的算出され**中間挿入で変動**するため、過去ログとの突合は **id ベース**で行ってください。
+> **id は永続契約**、表示番号 (`[N/M]`) は配列長から動的算出され**中間挿入で変動**するため、過去ログとの突合は **id ベース**で行ってください。entry log は `[N/M id] label` (例: `[3/18 detail-extraction] 公式サイト HTML 詳細抽出`)、step 内の sub-context は `[id]` (例: `[vision-api]`) が format です。
 
 ## 目次
 
@@ -34,7 +34,7 @@ AI Writer は RSS / URL を入力として、**18 個の top-level step** + **3 
 ### 設計上の重要原則
 
 - **id は永続契約**: `'article-selection'` 等の semantic id は cost-tracker / ログ集計クエリ / 過去ログ突合のキー。renaming は破壊的変更
-- **表示番号 `[N/M]` は時系列で変動**: `PIPELINE_STEPS` 配列の中間に新規 step を追加すると `[3/18]` が `[4/19]` に変わる。表示番号で過去ログを比較してはならない
+- **表示番号 `[N/M]` は時系列で変動**: `PIPELINE_STEPS` 配列の中間に新規 step を追加すると `[3/18 id]` が `[4/19 id]` に変わる (id 部分は不変)。表示番号で過去ログを比較してはならない、grep は `id` を使う
 - **prompt cache (Sprint 3.5、PR #221) で input cost ~50% 削減見込み**: Vision API は Anthropic prompt cache (5m TTL) を使用 (`vision-api` step 内部の最適化)
 - **条件付スキップ step が 3 件**: `vision-api` (HTML 充足時)、`github-pr-creation` / `firestore-status-update` (dryRun / localOnly 時)
 

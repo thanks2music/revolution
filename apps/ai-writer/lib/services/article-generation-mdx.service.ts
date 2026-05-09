@@ -24,7 +24,7 @@ import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factor
 import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
 import { ArticleSelectionService } from './article-selection.service';
-import { getStepDisplay, getStepLabel } from './pipeline-steps';
+import { getStepDisplay, getStepContext } from './pipeline-steps';
 import {
   type ArticleSelectionRequest,
   type ArticleSelectionResult,
@@ -410,7 +410,7 @@ export class ArticleGenerationMdxService {
         try {
           // 公式サイトHTMLからリンクを抽出
           const pageLinks = extractPageLinks(officialHtml, selectionResult.primary_official_url);
-          console.log(`[${getStepLabel('subpage-detection')}] 公式サイトから${pageLinks.length}件のリンクを抽出`);
+          console.log(`${getStepContext('subpage-detection')} 公式サイトから${pageLinks.length}件のリンクを抽出`);
 
           // 下層ページを検出
           const subpageService = getSubpageDetectorService();
@@ -423,7 +423,7 @@ export class ArticleGenerationMdxService {
             pageLinks
           );
 
-          console.log(`[${getStepLabel('subpage-detection')}] 下層ページ検出結果:`, {
+          console.log(`${getStepContext('subpage-detection')} 下層ページ検出結果:`, {
             menu: subpageDetection.categoryUrls.menu?.length || 0,
             novelty: subpageDetection.categoryUrls.novelty?.length || 0,
             goods: subpageDetection.categoryUrls.goods?.length || 0,
@@ -450,7 +450,7 @@ export class ArticleGenerationMdxService {
             subpageDetection.categoryUrls
           );
 
-          console.log(`[${getStepLabel('category-image-extraction')}] カテゴリ別画像抽出結果:`, {
+          console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {
             eyecatch: categoryImages.eyecatch ? '取得済み' : 'なし',
             menu: categoryImages.menu.length,
             novelty: categoryImages.novelty.length,
@@ -462,7 +462,7 @@ export class ArticleGenerationMdxService {
           // エラーが発生しても処理は続行（既存のトップページ画像抽出にフォールバック）
         }
       } else {
-        console.log(`[${getStepLabel('subpage-detection')}/${getStepLabel('category-image-extraction')}] 公式サイトHTMLがないため、下層ページ検出をスキップ`);
+        console.log(`[subpage-detection/category-image-extraction] 公式サイトHTMLがないため、下層ページ検出をスキップ`);
       }
 
       // vision-api step: Vision API Integration (conditional)
@@ -478,13 +478,13 @@ export class ArticleGenerationMdxService {
       } = { called: false };
 
       if (!detailedExtraction) {
-        console.log(`[${getStepLabel('vision-api')}] detailedExtraction がないため、Vision API をスキップ`);
+        console.log(`${getStepContext('vision-api')} detailedExtraction がないため、Vision API をスキップ`);
       } else {
         // HTML充足性チェック
         const htmlSufficiency: HtmlExtractionData = this.calculateHtmlSufficiency(detailedExtraction);
         visionApiResult.htmlSufficiencyCheck = htmlSufficiency;
 
-        console.log(`[${getStepLabel('vision-api')}] HTML充足性チェック結果:`, {
+        console.log(`${getStepContext('vision-api')} HTML充足性チェック結果:`, {
           menuItemCount: htmlSufficiency.menuItemCount,
           priceCount: htmlSufficiency.priceCount,
           sufficiencyRate: `${(htmlSufficiency.htmlSufficiencyRate * 100).toFixed(1)}%`,
@@ -498,9 +498,9 @@ export class ArticleGenerationMdxService {
         );
 
         if (sufficiencyResult.isSufficient) {
-          console.log(`[${getStepLabel('vision-api')}] ✅ HTML充足 → Vision API をスキップ`, { reason: sufficiencyResult.reason });
+          console.log(`${getStepContext('vision-api')} ✅ HTML充足 → Vision API をスキップ`, { reason: sufficiencyResult.reason });
         } else {
-          console.log(`[${getStepLabel('vision-api')}] ❌ HTML不足 → Vision API を呼び出し`, { reason: sufficiencyResult.reason });
+          console.log(`${getStepContext('vision-api')} ❌ HTML不足 → Vision API を呼び出し`, { reason: sufficiencyResult.reason });
           visionApiResult.called = true;
 
           try {
@@ -512,14 +512,14 @@ export class ArticleGenerationMdxService {
                 categoryImages.novelty.length > 0);
 
             if (!hasAnyImages) {
-              console.warn(`[${getStepLabel('vision-api')}] ⚠️ カテゴリ別画像なし、Vision API をスキップ`);
+              console.warn(`${getStepContext('vision-api')} ⚠️ カテゴリ別画像なし、Vision API をスキップ`);
             } else {
               // Vision API サービス + Templates v1.2 YAML loader を初期化
               const visionService = VisionApiServiceFactory.create();
               const yamlLoader = new YamlTemplateLoaderService();
               const visionTemplate = await yamlLoader.loadVisionApiTemplate('collabo-cafe');
 
-              console.log(`[${getStepLabel('vision-api')}] Vision API 並列呼び出し開始 (menu/goods/novelty)...`);
+              console.log(`${getStepContext('vision-api')} Vision API 並列呼び出し開始 (menu/goods/novelty)...`);
 
               const { result: visionExtraction, perCategory } =
                 await callVisionApiForAllCategories(
@@ -535,7 +535,7 @@ export class ArticleGenerationMdxService {
 
               visionApiResult.visionExtraction = visionExtraction;
 
-              console.log(`[${getStepLabel('vision-api')}] menu/goods/novelty 並列呼び出し完了:`, {
+              console.log(`${getStepContext('vision-api')} menu/goods/novelty 並列呼び出し完了:`, {
                 confidence: visionExtraction.visionExtraction.confidence,
                 menuItems: visionExtraction.visionExtraction.menuItems.length,
                 goodsItems: visionExtraction.visionExtraction.goodsItems.length,
@@ -558,7 +558,7 @@ export class ArticleGenerationMdxService {
                   modelName,
                   actualUsage,
                 );
-                console.log(`[${getStepLabel('vision-api')}] Vision API コスト追跡:`, {
+                console.log(`${getStepContext('vision-api')} Vision API コスト追跡:`, {
                   provider,
                   model: modelName,
                   promptTokens: actualUsage.promptTokens,
@@ -574,7 +574,7 @@ export class ArticleGenerationMdxService {
                 });
               } else {
                 console.log(
-                  `[${getStepLabel('vision-api')}] Vision API コスト追跡: tokensUsed 不在のためスキップ (全 call が usage を返さず)`,
+                  `${getStepContext('vision-api')} Vision API コスト追跡: tokensUsed 不在のためスキップ (全 call が usage を返さず)`,
                 );
               }
 
@@ -582,13 +582,13 @@ export class ArticleGenerationMdxService {
               const crossCheckResult = crossCheckVisionResult(visionExtraction, htmlSufficiency);
               visionApiResult.crossCheckPassed = crossCheckResult.passed;
 
-              console.log(`[${getStepLabel('vision-api')}] Cross-check 結果:`, {
+              console.log(`${getStepContext('vision-api')} Cross-check 結果:`, {
                 passed: crossCheckResult.passed,
                 issues: crossCheckResult.issues,
               });
 
               if (!crossCheckResult.passed) {
-                console.warn(`[${getStepLabel('vision-api')}] ⚠️ Cross-check 失敗:`, crossCheckResult.issues);
+                console.warn(`${getStepContext('vision-api')} ⚠️ Cross-check 失敗:`, crossCheckResult.issues);
               }
 
               // Hallucination detection (covers menu+goods+novelty per Templates v1.2)
@@ -596,7 +596,7 @@ export class ArticleGenerationMdxService {
               visionApiResult.hallucinationDetected = hallucinationResult.detected;
 
               if (hallucinationResult.detected) {
-                console.error(`[${getStepLabel('vision-api')}] 🚨 Hallucination 検出:`, {
+                console.error(`${getStepContext('vision-api')} 🚨 Hallucination 検出:`, {
                   type: hallucinationResult.type,
                   reason: hallucinationResult.reason,
                 });
@@ -611,19 +611,19 @@ export class ArticleGenerationMdxService {
                 };
               }
 
-              console.log(`[${getStepLabel('vision-api')}] ✅ Hallucination なし`);
+              console.log(`${getStepContext('vision-api')} ✅ Hallucination なし`);
 
               // Fallback level selection (novelty-aware per step 3 utils 拡張)
               const fallbackLevel = selectFallbackLevel(visionExtraction);
               visionApiResult.fallbackLevel = fallbackLevel;
 
-              console.log(`[${getStepLabel('vision-api')}] Fallback レベル:`, fallbackLevel);
+              console.log(`${getStepContext('vision-api')} Fallback レベル:`, fallbackLevel);
 
               // Business rules validation
               const businessValidation = validateBusinessRules(visionExtraction);
 
               if (businessValidation.issues.length > 0) {
-                console.warn(`[${getStepLabel('vision-api')}] ⚠️ Business rules 違反:`, businessValidation.issues);
+                console.warn(`${getStepContext('vision-api')} ⚠️ Business rules 違反:`, businessValidation.issues);
 
                 // 信頼度を調整: 元の `visionExtraction` オブジェクトは mutate せず、
                 // visionApiResult.visionExtraction だけを spread copy で差し替える。
@@ -637,17 +637,17 @@ export class ArticleGenerationMdxService {
                   },
                 };
 
-                console.log(`[${getStepLabel('vision-api')}] 信頼度調整:`, {
+                console.log(`${getStepContext('vision-api')} 信頼度調整:`, {
                   original: originalConfidence,
                   adjusted: businessValidation.adjustedConfidence,
                 });
               }
 
-              console.log(`[${getStepLabel('vision-api')}] ✅ Vision API 統合完了 (3 カテゴリ並列)`);
+              console.log(`${getStepContext('vision-api')} ✅ Vision API 統合完了 (3 カテゴリ並列)`);
             }
           } catch (visionError) {
-            console.error(`[${getStepLabel('vision-api')}] ❌ Vision API 呼び出し失敗:`, visionError);
-            console.log(`[${getStepLabel('vision-api')}] HTML抽出結果のみで記事生成を続行`);
+            console.error(`${getStepContext('vision-api')} ❌ Vision API 呼び出し失敗:`, visionError);
+            console.log(`${getStepContext('vision-api')} HTML抽出結果のみで記事生成を続行`);
           }
         }
       }
@@ -807,13 +807,13 @@ export class ArticleGenerationMdxService {
         prefectures = resolved.prefectures;
         prefectureSlugs = resolved.slugs;
 
-        console.log(`[${getStepLabel('metadata-generation')}: 開催都道府県] 開催都道府県を解決:`, {
+        console.log(`${getStepContext('metadata-generation', '開催都道府県')} 開催都道府県を解決:`, {
           input: detailedExtraction.開催都道府県,
           prefectures,
           prefectureSlugs,
         });
       } else {
-        console.log(`[${getStepLabel('metadata-generation')}: 開催都道府県] 開催都道府県: なし（抽出されていない or null）`);
+        console.log(`${getStepContext('metadata-generation', '開催都道府県')} 開催都道府県: なし（抽出されていない or null）`);
       }
 
       // コストを記録（metadata-generation step: MetadataGeneration）
@@ -918,7 +918,7 @@ export class ArticleGenerationMdxService {
       if (selectionResult.primary_official_url) {
         try {
           // 5.5a: OG画像のアップロード
-          console.log(`\n[${getStepLabel('image-upload-r2')}: OG] OG画像をアップロード...`);
+          console.log(`\n${getStepContext('image-upload-r2', 'OG')} OG画像をアップロード...`);
           const ogService = getOgImageUploadService();
           ogImageUpload = await ogService.uploadFromPageUrl(
             selectionResult.primary_official_url,
@@ -939,7 +939,7 @@ export class ArticleGenerationMdxService {
           }
 
           // 5.5b: カテゴリ別画像のアップロード
-          console.log(`\n[${getStepLabel('image-upload-r2')}: カテゴリ別] カテゴリ別画像をアップロード...`);
+          console.log(`\n${getStepContext('image-upload-r2', 'カテゴリ別')} カテゴリ別画像をアップロード...`);
 
           if (categoryImages) {
             // categoryImagesが存在する場合は、カテゴリ別にアップロード
@@ -949,11 +949,11 @@ export class ArticleGenerationMdxService {
             for (const category of ['menu', 'novelty', 'goods'] as const) {
               const sourceUrls = categoryImages[category];
               if (sourceUrls.length === 0) {
-                console.log(`[${getStepLabel('image-upload-r2')}: カテゴリ別] ${category}: 画像なし`);
+                console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: 画像なし`);
                 continue;
               }
 
-              console.log(`[${getStepLabel('image-upload-r2')}: カテゴリ別] ${category}: ${sourceUrls.length}件の画像をアップロード中...`);
+              console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${sourceUrls.length}件の画像をアップロード中...`);
 
               for (const sourceUrl of sourceUrls) {
                 try {
@@ -974,11 +974,11 @@ export class ArticleGenerationMdxService {
                 }
               }
 
-              console.log(`[${getStepLabel('image-upload-r2')}: カテゴリ別] ${category}: ${uploadedCategoryR2Images[category].length}件アップロード完了`);
+              console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${uploadedCategoryR2Images[category].length}件アップロード完了`);
             }
           } else if (officialHtml) {
             // フォールバック: categoryImagesがない場合は従来のHTML抽出を使用
-            console.log(`[${getStepLabel('image-upload-r2')}: カテゴリ別] categoryImagesがないため、HTML抽出にフォールバック`);
+            console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} categoryImagesがないため、HTML抽出にフォールバック`);
             const articleImageService = getArticleImageUploadService();
             bodyImagesUpload = await articleImageService.uploadFromHtml(
               officialHtml, // detail-extraction step で取得済みのHTMLを再利用
@@ -1029,17 +1029,17 @@ export class ArticleGenerationMdxService {
         );
         finalContent = placeholderReplacement.content;
 
-        console.log(`[${getStepLabel('image-placeholder-replacement')}] プレースホルダー置換結果:`, {
+        console.log(`${getStepContext('image-placeholder-replacement')} プレースホルダー置換結果:`, {
           replacedCount: placeholderReplacement.replacedCount.total,
           removedSections: placeholderReplacement.removedSections,
           unreplacedCount: placeholderReplacement.unreplacedPlaceholders.length,
         });
 
         if (placeholderReplacement.unreplacedPlaceholders.length > 0) {
-          console.warn(`[${getStepLabel('image-placeholder-replacement')}] ⚠️ 未置換プレースホルダー:`, placeholderReplacement.unreplacedPlaceholders);
+          console.warn(`${getStepContext('image-placeholder-replacement')} ⚠️ 未置換プレースホルダー:`, placeholderReplacement.unreplacedPlaceholders);
         }
       } else {
-        console.log(`[${getStepLabel('image-placeholder-replacement')}] R2画像（カテゴリ別・アイキャッチ）なし、画像プレースホルダー置換をスキップ`);
+        console.log(`${getStepContext('image-placeholder-replacement')} R2画像（カテゴリ別・アイキャッチ）なし、画像プレースホルダー置換をスキップ`);
       }
 
       // text-placeholder-replacement step: テキストプレースホルダー置換
@@ -1070,16 +1070,16 @@ export class ArticleGenerationMdxService {
 
         finalContent = textPlaceholderReplacement.content;
 
-        console.log(`[${getStepLabel('text-placeholder-replacement')}] テキストプレースホルダー置換結果:`, {
+        console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
           unreplacedCount: textPlaceholderReplacement.unreplacedPlaceholders.length,
         });
 
         if (textPlaceholderReplacement.unreplacedPlaceholders.length > 0) {
-          console.warn(`[${getStepLabel('text-placeholder-replacement')}] ⚠️ 未置換プレースホルダー:`, textPlaceholderReplacement.unreplacedPlaceholders);
+          console.warn(`${getStepContext('text-placeholder-replacement')} ⚠️ 未置換プレースホルダー:`, textPlaceholderReplacement.unreplacedPlaceholders);
         }
       } else {
-        console.log(`[${getStepLabel('text-placeholder-replacement')}] detailedExtraction がないため、テキストプレースホルダー置換をスキップ`);
+        console.log(`${getStepContext('text-placeholder-replacement')} detailedExtraction がないため、テキストプレースホルダー置換をスキップ`);
       }
 
       // footer-placeholder-cleanup step: 記事末尾プレースホルダー削除

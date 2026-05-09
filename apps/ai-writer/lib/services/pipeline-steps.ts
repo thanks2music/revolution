@@ -2,7 +2,9 @@
  * Pipeline step SoT (Source of Truth).
  *
  * - `id` (semantic kebab-case) is a **persistent contract**: referenced by the
- *   cost-tracker, log aggregation queries, and historical log alignment.
+ *   cost-tracker, log aggregation queries, and historical log alignment. Both
+ *   `getStepDisplay` and `getStepContext` embed the id in the emitted log line
+ *   so Cloud Logging filters can grep on the stable identifier.
  * - The array index (display number `[N/M]`) is **time-varying**: inserting a
  *   new step in the middle changes `[3/18]` to `[4/19]`. Cross-cutting analyses
  *   should align logs by `id`, not by display number.
@@ -11,10 +13,11 @@
  * extend the schema with future-only fields like `requiresAi` until a concrete
  * caller exists (YAGNI).
  *
- * Sub-step display convention: a parent step that contains short sub-tasks
- * surfaces them as `[parent-id: sub-label]` in its own log lines, rather than
- * adding fractional / suffixed entries here. See § 2.2 of the migration plan
- * for the criteria distinguishing top-level steps from sub-contexts.
+ * Sub-step convention: a parent step that contains short sub-tasks emits
+ * follow-up log lines via `getStepContext(parent-id)` (returns `[parent-id]`)
+ * so the id stays grep-stable. The criteria for promoting a sub-task into a
+ * top-level entry vs absorbing it as a sub-context are documented at
+ * `docs/architecture/pipeline.md` → "ステップ追加時の判定基準".
  */
 
 export const PIPELINE_STEPS = [
@@ -41,24 +44,53 @@ export const PIPELINE_STEPS = [
 export type PipelineStep = typeof PIPELINE_STEPS[number];
 export type PipelineStepId = PipelineStep['id'];
 
-/** 0-based position of `id` in `PIPELINE_STEPS`. Used for display ordering. */
-export function getStepIndex(id: PipelineStepId): number {
+/**
+ * Resolve `id` to its array entry once, throwing if `PIPELINE_STEPS` has
+ * drifted (the `PipelineStepId` type already prevents unknown ids at compile
+ * time, so this guard exists only for the runtime-cast escape hatch).
+ *
+ * Centralizing here keeps `getStepIndex` / `getStepLabel` / `getStepDisplay`
+ * to a single `findIndex` pass each instead of stacking calls through
+ * `getStepIndex`.
+ */
+function resolveStep(id: PipelineStepId): { step: PipelineStep; index: number } {
   const index = PIPELINE_STEPS.findIndex((s) => s.id === id);
-  // The PipelineStepId type guarantees the id exists at compile time;
-  // we still surface a runtime error if PIPELINE_STEPS drifts under us.
   if (index === -1) {
     throw new Error(`Unknown pipeline step id: ${id}`);
   }
-  return index;
+  return { step: PIPELINE_STEPS[index], index };
+}
+
+/** 0-based position of `id` in `PIPELINE_STEPS`. */
+export function getStepIndex(id: PipelineStepId): number {
+  return resolveStep(id).index;
 }
 
 /** Human-readable label without bracket framing. */
 export function getStepLabel(id: PipelineStepId): string {
-  return PIPELINE_STEPS[getStepIndex(id)].label;
+  return resolveStep(id).step.label;
 }
 
-/** `[N/M] Label` where N is 1-based and M is the live array length. */
+/**
+ * Entry log line for a top-level step.
+ *
+ * Format: `[N/M id] label` where N is 1-based, M is the live array length,
+ * and `id` is embedded so log queries can grep on the stable identifier even
+ * after the array shifts.
+ */
 export function getStepDisplay(id: PipelineStepId): string {
-  const index = getStepIndex(id);
-  return `[${index + 1}/${PIPELINE_STEPS.length}] ${PIPELINE_STEPS[index].label}`;
+  const { step, index } = resolveStep(id);
+  return `[${index + 1}/${PIPELINE_STEPS.length} ${step.id}] ${step.label}`;
+}
+
+/**
+ * Sub-context log line emitted from inside a step (after its entry log).
+ *
+ * Format: `[id]` (no sub-label) or `[id: sub-label]` (with sub-label) — only
+ * the id is mandatory, since the entry log already showed the human label
+ * and the surrounding lines belong to the same step. Use this instead of
+ * hand-wrapping `[${getStepLabel(id)}]` so id-based grep stays consistent.
+ */
+export function getStepContext(id: PipelineStepId, subLabel?: string): string {
+  return subLabel ? `[${id}: ${subLabel}]` : `[${id}]`;
 }
