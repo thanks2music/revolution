@@ -123,7 +123,7 @@ export class TitleGenerationService {
     // YAMLテンプレートのルール定義をプロンプトに含める
     const rulesSection = this.buildRulesSection(template);
 
-    // 抽出済みデータセクション（Step 1.5 で抽出済みの情報がある場合）
+    // 抽出済みデータセクション（detail-extraction step で抽出済みの情報がある場合）
     const extractedDataSection = this.buildExtractedDataSection(request);
 
     // 最終プロンプトを構築
@@ -156,7 +156,7 @@ ${extractedDataSection}
 
   /**
    * 抽出済みデータセクションを構築
-   * Step 1.5 で抽出済みの情報がある場合、AIに優先的に使用させる
+   * detail-extraction step で抽出済みの情報がある場合、AIに優先的に使用させる
    *
    * @since v2.3.0 extractedEventNumber 追加
    * @since v2.4.0 extractedWorkNameShort 追加

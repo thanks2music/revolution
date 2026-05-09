@@ -215,10 +215,10 @@ DEBUG_SELECTION_PROMPT=true pnpm debug:mdx --dry-run <URL>
 
 ```bash
 # 各ステップのプロンプトを順番に確認
-DEBUG_SELECTION_PROMPT=true pnpm debug:mdx --dry-run <URL>   # Step 0.5
-DEBUG_EXTRACTION_PROMPT=true pnpm debug:mdx --dry-run <URL>  # Step 1.5
-DEBUG_TITLE_PROMPT=true pnpm debug:mdx --dry-run <URL>       # Step 4.5
-DEBUG_CONTENT_PROMPT=true pnpm debug:mdx --dry-run <URL>     # Step 5
+DEBUG_SELECTION_PROMPT=true pnpm debug:mdx --dry-run <URL>   # article-selection step
+DEBUG_EXTRACTION_PROMPT=true pnpm debug:mdx --dry-run <URL>  # detail-extraction step
+DEBUG_TITLE_PROMPT=true pnpm debug:mdx --dry-run <URL>       # title-generation step
+DEBUG_CONTENT_PROMPT=true pnpm debug:mdx --dry-run <URL>     # content-generation step
 ```
 
 ### その他のデバッグスクリプト

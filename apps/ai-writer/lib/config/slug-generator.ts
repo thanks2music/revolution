@@ -96,7 +96,7 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 
   // コストを記録（costTracker が渡された場合のみ）
   if (costTracker && response.model && response.usage) {
-    costTracker.recordUsage('Step2_SlugGeneration', response.model, response.usage);
+    costTracker.recordUsage('slug-generation', response.model, response.usage);
   }
 
   // Clean up response (remove any extra whitespace or formatting)
