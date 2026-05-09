@@ -42,7 +42,13 @@ Revolution プロジェクトの **公開ドキュメント** ハブ。フラッ
 
 ## 新規ドキュメントの追加方法
 
-`/revolution docs` サブスキルを使用すると、保存先 (公開 docs/ / iCloud notes/ / AI ロード llm-context/) と命名を会話形式で決定できます。詳細は `.claude/skills/revolution/references/docs/workflow.md`。
+新規ドキュメントは以下の方針で配置先を決めてください:
+
+- **公開リファレンス** (アーキ・開発・運用): `docs/<name>.md` (フラット、kebab-case)
+- **調査スナップショット** (公開可、時系列付): `docs/research/<topic>-YYYY-MM-DD.md` (gitignored)
+- **古くなった公開ドキュメント** (再活性化時のみ参照): `docs/archive/<name>.md`
+
+機密寄り・iPad 参照のメモは `notes/` (gitignored)、AI セッション必須コンテキストは `llm-context/` (gitignored、CLAUDE.md `@` 参照対象) を使用します。
 
 ## 関連ドキュメント (本リポジトリ外)
 
