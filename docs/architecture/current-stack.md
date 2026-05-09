@@ -1,7 +1,6 @@
 # 現行版 技術スタック
 
-> Revolution の現行版（MDX パイプライン / Next.js 16 / WordPress 削除済み）の技術スタック詳細。
-> WordPress 時代を含む歴史的経緯は [`ARCH-project-overview.md`](./ARCH-project-overview.md) を参照してください。
+> Revolution は MDX パイプライン + Next.js 16 で構成される技術スタック。WordPress 時代の構成は PR #212 で物理削除済 (Git 履歴で参照可能)。
 
 ## フロントエンドアプリケーション
 

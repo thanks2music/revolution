@@ -35,7 +35,7 @@
 
 Claude Codeは3つのレベルで設定ファイルを管理します：
 
-```
+```text
 1. ユーザーレベル（全プロジェクト共通）
    ~/.claude/settings.json
 
@@ -288,7 +288,7 @@ Review the following changes and provide feedback:
 
 ディレクトリ構造：
 
-```
+```text
 .claude/commands/
 ├── frontend/
 │   ├── build.md
@@ -308,7 +308,7 @@ Review the following changes and provide feedback:
 
 ### CLAUDE.mdの配置場所
 
-```
+```text
 1. プロジェクトメモリ（チーム共有）
    {project-root}/CLAUDE.md
    または
@@ -331,17 +331,18 @@ Review the following changes and provide feedback:
 
 ## Project Overview
 
-This is a monorepo project using Next.js and WordPress...
+This is a monorepo project using Next.js, MDX pipeline, and AI Writer (Cloud Run)...
 
 ## Development Commands
 
-### Frontend
+### Frontend / AI Writer
 - `pnpm dev` - Start development server
 - `pnpm build` - Build for production
+- `pnpm test` - Run Jest test suite
 
-### Backend
-- `docker-compose up -d` - Start WordPress locally
-- `pnpm deploy:backend` - Deploy to Cloud Run
+### Pipeline / AI Writer
+- `pnpm --filter @revolution/ai-writer debug:vision` - Vision API 動作確認
+- `pnpm --filter @revolution/ai-writer dry-run` - パイプラインドライラン
 
 ## Code Style Guidelines
 
@@ -352,7 +353,7 @@ This is a monorepo project using Next.js and WordPress...
 ## Important Notes
 
 - Always run `pnpm type-check` before committing
-- WordPress runs on port 8080 for Cloud Run compatibility
+- Schema-SDD: shared/schemas が真実源
 ```
 
 ### ファイルインポート機能
@@ -371,7 +372,7 @@ This is a monorepo project using Next.js and WordPress...
 
 コマンド入力時に `#` プレフィックスを使用：
 
-```
+```text
 # Remember to always use pnpm instead of npm in this project
 ```
 
@@ -670,7 +671,7 @@ Denyルールは常にAllowより優先されます：
 
 Claude Code manages settings at three levels:
 
-```
+```text
 1. User Level (Global for all projects)
    ~/.claude/settings.json
 
@@ -837,7 +838,7 @@ Usage: `/test src/utils/helpers.test.ts`
 
 ### CLAUDE.md Locations
 
-```
+```text
 1. Project Memory (Team-shared)
    {project-root}/CLAUDE.md
    or

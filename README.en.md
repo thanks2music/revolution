@@ -26,16 +26,15 @@ Built on the experience of manually creating over 10,000 articles, Revolution di
 
 | Topic | Link |
 |---|---|
-| MDX pipeline (9 steps + Mermaid diagrams) | [`docs/01-arch/ARCH-mdx-pipeline.md`](./docs/01-arch/ARCH-mdx-pipeline.md) |
-| Current tech stack | [`docs/01-arch/ARCH-current-stack.md`](./docs/01-arch/ARCH-current-stack.md) |
-| Architecture (incl. historical context) | [`docs/01-arch/`](./docs/01-arch/) |
-| Monorepo & branch protection | [`docs/02-mono/`](./docs/02-mono/) |
-| Cloud infrastructure (GCP / Cloud Run) | [`docs/03-cloud-infrastructure/`](./docs/03-cloud-infrastructure/) |
-| Frontend (Next.js 16 / type definitions) | [`docs/05-frontend/`](./docs/05-frontend/) |
-| Development & build commands | [`docs/07-build/BUILD-commands.md`](./docs/07-build/BUILD-commands.md) |
-| CI/CD (AI Writer Cloud Run / Vercel) | [`docs/08-cicd/`](./docs/08-cicd/) |
-| LLM tooling (Claude Code etc.) | [`docs/11-llm/`](./docs/11-llm/) |
-| Full document index | [`docs/README.md`](./docs/README.md) |
+| Full document index + navigation | [`docs/README.md`](./docs/README.md) |
+| Project overview & vision | [`docs/architecture/overview.md`](./docs/architecture/overview.md) |
+| Current tech stack | [`docs/architecture/current-stack.md`](./docs/architecture/current-stack.md) |
+| MDX pipeline (18 steps + Mermaid + drawio) | [`docs/architecture/pipeline.md`](./docs/architecture/pipeline.md) |
+| Monorepo (pnpm + Turborepo) | [`docs/architecture/monorepo.md`](./docs/architecture/monorepo.md) |
+| Development & build commands | [`docs/development/build.md`](./docs/development/build.md) |
+| Atomic Design components | [`docs/development/atomic-components.md`](./docs/development/atomic-components.md) |
+| AI Writer Cloud Run deploy | [`docs/operations/ai-writer-cloud-run.md`](./docs/operations/ai-writer-cloud-run.md) |
+| Claude Code settings | [`docs/development/claude-code-settings.md`](./docs/development/claude-code-settings.md) |
 
 For release notes, see [GitHub Releases](https://github.com/thanks2music/revolution/releases).
 
@@ -63,7 +62,7 @@ pnpm dev:ai-writer            # AI Writer only
 
 > 💡 If you run multiple worktrees in parallel, use `bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` to avoid port collisions. `pnpm dev` always uses the default ports (4444 / 7777).
 
-See [`docs/07-build/BUILD-commands.md`](./docs/07-build/BUILD-commands.md) for the full command reference.
+See [`docs/development/build.md`](./docs/development/build.md) for the full command reference.
 
 ## Tech Stack
 
@@ -72,11 +71,11 @@ See [`docs/07-build/BUILD-commands.md`](./docs/07-build/BUILD-commands.md) for t
 - **Infra**: Google Cloud Run / Firebase Authentication / Vercel / CloudFlare CDN
 - **Tooling**: pnpm 10 / Turbo 2.5 / Jest 30 / ESLint 9
 
-For the detailed table see [`docs/01-arch/ARCH-current-stack.md`](./docs/01-arch/ARCH-current-stack.md).
+For the detailed table see [`docs/architecture/current-stack.md`](./docs/architecture/current-stack.md).
 
 ## Project Structure
 
-```
+```text
 revolution/
 ├── apps/
 │   ├── ai-writer/   # AI article generation admin app (Next.js 16 / React 19)

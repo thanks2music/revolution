@@ -1,7 +1,6 @@
-# CI/CD: AI Writer Cloud Run 自動デプロイ
+# AI Writer Cloud Run 自動デプロイ
 
-> Revolution 現行版の **AI Writer** を GitHub Actions から Google Cloud Run へ自動デプロイするためのドキュメント。
-> WordPress 時代の Cloud Run デプロイ手順は [`CICD-cloud-run-docker-deploy.md`](./CICD-cloud-run-docker-deploy.md) に残されています（PR #117 で運用終了）。
+> Revolution 現行版の **AI Writer** を GitHub Actions から Google Cloud Run へ自動デプロイするためのドキュメント。WordPress 時代の Cloud Run デプロイ手順は PR #117 で運用終了済 (Git 履歴で参照可能)。
 
 ## ワークフロー概要
 

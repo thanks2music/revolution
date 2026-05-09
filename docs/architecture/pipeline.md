@@ -335,4 +335,4 @@ graph LR
 ### 別タスク
 
 - **Templates YAML rename** ([Todoist `6gVmcmMcFXr4CCC8`](https://app.todoist.com/app/task/6gVmcmMcFXr4CCC8)): プライベート repo `revolution-templates` 側の `1.5-vision-extraction.yaml` 等の数値接頭辞ファイル名を semantic 化する別タスク
-- **docs ディレクトリ全体リファクタ** ([Todoist `6gWVr3VgVQxWmhX8`](https://app.todoist.com/app/task/6gWVr3VgVQxWmhX8)): 旧 `docs/01-arch/` 等の連番ディレクトリを削除して flat 構造に再編する別タスク
+- **docs ディレクトリ全体リファクタ** ([Todoist `6gWVr3VgVQxWmhX8`](https://app.todoist.com/app/task/6gWVr3VgVQxWmhX8)): 連番ディレクトリ (旧 `docs/01-arch/` 等) を削除して `architecture/` / `development/` / `operations/` の浅い 3 カテゴリへ再編 (本 PR で実施)
