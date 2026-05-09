@@ -27,14 +27,12 @@ Built on the experience of manually creating over 10,000 articles, Revolution di
 | Topic | Link |
 |---|---|
 | Full document index + navigation | [`docs/README.md`](./docs/README.md) |
-| Project overview & vision | [`docs/architecture/overview.md`](./docs/architecture/overview.md) |
-| Current tech stack | [`docs/architecture/current-stack.md`](./docs/architecture/current-stack.md) |
-| MDX pipeline (18 steps + Mermaid + drawio) | [`docs/architecture/pipeline.md`](./docs/architecture/pipeline.md) |
-| Monorepo (pnpm + Turborepo) | [`docs/architecture/monorepo.md`](./docs/architecture/monorepo.md) |
-| Development & build commands | [`docs/development/build.md`](./docs/development/build.md) |
-| Atomic Design components | [`docs/development/atomic-components.md`](./docs/development/atomic-components.md) |
-| AI Writer Cloud Run deploy | [`docs/operations/ai-writer-cloud-run.md`](./docs/operations/ai-writer-cloud-run.md) |
-| Claude Code settings | [`docs/development/claude-code-settings.md`](./docs/development/claude-code-settings.md) |
+| Project overview & vision | [`docs/overview.md`](./docs/overview.md) |
+| Current tech stack | [`docs/current-stack.md`](./docs/current-stack.md) |
+| MDX pipeline (18 steps + Mermaid + drawio) | [`docs/pipeline.md`](./docs/pipeline.md) |
+| Monorepo (pnpm + Turborepo) | [`docs/monorepo.md`](./docs/monorepo.md) |
+| Development & build commands | [`docs/build.md`](./docs/build.md) |
+| AI Writer Cloud Run deploy | [`docs/ai-writer-cloud-run.md`](./docs/ai-writer-cloud-run.md) |
 
 For release notes, see [GitHub Releases](https://github.com/thanks2music/revolution/releases).
 
@@ -62,7 +60,7 @@ pnpm dev:ai-writer            # AI Writer only
 
 > 💡 If you run multiple worktrees in parallel, use `bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` to avoid port collisions. `pnpm dev` always uses the default ports (4444 / 7777).
 
-See [`docs/development/build.md`](./docs/development/build.md) for the full command reference.
+See [`docs/build.md`](./docs/build.md) for the full command reference.
 
 ## Tech Stack
 
@@ -71,7 +69,7 @@ See [`docs/development/build.md`](./docs/development/build.md) for the full comm
 - **Infra**: Google Cloud Run / Firebase Authentication / Vercel / CloudFlare CDN
 - **Tooling**: pnpm 10 / Turbo 2.5 / Jest 30 / ESLint 9
 
-For the detailed table see [`docs/architecture/current-stack.md`](./docs/architecture/current-stack.md).
+For the detailed table see [`docs/current-stack.md`](./docs/current-stack.md).
 
 ## Project Structure
 

@@ -33,7 +33,7 @@ pnpm --filter @revolution/ai-writer debug:vision
 | 対象 | コマンド |
 |---|---|
 | Frontend (Vercel) | `pnpm deploy:frontend` |
-| AI Writer (Cloud Run) | GitHub Actions 自動デプロイ ([`../operations/ai-writer-cloud-run.md`](../operations/ai-writer-cloud-run.md)) |
+| AI Writer (Cloud Run) | GitHub Actions 自動デプロイ ([`ai-writer-cloud-run.md`](./ai-writer-cloud-run.md)) |
 
 ## ドキュメント関連
 

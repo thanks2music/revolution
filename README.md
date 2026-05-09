@@ -25,14 +25,12 @@ LLM を活用した AI 記事生成パイプラインを備えた、Jamstack 構
 | Topic | Link |
 |---|---|
 | 全ドキュメント一覧 + ナビゲーション | [`docs/README.md`](./docs/README.md) |
-| プロジェクト概要・ビジョン | [`docs/architecture/overview.md`](./docs/architecture/overview.md) |
-| 現行版 技術スタック | [`docs/architecture/current-stack.md`](./docs/architecture/current-stack.md) |
-| MDX パイプライン詳細 (18 step + Mermaid + drawio) | [`docs/architecture/pipeline.md`](./docs/architecture/pipeline.md) |
-| モノレポ運用 (pnpm + Turborepo) | [`docs/architecture/monorepo.md`](./docs/architecture/monorepo.md) |
-| 開発・ビルドコマンド | [`docs/development/build.md`](./docs/development/build.md) |
-| Atomic Design コンポーネント設計 | [`docs/development/atomic-components.md`](./docs/development/atomic-components.md) |
-| AI Writer Cloud Run デプロイ | [`docs/operations/ai-writer-cloud-run.md`](./docs/operations/ai-writer-cloud-run.md) |
-| Claude Code 設定 | [`docs/development/claude-code-settings.md`](./docs/development/claude-code-settings.md) |
+| プロジェクト概要・ビジョン | [`docs/overview.md`](./docs/overview.md) |
+| 現行版 技術スタック | [`docs/current-stack.md`](./docs/current-stack.md) |
+| MDX パイプライン詳細 (18 step + Mermaid + drawio) | [`docs/pipeline.md`](./docs/pipeline.md) |
+| モノレポ運用 (pnpm + Turborepo) | [`docs/monorepo.md`](./docs/monorepo.md) |
+| 開発・ビルドコマンド | [`docs/build.md`](./docs/build.md) |
+| AI Writer Cloud Run デプロイ | [`docs/ai-writer-cloud-run.md`](./docs/ai-writer-cloud-run.md) |
 
 更新履歴は [GitHub Releases](https://github.com/thanks2music/revolution/releases) を参照してください。
 
@@ -60,7 +58,7 @@ pnpm dev:ai-writer            # AI Writer のみ
 
 > 💡 複数 worktree で同時に dev サーバーを動かす場合は port 衝突を避けるため、`bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` を使ってください。`pnpm dev` は常にデフォルト port (4444 / 7777) で起動します。
 
-詳細は [`docs/development/build.md`](./docs/development/build.md) を参照してください。
+詳細は [`docs/build.md`](./docs/build.md) を参照してください。
 
 ## Tech Stack
 
@@ -69,7 +67,7 @@ pnpm dev:ai-writer            # AI Writer のみ
 - **Infra**: Google Cloud Run / Firebase Authentication / Vercel / CloudFlare CDN
 - **Tooling**: pnpm 10 / Turbo 2.5 / Jest 30 / ESLint 9 / Husky 9
 
-詳細表は [`docs/architecture/current-stack.md`](./docs/architecture/current-stack.md) にあります。
+詳細表は [`docs/current-stack.md`](./docs/current-stack.md) にあります。
 
 ## Development tooling
 

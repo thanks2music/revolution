@@ -55,6 +55,7 @@
 
 ## 関連ドキュメント
 
-- [MDX パイプライン詳細](./ARCH-mdx-pipeline.md)
-- [プロジェクト全体アーキテクチャ（歴史的経緯）](./ARCH-project-overview.md)
-- [ビルド・開発コマンド](../07-build/BUILD-commands.md)
+- [プロジェクト概要・ビジョン](./overview.md)
+- [MDX パイプライン詳細](./pipeline.md)
+- [モノレポ構成](./monorepo.md)
+- [ビルド・開発コマンド](./build.md)

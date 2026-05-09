@@ -17,7 +17,7 @@
  * follow-up log lines via `getStepContext(parent-id)` (returns `[parent-id]`)
  * so the id stays grep-stable. The criteria for promoting a sub-task into a
  * top-level entry vs absorbing it as a sub-context are documented at
- * `docs/architecture/pipeline.md` → "ステップ追加時の判定基準".
+ * `docs/pipeline.md` → "ステップ追加時の判定基準".
  */
 
 export const PIPELINE_STEPS = [

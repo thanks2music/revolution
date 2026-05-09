@@ -40,6 +40,6 @@ revolution/
 
 ## 関連ドキュメント
 
-- ブランチ保護ルール: [`../development/branch-protection.md`](../development/branch-protection.md)
-- ビルドコマンド: [`../development/build.md`](../development/build.md)
-- AI Writer のデプロイ: [`../operations/ai-writer-cloud-run.md`](../operations/ai-writer-cloud-run.md)
+- ブランチ保護ルール: [`archive/branch-protection.md`](./archive/branch-protection.md) (archive 済、必要に応じて再活性化)
+- ビルドコマンド: [`build.md`](./build.md)
+- AI Writer のデプロイ: [`ai-writer-cloud-run.md`](./ai-writer-cloud-run.md)
