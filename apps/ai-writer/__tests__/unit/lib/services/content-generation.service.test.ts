@@ -5,7 +5,7 @@
  * content-generation.service.ts のテスト。
  * 特に、v2.3.0 で実装された YAML からのプロンプト読み込み機能をテスト。
  *
- * @see /notes/04-review/2025-12-30-02-逆提案を受けての調査報告と実装方針案.md
+ * @see /notes/prompt-management-research.md
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';

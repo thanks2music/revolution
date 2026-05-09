@@ -8,7 +8,7 @@
  * - カテゴリ別画像（menu/novelty/goods）のプレースホルダーを置換
  * - 画像がないカテゴリはセクションごと削除
  *
- * @see /notes/01-project-docs/05-ai-writer/mdx/AI-Writer-MDX-下層ページ検出とカテゴリ別画像取得の実装方針案v0.md
+ * @see /notes/archive/ai-writer-mdx-image-pipeline-design.md
  */
 
 /**

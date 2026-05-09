@@ -24,16 +24,13 @@ LLM を活用した AI 記事生成パイプラインを備えた、Jamstack 構
 
 | Topic | Link |
 |---|---|
-| MDX パイプライン詳細（N ステップ + Mermaid 図） | [`docs/01-arch/ARCH-mdx-pipeline.md`](./docs/01-arch/ARCH-mdx-pipeline.md) |
-| 現行版 技術スタック | [`docs/01-arch/ARCH-current-stack.md`](./docs/01-arch/ARCH-current-stack.md) |
-| アーキテクチャ全体（歴史的経緯含む） | [`docs/01-arch/`](./docs/01-arch/) |
-| モノレポ運用 / branch protection | [`docs/02-mono/`](./docs/02-mono/) |
-| インフラ（GCP / Cloud Run） | [`docs/03-cloud-infrastructure/`](./docs/03-cloud-infrastructure/) |
-| フロントエンド（Next.js 16 / 型定義） | [`docs/05-frontend/`](./docs/05-frontend/) |
-| 開発・ビルドコマンド | [`docs/07-build/BUILD-commands.md`](./docs/07-build/BUILD-commands.md) |
-| CI/CD（AI Writer Cloud Run / Vercel） | [`docs/08-cicd/`](./docs/08-cicd/) |
-| LLM 活用（Claude Code 設定 等） | [`docs/11-llm/`](./docs/11-llm/) |
-| 全ドキュメント一覧 | [`docs/README.md`](./docs/README.md) |
+| 全ドキュメント一覧 + ナビゲーション | [`docs/README.md`](./docs/README.md) |
+| プロジェクト概要・ビジョン | [`docs/overview.md`](./docs/overview.md) |
+| 現行版 技術スタック | [`docs/current-stack.md`](./docs/current-stack.md) |
+| MDX パイプライン詳細 (18 step + Mermaid + drawio) | [`docs/pipeline.md`](./docs/pipeline.md) |
+| モノレポ運用 (pnpm + Turborepo) | [`docs/monorepo.md`](./docs/monorepo.md) |
+| 開発・ビルドコマンド | [`docs/build.md`](./docs/build.md) |
+| AI Writer Cloud Run デプロイ | [`docs/ai-writer-cloud-run.md`](./docs/ai-writer-cloud-run.md) |
 
 更新履歴は [GitHub Releases](https://github.com/thanks2music/revolution/releases) を参照してください。
 
@@ -61,7 +58,7 @@ pnpm dev:ai-writer            # AI Writer のみ
 
 > 💡 複数 worktree で同時に dev サーバーを動かす場合は port 衝突を避けるため、`bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` を使ってください。`pnpm dev` は常にデフォルト port (4444 / 7777) で起動します。
 
-詳細は [`docs/07-build/BUILD-commands.md`](./docs/07-build/BUILD-commands.md) を参照してください。
+詳細は [`docs/build.md`](./docs/build.md) を参照してください。
 
 ## Tech Stack
 
@@ -70,7 +67,7 @@ pnpm dev:ai-writer            # AI Writer のみ
 - **Infra**: Google Cloud Run / Firebase Authentication / Vercel / CloudFlare CDN
 - **Tooling**: pnpm 10 / Turbo 2.5 / Jest 30 / ESLint 9 / Husky 9
 
-詳細表は [`docs/01-arch/ARCH-current-stack.md`](./docs/01-arch/ARCH-current-stack.md) にあります。
+詳細表は [`docs/current-stack.md`](./docs/current-stack.md) にあります。
 
 ## Development tooling
 
@@ -84,7 +81,7 @@ pnpm dev:ai-writer            # AI Writer のみ
 
 ## Project Structure
 
-```
+```text
 revolution/
 ├── apps/
 │   ├── ai-writer/   # AI 記事生成管理アプリ（Next.js 16 / React 19）

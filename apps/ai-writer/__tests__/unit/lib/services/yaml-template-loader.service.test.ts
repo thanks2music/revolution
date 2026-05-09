@@ -10,7 +10,7 @@
  * fs/promises のモックには __mocks__/fs/promises.ts を使用。
  * 実際のファイルシステムアクセスを避けてテストを実行。
  *
- * @see notes/01-project-docs/05-ai-writer/yaml-template/01-yaml-template-modularization-design.md
+ * @see notes/archive/yaml-template-modularization-design.md
  */
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';

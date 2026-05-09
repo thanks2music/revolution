@@ -1,7 +1,6 @@
-# CI/CD: AI Writer Cloud Run 自動デプロイ
+# AI Writer Cloud Run 自動デプロイ
 
-> Revolution 現行版の **AI Writer** を GitHub Actions から Google Cloud Run へ自動デプロイするためのドキュメント。
-> WordPress 時代の Cloud Run デプロイ手順は [`CICD-cloud-run-docker-deploy.md`](./CICD-cloud-run-docker-deploy.md) に残されています（PR #117 で運用終了）。
+> Revolution 現行版の **AI Writer** を GitHub Actions から Google Cloud Run へ自動デプロイするためのドキュメント。WordPress 時代の Cloud Run デプロイ手順は PR #117 で運用終了済 (Git 履歴で参照可能)。
 
 ## ワークフロー概要
 
@@ -49,9 +48,9 @@ GitHub Actions は WIF を使用して**キーレス認証**で GCP に接続し
 
 ## ヘルスチェック仕様
 
-デプロイ後、ワークフローは 30 秒待機してから `/api/health` エンドポイントを 1 回 curl し、HTTP 200 が返るかどうかだけを判定します（[`.github/workflows/deploy-ai-writer.yml`](../../.github/workflows/deploy-ai-writer.yml) の "Health check" ステップ）。
+デプロイ後、ワークフローは 30 秒待機してから `/api/health` エンドポイントを 1 回 curl し、HTTP 200 が返るかどうかだけを判定します（[`.github/workflows/deploy-ai-writer.yml`](../.github/workflows/deploy-ai-writer.yml) の "Health check" ステップ）。
 
-`/api/health` の実装（[`apps/ai-writer/app/api/health/route.ts`](../../apps/ai-writer/app/api/health/route.ts)）が実際に検証しているのは以下のみで、いずれも **環境変数の存在確認** であり外部サービスへの実接続はしていません:
+`/api/health` の実装（[`apps/ai-writer/app/api/health/route.ts`](../apps/ai-writer/app/api/health/route.ts)）が実際に検証しているのは以下のみで、いずれも **環境変数の存在確認** であり外部サービスへの実接続はしていません:
 
 - **Firebase 設定**: `NEXT_PUBLIC_FIREBASE_*` 6 種の env var が存在するか（ビルド時に埋め込まれる値のため、runtime での欠落は許容）
 - **必須シークレット**: `ALLOWED_EMAILS` / `GITHUB_PAT` / `GITHUB_OWNER` / `GITHUB_REPO`、および `GOOGLE_APPLICATION_CREDENTIALS_JSON` か個別 Firebase 変数のいずれか — Cloud Run が Secret Manager から注入した env var の有無で代用（Secret Manager API への直接接続テストは行わない）
@@ -91,5 +90,5 @@ pnpm deploy:frontend
 ## 参照
 
 - [Google Cloud Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation)
-- [現行版 技術スタック](../01-arch/ARCH-current-stack.md)
-- [MDX パイプライン詳細](../01-arch/ARCH-mdx-pipeline.md)
+- [現行版 技術スタック](./current-stack.md)
+- [MDX パイプライン詳細](./pipeline.md)

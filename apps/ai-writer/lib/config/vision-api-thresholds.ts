@@ -5,9 +5,9 @@
  * HTML extraction の充足性を判定し、Vision API を呼び出すかどうかを決定するための閾値。
  * 各閾値は 2026-01-17 に実施した 6サイト実データ分析に基づいて決定された。
  *
- * @see データ根拠: notes/03-report/2026-01/2026-01-17-05-閾値の根拠を確立-6サイト実データ結果.md
- * @see 決定プロセス: notes/03-report/2026-01/2026-01-17-06-Action4-Step3-閾値の正式決定.md
- * @see 実装方針: notes/03-report/2026-01/2026-01-17-09-Revolution側の正式回答-Templates側提案への合意.md
+ * @see データ根拠: notes/archive/vision-api-threshold-establishment.md
+ * @see 決定プロセス: notes/archive/vision-api-threshold-decision.md
+ * @see 実装方針: notes/archive/vision-api-threshold-templates-agreement.md
  *
  * @package revolution
  * @module config/vision-api-thresholds

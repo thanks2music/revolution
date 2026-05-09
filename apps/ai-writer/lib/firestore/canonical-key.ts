@@ -7,7 +7,7 @@
  *   - Support MVP Phase 0.1 duplication prevention
  *
  * @module lib/firestore/canonical-key
- * @see {@link /notes/02-backlog/super-mvp-scope.md} for specification
+ * @see {@link /notes/archive/super-mvp-scope.md} for specification
  */
 
 import { resolveWorkSlug, resolveStoreSlug, resolveEventTypeSlug } from '../config';

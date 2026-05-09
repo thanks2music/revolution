@@ -773,7 +773,7 @@ export class ArticleGenerationMdxService {
 
       // metadata-generation step: Generate excerpt using AI API + build categories deterministically
       // Note: categories は AI 生成ではなく、taxonomy.yaml ルールに従って決定論的に構築
-      // @see notes/work-report/2025-12/2025-12-16-カテゴリの改善案について改めて行った調査内容.md
+      // @see notes/archive/category-improvement-research-2025-12-16.md
       console.log(`\n${getStepDisplay('metadata-generation')} AI API (${providerDisplayName}) で抜粋を生成 + カテゴリを構築...`);
 
       // 4a: AI API で excerpt のみ生成（categories は使用しない）
@@ -1084,7 +1084,7 @@ export class ArticleGenerationMdxService {
 
       // footer-placeholder-cleanup step: 記事末尾プレースホルダー削除
       // Note: ナビゲーション（ピラーページリンク、注意事項）は Frontend で表示
-      // @see notes/04-review/2025-12-22-Do-not-forget-YAGNI原則-AI-Writer-and-FrontEnd.md
+      // @see notes/soc-anti-pattern-ai-writer-frontend.md
       console.log(`\n${getStepDisplay('footer-placeholder-cleanup')} 記事末尾プレースホルダー削除（Frontend で表示）...`);
 
       finalContent = this.removeFooterPlaceholder(finalContent);
@@ -1320,7 +1320,7 @@ export class ArticleGenerationMdxService {
    * Frontend の責務として表示するため、AI Writer ではプレースホルダーを
    * 削除するのみとする。
    *
-   * @see notes/04-review/2025-12-22-Do-not-forget-YAGNI原則-AI-Writer-and-FrontEnd.md
+   * @see notes/soc-anti-pattern-ai-writer-frontend.md
    * @private
    */
   private removeFooterPlaceholder(content: string): string {

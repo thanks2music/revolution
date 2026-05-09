@@ -9,7 +9,7 @@
 ### 📐 アーキテクチャ詳細
 
 パイプライン全体像、18 step + 3 sub-step の責務 / 依存関係 / Layer 別 TDD 戦略との対応は
-**[`docs/architecture/pipeline.md`](../../docs/architecture/pipeline.md)** を参照してください。
+**[`docs/pipeline.md`](../../docs/pipeline.md)** を参照してください。
 
 ステップ ID 定義の真実源は [`lib/services/pipeline-steps.ts`](./lib/services/pipeline-steps.ts) (`PIPELINE_STEPS` 配列) です。
 
@@ -304,7 +304,7 @@ apps/ai-writer/
 
 ## 実装仕様
 
-詳細は `/notes/02-backlog/super-mvp-scope.md` を参照してください。
+詳細は `/notes/archive/super-mvp-scope.md` を参照してください。
 
 - **Phase 0.1**: MDX パイプライン実装完了
 - **Phase 0.2**: RSS 抽出ロジック実装

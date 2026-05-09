@@ -12,7 +12,7 @@
  *   - Truncates to 10 characters for brevity
  *
  * @module lib/ulid/generate-post-id
- * @see {@link /notes/02-backlog/super-mvp-scope.md} for specification details
+ * @see {@link /notes/archive/super-mvp-scope.md} for specification details
  */
 
 import { ulid } from 'ulid';

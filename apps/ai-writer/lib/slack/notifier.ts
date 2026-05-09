@@ -7,7 +7,7 @@
  *   - エラー詳細のフォーマット済みメッセージ送信
  *
  * @module lib/slack/notifier
- * @see {@link /notes/02-backlog/super-mvp-scope.md} Task 6
+ * @see {@link /notes/archive/super-mvp-scope.md} Task 6
  */
 
 /**

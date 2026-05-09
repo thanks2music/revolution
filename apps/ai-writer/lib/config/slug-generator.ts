@@ -11,7 +11,7 @@
  * AI_PROVIDER環境変数でプロバイダーを切り替え可能
  *
  * @module lib/config/slug-generator
- * @see {@link /notes/02-backlog/super-mvp-scope.md} Section: Step 7 YAML fallback
+ * @see {@link /notes/archive/super-mvp-scope.md} Section: Step 7 YAML fallback
  */
 
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';

@@ -6,7 +6,7 @@
  * 単一ファイルテンプレート（従来）とモジュール化テンプレート（新）の両方に対応。
  * モジュール化テンプレートは loadModularTemplate() で読み込む。
  *
- * @see notes/01-project-docs/05-ai-writer/yaml-template/01-yaml-template-modularization-design.md
+ * @see notes/archive/yaml-template-modularization-design.md
  */
 
 import fs from 'fs/promises';
