@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { StatusBadge, type EventStatus } from '@/components/atoms/badge/StatusBadge';
 import type { ArticleIndexItem } from '@/lib/mdx/articles';
 
@@ -66,7 +67,7 @@ export const EventFactCard = ({ article }: Props) => {
     ? article.official_url
     : undefined;
 
-  const rows: Array<{ label: string; value: React.ReactNode; mono?: boolean; emphasis?: boolean }> = [
+  const rows: Array<{ label: string; value: ReactNode; mono?: boolean; emphasis?: boolean }> = [
     article.work_title ? { label: '作品', value: article.work_title, emphasis: true } : null,
     article.event_title ? { label: 'タイプ', value: article.event_title } : null,
     period ? { label: '開催期間', value: period, mono: true } : null,

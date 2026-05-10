@@ -7,11 +7,11 @@ type Props = {
   layout?: 'auto' | 'grid';
 };
 
-const COLS_BY_COUNT: Record<1 | 2, string> = {
-  1: 'md:grid-cols-1',
-  2: 'md:grid-cols-2',
+const gridClass = (count: number): string => {
+  if (count === 1) return 'md:grid-cols-1';
+  if (count === 2) return 'md:grid-cols-2';
+  return 'md:grid-cols-2 lg:grid-cols-3';
 };
-const gridClass = (count: number) => COLS_BY_COUNT[count as 1 | 2] ?? 'md:grid-cols-2 lg:grid-cols-3';
 
 export const ArticleGrid = ({ articles, layout = 'auto' }: Props) => {
   if (articles.length === 0) {
@@ -29,7 +29,7 @@ export const ArticleGrid = ({ articles, layout = 'auto' }: Props) => {
   return (
     <div className={`grid grid-cols-1 ${gridClass(articles.length)} gap-5 md:gap-6`}>
       {articles.map((article) => (
-        <ArticleCard key={article.slug} article={article} />
+        <ArticleCard key={article.filePath} article={article} />
       ))}
     </div>
   );

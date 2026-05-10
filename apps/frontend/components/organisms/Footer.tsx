@@ -51,9 +51,9 @@ const Footer = () => {
 
           {columns.map((column) => (
             <div key={column.title}>
-              <h2 className="font-display mb-4 text-xs tracking-[0.18em] text-ink-muted uppercase">
+              <h3 className="font-display mb-4 text-xs tracking-[0.18em] text-ink-muted uppercase">
                 {column.title}
-              </h2>
+              </h3>
               <ul className="space-y-2.5">
                 {column.items.map((item) => (
                   <li key={item.name}>

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { SparkRule } from '@/components/atoms/ornament/SparkRule';
 
 type Props = {
@@ -5,7 +6,7 @@ type Props = {
   title: string;
   subtitle?: string;
   /** Right-aligned slot — e.g. "View all" link */
-  action?: React.ReactNode;
+  action?: ReactNode;
   /** Title heading level. Default: h2 */
   level?: 'h1' | 'h2' | 'h3';
 };
