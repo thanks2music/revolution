@@ -1,73 +1,73 @@
 import Layout from '@/components/templates/Layout';
 import { Metadata } from 'next';
-import { getLatestArticles, getArticleUrl } from '@/lib/mdx/articles';
 import Link from 'next/link';
+import { getLatestArticles } from '@/lib/mdx/articles';
+import { ArticleGrid } from '@/components/organisms/ArticleGrid';
+import { SectionHeader } from '@/components/molecules/SectionHeader';
+import { SparkRule } from '@/components/atoms/ornament/SparkRule';
 
-// ISR設定をexport
-export const revalidate = 120; // 120秒 (ISR)
+export const revalidate = 120; // ISR
 
-// New metadata API
 export const metadata: Metadata = {
-  title: 'Revolution Platform - Home',
-  description: 'Next.js + WordPress Headless CMS with ISR × useSWR | MDX Articles',
+  title: 'Revolution — アニメ × イベント × 街 をめぐる、AI 編集メディア',
+  description:
+    'コラボカフェ、推し旅、ポップアップ。街と作品の交差点を、AI が編集する次世代イベントメディア。',
 };
 
-// Server Component: ISRで初期データ取得
 export default async function Home() {
-  // MDX記事取得
-  const mdxArticles = getLatestArticles(10);
+  const articles = getLatestArticles(10);
+  const now = new Date();
+  const yearMonth = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   return (
-    <Layout>
-      {mdxArticles.length > 0 && (
-        <section className="mb-12">
-          <h2 className="text-3xl font-bold mb-6">Latest MDX Articles</h2>
+    <Layout hidePt>
+      <section className="w-main mx-auto pt-12 md:pt-20 lg:pt-24">
+        <p className="font-numeric tabular-nums text-xs tracking-[0.22em] text-ink-muted uppercase">
+          Vol. 01 — {yearMonth}
+        </p>
+        <SparkRule className="mt-2 mb-7 md:mb-9" width="3em" />
+        <h1 className="font-display text-[2.75rem] leading-[1.05] text-ink-strong sm:text-5xl md:text-6xl lg:text-7xl">
+          推しは、
+          <br className="md:hidden" />
+          街にいる。
+        </h1>
+        <p className="mt-7 max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
+          コラボカフェ、推し旅、ポップアップショップ。
+          <br className="hidden md:inline" />
+          街と作品の交差点を、AI が編集するメディアです。
+        </p>
+      </section>
 
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
-            {mdxArticles.map(article => (
-              <article
-                key={article.slug}
-                className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow"
+      <section className="w-main mx-auto mt-section-sp md:mt-section-pc">
+        <SectionHeader
+          eyebrow="No. 001 / Articles"
+          title="最新の記事"
+          subtitle={`公開中: ${articles.length} 本`}
+          action={
+            articles.length > 1 ? (
+              <Link
+                href="/articles"
+                className="font-display inline-flex items-center gap-1.5 text-sm tracking-wide text-primary-600 transition-colors hover:text-primary-700"
               >
-                <Link href={getArticleUrl(article)}>
-                  <h3 className="text-xl font-semibold mb-2 text-gray-900 hover:text-blue-600">
-                    {article.title}
-                  </h3>
-                  <p className="text-gray-600 text-sm mb-3">{article.excerpt}</p>
-                  <div className="flex items-center text-xs text-gray-500">
-                    <time dateTime={article.date}>
-                      {new Date(article.date).toLocaleDateString('ja-JP')}
-                    </time>
-                    <span className="mx-2">·</span>
-                    <span>{article.author}</span>
-                  </div>
-                  {article.categories.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {article.categories.map(cat => (
-                        <span
-                          key={cat}
-                          className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
-                        >
-                          {cat}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </Link>
-              </article>
-            ))}
-          </div>
+                すべて見る
+                <span aria-hidden="true">→</span>
+              </Link>
+            ) : undefined
+          }
+        />
+        <ArticleGrid articles={articles} />
+      </section>
 
-          <div className="flex justify-center">
-            <Link
-              href="/articles"
-              className="inline-block px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              View all →
-            </Link>
-          </div>
-        </section>
-      )}
+      <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">
+        <SectionHeader eyebrow="No. 002 / About" title="Revolution とは" />
+        <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
+          Revolution
+          は、コラボカフェ・推し旅・ポップアップショップ・コラボグッズなど、
+          作品と街が交わる「イベント」を AI
+          が編集する次世代 Web メディアです。RSS から MDX
+          まで、記事の生成と公開をパイプライン化し、編集者の意思とテクノロジーを掛け合わせて、最短で「いつ・どこで」を届けます。
+        </p>
+      </section>
     </Layout>
   );
 }

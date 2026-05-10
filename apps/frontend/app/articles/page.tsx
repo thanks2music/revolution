@@ -1,116 +1,66 @@
 import Layout from '@/components/templates/Layout';
-import {
-  getAllArticles,
-  getAllCategories,
-  getAllTags,
-  getArticleUrl,
-} from '@/lib/mdx/articles';
-import Link from 'next/link';
 import { Metadata } from 'next';
+import { getAllArticles, getAllCategories } from '@/lib/mdx/articles';
+import { ArticleGrid } from '@/components/organisms/ArticleGrid';
+import { SectionHeader } from '@/components/molecules/SectionHeader';
+import { CategoryChip } from '@/components/molecules/CategoryChip';
+import { SparkRule } from '@/components/atoms/ornament/SparkRule';
+
+export const revalidate = 120; // ISR (home と同じ 2 分)
 
 export const metadata: Metadata = {
-  title: 'All Articles - Revolution Platform',
-  description: 'Browse all MDX articles on Revolution Platform',
+  title: 'すべての記事 — Revolution',
+  description:
+    'Revolution の記事一覧。コラボカフェ・推し旅・ポップアップショップ等のイベント情報。',
 };
 
 export default function ArticlesPage() {
   const articles = getAllArticles();
   const categories = getAllCategories();
-  const tags = getAllTags();
 
   return (
-    <Layout>
-      <div className="w-main mx-auto">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-4">All Articles</h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            {articles.length} {articles.length === 1 ? 'article' : 'articles'} available
-          </p>
-        </div>
+    <Layout hidePt>
+      {/* Page header */}
+      <section className="w-main mx-auto pt-12 md:pt-16">
+        <p className="font-numeric tabular-nums text-xs tracking-[0.22em] text-ink-muted uppercase">
+          Index — Articles
+        </p>
+        <SparkRule className="mt-2 mb-7" width="3em" />
+        <h1 className="font-display text-4xl leading-tight text-ink-strong sm:text-5xl md:text-6xl">
+          すべての記事
+        </h1>
+        <p className="mt-5 text-sm text-ink-muted">
+          <span className="font-numeric tabular-nums">{articles.length}</span> 本
+          <span className="mx-2 text-[var(--line-strong)]">/</span>
+          <span className="font-numeric tabular-nums">{categories.length}</span> カテゴリ
+        </p>
+      </section>
 
-        {/* Categories & Tags */}
-        {(categories.length > 0 || tags.length > 0) && (
-          <div className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            {categories.length > 0 && (
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold mb-2">Categories</h2>
-                <div className="flex flex-wrap gap-2">
-                  {categories.map(category => (
-                    <span
-                      key={category}
-                      className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100 text-sm rounded-full"
-                    >
-                      {category}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {tags.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Tags</h2>
-                <div className="flex flex-wrap gap-2">
-                  {tags.map(tag => (
-                    <span
-                      key={tag}
-                      className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Articles Grid */}
-        {articles.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500 dark:text-gray-400 text-lg">
-              No articles available yet.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {articles.map(article => (
-              <article
-                key={article.slug}
-                className="border border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:shadow-lg transition-shadow"
-              >
-                <Link href={getArticleUrl(article)}>
-                  <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400">
-                    {article.title}
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-3 line-clamp-3">
-                    {article.excerpt}
-                  </p>
-                  <div className="flex items-center text-xs text-gray-500 dark:text-gray-500 mb-3">
-                    <time dateTime={article.date}>
-                      {new Date(article.date).toLocaleDateString('ja-JP')}
-                    </time>
-                    <span className="mx-2">·</span>
-                    <span>{article.author}</span>
-                  </div>
-                  {article.categories.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {article.categories.map(cat => (
-                        <span
-                          key={cat}
-                          className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100 text-xs rounded"
-                        >
-                          {cat}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </Link>
-              </article>
+      {/* Categories */}
+      {categories.length > 0 && (
+        <section className="w-main mx-auto mt-section-sp md:mt-section-pc">
+          <SectionHeader
+            eyebrow="No. 001 / Categories"
+            title="カテゴリ"
+            subtitle="興味のあるテーマから記事を探す。"
+          />
+          <div className="flex flex-wrap gap-2">
+            {categories.map((category) => (
+              <CategoryChip key={category} name={category} size="md" />
             ))}
           </div>
-        )}
-      </div>
+        </section>
+      )}
+
+      {/* All articles */}
+      <section className="w-main mx-auto mt-section-sp md:mt-section-pc">
+        <SectionHeader
+          eyebrow="No. 002 / All"
+          title="記事一覧"
+          subtitle={`新着順に ${articles.length} 本を表示しています。`}
+        />
+        <ArticleGrid articles={articles} layout="grid" />
+      </section>
     </Layout>
   );
 }

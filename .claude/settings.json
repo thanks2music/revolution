@@ -139,6 +139,19 @@
       "Bash(python3:*)",
       "Bash(python:*)"
     ],
+    "ask": [
+      "Bash(git reset --hard:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(git commit --amend:*)",
+      "Bash(git rebase -i:*)",
+      "Bash(git rebase --interactive:*)",
+      "Bash(git rebase --onto:*)",
+      "Bash(git rebase --root:*)",
+      "Bash(git tag -d:*)",
+      "Bash(git tag --delete:*)",
+      "Bash(git stash drop:*)",
+      "Bash(git stash clear:*)"
+    ],
     "deny": [
       "Read(.env)",
       "Read(.env.local)",
@@ -183,9 +196,7 @@
       "Edit(//var/**)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
-      "Bash(git reset --hard:*)",
       "Bash(git clean -fdx:*)",
-      "Bash(git filter-branch:*)",
       "Bash(rm -rf /:*)",
       "Bash(rm -rf /*:*)",
       "Bash(rm -rf ~:*)",
