@@ -61,19 +61,34 @@ export interface ArticleIndexItem {
   ogImage?: string;
   event_type: string | null;
   work_slug: string | null;
+
+  event_title?: string;
+  work_title?: string;
+  prefectures?: string[];
+
+  // ↓ FactCard の「あと N 日」黄色バッジを点灯させるために engineering/data の
+  // データ拡張を待つ optional フィールド群。値が入ると EventFactCard が自動で
+  // status='coming-soon' / 'now' / 'ended' のいずれかに切り替わる。
+  event_start_date?: string;
+  event_end_date?: string;
+  venue?: string;
+  official_url?: string;
 }
 
 /**
- * 記事インデックスJSONを読み込む
+ * 記事インデックスJSONを読み込む（同一プロセスでメモ化）
  *
- * パフォーマンス最適化: 全ファイル読み込みではなくインデックスから取得
+ * SSG ビルド時 generateStaticParams / generateMetadata / 各ページ render から
+ * 多数回呼ばれるため、ファイル I/O + JSON.parse は 1 回に絞る
  *
  * Note: Turbopackの静的解析警告を回避するため、固定パスを使用
  */
-export function getArticleIndex(): ArticleIndex {
-  const MONOREPO_ROOT = getMonorepoRoot();
+let cachedIndex: ArticleIndex | null = null;
 
-  // 固定パス: apps/frontend/lib/mdx/article-index.json
+export function getArticleIndex(): ArticleIndex {
+  if (cachedIndex) return cachedIndex;
+
+  const MONOREPO_ROOT = getMonorepoRoot();
   const indexPath = path.join(
     MONOREPO_ROOT,
     'apps',
@@ -90,7 +105,8 @@ export function getArticleIndex(): ArticleIndex {
   }
 
   const indexData = fs.readFileSync(indexPath, 'utf-8');
-  return JSON.parse(indexData) as ArticleIndex;
+  cachedIndex = JSON.parse(indexData) as ArticleIndex;
+  return cachedIndex;
 }
 
 /**
@@ -201,6 +217,28 @@ export function getArticleByPath(
         article.event_type === eventType && article.work_slug === workSlug && article.slug === slug
     ) || null
   );
+}
+
+/**
+ * 同じ作品 (`work_slug`) または共通カテゴリを持つ記事を抽出する。
+ * RelatedArticles のフィルタを呼び出し側ではなくデータ層に寄せる。
+ */
+export function getRelatedArticles(
+  current: ArticleIndexItem,
+  limit = 3
+): ArticleIndexItem[] {
+  const index = getArticleIndex();
+  const currentCategories = new Set(current.categories);
+  const out: ArticleIndexItem[] = [];
+
+  for (const a of index.articles) {
+    if (out.length >= limit) break;
+    if (a.slug === current.slug) continue;
+    const matchesWork = current.work_slug != null && a.work_slug === current.work_slug;
+    const matchesCategory = a.categories.some((c) => currentCategories.has(c));
+    if (matchesWork || matchesCategory) out.push(a);
+  }
+  return out;
 }
 
 export function readArticleContentFile(filePath: string): string {

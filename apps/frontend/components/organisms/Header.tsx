@@ -1,413 +1,113 @@
-'use client';
-
-import { Fragment, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { logImageOptimization } from '../../lib/imageOptimizationCheck';
-// requires Tailwind CSS v2.0+
-import { Popover, Transition } from '@headlessui/react';
-import {
-  BookmarkAltIcon,
-  CalendarIcon,
-  ChartBarIcon,
-  CursorClickIcon,
-  MenuIcon,
-  PhoneIcon,
-  PlayIcon,
-  RefreshIcon,
-  ShieldCheckIcon,
-  SupportIcon,
-  ViewGridIcon,
-  XIcon,
-} from '@heroicons/react/outline';
-import { ChevronDownIcon } from '@heroicons/react/solid';
 import { env } from '@/lib/env';
 
-const solutions = [
-  {
-    name: 'Analytics',
-    description: 'Get a better understanding of where your traffic is coming from.',
-    href: '#',
-    icon: ChartBarIcon,
-  },
-  {
-    name: 'Engagement',
-    description: 'Speak directly to your customers in a more meaningful way.',
-    href: '#',
-    icon: CursorClickIcon,
-  },
-  {
-    name: 'Security',
-    description: "Your customers' data will be safe and secure.",
-    href: '#',
-    icon: ShieldCheckIcon,
-  },
-  {
-    name: 'Integrations',
-    description: "Connect with third-party tools that you're already using.",
-    href: '#',
-    icon: ViewGridIcon,
-  },
-  {
-    name: 'Automations',
-    description: 'Build strategic funnels that will drive your customers to convert',
-    href: '#',
-    icon: RefreshIcon,
-  },
-];
-const callsToAction = [
-  { name: 'Watch Demo', href: '#', icon: PlayIcon },
-  { name: 'Contact Sales', href: '#', icon: PhoneIcon },
-];
-const resources = [
-  {
-    name: 'Help Center',
-    description: 'Get all of your questions answered in our forums or contact support.',
-    href: '#',
-    icon: SupportIcon,
-  },
-  {
-    name: 'Guides',
-    description: 'Learn how to maximize our platform to get the most out of it.',
-    href: '#',
-    icon: BookmarkAltIcon,
-  },
-  {
-    name: 'Events',
-    description: 'See what meet-ups and other events we might be planning near you.',
-    href: '#',
-    icon: CalendarIcon,
-  },
-  {
-    name: 'Security',
-    description: 'Understand how we take your privacy seriously.',
-    href: '#',
-    icon: ShieldCheckIcon,
-  },
-];
-const recentPosts = [
-  { id: 1, name: 'Boost your conversion rate', href: '#' },
-  {
-    id: 2,
-    name: 'How to use search engine optimization to drive traffic to your site',
-    href: '#',
-  },
-  { id: 3, name: 'Improve your customer experience', href: '#' },
+const navItems = [
+  { name: '記事一覧', href: '/articles' },
+  { name: 'カテゴリ', href: '/articles' }, // TODO: 専用ページ /categories を engineering/frontend で新設予定
+  { name: 'About', href: '/about' }, // TODO: /about ページを後続フェーズで新設
 ];
 
-function classNames(...classes: string[]) {
-  return classes.filter(Boolean).join(' ');
-}
+const RssIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M3.429 5.143v3.428c7.572 0 13.715 6.143 13.715 13.715h3.428C20.572 13.029 12.971 5.143 3.429 5.143zm0 6.857v3.429c3.785 0 6.857 3.071 6.857 6.857h3.428c0-5.681-4.605-10.286-10.285-10.286zm2.286 6.857a2.286 2.286 0 1 0 0 4.571 2.286 2.286 0 0 0 0-4.571z" />
+  </svg>
+);
+
+const HamburgerIcon = () => (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    aria-hidden="true"
+  >
+    <path d="M3 6h18M3 12h18M3 18h18" />
+  </svg>
+);
 
 const Header = () => {
-  const siteTitle = env.NEXT_PUBLIC_SITE_NAME;
-
-  // 開発環境で画像最適化をログ出力
-  useEffect(() => {
-    logImageOptimization();
-  }, []);
+  const siteTitle = env.NEXT_PUBLIC_SITE_NAME ?? 'Revolution';
 
   return (
-    <header>
-      <Popover className="relative bg-white">
-        <div className="mx-auto">
-          <div className="border-b-2 border-gray-100 py-6 md:justify-start md:space-x-10">
-            <div className="flex justify-between items-center w-main mx-auto">
-              <div className="flex justify-start lg:w-0 lg:flex-1">
-                <Link href="/" className="flex items-center space-x-3">
-                  <Image
-                    src="/images/logo-revolution.png"
-                    alt="Revolution Platform Logo"
-                    width={120}
-                    height={120}
-                    className="h-8 w-auto sm:h-10"
-                    priority
-                  />
-                  <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{siteTitle}</h1>
-                  <span className="sr-only">Revolution</span>
-                </Link>
-              </div>
-              <div className="-mr-2 -my-2 md:hidden">
-                <Popover.Button className="bg-white rounded-md p-2 inline-flex items-center justify-center text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
-                  <span className="sr-only">Open menu</span>
-                  <MenuIcon className="h-6 w-6" aria-hidden="true" />
-                </Popover.Button>
-              </div>
-              <Popover.Group as="nav" className="hidden md:flex space-x-10">
-                <Popover className="relative">
-                  {({ open }) => (
-                    <>
-                      <Popover.Button
-                        className={classNames(
-                          open ? 'text-gray-900' : 'text-gray-500',
-                          'group bg-white rounded-md inline-flex items-center text-base font-medium hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
-                        )}
-                      >
-                        <span>Solutions</span>
-                        <ChevronDownIcon
-                          className={classNames(
-                            open ? 'text-gray-600' : 'text-gray-400',
-                            'ml-2 h-5 w-5 group-hover:text-gray-500'
-                          )}
-                          aria-hidden="true"
-                        />
-                      </Popover.Button>
-
-                      <Transition
-                        as={Fragment}
-                        enter="transition ease-out duration-200"
-                        enterFrom="opacity-0 translate-y-1"
-                        enterTo="opacity-100 translate-y-0"
-                        leave="transition ease-in duration-150"
-                        leaveFrom="opacity-100 translate-y-0"
-                        leaveTo="opacity-0 translate-y-1"
-                      >
-                        <Popover.Panel className="absolute z-10 -ml-4 mt-3 transform px-2 w-screen max-w-md sm:px-0 lg:ml-0 lg:left-1/2 lg:-translate-x-1/2">
-                          <div className="rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 overflow-hidden">
-                            <div className="relative grid gap-6 bg-white px-5 py-6 sm:gap-8 sm:p-8">
-                              {solutions.map(item => (
-                                <a
-                                  key={item.name}
-                                  href={item.href}
-                                  className="-m-3 p-3 flex items-start rounded-lg hover:bg-gray-50"
-                                >
-                                  <item.icon
-                                    className="flex-shrink-0 h-6 w-6 text-indigo-600"
-                                    aria-hidden="true"
-                                  />
-                                  <div className="ml-4">
-                                    <p className="text-base font-medium text-gray-900">
-                                      {item.name}
-                                    </p>
-                                    <p className="mt-1 text-sm text-gray-500">{item.description}</p>
-                                  </div>
-                                </a>
-                              ))}
-                            </div>
-                            <div className="px-5 py-5 bg-gray-50 space-y-6 sm:flex sm:space-y-0 sm:space-x-10 sm:px-8">
-                              {callsToAction.map(item => (
-                                <div key={item.name} className="flow-root">
-                                  <a
-                                    href={item.href}
-                                    className="-m-3 p-3 flex items-center rounded-md text-base font-medium text-gray-900 hover:bg-gray-100"
-                                  >
-                                    <item.icon
-                                      className="flex-shrink-0 h-6 w-6 text-gray-400"
-                                      aria-hidden="true"
-                                    />
-                                    <span className="ml-3">{item.name}</span>
-                                  </a>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </Popover.Panel>
-                      </Transition>
-                    </>
-                  )}
-                </Popover>
-
-                <a href="#" className="text-base font-medium text-gray-500 hover:text-gray-900">
-                  Pricing
-                </a>
-                <a href="#" className="text-base font-medium text-gray-500 hover:text-gray-900">
-                  Docs
-                </a>
-
-                <Popover className="relative">
-                  {({ open }) => (
-                    <>
-                      <Popover.Button
-                        className={classNames(
-                          open ? 'text-gray-900' : 'text-gray-500',
-                          'group bg-white rounded-md inline-flex items-center text-base font-medium hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
-                        )}
-                      >
-                        <span>More</span>
-                        <ChevronDownIcon
-                          className={classNames(
-                            open ? 'text-gray-600' : 'text-gray-400',
-                            'ml-2 h-5 w-5 group-hover:text-gray-500'
-                          )}
-                          aria-hidden="true"
-                        />
-                      </Popover.Button>
-
-                      <Transition
-                        as={Fragment}
-                        enter="transition ease-out duration-200"
-                        enterFrom="opacity-0 translate-y-1"
-                        enterTo="opacity-100 translate-y-0"
-                        leave="transition ease-in duration-150"
-                        leaveFrom="opacity-100 translate-y-0"
-                        leaveTo="opacity-0 translate-y-1"
-                      >
-                        <Popover.Panel className="absolute z-10 left-1/2 transform -translate-x-1/2 mt-3 px-2 w-screen max-w-md sm:px-0">
-                          <div className="rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 overflow-hidden">
-                            <div className="relative grid gap-6 bg-white px-5 py-6 sm:gap-8 sm:p-8">
-                              {resources.map(item => (
-                                <a
-                                  key={item.name}
-                                  href={item.href}
-                                  className="-m-3 p-3 flex items-start rounded-lg hover:bg-gray-50"
-                                >
-                                  <item.icon
-                                    className="flex-shrink-0 h-6 w-6 text-indigo-600"
-                                    aria-hidden="true"
-                                  />
-                                  <div className="ml-4">
-                                    <p className="text-base font-medium text-gray-900">
-                                      {item.name}
-                                    </p>
-                                    <p className="mt-1 text-sm text-gray-500">{item.description}</p>
-                                  </div>
-                                </a>
-                              ))}
-                            </div>
-                            <div className="px-5 py-5 bg-gray-50 sm:px-8 sm:py-8">
-                              <div>
-                                <h3 className="text-base font-medium text-gray-500">
-                                  Recent Posts
-                                </h3>
-                                <ul role="list" className="mt-4 space-y-4">
-                                  {recentPosts.map(post => (
-                                    <li key={post.id} className="text-base truncate">
-                                      <a
-                                        href={post.href}
-                                        className="font-medium text-gray-900 hover:text-gray-700"
-                                      >
-                                        {post.name}
-                                      </a>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                              <div className="mt-5 text-sm">
-                                <a
-                                  href="#"
-                                  className="font-medium text-indigo-600 hover:text-indigo-500"
-                                >
-                                  {' '}
-                                  View all posts <span aria-hidden="true">&rarr;</span>
-                                </a>
-                              </div>
-                            </div>
-                          </div>
-                        </Popover.Panel>
-                      </Transition>
-                    </>
-                  )}
-                </Popover>
-              </Popover.Group>
-              <div className="hidden md:flex items-center justify-end md:flex-1 lg:w-0">
-                <a
-                  href="#"
-                  className="whitespace-nowrap text-base font-medium text-gray-500 hover:text-gray-900"
-                >
-                  Sign in
-                </a>
-                <a
-                  href="#"
-                  className="ml-8 whitespace-nowrap inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700"
-                >
-                  Sign up
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <Transition
-          as={Fragment}
-          enter="duration-200 ease-out"
-          enterFrom="opacity-0 scale-95"
-          enterTo="opacity-100 scale-100"
-          leave="duration-100 ease-in"
-          leaveFrom="opacity-100 scale-100"
-          leaveTo="opacity-0 scale-95"
+    <header className="relative border-b bg-bg-primary">
+      <div className="w-main mx-auto flex items-center justify-between gap-4 py-5 md:py-7">
+        <Link
+          href="/"
+          aria-label={`${siteTitle} ホーム`}
+          className="group flex items-center gap-3"
         >
-          <Popover.Panel
-            focus
-            className="absolute top-0 inset-x-0 p-2 transition transform origin-top-right md:hidden"
-          >
-            <div className="rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 bg-white divide-y-2 divide-gray-50">
-              <div className="pt-5 pb-6 px-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Image
-                      src="/images/logo-revolution.png"
-                      alt="Revolution Platform Logo"
-                      width={32}
-                      height={32}
-                      className="h-8 w-auto"
-                    />
-                    <h1 className="text-xl font-bold text-gray-900">{siteTitle}</h1>
-                  </div>
-                  <div className="-mr-2">
-                    <Popover.Button className="bg-white rounded-md p-2 inline-flex items-center justify-center text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
-                      <span className="sr-only">Close menu</span>
-                      <XIcon className="h-6 w-6" aria-hidden="true" />
-                    </Popover.Button>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  <nav className="grid gap-y-8">
-                    {solutions.map(item => (
-                      <a
-                        key={item.name}
-                        href={item.href}
-                        className="-m-3 p-3 flex items-center rounded-md hover:bg-gray-50"
-                      >
-                        <item.icon
-                          className="flex-shrink-0 h-6 w-6 text-indigo-600"
-                          aria-hidden="true"
-                        />
-                        <span className="ml-3 text-base font-medium text-gray-900">
-                          {item.name}
-                        </span>
-                      </a>
-                    ))}
-                  </nav>
-                </div>
-              </div>
-              <div className="py-6 px-5 space-y-6">
-                <div className="grid grid-cols-2 gap-y-4 gap-x-8">
-                  <a href="#" className="text-base font-medium text-gray-900 hover:text-gray-700">
-                    Pricing
-                  </a>
+          <Image
+            src="/images/logo-revolution.png"
+            alt=""
+            width={120}
+            height={120}
+            className="h-9 w-auto sm:h-10"
+            priority
+          />
+          <span className="font-display text-2xl tracking-tight text-ink-strong sm:text-3xl">
+            {siteTitle}
+          </span>
+        </Link>
 
-                  <a href="#" className="text-base font-medium text-gray-900 hover:text-gray-700">
-                    Docs
-                  </a>
-                  {resources.map(item => (
-                    <a
-                      key={item.name}
-                      href={item.href}
-                      className="text-base font-medium text-gray-900 hover:text-gray-700"
-                    >
-                      {item.name}
-                    </a>
-                  ))}
-                </div>
-                <div>
-                  <a
-                    href="#"
-                    className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700"
-                  >
-                    Sign up
-                  </a>
-                  <p className="mt-6 text-center text-base font-medium text-gray-500">
-                    Existing customer?{' '}
-                    <a href="#" className="text-indigo-600 hover:text-indigo-500">
-                      Sign in
-                    </a>
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Popover.Panel>
-        </Transition>
-      </Popover>
+        <nav
+          aria-label="グローバルナビゲーション"
+          className="hidden items-center gap-9 md:flex"
+        >
+          {navItems.map((item) => (
+            <Link
+              key={item.name}
+              href={item.href}
+              className="font-display text-sm tracking-wide text-ink-strong transition-colors hover:text-primary-600"
+            >
+              {item.name}
+            </Link>
+          ))}
+          <a
+            href="/sitemap.xml"
+            aria-label="サイトマップ・RSS"
+            className="text-ink-muted transition-colors hover:text-primary-600"
+          >
+            <RssIcon />
+          </a>
+        </nav>
+
+        {/* Mobile: CSS-only details disclosure */}
+        <details className="group md:hidden [&>summary]:list-none [&>summary::-webkit-details-marker]:hidden">
+          <summary
+            aria-label="メニューを開閉"
+            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-ink-strong transition-colors hover:bg-bg-tinted"
+          >
+            <span className="sr-only">メニュー</span>
+            <HamburgerIcon />
+          </summary>
+          <div className="absolute inset-x-0 top-full z-40 border-t bg-bg-elevated shadow-sm">
+            <nav
+              aria-label="グローバルナビゲーション (モバイル)"
+              className="w-main mx-auto flex flex-col py-2"
+            >
+              {navItems.map((item) => (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className="font-display border-b py-3 text-base text-ink-strong last:border-b-0"
+                >
+                  {item.name}
+                </Link>
+              ))}
+              <a
+                href="/sitemap.xml"
+                className="font-display border-b py-3 text-base text-ink-muted last:border-b-0"
+              >
+                サイトマップ・RSS
+              </a>
+            </nav>
+          </div>
+        </details>
+      </div>
     </header>
   );
 };

@@ -3,17 +3,22 @@ import {
   getAllArticles,
   getArticleByPath,
   getArticleUrl,
+  getRelatedArticles,
   readArticleContentFile,
 } from '@/lib/mdx/articles';
 import { CustomMDX } from '@/components/mdx';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import { parseFrontmatter } from '@/lib/mdx/utils';
 import { generateArticleMetadata } from '@/lib/metadata';
 import type { ArticlePagePropsNew } from '@/types/page-props';
+import { CategoryChip } from '@/components/molecules/CategoryChip';
+import { SparkRule } from '@/components/atoms/ornament/SparkRule';
+import { EventFactCard } from '@/components/molecules/EventFactCard';
+import { RelatedArticles } from '@/components/organisms/RelatedArticles';
 
-// Generate static params for all articles (new URL structure)
+export const revalidate = 120; // ISR (home と同じ 2 分)
+
 export async function generateStaticParams() {
   const articles = getAllArticles();
   return articles
@@ -25,18 +30,13 @@ export async function generateStaticParams() {
     }));
 }
 
-// Dynamic metadata
-export async function generateMetadata(
-  props: ArticlePagePropsNew
-) {
+export async function generateMetadata(props: ArticlePagePropsNew) {
   const params = await props.params;
   const { event_type, work_slug, slug } = params;
   const article = getArticleByPath(event_type, work_slug, slug);
 
   if (!article) {
-    return {
-      title: 'Article Not Found',
-    };
+    return { title: '記事が見つかりません — Revolution' };
   }
 
   return generateArticleMetadata({
@@ -51,109 +51,84 @@ export async function generateMetadata(
   });
 }
 
-export default async function ArticlePage(
-  props: ArticlePagePropsNew
-) {
+const formatLongDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('ja-JP', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+export default async function ArticlePage(props: ArticlePagePropsNew) {
   const params = await props.params;
   const { event_type, work_slug, slug } = params;
 
-  // Get article metadata from index
   const article = getArticleByPath(event_type, work_slug, slug);
+  if (!article) notFound();
 
-  if (!article) {
-    notFound();
-  }
-
-  // Read full MDX content using the full filePath
   const rawContent = readArticleContentFile(article.filePath);
   const { content } = parseFrontmatter(rawContent);
+  const related = getRelatedArticles(article);
 
   return (
-    <Layout>
+    <Layout hidePt>
       <article className="w-main mx-auto">
-        {/* Header */}
-        <header className="mb-8">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-gray-900 dark:text-gray-100">
+        <header className="pt-12 md:pt-16">
+          <p className="font-numeric tabular-nums text-xs tracking-[0.22em] text-ink-muted uppercase">
+            {article.event_title ?? 'Article'}
+            {article.work_title ? ` / ${article.work_title}` : ''}
+          </p>
+          <SparkRule className="mt-2 mb-6" width="3em" />
+
+          {article.categories.length > 0 && (
+            <div className="mb-5 flex flex-wrap gap-1.5">
+              {article.categories.map((cat) => (
+                <CategoryChip key={cat} name={cat} size="sm" />
+              ))}
+            </div>
+          )}
+
+          <h1 className="font-display text-3xl leading-[1.15] text-ink-strong sm:text-4xl md:text-5xl">
             {article.title}
           </h1>
 
-          {/* Hero Image */}
-          {article.ogImage && (
-            <figure className="mb-6">
-              <Image
-                src={article.ogImage}
-                alt={article.title}
-                width={1200}
-                height={630}
-                priority
-                className="rounded-lg w-full h-auto"
-              />
-            </figure>
-          )}
-
-          {/* Metadata */}
-          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-6">
-            <time dateTime={article.date}>
-              {new Date(article.date).toLocaleDateString('ja-JP', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
+          <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+            <time
+              dateTime={article.date}
+              className="font-numeric tabular-nums tracking-wide"
+            >
+              {formatLongDate(article.date)}
             </time>
-            <span>·</span>
+            <span aria-hidden="true">·</span>
             <span>{article.author}</span>
           </div>
-
-          {/* Categories */}
-          {article.categories.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {article.categories.map((category) => (
-                <span
-                  key={category}
-                  className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100 text-sm rounded-full"
-                >
-                  {category}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Tags */}
-          {article.tags && article.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {article.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded"
-                >
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          )}
         </header>
 
-        {/* Excerpt */}
-        {article.excerpt && (
-          <div className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border-l-4 border-blue-500">
-            <p className="text-lg text-gray-700 dark:text-gray-300 italic">
-              {article.excerpt}
-            </p>
+        <div className="mt-10 md:mt-14 md:grid md:grid-cols-[minmax(0,1fr)_300px] md:gap-12">
+          <div>
+            {article.excerpt && (
+              <p className="bg-bg-tinted border-l-[3px] border-primary-500 mb-8 px-5 py-4 text-base leading-relaxed text-ink-body md:text-lg">
+                {article.excerpt}
+              </p>
+            )}
+            <div className="article-body">
+              <CustomMDX source={content} />
+            </div>
           </div>
-        )}
 
-        {/* Article Content */}
-        <div className="prose prose-lg dark:prose-invert max-w-none">
-          <CustomMDX source={content} />
+          <div className="mt-10 md:mt-0 md:sticky md:top-6 md:self-start">
+            <EventFactCard article={article} />
+          </div>
         </div>
 
-        {/* Footer Navigation */}
-        <footer className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-700">
+        <RelatedArticles related={related} />
+
+        <footer className="mt-section-sp md:mt-section-pc border-t pt-8">
           <Link
             href="/articles"
-            className="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline"
+            className="font-display inline-flex items-center gap-1.5 text-sm tracking-wide text-primary-600 transition-colors hover:text-primary-700"
           >
-            ← Back to all articles
+            <span aria-hidden="true">←</span>
+            記事一覧へ戻る
           </Link>
         </footer>
       </article>
