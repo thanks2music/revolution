@@ -26,6 +26,11 @@ if [[ ! -d "$WORKTREE_PATH" ]]; then
   exit 1
 fi
 
+# 絶対パスへ正規化 (claude[bot] review on PR #225):
+# 後段で GENERATED_REAL_DIRS を rm -rf するため、`..` 等を含む引数による
+# 範囲外削除を防ぐ安全マージン。worktree-init.sh と同じパターン
+WORKTREE_PATH="$(cd "$WORKTREE_PATH" && pwd)"
+
 # main 側からのみ実行可能 (worktree 内で実行すると自分自身を消そうとする)
 GIT_DIR="$(git -C "$MAIN_ROOT" rev-parse --git-dir)"
 GIT_COMMON_DIR="$(git -C "$MAIN_ROOT" rev-parse --git-common-dir)"
@@ -75,7 +80,16 @@ GENERATED_REAL_FILES=(
   "$WORKTREE_PATH/apps/ai-writer/firebase.worktree.json"
 )
 
-# (2) setup-worktree.sh が「symlink」として生成するもの
+# (2) worktree-init.sh が「実体ディレクトリ」として rsync するもの
+#     gitignored なため git worktree remove が untracked 拒否しない仕掛け。
+#     symlink 化されていれば誤削除回避 (将来運用変更時の安全弁)
+GENERATED_REAL_DIRS=(
+  "$WORKTREE_PATH/apps/ai-writer/config"
+  "$WORKTREE_PATH/apps/ai-writer/templates"
+  "$WORKTREE_PATH/.jarvis"
+)
+
+# (3) setup-worktree.sh が「symlink」として生成するもの
 #     symlink に限定削除し、実体ファイルに置き換えられていれば手動配置の env として保持
 GENERATED_SYMLINKS=(
   "$WORKTREE_PATH/.env.local"
@@ -88,6 +102,13 @@ GENERATED_SYMLINKS=(
 for f in "${GENERATED_REAL_FILES[@]}"; do
   if [[ -e "$f" && ! -d "$f" ]]; then
     rm -f "$f"
+  fi
+done
+
+for d in "${GENERATED_REAL_DIRS[@]}"; do
+  # -d かつ非 symlink を要求: symlink 運用へ変更されていれば誤削除しない
+  if [[ -d "$d" && ! -L "$d" ]]; then
+    rm -rf "$d"
   fi
 done
 
