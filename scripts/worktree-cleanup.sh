@@ -26,6 +26,11 @@ if [[ ! -d "$WORKTREE_PATH" ]]; then
   exit 1
 fi
 
+# 絶対パスへ正規化 (claude[bot] review on PR #225):
+# 後段で GENERATED_REAL_DIRS を rm -rf するため、`..` 等を含む引数による
+# 範囲外削除を防ぐ安全マージン。worktree-init.sh と同じパターン
+WORKTREE_PATH="$(cd "$WORKTREE_PATH" && pwd)"
+
 # main 側からのみ実行可能 (worktree 内で実行すると自分自身を消そうとする)
 GIT_DIR="$(git -C "$MAIN_ROOT" rev-parse --git-dir)"
 GIT_COMMON_DIR="$(git -C "$MAIN_ROOT" rev-parse --git-common-dir)"

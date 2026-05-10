@@ -21,6 +21,15 @@
 
 set -euo pipefail
 
+# ----- 必須コマンドの存在チェック (rsync) -----
+# Copilot / claude[bot] review (PR #225): set -e 下では generic な
+# "command not found" になり原因が分かりづらいため、明示的に fail-fast する
+if ! command -v rsync >/dev/null 2>&1; then
+  echo "Error: rsync is required but not found in PATH" >&2
+  echo "  Install: brew install rsync (macOS) / apt install rsync (Debian/Ubuntu)" >&2
+  exit 1
+fi
+
 # ----- 引数 / dry-run 処理 -----
 DRY_RUN=false
 if [[ "${1:-}" == "--dry-run" ]]; then
@@ -99,9 +108,22 @@ for rel in "${SYNC_PATHS[@]}"; do
     continue
   fi
 
+  # ファイルやリンクで誤って作られているケースを skip。
+  # Copilot review (PR #225): rsync 直前に -d 確認しないと中途半端な
+  # state (例: .jarvis が誤ってファイル作成) で全体 abort してしまう
+  if [[ ! -d "$src" ]]; then
+    echo "  [skip] $rel (main 側がディレクトリではない、想定外)" >&2
+    continue
+  fi
+
   # 親ディレクトリを事前作成 (rsync -a は親ディレクトリを作らない)
   dst_parent="$(dirname "$dst")"
-  if [[ "$DRY_RUN" != "true" ]]; then
+  if [[ "$DRY_RUN" == "true" ]]; then
+    # claude[bot] review (PR #225): dry-run では mkdir を skip するが
+    # rsync -n が dst 親無しで失敗するため、新規 worktree への pre-flight として
+    # 「作成予定」を可視化する
+    [[ ! -d "$dst_parent" ]] && echo "  [would mkdir] $dst_parent"
+  else
     mkdir -p "$dst_parent"
   fi
 
