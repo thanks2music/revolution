@@ -32,7 +32,10 @@ export const ArticleCard = ({ article, variant = 'default' }: Props) => {
         ${isFeature ? 'p-8 md:p-12 md:grid md:grid-cols-[1fr_auto] md:gap-10 md:items-end' : 'p-6'}
       `}
     >
-      <Link href={getArticleUrl(article)} className="block focus:outline-none">
+      <Link
+        href={getArticleUrl(article)}
+        className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-elevated"
+      >
         <div className="flex flex-col gap-3">
           {article.categories.length > 0 && (
             <div className="flex flex-wrap gap-1.5">

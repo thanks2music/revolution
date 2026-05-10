@@ -26,7 +26,7 @@ export const CategoryChip = ({ name, href, active = false, size = 'sm' }: Props)
 
   if (href) {
     return (
-      <Link href={href} className={className} aria-pressed={active}>
+      <Link href={href} className={className} aria-current={active ? 'page' : undefined}>
         {name}
       </Link>
     );

@@ -1,18 +1,20 @@
 import Link from 'next/link';
 import Image from 'next/image';
 
-const columns = [
+type FooterLink = { name: string; href: string; external?: boolean };
+type FooterColumn = { title: string; items: FooterLink[] };
+
+const columns: FooterColumn[] = [
   {
     title: 'Articles',
     items: [
       { name: '記事一覧', href: '/articles' },
-      { name: 'カテゴリ別', href: '/articles' }, // TODO: dedicated /categories page
     ],
   },
   {
     title: 'About',
     items: [
-      { name: 'Revolution について', href: '/about' }, // TODO
+      { name: 'Revolution について', href: '/#about' },
       { name: 'Sitemap', href: '/sitemap.xml' },
     ],
   },
@@ -20,7 +22,6 @@ const columns = [
     title: 'Connect',
     items: [
       { name: 'GitHub', href: 'https://github.com/thanks2music/revolution', external: true },
-      { name: 'RSS Feed', href: '/feed.xml' }, // TODO: feed.xml endpoint
     ],
   },
 ];

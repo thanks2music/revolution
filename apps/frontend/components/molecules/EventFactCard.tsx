@@ -5,16 +5,36 @@ type Props = {
   article: ArticleIndexItem;
 };
 
+/**
+ * Parse a `YYYY-MM-DD` string as a local-date Date.
+ * `new Date("YYYY-MM-DD")` parses as UTC midnight, which causes the date to
+ * shift by up to a day in JST (UTC+9) — events would appear `coming-soon`
+ * until 09:00 JST on the start day. Parsing the components into a local
+ * Date keeps the comparison and the formatted output on the same calendar
+ * day for the visitor's locale.
+ */
+const parseLocalDate = (iso: string): Date | null => {
+  const trimmed = iso.trim();
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (dateOnly) {
+    const [, y, m, d] = dateOnly;
+    return new Date(Number(y), Number(m) - 1, Number(d));
+  }
+  const fallback = new Date(trimmed);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+};
+
+/** Allow only http(s) hrefs to defuse `javascript:` / `data:` XSS vectors. */
+const isSafeHttpUrl = (url: string): boolean => /^https?:\/\//i.test(url.trim());
+
 const computeStatus = (
   start?: string,
   end?: string
 ): { status: EventStatus; daysLeft?: number } => {
   if (!start || !end) return { status: 'unknown' };
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    return { status: 'unknown' };
-  }
+  const startDate = parseLocalDate(start);
+  const endDate = parseLocalDate(end);
+  if (!startDate || !endDate) return { status: 'unknown' };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const ms = 86_400_000;
@@ -27,9 +47,9 @@ const computeStatus = (
 
 const formatPeriod = (start?: string, end?: string): string | null => {
   if (!start || !end) return null;
-  const s = new Date(start);
-  const e = new Date(end);
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return null;
+  const s = parseLocalDate(start);
+  const e = parseLocalDate(end);
+  if (!s || !e) return null;
   const fmt = (d: Date) =>
     d.toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' });
   return `${fmt(s)} 〜 ${fmt(e)}`;
@@ -42,6 +62,9 @@ const formatPeriod = (start?: string, end?: string): string | null => {
 export const EventFactCard = ({ article }: Props) => {
   const { status, daysLeft } = computeStatus(article.event_start_date, article.event_end_date);
   const period = formatPeriod(article.event_start_date, article.event_end_date);
+  const officialUrl = article.official_url && isSafeHttpUrl(article.official_url)
+    ? article.official_url
+    : undefined;
 
   const rows: Array<{ label: string; value: React.ReactNode; mono?: boolean; emphasis?: boolean }> = [
     article.work_title ? { label: '作品', value: article.work_title, emphasis: true } : null,
@@ -80,10 +103,10 @@ export const EventFactCard = ({ article }: Props) => {
             </dd>
           </div>
         ))}
-        {article.official_url && (
+        {officialUrl && (
           <div className="pt-2">
             <a
-              href={article.official_url}
+              href={officialUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="font-display inline-flex items-center gap-1 text-sm text-primary-600 transition-colors hover:text-primary-700"

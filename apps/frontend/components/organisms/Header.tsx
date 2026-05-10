@@ -5,14 +5,8 @@ import { env } from '@/lib/env';
 const navItems = [
   { name: '記事一覧', href: '/articles' },
   { name: 'カテゴリ', href: '/articles' }, // TODO: 専用ページ /categories を engineering/frontend で新設予定
-  { name: 'About', href: '/about' }, // TODO: /about ページを後続フェーズで新設
+  { name: 'About', href: '/#about' },
 ];
-
-const RssIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M3.429 5.143v3.428c7.572 0 13.715 6.143 13.715 13.715h3.428C20.572 13.029 12.971 5.143 3.429 5.143zm0 6.857v3.429c3.785 0 6.857 3.071 6.857 6.857h3.428c0-5.681-4.605-10.286-10.285-10.286zm2.286 6.857a2.286 2.286 0 1 0 0 4.571 2.286 2.286 0 0 0 0-4.571z" />
-  </svg>
-);
 
 const HamburgerIcon = () => (
   <svg
@@ -66,13 +60,6 @@ const Header = () => {
               {item.name}
             </Link>
           ))}
-          <a
-            href="/sitemap.xml"
-            aria-label="サイトマップ・RSS"
-            className="text-ink-muted transition-colors hover:text-primary-600"
-          >
-            <RssIcon />
-          </a>
         </nav>
 
         {/* Mobile: CSS-only details disclosure */}
@@ -98,12 +85,6 @@ const Header = () => {
                   {item.name}
                 </Link>
               ))}
-              <a
-                href="/sitemap.xml"
-                className="font-display border-b py-3 text-base text-ink-muted last:border-b-0"
-              >
-                サイトマップ・RSS
-              </a>
             </nav>
           </div>
         </details>

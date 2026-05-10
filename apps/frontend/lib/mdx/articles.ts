@@ -82,6 +82,10 @@ export interface ArticleIndexItem {
  * 多数回呼ばれるため、ファイル I/O + JSON.parse は 1 回に絞る
  *
  * Note: Turbopackの静的解析警告を回避するため、固定パスを使用
+ *
+ * Dev caveat: `next dev` で Fast Refresh の cycle を跨いでもこの module-level
+ * シングルトンは Node プロセス寿命の間生き残る。ビルド済みの
+ * `article-index.json` を更新したら dev サーバを再起動して反映させること。
  */
 let cachedIndex: ArticleIndex | null = null;
 
@@ -222,6 +226,10 @@ export function getArticleByPath(
 /**
  * 同じ作品 (`work_slug`) または共通カテゴリを持つ記事を抽出する。
  * RelatedArticles のフィルタを呼び出し側ではなくデータ層に寄せる。
+ *
+ * Identity: `slug` は work / event_type の path 配下でのみ一意なので、
+ * 異なる作品が同じ slug を持つケースを誤って除外しないよう、グローバル一意な
+ * `filePath` で自分自身を判定する。
  */
 export function getRelatedArticles(
   current: ArticleIndexItem,
@@ -233,7 +241,7 @@ export function getRelatedArticles(
 
   for (const a of index.articles) {
     if (out.length >= limit) break;
-    if (a.slug === current.slug) continue;
+    if (a.filePath === current.filePath) continue;
     const matchesWork = current.work_slug != null && a.work_slug === current.work_slug;
     const matchesCategory = a.categories.some((c) => currentCategories.has(c));
     if (matchesWork || matchesCategory) out.push(a);

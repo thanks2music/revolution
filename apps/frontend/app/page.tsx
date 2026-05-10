@@ -58,7 +58,7 @@ export default async function Home() {
         <ArticleGrid articles={articles} />
       </section>
 
-      <section className="w-main mx-auto mt-section-sp md:mt-section-pc">
+      <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">
         <SectionHeader eyebrow="No. 002 / About" title="Revolution とは" />
         <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
           Revolution
