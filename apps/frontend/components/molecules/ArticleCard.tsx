@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { CategoryChip } from './CategoryChip';
-import { getArticleUrl, type ArticleIndexItem } from '@/lib/mdx/articles';
+// fs を持つ articles.ts ではなく client-safe な分割モジュールから import
+// (PaginatedArticleGrid 経由で Client Component bundle に取り込まれるため)
+import { getArticleUrl } from '@/lib/mdx/article-url';
+import type { ArticleIndexItem } from '@/lib/mdx/article-types';
 
 type Variant = 'default' | 'feature';
 

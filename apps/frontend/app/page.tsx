@@ -1,8 +1,8 @@
 import Layout from '@/components/templates/Layout';
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { getLatestArticles } from '@/lib/mdx/articles';
-import { ArticleGrid } from '@/components/organisms/ArticleGrid';
+import { getAllArticles } from '@/lib/mdx/articles';
+import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGrid';
 import { SectionHeader } from '@/components/molecules/SectionHeader';
 import { SparkRule } from '@/components/atoms/ornament/SparkRule';
 
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 export default async function Home() {
-  const articles = getLatestArticles(10);
+  const articles = getAllArticles();
   const now = new Date();
   const yearMonth = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}`;
 
@@ -55,7 +55,7 @@ export default async function Home() {
             ) : undefined
           }
         />
-        <ArticleGrid articles={articles} />
+        <PaginatedArticleGrid articles={articles} mode="button" />
       </section>
 
       <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">

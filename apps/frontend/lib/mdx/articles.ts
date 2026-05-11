@@ -42,38 +42,13 @@ function resolvePathRelativeToFrontend(relativePath: string): string | null {
 
 /**
  * 記事インデックスの型定義
+ *
+ * 実体は `./article-types` (client-safe). `fs` を持たない別ファイルに切り出すことで、
+ * Client Component (例: PaginatedArticleGrid → ArticleCard) が型を import しても
+ * ブラウザ bundle に `fs` が漏れないようにしている。
  */
-export interface ArticleIndex {
-  generatedAt: string;
-  totalArticles: number;
-  articles: ArticleIndexItem[];
-}
-
-export interface ArticleIndexItem {
-  slug: string;
-  title: string;
-  date: string;
-  excerpt: string;
-  categories: string[];
-  tags: string[];
-  author: string;
-  filePath: string;
-  ogImage?: string;
-  event_type: string | null;
-  work_slug: string | null;
-
-  event_title?: string;
-  work_title?: string;
-  prefectures?: string[];
-
-  // ↓ FactCard の「あと N 日」黄色バッジを点灯させるために engineering/data の
-  // データ拡張を待つ optional フィールド群。値が入ると EventFactCard が自動で
-  // status='coming-soon' / 'now' / 'ended' のいずれかに切り替わる。
-  event_start_date?: string;
-  event_end_date?: string;
-  venue?: string;
-  official_url?: string;
-}
+export type { ArticleIndex, ArticleIndexItem } from './article-types';
+import type { ArticleIndex, ArticleIndexItem } from './article-types';
 
 /**
  * 記事インデックスJSONを読み込む（同一プロセスでメモ化）
@@ -182,25 +157,9 @@ export function getLatestArticles(limit = 10): ArticleIndexItem[] {
 }
 
 /**
- * 記事のURLパスを生成
- *
- * URL設計: /{event_type}/{work_slug}/{slug}
- * 例: /collabo-cafe/sample-work/01kafsdmvd
- *
- * レガシー記事（event_type='articles', work_slug=null）の場合:
- * 例: /articles/hello-mdx
+ * 記事のURLパスを生成 (実体は client-safe な `./article-url` に切り出し済み)
  */
-export function getArticleUrl(article: ArticleIndexItem): string {
-  if (!article.event_type) {
-    return `/articles/${article.slug}`;
-  }
-
-  if (article.event_type === 'articles' || !article.work_slug) {
-    return `/articles/${article.slug}`;
-  }
-
-  return `/${article.event_type}/${article.work_slug}/${article.slug}`;
-}
+export { getArticleUrl } from './article-url';
 
 /**
  * パスパラメータから記事を検索
