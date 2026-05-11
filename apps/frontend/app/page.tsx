@@ -27,14 +27,18 @@ export default async function Home() {
         </p>
         <SparkRule className="mt-2 mb-7 md:mb-9" width="3em" />
         <h1 className="font-display text-[2.75rem] leading-[1.05] text-ink-strong sm:text-5xl md:text-6xl lg:text-7xl">
-          推しは、
-          <br className="md:hidden" />
-          街にいる。
+          体験は、
+          <br />
+          街で起きて、
+          <br />
+          ここに残す。
         </h1>
         <p className="mt-7 max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
-          コラボカフェ、推し旅、ポップアップショップ。
-          <br className="hidden md:inline" />
-          街と作品の交差点を、AI が編集するメディアです。
+          コラボカフェ、ポップアップ、コラボイベント。
+          <br />
+          SNS では流れてしまう「あの日の体験」を、ひとつのページに刻む。
+          <br />
+          期間限定のアニメイベントを扱う、新しい WEB メディアです。
         </p>
       </section>
 
