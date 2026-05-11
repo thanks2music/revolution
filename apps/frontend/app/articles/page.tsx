@@ -1,7 +1,7 @@
 import Layout from '@/components/templates/Layout';
 import { Metadata } from 'next';
 import { getAllArticles, getAllCategories } from '@/lib/mdx/articles';
-import { ArticleGrid } from '@/components/organisms/ArticleGrid';
+import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGrid';
 import { SectionHeader } from '@/components/molecules/SectionHeader';
 import { CategoryChip } from '@/components/molecules/CategoryChip';
 import { SparkRule } from '@/components/atoms/ornament/SparkRule';
@@ -95,7 +95,7 @@ export default async function ArticlesPage({
               : `新着順に ${articles.length} 本を表示しています。`
           }
         />
-        <ArticleGrid articles={articles} layout="grid" />
+        <PaginatedArticleGrid articles={articles} mode="infinite" />
       </section>
     </Layout>
   );

@@ -48,6 +48,17 @@ const config: Config = {
         'section-pc': 'var(--space-section-pc)',
         'section-sp': 'var(--space-section-sp)',
       },
+      keyframes: {
+        // 追加表示された記事カード用のソフトなフェード+わずかな上方向の動き。
+        // 過剰なモーションを避けるため translateY は 8px に抑制。
+        'fade-in-up': {
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
+      animation: {
+        'fade-in-up': 'fade-in-up 0.45s ease-out both',
+      },
     },
   },
   plugins: [],
