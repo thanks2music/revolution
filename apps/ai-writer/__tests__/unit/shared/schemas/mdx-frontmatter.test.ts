@@ -101,6 +101,11 @@ describe('MdxFrontmatterSchema', () => {
       'ai_model',
       'venues',
       'venue_slugs',
+      // EventFactCard 黄色バッジ点灯のための optional フィールド (Sprint 5)
+      'event_start_date',
+      'event_end_date',
+      'venue',
+      'official_url',
     ] as const;
 
     it.each(optionalFields)('%s が欠けても成功', (fieldName) => {
@@ -369,6 +374,104 @@ describe('MdxFrontmatterSchema', () => {
     });
   });
 
+  describe('EventFactCard 用 optional フィールドの検証 (Sprint 5)', () => {
+    it('event_start_date / event_end_date / venue / official_url が揃った frontmatter で成功', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        event_start_date: '2026-05-14',
+        event_end_date: '2026-07-05',
+        venue: 'BOX cafe&space マツモトキヨシ池袋Part2店',
+        official_url: 'https://example.com/cafe/event',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it.each([
+      '2026-05-14',
+      '2025-12-31',
+      '2100-01-01',
+    ])('event_start_date: %s (YYYY-MM-DD) は OK', (date) => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        event_start_date: date,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it.each([
+      '2026/05/14',          // スラッシュ区切り
+      '2026-5-14',           // 月日が 1 桁
+      '20260514',            // ハイフンなし
+      '2026-05-14T00:00:00', // 時刻付き
+      '2026-05-14T00:00:00.000Z', // ISO 8601 ms (date フィールド形式)
+      '令和8年5月14日',        // 日本語
+    ])('event_start_date: %s は YYYY-MM-DD 違反で失敗', (date) => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        event_start_date: date,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('event_end_date も同じ regex 制約 (YYYY-MM-DD のみ許容)', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        event_end_date: '2026/07/05',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('venue: 空文字だと失敗 (.min(1))', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        venue: '',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('venue: 通常の文字列で成功', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        venue: '池袋',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('official_url: 不正な URL で失敗', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        official_url: 'not-a-url',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it.each([
+      'https://example.com',
+      'http://example.com/path',
+      'https://example.com/path?query=1',
+    ])('official_url: %s で成功', (url) => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        official_url: url,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('start のみ / end のみの片側設定でも parse 成功 (UI 側で unknown フォールバック)', () => {
+      const startOnly = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        event_start_date: '2026-05-14',
+      });
+      expect(startOnly.success).toBe(true);
+
+      const endOnly = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        event_end_date: '2026-07-05',
+      });
+      expect(endOnly.success).toBe(true);
+    });
+  });
+
   describe('z.infer で型が正しく派生する', () => {
     it('MdxFrontmatter 型として代入できる', () => {
       // コンパイル時のチェック: validFrontmatterSample1 は MdxFrontmatter 型として代入可能
@@ -382,6 +485,10 @@ describe('MdxFrontmatterSchema', () => {
       expect(x.work_titles).toBeUndefined();
       expect(x.prefectures).toBeUndefined();
       expect(x.ai_provider).toBeUndefined();
+      expect(x.event_start_date).toBeUndefined();
+      expect(x.event_end_date).toBeUndefined();
+      expect(x.venue).toBeUndefined();
+      expect(x.official_url).toBeUndefined();
     });
   });
 });

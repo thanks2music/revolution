@@ -38,6 +38,20 @@ export const MdxFrontmatterSchema = z.object({
   // Legacy: 過去 MDX 互換のため optional として温存 (現行 generator は prefectures/prefecture_slugs を使用)
   venues: z.array(z.string().min(1)).optional(),
   venue_slugs: z.array(z.string().min(1)).optional(),
+
+  // EventFactCard 黄色「あと N 日」バッジ点灯のための optional フィールド群。
+  // event_start_date / event_end_date は parseLocalDate で JST ローカル日付として
+  // 解釈されるため、文字列形式は厳密に YYYY-MM-DD のみ許容 (ISO 8601 ms ではない、
+  // `date` フィールドの ISO 8601 ms 制約とは別系統)。
+  // 値が揃うと EventFactCard が status='coming-soon' / 'now' / 'ended' に切り替わる。
+  event_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'event_start_date must be YYYY-MM-DD',
+  }).optional(),
+  event_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'event_end_date must be YYYY-MM-DD',
+  }).optional(),
+  venue: z.string().min(1).optional(),
+  official_url: z.string().url().optional(),
 });
 
 export type MdxFrontmatter = z.infer<typeof MdxFrontmatterSchema>;

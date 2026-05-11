@@ -136,6 +136,49 @@ describe('ArticleIndexItemSchema', () => {
     });
   });
 
+  describe('EventFactCard 用 optional フィールドの継承 (Sprint 5)', () => {
+    const eventFields = [
+      'event_start_date',
+      'event_end_date',
+      'venue',
+      'official_url',
+    ] as const;
+
+    it.each(eventFields)('%s が欠けても成功 (optional のまま継承)', (fieldName) => {
+      const partial: Record<string, unknown> = { ...validItem };
+      delete partial[fieldName];
+      const result = ArticleIndexItemSchema.safeParse(partial);
+      expect(result.success).toBe(true);
+    });
+
+    it('4 フィールドが揃った item で成功', () => {
+      const result = ArticleIndexItemSchema.safeParse({
+        ...validItem,
+        event_start_date: '2026-05-14',
+        event_end_date: '2026-07-05',
+        venue: 'BOX cafe&space マツモトキヨシ池袋Part2店',
+        official_url: 'https://example.com/cafe/event',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('event_start_date が ISO 8601 ms 形式だと失敗 (date と異なり YYYY-MM-DD 強制)', () => {
+      const result = ArticleIndexItemSchema.safeParse({
+        ...validItem,
+        event_start_date: '2026-05-14T00:00:00.000Z',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('official_url が不正だと失敗', () => {
+      const result = ArticleIndexItemSchema.safeParse({
+        ...validItem,
+        official_url: 'not-a-url',
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe('配列要素の .min(1) 検証 (required override 後の整合性)', () => {
     const arrayFields = ['tags', 'work_titles', 'prefectures', 'prefecture_slugs'] as const;
 
