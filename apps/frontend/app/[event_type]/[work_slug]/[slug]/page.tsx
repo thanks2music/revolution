@@ -74,15 +74,39 @@ export default async function ArticlePage(props: ArticlePagePropsNew) {
       <article className="w-main mx-auto">
         <header className="pt-12 md:pt-16">
           <p className="font-numeric tabular-nums text-xs tracking-[0.22em] text-ink-muted uppercase">
-            {article.event_title ?? 'Article'}
-            {article.work_title ? ` / ${article.work_title}` : ''}
+            {article.event_title ? (
+              <Link
+                href={`/articles?category=${encodeURIComponent(article.event_title)}`}
+                className="hover:text-primary-600 transition-colors"
+              >
+                {article.event_title}
+              </Link>
+            ) : (
+              'Article'
+            )}
+            {article.work_title && (
+              <>
+                {' / '}
+                <Link
+                  href={`/articles?category=${encodeURIComponent(article.work_title)}`}
+                  className="hover:text-primary-600 transition-colors"
+                >
+                  {article.work_title}
+                </Link>
+              </>
+            )}
           </p>
           <SparkRule className="mt-2 mb-6" width="3em" />
 
           {article.categories.length > 0 && (
             <div className="mb-5 flex flex-wrap gap-1.5">
               {article.categories.map((cat) => (
-                <CategoryChip key={cat} name={cat} size="sm" />
+                <CategoryChip
+                  key={cat}
+                  name={cat}
+                  href={`/articles?category=${encodeURIComponent(cat)}`}
+                  size="sm"
+                />
               ))}
             </div>
           )}
