@@ -504,5 +504,6 @@ apps/ai-writer/scripts/deploy.sh
 .env.vercel.local
 apps/frontend/.env.vercel.local
 
-# JARVIS 仮想組織（ローカル組織記憶 / public repo では非追跡）
+# Harness
 .jarvis/
+.harness/

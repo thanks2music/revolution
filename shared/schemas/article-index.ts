@@ -8,6 +8,10 @@ import { MdxFrontmatterSchema } from './mdx-frontmatter';
  * 注: MdxFrontmatter から filePath を拡張。MdxFrontmatter で optional な配列フィールドは、
  *     generator が常に空配列で出力するため、ArticleIndex 側で required に override する
  *     (MdxFrontmatter 真実源 = 過去 PR 実態 / ArticleIndex 真実源 = generator 出力 と分離)。
+ *
+ * EventFactCard 用 optional フィールド (event_start_date / event_end_date / venue /
+ * official_url) は generator が undefined を伝搬する設計のため、optional のまま継承する
+ * (空配列必須化と異なり、欠落 = JSON 出力にも key 自体が乗らないことが正常)。
  */
 export const ArticleIndexItemSchema = MdxFrontmatterSchema.extend({
   filePath: z.string().min(1),

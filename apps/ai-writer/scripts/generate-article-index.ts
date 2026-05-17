@@ -40,7 +40,7 @@ interface CliArgs {
  * ArticleIndexItem - 記事インデックスの項目
  * apps/frontend/lib/mdx/articles.ts の型定義と一致させる
  *
- * 全17フィールド（MDX Frontmatter の全項目を保存）
+ * 全17フィールド + EventFactCard 用 optional 4 フィールド
  */
 interface ArticleIndexItem {
   // 必須フィールド（基本情報）
@@ -64,8 +64,14 @@ interface ArticleIndexItem {
   prefectures: string[];     // 開催都道府県リスト
   prefecture_slugs: string[]; // 都道府県スラッグリスト
 
-  // オプショナルフィールド
+  // オプショナルフィールド（OG / FactCard）
   ogImage: string | null;    // OG画像URL（.mjs から追加）
+  // EventFactCard 黄色「あと N 日」バッジ点灯のための optional フィールド (Sprint 5)。
+  // undefined はそのまま伝搬し、JSON.stringify が key 自体を省略する (ogImage の null 化と異なる)。
+  event_start_date?: string;  // YYYY-MM-DD
+  event_end_date?: string;    // YYYY-MM-DD
+  venue?: string;             // 開催場所 (店舗名・施設名)
+  official_url?: string;      // 公式サイト URL
 }
 
 /**
@@ -225,7 +231,7 @@ async function processmdxFile(
     const repoRoot = resolve(__dirname, '../../..');
     const relativeFilePath = relative(repoRoot, filePath);
 
-    // 全17フィールドを含む ArticleIndexItem を生成
+    // 全17フィールド + FactCard 4 フィールドを含む ArticleIndexItem を生成
     const item: ArticleIndexItem = {
       // 基本情報
       slug: frontmatter.slug,
@@ -250,6 +256,13 @@ async function processmdxFile(
 
       // オプショナルフィールド
       ogImage: frontmatter.ogImage || null,  // .mjs から追加
+
+      // EventFactCard 用 optional フィールド (Sprint 5)
+      // undefined のまま渡し、JSON.stringify で key 自体が省略される。
+      event_start_date: frontmatter.event_start_date,
+      event_end_date: frontmatter.event_end_date,
+      venue: frontmatter.venue,
+      official_url: frontmatter.official_url,
     };
 
     return item;
