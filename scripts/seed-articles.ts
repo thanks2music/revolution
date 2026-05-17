@@ -33,7 +33,7 @@
  * @module scripts/seed-articles
  */
 
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, resolve, join } from 'path';
 import { mkdir, writeFile } from 'fs/promises';
 
@@ -91,20 +91,16 @@ const WORK_FIXTURES = [
 ] as const;
 
 /**
- * 件数から 4 状態の分布を計算する。
- * - count = 50 (デフォルト): 15/15/15/5 厳密分布 (Plan 確定値)
- * - その他: 3:3:3:1 比例配分 + 端数を unknown に寄せる
+ * 件数から 4 状態の分布を計算する。3:3:3:1 比例配分 (`Math.floor` ベース) で、
+ * 余り (count - 3*triState) を unknown に積むことで合計を厳密に count と一致させる。
  *
- * 合計は **必ず count に一致する**。floor + 余りを unknown に積む方式で実装し、
- * Math.round 採用時に発生していた「small count で合計が count を超える」バグを回避する
- * (例: 旧実装 count=2 → 1/1/1/0=3、現実装 count=2 → 0/0/0/2=2)。
+ * count=50 (Plan 確定値) の場合: `floor(150/10)=15` で `15/15/15/5` が自然に得られる。
+ * Math.round 採用時に発生していた「small count で合計が count を超える」バグ
+ * (例: 旧実装 count=2 → 1/1/1/0=3、現実装 count=2 → 0/0/0/2=2) を回避する。
  */
 export function calculateDistribution(count: number): SeedDistribution {
   if (!Number.isInteger(count) || count <= 0) {
     return { comingSoon: 0, now: 0, ended: 0, unknown: 0 };
-  }
-  if (count === 50) {
-    return { comingSoon: 15, now: 15, ended: 15, unknown: 5 };
   }
   const triState = Math.floor((count * 3) / 10);
   const comingSoon = triState;
@@ -115,13 +111,18 @@ export function calculateDistribution(count: number): SeedDistribution {
 }
 
 /**
- * Today から daysOffset 日後の YYYY-MM-DD 文字列を返す (UTC 基準で正規化)。
- * EventFactCard の parseLocalDate(YYYY-MM-DD) に渡される前提。
+ * Today から daysOffset 日後の YYYY-MM-DD 文字列を返す (実行環境のローカル基準)。
+ * EventFactCard 側は `parseLocalDate(YYYY-MM-DD)` でローカル日付として解釈するため、
+ * ここも **ローカル基準** で算出しないと JST など UTC+ 環境で深夜帯に「今日/昨日」が
+ * 1 日ずれ、coming-soon / now / ended の seed 分布が崩れて視覚検証が不安定になる。
  */
 function dateOffsetYMD(daysOffset: number): string {
   const d = new Date();
-  d.setUTCDate(d.getUTCDate() + daysOffset);
-  return d.toISOString().slice(0, 10);
+  d.setDate(d.getDate() + daysOffset);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /**
@@ -375,8 +376,12 @@ async function main(): Promise<void> {
 }
 
 // CLI として直接起動された場合のみ main() を呼ぶ。テストからは pure 関数のみ import 可能。
+// `.ts` の endsWith 比較は tsx 経由でしか動かず、`.js` 変換後や bundle 後にすり抜ける。
+// Node.js ESM 標準 idiom である `import.meta.url === pathToFileURL(argv[1]).href` 比較で
+// 拡張子非依存に判定する (Node 22 互換、Node 24+ の `import.meta.main` の代替)。
 const invokedDirectly =
-  process.argv[1] && process.argv[1].endsWith('seed-articles.ts');
+  !!process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
   main().catch((err) => {
     console.error('❌ エラー:', err);
