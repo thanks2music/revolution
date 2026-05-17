@@ -41,15 +41,12 @@ export const MdxFrontmatterSchema = z.object({
 
   // EventFactCard 黄色「あと N 日」バッジ点灯のための optional フィールド群。
   // event_start_date / event_end_date は parseLocalDate で JST ローカル日付として
-  // 解釈されるため、文字列形式は厳密に YYYY-MM-DD のみ許容 (ISO 8601 ms ではない、
-  // `date` フィールドの ISO 8601 ms 制約とは別系統)。
+  // 解釈されるため、ISO 8601 date (YYYY-MM-DD) を厳密に要求する (`date` フィールドの
+  // ISO 8601 ms 制約とは別系統)。`z.iso.date()` (zod v4) は単純 regex と異なり、
+  // 月 (01-12) と日 (該当月の最大日) のレンジ違反 (例: 2026-13-45, 2026-02-30) も拒否する。
   // 値が揃うと EventFactCard が status='coming-soon' / 'now' / 'ended' に切り替わる。
-  event_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'event_start_date must be YYYY-MM-DD',
-  }).optional(),
-  event_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'event_end_date must be YYYY-MM-DD',
-  }).optional(),
+  event_start_date: z.iso.date().optional(),
+  event_end_date: z.iso.date().optional(),
   venue: z.string().min(1).optional(),
   official_url: z.string().url().optional(),
 });

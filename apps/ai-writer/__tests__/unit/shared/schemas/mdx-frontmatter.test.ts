@@ -413,6 +413,24 @@ describe('MdxFrontmatterSchema', () => {
       expect(result.success).toBe(false);
     });
 
+    it.each([
+      '2026-13-01',  // 月 13 (範囲外)
+      '2026-00-15',  // 月 00 (範囲外)
+      '2026-02-30',  // 2 月 30 日 (該当月の最大日超過)
+      '2026-05-32',  // 日 32 (範囲外)
+      '2026-05-00',  // 日 00 (範囲外)
+      '2026-13-45',  // 月日両方とも不正
+    ])(
+      'event_start_date: %s は z.iso.date() の月/日レンジ違反で失敗',
+      (date) => {
+        const result = MdxFrontmatterSchema.safeParse({
+          ...validFrontmatterSample7,
+          event_start_date: date,
+        });
+        expect(result.success).toBe(false);
+      },
+    );
+
     it('event_end_date も同じ regex 制約 (YYYY-MM-DD のみ許容)', () => {
       const result = MdxFrontmatterSchema.safeParse({
         ...validFrontmatterSample7,
