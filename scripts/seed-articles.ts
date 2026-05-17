@@ -94,20 +94,23 @@ const WORK_FIXTURES = [
  * 件数から 4 状態の分布を計算する。
  * - count = 50 (デフォルト): 15/15/15/5 厳密分布 (Plan 確定値)
  * - その他: 3:3:3:1 比例配分 + 端数を unknown に寄せる
+ *
+ * 合計は **必ず count に一致する**。floor + 余りを unknown に積む方式で実装し、
+ * Math.round 採用時に発生していた「small count で合計が count を超える」バグを回避する
+ * (例: 旧実装 count=2 → 1/1/1/0=3、現実装 count=2 → 0/0/0/2=2)。
  */
 export function calculateDistribution(count: number): SeedDistribution {
-  if (count <= 0) {
+  if (!Number.isInteger(count) || count <= 0) {
     return { comingSoon: 0, now: 0, ended: 0, unknown: 0 };
   }
   if (count === 50) {
     return { comingSoon: 15, now: 15, ended: 15, unknown: 5 };
   }
-  // 3:3:3:1 比例配分。unknown が端数を吸収して合計を厳密一致させる。
-  const ratio = count / 10;
-  const comingSoon = Math.round(ratio * 3);
-  const now = Math.round(ratio * 3);
-  const ended = Math.round(ratio * 3);
-  const unknown = Math.max(0, count - comingSoon - now - ended);
+  const triState = Math.floor((count * 3) / 10);
+  const comingSoon = triState;
+  const now = triState;
+  const ended = triState;
+  const unknown = count - comingSoon - now - ended;
   return { comingSoon, now, ended, unknown };
 }
 
@@ -280,10 +283,22 @@ function parseArgs(): CliArgs {
     return arg ? arg.slice(`--${name}=`.length) : defaultValue;
   };
 
+  // --count は 1 以上の整数のみ受け付ける。NaN や 0 / 負数で先に進むと
+  // calculateDistribution が {0,0,0,0} を返し、DRY-RUN の renderMdx(specs[0]) で
+  // undefined 参照クラッシュとなるため、ここで早期 reject する。
+  const rawCount = getArg('count', '50');
+  const count = Number(rawCount);
+  if (!Number.isInteger(count) || count <= 0) {
+    console.error(
+      `❌ --count は 1 以上の整数を指定してください (受け取った値: "${rawCount}")`,
+    );
+    process.exit(1);
+  }
+
   // scripts/ から見て repo root は親ディレクトリ
   const repoRoot = resolve(__dirname, '..');
   return {
-    count: Number(getArg('count', '50')),
+    count,
     outputDir: getArg('output-dir', join(repoRoot, 'apps/ai-writer/content/__seed__')),
     dryRun: args.includes('--dry-run'),
     verbose: args.includes('--verbose'),
@@ -335,10 +350,16 @@ async function main(): Promise<void> {
   if (args.dryRun) {
     console.log('🧪 DRY-RUN 完了 (ファイル出力スキップ)');
     console.log();
-    console.log('📋 サンプル MDX (1 件目):');
-    console.log('-'.repeat(60));
-    console.log(renderMdx(specs[0]));
-    console.log('-'.repeat(60));
+    // parseArgs で count>=1 を validate しているため通常到達しないが、
+    // calculateDistribution が将来 0 件を返す経路を増やしても落ちないよう defensive にガード。
+    if (specs.length > 0) {
+      console.log('📋 サンプル MDX (1 件目):');
+      console.log('-'.repeat(60));
+      console.log(renderMdx(specs[0]));
+      console.log('-'.repeat(60));
+    } else {
+      console.log('📋 (specs が空のためサンプル MDX 表示をスキップ)');
+    }
   } else {
     console.log(`✅ ${written} 件の MDX を生成しました: ${args.outputDir}`);
     console.log();
