@@ -82,8 +82,9 @@ export const PaginatedArticleGrid = ({
         {visible.map((article, index) => (
           <div
             key={article.filePath}
-            // 初期表示分はアニメさせず、ロード後に追加された分だけ fade-in
-            className={index >= pageSize ? 'animate-fade-in-up' : undefined}
+            // 初期表示分はアニメさせず、ロード後に追加された分だけ fade-in。
+            // `motion-safe:` で prefers-reduced-motion: reduce 環境では無効化する (a11y、Tailwind 公式)。
+            className={index >= pageSize ? 'motion-safe:animate-fade-in-up' : undefined}
           >
             <ArticleCard article={article} />
           </div>
