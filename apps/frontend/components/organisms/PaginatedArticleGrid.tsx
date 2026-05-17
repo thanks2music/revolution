@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// 注: prop 変化での visibleCount リセットは parent 側の `key` prop による remount で実現する
+// (React 公式 "You Might Not Need an Effect — Resetting all state when a prop changes")。
+// useEffect で setState する反パターンを避けるため、本コンポーネント内ではリセット effect を持たない。
 import { ArticleCard } from '@/components/molecules/ArticleCard';
 // 必ず client-safe な分割モジュールから import (articles.ts は fs 依存)
 import type { ArticleIndexItem } from '@/lib/mdx/article-types';
@@ -36,11 +39,6 @@ export const PaginatedArticleGrid = ({
   const total = articles.length;
   const [visibleCount, setVisibleCount] = useState(() => Math.min(pageSize, total));
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-
-  // articles 自体が変わった (例: カテゴリフィルタ切替) ら表示件数をリセット
-  useEffect(() => {
-    setVisibleCount(Math.min(pageSize, total));
-  }, [pageSize, total]);
 
   const loadMore = useCallback(() => {
     setVisibleCount((current) => Math.min(current + pageSize, total));
