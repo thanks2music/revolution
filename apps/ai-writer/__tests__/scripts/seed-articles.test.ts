@@ -23,8 +23,10 @@ import { join } from 'path';
 const REPO_ROOT = join(__dirname, '../../../..');
 
 function runSeed(args: string): string {
+  // REPO_ROOT に空白を含むパス (例: macOS の "/Users/John Doe/...") でも壊れないよう
+  // 必ずダブルクォートで囲む。args は内部リテラルのみで外部入力なし。
   return execSync(
-    `cd ${REPO_ROOT} && npx tsx scripts/seed-articles.ts ${args}`,
+    `cd "${REPO_ROOT}" && npx tsx scripts/seed-articles.ts ${args}`,
     { encoding: 'utf-8' }
   );
 }
