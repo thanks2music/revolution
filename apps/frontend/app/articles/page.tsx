@@ -95,7 +95,17 @@ export default async function ArticlesPage({
               : `新着順に ${articles.length} 本を表示しています。`
           }
         />
-        <PaginatedArticleGrid articles={articles} mode="infinite" />
+        {/*
+          key={activeCategory ?? 'all'} で remount し、カテゴリ切替時に visibleCount を
+          初期化する (React 公式 "Resetting all state when a prop changes" 準拠)。
+          PaginatedArticleGrid 側で useEffect による setState を避けるため、
+          リセットの責務は parent に集約する。
+        */}
+        <PaginatedArticleGrid
+          key={activeCategory ?? 'all'}
+          articles={articles}
+          mode="infinite"
+        />
       </section>
     </Layout>
   );
