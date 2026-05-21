@@ -28,7 +28,7 @@
     "next-mdx-remote": "^6.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "sanitize-html": "^2.17.0",
+    "sanitize-html": "^2.17.4",
     "swr": "^2.2.5",
     "zod": "^4.1.12",
     "@revolution/schemas": "workspace:*"
