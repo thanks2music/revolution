@@ -12,6 +12,8 @@ import Link from 'next/link';
 import { parseFrontmatter } from '@/lib/mdx/utils';
 import { generateArticleMetadata } from '@/lib/metadata';
 import type { ArticlePageProps } from '@/types/page-props';
+import { LikeButton } from '@/components/molecules/LikeButton';
+import { buildArticleKey } from '@/lib/mdx/article-url';
 
 // Generate static params for all articles
 export async function generateStaticParams() {
@@ -121,6 +123,14 @@ export default async function ArticlePage(props: ArticlePageProps) {
         {/* Article Content */}
         <div className="prose prose-lg dark:prose-invert max-w-none">
           <CustomMDX source={content} />
+        </div>
+
+        {/* Like */}
+        <div className="mt-10 flex items-center gap-3 border-t border-gray-200 pt-8 dark:border-gray-700">
+          <LikeButton targetKey={buildArticleKey(article)} />
+          <p className="text-sm text-ink-muted">
+            この記事が気に入ったら、いいねで記録できます。
+          </p>
         </div>
 
         {/* Footer Navigation */}

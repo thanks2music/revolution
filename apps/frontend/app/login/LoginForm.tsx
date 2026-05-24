@@ -19,7 +19,15 @@ import { createClient } from '@/lib/supabase/client';
 
 type Step = 'email' | 'code';
 
-export function LoginForm({ initialError }: { initialError?: string }) {
+export function LoginForm({
+  initialError,
+  next,
+}: {
+  initialError?: string;
+  /** verify 成功後の遷移先 (相対パスのみ。未指定は /mypage)。 */
+  next?: string;
+}) {
+  const destination = next ?? '/mypage';
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -53,8 +61,9 @@ export function LoginForm({ initialError }: { initialError?: string }) {
       if (result.ok) {
         // セッション cookie 確立直後はフルナビゲーションで最新 cookie を middleware に
         // 渡す (soft navigation だと確立前の状態で middleware を通過しうる)。
-        // 遷移先は /mypage を要求し、未 onboarding なら middleware が /onboarding へ誘導。
-        window.location.assign('/mypage');
+        // 遷移先は next (なければ /mypage)。未 onboarding なら middleware が
+        // /onboarding へ誘導する (next が保護ルートでも middleware が再判定)。
+        window.location.assign(destination);
       } else {
         setMessage(result.error);
       }

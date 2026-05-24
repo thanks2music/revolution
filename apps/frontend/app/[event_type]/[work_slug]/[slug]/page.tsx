@@ -16,6 +16,8 @@ import { CategoryChip } from '@/components/molecules/CategoryChip';
 import { SparkRule } from '@/components/atoms/ornament/SparkRule';
 import { EventFactCard } from '@/components/molecules/EventFactCard';
 import { RelatedArticles } from '@/components/organisms/RelatedArticles';
+import { LikeButton } from '@/components/molecules/LikeButton';
+import { buildArticleKey } from '@/lib/mdx/article-url';
 
 export const revalidate = 120; // ISR (home と同じ 2 分)
 
@@ -142,6 +144,13 @@ export default async function ArticlePage(props: ArticlePagePropsNew) {
           <div className="mt-10 md:mt-0 md:sticky md:top-6 md:self-start">
             <EventFactCard article={article} />
           </div>
+        </div>
+
+        <div className="mt-10 flex items-center gap-3 border-t pt-8">
+          <LikeButton targetKey={buildArticleKey(article)} />
+          <p className="text-sm text-ink-muted">
+            この記事が気に入ったら、いいねで記録できます。
+          </p>
         </div>
 
         <RelatedArticles related={related} />

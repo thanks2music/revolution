@@ -21,14 +21,18 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
+
+  // open redirect 防止: 先頭が単一 `/` で始まる相対パスのみ許可 (`//host` は拒否)。
+  const safeNext =
+    next && /^\/(?!\/)/.test(next) ? next : undefined;
 
   return (
     <Layout>
       <section className="w-main mx-auto flex min-h-[60vh] items-center justify-center py-12 md:py-20">
-        <LoginForm initialError={error} />
+        <LoginForm initialError={error} next={safeNext} />
       </section>
     </Layout>
   );
