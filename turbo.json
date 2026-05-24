@@ -9,7 +9,8 @@
     "VERCEL_URL"
   ],
   "globalPassThroughEnv": [
-    "ENABLE_EXPERIMENTAL_COREPACK"
+    "ENABLE_EXPERIMENTAL_COREPACK",
+    "SKIP_ENV_VALIDATION"
   ],
   "tasks": {
     "dev": {
