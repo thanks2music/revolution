@@ -92,6 +92,29 @@ pnpm lint
 pnpm tsx scripts/debug-rss-cron.ts
 ```
 
+## テストカバレッジ
+
+カバレッジ計測は **opt-in** で行う (`collectCoverage` は `jest.config.mjs` で `false` 維持)。常時収集は全 jest 実行を遅くするため、必要時のみ `--coverage` フラグで計測する ([Jest 公式](https://github.com/jestjs/jest/blob/main/docs/Configuration.md): `collectCoverage:true` は全実行ファイルに計測文を後付けし「テストを著しく遅くしうる」)。
+
+```bash
+# カバレッジ計測 (e2e 除外、coverage/ に lcov/html 生成)
+pnpm test:coverage
+```
+
+### Baseline (2026-05-24 計測 / v8 provider)
+
+| 指標 | All files |
+|------|-----------|
+| % Statements | 29.5 |
+| % Branches | 74.7 |
+| % Functions | 41.55 |
+| % Lines | 29.5 |
+
+- Test Suites: 33 passed / Tests: 706 passed
+- 層別 TDD の Phase 1 即時施策の baseline スナップショット (`llm-context/development-principles.md`「段階的カバレッジ目標」参照)。Phase 2 で 50% threshold + CI ゲート導入を検討する際の根拠値
+- 高カバレッジ領域: `lib/services/vision-api/` (83.86%) / `lib/mdx/` (92.7%) / `lib/config/` (80.15%) / `pipeline-steps.ts` (100%)。未カバー領域: `app/` 配下 API routes / pages、`lib/github/` / `lib/slack/` / `lib/types/` は 0%
+- ※ `% Statements`/`% Lines` が低いのは、未実行の app routes・型定義ファイルを `collectCoverageFrom` が含むため。`% Branches` 74.7% は実行されたファイル内の分岐網羅率
+
 ## デバッグ方法
 
 AI Writer には複数のデバッグオプションがあります。
