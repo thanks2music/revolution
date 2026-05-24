@@ -47,8 +47,8 @@ function resolvePathRelativeToFrontend(relativePath: string): string | null {
  * Client Component (例: PaginatedArticleGrid → ArticleCard) が型を import しても
  * ブラウザ bundle に `fs` が漏れないようにしている。
  */
-export type { ArticleIndex, ArticleIndexItem } from './article-types';
 import type { ArticleIndex, ArticleIndexItem } from './article-types';
+export type { ArticleIndex, ArticleIndexItem };
 
 /**
  * 記事インデックスJSONを読み込む（同一プロセスでメモ化）
