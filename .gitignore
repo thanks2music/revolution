@@ -507,3 +507,7 @@ apps/frontend/.env.vercel.local
 # Harness
 .jarvis/
 .harness/
+
+# 視覚検証用 seed 記事 (ローカル限定。本番事故防止のため commit しない)
+# 生成: pnpm seed:articles / 削除: pnpm seed:clean
+apps/ai-writer/content/__seed__/
