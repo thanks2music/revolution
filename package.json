@@ -24,6 +24,7 @@
     "docs:create": "./scripts/create-doc-and-sync.sh",
     "prepare": "husky",
     "seed:articles": "tsx scripts/seed-articles.ts",
+    "seed:apply": "tsx scripts/seed-articles.ts && pnpm --filter @revolution/ai-writer generate:article-index",
     "seed:clean": "find apps/ai-writer/content/__seed__ -name 'seed-*.mdx' -delete && pnpm --filter @revolution/ai-writer generate:article-index",
     "sync:templates": "./scripts/sync-templates.sh"
   },

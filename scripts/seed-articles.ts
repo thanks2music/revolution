@@ -20,9 +20,14 @@
  *     pnpm --filter @revolution/ai-writer generate:article-index
  *
  * 使用方法:
- *   pnpm seed:articles                           # 50 件本実行
- *   pnpm seed:articles --count=10 --dry-run      # 10 件 DRY-RUN
+ *   pnpm seed:apply                              # 生成 + article-index.json 再生成 (推奨)
+ *   pnpm seed:articles                           # 生成のみ (index 再生成は手動)
+ *   pnpm seed:articles --count=10 --dry-run      # 10 件 DRY-RUN (出力なし)
  *   pnpm seed:articles --verbose                 # 詳細ログ
+ *   pnpm seed:clean                              # seed 削除 + index 再生成
+ *
+ * 注: seed:articles は生成のみ (--dry-run と一貫した挙動を保つため index 再生成を
+ *     含めない)。生成 + index 反映を一括で行う場合は seed:apply を使う。
  *
  * オプション:
  *   --count=N        生成件数 (デフォルト 50)
@@ -37,8 +42,11 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, resolve, join } from 'path';
 import { mkdir, writeFile } from 'fs/promises';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// ESM の __dirname 相当。`__dirname` という名前を避けるのは、CJS で動く test ランナー
+// (jest) がモジュールラッパーで同名グローバルを注入し、本ファイルを直接 import すると
+// 「Identifier '__dirname' has already been declared」で衝突するため
+// (renderMdx 等の純粋関数を直接 unit test できるようにする)。
+const scriptDir = dirname(fileURLToPath(import.meta.url));
 
 // =============================================================================
 // 型定義
@@ -297,7 +305,7 @@ function parseArgs(): CliArgs {
   }
 
   // scripts/ から見て repo root は親ディレクトリ
-  const repoRoot = resolve(__dirname, '..');
+  const repoRoot = resolve(scriptDir, '..');
   return {
     count,
     outputDir: getArg('output-dir', join(repoRoot, 'apps/ai-writer/content/__seed__')),

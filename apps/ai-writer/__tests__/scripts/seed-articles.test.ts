@@ -19,6 +19,12 @@
 import { describe, it, expect } from '@jest/globals';
 import { execSync } from 'child_process';
 import { join } from 'path';
+import {
+  renderMdx,
+  generateSeedSpecs,
+  calculateDistribution,
+  type SeedArticle,
+} from '../../../../scripts/seed-articles';
 
 const REPO_ROOT = join(__dirname, '../../../..');
 
@@ -169,6 +175,73 @@ describe('seed-articles.ts', () => {
       expect(out).toContain('MVP リリース前に必ず削除');
       expect(out).toMatch(/find .+__seed__ -name 'seed-\*\.mdx' -delete/);
       expect(out).toContain('generate:article-index');
+    });
+  });
+
+  // CLI 出力の regex マッチではなく renderMdx を直接呼び、frontmatter の構造を
+  // 精密に検証する (Layer 1 純粋関数の直接 unit test)。
+  describe('renderMdx (純粋関数の直接 unit test)', () => {
+    const comingSpec: SeedArticle = {
+      post_id: 'seed-coming-001',
+      state: 'coming-soon',
+      workSlug: 'seed-frieren',
+      workTitle: '葬送のフリーレン',
+      eventStartDate: '2026-06-01',
+      eventEndDate: '2026-06-15',
+      publishDate: '2026-05-20T03:00:00.000Z',
+    };
+    const unknownSpec: SeedArticle = {
+      post_id: 'seed-unknown-050',
+      state: 'unknown',
+      workSlug: 'seed-spy-family',
+      workTitle: 'SPY×FAMILY',
+      publishDate: '2026-04-20T03:00:00.000Z',
+    };
+
+    it('coming-soon spec は 4 フィールドを frontmatter に含む', () => {
+      const mdx = renderMdx(comingSpec);
+      expect(mdx).toContain('event_start_date: "2026-06-01"');
+      expect(mdx).toContain('event_end_date: "2026-06-15"');
+      expect(mdx).toMatch(/venue: ".+"/);
+      expect(mdx).toMatch(/official_url: "https?:\/\//);
+    });
+
+    it('unknown spec は 4 フィールドを一切含まない (フォールバック検証)', () => {
+      const mdx = renderMdx(unknownSpec);
+      expect(mdx).not.toContain('event_start_date:');
+      expect(mdx).not.toContain('event_end_date:');
+      expect(mdx).not.toContain('venue:');
+      expect(mdx).not.toContain('official_url:');
+    });
+
+    it('title は 40 char 以内 (generate-article-index の Title Validation 互換)', () => {
+      const titleLine = renderMdx(comingSpec)
+        .split('\n')
+        .find((l) => l.startsWith('title:'));
+      expect(titleLine).toBeDefined();
+      const title = titleLine!.match(/title: "([^"]+)"/)?.[1] ?? '';
+      expect(title.length).toBeLessThanOrEqual(40);
+    });
+
+    it('date は ISO 8601 ms 形式 (MdxFrontmatterSchema 互換)', () => {
+      const dateLine = renderMdx(comingSpec)
+        .split('\n')
+        .find((l) => l.startsWith('date:'));
+      expect(dateLine).toMatch(/date: "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"/);
+    });
+
+    it('frontmatter は --- で開閉し post_id / slug が post_id と一致', () => {
+      const mdx = renderMdx(comingSpec);
+      expect(mdx.startsWith('---\n')).toBe(true);
+      expect(mdx).toContain('post_id: "seed-coming-001"');
+      expect(mdx).toContain('slug: "seed-coming-001"');
+    });
+
+    it('generateSeedSpecs の各 spec が renderMdx で例外なく描画できる', () => {
+      const specs = generateSeedSpecs(calculateDistribution(50));
+      for (const spec of specs) {
+        expect(() => renderMdx(spec)).not.toThrow();
+      }
     });
   });
 });
