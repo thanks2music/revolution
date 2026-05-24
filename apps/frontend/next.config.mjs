@@ -73,6 +73,26 @@ const nextConfig = {
       ? new URL(process.env.NEXT_PUBLIC_WP_ENDPOINT).origin
       : '';
 
+    // CSP connect-src 用に Supabase オリジンを env から動的抽出。
+    // Crescendolls 会員機能（Auth / PostgREST / Realtime）のブラウザ実リクエストが
+    // CSP でブロックされないために必須。env 未設定時は確定値にフォールバック。
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      'https://abqsntbvnuttpyixagob.supabase.co';
+    const supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : '';
+    // Realtime は wss スキームでも接続するため WebSocket オリジンも許可。
+    const supabaseWsOrigin = supabaseOrigin
+      ? supabaseOrigin.replace(/^https:/, 'wss:')
+      : '';
+    const connectSrc = [
+      "'self'",
+      wpOrigin,
+      supabaseOrigin,
+      supabaseWsOrigin,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
     return [
       {
         source: '/:path*',
@@ -86,7 +106,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'", // Tailwind CSSに必要
               `img-src 'self' data: https: ${process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST || 'localhost'}`,
               "font-src 'self' data:",
-              "connect-src 'self'" + (wpOrigin ? ' ' + wpOrigin : ''),
+              `connect-src ${connectSrc}`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

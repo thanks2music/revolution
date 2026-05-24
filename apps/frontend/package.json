@@ -22,16 +22,20 @@
   "dependencies": {
     "@headlessui/react": "^2.1.2",
     "@heroicons/react": "v1",
+    "@revolution/schemas": "workspace:*",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.106.1",
     "@t3-oss/env-nextjs": "^0.13.8",
-    "next": "16.2.6",
     "@vercel/og": "^0.8.5",
+    "drizzle-orm": "^0.45.2",
+    "next": "16.2.6",
     "next-mdx-remote": "^6.0.0",
+    "postgres": "^3.4.9",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sanitize-html": "^2.17.4",
     "swr": "^2.2.5",
-    "zod": "^4.1.12",
-    "@revolution/schemas": "workspace:*"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^20",
@@ -40,6 +44,8 @@
     "@types/sanitize-html": "^2.16.0",
     "autoprefixer": "^10.4.21",
     "axios": "^1.7.2",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-zod": "^0.8.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "eslint-plugin-prettier": "^5.5.4",
