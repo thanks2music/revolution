@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1779625195494,
+      "tag": "0000_crescendolls_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779625239431,
+      "tag": "0001_crescendolls_rls",
+      "breakpoints": true
+    }
+  ]
+}

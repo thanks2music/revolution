@@ -8,12 +8,20 @@
     "./mdx-frontmatter": "./mdx-frontmatter.ts",
     "./ai-provider-response": "./ai-provider-response.ts",
     "./article-index": "./article-index.ts",
-    "./vision-api-extraction": "./vision-api-extraction.ts"
+    "./vision-api-extraction": "./vision-api-extraction.ts",
+    "./db/profiles": "./db/profiles.ts",
+    "./db/favorites": "./db/favorites.ts",
+    "./profile": "./profile.ts",
+    "./favorite": "./favorite.ts"
   },
   "peerDependencies": {
+    "drizzle-orm": ">=0.36.0",
+    "drizzle-zod": ">=0.8.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "drizzle-orm": "^0.45.2",
+    "drizzle-zod": "^0.8.3",
     "zod": "^4.1.13"
   }
 }
