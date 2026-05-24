@@ -504,5 +504,10 @@ apps/ai-writer/scripts/deploy.sh
 .env.vercel.local
 apps/frontend/.env.vercel.local
 
-# JARVIS 仮想組織（ローカル組織記憶 / public repo では非追跡）
+# Harness
 .jarvis/
+.harness/
+
+# 視覚検証用 seed 記事 (ローカル限定。本番事故防止のため commit しない)
+# 生成: pnpm seed:articles / 削除: pnpm seed:clean
+apps/ai-writer/content/__seed__/

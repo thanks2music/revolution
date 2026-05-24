@@ -1,7 +1,7 @@
 import Layout from '@/components/templates/Layout';
 import { Metadata } from 'next';
 import { getAllArticles, getAllCategories } from '@/lib/mdx/articles';
-import { ArticleGrid } from '@/components/organisms/ArticleGrid';
+import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGrid';
 import { SectionHeader } from '@/components/molecules/SectionHeader';
 import { CategoryChip } from '@/components/molecules/CategoryChip';
 import { SparkRule } from '@/components/atoms/ornament/SparkRule';
@@ -14,9 +14,26 @@ export const metadata: Metadata = {
     'Revolution の記事一覧。コラボカフェ・推し旅・ポップアップショップ等のイベント情報。',
 };
 
-export default function ArticlesPage() {
-  const articles = getAllArticles();
+type SearchParams = { category?: string | string[] };
+
+const ALL_LABEL = 'すべて';
+
+export default async function ArticlesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<SearchParams>;
+}) {
+  const resolved = (await searchParams) ?? {};
+  const rawCategory = Array.isArray(resolved.category)
+    ? resolved.category[0]
+    : resolved.category;
+  const activeCategory = rawCategory?.trim() || null;
+
+  const allArticles = getAllArticles();
   const categories = getAllCategories();
+  const articles = activeCategory
+    ? allArticles.filter((article) => article.categories.includes(activeCategory))
+    : allArticles;
 
   return (
     <Layout hidePt>
@@ -31,6 +48,9 @@ export default function ArticlesPage() {
         </h1>
         <p className="mt-5 text-sm text-ink-muted">
           <span className="font-numeric tabular-nums">{articles.length}</span> 本
+          {activeCategory && (
+            <span className="font-numeric tabular-nums"> / 全 {allArticles.length} 本中</span>
+          )}
           <span className="mx-2 text-[var(--line-strong)]">/</span>
           <span className="font-numeric tabular-nums">{categories.length}</span> カテゴリ
         </p>
@@ -45,8 +65,20 @@ export default function ArticlesPage() {
             subtitle="興味のあるテーマから記事を探す。"
           />
           <div className="flex flex-wrap gap-2">
+            <CategoryChip
+              name={ALL_LABEL}
+              href="/articles"
+              active={!activeCategory}
+              size="md"
+            />
             {categories.map((category) => (
-              <CategoryChip key={category} name={category} size="md" />
+              <CategoryChip
+                key={category}
+                name={category}
+                href={`/articles?category=${encodeURIComponent(category)}`}
+                active={category === activeCategory}
+                size="md"
+              />
             ))}
           </div>
         </section>
@@ -56,10 +88,24 @@ export default function ArticlesPage() {
       <section className="w-main mx-auto mt-section-sp md:mt-section-pc">
         <SectionHeader
           eyebrow="No. 002 / All"
-          title="記事一覧"
-          subtitle={`新着順に ${articles.length} 本を表示しています。`}
+          title={activeCategory ? `${activeCategory} の記事` : '記事一覧'}
+          subtitle={
+            activeCategory
+              ? `カテゴリ「${activeCategory}」で絞り込み中: ${articles.length} 本`
+              : `新着順に ${articles.length} 本を表示しています。`
+          }
         />
-        <ArticleGrid articles={articles} layout="grid" />
+        {/*
+          key={activeCategory ?? 'all'} で remount し、カテゴリ切替時に visibleCount を
+          初期化する (React 公式 "Resetting all state when a prop changes" 準拠)。
+          PaginatedArticleGrid 側で useEffect による setState を避けるため、
+          リセットの責務は parent に集約する。
+        */}
+        <PaginatedArticleGrid
+          key={activeCategory ?? 'all'}
+          articles={articles}
+          mode="infinite"
+        />
       </section>
     </Layout>
   );
