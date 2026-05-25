@@ -46,7 +46,12 @@ const HeartIcon = ({ filled }: { filled: boolean }) => (
 );
 
 function goToLogin() {
-  const next = encodeURIComponent(window.location.pathname);
+  // pathname だけでなく query / hash も保持し、ログイン後に閲覧時の状態へ戻す
+  // (?category= 等のフィルタやページネーション、アンカーを失わない)。値は login 側の
+  // sanitizeNextPath で同一オリジン内部パスに正規化される。
+  const next = encodeURIComponent(
+    window.location.pathname + window.location.search + window.location.hash,
+  );
   window.location.assign(`/login?next=${next}`);
 }
 

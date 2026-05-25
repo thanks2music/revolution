@@ -78,6 +78,15 @@ export function OnboardingForm({
       return;
     }
 
+    // 最小長未満は「未チェック (idle)」に留め、サーバ確認 (checkUsernameAvailability)
+    // を呼ばない。短すぎる入力で 'checking' → 'invalid' を出すと UI コメント (idle) と
+    // 実挙動が乖離し、無駄な往復も生む。形式・重複の最終判定は submit 時の 23505 が担保。
+    if (value.length < USERNAME_MIN_LENGTH) {
+      setUsernameStatus('idle');
+      setAvailabilityError(null);
+      return;
+    }
+
     setUsernameStatus('checking');
     setAvailabilityError(null);
 
