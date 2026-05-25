@@ -20,6 +20,7 @@ import Layout from '@/components/templates/Layout';
 import { SectionHeader } from '@/components/molecules/SectionHeader';
 import { ArticleCard } from '@/components/molecules/ArticleCard';
 import { createClient } from '@/lib/supabase/server';
+import { getCachedUser } from '@/lib/auth/current-user';
 import { getFavorites } from '@/actions/favorite';
 import { getAllArticles } from '@/lib/mdx/articles';
 import { resolveArticleByKey } from '@/lib/mdx/article-url';
@@ -36,9 +37,12 @@ export const metadata: Metadata = {
 export default async function MyPage() {
   const supabase = await createClient();
 
+  // getUser は per-request memoized なヘルパ経由で取得する。同リクエスト内で実行される
+  // getFavorites() (actions/favorite.ts) も同じヘルパを使うため、Auth サーバ往復は 1 回に
+  // dedup される (Vercel 監査 / React.cache())。
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getCachedUser();
 
   // middleware が保護しているため通常 user は存在するが、防御的に取得する。
   const { data: profile } = user

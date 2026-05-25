@@ -7,12 +7,17 @@
  * 設計 (LikeButton / getFavoriteState と同じ思想):
  * - 認証状態は cookie 依存で動的。Header / Footer は Server Component のままにして
  *   記事ルートの SSG/ISR を壊さないため、認証状態は **マウント後にクライアントから取得**
- *   する (getAuthNav Server Action)。記事本文の静的レンダリングは不変。
+ *   する。記事本文の静的レンダリングは不変。
+ * - **認証状態は AuthNavProvider (Context) から購読する** (Vercel 監査 / client-swr-dedup)。
+ *   従来は各 AuthNav インスタンス (header / mobile / footer) が個別に getAuthNav() を呼び
+ *   1 ページで 3 往復していたが、Provider がマウント時 1 回だけ取得した値を全インスタンスが
+ *   共有することで往復は 3 → 1 に集約される。
  * - 未ログイン: 「ログイン / 登録」(→ /login、primary 塗りボタン)。
  * - ログイン済み: 「マイページ」(→ /mypage)。
  * - 解決前 (初回マウント直後) はレイアウトシフトを避けるため、未ログイン導線
- *   (「ログイン / 登録」→ /login) を初期表示する。/login は登録 + ログイン兼用のため、
- *   万一の解決遅延でも遷移先として安全。解決後にログイン済みなら「マイページ」へ差し替わる。
+ *   (「ログイン / 登録」→ /login) を初期表示する (Provider の初期値 isAuthed:false)。
+ *   /login は登録 + ログイン兼用のため、万一の解決遅延でも遷移先として安全。
+ *   解決後にログイン済みなら「マイページ」へ差し替わる。
  *
  * variant でレイアウトを切り替える:
  * - 'header'  : デスクトップヘッダー右の primary 塗りボタン / テキストリンク。
@@ -22,10 +27,9 @@
  * Sky×Lightning Editorial トークン厳守 (primary 青塗り / 罫線、紫グラデ・煽り文言なし)。
  */
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-import { getAuthNav } from '@/actions/auth';
+import { useAuthNav } from '@/components/molecules/AuthNavProvider';
 
 type Variant = 'header' | 'mobile' | 'footer';
 
@@ -47,22 +51,9 @@ export function AuthNav({
   variant: Variant;
   onNavigate?: () => void;
 }) {
-  // 解決前は未ログイン導線を初期表示 (/login は登録兼ログインで遷移先として安全)。
-  const [isAuthed, setIsAuthed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    getAuthNav()
-      .then((state) => {
-        if (active) setIsAuthed(state.isAuthed);
-      })
-      .catch(() => {
-        // 取得失敗は安全側 (未ログイン導線 = 登録誘導) のまま。記事閲覧は阻害しない。
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // 認証状態は AuthNavProvider (Context) から購読。Provider がマウント時 1 回だけ
+  // getAuthNav() を取得し、全 AuthNav インスタンスがその値を共有する (往復 3→1)。
+  const { isAuthed } = useAuthNav();
 
   const label = isAuthed ? LABELS.loggedIn : LABELS.loggedOut;
   const href = isAuthed ? HREF.loggedIn : HREF.loggedOut;

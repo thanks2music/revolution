@@ -21,6 +21,7 @@
 import { z } from 'zod';
 
 import { createClient } from '@/lib/supabase/server';
+import { getCachedUser } from '@/lib/auth/current-user';
 
 const TARGET_TYPE = 'article' as const;
 const PG_UNIQUE_VIOLATION = '23505';
@@ -60,7 +61,7 @@ export async function getFavoriteState(targetKey: string): Promise<FavoriteState
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getCachedUser();
 
   if (!user) return { isAuthed: false, liked: false };
 
@@ -91,10 +92,11 @@ export async function toggleFavorite(
   const supabase = await createClient();
 
   // user_id は getUser() から取得 (クライアント入力にしない = RLS と二重防御)。
+  // per-request memoized なヘルパ経由 (同リクエスト内の重複 getUser を dedup)。
   const {
     data: { user },
     error: userError,
-  } = await supabase.auth.getUser();
+  } = await getCachedUser();
 
   if (userError || !user) {
     return { ok: false, error: 'ログインが必要です', needsAuth: true };
@@ -154,10 +156,12 @@ export async function toggleFavorite(
 export async function getFavorites(): Promise<GetFavoritesResult> {
   const supabase = await createClient();
 
+  // per-request memoized なヘルパ経由 (マイページの page.tsx も同じヘルパで getUser する
+  // ため、1 リクエスト内の Auth サーバ往復は 1 回に dedup される / Vercel 監査)。
   const {
     data: { user },
     error: userError,
-  } = await supabase.auth.getUser();
+  } = await getCachedUser();
 
   if (userError || !user) {
     return { ok: false, error: 'ログインが必要です', needsAuth: true };
