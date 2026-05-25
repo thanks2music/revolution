@@ -42,13 +42,27 @@ function createConnectionUrl(): string {
 }
 
 /**
- * Drizzle クライアントを生成する。`prepare: false` で pgbouncer transaction mode に対応。
- * 利用箇所で一度生成して使い回す想定 (モジュールトップで生成すると build 時に
- * env が無くても評価されてしまうため遅延生成にする)。
+ * postgres-js + Drizzle インスタンスを実生成する。`prepare: false` で pgbouncer
+ * transaction mode に対応。呼び出しごとに新しい接続プールを張るため、直接は呼ばず
+ * `createDb()` の遅延シングルトン経由で使う。
  */
-export function createDb() {
+function buildDb() {
   const sql = postgres(createConnectionUrl(), { prepare: false });
   return drizzle(sql, { schema });
+}
+
+/**
+ * Drizzle クライアントを返す。**モジュールレベルの遅延シングルトン**。
+ *
+ * 初回呼び出し時に一度だけ接続プールを生成し、以降は同一インスタンスを再利用する。
+ * Server Action 等から毎リクエスト呼ばれても新規プールを張らないため、接続枯渇を防ぐ
+ * (Supabase conn-pooling ベストプラクティス準拠)。モジュールトップで生成しないのは、
+ * build 時に DATABASE_URL が無くても評価されないようにするため (遅延生成)。
+ */
+let dbSingleton: ReturnType<typeof buildDb> | undefined;
+
+export function createDb() {
+  return (dbSingleton ??= buildDb());
 }
 
 export type Db = ReturnType<typeof createDb>;
