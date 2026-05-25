@@ -46,6 +46,15 @@ export async function GET(request: Request) {
         ? new URL(process.env.NEXT_PUBLIC_SITE_URL).host
         : null;
 
+      // 本番でプロキシ配下 (forwardedHost あり) なのに許可ホストを導出できない =
+      // NEXT_PUBLIC_SITE_URL 未設定。安全に origin へフォールバックするが、配線ミスを
+      // 黙殺しないよう警告を出す (claude[bot] review)。
+      if (!isLocalEnv && forwardedHost && !allowedHost) {
+        console.warn(
+          '[auth/callback] NEXT_PUBLIC_SITE_URL 未設定のため x-forwarded-host を検証できず origin にフォールバックします。本番では NEXT_PUBLIC_SITE_URL を設定してください。',
+        );
+      }
+
       if (isLocalEnv) {
         // 開発環境: ロードバランサがないため origin をそのまま使う
         return NextResponse.redirect(`${origin}${next}`);

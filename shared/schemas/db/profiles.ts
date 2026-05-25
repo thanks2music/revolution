@@ -23,6 +23,11 @@ import { check, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/
  *     定義せず、FK は custom SQL migration (drizzle/0001_crescendolls_rls.sql) で
  *     `references auth.users(id)` として張る。本 pgTable は public.profiles の
  *     カラム・CHECK・unique index のみを定義する (drizzle-zod 派生の真実源)。
+ *
+ * 注 (RLS): `ENABLE ROW LEVEL SECURITY` + ポリシーも同じ custom SQL migration (0001)
+ *     で付与する (migrate が実行)。Drizzle snapshot の `isRLSEnabled:false` は、RLS を
+ *     pgTable の `enableRls` でなく custom SQL で管理しているための想定どおりの表示で、
+ *     実 DB では有効 (pg_class.relrowsecurity=true)。`migrate` 運用前提のため drift は無害。
  */
 export const profiles = pgTable(
   'profiles',

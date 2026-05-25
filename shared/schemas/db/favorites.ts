@@ -18,6 +18,10 @@ import { check, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/p
  *   DB レベルで防ぐ。
  * - `user_id` は auth.users(id) を参照し cascade 削除。FK 句は custom SQL
  *   migration 側で付与 (Drizzle は auth スキーマを管理しないため)。
+ *
+ * 注 (RLS): `ENABLE ROW LEVEL SECURITY` + ポリシーも同じ custom SQL migration (0001)
+ *   で付与する。Drizzle snapshot の `isRLSEnabled:false` は RLS を custom SQL で管理する
+ *   設計上の想定表示で、実 DB では有効 (migrate 運用前提)。
  */
 export const favorites = pgTable(
   'favorites',
