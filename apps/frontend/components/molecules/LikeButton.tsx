@@ -60,12 +60,22 @@ export function LikeButton({ targetKey }: Props) {
   // マウント後にいいね状態を取得 (記事ルートを動的化させないため client 側で解決)。
   useEffect(() => {
     let active = true;
-    void getFavoriteState(targetKey).then((state) => {
-      if (!active) return;
-      setIsAuthed(state.isAuthed);
-      setLiked(state.liked);
-      setReady(true);
-    });
+    getFavoriteState(targetKey)
+      .then((state) => {
+        if (!active) return;
+        setIsAuthed(state.isAuthed);
+        setLiked(state.liked);
+        setReady(true);
+      })
+      .catch(() => {
+        // 取得失敗 (ネットワーク断 / サーバ例外) でもボタンを無限 disabled に
+        // しない。ready を true にして操作可能へ戻し、リカバリ可能なエラーを表示。
+        // isAuthed は安全側 (false) のまま → クリックで /login へ誘導され、
+        // ログイン後に再取得される。
+        if (!active) return;
+        setError('いいね状態を取得できませんでした');
+        setReady(true);
+      });
     return () => {
       active = false;
     };
@@ -85,19 +95,27 @@ export function LikeButton({ targetKey }: Props) {
     setLiked(!liked);
 
     startTransition(async () => {
-      const result = await toggleFavorite(targetKey);
-      if (result.ok) {
-        // サーバ確定値で同期 (冪等な 23505 ケースも反映)。
-        setLiked(result.liked);
-        return;
+      try {
+        const result = await toggleFavorite(targetKey);
+        if (result.ok) {
+          // サーバ確定値で同期 (冪等な 23505 ケースも反映)。
+          setLiked(result.liked);
+          return;
+        }
+        // 型付き失敗 ({ ok:false }) のロールバック
+        setLiked(previous);
+        if (result.needsAuth) {
+          goToLogin();
+          return;
+        }
+        setError(result.error);
+      } catch {
+        // transport 例外 (Server Action POST の fetch reject / サーバ 500 等)。
+        // throw のままだと error boundary (app/error.tsx) が発火し記事ページから
+        // 離脱してしまうため、ここで握って optimistic をロールバック + 汎用文言。
+        setLiked(previous);
+        setError('通信に失敗しました。時間をおいて再度お試しください。');
       }
-      // ロールバック
-      setLiked(previous);
-      if (result.needsAuth) {
-        goToLogin();
-        return;
-      }
-      setError(result.error);
     });
   };
 

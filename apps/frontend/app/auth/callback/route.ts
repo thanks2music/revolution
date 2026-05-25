@@ -23,9 +23,11 @@ import { createClient } from '@/lib/supabase/server';
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  // open redirect 防止: next は先頭が '/' の相対パスのみ許可。
-  const nextParam = searchParams.get('next') ?? '/mypage';
-  const next = nextParam.startsWith('/') ? nextParam : '/mypage';
+  // open redirect 防止: 先頭が単一 `/` で始まる相対パスのみ許可 (`//host` /
+  // protocol-relative は拒否)。login ページ (app/login/page.tsx) と同一の厳格ガード
+  // に揃える (`startsWith('/')` だと `//attacker.com` を許してしまうため)。
+  const nextParam = searchParams.get('next');
+  const next = nextParam && /^\/(?!\/)/.test(nextParam) ? nextParam : '/mypage';
 
   if (code) {
     const supabase = await createClient();
