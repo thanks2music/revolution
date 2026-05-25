@@ -37,12 +37,20 @@ export async function GET(request: Request) {
     if (!error) {
       const forwardedHost = request.headers.get('x-forwarded-host');
       const isLocalEnv = process.env.NODE_ENV === 'development';
+      // defense-in-depth: x-forwarded-host は信頼境界の外から注入されうる
+      // (誤設定プロキシ / edge 前段への直接リクエスト)。NEXT_PUBLIC_SITE_URL から
+      // 導出した許可ホストと一致するときのみ採用し、それ以外は origin (リクエスト
+      // 自身の同一オリジン = 安全) にフォールバックする。preview デプロイ
+      // (site URL と host が異なる) でも origin フォールバックで正しく動く。
+      const allowedHost = process.env.NEXT_PUBLIC_SITE_URL
+        ? new URL(process.env.NEXT_PUBLIC_SITE_URL).host
+        : null;
 
       if (isLocalEnv) {
         // 開発環境: ロードバランサがないため origin をそのまま使う
         return NextResponse.redirect(`${origin}${next}`);
-      } else if (forwardedHost) {
-        // 本番 (プロキシ配下): x-forwarded-host を優先 (https 固定)
+      } else if (forwardedHost && allowedHost && forwardedHost === allowedHost) {
+        // 本番 (プロキシ配下): 許可ホストと一致する x-forwarded-host のみ採用 (https 固定)
         return NextResponse.redirect(`https://${forwardedHost}${next}`);
       } else {
         return NextResponse.redirect(`${origin}${next}`);

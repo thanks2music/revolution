@@ -1,5 +1,10 @@
 /**
- * Drizzle ランタイムクライアント (Crescendolls 会員機能)
+ * Drizzle 管理クライアント (admin-client) — RLS バイパス (Crescendolls 会員機能)
+ *
+ * ⚠️ 本クライアントは `DATABASE_URL` (postgres ロール) で接続するため **RLS をバイパス**
+ * する。ファイル名を `client.ts` → `admin-client.ts` にしてあるのは、`lib/supabase/client.ts`
+ * (RLS が効く公開クライアント) と取り違えて user 向け操作に使うと本人限定保証が失われる
+ * ためである。user 向けの読み書きは必ず `@/lib/supabase/server` の createClient を使う。
  *
  * postgres-js + drizzle-orm。Supabase の Transaction pooler (6543) 経由で接続する
  * 想定のため、pgbouncer transaction mode と非互換な prepared statement を無効化する
