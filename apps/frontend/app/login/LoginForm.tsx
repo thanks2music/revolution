@@ -114,10 +114,12 @@ export function LoginForm({
         setMessage(GOOGLE_UNAVAILABLE_MESSAGE);
         return;
       }
-    } catch {
+    } catch (e) {
       // 先読みに失敗した場合は、生 JSON 露出を避けるため遷移を中止する。
       // 本番で Google が有効なら 302 (opaqueredirect) で probe は成功するため、
       // ここに来るのはネットワーク異常等の例外時のみ。
+      if (process.env.NODE_ENV === 'development')
+        console.error('[login] Google probe failed:', e);
       setGoogleLoading(false);
       setMessage(GOOGLE_UNAVAILABLE_MESSAGE);
       return;

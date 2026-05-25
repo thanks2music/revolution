@@ -25,6 +25,12 @@ import { getCachedUser } from '@/lib/auth/current-user';
 
 const TARGET_TYPE = 'article' as const;
 const PG_UNIQUE_VIOLATION = '23505';
+/**
+ * マイページのいいね一覧の取得上限。Closed Beta では十分大きく、未バインドな
+ * 全件取得を避ける防御的キャップ。これを恒常的に超える規模になったら Server-side
+ * pagination 化する (claude[bot] review、Backlog `6ghXHVMgfxR7J828` と整合)。
+ */
+const FAVORITES_FETCH_LIMIT = 200;
 
 /** target_key は非空 (buildArticleKey が生成する URL path 連結キー)。 */
 const TargetKeySchema = z.string().min(1, { message: 'いいね対象が不正です' });
@@ -180,7 +186,8 @@ export async function getFavorites(): Promise<GetFavoritesResult> {
     .select('target_key, created_at')
     .eq('user_id', user.id)
     .eq('target_type', TARGET_TYPE)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(FAVORITES_FETCH_LIMIT);
 
   if (error) {
     return { ok: false, error: 'いいね一覧を取得できませんでした' };

@@ -133,10 +133,12 @@ export function LikeButton({ targetKey }: Props) {
           return;
         }
         setError(result.error);
-      } catch {
+      } catch (e) {
         // transport 例外 (Server Action POST の fetch reject / サーバ 500 等)。
         // throw のままだと error boundary (app/error.tsx) が発火し記事ページから
         // 離脱してしまうため、ここで握って optimistic をロールバック + 汎用文言。
+        if (process.env.NODE_ENV === 'development')
+          console.error('[LikeButton] toggle failed:', e);
         if (seq !== requestSeqRef.current) return;
         setLiked(previous);
         setError('通信に失敗しました。時間をおいて再度お試しください。');

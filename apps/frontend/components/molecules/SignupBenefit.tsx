@@ -9,7 +9,6 @@ import { AuthNav } from '@/components/molecules/AuthNav';
  * CTA は AuthNav (未ログイン=「ログイン / 登録」塗りボタン / ログイン済み=「マイページ」) を流用。
  *
  * Sky×Lightning Editorial トークン厳守 (bg-tinted + 稲妻アクセント罫、紫グラデ・煽り文言なし)。
- * 確定コピー: creative-director/copy/2026-05-25-signup-cta-copy.md
  */
 export const SignupBenefit = () => {
   return (

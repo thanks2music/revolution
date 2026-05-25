@@ -131,11 +131,16 @@ export async function completeOnboarding(
   // updateUser 後のセッション refresh で新 JWT (onboarded:true) を cookie へ反映。
   const { error: refreshError } = await supabase.auth.refreshSession();
   if (refreshError) {
-    // refresh 失敗時も profiles + metadata は更新済み。次回 cookie refresh で反映
-    // されるため致命的ではないが、即時の middleware 判定が古い JWT になりうる。
+    // refresh 失敗時も profiles + metadata は更新済み (= 実質 onboarded 完了)。
+    // ここで /mypage へ遷移させない: cookie の JWT が旧いまま (onboarded が claims に
+    // 乗っていない) だと middleware の getClaims() が onboarded:false と判定し /onboarding
+    // に弾き返してループしうるため (claude[bot] review + Codex 第三者意見で確認)。
+    // 代わりに「保存済み・セッション更新のみ再試行」を明示し、再 submit (冪等) で新 JWT
+    // 発行を促す。
     return {
       ok: false,
-      error: '設定の反映に失敗しました。お手数ですが再度お試しください。',
+      error:
+        'プロフィールは保存されました。ログイン状態の更新のみ失敗したため、もう一度「はじめる」を押して再度お試しください。',
       field: 'general',
     };
   }

@@ -31,6 +31,7 @@ jest.mock('@/lib/supabase/server', () => {
   builder.delete = jest.fn(() => builder);
   builder.eq = jest.fn(() => builder);
   builder.order = jest.fn(() => builder);
+  builder.limit = jest.fn(() => builder);
   builder.maybeSingle = jest.fn(() => Promise.resolve(builder.__result));
   const from = jest.fn(() => builder);
   const auth = { getUser: jest.fn() };
@@ -51,6 +52,7 @@ const { __mocks: m } = jest.requireMock('@/lib/supabase/server') as {
       delete: jest.Mock;
       eq: jest.Mock;
       order: jest.Mock;
+      limit: jest.Mock;
       maybeSingle: jest.Mock;
     };
     from: jest.Mock;
@@ -69,6 +71,7 @@ beforeEach(() => {
   m.builder.delete.mockReturnValue(m.builder);
   m.builder.eq.mockReturnValue(m.builder);
   m.builder.order.mockReturnValue(m.builder);
+  m.builder.limit.mockReturnValue(m.builder);
   m.builder.maybeSingle.mockImplementation(() => Promise.resolve(m.builder.__result));
   m.from.mockReturnValue(m.builder);
   m.auth.getUser.mockResolvedValue({ data: { user: { id: TEST_UID } }, error: null });
