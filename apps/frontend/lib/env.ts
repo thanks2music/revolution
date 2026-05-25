@@ -60,8 +60,8 @@ export const env = createEnv({
 
     // modern publishable key (sb_publishable_...)。anon key の後継。
     // browser/server/middleware の Supabase クライアント生成に必須。
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1, {
-      message: "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY must be set (sb_publishable_...)"
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().startsWith("sb_publishable_", {
+      message: "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY は modern publishable key (sb_publishable_...) を指定してください"
     }),
 
     // 公開用サイトURL（OGPやサイトマップで使用）
@@ -143,7 +143,11 @@ export const env = createEnv({
    * CI/CDでの実行をスキップ
    * ビルド時に環境変数が揃っていない場合に便利
    */
-  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
+  // 明示的な真値のみで skip する。`!!process.env.SKIP_ENV_VALIDATION` は文字列
+  // "false" も truthy になり、意図せず検証を無効化する事故を招くため厳密一致で判定する。
+  skipValidation:
+    process.env.SKIP_ENV_VALIDATION === "true" ||
+    process.env.SKIP_ENV_VALIDATION === "1",
 
   /*
    * エラーメッセージを判別しやすく設定

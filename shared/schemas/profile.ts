@@ -49,7 +49,10 @@ export const UsernameSchema = z
  */
 export const ProfileSchema = createSelectSchema(profiles, {
   username: UsernameSchema.nullable(),
-  displayName: z.string().min(1),
+  // select は DB が返しうる値を忠実にモデル化する。handle_new_user トリガが
+  // onboarding 前に display_name を空文字 (coalesce(..., '')) で作成しうるため、
+  // select では min を課さない。非空保証は入力側 (ProfileUpdateSchema) で担保する。
+  displayName: z.string(),
 });
 
 /**

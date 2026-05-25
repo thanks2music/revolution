@@ -44,7 +44,7 @@ const isMain =
   typeof process !== 'undefined' &&
   Array.isArray(process.argv) &&
   process.argv[1] !== undefined &&
-  /lib\/db\/migrate\.ts$/.test(process.argv[1]);
+  /lib\/db\/migrate\.(ts|js)$/.test(process.argv[1]);
 
 if (isMain) {
   runMigrations()
