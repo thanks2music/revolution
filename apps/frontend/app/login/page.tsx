@@ -8,6 +8,7 @@
 
 import type { Metadata } from 'next';
 
+import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
 import Layout from '@/components/templates/Layout';
 import { LoginForm } from './LoginForm';
 
@@ -25,9 +26,10 @@ export default async function LoginPage({
 }) {
   const { error, next } = await searchParams;
 
-  // open redirect 防止: 先頭が単一 `/` で始まる相対パスのみ許可 (`//host` は拒否)。
-  const safeNext =
-    next && /^\/(?!\/)/.test(next) ? next : undefined;
+  // open redirect 防止: 共有サニタイザ (lib/auth/safe-redirect) で安全な内部パスのみ
+  // 許可する。不正値 (protocol-relative / backslash / 二重エンコード / 外部 URL) は
+  // すべて /mypage にフォールバック。callback / LoginForm と同一ロジックを共有する。
+  const safeNext = sanitizeNextPath(next ?? null);
 
   return (
     <Layout>

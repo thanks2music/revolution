@@ -65,13 +65,21 @@ export async function getFavoriteState(targetKey: string): Promise<FavoriteState
 
   if (!user) return { isAuthed: false, liked: false };
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('favorites')
     .select('target_key')
     .eq('user_id', user.id)
     .eq('target_type', TARGET_TYPE)
     .eq('target_key', parsed.data)
     .maybeSingle();
+
+  // 一時的な select エラーを握り潰して liked:false を返すと、認証済みユーザーに
+  // 「未いいね」と誤表示し、再読込でいいねが消えたように見える。toggleFavorite と
+  // 同様に error を検査し、エラー時は throw して LikeButton の .catch を発火させ、
+  // 「いいね状態を取得できませんでした」を表示させる (自信を持って false に倒さない)。
+  if (error) {
+    throw new Error('Failed to load favorite state');
+  }
 
   return { isAuthed: true, liked: !!data };
 }

@@ -29,6 +29,7 @@ import { createServerClient } from '@supabase/ssr';
 
 import { env } from '@/lib/env';
 import { isOnboardedFromClaims } from '@/lib/auth/onboarding-status';
+import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
 
 // 認証が必要なルート (前方一致)。これ以外はすべて公開 (記事閲覧は維持)。
 const PROTECTED_PREFIXES = ['/mypage', '/onboarding'];
@@ -80,9 +81,12 @@ export async function updateSession(request: NextRequest) {
   const isAuthenticated = !!claims;
   const onboarded = isOnboardedFromClaims(claims);
 
-  // (a) 未認証で保護ルートにアクセス → /login へ
+  // (a) 未認証で保護ルートにアクセス → /login へ (元の遷移先を ?next= で保持)。
+  //     return-to は共有サニタイザで安全化した内部パス (外部 URL は /mypage に倒れる)。
+  //     login (LoginForm) / callback がこの next を解釈し、ログイン後に元 URL へ戻す。
   if (!isAuthenticated && isPathProtected(pathname)) {
-    return redirectTo(request, supabaseResponse, '/login');
+    const returnTo = sanitizeNextPath(`${pathname}${request.nextUrl.search}`);
+    return redirectTo(request, supabaseResponse, '/login', returnTo);
   }
 
   if (isAuthenticated) {
@@ -109,15 +113,23 @@ export async function updateSession(request: NextRequest) {
 /**
  * リダイレクト時も refresh された cookie を失わないよう supabaseResponse の cookie を
  * コピーする (公式パターン: NextResponse.redirect に cookie を引き継ぐ)。
+ *
+ * @param returnTo 指定時は `?next=<returnTo>` を付与し、ログイン後の return-to を
+ *   伝える (未認証→/login のケースのみ使用)。呼び出し側でサニタイズ済みの内部パスを
+ *   渡すこと (本関数では encodeURIComponent でクエリ値としてのみ安全化する)。
  */
 function redirectTo(
   request: NextRequest,
   supabaseResponse: NextResponse,
   destination: string,
+  returnTo?: string,
 ): NextResponse {
   const url = request.nextUrl.clone();
   url.pathname = destination;
   url.search = '';
+  if (returnTo) {
+    url.searchParams.set('next', returnTo);
+  }
   const redirectResponse = NextResponse.redirect(url);
   supabaseResponse.cookies.getAll().forEach((cookie) => {
     redirectResponse.cookies.set(cookie);

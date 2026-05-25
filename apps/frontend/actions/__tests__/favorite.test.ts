@@ -40,7 +40,7 @@ jest.mock('@/lib/supabase/server', () => {
   };
 });
 
-import { getFavorites, toggleFavorite } from '@/actions/favorite';
+import { getFavoriteState, getFavorites, toggleFavorite } from '@/actions/favorite';
 
 const { __mocks: m } = jest.requireMock('@/lib/supabase/server') as {
   __mocks: {
@@ -139,6 +139,44 @@ describe('toggleFavorite — remove (already liked)', () => {
     expect(result).toEqual({ ok: true, liked: false });
     expect(m.builder.delete).toHaveBeenCalledTimes(1);
     expect(m.builder.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('getFavoriteState — error handling (#4)', () => {
+  it('returns liked:true for an authenticated user with an existing favorite', async () => {
+    m.builder.maybeSingle.mockImplementation(() =>
+      Promise.resolve({ data: { target_key: KEY }, error: null }),
+    );
+    const state = await getFavoriteState(KEY);
+    expect(state).toEqual({ isAuthed: true, liked: true });
+  });
+
+  it('returns liked:false (not liked) when authenticated and no row, no error', async () => {
+    m.builder.maybeSingle.mockImplementation(() =>
+      Promise.resolve({ data: null, error: null }),
+    );
+    const state = await getFavoriteState(KEY);
+    expect(state).toEqual({ isAuthed: true, liked: false });
+  });
+
+  it('returns unauthenticated state when there is no user', async () => {
+    m.auth.getUser.mockResolvedValue({ data: { user: null }, error: null });
+    const state = await getFavoriteState(KEY);
+    expect(state).toEqual({ isAuthed: false, liked: false });
+  });
+
+  it('throws on a select error (so LikeButton can show an error instead of false)', async () => {
+    // 旧実装は error を握り潰し liked:false を返していた。修正後は throw して
+    // LikeButton の .catch (「いいね状態を取得できませんでした」) を発火させる。
+    m.builder.maybeSingle.mockImplementation(() =>
+      Promise.resolve({ data: null, error: { code: '08006', message: 'transient' } }),
+    );
+    await expect(getFavoriteState(KEY)).rejects.toThrow();
+  });
+
+  it('does not throw for an invalid (empty) target key — falls back to safe state', async () => {
+    const state = await getFavoriteState('');
+    expect(state).toEqual({ isAuthed: false, liked: false });
   });
 });
 

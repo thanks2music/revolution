@@ -19,7 +19,7 @@
  * - Sky×Lightning Editorial トークン準拠 (primary / accent-yellow、白カード/紫グラデ不使用)。
  */
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 
 import { getFavoriteState, toggleFavorite } from '@/actions/favorite';
 
@@ -57,6 +57,16 @@ export function LikeButton({ targetKey }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // 連打レースガード:
+  //  - inFlight: トグル実行中フラグ (ref)。クリック時に同期的に立て、結果確定で下ろす。
+  //    isPending (useTransition) は startTransition 後の次 tick まで false のままで、
+  //    その tick ギャップ中の連打で toggleFavorite が並走しうる。ref なら同期的に
+  //    塞げる (OnboardingForm の requestSeq と同方針)。
+  //  - requestSeq: 最新リクエストのみ UI に反映する単調増加 seq。万一並走しても、
+  //    古い (insert/delete が逆転した) 応答で UI を最終 DB 状態と逆に固定しない。
+  const inFlightRef = useRef(false);
+  const requestSeqRef = useRef(0);
+
   // マウント後にいいね状態を取得 (記事ルートを動的化させないため client 側で解決)。
   useEffect(() => {
     let active = true;
@@ -82,6 +92,10 @@ export function LikeButton({ targetKey }: Props) {
   }, [targetKey]);
 
   const handleClick = () => {
+    // in-flight 中の再クリックは無視 (連打レース防止)。isPending の tick ギャップを
+    // ref で同期的に塞ぐ。直前のトグルが確定するまで次のトグルを受け付けない。
+    if (inFlightRef.current) return;
+
     setError(null);
 
     // 未認証は往復せず即 /login へ。
@@ -94,9 +108,14 @@ export function LikeButton({ targetKey }: Props) {
     const previous = liked;
     setLiked(!liked);
 
+    inFlightRef.current = true;
+    const seq = ++requestSeqRef.current;
+
     startTransition(async () => {
       try {
         const result = await toggleFavorite(targetKey);
+        // 最新リクエストの結果でなければ UI に反映しない (古い応答で逆転させない)。
+        if (seq !== requestSeqRef.current) return;
         if (result.ok) {
           // サーバ確定値で同期 (冪等な 23505 ケースも反映)。
           setLiked(result.liked);
@@ -113,8 +132,14 @@ export function LikeButton({ targetKey }: Props) {
         // transport 例外 (Server Action POST の fetch reject / サーバ 500 等)。
         // throw のままだと error boundary (app/error.tsx) が発火し記事ページから
         // 離脱してしまうため、ここで握って optimistic をロールバック + 汎用文言。
+        if (seq !== requestSeqRef.current) return;
         setLiked(previous);
         setError('通信に失敗しました。時間をおいて再度お試しください。');
+      } finally {
+        // この実行が最新なら in-flight を下ろす (古い実行は最新が処理中なので触らない)。
+        if (seq === requestSeqRef.current) {
+          inFlightRef.current = false;
+        }
       }
     });
   };

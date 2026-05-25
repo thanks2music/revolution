@@ -18,16 +18,17 @@
 
 import { NextResponse } from 'next/server';
 
+import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  // open redirect 防止: 先頭が単一 `/` で始まる相対パスのみ許可 (`//host` /
-  // protocol-relative は拒否)。login ページ (app/login/page.tsx) と同一の厳格ガード
-  // に揃える (`startsWith('/')` だと `//attacker.com` を許してしまうため)。
-  const nextParam = searchParams.get('next');
-  const next = nextParam && /^\/(?!\/)/.test(nextParam) ? nextParam : '/mypage';
+  // open redirect 防止: 共有サニタイザ (lib/auth/safe-redirect) で安全な内部パスのみ
+  // 許可する。protocol-relative (`//host`) / backslash (`/\host`) / 二重エンコード
+  // (`%5C` `%2F%2F`) / 外部 URL はすべて `/mypage` にフォールバックする。
+  // login ページ (app/login/page.tsx) / LoginForm と同一ロジックを共有しドリフトを防ぐ。
+  const next = sanitizeNextPath(searchParams.get('next'));
 
   if (code) {
     const supabase = await createClient();

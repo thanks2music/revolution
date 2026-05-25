@@ -16,7 +16,10 @@ const TEST_UID = '550e8400-e29b-41d4-a716-446655440000';
 jest.mock('@/lib/env', () => ({ env: {} }));
 
 jest.mock('@/lib/supabase/server', () => {
-  const eq = jest.fn();
+  // profiles.update(...).eq('id', uid).select('id') のチェーン。終端 select が
+  // { data, error } を解決する (0 行ガードのため data に影響行を入れる)。
+  const select = jest.fn();
+  const eq = jest.fn(() => ({ select }));
   const update = jest.fn(() => ({ eq }));
   const from = jest.fn(() => ({ update }));
   const auth = {
@@ -24,7 +27,7 @@ jest.mock('@/lib/supabase/server', () => {
     updateUser: jest.fn(),
   };
   return {
-    __mocks: { eq, update, from, auth },
+    __mocks: { select, eq, update, from, auth },
     createClient: jest.fn(async () => ({ auth, from })),
   };
 });
@@ -38,6 +41,7 @@ import {
 
 const { __mocks: m } = jest.requireMock('@/lib/supabase/server') as {
   __mocks: {
+    select: jest.Mock;
     eq: jest.Mock;
     update: jest.Mock;
     from: jest.Mock;
@@ -54,7 +58,9 @@ function setUserIdentities(identities: { provider: string }[], email = 'old@exam
 
 beforeEach(() => {
   jest.clearAllMocks();
-  m.eq.mockResolvedValue({ error: null });
+  // 既定は 1 行更新成功 (影響行 1 件)。
+  m.select.mockResolvedValue({ data: [{ id: TEST_UID }], error: null });
+  m.eq.mockReturnValue({ select: m.select });
   m.update.mockReturnValue({ eq: m.eq });
   m.from.mockReturnValue({ update: m.update });
   m.auth.updateUser.mockResolvedValue({ data: {}, error: null });
@@ -71,7 +77,7 @@ describe('updateUsername', () => {
   });
 
   it('maps 23505 to a username field error', async () => {
-    m.eq.mockResolvedValue({ error: { code: '23505', message: 'dup' } });
+    m.select.mockResolvedValue({ data: null, error: { code: '23505', message: 'dup' } });
     const result = await updateUsername({ username: 'TakenName' });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -85,6 +91,14 @@ describe('updateUsername', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.field).toBe('username');
     expect(m.from).not.toHaveBeenCalled();
+  });
+
+  // 回帰 (#2): 0 行 update を暗黙成功にしない。
+  it('returns ok:false when the update affects 0 rows', async () => {
+    m.select.mockResolvedValue({ data: [], error: null });
+    const result = await updateUsername({ username: 'new_name' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.field).toBe('general');
   });
 });
 
@@ -101,6 +115,14 @@ describe('updateDisplayName', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.field).toBe('displayName');
     expect(m.from).not.toHaveBeenCalled();
+  });
+
+  // 回帰 (#2): 0 行 update を暗黙成功にしない。
+  it('returns ok:false when the update affects 0 rows', async () => {
+    m.select.mockResolvedValue({ data: [], error: null });
+    const result = await updateDisplayName({ displayName: 'あにめ花子' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.field).toBe('general');
   });
 });
 

@@ -110,4 +110,60 @@ describe('resolveArticleByKey', () => {
   it('returns null for a malformed key', () => {
     expect(resolveArticleByKey('just-one-segment', articles)).toBeNull();
   });
+
+  // 回帰 (#3): legacy 形式キー `articles/{slug}` は、同名 slug を持つ非レガシー
+  // (nested) 記事へ誤解決してはならない。legacy fallback は「対象記事自身が legacy」の
+  // ときだけ slug 一致を許す。
+  describe('namespace strictness — legacy key must not cross into nested articles', () => {
+    it('does not resolve articles/{slug} to a nested article sharing that slug', () => {
+      // nested 記事 (event_type/work_slug あり) が slug 'shared-slug' を持つが、
+      // legacy 記事は存在しないケース。
+      const nestedOnly = makeArticle({
+        slug: 'shared-slug',
+        event_type: 'collabo-cafe',
+        work_slug: 'work-c',
+        filePath: 'c/shared-slug.mdx',
+      });
+      const pool = [nestedOnly];
+      // legacy キー articles/shared-slug は nested 記事へ交差解決せず null。
+      expect(resolveArticleByKey('articles/shared-slug', pool)).toBeNull();
+    });
+
+    it('resolves articles/{slug} to the legacy article even when a nested article shares the slug', () => {
+      // 同名 slug 'collide' を、legacy 記事と nested 記事の両方が持つケース。
+      const legacyCollide = makeArticle({
+        slug: 'collide',
+        event_type: null,
+        work_slug: null,
+        filePath: 'legacy/collide.mdx',
+      });
+      const nestedCollide = makeArticle({
+        slug: 'collide',
+        event_type: 'pop-up-store',
+        work_slug: 'work-d',
+        filePath: 'd/collide.mdx',
+      });
+      const pool = [nestedCollide, legacyCollide];
+      // legacy キーは legacy 記事に解決する (nested を先に並べても誤らない)。
+      expect(resolveArticleByKey('articles/collide', pool)).toBe(legacyCollide);
+      // nested キーは nested 記事に解決する (相互に交差しない)。
+      expect(resolveArticleByKey(buildArticleKey(nestedCollide), pool)).toBe(
+        nestedCollide,
+      );
+    });
+
+    it("treats event_type==='articles' as legacy for the slug fallback", () => {
+      // event_type が 'articles' (work_slug あり) でも buildArticleKey は articles/{slug}
+      // を生成する = legacy 扱い。legacy キーで slug 一致解決できる。
+      const pseudoLegacy = makeArticle({
+        slug: 'pseudo',
+        event_type: 'articles',
+        work_slug: 'ignored',
+        filePath: 'p/pseudo.mdx',
+      });
+      expect(resolveArticleByKey('articles/pseudo', [pseudoLegacy])).toBe(
+        pseudoLegacy,
+      );
+    });
+  });
 });

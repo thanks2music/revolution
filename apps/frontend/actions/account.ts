@@ -68,10 +68,13 @@ export async function updateUsername(input: { username: string }): Promise<Accou
     return { ok: false, error: 'ログインが必要です', field: 'general' };
   }
 
-  const { error } = await supabase
+  // .select() を付けて影響行を取得し、0 行一致 (profiles 行欠落 / RLS で他人行) を
+  // 暗黙成功にしない (PostgREST は 0 行 update でも error=null を返すため)。
+  const { data, error } = await supabase
     .from('profiles')
     .update({ username: parsed.data.username })
-    .eq('id', user.id);
+    .eq('id', user.id)
+    .select('id');
 
   if (error) {
     if (error.code === PG_UNIQUE_VIOLATION) {
@@ -84,6 +87,15 @@ export async function updateUsername(input: { username: string }): Promise<Accou
     return {
       ok: false,
       error: '保存に失敗しました。時間をおいて再度お試しください。',
+      field: 'general',
+    };
+  }
+
+  // 影響行 0 = 更新対象 (本人の profiles 行) が無い。成功扱いにしない。
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: 'ユーザー名を更新できませんでした。時間をおいて再度お試しください。',
       field: 'general',
     };
   }
@@ -115,15 +127,26 @@ export async function updateDisplayName(input: { displayName: string }): Promise
     return { ok: false, error: 'ログインが必要です', field: 'general' };
   }
 
-  const { error } = await supabase
+  // .select() で影響行を取得し、0 行一致 (profiles 行欠落 / RLS で他人行) を
+  // 暗黙成功にしない (PostgREST は 0 行 update でも error=null を返すため)。
+  const { data, error } = await supabase
     .from('profiles')
     .update({ display_name: parsed.data.displayName })
-    .eq('id', user.id);
+    .eq('id', user.id)
+    .select('id');
 
   if (error) {
     return {
       ok: false,
       error: '保存に失敗しました。時間をおいて再度お試しください。',
+      field: 'general',
+    };
+  }
+
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: '表示名を更新できませんでした。時間をおいて再度お試しください。',
       field: 'general',
     };
   }

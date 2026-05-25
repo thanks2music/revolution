@@ -69,14 +69,17 @@ export async function completeOnboarding(
     return { ok: false, error: 'ログインが必要です', field: 'general' };
   }
 
-  // profiles を update (RLS により本人 id の行のみ更新可能)
-  const { error: updateError } = await supabase
+  // profiles を update (RLS により本人 id の行のみ更新可能)。
+  // .select() を付けて影響行を取得し、0 行一致 (profiles 行欠落 / RLS で他人行) を
+  // 暗黙成功にしない (PostgREST は 0 行 update でも error=null を返すため)。
+  const { data: updatedRows, error: updateError } = await supabase
     .from('profiles')
     .update({
       username: parsed.data.username,
       display_name: parsed.data.displayName,
     })
-    .eq('id', user.id);
+    .eq('id', user.id)
+    .select('id');
 
   if (updateError) {
     if (updateError.code === PG_UNIQUE_VIOLATION) {
@@ -93,7 +96,19 @@ export async function completeOnboarding(
     };
   }
 
-  // 案B: JWT claims に onboarding 完了フラグを書く (middleware は DB を叩かない)。
+  // 影響行 0 = profiles 書き込みが実際には起きていない。ここで onboarded:true を
+  // 立てると「onboarded だが username NULL」の不整合になるため、JWT claims を
+  // 更新せず失敗を返す。
+  if (!updatedRows || updatedRows.length === 0) {
+    return {
+      ok: false,
+      error: 'プロフィールを保存できませんでした。時間をおいて再度お試しください。',
+      field: 'general',
+    };
+  }
+
+  // 案B: profiles 書き込みが 1 行成功したことを確認した上で、JWT claims に onboarding
+  // 完了フラグを書く (middleware は DB を叩かない)。
   // 注: updateUser は user レコードを更新するが、現行 access token (JWT) は不変で
   // user_metadata.onboarded は反映されない (新 token を返さない)。そのため直後に
   // refreshSession() を呼んで新 JWT を発行させ、cookie に書き込む。これで次の

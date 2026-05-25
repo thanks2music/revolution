@@ -15,6 +15,7 @@
 import { useState, useTransition } from 'react';
 
 import { sendOtp, verifyOtp } from '@/actions/auth';
+import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
 import { createClient } from '@/lib/supabase/client';
 
 type Step = 'email' | 'code';
@@ -27,7 +28,10 @@ export function LoginForm({
   /** verify 成功後の遷移先 (相対パスのみ。未指定は /mypage)。 */
   next?: string;
 }) {
-  const destination = next ?? '/mypage';
+  // open redirect 防止 (二重防御): page.tsx で既にサニタイズ済みだが、verify 成功後の
+  // window.location.assign 直前にも共有サニタイザを通し、不正な next での外部遷移を
+  // クライアント側でも確実に防ぐ。callback / login/page と同一ロジックを共有する。
+  const destination = sanitizeNextPath(next ?? null);
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');

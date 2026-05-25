@@ -67,15 +67,29 @@ export function resolveArticleByKey<T extends Pick<ArticleIndexItem, 'slug' | 'e
 ): T | null {
   if (!key) return null;
 
+  // まず厳密一致 (buildArticleKey(a) === key) を最優先で試す。これにより nested 記事
+  // でも legacy 記事でも、正規化キーが完全一致する記事を一意に特定できる。
+  const exact = articles.find((a) => buildArticleKey(a) === key);
+  if (exact) return exact;
+
+  // 厳密一致が無い場合のみ legacy フォールバックを検討する。
   const segments = key.split('/');
 
-  // レガシー: articles/{slug}
+  // legacy フォールバックは「legacy 形式キー (articles/{slug})」のときに限定し、かつ
+  // 対象記事自身が legacy (event_type 無し / 'articles' / work_slug 無し = buildArticleKey が
+  // articles/{slug} を生成する記事) のときだけ slug 一致を許す。これにより、同名 slug を
+  // 持つ非レガシー (nested) 記事へ誤って交差解決しない。
   if (segments.length === 2 && segments[0] === 'articles') {
     const slug = segments[1];
-    return articles.find((a) => buildArticleKey(a) === key || a.slug === slug) ?? null;
+    return (
+      articles.find((a) => {
+        const isLegacyArticle =
+          !a.event_type || a.event_type === 'articles' || !a.work_slug;
+        return isLegacyArticle && a.slug === slug;
+      }) ?? null
+    );
   }
 
-  // 通常: event_type/work_slug/slug — buildArticleKey で再構築して厳密一致させる
-  // (3 つ揃いの一意性を担保。slug 単独一致には頼らない)。
-  return articles.find((a) => buildArticleKey(a) === key) ?? null;
+  // 通常キーで厳密一致が無ければ該当なし (slug 単独一致には頼らない)。
+  return null;
 }
