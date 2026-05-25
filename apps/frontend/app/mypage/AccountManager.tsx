@@ -35,7 +35,7 @@ const inputClass =
   'min-h-11 rounded-sm border border-[var(--line-strong)] bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500 disabled:bg-bg-tinted disabled:text-ink-muted';
 
 const submitClass =
-  'min-h-11 self-start bg-primary-600 px-6 py-2.5 font-display tracking-wide text-white transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60';
+  'min-h-11 self-start bg-primary-strong px-6 py-2.5 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60';
 
 const labelClass = 'font-display text-sm tracking-wide text-ink-strong';
 

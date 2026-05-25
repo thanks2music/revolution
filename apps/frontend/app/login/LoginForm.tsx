@@ -70,21 +70,57 @@ export function LoginForm({
     });
   };
 
+  // provider 未設定 (ローカル / 本番で Google 未有効化) のときに、生の JSON エラー
+  // ページへ遷移してしまうのを防ぐための友好的メッセージ。
+  const GOOGLE_UNAVAILABLE_MESSAGE =
+    'Google ログインは現在ご利用いただけません。メールでの登録をご利用ください。';
+
   const handleGoogle = async () => {
     setMessage(null);
     setGoogleLoading(true);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOAuth({
+
+    // skipBrowserRedirect で自動遷移を止め、authorize URL を自前で扱う。
+    // 注: provider 未設定でも signInWithOAuth は error:null + data.url を返すため、
+    // error だけでは未設定を検知できない (実測)。data.url を取得後、遷移前に
+    // authorize エンドポイントを先読みして provider 無効 (4xx + 生 JSON) を検知する。
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        skipBrowserRedirect: true,
       },
     });
-    if (error) {
+
+    if (error || !data?.url) {
       setGoogleLoading(false);
-      setMessage('Google ログインを開始できませんでした。');
+      setMessage(GOOGLE_UNAVAILABLE_MESSAGE);
+      return;
     }
-    // 成功時はブラウザが Google へ遷移するため以降のコードは実行されない。
+
+    // authorize URL を遷移前に先読みし、provider 無効 (4xx の生 JSON) を検知する。
+    // - 本番 (Google 有効): 同意画面へクロスオリジン 302 → fetch は opaqueredirect
+    //   (status 0)。4xx ではないので通常遷移する。
+    // - ローカル / 未設定: 同一オリジンで 400 + JSON。遷移させず友好的メッセージを出す。
+    try {
+      const probe = await fetch(data.url, { method: 'GET', redirect: 'manual' });
+      // status >= 400 は provider 無効など。生 JSON を見せず友好的メッセージへ。
+      if (probe.status >= 400) {
+        setGoogleLoading(false);
+        setMessage(GOOGLE_UNAVAILABLE_MESSAGE);
+        return;
+      }
+    } catch {
+      // 先読みに失敗した場合は、生 JSON 露出を避けるため遷移を中止する。
+      // 本番で Google が有効なら 302 (opaqueredirect) で probe は成功するため、
+      // ここに来るのはネットワーク異常等の例外時のみ。
+      setGoogleLoading(false);
+      setMessage(GOOGLE_UNAVAILABLE_MESSAGE);
+      return;
+    }
+
+    // provider 有効。通常の OAuth 遷移を行う (Google 同意画面へ)。
+    window.location.assign(data.url);
   };
 
   return (
@@ -133,7 +169,7 @@ export function LoginForm({
           <button
             type="submit"
             disabled={isPending}
-            className="min-h-11 bg-primary-600 px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
+            className="min-h-11 bg-primary-strong px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
           >
             {isPending ? '送信中…' : 'コードを送信'}
           </button>
@@ -161,7 +197,7 @@ export function LoginForm({
           <button
             type="submit"
             disabled={isPending}
-            className="min-h-11 bg-primary-600 px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
+            className="min-h-11 bg-primary-strong px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
           >
             {isPending ? '確認中…' : 'ログイン'}
           </button>

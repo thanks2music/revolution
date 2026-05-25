@@ -22,6 +22,7 @@
 
 import { ProfileUpdateSchema, UsernameSchema } from '@revolution/schemas/profile';
 
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 export type OnboardingResult =
@@ -128,19 +129,74 @@ export async function completeOnboarding(
 }
 
 /**
- * username 単体のリアルタイム軽量チェック (補助。最終判定は 23505)。
- * Client から debounce して呼ぶ想定。形式チェック + 重複の事前確認。
+ * username 可用性の結果型 (onboarding の debounce 補助表示用)。
  *
- * 重複確認は RLS で他人行が見えないため、SUPABASE_SECRET_KEY を使う必要がある。
- * M2 では形式チェックのみ提供し、重複の最終判定は completeOnboarding の 23505 に
- * 委ねる (secret-key count は過剰なため YAGNI、必要なら別タスク)。
+ * - 'available'   : 形式 OK かつ未使用 (✓ 使えます)
+ * - 'taken'       : 形式 OK だが既に使用中 (✗ 既に使われています)
+ * - 'invalid'     : 形式エラー (3-24・英数字 _) — error にメッセージ
+ * - 'unknown'     : 重複チェック不能 (secret key 未設定 / 一時的なエラー)。
+ *                   形式は OK。最終判定は submit 時の 23505 に委ねる。
  */
-export async function checkUsernameFormat(
+export type UsernameAvailability =
+  | { status: 'available' }
+  | { status: 'taken' }
+  | { status: 'invalid'; error: string }
+  | { status: 'unknown' };
+
+/**
+ * username のリアルタイム可用性チェック (M4。補助表示用、最終判定は submit 時の 23505)。
+ *
+ * Client から debounce (~400ms) で呼ぶ想定。
+ *  1. Layer1 zod 形式チェック (真実源 `@revolution/schemas/profile` の UsernameSchema)。
+ *     不正なら即 'invalid' を返し DB を叩かない。
+ *  2. 形式 OK なら、RLS バイパスの admin クライアントで lower(username) の存在を確認。
+ *     本人セッションでは RLS により他人行が見えず重複判定できないため secret key が必要。
+ *     DB の lower(username) unique index と整合させるため case-insensitive (.ilike) で照合。
+ *
+ * 競合 (チェック後・submit 前に別ユーザーが同名確定) は本 Action では防げないため、
+ * 最終判定は completeOnboarding の 23505 ハンドルで担保する (本 Action は摩擦低減の補助)。
+ * secret key 未設定や DB エラー時は 'unknown' を返し、UI は形式 OK 表示に留める。
+ */
+export async function checkUsernameAvailability(
   username: string,
-): Promise<{ valid: boolean; error?: string }> {
+): Promise<UsernameAvailability> {
+  // Layer1: zod 形式チェック (真実源)。不正なら DB を叩かない。
   const parsed = UsernameSchema.safeParse(username);
   if (!parsed.success) {
-    return { valid: false, error: parsed.error.issues[0]?.message };
+    return {
+      status: 'invalid',
+      error: parsed.error.issues[0]?.message ?? 'ユーザー名の形式が正しくありません',
+    };
   }
-  return { valid: true };
+
+  const admin = createAdminClient();
+  if (!admin) {
+    // secret key 未設定 (CI 等)。重複チェック不能 → submit 時の 23505 に委ねる。
+    return { status: 'unknown' };
+  }
+
+  // DB の `lower(username)` unique index と整合する case-insensitive 一致を判定する。
+  //
+  // 注: PostgREST の .ilike は LIKE パターンとして評価するため、username に許される
+  // `_` (UsernameSchema: ^[a-zA-Z0-9_]+$) がワイルドカード「任意 1 文字」と誤解釈され、
+  // 過剰マッチ (false positive) する。LIKE エスケープも PostgREST では不可。
+  // そこで .ilike で候補を粗く取得し、JS 側で toLowerCase() の厳密一致に絞り直す。
+  // 過剰マッチは候補集合を増やすだけで、最終判定は厳密一致なので正確 (件数も小規模)。
+  const target = parsed.data.toLowerCase();
+  const { data, error } = await admin
+    .from('profiles')
+    .select('username')
+    .ilike('username', parsed.data)
+    .limit(50);
+
+  if (error) {
+    // 一時的な DB エラー。チェック不能扱いにし submit の 23505 に委ねる。
+    return { status: 'unknown' };
+  }
+
+  const taken = (data ?? []).some(
+    (row) => typeof row.username === 'string' && row.username.toLowerCase() === target,
+  );
+
+  return taken ? { status: 'taken' } : { status: 'available' };
 }

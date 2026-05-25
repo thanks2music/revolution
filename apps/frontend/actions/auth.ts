@@ -90,6 +90,28 @@ export async function verifyOtp(
   return { ok: true };
 }
 
+export interface AuthNavState {
+  isAuthed: boolean;
+}
+
+/**
+ * ヘッダー / モバイルナビ / フッターの会員導線 (M4) が出し分けに使う最小の認証状態。
+ *
+ * LikeButton の getFavoriteState と同じ思想: 認証状態は cookie 依存で動的なため、
+ * Header (Server Component) で読むと記事ルート全体が動的化して SSG/ISR を壊す。
+ * AuthNav (Client Component) がマウント後に本 Action を呼び、未ログイン=「ログイン / 登録」/
+ * ログイン済み=「マイページ」を出し分ける。記事本文の静的レンダリングは不変。
+ *
+ * 判定は getClaims() で JWT をローカル検証する (認証済みかどうかだけが必要で、
+ * profiles の onboarding 状態までは不要)。失敗・未ログインは安全側 (isAuthed:false) に
+ * 倒し、未認証導線 (= 登録誘導) を出す。
+ */
+export async function getAuthNav(): Promise<AuthNavState> {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  return { isAuthed: !!data?.claims };
+}
+
 /**
  * ログアウト (マイページ等から呼ぶ。M2 でセッション確認 UX のため最小実装)。
  */

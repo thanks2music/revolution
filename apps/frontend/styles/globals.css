@@ -18,6 +18,18 @@
   --primary-600: #1f8fcf;
   --primary-700: #1a6fa3;
 
+  /*
+   * 白文字を載せる塗りボタン専用の濃色 (WCAG AA)。
+   * 白 on --primary-600 (#1f8fcf) は 3.57:1 で 14px 通常テキストの AA 4.5:1 を下回るため、
+   * CTA 塗りボタン (ログイン / はじめる / 登録 / ヘッダー・ベネフィット) の背景にはこの濃色を使う。
+   *   - --primary-strong       #1a6fa3 : 白とのコントラスト比 5.46:1 (AA PASS)
+   *   - --primary-strong-hover #15608a : 白とのコントラスト比 6.84:1 (AA PASS、hover で更に濃く)
+   * --primary-600 / --primary-500 は引き続き罫・アクセント・明背景上の青文字 (稲妻アクセント) に使う
+   * (白文字を載せない用途なので視覚トーン維持のため変更しない)。
+   */
+  --primary-strong: #1a6fa3;
+  --primary-strong-hover: #15608a;
+
   --accent-yellow: #ffe94b;
   --accent-yellow-deep: #f5c400;
 

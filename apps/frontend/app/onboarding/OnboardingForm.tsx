@@ -11,14 +11,29 @@
  * /onboarding 再訪は /mypage に弾く。
  */
 
-import { useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 
 import {
   USERNAME_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
 } from '@revolution/schemas/profile';
 
-import { completeOnboarding } from '@/actions/profile';
+import {
+  checkUsernameAvailability,
+  completeOnboarding,
+  type UsernameAvailability,
+} from '@/actions/profile';
+
+/** username 可用性チェックの debounce 待ち時間 (ms)。 */
+const USERNAME_DEBOUNCE_MS = 400;
+
+/**
+ * username 可用性の表示状態。
+ * - idle    : 未入力 / 短すぎて未チェック
+ * - checking: debounce 後に問い合わせ中
+ * - 以降は checkUsernameAvailability の status をそのまま反映。
+ */
+type UsernameStatus = 'idle' | 'checking' | UsernameAvailability['status'];
 
 export function OnboardingForm({
   defaultDisplayName = '',
@@ -31,6 +46,58 @@ export function OnboardingForm({
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // username リアルタイム可用性 (M4 補助表示)。最終判定は submit 時の 23505。
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+
+  // debounce タイマーと「最後の問い合わせ」識別子。古い応答を捨て競合 (レース) を防ぐ。
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestSeq = useRef(0);
+
+  // アンマウント時に保留中の debounce タイマーを破棄する。
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, []);
+
+  // 入力起点 (onChange) で debounce して可用性をチェックする。
+  // effect 内の同期 setState (cascading render) を避けるため、debounce 管理は
+  // ユーザー操作ハンドラ側に置く (react-hooks/set-state-in-effect 準拠)。
+  const handleUsernameChange = useCallback((raw: string) => {
+    setUsername(raw);
+    setUsernameError(null);
+
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    const value = raw.trim();
+
+    if (value === '') {
+      setUsernameStatus('idle');
+      setAvailabilityError(null);
+      return;
+    }
+
+    setUsernameStatus('checking');
+    setAvailabilityError(null);
+
+    const seq = ++requestSeq.current;
+    debounceTimer.current = setTimeout(() => {
+      checkUsernameAvailability(value)
+        .then((result) => {
+          // 後続入力で seq が進んでいたら古い応答なので捨てる。
+          if (seq !== requestSeq.current) return;
+          setUsernameStatus(result.status);
+          setAvailabilityError(result.status === 'invalid' ? result.error : null);
+        })
+        .catch(() => {
+          if (seq !== requestSeq.current) return;
+          // 取得失敗は補助表示の不能扱い (submit の 23505 に委ねる)。
+          setUsernameStatus('unknown');
+          setAvailabilityError(null);
+        });
+    }, USERNAME_DEBOUNCE_MS);
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,11 +170,11 @@ export function OnboardingForm({
             name="username"
             required
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => handleUsernameChange(e.target.value)}
             placeholder="例: anime_taro"
             minLength={USERNAME_MIN_LENGTH}
             maxLength={USERNAME_MAX_LENGTH}
-            aria-invalid={!!usernameError}
+            aria-invalid={!!usernameError || usernameStatus === 'taken' || usernameStatus === 'invalid'}
             aria-describedby="username-help"
             className="font-numeric min-h-11 rounded-sm border border-[var(--line-strong)] bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500"
           />
@@ -115,6 +182,30 @@ export function OnboardingForm({
             半角英数字とアンダースコア (_) のみ、{USERNAME_MIN_LENGTH}〜
             {USERNAME_MAX_LENGTH} 文字。
           </span>
+          {/*
+            リアルタイム可用性 (補助表示)。submit 由来の usernameError (23505) があるときは
+            そちらを優先表示し、二重表示を避ける。最終判定は submit 時に確定する。
+          */}
+          {!usernameError && usernameStatus === 'checking' && (
+            <span role="status" className="text-xs text-ink-muted">
+              確認中…
+            </span>
+          )}
+          {!usernameError && usernameStatus === 'available' && (
+            <span role="status" className="text-xs text-primary-700">
+              ✓ 使えます
+            </span>
+          )}
+          {!usernameError && usernameStatus === 'taken' && (
+            <span role="alert" className="text-xs text-accent-yellow-deep">
+              ✗ 既に使われています
+            </span>
+          )}
+          {!usernameError && usernameStatus === 'invalid' && availabilityError && (
+            <span role="alert" className="text-xs text-accent-yellow-deep">
+              {availabilityError}
+            </span>
+          )}
           {usernameError && (
             <span role="alert" className="text-xs text-accent-yellow-deep">
               {usernameError}
@@ -125,7 +216,7 @@ export function OnboardingForm({
         <button
           type="submit"
           disabled={isPending}
-          className="min-h-11 bg-primary-600 px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
+          className="min-h-11 bg-primary-strong px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
         >
           {isPending ? '保存中…' : 'はじめる'}
         </button>

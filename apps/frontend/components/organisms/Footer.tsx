@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import Image from 'next/image';
 
+import { AuthNav } from '@/components/molecules/AuthNav';
+
 type FooterLink = { name: string; href: string; external?: boolean };
 type FooterColumn = { title: string; items: FooterLink[] };
 
@@ -30,7 +32,7 @@ const Footer = () => {
   return (
     <footer className="mt-16 border-t bg-bg-primary md:mt-24">
       <div className="w-main mx-auto py-12 md:py-16">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
           <div>
             <Link href="/" className="inline-flex items-center gap-2.5">
               <Image
@@ -79,6 +81,17 @@ const Footer = () => {
               </ul>
             </div>
           ))}
+
+          <div>
+            <h3 className="font-display mb-4 text-xs tracking-[0.18em] text-ink-muted uppercase">
+              Account
+            </h3>
+            <ul className="space-y-2.5">
+              <li>
+                <AuthNav variant="footer" />
+              </li>
+            </ul>
+          </div>
         </div>
 
         <div className="mt-12 flex flex-wrap items-baseline justify-between gap-3 border-t pt-6 text-xs text-ink-muted">
