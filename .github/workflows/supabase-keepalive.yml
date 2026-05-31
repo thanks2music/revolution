@@ -32,7 +32,7 @@ jobs:
   ping:
     name: Ping Supabase Postgres
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 2
     steps:
       - name: Run SELECT 1 to keep the project active
         env:
@@ -46,11 +46,14 @@ jobs:
           # フォールバックし拒否され得るため、PGSSLMODE で SSL を強制する (フォールバック無効)。
           PGSSLMODE: require
         run: |
-          if [ -z "$DB_URL" ]; then
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
             echo "::error::SUPABASE_KEEPALIVE_DB_URL secret is not set"
             exit 1
           fi
-          # psql は ubuntu-latest ランナーに同梱済み (postgresql-client)。
+          # psql は ubuntu-latest ランナーに同梱済み (postgresql-client) だが、将来の
+          # ランナーイメージ変更で欠けても keep-alive が静かに止まらないよう自己修復する。
+          command -v psql >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y postgresql-client; }
           # -A: 非整列, -t: タプルのみ, -c: コマンド実行。成功すると "1" を出力する。
           psql "$DB_URL" -Atc "select 1;"
           echo "Supabase keep-alive ping succeeded."
