@@ -7,6 +7,11 @@ name: Supabase Keep-Alive
 # 背景・方針の詳細: Todoist 6gmFC8WrPMr5fXJg / SSoT task-priority-mapping.md §2 Now-1
 # 実ユーザー獲得後は Pro プラン昇格 (org 単位で pause 無効) で本ワークフローは不要になる。
 #
+# 接続方式: 接続文字列 (URL) ではなく libpq 環境変数 (PGHOST/PGUSER/PGPASSWORD 等) で接続する。
+# パスワードに記号が含まれても URL エンコード不要、かつ psql の argv にパスワードが出ない
+# (プロセス一覧・ログへの露出なし)。接続失敗時も psql は "password authentication failed" を返し
+# パスワードを出力しないため、public リポジトリのログに認証情報が漏れない。
+#
 # 注意: schedule / workflow_dispatch イベントは「デフォルトブランチ (main) 上の
 # ワークフロー定義」でのみ発火する (GitHub 公式仕様)。本ファイルが main にマージされるまで
 # cron 実行・手動実行ボタンは有効化されない。
@@ -33,27 +38,32 @@ jobs:
     name: Ping Supabase Postgres
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    env:
+      # --- 非機密の接続部品 (パスワードではない。project ref は公開済みのため public workflow に置いてよい) ---
+      # GitHub Actions runner は IPv4 のみ。direct 接続 (db.<ref>.supabase.co) は Free プランでは
+      # IPv6 限定のため接続できない。必ず IPv4 互換の Session pooler (port 5432) を使う。
+      PGHOST: aws-1-ap-northeast-1.pooler.supabase.com
+      PGPORT: "5432"
+      PGUSER: postgres.abqsntbvnuttpyixagob
+      PGDATABASE: postgres
+      # Supabase は TLS 必須。psql 既定 sslmode=prefer は SSL 失敗時に平文へフォールバックし
+      # 拒否され得るため、require で SSL を強制する (フォールバック無効)。
+      PGSSLMODE: require
+      # --- 機密 (パスワードのみ secret) ---
+      # libpq 環境変数で渡すため URL エンコード不要 (記号もそのまま) かつ argv に出ない。
+      PGPASSWORD: ${{ secrets.SUPABASE_KEEPALIVE_DB_PASSWORD }}
     steps:
       - name: Run SELECT 1 to keep the project active
-        env:
-          # Supabase の "Session pooler" 接続文字列を登録すること。
-          # GitHub Actions runner は IPv4 のみ。direct 接続 (db.<ref>.supabase.co) は
-          # Free プランでは IPv6 限定のため接続できない。必ず IPv4 互換の Session pooler
-          # (aws-0-<region>.pooler.supabase.com:5432、user=postgres.<ref>) を使う。
-          # 取得元: Supabase Dashboard > Project Settings > Database > Connection string > Session pooler
-          DB_URL: ${{ secrets.SUPABASE_KEEPALIVE_DB_URL }}
-          # Supabase は TLS 必須。psql 既定の sslmode=prefer は SSL 失敗時に平文へ
-          # フォールバックし拒否され得るため、PGSSLMODE で SSL を強制する (フォールバック無効)。
-          PGSSLMODE: require
         run: |
           set -euo pipefail
-          if [ -z "${DB_URL:-}" ]; then
-            echo "::error::SUPABASE_KEEPALIVE_DB_URL secret is not set"
+          if [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::SUPABASE_KEEPALIVE_DB_PASSWORD secret is not set"
             exit 1
           fi
           # psql は ubuntu-latest ランナーに同梱済み (postgresql-client) だが、将来の
           # ランナーイメージ変更で欠けても keep-alive が静かに止まらないよう自己修復する。
           command -v psql >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y postgresql-client; }
-          # -A: 非整列, -t: タプルのみ, -c: コマンド実行。成功すると "1" を出力する。
-          psql "$DB_URL" -Atc "select 1;"
+          # 接続文字列を渡さず PG* 環境変数で接続する。-A: 非整列, -t: タプルのみ, -c: コマンド実行。
+          # 成功すると "1" を出力する。
+          psql -Atc "select 1;"
           echo "Supabase keep-alive ping succeeded."
