@@ -1,0 +1,56 @@
+name: Supabase Keep-Alive
+
+# Supabase Free プランは「7 日間以上 十分なアクティビティがない」プロジェクトを自動 pause する。
+# 本ワークフローは毎日 1 回 Postgres へ軽量クエリ (SELECT 1) を投げてアクティビティを発生させ、
+# 自動 pause を防ぐ (Revolution project: abqsntbvnuttpyixagob)。
+#
+# 背景・方針の詳細: Todoist 6gmFC8WrPMr5fXJg / SSoT task-priority-mapping.md §2 Now-1
+# 実ユーザー獲得後は Pro プラン昇格 (org 単位で pause 無効) で本ワークフローは不要になる。
+#
+# 注意: schedule / workflow_dispatch イベントは「デフォルトブランチ (main) 上の
+# ワークフロー定義」でのみ発火する (GitHub 公式仕様)。本ファイルが main にマージされるまで
+# cron 実行・手動実行ボタンは有効化されない。
+#
+# 既知の制約: public リポジトリの scheduled workflow は「60 日間リポジトリ活動が無い」と
+# GitHub が自動で無効化する (公式仕様)。長期休眠 (60 日以上コミット無し) に入ると本 keep-alive
+# も停止し、その後 Supabase が pause し得る。能動開発中は問題ないが、長期休眠を見込む場合は
+# Actions の再有効化、または外部 cron / Vercel Cron の併用を検討する。
+
+on:
+  schedule:
+    # 毎日 1 回 (UTC 15:37 = JST 翌 00:37)。7 日制限に対し大きなマージンを確保する。
+    # 分 0 (top-of-hour) は GitHub Actions の負荷集中で遅延・スキップしやすいため分をずらす。
+    - cron: "37 15 * * *"
+  # マージ後の初回検証・任意の手動実行用。
+  workflow_dispatch: {}
+
+# このジョブは外部 DB へ接続するのみで、リポジトリ内容への書き込み・読み取りは不要。
+# 最小権限の原則に従い GITHUB_TOKEN の権限を空にする。
+permissions: {}
+
+jobs:
+  ping:
+    name: Ping Supabase Postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run SELECT 1 to keep the project active
+        env:
+          # Supabase の "Session pooler" 接続文字列を登録すること。
+          # GitHub Actions runner は IPv4 のみ。direct 接続 (db.<ref>.supabase.co) は
+          # Free プランでは IPv6 限定のため接続できない。必ず IPv4 互換の Session pooler
+          # (aws-0-<region>.pooler.supabase.com:5432、user=postgres.<ref>) を使う。
+          # 取得元: Supabase Dashboard > Project Settings > Database > Connection string > Session pooler
+          DB_URL: ${{ secrets.SUPABASE_KEEPALIVE_DB_URL }}
+          # Supabase は TLS 必須。psql 既定の sslmode=prefer は SSL 失敗時に平文へ
+          # フォールバックし拒否され得るため、PGSSLMODE で SSL を強制する (フォールバック無効)。
+          PGSSLMODE: require
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "::error::SUPABASE_KEEPALIVE_DB_URL secret is not set"
+            exit 1
+          fi
+          # psql は ubuntu-latest ランナーに同梱済み (postgresql-client)。
+          # -A: 非整列, -t: タプルのみ, -c: コマンド実行。成功すると "1" を出力する。
+          psql "$DB_URL" -Atc "select 1;"
+          echo "Supabase keep-alive ping succeeded."
