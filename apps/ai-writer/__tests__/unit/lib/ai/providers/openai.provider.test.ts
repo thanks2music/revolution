@@ -86,4 +86,15 @@ describe('OpenAIProvider — Layer 2 contract', () => {
     const call = mockChatCompletionsCreate.mock.calls[0][0];
     expect(call.model).toBe('gpt-5.5');
   });
+
+  it('uses max_completion_tokens (not legacy max_tokens) for GPT-5 reasoning models', async () => {
+    // GPT-5 family rejects `max_tokens` with HTTP 400 `unsupported_parameter`
+    // (verified live against gpt-5.4-mini via debug:mdx --dry-run).
+    const provider = new OpenAIProvider();
+    await provider.sendMessage('hello', { maxTokens: 1024 });
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    expect(call.max_completion_tokens).toBe(1024);
+    expect(call.max_tokens).toBeUndefined();
+  });
 });
