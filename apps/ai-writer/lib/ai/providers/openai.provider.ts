@@ -571,10 +571,14 @@ Respond ONLY with JSON format. No other text should be included.
       messages.push({ role: 'user', content: prompt });
 
       // Build API request options
+      // Use `max_completion_tokens` (not the legacy `max_tokens`) — GPT-5 reasoning models
+      // reject `max_tokens` with HTTP 400 `unsupported_parameter`. The newer key counts
+      // *visible output* tokens distinctly from invisible reasoning tokens and is the
+      // forward-compatible parameter across the GPT-5 / o-series families.
       const createOptions: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
         model: this.modelName,
         messages,
-        max_tokens: options?.maxTokens ?? 2048,
+        max_completion_tokens: options?.maxTokens ?? 2048,
         temperature: options?.temperature ?? 0,
       };
 
