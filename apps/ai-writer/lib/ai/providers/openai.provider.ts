@@ -22,48 +22,58 @@ import type {
 } from './ai-provider.interface';
 
 /**
- * Recommended OpenAI models for different use cases
+ * Supported OpenAI models for Revolution AI Writer
  *
- * Pricing (as of 2025-12, Standard tier per 1M tokens):
- * - gpt-4.1-nano: $0.10 input / $0.40 output (DEFAULT - best cost-performance)
- * - gpt-4o-mini: $0.15 input / $0.60 output
- * - gpt-4.1-mini: $0.40 input / $1.60 output
- * - gpt-4o: $2.50 input / $10.00 output
+ * Last updated: 2026-06-07
  *
- * Priority order for cost optimization:
- * 1. gpt-4.1-nano (most cost-effective for simple tasks)
- * 2. gpt-4o-mini (fallback)
- * 3. gpt-4.1-mini (higher capability)
+ * Pricing (Standard tier per 1M tokens, source: https://developers.openai.com/api/docs/models):
+ * - gpt-5.5:       $5.00  input / $0.50  cached / $30.00 output   (context 1,050K, reasoning default: medium)
+ * - gpt-5.4:       $2.50  input / $0.25  cached / $15.00 output   (context 1,050K, reasoning default: none)
+ * - gpt-5.4-mini:  $0.75  input / $0.075 cached / $4.50  output   (context 400K,   DEFAULT for article generation)
+ * - gpt-5.4-nano:  $0.20  input / $0.02  cached / $1.25  output   (context 400K,   official replacement for gpt-4.1-nano)
  *
- * Note: GPT-5 series (gpt-5-nano, gpt-5-mini, gpt-5.x) requires
- * Responses API and different parameters. See REFACTORING.md for details.
+ * Model selection rationale (2026-06-07 decision):
+ * - gpt-4.1-nano shutdown 2026-10-23 (https://developers.openai.com/api/docs/deprecations)
+ * - Official recommended replacement: gpt-5.4-nano
+ * - gpt-5.4-mini chosen as DEFAULT: balances cost/quality for Japanese article generation
+ * - gpt-5.3-codex excluded: code-specialized model (per OpenAI), unsuitable for article text
+ * - gpt-5.5 retained for premium/long-context use cases (1M+ context, xhigh reasoning)
+ *
+ * Chat Completions API compatibility:
+ * All GPT-5 family models support `client.chat.completions.create({ model, ... })` directly.
+ * The "Responses API required" claim previously documented here was incorrect; verified via
+ * https://github.com/openai/openai-node/blob/master/README.md and the public ChatModel union.
+ *
+ * Note on `gpt-5.5`: the openai-node SDK ChatModel union does not yet list `gpt-5.5`
+ * (https://github.com/openai/openai-node/blob/master/src/resources/shared.ts), but the OpenAI
+ * REST API accepts the model id as a string. Our `modelName: string` typing in the constructor
+ * allows it to be passed through without a type-cast.
+ *
+ * reasoning_effort parameter (gpt-5.1+):
+ * Allowed values are `none / low / medium / high / xhigh` per
+ * https://github.com/openai/openai-node/blob/master/src/resources/chat/completions/completions.ts.
+ * We do not set it explicitly — gpt-5.4 defaults to `none` (no reasoning), gpt-5.5 to `medium`.
  */
 const OPENAI_MODELS = {
-  // Priority 1: Most cost-effective (GPT-4.1 nano)
-  GPT41_NANO: 'gpt-4.1-nano',
-  // Priority 2: Fallback
-  GPT4O_MINI: 'gpt-4o-mini',
-  // Priority 3: Higher capability
-  GPT41_MINI: 'gpt-4.1-mini',
-  // High quality balanced option
-  GPT4O: 'gpt-4o',
-  // Premium quality option
-  TURBO: 'gpt-4-turbo',
+  /** Premium reasoning + long context (1M+). Use sparingly due to $5/$30 pricing. */
+  GPT55: 'gpt-5.5',
+  /** Reasoning-capable mid tier (default reasoning: none). */
+  GPT54: 'gpt-5.4',
+  /** DEFAULT: balanced quality/cost for article generation. */
+  GPT54_MINI: 'gpt-5.4-mini',
+  /** Official replacement for the deprecated gpt-4.1-nano. */
+  GPT54_NANO: 'gpt-5.4-nano',
 } as const;
 
-/** Default model - using GPT-4.1-mini for better instruction following */
-const DEFAULT_MODEL = OPENAI_MODELS.GPT41_MINI;
+/** Default model — gpt-5.4-mini chosen for cost/quality balance on Japanese article generation. */
+const DEFAULT_MODEL = OPENAI_MODELS.GPT54_MINI;
 
 /**
  * OpenAI Provider
  *
  * @description
  * Implements the AiProvider interface using OpenAI Chat Completions API.
- * Uses gpt-4.1-nano by default for best cost efficiency.
- *
- * Pricing (as of 2025-12, Standard tier per 1M tokens):
- * - gpt-4.1-nano: $0.10 input / $0.40 output (DEFAULT)
- * - gpt-4o-mini: $0.15 input / $0.60 output
+ * Uses gpt-5.4-mini by default (see {@link OPENAI_MODELS} JSDoc for selection rationale).
  *
  * @example
  * ```typescript
@@ -83,7 +93,7 @@ export class OpenAIProvider implements AiProvider {
    * Initialize OpenAI Provider
    *
    * @param apiKey - Optional API key override (defaults to OPENAI_API_KEY env var)
-   * @param modelName - Optional model override (defaults to gpt-4.1-nano)
+   * @param modelName - Optional model override (defaults to {@link DEFAULT_MODEL} = gpt-5.4-mini)
    */
   constructor(apiKey?: string, modelName: string = DEFAULT_MODEL) {
     this.apiKey = apiKey || process.env.OPENAI_API_KEY || '';
