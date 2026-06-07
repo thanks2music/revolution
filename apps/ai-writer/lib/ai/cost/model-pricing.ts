@@ -9,7 +9,7 @@
  * @see https://www.anthropic.com/pricing
  * @see https://ai.google.dev/pricing
  *
- * Last updated: 2026-04-30
+ * Last updated: 2026-06-07
  */
 
 export interface ModelPricing {
@@ -58,10 +58,35 @@ export const USD_TO_JPY_RATE = 150;
 
 /**
  * Model pricing table (Standard tier, per 1M tokens)
- * Last updated: 2026-04-30
+ * Last updated: 2026-06-07
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  // OpenAI GPT-5 series
+  // OpenAI GPT-5.4 / 5.5 series (added 2026-06-07, sourced from https://developers.openai.com/api/docs/models)
+  'gpt-5.5': {
+    inputPer1M: 5.0,
+    cachedInputPer1M: 0.5,
+    outputPer1M: 30.0,
+    provider: 'openai',
+  },
+  'gpt-5.4': {
+    inputPer1M: 2.5,
+    cachedInputPer1M: 0.25,
+    outputPer1M: 15.0,
+    provider: 'openai',
+  },
+  'gpt-5.4-mini': {
+    inputPer1M: 0.75,
+    cachedInputPer1M: 0.075,
+    outputPer1M: 4.5,
+    provider: 'openai',
+  },
+  'gpt-5.4-nano': {
+    inputPer1M: 0.2,
+    cachedInputPer1M: 0.02,
+    outputPer1M: 1.25,
+    provider: 'openai',
+  },
+  // OpenAI GPT-5 (initial) series — retained for backward compatibility with historical cost logs
   'gpt-5-nano': {
     inputPer1M: 0.05,
     cachedInputPer1M: 0.005,
@@ -74,13 +99,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     outputPer1M: 2.0,
     provider: 'openai',
   },
-  // OpenAI GPT-4.1 series
-  'gpt-4.1-nano': {
-    inputPer1M: 0.1,
-    cachedInputPer1M: 0.025,
-    outputPer1M: 0.4,
-    provider: 'openai',
-  },
+  // OpenAI GPT-4.1 series — gpt-4.1-nano removed 2026-06-07 (shutdown 2026-10-23, replaced by gpt-5.4-nano)
   'gpt-4.1-mini': {
     inputPer1M: 0.4,
     cachedInputPer1M: 0.1,
