@@ -134,4 +134,39 @@ describe('calculateCost — prompt cache pricing', () => {
     // $3.75 falls in the >= $0.01 branch, so 4-decimal format
     expect(formatted).toMatch(/^\$3\.7500 \(¥\d/);
   });
+
+  describe('GPT-5.4 / 5.5 pricing (added 2026-06-07)', () => {
+    it('calculates input + output cost for gpt-5.4-mini (default model post 2026-06-07)', () => {
+      // gpt-5.4-mini: input $0.75/M, cachedInput $0.075/M, output $4.50/M
+      const usage: TokenUsage = {
+        promptTokens: 1_000_000,
+        completionTokens: 1_000_000,
+        totalTokens: 2_000_000,
+      };
+
+      const cost = calculateCost('gpt-5.4-mini', usage);
+
+      expect(cost.breakdown.inputCost).toBeCloseTo(0.75, 5);
+      expect(cost.breakdown.outputCost).toBeCloseTo(4.5, 5);
+      expect(cost.breakdown.cachedCost).toBe(0);
+      expect(cost.usd).toBeCloseTo(5.25, 5);
+    });
+
+    it('applies cached input pricing for gpt-5.5 (premium tier)', () => {
+      // gpt-5.5: input $5.00/M, cachedInput $0.50/M, output $30.00/M
+      const usage: TokenUsage = {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        cachedTokens: 1_000_000,
+      };
+
+      const cost = calculateCost('gpt-5.5', usage);
+
+      expect(cost.breakdown.cachedCost).toBeCloseTo(0.5, 5);
+      expect(cost.breakdown.inputCost).toBe(0);
+      expect(cost.breakdown.outputCost).toBe(0);
+      expect(cost.usd).toBeCloseTo(0.5, 5);
+    });
+  });
 });
