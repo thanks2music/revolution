@@ -3,6 +3,8 @@
 import { useRef } from 'react';
 import Link from 'next/link';
 
+import { AuthNav } from '@/components/molecules/AuthNav';
+
 type NavItem = { name: string; href: string };
 
 const HamburgerIcon = () => (
@@ -54,11 +56,12 @@ export const MobileNavDisclosure = ({ navItems }: { navItems: NavItem[] }) => {
               key={item.name}
               href={item.href}
               onClick={close}
-              className="font-display border-b py-3 text-base text-ink-strong last:border-b-0"
+              className="font-display flex min-h-11 items-center border-b py-3 text-base text-ink-strong last:border-b-0"
             >
               {item.name}
             </Link>
           ))}
+          <AuthNav variant="mobile" onNavigate={close} />
         </nav>
       </div>
     </details>

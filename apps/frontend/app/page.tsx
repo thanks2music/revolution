@@ -5,6 +5,7 @@ import { getAllArticles } from '@/lib/mdx/articles';
 import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGrid';
 import { SectionHeader } from '@/components/molecules/SectionHeader';
 import { SparkRule } from '@/components/atoms/ornament/SparkRule';
+import { SignupBenefit } from '@/components/molecules/SignupBenefit';
 
 export const revalidate = 120; // ISR
 
@@ -60,6 +61,10 @@ export default async function Home() {
           }
         />
         <PaginatedArticleGrid articles={articles} mode="button" />
+      </section>
+
+      <section className="w-main mx-auto mt-section-sp md:mt-section-pc">
+        <SignupBenefit />
       </section>
 
       <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">

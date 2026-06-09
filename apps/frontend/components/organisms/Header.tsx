@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { env } from '@/lib/env';
 import { MobileNavDisclosure } from '@/components/molecules/MobileNavDisclosure';
+import { AuthNav } from '@/components/molecules/AuthNav';
 
 const navItems = [
   { name: '記事一覧', href: '/articles' },
@@ -45,6 +46,7 @@ const Header = () => {
               {item.name}
             </Link>
           ))}
+          <AuthNav variant="header" />
         </nav>
 
         <MobileNavDisclosure navItems={navItems} />

@@ -26,6 +26,9 @@ const config: Config = {
           500: 'var(--primary-500)',
           600: 'var(--primary-600)',
           700: 'var(--primary-700)',
+          // 白文字を載せる塗りボタン専用の濃色 (WCAG AA、白とのコントラスト 5.46:1 / hover 6.84:1)。
+          strong: 'var(--primary-strong)',
+          'strong-hover': 'var(--primary-strong-hover)',
         },
         accent: {
           yellow: 'var(--accent-yellow)',

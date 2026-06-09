@@ -19,6 +19,28 @@ export const env = createEnv({
 
     // WordPress GraphQL エンドポイント（サーバー側で使用可能）
     WORDPRESS_GRAPHQL_ENDPOINT: z.string().url().optional(),
+
+    // ---------------------------------------------------------------
+    // Crescendolls (Supabase 会員機能) — server-only シークレット
+    // ---------------------------------------------------------------
+    // RLS をバイパスする Secret Key（commit 禁止）。
+    // 用途は username 重複 count の Server Action 等に限定（M2 以降で使用）。
+    // M0 では未使用のため optional。実際に server 処理で使う Sprint で
+    // 利用箇所側が存在チェックを行う。
+    SUPABASE_SECRET_KEY: z
+      .string()
+      .startsWith("sb_secret_", {
+        message: "SUPABASE_SECRET_KEY は modern secret key (sb_secret_...) を指定してください",
+      })
+      .optional(),
+
+    // postgres-js (Drizzle, prepare:false) で使用する接続文字列。
+    // Supabase Dashboard → Connect → Transaction pooler (6543)。M1 以降で使用。
+    DATABASE_URL: z.string().url().optional(),
+
+    // drizzle-kit / migrate を max:1 で使用する接続文字列。
+    // Supabase Dashboard → Connect → Session pooler (5432)。M1 以降で使用。
+    MIGRATION_DATABASE_URL: z.string().url().optional(),
   },
 
   /*
@@ -27,6 +49,21 @@ export const env = createEnv({
    * ブラウザでもアクセス可能（バンドルに含まれる）
    */
   client: {
+    // ---------------------------------------------------------------
+    // Crescendolls (Supabase 会員機能) — 公開クライアント設定
+    // ---------------------------------------------------------------
+    // Supabase プロジェクト URL。browser/server/middleware の Supabase
+    // クライアント生成に必須。欠落時は起動エラーにして配線ミスを早期検知する。
+    NEXT_PUBLIC_SUPABASE_URL: z.string().url({
+      message: "NEXT_PUBLIC_SUPABASE_URL must be a valid URL (e.g., https://<ref>.supabase.co)"
+    }),
+
+    // modern publishable key (sb_publishable_...)。anon key の後継。
+    // browser/server/middleware の Supabase クライアント生成に必須。
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().startsWith("sb_publishable_", {
+      message: "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY は modern publishable key (sb_publishable_...) を指定してください"
+    }),
+
     // 公開用サイトURL（OGPやサイトマップで使用）
     NEXT_PUBLIC_SITE_URL: z.string().url({
       message: "NEXT_PUBLIC_SITE_URL must be a valid URL (e.g., https://example.com)"
@@ -85,6 +122,12 @@ export const env = createEnv({
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
     WORDPRESS_GRAPHQL_ENDPOINT: process.env.WORDPRESS_GRAPHQL_ENDPOINT,
+    SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
+    DATABASE_URL: process.env.DATABASE_URL,
+    MIGRATION_DATABASE_URL: process.env.MIGRATION_DATABASE_URL,
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_WP_ENDPOINT: process.env.NEXT_PUBLIC_WP_ENDPOINT,
     NEXT_PUBLIC_WP_URL: process.env.NEXT_PUBLIC_WP_URL,
@@ -100,7 +143,11 @@ export const env = createEnv({
    * CI/CDでの実行をスキップ
    * ビルド時に環境変数が揃っていない場合に便利
    */
-  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
+  // 明示的な真値のみで skip する。`!!process.env.SKIP_ENV_VALIDATION` は文字列
+  // "false" も truthy になり、意図せず検証を無効化する事故を招くため厳密一致で判定する。
+  skipValidation:
+    process.env.SKIP_ENV_VALIDATION === "true" ||
+    process.env.SKIP_ENV_VALIDATION === "1",
 
   /*
    * エラーメッセージを判別しやすく設定

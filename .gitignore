@@ -202,6 +202,8 @@ vendor/composer/autoload_*.php
 
 # SQLダンプ
 *.sql
+# Drizzle マイグレーション/RLS は追跡する (上の global *.sql 無視の例外)
+!apps/frontend/drizzle/**/*.sql
 *.dump
 *.backup
 database/

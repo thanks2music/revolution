@@ -73,6 +73,43 @@ const nextConfig = {
       ? new URL(process.env.NEXT_PUBLIC_WP_ENDPOINT).origin
       : '';
 
+    // CSP connect-src 用に Supabase オリジンを env から動的抽出。
+    // Crescendolls 会員機能（Auth / PostgREST / Realtime）のブラウザ実リクエストが
+    // CSP でブロックされないために必須。
+    //
+    // - ハードコードした本番 ref のフォールバックは持たない（env が真実源）。
+    // - CI build は SKIP_ENV_VALIDATION=true かつ Supabase env 未設定で走るため、
+    //   env 未設定時は Supabase 由来の CSP エントリを安全に省略する
+    //   （new URL(undefined) でクラッシュさせない = Build Apps を落とさない）。
+    // - URL の不正値（解析失敗）も握りつぶして省略し、ヘッダ生成を止めない。
+    let supabaseOrigin = '';
+    let supabaseWsOrigin = '';
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        const supabaseUrl = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);
+        supabaseOrigin = supabaseUrl.origin;
+        // Realtime は WebSocket で接続するため WS オリジンも許可する。
+        // protocol を https:→wss: / http:→ws: に切り替える（new URL の
+        // protocol setter は origin を安全に再計算する）。local の
+        // http://127.0.0.1:54321 でも ws://127.0.0.1:54321 が CSP に入る。
+        const wsUrl = new URL(supabaseUrl.href);
+        wsUrl.protocol = supabaseUrl.protocol === 'http:' ? 'ws:' : 'wss:';
+        supabaseWsOrigin = wsUrl.origin;
+      } catch {
+        // URL 不正時は Supabase エントリを省略（ヘッダ生成は継続）。
+        supabaseOrigin = '';
+        supabaseWsOrigin = '';
+      }
+    }
+    const connectSrc = [
+      "'self'",
+      wpOrigin,
+      supabaseOrigin,
+      supabaseWsOrigin,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
     return [
       {
         source: '/:path*',
@@ -86,7 +123,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'", // Tailwind CSSに必要
               `img-src 'self' data: https: ${process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST || 'localhost'}`,
               "font-src 'self' data:",
-              "connect-src 'self'" + (wpOrigin ? ' ' + wpOrigin : ''),
+              `connect-src ${connectSrc}`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
