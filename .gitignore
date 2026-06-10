@@ -204,6 +204,9 @@ vendor/composer/autoload_*.php
 *.sql
 # Drizzle マイグレーション/RLS は追跡する (上の global *.sql 無視の例外)
 !apps/frontend/drizzle/**/*.sql
+# Supabase CLI 用 migration ファイル (Phase 1c で導入、drizzle SSoT からコピー) も追跡する
+# `.branches/` / `.temp/` は引き続き ignore (Supabase CLI ローカル一時ディレクトリ)
+!apps/frontend/supabase/migrations/**/*.sql
 *.dump
 *.backup
 database/
