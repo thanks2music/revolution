@@ -59,11 +59,15 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Supabase CLI
-        # specific version pin で non-deterministic を回避 (claude[bot] PR #244 review #1 採用、
-        # CLI breaking release で production migration が silently fail することを防止)
-        uses: supabase/setup-cli@v2
+        # Action タグを specific pin (v2.1.1、2026-05-21 release) し、action level の
+        # non-deterministic は解消 (claude[bot] PR #244 review #1 採用)。一方 Supabase CLI
+        # 本体 (with: version) は latest 維持: PostgreSQL 17 など Postgres major version の
+        # 追加に CLI が追従しないと `Failed reading config: Invalid db.major_version: 17` で
+        # deploy が壊れるため (本 PR で実証)。CLI は前進する schema 互換性のために latest を
+        # 採る公式 example の判断を踏襲。
+        uses: supabase/setup-cli@v2.1.1
         with:
-          version: 2.1.1
+          version: latest
 
       - name: Link staging project
         working-directory: apps/frontend
@@ -91,10 +95,11 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Supabase CLI
-        # staging job と同じ specific version pin (claude[bot] PR #244 review 採用)
-        uses: supabase/setup-cli@v2
+        # staging job と整合 (action は v2.1.1 pin / CLI は latest 維持、上の staging job
+        # コメント参照)
+        uses: supabase/setup-cli@v2.1.1
         with:
-          version: 2.1.1
+          version: latest
 
       - name: Link production project
         working-directory: apps/frontend
