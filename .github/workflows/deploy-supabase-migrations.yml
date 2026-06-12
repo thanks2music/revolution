@@ -40,12 +40,12 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   deploy-staging:
     if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging')
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)
     environment:
       name: staging
     env:
@@ -54,14 +54,16 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
     steps:
       - name: Checkout repository
-        # v6.0.0 (2025-11-20) 以降 Node.js 24 ベース + persist-credentials の $RUNNER_TEMP 保存
-        # (セキュリティ向上)。Revolution は ubuntu-latest 利用のため Runner 互換 OK。
-        uses: actions/checkout@v6
+        # Revolution の ci.yml と整合させて v5 採用 (Node.js 24 ベース、track record 十分、
+        # claude[bot] PR #244 review #2 採用)
+        uses: actions/checkout@v5
 
       - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+        # specific version pin で non-deterministic を回避 (claude[bot] PR #244 review #1 採用、
+        # CLI breaking release で production migration が silently fail することを防止)
+        uses: supabase/setup-cli@v2
         with:
-          version: latest
+          version: 2.1.1
 
       - name: Link staging project
         working-directory: apps/frontend
@@ -76,6 +78,7 @@ jobs:
   deploy-production:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)
     environment:
       name: production
     env:
@@ -84,14 +87,14 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_ID }}
     steps:
       - name: Checkout repository
-        # v6.0.0 (2025-11-20) 以降 Node.js 24 ベース + persist-credentials の $RUNNER_TEMP 保存
-        # (セキュリティ向上)。Revolution は ubuntu-latest 利用のため Runner 互換 OK。
-        uses: actions/checkout@v6
+        # staging job と整合 (claude[bot] PR #244 review 採用)
+        uses: actions/checkout@v5
 
       - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+        # staging job と同じ specific version pin (claude[bot] PR #244 review 採用)
+        uses: supabase/setup-cli@v2
         with:
-          version: latest
+          version: 2.1.1
 
       - name: Link production project
         working-directory: apps/frontend
