@@ -1,0 +1,111 @@
+name: Deploy Supabase Migrations
+
+# Crescendolls 会員機能 (および将来の機能) の Supabase migration を staging / production に自動 deploy する。
+#
+# 設計方針 (本セッション 2026-06-10 BOSS 確定):
+# - SSoT: drizzle (apps/frontend/drizzle/) を維持しつつ、Supabase CLI 形式 (timestamp prefix)
+#   で apps/frontend/supabase/migrations/ にも配置 (初回手動コピー、将来は sync script)
+# - 段階的 deploy: PR open → staging に migration、main merge → production に migration
+# - GitHub Secrets は SUPABASE_ プレフィックス + PROD/STG で環境分離 (Vercel scope と異なり
+#   GitHub Secrets は scope 機能なし)
+# - Vercel-Supabase 順序保証は forward-only migration ルール + concurrency で担保
+#   (詳細は docs/operations/supabase-migration-workflow.md)
+#
+# 公式テンプレ準拠: https://supabase.com/docs/guides/deployment/managing-environments
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/frontend/supabase/migrations/**'
+      - '.github/workflows/deploy-supabase-migrations.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/frontend/supabase/migrations/**'
+      - '.github/workflows/deploy-supabase-migrations.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: '手動 deploy 先 (production / staging)'
+        type: choice
+        required: true
+        default: staging
+        options: [staging, production]
+
+# 同一環境への同時 deploy を防ぐ。staging と production は別グループのため並行可。
+concurrency:
+  group: supabase-deploy-${{ github.event_name == 'push' && 'production' || github.event_name == 'pull_request' && format('staging-pr-{0}', github.event.pull_request.number) || format('manual-{0}', inputs.target) }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)
+    environment:
+      name: staging
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STG_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
+    steps:
+      - name: Checkout repository
+        # Revolution の ci.yml と整合させて v5 採用 (Node.js 24 ベース、track record 十分、
+        # claude[bot] PR #244 review #2 採用)
+        uses: actions/checkout@v5
+
+      - name: Setup Supabase CLI
+        # Action タグを specific pin (v2.1.1、2026-05-21 release) し、action level の
+        # non-deterministic は解消 (claude[bot] PR #244 review #1 採用)。一方 Supabase CLI
+        # 本体 (with: version) は latest 維持: PostgreSQL 17 など Postgres major version の
+        # 追加に CLI が追従しないと `Failed reading config: Invalid db.major_version: 17` で
+        # deploy が壊れるため (本 PR で実証)。CLI は前進する schema 互換性のために latest を
+        # 採る公式 example の判断を踏襲。
+        uses: supabase/setup-cli@v2.1.1
+        with:
+          version: latest
+
+      - name: Link staging project
+        working-directory: apps/frontend
+        # env 経由で secret 値を渡す (公式 security best practice、
+        # https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/)
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Push migrations to staging
+        working-directory: apps/frontend
+        run: supabase db push --linked
+
+  deploy-production:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)
+    environment:
+      name: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_ID }}
+    steps:
+      - name: Checkout repository
+        # staging job と整合 (claude[bot] PR #244 review 採用)
+        uses: actions/checkout@v5
+
+      - name: Setup Supabase CLI
+        # staging job と整合 (action は v2.1.1 pin / CLI は latest 維持、上の staging job
+        # コメント参照)
+        uses: supabase/setup-cli@v2.1.1
+        with:
+          version: latest
+
+      - name: Link production project
+        working-directory: apps/frontend
+        # env 経由で secret 値を渡す (公式 security best practice)
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Push migrations to production
+        working-directory: apps/frontend
+        run: supabase db push --linked
