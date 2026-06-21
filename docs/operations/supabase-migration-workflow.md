@@ -166,12 +166,18 @@ Supabase CLI は **自動 rollback 機能なし**。問題発生時は:
 | GitHub Actions Environments 機能 | production への secret access に承認フロー追加 (Vercel scope 類似)、Settings → Environments で `production` / `staging` 作成 |
 | drizzle → supabase/migrations 自動同期 script | `pnpm sync:migrations` 等で手動コピー手間を削減 |
 | 日次 pg_dump バックアップ | Free プラン制約への対策 |
-| `SUPABASE_KEEPALIVE_DB_PASSWORD` 重複整理 | `SUPABASE_PROD_DB_PASSWORD` に統一、`supabase-keepalive.yml` 参照変更、旧 secret 削除 |
+| ~~`SUPABASE_KEEPALIVE_DB_PASSWORD` 重複整理~~ | **✅ 2026-06-21 完了** (Todoist `6gw7Pgr5FJCgqPFg`)。`SUPABASE_PROD_DB_PASSWORD` / `SUPABASE_STG_DB_PASSWORD` に統一済、`supabase-keepalive.yml` を 2 job 化 (本番+staging) + secret rotation SoP を新規追加。詳細手順は [`supabase-secret-rotation-sop.md`](./supabase-secret-rotation-sop.md) を参照 |
 | Vercel deploy GitHub Actions 化検討 | フロント deploy の経路統一 (MVP 後判断、業界標準では Vercel Integration 推奨) |
 
 ---
 
 ## 8. 参考
+
+### See also (運用ドキュメント)
+
+- [`supabase-secret-rotation-sop.md`](./supabase-secret-rotation-sop.md) — DB password / PAT / project ref rotation 時の標準作業手順書 (3 フェーズ手順 + 同期対象 secret マトリクス + 教訓事案 + チェックリスト)。**本 doc と相補関係**: migration deploy パイプライン (本 doc) ↔ secret rotation 運用 (SoP)
+
+### 外部参照
 
 - 親課題 Todoist: `6gqX6V5Vh2p3XW7g` (Supabase, GitHub, Vercel を「(B) 理想派」の状態に環境構築)
 - handoff doc: `docs/handoff/2026-06-09-crescendolls-production-handoff.md`

@@ -2,62 +2,104 @@ name: Supabase Keep-Alive
 
 # Supabase Free プランは「7 日間以上 十分なアクティビティがない」プロジェクトを自動 pause する。
 # 本ワークフローは毎日 1 回 Postgres へ軽量クエリ (SELECT 1) を投げてアクティビティを発生させ、
-# 自動 pause を防ぐ (Revolution project: abqsntbvnuttpyixagob)。
+# 自動 pause を防ぐ (Revolution の production + staging 両 project)。
 #
-# 背景・方針の詳細: Todoist 6gmFC8WrPMr5fXJg / SSoT task-priority-mapping.md §2 Now-1
+# 背景・方針の詳細: Todoist 6gw7Pgr5FJCgqPFg / SSoT task-priority-mapping.md 第 33 回エントリ /
+# 運用 SoP: docs/operations/supabase-secret-rotation-sop.md。
 # 実ユーザー獲得後は Pro プラン昇格 (org 単位で pause 無効) で本ワークフローは不要になる。
 #
-# 接続方式: 接続文字列 (URL) ではなく libpq 環境変数 (PGHOST/PGUSER/PGPASSWORD 等) で接続する。
+# === 設計の主な改修 (2026-06-21、Todoist 6gw7Pgr5FJCgqPFg) ===
+# 旧版は production (`abqsntbvnuttpyixagob`) のみを ping し、staging は構造的に 7 日制約に
+# 勝てない問題があった。さらに 2026-06-13 PR #244 Phase 1e で production DB password を
+# 再生成した際に keep-alive 専用 secret (`SUPABASE_KEEPALIVE_DB_PASSWORD`) の更新が漏れ、
+# 8 日連続 silent failure → 2026-06-21 auto-pause 発動という事故が発生した。
+#
+# 本版での対策:
+#   1. production + staging を **2 別 job** で並列実行 (片方失敗が他方を止めない構造)
+#   2. keep-alive 用 secret を廃止し **deploy と同じ `SUPABASE_PROD_DB_PASSWORD` /
+#      `SUPABASE_STG_DB_PASSWORD` を直接参照** (rotation 時の secret 1 つ忘れリスクを構造的に排除)
+#   3. PGUSER は `postgres.<project_ref>` を `secrets.SUPABASE_PROD_PROJECT_ID` /
+#      `SUPABASE_STG_PROJECT_ID` から組み立て (project ref の rotation 余地確保)
+#   4. cron 時刻を 2 job で 5 分ずらし (同時失敗時の root cause 切り分け容易化)
+#   5. workflow_dispatch input `target` (`both` / `production` / `staging`、default `both`) で
+#      debug 用個別実行を可能に
+#
+# === 接続方式 ===
+# 接続文字列 (URL) ではなく libpq 環境変数 (PGHOST/PGUSER/PGPASSWORD 等) で接続する。
 # パスワードに記号が含まれても URL エンコード不要、かつ psql の argv にパスワードが出ない
 # (プロセス一覧・ログへの露出なし)。接続失敗時も psql は "password authentication failed" を返し
 # パスワードを出力しないため、public リポジトリのログに認証情報が漏れない。
 #
-# 注意: schedule / workflow_dispatch イベントは「デフォルトブランチ (main) 上の
-# ワークフロー定義」でのみ発火する (GitHub 公式仕様)。本ファイルが main にマージされるまで
-# cron 実行・手動実行ボタンは有効化されない。
+# === IPv4 制約 ===
+# GitHub Actions runner は IPv4 のみ。direct 接続 (db.<ref>.supabase.co) は Free プランでは
+# IPv6 限定のため接続できない。必ず IPv4 互換の Session pooler (port 5432) を使う。
+# 公式: https://supabase.com/docs/guides/troubleshooting/supabase--your-network-ipv4-and-ipv6-compatibility-cHe3BP
 #
-# 既知の制約: public リポジトリの scheduled workflow は「60 日間リポジトリ活動が無い」と
-# GitHub が自動で無効化する (公式仕様)。長期休眠 (60 日以上コミット無し) に入ると本 keep-alive
-# も停止し、その後 Supabase が pause し得る。能動開発中は問題ないが、長期休眠を見込む場合は
-# Actions の再有効化、または外部 cron / Vercel Cron の併用を検討する。
+# === 既知の制約 (workflow 発火) ===
+# - schedule / workflow_dispatch イベントは「デフォルトブランチ (main) 上のワークフロー定義」
+#   でのみ発火する (GitHub 公式仕様)。本ファイルが main にマージされるまで cron 実行・
+#   手動実行ボタンは有効化されない。
+# - public リポジトリの scheduled workflow は「60 日間リポジトリ活動が無い」と GitHub が
+#   自動で無効化する (公式仕様)。長期休眠 (60 日以上コミット無し) に入ると本 keep-alive
+#   も停止し、その後 Supabase が pause し得る。能動開発中は問題ないが、長期休眠を見込む
+#   場合は Actions の再有効化、または外部 cron / Vercel Cron の併用を検討する。
 
 on:
   schedule:
-    # 毎日 1 回 (UTC 15:37 = JST 翌 00:37)。7 日制限に対し大きなマージンを確保する。
+    # 毎日 1 回 (UTC 15:37 = JST 翌 00:37) ― production。7 日制限に対し大きなマージンを確保する。
     # 分 0 (top-of-hour) は GitHub Actions の負荷集中で遅延・スキップしやすいため分をずらす。
     - cron: "37 15 * * *"
-  # マージ後の初回検証・任意の手動実行用。
-  workflow_dispatch: {}
+    # staging は production の 5 分後 (UTC 15:42)。同時失敗時の root cause 切り分けを容易にする。
+    - cron: "42 15 * * *"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "ping 対象 project (debug 用)"
+        type: choice
+        required: true
+        default: both
+        options:
+          - both
+          - production
+          - staging
 
-# このジョブは外部 DB へ接続するのみで、リポジトリ内容への書き込み・読み取りは不要。
+# 本 job 群は外部 DB へ接続するのみで、リポジトリ内容への書き込み・読み取りは不要。
 # 最小権限の原則に従い GITHUB_TOKEN の権限を空にする。
 permissions: {}
 
 jobs:
-  ping:
-    name: Ping Supabase Postgres
+  ping-production:
+    name: Ping Supabase Postgres (production)
+    # workflow_dispatch 時は target で個別制御、schedule は cron トリガーが production の
+    # 37 分のとき (= production の cron) または staging cron でも production が `both` 時に
+    # 走るのを避けるため、schedule.cron 直接判定はせず「workflow_dispatch=production/both
+    # または schedule (両 cron で都度) のうち production cron」のみを許す。
+    # GitHub Actions では `github.event.schedule` が cron 文字列に等しいことを利用して識別する。
+    if: >-
+      (github.event_name == 'workflow_dispatch' && (inputs.target == 'both' || inputs.target == 'production'))
+      || (github.event_name == 'schedule' && github.event.schedule == '37 15 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     env:
-      # --- 非機密の接続部品 (パスワードではない。project ref は公開済みのため public workflow に置いてよい) ---
-      # GitHub Actions runner は IPv4 のみ。direct 接続 (db.<ref>.supabase.co) は Free プランでは
-      # IPv6 限定のため接続できない。必ず IPv4 互換の Session pooler (port 5432) を使う。
+      # 非機密の接続部品 (両 project 共通)。
       PGHOST: aws-1-ap-northeast-1.pooler.supabase.com
       PGPORT: "5432"
-      PGUSER: postgres.abqsntbvnuttpyixagob
       PGDATABASE: postgres
-      # Supabase は TLS 必須。psql 既定 sslmode=prefer は SSL 失敗時に平文へフォールバックし
-      # 拒否され得るため、require で SSL を強制する (フォールバック無効)。
       PGSSLMODE: require
-      # --- 機密 (パスワードのみ secret) ---
-      # libpq 環境変数で渡すため URL エンコード不要 (記号もそのまま) かつ argv に出ない。
-      PGPASSWORD: ${{ secrets.SUPABASE_KEEPALIVE_DB_PASSWORD }}
+      # production 固有: PGUSER は postgres.<project_ref> 形式。secret から組み立てて rotation 余地を確保。
+      PGUSER: postgres.${{ secrets.SUPABASE_PROD_PROJECT_ID }}
+      # production 固有 (機密): deploy と同じ secret を共有 (案 X: rotation 同期忘れリスクの構造排除)。
+      PGPASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
     steps:
-      - name: Run SELECT 1 to keep the project active
+      - name: Run SELECT 1 to keep production active
         run: |
           set -euo pipefail
+          if [ -z "${PGUSER#postgres.}" ]; then
+            echo "::error::SUPABASE_PROD_PROJECT_ID secret is not set"
+            exit 1
+          fi
           if [ -z "${PGPASSWORD:-}" ]; then
-            echo "::error::SUPABASE_KEEPALIVE_DB_PASSWORD secret is not set"
+            echo "::error::SUPABASE_PROD_DB_PASSWORD secret is not set"
             exit 1
           fi
           # psql は ubuntu-latest ランナーに同梱済み (postgresql-client) だが、将来の
@@ -66,4 +108,37 @@ jobs:
           # 接続文字列を渡さず PG* 環境変数で接続する。-A: 非整列, -t: タプルのみ, -c: コマンド実行。
           # 成功すると "1" を出力する。
           psql -Atc "select 1;"
-          echo "Supabase keep-alive ping succeeded."
+          echo "Supabase keep-alive ping (production) succeeded."
+
+  ping-staging:
+    name: Ping Supabase Postgres (staging)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && (inputs.target == 'both' || inputs.target == 'staging'))
+      || (github.event_name == 'schedule' && github.event.schedule == '42 15 * * *')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      # 非機密の接続部品 (両 project 共通)。
+      PGHOST: aws-1-ap-northeast-1.pooler.supabase.com
+      PGPORT: "5432"
+      PGDATABASE: postgres
+      PGSSLMODE: require
+      # staging 固有: PGUSER は postgres.<project_ref> 形式。secret から組み立てる。
+      PGUSER: postgres.${{ secrets.SUPABASE_STG_PROJECT_ID }}
+      # staging 固有 (機密): deploy と同じ secret を共有 (案 X: rotation 同期忘れリスクの構造排除)。
+      PGPASSWORD: ${{ secrets.SUPABASE_STG_DB_PASSWORD }}
+    steps:
+      - name: Run SELECT 1 to keep staging active
+        run: |
+          set -euo pipefail
+          if [ -z "${PGUSER#postgres.}" ]; then
+            echo "::error::SUPABASE_STG_PROJECT_ID secret is not set"
+            exit 1
+          fi
+          if [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::SUPABASE_STG_DB_PASSWORD secret is not set"
+            exit 1
+          fi
+          command -v psql >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y postgresql-client; }
+          psql -Atc "select 1;"
+          echo "Supabase keep-alive ping (staging) succeeded."
