@@ -24,9 +24,16 @@ else
 fi
 
 # 環境変数の確認
-if [[ -z "$PROJECT_ROOT" ]]; then
-    echo -e "\033[0;31m[ERROR]\033[0m PROJECT_ROOT 環境変数が設定されていません"
-    exit 1
+# PROJECT_ROOT は .env.local で明示上書き可能 (後方互換)。未設定 or 古いパス
+# (リポジトリ移動後など、ディレクトリが存在しない) の場合は、スクリプト自身の位置から
+# 自動派生した PROJECT_ROOT_DIR (= revolution/) にフォールバックする。
+# 2026-06-21: one-more-time monorepo 配下への移動で `.env.local` の PROJECT_ROOT が
+# 旧パスを指したまま post-commit hook が失敗する事案あり、本フォールバックで対処。
+if [[ -z "$PROJECT_ROOT" ]] || [[ ! -d "$PROJECT_ROOT" ]]; then
+    if [[ -n "$PROJECT_ROOT" ]] && [[ ! -d "$PROJECT_ROOT" ]]; then
+        echo -e "\033[0;33m[WARNING]\033[0m PROJECT_ROOT (\"$PROJECT_ROOT\") が存在しません。スクリプト位置から自動派生した \"$PROJECT_ROOT_DIR\" を使用します。"
+    fi
+    PROJECT_ROOT="$PROJECT_ROOT_DIR"
 fi
 
 if [[ -z "$ICLOUD_DRIVE_PATH" ]]; then
