@@ -77,7 +77,23 @@ jobs:
 
       - name: Push migrations to staging
         working-directory: apps/frontend
-        run: supabase db push --linked
+        # Session pooler (port 5432) 経由で IPv4 接続する。GitHub Actions runner は
+        # IPv4 のみ対応 (Supabase 公式: https://supabase.com/docs/guides/troubleshooting/supabase--your-network-ipv4-and-ipv6-compatibility-cHe3BP)、
+        # direct DB host (db.<ref>.supabase.co) は Free プランで IPv6 限定のため
+        # `supabase db push --linked` のデフォルト挙動 (direct 接続試行) では失敗する。
+        # `--db-url` を明示すれば link 状態を bypass して確実に Supavisor 経由
+        # (IPv4 互換) で接続できる。session mode (5432) は migration の advisory lock
+        # に必要なため、transaction mode (6543) ではなく session mode を使う。
+        # pooler host は keep-alive workflow と同一値 (両プロジェクト ap-northeast-1)。
+        # password は URL-unsafe 記号を含み得るため jq で percent-encode する。
+        # ::add-mask:: で URL 全体をログマスクし、エラー時の漏洩を防ぐ。
+        run: |
+          set -euo pipefail
+          PASSWORD_ENCODED=$(jq -rn --arg p "$SUPABASE_DB_PASSWORD" '$p|@uri')
+          echo "::add-mask::$PASSWORD_ENCODED"
+          SESSION_POOLER_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD_ENCODED}@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+          echo "::add-mask::$SESSION_POOLER_URL"
+          supabase db push --db-url "$SESSION_POOLER_URL"
 
   deploy-production:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
@@ -108,4 +124,12 @@ jobs:
 
       - name: Push migrations to production
         working-directory: apps/frontend
-        run: supabase db push --linked
+        # staging job と同一の理由で `--db-url` (Session pooler / IPv4) を使う。
+        # 詳細コメントは staging job の同名 step を参照。
+        run: |
+          set -euo pipefail
+          PASSWORD_ENCODED=$(jq -rn --arg p "$SUPABASE_DB_PASSWORD" '$p|@uri')
+          echo "::add-mask::$PASSWORD_ENCODED"
+          SESSION_POOLER_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD_ENCODED}@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+          echo "::add-mask::$SESSION_POOLER_URL"
+          supabase db push --db-url "$SESSION_POOLER_URL"
