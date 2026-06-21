@@ -2,7 +2,8 @@ CREATE TABLE "categories" (
 	"id" bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "categories_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
 	"slug" text NOT NULL,
 	"name" text NOT NULL,
-	CONSTRAINT "categories_slug_unique" UNIQUE("slug")
+	CONSTRAINT "categories_slug_unique" UNIQUE("slug"),
+	CONSTRAINT "categories_slug_format" CHECK ("categories"."slug" ~ '^[a-z0-9-]+$')
 );
 --> statement-breakpoint
 
@@ -31,6 +32,9 @@ CREATE POLICY "categories_select_all"
 -- ============================================================================
 -- 各 slug の代表的な日本語名称を 1 つだけ seed する。同義語マッピング
 -- (「カフェコラボ → collabo-cafe」等) は templates 側の責務 (SoC 遵守)。
+-- `ON CONFLICT (slug) DO NOTHING` で冪等性を確保 (psql 直打ち / 手動リセット時の
+-- 再実行耐性。既存 RLS migration の `CREATE OR REPLACE` / `DROP ... IF EXISTS`
+-- パターンと整合)。
 
 INSERT INTO "public"."categories" ("slug", "name") VALUES
   ('collabo-cafe', 'コラボカフェ'),
@@ -55,4 +59,5 @@ INSERT INTO "public"."categories" ("slug", "name") VALUES
   ('transportation', '交通コラボ'),
   ('campaign', 'キャンペーン'),
   ('stamp-rally', 'スタンプラリー'),
-  ('other-collabo', 'その他コラボ');
+  ('other-collabo', 'その他コラボ')
+ON CONFLICT ("slug") DO NOTHING;

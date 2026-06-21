@@ -1,5 +1,5 @@
 {
-  "id": "01a33bc0-1b92-4aa9-81e0-f81fe35a4ac7",
+  "id": "20f1480e-f143-4514-860c-bbca92011e56",
   "prevId": "ec912299-cb78-4166-8133-fcb857492b5a",
   "version": "7",
   "dialect": "postgresql",
@@ -51,7 +51,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "categories_slug_format": {
+          "name": "categories_slug_format",
+          "value": "\"categories\".\"slug\" ~ '^[a-z0-9-]+$'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.favorites": {
