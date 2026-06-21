@@ -1,5 +1,5 @@
 {
-  "id": "d539f5a0-518c-4144-9f89-8870d2c7c18f",
+  "id": "076197f4-c3b2-4f8e-a957-892c4cdb544c",
   "prevId": "20f1480e-f143-4514-860c-bbca92011e56",
   "version": "7",
   "dialect": "postgresql",
@@ -54,7 +54,11 @@
       "checkConstraints": {
         "categories_slug_format": {
           "name": "categories_slug_format",
-          "value": "\"categories\".\"slug\" ~ '^[a-z0-9-]+$'"
+          "value": "\"categories\".\"slug\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'"
+        },
+        "categories_name_not_blank": {
+          "name": "categories_name_not_blank",
+          "value": "btrim(\"categories\".\"name\") <> ''"
         }
       },
       "isRLSEnabled": false
@@ -240,7 +244,15 @@
       "checkConstraints": {
         "titles_slug_format": {
           "name": "titles_slug_format",
-          "value": "\"titles\".\"slug\" ~ '^[a-z0-9-]+$'"
+          "value": "\"titles\".\"slug\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'"
+        },
+        "titles_name_not_blank": {
+          "name": "titles_name_not_blank",
+          "value": "btrim(\"titles\".\"name\") <> ''"
+        },
+        "titles_name_kana_not_blank": {
+          "name": "titles_name_kana_not_blank",
+          "value": "\"titles\".\"name_kana\" is null or btrim(\"titles\".\"name_kana\") <> ''"
         },
         "titles_kind_allowed": {
           "name": "titles_kind_allowed",

@@ -24,9 +24,33 @@ describe('CategoryInsertSchema', () => {
     ).toThrow();
   });
 
+  it('rejects slug with leading hyphen', () => {
+    expect(() =>
+      CategoryInsertSchema.parse({ slug: '-foo', name: 'x' }),
+    ).toThrow();
+  });
+
+  it('rejects slug with trailing hyphen', () => {
+    expect(() =>
+      CategoryInsertSchema.parse({ slug: 'foo-', name: 'x' }),
+    ).toThrow();
+  });
+
+  it('rejects slug with consecutive hyphens', () => {
+    expect(() =>
+      CategoryInsertSchema.parse({ slug: 'foo--bar', name: 'x' }),
+    ).toThrow();
+  });
+
   it('rejects empty name', () => {
     expect(() =>
       CategoryInsertSchema.parse({ slug: 'collabo-cafe', name: '' }),
+    ).toThrow();
+  });
+
+  it('rejects whitespace-only name', () => {
+    expect(() =>
+      CategoryInsertSchema.parse({ slug: 'collabo-cafe', name: '   ' }),
     ).toThrow();
   });
 });
@@ -77,6 +101,10 @@ describe('CATEGORY_SLUG_REGEX', () => {
     expect(CATEGORY_SLUG_REGEX.test('slug with space')).toBe(false); // スペース
     expect(CATEGORY_SLUG_REGEX.test('')).toBe(false); // 空文字
     expect(CATEGORY_SLUG_REGEX.test('slug_underscore')).toBe(false); // アンダースコア
+    expect(CATEGORY_SLUG_REGEX.test('-foo')).toBe(false); // 先頭ハイフン
+    expect(CATEGORY_SLUG_REGEX.test('foo-')).toBe(false); // 末尾ハイフン
+    expect(CATEGORY_SLUG_REGEX.test('foo--bar')).toBe(false); // 連続ハイフン
+    expect(CATEGORY_SLUG_REGEX.test('---')).toBe(false); // ハイフンのみ
   });
 
   it('全 23 件の seed slug が regex を通過する (回帰検知)', () => {
