@@ -75,6 +75,38 @@ jobs:
         # https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/)
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
 
+      - name: Pre-flight migration history consistency check
+        working-directory: apps/frontend
+        # PR #249 (titles master) 事故 (2026-06-21) の再発防止 (案 3 = CI 事前チェック)。
+        # 同一 PR 内で migration ファイル名 (timestamp) を変更 + 旧 file 削除すると、
+        # remote の migration_history と local files が乖離し `supabase db push` が
+        # `Remote migration versions not found in local migrations directory.` で fail する。
+        # `--dry-run` で実際の push 前に同じ整合性チェックを走らせ、失敗時には
+        # repair SoP への明示誘導を行う (人間が原因と対処を即座に理解できるように)。
+        # 公式仕様: https://github.com/supabase/cli `supabase db push --dry-run`
+        # SoP: docs/operations/supabase-migration-workflow.md §10
+        run: |
+          set -euo pipefail
+          PASSWORD_ENCODED=$(jq -rn --arg p "$SUPABASE_DB_PASSWORD" '$p|@uri')
+          echo "::add-mask::$PASSWORD_ENCODED"
+          SESSION_POOLER_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD_ENCODED}@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+          echo "::add-mask::$SESSION_POOLER_URL"
+
+          # --dry-run: 実 push せずに整合性を検証する。不整合があれば exit 1。
+          if ! supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1 | tee /tmp/preflight.log; then
+            echo ""
+            echo "::error title=Migration history inconsistency::Local migration files do not match remote migration_history. Check log above for the missing version(s)."
+            echo "::error::Recovery SoP: docs/operations/supabase-migration-workflow.md §10"
+            echo "::error::Hint: do NOT rename or delete a migration file that has already been deployed to a remote. Add a NEW migration to make further changes."
+            echo "::error::If rollback is unavoidable, repair the remote: \`supabase migration repair --status reverted <version>\` after manually rolling back the DB objects (see SoP §10)."
+            exit 1
+          fi
+
+          # 整合性 OK の場合: 現在の migration history を visibility のため表示
+          echo "::group::Migration history (remote vs local)"
+          supabase migration list --db-url "$SESSION_POOLER_URL" || true
+          echo "::endgroup::"
+
       - name: Push migrations to staging
         working-directory: apps/frontend
         # Session pooler (port 5432) 経由で IPv4 接続する。GitHub Actions runner は
@@ -121,6 +153,31 @@ jobs:
         working-directory: apps/frontend
         # env 経由で secret 値を渡す (公式 security best practice)
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Pre-flight migration history consistency check
+        working-directory: apps/frontend
+        # staging job と同一の事前チェック。詳細コメントは staging job の同名 step を参照。
+        # production 環境では fail = 即 critical (本番 deploy が想定外状態) のため
+        # 確実な可視性が特に重要。
+        run: |
+          set -euo pipefail
+          PASSWORD_ENCODED=$(jq -rn --arg p "$SUPABASE_DB_PASSWORD" '$p|@uri')
+          echo "::add-mask::$PASSWORD_ENCODED"
+          SESSION_POOLER_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD_ENCODED}@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+          echo "::add-mask::$SESSION_POOLER_URL"
+
+          if ! supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1 | tee /tmp/preflight.log; then
+            echo ""
+            echo "::error title=Migration history inconsistency (PRODUCTION)::Local migration files do not match remote migration_history. Check log above for the missing version(s)."
+            echo "::error::Recovery SoP: docs/operations/supabase-migration-workflow.md §10"
+            echo "::error::Hint: do NOT rename or delete a migration file that has already been deployed. Add a NEW migration to make further changes."
+            echo "::error::If rollback is unavoidable, repair the remote: \`supabase migration repair --status reverted <version>\` after manually rolling back the DB objects (see SoP §10)."
+            exit 1
+          fi
+
+          echo "::group::Migration history (remote vs local)"
+          supabase migration list --db-url "$SESSION_POOLER_URL" || true
+          echo "::endgroup::"
 
       - name: Push migrations to production
         working-directory: apps/frontend
