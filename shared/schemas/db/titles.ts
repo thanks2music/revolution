@@ -64,6 +64,9 @@ export const titles = pgTable(
       sql`${table.nameKana} is null or btrim(${table.nameKana}) <> ''`,
     ),
     // Layer2: DB CHECK。zod (Layer1) と同じ allowed list を二段防御として保持。
+    // 真実源は `shared/schemas/title.ts` の `TITLE_KIND_VALUES` 配列 (literal
+    // tuple)。値を追加・変更する際は本 CHECK と Layer 1 const 両方を atomic に
+    // 更新すること (drizzle-kit が ALTER 用 migration を自動生成する)。
     check(
       'titles_kind_allowed',
       sql`${table.kind} in ('anime','manga','game','novel','other')`,
