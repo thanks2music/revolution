@@ -15,6 +15,13 @@
       "when": 1779625239431,
       "tag": "0001_crescendolls_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782014771874,
+      "tag": "0002_categories",
+      "breakpoints": true
     }
   ]
 }
