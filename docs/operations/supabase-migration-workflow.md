@@ -261,8 +261,10 @@ Q1: ローカルに commit を push したか?
 ### 10.1 適用対象
 
 - staging Supabase (project ref は GitHub Secrets `SUPABASE_STG_PROJECT_ID` で確認、`Revolution Staging` プロジェクト) の `supabase_migrations.schema_migrations` に「local migration files に存在しない version」が残存している状態
-- production への適用は **絶対に行わない**。production の repair は別 SoP (**未策定、別タスク化推奨**)。`.github/workflows/deploy-supabase-migrations.yml` の production job にも本 PR で同じ pre-flight gate を追加したが、production 側で fail した時の復旧手順は本 §10 では扱わない (claude[bot] PR #250 review #2 で指摘の gap、後続タスクで策定予定)。
+- production への適用は **絶対に行わない**。production の repair は別 SoP (**未策定、別タスク化推奨**)。`.github/workflows/deploy-supabase-migrations.yml` の production job にも本 PR で同じ pre-flight gate を追加した。**ただし** claude[bot] PR #250 review R2 #1 採用で、production 側 pre-flight fail 時の annotation は **§10 (本 SoP) を案内せず、直接 BOSS escalation を要求する形式に差し替えた** (本 §10 は staging-only であり、production にそのまま適用すると本番事故を悪化させるため)。production 側で fail した時の暫定対応は workflow YAML 内のインラインコメント (`Pre-flight migration history consistency check` step) を参照すること
 - project ref をハードコードしない: 実行時は GitHub Secrets (`SUPABASE_STG_PROJECT_ID` / `SUPABASE_PROD_PROJECT_ID`) で取得 + Supabase dashboard で Project 名 (`Revolution Staging` / `Revolution`) と照合する習慣を §10.4 チェックリストで強制する
+
+> **Out of scope (本 SoP 範囲外)**: production の migration_history 不整合復旧 SoP は未策定。発生確率は低い (production への適用は main マージ時のみ、PR レビューで pre-flight 通過が確認済のはず) が、ゼロではない。後続タスクで策定予定。
 
 ### 10.2 手順 (6 フェーズ)
 
