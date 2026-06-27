@@ -1,5 +1,5 @@
 {
-  "id": "3d4951c8-bfb2-4481-bf87-6fa2d4316718",
+  "id": "7ef5e413-327d-4fdc-9909-d0dee5307fd4",
   "prevId": "076197f4-c3b2-4f8e-a957-892c4cdb544c",
   "version": "7",
   "dialect": "postgresql",
@@ -326,7 +326,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "venues_geo_gist_idx": {
+          "name": "venues_geo_gist_idx",
+          "columns": [
+            {
+              "expression": "geo",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gist",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {

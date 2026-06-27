@@ -3,6 +3,7 @@ import {
   bigint,
   check,
   customType,
+  index,
   pgTable,
   text,
   timestamp,
@@ -66,12 +67,30 @@ import {
  * 公式: https://orm.drizzle.team/docs/custom-types
  * PostGIS geography: https://postgis.net/docs/manual-3.4/using_postgis_dbmanagement.html#PostGIS_Geography
  *
+ * **読み出し時の挙動 (重要、claude[bot] review Finding 2 受け)**:
+ *   PostGIS は SELECT 時に geography を **EWKB 16 進文字列** で返す
+ *   (例: `"0101000020E6100000FBCB..."`)。`fromDriver` は no-op だが、型と挙動の
+ *   契約を明示するためフックを残している。WKT (`POINT(...)`) で取得する場合は
+ *   呼び出し側で `ST_AsText(geo)` を select 句に書く必要がある (raw `row.geo`
+ *   は WKT ではなく EWKB hex)。AI Writer / Frontend からの参照経路はこの契約
+ *   を前提とする。
+ *
  * 3 つ目のテーブルが geography を使う時点で `shared/schemas/db/_shared/geography.ts`
  * へ抽出する (rule-of-3、現時点は venues 単独使用のため内部宣言)。
  */
-const geography = customType<{ data: string }>({
+const geography = customType<{ data: string; driverData: string }>({
   dataType() {
     return 'geography(point, 4326)';
+  },
+  toDriver(value) {
+    // PostGIS は INSERT/UPDATE 時に WKT (`POINT(lng lat)`) と WKB hex のどちらも
+    // 受け付ける。値変換は不要。
+    return value;
+  },
+  fromDriver(value) {
+    // SELECT 時の raw 値は EWKB 16 進文字列。WKT 化したい場合は呼び出し側で
+    // `ST_AsText(geo)` を使う。本フックは値変換せず素通し (契約を明示)。
+    return value;
   },
 });
 
@@ -93,6 +112,13 @@ export const venues = pgTable(
     check('venues_slug_format', sql`${table.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`),
     // Layer2: DB CHECK。空白のみの表示名を拒否 (Phase 2-a 継承)。
     check('venues_name_not_blank', sql`btrim(${table.name}) <> ''`),
+    // GiST spatial index for geo: PostGIS geography predicates (ST_DWithin,
+    // ST_Distance, etc.) cannot use B-tree indexes. Without GiST, proximity
+    // queries fall back to sequential scan. Required for map display /
+    // distance calculation use cases stated in PR description (claude[bot]
+    // review Finding 1).
+    // 公式: https://postgis.net/docs/manual-3.4/using_postgis_dbmanagement.html#GiST_Indexes
+    index('venues_geo_gist_idx').using('gist', table.geo),
   ],
 );
 

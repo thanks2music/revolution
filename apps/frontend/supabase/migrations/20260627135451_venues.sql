@@ -1,9 +1,12 @@
 -- ============================================================================
--- Migration 0004: venues master CREATE + PostGIS extension 有効化
+-- Migration 0004: venues master CREATE + PostGIS extension 有効化 + GiST index
 -- ============================================================================
--- 本 migration は 2 つの変更を 1 トランザクションで適用する:
+-- 本 migration は 3 つの変更を 1 トランザクションで適用する:
 -- (1) PostGIS extension の有効化 (`CREATE EXTENSION IF NOT EXISTS postgis`)
 -- (2) public.venues テーブル新規作成 (MVP Around the World §11 Phase 2-b)
+-- (3) venues.geo の GiST 空間インデックス
+--     (PostGIS geography predicates (ST_DWithin / ST_Distance 等) は B-tree
+--      不可、GiST 必須。claude[bot] review Finding 1 受け)
 --
 -- PostGIS extension は venues.geo の geography(point, 4326) 型に必要。
 -- Supabase Free プランで有効化可能 (公式:
@@ -41,6 +44,8 @@ CREATE TABLE "venues" (
 	CONSTRAINT "venues_slug_format" CHECK ("venues"."slug" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
 	CONSTRAINT "venues_name_not_blank" CHECK (btrim("venues"."name") <> '')
 );
+--> statement-breakpoint
+CREATE INDEX "venues_geo_gist_idx" ON "venues" USING gist ("geo");
 --> statement-breakpoint
 
 -- ============================================================================
