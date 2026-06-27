@@ -93,7 +93,7 @@ jobs:
           echo "::add-mask::$SESSION_POOLER_URL"
 
           # --dry-run: 実 push せずに整合性を検証する。不整合があれば exit 1。
-          if ! supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1 | tee /tmp/preflight.log; then
+          if ! supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1; then
             echo ""
             echo "::error title=Migration history inconsistency::Local migration files do not match remote migration_history. Check log above for the missing version(s)."
             echo "::error::Recovery SoP: docs/operations/supabase-migration-workflow.md §10"
@@ -159,6 +159,14 @@ jobs:
         # staging job と同一の事前チェック。詳細コメントは staging job の同名 step を参照。
         # production 環境では fail = 即 critical (本番 deploy が想定外状態) のため
         # 確実な可視性が特に重要。
+        #
+        # ⚠️ 注意 (claude[bot] PR #250 review #2 採用): production 側で本 step が
+        # fail した場合の復旧 SoP は **現時点未策定** (本 PR は staging のみカバー)。
+        # 万が一発生した時は (a) Supabase dashboard で手動 inspect、(b) staging SoP
+        # (docs/operations/supabase-migration-workflow.md §10) を踏襲しつつ慎重に
+        # 適用 (`mcp__supabase__execute_sql` の production project_id は本ルートを
+        # 通らないこと推奨)、(c) ロールバック判断は BOSS 単独で行う。
+        # production repair SoP の策定は §10 末尾「out of scope」に明示 (別タスク)。
         run: |
           set -euo pipefail
           PASSWORD_ENCODED=$(jq -rn --arg p "$SUPABASE_DB_PASSWORD" '$p|@uri')
@@ -166,7 +174,7 @@ jobs:
           SESSION_POOLER_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD_ENCODED}@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
           echo "::add-mask::$SESSION_POOLER_URL"
 
-          if ! supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1 | tee /tmp/preflight.log; then
+          if ! supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1; then
             echo ""
             echo "::error title=Migration history inconsistency (PRODUCTION)::Local migration files do not match remote migration_history. Check log above for the missing version(s)."
             echo "::error::Recovery SoP: docs/operations/supabase-migration-workflow.md §10"
