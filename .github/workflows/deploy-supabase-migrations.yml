@@ -90,6 +90,21 @@ jobs:
         # subsequent steps は $SESSION_POOLER_URL を env 経由で参照する。
         run: |
           set -euo pipefail
+
+          # 自己レビュー #1 採用 (2026-06-27): set -u は unset のみ検知し、空文字
+          # secret (DB_PASSWORD を誤って空文字で rotate した状態) は通してしまう。
+          # jq @uri は空入力で空文字 + exit 0 を返すため、auth なしの URL が
+          # silently 構築される。pre-flight の generic annotation が原因を誤誘導
+          # するため、早期 explicit fail に倒す。
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_DB_PASSWORD is empty or unset. Pre-flight cannot run. Check GitHub Secrets (SUPABASE_STG_DB_PASSWORD / SUPABASE_PROD_DB_PASSWORD) and the secret rotation SoP (docs/operations/supabase-secret-rotation-sop.md)."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_PROJECT_REF is empty or unset. Check GitHub Secrets (SUPABASE_STG_PROJECT_ID / SUPABASE_PROD_PROJECT_ID)."
+            exit 1
+          fi
+
           PASSWORD_ENCODED=$(jq -rn --arg p "$SUPABASE_DB_PASSWORD" '$p|@uri')
           echo "::add-mask::$PASSWORD_ENCODED"
           SESSION_POOLER_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD_ENCODED}@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
@@ -121,9 +136,25 @@ jobs:
           # claude[bot] PR #250 review #2 (R2) 採用: error title を generic に
           # 統一 (--dry-run は connectivity / auth / pooler 不通でも fail するため、
           # 全部 "Migration history inconsistency" と annotate するのは誤誘導)。
-          if ! supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1; then
+          #
+          # 自己レビュー #2 採用 (2026-06-27): Supabase Free プラン auto-pause
+          # Resume 直後の transient pooler RST (Todoist `6gw7Pgr5FJCgqPFg` 由来の
+          # 既知事象) で false-fail し、operator が §10 SoP に従って staging DB を
+          # 不要に DROP するリスクがあるため、5 秒待機 + 1 度 retry を挟む。
+          PREFLIGHT_OK=0
+          for attempt in 1 2; do
+            if supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1; then
+              PREFLIGHT_OK=1
+              break
+            fi
+            if [ "$attempt" = "1" ]; then
+              echo "::notice::Pre-flight attempt 1 failed; retrying after 5s (transient pooler RST after Supabase Free-plan auto-pause Resume is a known intermittent issue)."
+              sleep 5
+            fi
+          done
+          if [ "$PREFLIGHT_OK" = "0" ]; then
             echo ""
-            echo "::error title=Migration pre-flight failed::Could not verify migration history. Possible causes: (a) migration_history inconsistency, (b) connectivity / auth / pooler issue, (c) CLI breaking change. Read the CLI output above first to determine which."
+            echo "::error title=Migration pre-flight failed::Could not verify migration history after 2 attempts (5s gap). Possible causes: (a) migration_history inconsistency, (b) persistent connectivity / auth / pooler issue, (c) CLI breaking change. Read the CLI output above first to determine which."
             echo "::error::If (a) migration_history inconsistency: docs/operations/supabase-migration-workflow.md §10 (STAGING ONLY)."
             echo "::error::Hint: do NOT rename or delete a migration file that has already been deployed to a remote. Add a NEW migration to make further changes."
             echo "::error::If rollback is unavoidable: \`supabase migration repair --status reverted <version>\` after manually rolling back the DB objects (see SoP §10)."
@@ -175,6 +206,21 @@ jobs:
         # claude[bot] PR #250 review #4 (R2) 採用で per-job 1 step 集約。
         run: |
           set -euo pipefail
+
+          # 自己レビュー #1 採用 (2026-06-27): set -u は unset のみ検知し、空文字
+          # secret (DB_PASSWORD を誤って空文字で rotate した状態) は通してしまう。
+          # jq @uri は空入力で空文字 + exit 0 を返すため、auth なしの URL が
+          # silently 構築される。pre-flight の generic annotation が原因を誤誘導
+          # するため、早期 explicit fail に倒す。
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_DB_PASSWORD is empty or unset. Pre-flight cannot run. Check GitHub Secrets (SUPABASE_STG_DB_PASSWORD / SUPABASE_PROD_DB_PASSWORD) and the secret rotation SoP (docs/operations/supabase-secret-rotation-sop.md)."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_PROJECT_REF is empty or unset. Check GitHub Secrets (SUPABASE_STG_PROJECT_ID / SUPABASE_PROD_PROJECT_ID)."
+            exit 1
+          fi
+
           PASSWORD_ENCODED=$(jq -rn --arg p "$SUPABASE_DB_PASSWORD" '$p|@uri')
           echo "::add-mask::$PASSWORD_ENCODED"
           SESSION_POOLER_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD_ENCODED}@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
@@ -205,9 +251,21 @@ jobs:
 
           # claude[bot] PR #250 review R2 #1 採用: production の error annotation は
           # §10 (staging-only) を案内せず、**直接 escalation** を要求する。
-          if ! supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1; then
+          # 自己レビュー #2 採用: staging と同一 5s retry (transient pooler RST 対策)。
+          PREFLIGHT_OK=0
+          for attempt in 1 2; do
+            if supabase db push --db-url "$SESSION_POOLER_URL" --dry-run 2>&1; then
+              PREFLIGHT_OK=1
+              break
+            fi
+            if [ "$attempt" = "1" ]; then
+              echo "::notice::Pre-flight attempt 1 failed (PRODUCTION); retrying after 5s (transient pooler RST after Supabase Free-plan auto-pause Resume is a known intermittent issue)."
+              sleep 5
+            fi
+          done
+          if [ "$PREFLIGHT_OK" = "0" ]; then
             echo ""
-            echo "::error title=Migration pre-flight failed (PRODUCTION — ESCALATE TO BOSS)::Could not verify migration history. Possible causes: (a) migration_history inconsistency, (b) connectivity / auth / pooler issue, (c) CLI breaking change. Read the CLI output above first to determine which."
+            echo "::error title=Migration pre-flight failed (PRODUCTION — ESCALATE TO BOSS)::Could not verify migration history after 2 attempts (5s gap). Possible causes: (a) migration_history inconsistency, (b) persistent connectivity / auth / pooler issue, (c) CLI breaking change. Read the CLI output above first to determine which."
             echo "::error::PRODUCTION repair SoP does NOT exist yet. Do NOT follow §10 verbatim — it is STAGING-ONLY. See the inline comment in deploy-supabase-migrations.yml (this workflow file)."
             echo "::error::Escalate to BOSS immediately. Do NOT run \`supabase migration repair\` against production without explicit BOSS approval."
             exit 1
