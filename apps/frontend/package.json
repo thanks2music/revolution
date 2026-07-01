@@ -25,18 +25,18 @@
     "@headlessui/react": "^2.1.2",
     "@heroicons/react": "v1",
     "@revolution/schemas": "workspace:*",
-    "@supabase/ssr": "^0.10.3",
+    "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.106.1",
     "@t3-oss/env-nextjs": "^0.13.8",
-    "@vercel/og": "^0.8.5",
+    "@vercel/og": "^0.11.1",
     "drizzle-orm": "^0.45.2",
-    "next": "16.2.6",
+    "next": "16.2.9",
     "next-mdx-remote": "^6.0.0",
     "postgres": "^3.4.9",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "sanitize-html": "^2.17.4",
-    "swr": "^2.2.5",
+    "swr": "^2.4.2",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -44,15 +44,15 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
-    "@types/react": "19.2.7",
+    "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@types/sanitize-html": "^2.16.0",
-    "autoprefixer": "^10.4.21",
-    "axios": "^1.7.2",
+    "autoprefixer": "^10.5.1",
+    "axios": "^1.18.1",
     "drizzle-kit": "^0.31.10",
     "drizzle-zod": "^0.8.3",
     "eslint": "^9",
-    "eslint-config-next": "16.1.1",
+    "eslint-config-next": "16.2.9",
     "eslint-plugin-prettier": "^5.5.4",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
@@ -64,7 +64,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@types/react": "19.2.7",
+      "@types/react": "19.2.17",
       "@types/react-dom": "19.2.3"
     }
   }
