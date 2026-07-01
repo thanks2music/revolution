@@ -56,7 +56,7 @@ jobs:
       - name: Checkout repository
         # Revolution の ci.yml と整合させて v5 採用 (Node.js 24 ベース、track record 十分、
         # claude[bot] PR #244 review #2 採用)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Supabase CLI
         # Action タグを specific pin (v2.1.1、2026-05-21 release) し、action level の
@@ -187,7 +187,7 @@ jobs:
     steps:
       - name: Checkout repository
         # staging job と整合 (claude[bot] PR #244 review 採用)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Supabase CLI
         # staging job と整合 (action は v2.1.1 pin / CLI は latest 維持、上の staging job
