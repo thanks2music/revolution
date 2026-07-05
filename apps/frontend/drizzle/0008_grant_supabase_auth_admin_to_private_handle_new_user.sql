@@ -1,0 +1,41 @@
+-- ============================================================================
+-- Migration 0008: GRANT supabase_auth_admin execute on private.handle_new_user
+-- ============================================================================
+-- **Forward fix for 0007 regression** — 0007 で `handle_new_user` を private
+-- schema に移動 + `REVOKE FROM PUBLIC` + `GRANT TO service_role` のみに絞った
+-- 結果、GoTrue (Supabase Auth) の `on_auth_user_created` trigger 実行ロール
+-- `supabase_auth_admin` が新関数を実行できなくなった (staging 実測:
+-- `has_function_privilege('supabase_auth_admin', 'private.handle_new_user()',
+-- 'EXECUTE')` = false / `has_schema_privilege('supabase_auth_admin', 'private',
+-- 'USAGE')` = false)。この状態で production に deploy すると全新規 signup が
+-- trigger permission error で fail する = **本番破綻**。
+--
+-- 発見経緯: claude[bot] R2 レビューで指摘 → staging 実測で confirm。
+--
+-- 0007 側の retroactive 編集は禁止 (PR #250 SoP §9、staging 既適用のため
+-- drift 発生)、forward migration 0008 で staging + production 両方向に fix。
+-- 0007 が正しく apply される clean-slate 環境 (local supabase db reset) では
+-- 本 migration の GRANT は idempotent (redundant safe)。
+--
+-- 参考:
+--   - Supabase GoTrue trigger role: `supabase_auth_admin` (公式 Auth schema)
+--   - Skill `/supabase-postgres-best-practices` references/security-privileges.md
+--     (principle of least privilege: schema USAGE + function EXECUTE のみ付与)
+-- ============================================================================
+
+-- ============================================================================
+-- Part A: supabase_auth_admin に private schema の USAGE を付与
+-- ============================================================================
+-- schema USAGE がないと関数を修飾名で呼び出せない。GoTrue trigger は
+-- `EXECUTE FUNCTION private.handle_new_user()` を invoke するため必須。
+GRANT USAGE ON SCHEMA private TO supabase_auth_admin;
+--> statement-breakpoint
+
+-- ============================================================================
+-- Part B: supabase_auth_admin に private.handle_new_user() の EXECUTE を付与
+-- ============================================================================
+-- 0007 の `REVOKE FROM PUBLIC` + `GRANT TO service_role` で `supabase_auth_admin`
+-- は EXECUTE 権限を失った。trigger 経由の invoke に必須。
+-- SECURITY DEFINER 関数のため INSERT の権限は関数 owner (postgres) に継承される
+-- ので `public.profiles` への追加 GRANT は不要。
+GRANT EXECUTE ON FUNCTION private.handle_new_user() TO supabase_auth_admin;
