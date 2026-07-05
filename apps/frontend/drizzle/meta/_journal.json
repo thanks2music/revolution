@@ -57,6 +57,13 @@
       "when": 1783238139183,
       "tag": "0007_postgis_to_extensions_and_handle_new_user_to_private",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783239404843,
+      "tag": "0008_grant_supabase_auth_admin_to_private_handle_new_user",
+      "breakpoints": true
     }
   ]
 }
