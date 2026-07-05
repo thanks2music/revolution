@@ -41,7 +41,9 @@ concurrency:
 permissions:
   contents: read
   actions: read  # Backlog D β: α workflow の advisor-state artifact download 用 (Post-deploy advisor check step)
-  pull-requests: write  # Backlog D β: 将来 PR コメント経路追加時に必要 (現時点は Slack のみだが scope 予約)
+  # pull-requests: write は削除 (claude[bot] PR #256 review Finding #4 採用)。
+  # 未実装機能への scope 予約は least privilege 違反 (GitHub Actions security hardening guide)。
+  # PR コメント経路を実装する時点で追加する。
 
 jobs:
   deploy-staging:
@@ -269,21 +271,27 @@ jobs:
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: ("*🆕 New (post-deploy): `\(.name)` (" + .level + ")*\n" + .detail + "\n<" + .remediation + "|Remediation>")
+                text: ("*🆕 New (post-deploy): `\(.name)` (" + .level + ")*\n" + (.detail // "(no detail)") + "\n<" + (.remediation // "https://supabase.com/docs/guides/database/database-linter") + "|Remediation>")
               }
             }
           ]' new-post-lints.json)
 
           RUN_URL="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
           COMMIT_URL="${GH_SERVER_URL}/${GH_REPO}/commit/${GH_SHA}"
+          # claude[bot] PR #256 review Finding #2 採用: bash double-quoted string 内の `\n` は
+          # literal 2 文字。ANSI-C quoting `$'\n'` で実 newline (0x0A) を挿入し、Slack Block Kit
+          # mrkdwn の line break として render させる。
+          NL=$'\n'
           PR_LINK=""
           if [ -n "${PR_NUMBER:-}" ]; then
-            PR_LINK="\n*PR*: <${GH_SERVER_URL}/${GH_REPO}/pull/${PR_NUMBER}|#${PR_NUMBER}>"
+            PR_LINK="${NL}*PR*: <${GH_SERVER_URL}/${GH_REPO}/pull/${PR_NUMBER}|#${PR_NUMBER}>"
           fi
+
+          SUMMARY="*This deploy introduced ${NEW_POST_COUNT} new advisor lint(s) on ${ENV_NAME}.*${NL}*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)${NL}*Baseline*: α artifact (advisor-state-${ENV_NAME})${PR_LINK}"
 
           jq -n \
             --arg header "⚠️ Supabase Advisor Regression (post-deploy ${ENV_NAME})" \
-            --arg summary "*This deploy introduced ${NEW_POST_COUNT} new advisor lint(s) on ${ENV_NAME}.*\n*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)\n*Baseline*: α artifact (advisor-state-${ENV_NAME})${PR_LINK}" \
+            --arg summary "${SUMMARY}" \
             --arg run_link "<${RUN_URL}|Workflow run> · <${COMMIT_URL}|Commit>" \
             --argjson new_sections "${NEW_SECTIONS}" \
             '{
@@ -497,21 +505,25 @@ jobs:
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: ("*🆕 New (post-deploy): `\(.name)` (" + .level + ")*\n" + .detail + "\n<" + .remediation + "|Remediation>")
+                text: ("*🆕 New (post-deploy): `\(.name)` (" + .level + ")*\n" + (.detail // "(no detail)") + "\n<" + (.remediation // "https://supabase.com/docs/guides/database/database-linter") + "|Remediation>")
               }
             }
           ]' new-post-lints.json)
 
           RUN_URL="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
           COMMIT_URL="${GH_SERVER_URL}/${GH_REPO}/commit/${GH_SHA}"
+          # claude[bot] PR #256 review Finding #2 採用 (production 側も同修正)。
+          NL=$'\n'
           PR_LINK=""
           if [ -n "${PR_NUMBER:-}" ]; then
-            PR_LINK="\n*PR*: <${GH_SERVER_URL}/${GH_REPO}/pull/${PR_NUMBER}|#${PR_NUMBER}>"
+            PR_LINK="${NL}*PR*: <${GH_SERVER_URL}/${GH_REPO}/pull/${PR_NUMBER}|#${PR_NUMBER}>"
           fi
+
+          SUMMARY="*This deploy introduced ${NEW_POST_COUNT} new advisor lint(s) on PRODUCTION.*${NL}*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)${NL}*Baseline*: α artifact (advisor-state-${ENV_NAME})${PR_LINK}"
 
           jq -n \
             --arg header "🔴 Supabase Advisor Regression (post-deploy PRODUCTION)" \
-            --arg summary "*This deploy introduced ${NEW_POST_COUNT} new advisor lint(s) on PRODUCTION.*\n*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)\n*Baseline*: α artifact (advisor-state-${ENV_NAME})${PR_LINK}" \
+            --arg summary "${SUMMARY}" \
             --arg run_link "<${RUN_URL}|Workflow run> · <${COMMIT_URL}|Commit>" \
             --argjson new_sections "${NEW_SECTIONS}" \
             '{

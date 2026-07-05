@@ -111,7 +111,7 @@ jobs:
             exit 1
           fi
           if [ -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
-            echo "::error title=Missing secret::SUPABASE_PROD_PUBLISHABLE_KEY is empty or unset. Add it via `gh secret set SUPABASE_PROD_PUBLISHABLE_KEY` after copying from Supabase Dashboard > Settings > API Keys > Publishable key."
+            echo "::error title=Missing secret::SUPABASE_PROD_PUBLISHABLE_KEY is empty or unset. Add it via 'gh secret set SUPABASE_PROD_PUBLISHABLE_KEY' after copying from Supabase Dashboard > Settings > API Keys > Publishable key."
             exit 1
           fi
 
@@ -157,7 +157,7 @@ jobs:
             exit 1
           fi
           if [ -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
-            echo "::error title=Missing secret::SUPABASE_STG_PUBLISHABLE_KEY is empty or unset. Add it via `gh secret set SUPABASE_STG_PUBLISHABLE_KEY` after copying from Supabase Dashboard > Settings > API Keys > Publishable key."
+            echo "::error title=Missing secret::SUPABASE_STG_PUBLISHABLE_KEY is empty or unset. Add it via 'gh secret set SUPABASE_STG_PUBLISHABLE_KEY' after copying from Supabase Dashboard > Settings > API Keys > Publishable key."
             exit 1
           fi
 

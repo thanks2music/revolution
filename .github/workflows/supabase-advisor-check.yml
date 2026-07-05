@@ -124,11 +124,13 @@ jobs:
             cat advisor-response.json | head -20
             exit 1
           fi
-          # lints 配列を cache_key で ID 化した簡潔形式に整形 (diff 比較用)
-          jq '{
+          # lints 配列を cache_key で ID 化した簡潔形式に整形 (diff 比較用)。
+          # claude[bot] PR #256 review Finding #6 採用: shell 変数の埋め込みは --arg
+          # に統一 (公式 jq Manual 推奨、同ファイル他所と一貫)。
+          jq --arg env "${ENV_NAME}" --arg project_ref "${SUPABASE_PROJECT_REF}" '{
             fetched_at: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
-            env: "'"${ENV_NAME}"'",
-            project_ref: "'"${SUPABASE_PROJECT_REF}"'",
+            env: $env,
+            project_ref: $project_ref,
             lints_by_key: (.lints // [] | map({key: .cache_key, level, name, title, detail, remediation, categories}) | sort_by(.key) | INDEX(.key)),
             count: (.lints // [] | length)
           }' advisor-response.json > current-state.json
@@ -217,14 +219,17 @@ jobs:
             HEADER_TEXT="Supabase Advisor: All clear on ${ENV_NAME}"
           fi
 
-          # 新規発生 lint を Block Kit section に整形 (最大 5 件)
+          # 新規発生 lint を Block Kit section に整形 (最大 5 件)。
+          # claude[bot] PR #256 review Finding #3 採用: .detail / .remediation が null の場合、
+          # jq は `null + "..."` で error を投げ、`set -euo pipefail` により Slack 通知が
+          # 完全 skip される。fallback を追加して defensive に (Resolved section と同 pattern)。
           NEW_SECTIONS=$(jq '[
             .[0:5] | .[] |
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: ("*🆕 New: `\(.name)` (" + .level + ")*\n" + .detail + "\n<" + .remediation + "|Remediation>")
+                text: ("*🆕 New: `\(.name)` (" + .level + ")*\n" + (.detail // "(no detail)") + "\n<" + (.remediation // "https://supabase.com/docs/guides/database/database-linter") + "|Remediation>")
               }
             }
           ]' new-lints.json)
@@ -241,21 +246,29 @@ jobs:
             }
           ]' resolved-lints.json)
 
-          # 追加情報 (件数 overflow 通知)
+          # 追加情報 (件数 overflow 通知)。
+          # claude[bot] PR #256 review Finding #2 採用: bash double-quoted string 内の `\n` は
+          # literal 2 文字 (GNU Bash Manual §3.1.2.3)。jq --arg 経由で Slack に渡ると
+          # backslash-n がそのまま表示される。ANSI-C quoting `$'\n'` で実 newline 文字 (0x0A)
+          # を挿入する。Slack Block Kit mrkdwn は 0x0A を line break として render する。
+          NL=$'\n'
           OVERFLOW_TEXT=""
           if [ "${NEW_COUNT}" -gt 5 ]; then
-            OVERFLOW_TEXT="${OVERFLOW_TEXT}\n_…and $((NEW_COUNT - 5)) more new lint(s)_"
+            OVERFLOW_TEXT="${OVERFLOW_TEXT}${NL}_…and $((NEW_COUNT - 5)) more new lint(s)_"
           fi
           if [ "${RESOLVED_COUNT}" -gt 5 ]; then
-            OVERFLOW_TEXT="${OVERFLOW_TEXT}\n_…and $((RESOLVED_COUNT - 5)) more resolved lint(s)_"
+            OVERFLOW_TEXT="${OVERFLOW_TEXT}${NL}_…and $((RESOLVED_COUNT - 5)) more resolved lint(s)_"
           fi
 
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           COMMIT_URL="${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
 
+          # Finding #2 採用: summary の \n も実 newline に置換。
+          SUMMARY="*Diff*: +${NEW_COUNT} new · −${RESOLVED_COUNT} resolved · Total now: ${CURRENT_COUNT}${NL}*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)${NL}*Trigger*: ${{ github.event_name }}${OVERFLOW_TEXT}"
+
           jq -n \
             --arg header "${HEADER_EMOJI} ${HEADER_TEXT}" \
-            --arg summary "*Diff*: +${NEW_COUNT} new · −${RESOLVED_COUNT} resolved · Total now: ${CURRENT_COUNT}\n*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)\n*Trigger*: ${{ github.event_name }}${OVERFLOW_TEXT}" \
+            --arg summary "${SUMMARY}" \
             --arg run_link "<${RUN_URL}|Workflow run> · <${COMMIT_URL}|Commit>" \
             --argjson new_sections "${NEW_SECTIONS}" \
             --argjson resolved_sections "${RESOLVED_SECTIONS}" \
