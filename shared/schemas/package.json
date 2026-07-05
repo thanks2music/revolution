@@ -11,8 +11,18 @@
     "./vision-api-extraction": "./vision-api-extraction.ts",
     "./db/profiles": "./db/profiles.ts",
     "./db/favorites": "./db/favorites.ts",
+    "./db/categories": "./db/categories.ts",
+    "./db/titles": "./db/titles.ts",
+    "./db/venues": "./db/venues.ts",
+    "./db/events": "./db/events.ts",
+    "./db/event-titles": "./db/event-titles.ts",
+    "./db/event-categories": "./db/event-categories.ts",
     "./profile": "./profile.ts",
-    "./favorite": "./favorite.ts"
+    "./favorite": "./favorite.ts",
+    "./category": "./category.ts",
+    "./title": "./title.ts",
+    "./venue": "./venue.ts",
+    "./event": "./event.ts"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.36.0",

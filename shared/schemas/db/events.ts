@@ -38,17 +38,27 @@ import { categories } from './categories';
  *     Layer1 = zod (`shared/schemas/event.ts`、`EVENT_SLUG_REGEX` が真実源)
  *     Layer2 = DB CHECK (本ファイル、Layer 1 と同正規表現)
  *   name:
- *     Layer1 = zod (`.trim().min(1)`)
- *     Layer2 = DB CHECK (`btrim(name, E' \t\n\r　') <> ''`、**Unicode-aware**)
+ *     Layer1 = zod (`.trim().min(1)`、`.trim()` は ECMAScript WhiteSpace の
+ *                   U+3000 を含む Unicode 空白全般を除去する)
+ *     Layer2 = DB CHECK (`btrim(name, E' \t\n\r　') <> ''`、Unicode charset を
+ *                        明示指定して Postgres 直 INSERT / migration 経路の
+ *                        全角空白のみ入力を Layer 1 未経由でも拒否)
  *   official_url:
  *     Layer1 = zod (`z.string().url().nullable().optional()`)
  *     Layer2 = DB CHECK (NULL or `btrim(official_url, E' \t\n\r　') <> ''`)
  *
- * PR #260 (Backlog C) レビュー R2 の defense-in-depth 教訓を initial 適用: PostgreSQL
- * `btrim(text)` は ASCII 空白のみ除去 = U+3000 (全角スペース) を素通しする Layer 2
- * 弱点を、明示 charset `E' \t\n\r　'` (半角SP/タブ/改行/全角SP) で回避。categories
- * / titles / venues 側は既存 Backlog `6h2Jg5HH9v95C348` / `6h2Jg5GQ9QrM9qc8` で
- * 個別処理予定 (retrofit ALTER)。events は最初から Unicode-aware で入れる。
+ * PR #260 (Backlog C) レビュー R2 の defense-in-depth 教訓を initial 適用:
+ * PostgreSQL の `btrim(text)` (charset 引数なし) は ASCII 空白のみ除去 = U+3000
+ * (全角スペース) を素通しする Layer 2 弱点を、明示 charset `E' \t\n\r　'`
+ * (半角SP/タブ/改行/全角SP) で回避する。categories / titles / venues 側は
+ * 既存 Backlog `6h2Jg5HH9v95C348` / `6h2Jg5GQ9QrM9qc8` で個別処理予定
+ * (retrofit ALTER)。events は最初から Unicode-aware で入れる。
+ *
+ * 注: JS/ECMAScript の `String.prototype.trim()` は WhiteSpace production に
+ * U+3000 を含むため、Layer 1 の `.trim().min(1)` の時点で全角スペースのみの
+ * name は既に拒否される。Layer 2 CHECK の Unicode-aware charset は SoC 上の
+ * 二段防御 (Postgres 側 raw INSERT / トリガー / migration での経路も守る)
+ * として意味を持つ (PR #261 claude[bot] R1 Finding 2 の指摘を反映)。
  *
  * RLS は同じ migration (`<timestamp>_events.sql`) で `enable row level security` +
  * SELECT 公開 policy 1 本だけを付与する (anon/authenticated に読み取り公開、書き込

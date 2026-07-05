@@ -107,6 +107,30 @@ describe('EventInsertSchema', () => {
     ).toThrow();
   });
 
+  it('rejects whitespace-only name (U+3000 full-width space)', () => {
+    // ECMAScript String.prototype.trim() strips U+3000 (IDEOGRAPHIC SPACE) as
+    // part of the WhiteSpace production, so Layer 1 catches this before it
+    // ever hits the Layer 2 Unicode-aware DB CHECK. Locks in the actual
+    // behavior per PR #261 claude[bot] R1 Finding 2.
+    expect(() =>
+      EventInsertSchema.parse({
+        slug: 'toy-story-cafe',
+        name: '　　　',
+        primaryCategoryId: 1,
+      }),
+    ).toThrow();
+  });
+
+  it('rejects whitespace-only name (mixed ASCII + full-width)', () => {
+    expect(() =>
+      EventInsertSchema.parse({
+        slug: 'toy-story-cafe',
+        name: ' 　\t　 ',
+        primaryCategoryId: 1,
+      }),
+    ).toThrow();
+  });
+
   it('rejects official_url that is not a valid URL', () => {
     expect(() =>
       EventInsertSchema.parse({
