@@ -155,13 +155,20 @@ jobs:
         run: |
           set -euo pipefail
 
+          # claude[bot] PR #256 2nd-round review Finding #1 採用: baseline 不在時 (first run /
+          # artifact expired) は `comm -23 current empty` が current の全 keys を new-keys.txt に
+          # 入れてしまい、SKIP_NOTIFY が発火せず全 current lint を "🆕 New" として Slack に flood
+          # する bug があった。BASELINE_FOUND flag を SKIP_NOTIFY 条件に統合し、β 側 (
+          # `[ -z "${ARTIFACT_ID}" ]` の early exit) と一貫させる。
           if [ -f ./previous/current-state.json ]; then
             cp ./previous/current-state.json previous-state.json
             PREV_COUNT=$(jq -r '.count' previous-state.json)
             echo "Previous state found: ${PREV_COUNT} lint(s)"
+            BASELINE_FOUND=true
           else
             echo '{"lints_by_key": {}, "count": 0}' > previous-state.json
             echo "::notice::No previous state found (first run or artifact expired). Treating all current lints as pre-existing (no diff notification)."
+            BASELINE_FOUND=false
           fi
 
           # cache_key を配列に抽出
@@ -190,9 +197,17 @@ jobs:
             '.lints_by_key | to_entries | map(select(.key as $k | $keys[0] | index($k))) | map(.value)' \
             previous-state.json > resolved-lints.json
 
-          # 差分ゼロ + force_notify なし → skip flag
-          # INPUT_FORCE_NOTIFY は env 経由で受け取り済 (直接 ${{ }} 展開を避け injection 攻撃面を最小化)
-          if [ "${NEW_COUNT}" = "0" ] && [ "${RESOLVED_COUNT}" = "0" ] && [ "${INPUT_FORCE_NOTIFY}" != "true" ]; then
+          # 通知 skip 条件 (2 巡目 review Finding #1 対応で BASELINE_FOUND を追加):
+          #   (A) baseline 不在 (first run / artifact expired) → 差分は意味を持たないため skip
+          #   (B) baseline 存在 かつ 差分ゼロ → noise 回避で skip
+          #   INPUT_FORCE_NOTIFY=true 時はいずれも上書きで通知 (smoke test 用途)
+          if [ "${INPUT_FORCE_NOTIFY}" = "true" ]; then
+            echo "SKIP_NOTIFY=false" >> "$GITHUB_ENV"
+            echo "::notice::force_notify=true, sending notification regardless of diff / baseline state."
+          elif [ "${BASELINE_FOUND}" = "false" ]; then
+            echo "SKIP_NOTIFY=true" >> "$GITHUB_ENV"
+            echo "::notice::Baseline not found on ${ENV_NAME}. Skipping Slack notification (baseline being established silently, first-run design)."
+          elif [ "${NEW_COUNT}" = "0" ] && [ "${RESOLVED_COUNT}" = "0" ]; then
             echo "SKIP_NOTIFY=true" >> "$GITHUB_ENV"
             echo "::notice::No advisor diff detected on ${ENV_NAME}. Skipping Slack notification (noise 回避)."
           else
@@ -203,6 +218,14 @@ jobs:
         if: env.SKIP != 'true' && env.SKIP_NOTIFY != 'true'
         # Block Kit で header + section + fields 構成。Slack payload 40KB 上限のため最大 10 lints を表示、
         # 超過分は "…and N more" で丸め。level 別絵文字 (🔴 ERROR / ⚠️ WARN / ℹ️ INFO)。
+        # 2 巡目 review Finding #4 採用: `${{ github.* }}` の run: 内直接展開を env: 経由に統一
+        # (workflow hardening pattern の一貫性、β 側 + workflow 冒頭 env: と整合)。
+        env:
+          GH_SERVER_URL: ${{ github.server_url }}
+          GH_REPO: ${{ github.repository }}
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_SHA: ${{ github.sha }}
+          GH_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
@@ -260,11 +283,11 @@ jobs:
             OVERFLOW_TEXT="${OVERFLOW_TEXT}${NL}_…and $((RESOLVED_COUNT - 5)) more resolved lint(s)_"
           fi
 
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          COMMIT_URL="${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
+          RUN_URL="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
+          COMMIT_URL="${GH_SERVER_URL}/${GH_REPO}/commit/${GH_SHA}"
 
           # Finding #2 採用: summary の \n も実 newline に置換。
-          SUMMARY="*Diff*: +${NEW_COUNT} new · −${RESOLVED_COUNT} resolved · Total now: ${CURRENT_COUNT}${NL}*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)${NL}*Trigger*: ${{ github.event_name }}${OVERFLOW_TEXT}"
+          SUMMARY="*Diff*: +${NEW_COUNT} new · −${RESOLVED_COUNT} resolved · Total now: ${CURRENT_COUNT}${NL}*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)${NL}*Trigger*: ${GH_EVENT_NAME}${OVERFLOW_TEXT}"
 
           jq -n \
             --arg header "${HEADER_EMOJI} ${HEADER_TEXT}" \

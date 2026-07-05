@@ -314,6 +314,32 @@ jobs:
             --data-binary @slack-payload.json \
             "${SLACK_WEBHOOK_URL}" || echo "::warning::Slack notification failed (non-blocking)"
 
+      - name: Rename post-deploy state to α-compatible filename (Backlog D β, mid-week noise 回避)
+        # α artifact (advisor-state-{env}) の中身は `current-state.json` という名前で
+        # zip 化されている。β が同 artifact 名で上書きするなら、中身のファイル名も
+        # `current-state.json` に統一しないと、次回 β の download 時に
+        # baseline/current-state.json が見つからず skip 分岐に入ってしまう。
+        # β step 内で作成した `post-deploy-state.json` を rename して整合させる。
+        if: always() && hashFiles('post-deploy-state.json') != ''
+        run: |
+          cp post-deploy-state.json current-state.json
+
+      - name: Refresh advisor baseline artifact (Backlog D β, mid-week noise 回避)
+        # 2 巡目 review Finding #2 採用: β は α artifact を baseline として読むが、α は週次
+        # cron でしか artifact を更新しない → 中週で複数 deploy があると同じ regression を
+        # 反復通知する問題。deploy 直後の state を α と共通 artifact 名 (`advisor-state-${env}`)
+        # に upload=overwrite することで、次回以降の β が最新 baseline から diff できる。
+        # 副作用: α の週次 diff の baseline が「先週月曜」ではなく「最新 deploy 直後」になる
+        # (実運用上は最新 deploy 後の状態を反映するほうが有意義、意図的な変更)。
+        # baseline 未確立時 (current-state.json 不在 = advisor fetch が fail した場合等) は skip。
+        if: always() && hashFiles('current-state.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: advisor-state-staging
+          path: current-state.json
+          retention-days: 30
+          overwrite: true
+
   deploy-production:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
     runs-on: ubuntu-latest
@@ -545,3 +571,20 @@ jobs:
             -H 'Content-Type: application/json' \
             --data-binary @slack-payload.json \
             "${SLACK_WEBHOOK_URL}" || echo "::warning::Slack notification failed (non-blocking)"
+
+      - name: Rename post-deploy state to α-compatible filename (Backlog D β, mid-week noise 回避)
+        # staging 側と同ロジック。詳細コメントは staging job の同名 step を参照。
+        if: always() && hashFiles('post-deploy-state.json') != ''
+        run: |
+          cp post-deploy-state.json current-state.json
+
+      - name: Refresh advisor baseline artifact (Backlog D β, mid-week noise 回避)
+        # staging 側と同ロジック (production 版、artifact name = advisor-state-production)。
+        # 詳細コメントは staging job の同名 step を参照。
+        if: always() && hashFiles('current-state.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: advisor-state-production
+          path: current-state.json
+          retention-days: 30
+          overwrite: true
