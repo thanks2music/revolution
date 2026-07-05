@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { bigint, check, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
 import { categories } from './categories';
 
@@ -96,6 +96,13 @@ export const events = pgTable(
       'events_official_url_not_blank',
       sql`${table.officialUrl} is null or btrim(${table.officialUrl}, E' \t\n\r　') <> ''`,
     ),
+    // btree index on FK column primary_category_id: category landing pages
+    // (`WHERE primary_category_id = ?`) hit sequential scan without this since
+    // Postgres doesn't auto-index FK-referencing columns (only PK/UNIQUE get
+    // implicit indexes). Added per PR #261 claude[bot] R2 finding, applied via
+    // forward-fix migration 0010 (0009 is already on staging, no retroactive
+    // edit per PR #250 SoP §9).
+    index('events_primary_category_id_idx').on(table.primaryCategoryId),
   ],
 );
 
