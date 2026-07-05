@@ -1,41 +1,58 @@
 name: Supabase Keep-Alive
 
 # Supabase Free プランは「7 日間以上 十分なアクティビティがない」プロジェクトを自動 pause する。
-# 本ワークフローは毎日 1 回 Postgres へ軽量クエリ (SELECT 1) を投げてアクティビティを発生させ、
+# 本ワークフローは毎日 1 回 PostgREST API へ軽量 HTTP リクエストを投げてアクティビティを発生させ、
 # 自動 pause を防ぐ (Revolution の production + staging 両 project)。
 #
 # 背景・方針の詳細: Todoist 6gw7Pgr5FJCgqPFg / SSoT task-priority-mapping.md 第 33 回エントリ /
 # 運用 SoP: docs/operations/supabase-secret-rotation-sop.md。
 # 実ユーザー獲得後は Pro プラン昇格 (org 単位で pause 無効) で本ワークフローは不要になる。
 #
-# === 設計の主な改修 (2026-06-21、Todoist 6gw7Pgr5FJCgqPFg) ===
-# 旧版は production (`abqsntbvnuttpyixagob`) のみを ping し、staging は構造的に 7 日制約に
-# 勝てない問題があった。さらに 2026-06-13 PR #244 Phase 1e で production DB password を
-# 再生成した際に keep-alive 専用 secret (`SUPABASE_KEEPALIVE_DB_PASSWORD`) の更新が漏れ、
-# 8 日連続 silent failure → 2026-06-21 auto-pause 発動という事故が発生した。
+# === 2026-07-05 大幅改修: pooler SELECT 1 は activity として counted されない (Backlog D で判明) ===
 #
-# 本版での対策:
-#   1. production + staging を **2 別 job** で並列実行 (片方失敗が他方を止めない構造)
-#   2. keep-alive 用 secret を廃止し **deploy と同じ `SUPABASE_PROD_DB_PASSWORD` /
-#      `SUPABASE_STG_DB_PASSWORD` を直接参照** (rotation 時の secret 1 つ忘れリスクを構造的に排除)
-#   3. PGUSER は `postgres.<project_ref>` を `secrets.SUPABASE_PROD_PROJECT_ID` /
-#      `SUPABASE_STG_PROJECT_ID` から組み立て (project ref の rotation 余地確保)
-#   4. cron 時刻を 2 job で 5 分ずらし (同時失敗時の root cause 切り分け容易化)
-#   5. workflow_dispatch input `target` (`both` / `production` / `staging`、default `both`) で
-#      debug 用個別実行を可能に
+# 旧設計は `psql -Atc "select 1;"` を Session pooler (aws-1-ap-northeast-1.pooler.supabase.com:5432)
+# 経由で実行していたが、以下の実証で「動作しているが Supabase の pause 判定に効果なし」と判定:
 #
-# === 接続方式 ===
-# 接続文字列 (URL) ではなく libpq 環境変数 (PGHOST/PGUSER/PGPASSWORD 等) で接続する。
-# パスワードに記号が含まれても URL エンコード不要、かつ psql の argv にパスワードが出ない
-# (プロセス一覧・ログへの露出なし)。接続失敗時も psql は "password authentication failed" を返し
-# パスワードを出力しないため、public リポジトリのログに認証情報が漏れない。
+# - 2026-06-22 以降 48 runs 全 success (5-10 秒完了) にもかかわらず、
+# - 2026-06-18/19/20/27 に BOSS Gmail に pause 警告メール 5 件到達
+# - 7/1 の PR #251 マージ後 (実 migration deploy 発生) は警告停止 → deploy は activity として counted
+#
+# Supabase 公式仕様 (free-project-pausing.mdx):
+#   "Generate a sufficient amount of activity by making API calls to your project
+#    or sending requests via your connected application."
+# 公式: https://github.com/supabase/supabase/blob/master/apps/docs/content/guides/platform/free-project-pausing.mdx
+#
+# → Session pooler の system role による internal DB 接続は "API calls to your project" ではない。
+# → 修正: PostgREST API 経由の HTTP リクエスト (公式明記の "API calls") に置換。
+#
+# === 修正内容 (Backlog D 統合、2026-07-05) ===
+#
+#   1. psql via Session pooler → curl via PostgREST API (`GET /rest/v1/categories?select=id&limit=1`)
+#   2. 認証: `apikey` + `Authorization: Bearer` header に Publishable key を使用 (旧 DB_PASSWORD 不要)
+#      - 新規 GitHub Secrets: `SUPABASE_STG_PUBLISHABLE_KEY` / `SUPABASE_PROD_PUBLISHABLE_KEY`
+#      - Publishable key は client-safe な新体系 API key (旧 anon key の後継、Supabase 2024 migration)
+#      - PostgREST は Publishable key で anon role にマップ、categories 表への SELECT policy が適用される
+#   3. 対象 endpoint: `https://<project_ref>.supabase.co/rest/v1/categories?select=id&limit=1`
+#      - categories 表 = PR #247 で seed 済 (23 行)、RLS `categories_select_all` で anon read 可
+#      - 実データを read することで PostgREST + DB + RLS すべてに activity 発生 (公式 activity 判定を確実にヒット)
+#   4. Session pooler 経由の直接 DB 接続は本 workflow から撤廃 (activity 判定外のため無意味)
+#   5. 旧 secret (`SUPABASE_{STG,PROD}_DB_PASSWORD`) は他 workflow (deploy-supabase-migrations.yml) で
+#      引き続き使用されるため削除しない
+#
+# === 旧設計の教訓 ===
+#
+# - production + staging を 2 別 job で並列実行の設計 (片方失敗が他方を止めない) は継承
+# - cron 時刻を 2 job で 5 分ずらし (root cause 切り分け容易化) は継承
+# - workflow_dispatch input `target` (both / production / staging) は継承
+# - keep-alive 用 secret を deploy と共有 (rotation 忘れリスク構造排除) は継承 (新 Publishable key も同構造)
 #
 # === IPv4 制約 ===
-# GitHub Actions runner は IPv4 のみ。direct 接続 (db.<ref>.supabase.co) は Free プランでは
-# IPv6 限定のため接続できない。必ず IPv4 互換の Session pooler (port 5432) を使う。
-# 公式: https://supabase.com/docs/guides/troubleshooting/supabase--your-network-ipv4-and-ipv6-compatibility-cHe3BP
+#
+# GitHub Actions runner は IPv4 のみ、Supabase の REST API endpoint (`<ref>.supabase.co`) は
+# IPv4/IPv6 dual stack のため直接接続可能 (pooler 迂回不要)。
 #
 # === 既知の制約 (workflow 発火) ===
+#
 # - schedule / workflow_dispatch イベントは「デフォルトブランチ (main) 上のワークフロー定義」
 #   でのみ発火する (GitHub 公式仕様)。本ファイルが main にマージされるまで cron 実行・
 #   手動実行ボタンは有効化されない。
@@ -63,82 +80,98 @@ on:
           - production
           - staging
 
-# 本 job 群は外部 DB へ接続するのみで、リポジトリ内容への書き込み・読み取りは不要。
+# 本 job 群は Supabase の外部 REST API へ接続するのみで、リポジトリ内容への書き込み・読み取りは不要。
 # 最小権限の原則に従い GITHUB_TOKEN の権限を空にする。
 permissions: {}
 
 jobs:
   ping-production:
-    name: Ping Supabase Postgres (production)
-    # workflow_dispatch 時は target で個別制御、schedule は cron トリガーが production の
-    # 37 分のとき (= production の cron) または staging cron でも production が `both` 時に
-    # 走るのを避けるため、schedule.cron 直接判定はせず「workflow_dispatch=production/both
-    # または schedule (両 cron で都度) のうち production cron」のみを許す。
-    # GitHub Actions では `github.event.schedule` が cron 文字列に等しいことを利用して識別する。
+    name: Ping Supabase PostgREST (production)
+    # workflow_dispatch 時は target で個別制御、schedule は cron で識別 (旧設計から継承)。
     if: >-
       (github.event_name == 'workflow_dispatch' && (inputs.target == 'both' || inputs.target == 'production'))
       || (github.event_name == 'schedule' && github.event.schedule == '37 15 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     env:
-      # 非機密の接続部品 (両 project 共通)。
-      PGHOST: aws-1-ap-northeast-1.pooler.supabase.com
-      PGPORT: "5432"
-      PGDATABASE: postgres
-      PGSSLMODE: require
-      # production 固有: PGUSER は postgres.<project_ref> 形式。secret から組み立てて rotation 余地を確保。
-      PGUSER: postgres.${{ secrets.SUPABASE_PROD_PROJECT_ID }}
-      # production 固有 (機密): deploy と同じ secret を共有 (案 X: rotation 同期忘れリスクの構造排除)。
-      PGPASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_ID }}
+      # 新体系 API key (client-safe Publishable key、Supabase 2024 migration)。
+      # RLS 適用 anon role にマップされ、categories 表への SELECT policy を通過。
+      # 旧 anon key (Legacy) ではなく sb_publishable_ prefix の新形式を採用。
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PROD_PUBLISHABLE_KEY }}
     steps:
-      - name: Run SELECT 1 to keep production active
+      - name: HTTP ping to PostgREST to keep production active
         run: |
           set -euo pipefail
-          if [ -z "${PGUSER#postgres.}" ]; then
-            echo "::error::SUPABASE_PROD_PROJECT_ID secret is not set"
+
+          # secret 未設定の早期 fail (deploy-supabase-migrations.yml と同 pattern、
+          # set -u は unset のみ検知し空文字は通してしまうため明示チェック)。
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_PROD_PROJECT_ID is empty or unset."
             exit 1
           fi
-          if [ -z "${PGPASSWORD:-}" ]; then
-            echo "::error::SUPABASE_PROD_DB_PASSWORD secret is not set"
+          if [ -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_PROD_PUBLISHABLE_KEY is empty or unset. Add it via `gh secret set SUPABASE_PROD_PUBLISHABLE_KEY` after copying from Supabase Dashboard > Settings > API Keys > Publishable key."
             exit 1
           fi
-          # psql は ubuntu-latest ランナーに同梱済み (postgresql-client) だが、将来の
-          # ランナーイメージ変更で欠けても keep-alive が静かに止まらないよう自己修復する。
-          command -v psql >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y postgresql-client; }
-          # 接続文字列を渡さず PG* 環境変数で接続する。-A: 非整列, -t: タプルのみ, -c: コマンド実行。
-          # 成功すると "1" を出力する。
-          psql -Atc "select 1;"
-          echo "Supabase keep-alive ping (production) succeeded."
+
+          # PostgREST API endpoint. categories 表を `?select=id&limit=1` で最小 payload read.
+          # RLS `categories_select_all` policy が anon role に SELECT を許可済 (PR #247 で導入)。
+          # 200 = success (activity registered); 4xx/5xx = failure.
+          # `-w '%{http_code}'` で status のみ取得、-o /dev/null で body 破棄 (log noise 削減).
+          # `-sS` = silent + show error, `--max-time 30` = network hang guard.
+          HTTP_CODE=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
+            -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/rest/v1/categories?select=id&limit=1")
+
+          if [ "${HTTP_CODE}" = "200" ]; then
+            echo "Supabase keep-alive HTTP ping (production) succeeded: HTTP ${HTTP_CODE}"
+          elif [ "${HTTP_CODE}" = "503" ]; then
+            # 503 = project already paused. HTTP request itself acts as a wake-up trigger,
+            # but auto-restore requires dashboard resume for Free plan (公式仕様).
+            echo "::warning title=Project paused::HTTP ${HTTP_CODE} - production project is already paused. Resume it manually from the Supabase Dashboard."
+            exit 1
+          else
+            echo "::error title=Keep-alive HTTP ping failed::HTTP ${HTTP_CODE} on production. Check Publishable key rotation and categories RLS policy."
+            exit 1
+          fi
 
   ping-staging:
-    name: Ping Supabase Postgres (staging)
+    name: Ping Supabase PostgREST (staging)
     if: >-
       (github.event_name == 'workflow_dispatch' && (inputs.target == 'both' || inputs.target == 'staging'))
       || (github.event_name == 'schedule' && github.event.schedule == '42 15 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     env:
-      # 非機密の接続部品 (両 project 共通)。
-      PGHOST: aws-1-ap-northeast-1.pooler.supabase.com
-      PGPORT: "5432"
-      PGDATABASE: postgres
-      PGSSLMODE: require
-      # staging 固有: PGUSER は postgres.<project_ref> 形式。secret から組み立てる。
-      PGUSER: postgres.${{ secrets.SUPABASE_STG_PROJECT_ID }}
-      # staging 固有 (機密): deploy と同じ secret を共有 (案 X: rotation 同期忘れリスクの構造排除)。
-      PGPASSWORD: ${{ secrets.SUPABASE_STG_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_STG_PUBLISHABLE_KEY }}
     steps:
-      - name: Run SELECT 1 to keep staging active
+      - name: HTTP ping to PostgREST to keep staging active
         run: |
           set -euo pipefail
-          if [ -z "${PGUSER#postgres.}" ]; then
-            echo "::error::SUPABASE_STG_PROJECT_ID secret is not set"
+
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_STG_PROJECT_ID is empty or unset."
             exit 1
           fi
-          if [ -z "${PGPASSWORD:-}" ]; then
-            echo "::error::SUPABASE_STG_DB_PASSWORD secret is not set"
+          if [ -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_STG_PUBLISHABLE_KEY is empty or unset. Add it via `gh secret set SUPABASE_STG_PUBLISHABLE_KEY` after copying from Supabase Dashboard > Settings > API Keys > Publishable key."
             exit 1
           fi
-          command -v psql >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y postgresql-client; }
-          psql -Atc "select 1;"
-          echo "Supabase keep-alive ping (staging) succeeded."
+
+          HTTP_CODE=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
+            -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/rest/v1/categories?select=id&limit=1")
+
+          if [ "${HTTP_CODE}" = "200" ]; then
+            echo "Supabase keep-alive HTTP ping (staging) succeeded: HTTP ${HTTP_CODE}"
+          elif [ "${HTTP_CODE}" = "503" ]; then
+            echo "::warning title=Project paused::HTTP ${HTTP_CODE} - staging project is already paused. Resume it manually from the Supabase Dashboard."
+            exit 1
+          else
+            echo "::error title=Keep-alive HTTP ping failed::HTTP ${HTTP_CODE} on staging. Check Publishable key rotation and categories RLS policy."
+            exit 1
+          fi
