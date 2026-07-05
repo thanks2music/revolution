@@ -1,0 +1,148 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":prImmediately",
+    "group:allNonMajor",
+    "monorepo:nextjs",
+    "group:linters",
+    "workarounds:all",
+  ],
+
+  timezone: "Asia/Tokyo",
+
+  // Dependabot monthly at 09:00 JST を継承 (レビュー枠を朝に固定)
+  schedule: ["before 10am on the first day of the month"],
+
+  // 同時 open PR 上限。Dependabot open-pull-requests-limit: 2 を継承
+  prConcurrentLimit: 2,
+  prHourlyLimit: 4,
+
+  // Dependabot cooldown.default-days: 7 を継承 (zero-day 事故の緩和帯)
+  minimumReleaseAge: "7 days",
+
+  reviewers: ["thanks2music"],
+  labels: ["dependencies"],
+
+  dependencyDashboardTitle: "🤖 Renovate Dependency Dashboard",
+  dependencyDashboardOSVVulnerabilitySummary: "all",
+
+  // pnpm-lock.yaml を週次で再生成 (transitive dep の脆弱性置換のため)
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: ["before 4am on monday"],
+  },
+
+  packageRules: [
+    // major 更新は 14 日待機 (Dependabot semver-major-days: 14 を継承)
+    {
+      matchUpdateTypes: ["major"],
+      minimumReleaseAge: "14 days",
+    },
+
+    // @types/node の v25+ (奇数 = 非 LTS) を除外 (Dependabot 設定を継承)
+    {
+      matchPackageNames: ["@types/node"],
+      allowedVersions: "<25.0.0",
+    },
+
+    // patch 更新は自動マージ (Dependabot dependabot-auto-merge.yml patch 分岐を継承)
+    // CI 3 job (Type Check & Lint / Build Apps / Test) が pass した後にマージ
+    // → branch protection で required check 設定済み前提
+    {
+      matchUpdateTypes: ["patch"],
+      automerge: true,
+    },
+
+    // devDependencies の minor 更新は自動マージ (Dependabot 継承)
+    {
+      matchDepTypes: ["devDependencies"],
+      matchUpdateTypes: ["minor"],
+      automerge: true,
+    },
+
+    // Next.js / React 系は framework review 必須 (自動マージ禁止 + ラベル)
+    // Dependabot dependabot-auto-merge.yml の framework 警告コメントを構造化
+    {
+      matchSourceUrls: [
+        "https://github.com/vercel/next.js",
+        "https://github.com/facebook/react",
+      ],
+      automerge: false,
+      labels: ["dependencies", "framework-review-required"],
+      prBodyNotes: [
+        "⚠️ Framework update. Read release notes + test in preview before merge.",
+      ],
+    },
+
+    // Firebase / AI SDK (Anthropic / OpenAI) は major で破壊的変更多発
+    // → major は必ず manual review
+    {
+      matchPackageNames: [
+        "firebase",
+        "firebase-admin",
+        "@anthropic-ai/sdk",
+        "openai",
+        "@google/generative-ai",
+      ],
+      matchUpdateTypes: ["major"],
+      automerge: false,
+      labels: ["dependencies", "ai-sdk-review-required"],
+    },
+
+    // MCP SDK は 0.x で毎月 breaking → patch でも automerge 禁止
+    {
+      matchPackageNames: ["@modelcontextprotocol/sdk"],
+      automerge: false,
+      labels: ["dependencies", "mcp-sdk-review-required"],
+    },
+
+    // root pnpm.overrides で pin している脆弱性回避パッケージは Renovate が触らない
+    // (現行: protobufjs@<7.5.5 → ^7.5.5, basic-ftp@<5.3.0 → >=5.3.0 <7, form-data@<2.5.4 → ^2.5.4)
+    {
+      matchPackageNames: ["protobufjs", "basic-ftp", "form-data"],
+      matchManagers: ["npm"],
+      matchDepTypes: ["overrides"],
+      enabled: false,
+      description: "Managed via pnpm.overrides for security pinning; do not auto-update.",
+    },
+
+    // App 別 label 付与 (Dependabot labels 継承)
+    {
+      matchFileNames: ["apps/frontend/**"],
+      addLabels: ["frontend"],
+    },
+    {
+      matchFileNames: ["apps/ai-writer/**"],
+      addLabels: ["ai-writer"],
+    },
+    {
+      matchFileNames: ["apps/mcp-gcp-server/**"],
+      addLabels: ["mcp-gcp-server"],
+    },
+    {
+      matchFileNames: ["apps/flutter/**"],
+      addLabels: ["flutter"],
+    },
+    {
+      matchFileNames: ["shared/schemas/**"],
+      addLabels: ["shared-schemas"],
+    },
+    {
+      matchFileNames: [".github/workflows/**"],
+      addLabels: ["github-actions"],
+    },
+  ],
+
+  // Vulnerability alerts (GitHub Advisory / OSV 経由)
+  vulnerabilityAlerts: {
+    // security update は cooldown / schedule を無視して即時 PR
+    minimumReleaseAge: "0 days",
+    labels: ["dependencies", "security"],
+    // security patch は自動マージ (framework 系除く、上位 rule で保護)
+    automerge: true,
+  },
+}
