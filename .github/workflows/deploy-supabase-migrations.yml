@@ -40,6 +40,8 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read  # Backlog D β: α workflow の advisor-state artifact download 用 (Post-deploy advisor check step)
+  pull-requests: write  # Backlog D β: 将来 PR コメント経路追加時に必要 (現時点は Slack のみだが scope 予約)
 
 jobs:
   deploy-staging:
@@ -174,6 +176,136 @@ jobs:
           set -euo pipefail
           supabase db push --db-url "$SESSION_POOLER_URL"
 
+      - name: Post-deploy advisor check (Backlog D β, non-blocking)
+        # Backlog D β: deploy 直後に Supabase Advisor を再取得し、α workflow の最新 artifact
+        # (advisor-state-staging) を baseline として diff。新規 lint 発生 = 本 deploy が
+        # 引き起こした regression → Slack Block Kit + `::warning::` annotation で即時通知。
+        # non-blocking: advisor check 自体の失敗は deploy 成功を打ち消さない (`set +e` パターン)。
+        # 詳細設計: Plan file §8.4、姉妹 workflow `supabase-advisor-check.yml` (α = 週次 cron)。
+        # WEBHOOK 未登録環境 or baseline 未確立時は notice のみで skip (既存 deploy を止めない)。
+        if: always()  # push step が fail しても実行 (deploy fail 起因の lint も検知したい)
+        env:
+          # workflow-level context を env: 経由に統一 (公式 security best practice: run: 内の
+          # ${{ github.* }} 直接展開を避け injection 攻撃面を最小化。deploy-supabase-migrations.yml
+          # の他 step とも整合)。
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_SUPABASE_ADVISOR }}
+          ENV_NAME: staging
+          GH_REPO: ${{ github.repository }}
+          GH_SERVER_URL: ${{ github.server_url }}
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail  # -e は外す (advisor check 失敗を deploy 結果に影響させない)
+
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::notice title=Advisor check skipped::SLACK_WEBHOOK_SUPABASE_ADVISOR is not configured. Skipping post-deploy advisor check."
+            exit 0
+          fi
+
+          # Supabase Management API 経由で advisors/security を取得
+          HTTP_CODE=$(curl -sS -o post-deploy-advisor.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Accept: application/json" \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/advisors/security" || echo "curl-failed")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::warning title=Post-deploy advisor fetch failed::HTTP ${HTTP_CODE} for ${ENV_NAME}. Deploy succeeded but advisor snapshot could not be captured."
+            exit 0
+          fi
+
+          # 現在 lint を key 化 + count (α workflow と同じ形式)
+          jq '{ lints_by_key: (.lints // [] | map({key: .cache_key, level, name, detail, remediation}) | INDEX(.key)), count: (.lints // [] | length) }' \
+            post-deploy-advisor.json > post-deploy-state.json
+          POST_COUNT=$(jq -r '.count' post-deploy-state.json)
+          echo "Post-deploy advisor lint count on ${ENV_NAME}: ${POST_COUNT}"
+
+          # α workflow の最新 artifact (advisor-state-${ENV_NAME}) を baseline として取得
+          ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=1" \
+            --jq '.artifacts[0].id // empty' 2>/dev/null || echo "")
+
+          if [ -z "${ARTIFACT_ID}" ]; then
+            echo "::notice title=Advisor baseline unavailable::No prior α artifact for ${ENV_NAME}. Skipping diff (baseline will be established after α workflow runs)."
+            exit 0
+          fi
+
+          if ! gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > baseline.zip 2>/dev/null; then
+            echo "::warning title=Advisor baseline download failed::Could not fetch artifact ${ARTIFACT_ID} on ${ENV_NAME}. Skipping diff."
+            exit 0
+          fi
+
+          if ! unzip -q -o baseline.zip -d baseline/; then
+            echo "::warning::baseline artifact unzip failed"
+            exit 0
+          fi
+
+          if [ ! -f baseline/current-state.json ]; then
+            echo "::notice::baseline artifact does not contain expected file. Skipping diff."
+            exit 0
+          fi
+
+          jq -r '.lints_by_key | keys[]' baseline/current-state.json | sort > baseline-keys.txt
+          jq -r '.lints_by_key | keys[]' post-deploy-state.json | sort > post-keys.txt
+          comm -23 post-keys.txt baseline-keys.txt > new-post-keys.txt
+          NEW_POST_COUNT=$(wc -l < new-post-keys.txt | tr -d ' ')
+          echo "New lints introduced by this deploy: ${NEW_POST_COUNT}"
+
+          if [ "${NEW_POST_COUNT}" = "0" ]; then
+            echo "::notice title=No advisor regression::Deploy did not introduce new advisor lints on ${ENV_NAME}."
+            exit 0
+          fi
+
+          # 新規 lint あり → warning annotation + Slack 通知
+          jq --slurpfile keys <(jq -R -s 'split("\n") | map(select(length > 0))' new-post-keys.txt) \
+            '.lints_by_key | to_entries | map(select(.key as $k | $keys[0] | index($k))) | map(.value)' \
+            post-deploy-state.json > new-post-lints.json
+
+          echo "::warning title=Post-deploy advisor regression::Deploy introduced ${NEW_POST_COUNT} new lint(s) on ${ENV_NAME}. Check Slack for details."
+
+          # Slack Block Kit (α と同 format、header は "Post-deploy regression" に差別化)
+          NEW_SECTIONS=$(jq '[
+            .[0:5] | .[] |
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: ("*🆕 New (post-deploy): `\(.name)` (" + .level + ")*\n" + .detail + "\n<" + .remediation + "|Remediation>")
+              }
+            }
+          ]' new-post-lints.json)
+
+          RUN_URL="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
+          COMMIT_URL="${GH_SERVER_URL}/${GH_REPO}/commit/${GH_SHA}"
+          PR_LINK=""
+          if [ -n "${PR_NUMBER:-}" ]; then
+            PR_LINK="\n*PR*: <${GH_SERVER_URL}/${GH_REPO}/pull/${PR_NUMBER}|#${PR_NUMBER}>"
+          fi
+
+          jq -n \
+            --arg header "⚠️ Supabase Advisor Regression (post-deploy ${ENV_NAME})" \
+            --arg summary "*This deploy introduced ${NEW_POST_COUNT} new advisor lint(s) on ${ENV_NAME}.*\n*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)\n*Baseline*: α artifact (advisor-state-${ENV_NAME})${PR_LINK}" \
+            --arg run_link "<${RUN_URL}|Workflow run> · <${COMMIT_URL}|Commit>" \
+            --argjson new_sections "${NEW_SECTIONS}" \
+            '{
+              blocks: (
+                [
+                  { type: "header", text: { type: "plain_text", text: $header, emoji: true } },
+                  { type: "section", text: { type: "mrkdwn", text: $summary } },
+                  { type: "divider" }
+                ]
+                + $new_sections
+                + [
+                  { type: "divider" },
+                  { type: "context", elements: [{ type: "mrkdwn", text: $run_link }] }
+                ]
+              )
+            }' > slack-payload.json
+
+          curl -sS -X POST -o /dev/null \
+            -H 'Content-Type: application/json' \
+            --data-binary @slack-payload.json \
+            "${SLACK_WEBHOOK_URL}" || echo "::warning::Slack notification failed (non-blocking)"
+
   deploy-production:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
     runs-on: ubuntu-latest
@@ -282,3 +414,122 @@ jobs:
         run: |
           set -euo pipefail
           supabase db push --db-url "$SESSION_POOLER_URL"
+
+      - name: Post-deploy advisor check (Backlog D β, non-blocking)
+        # Backlog D β の production 版。staging と同ロジック (baseline は α の
+        # advisor-state-production artifact)、詳細コメントは staging job の同名 step を参照。
+        # production 環境でも non-blocking (deploy 成功後の情報通知)。
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_SUPABASE_ADVISOR }}
+          ENV_NAME: production
+          GH_REPO: ${{ github.repository }}
+          GH_SERVER_URL: ${{ github.server_url }}
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::notice title=Advisor check skipped::SLACK_WEBHOOK_SUPABASE_ADVISOR is not configured. Skipping post-deploy advisor check."
+            exit 0
+          fi
+
+          HTTP_CODE=$(curl -sS -o post-deploy-advisor.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Accept: application/json" \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/advisors/security" || echo "curl-failed")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::warning title=Post-deploy advisor fetch failed::HTTP ${HTTP_CODE} for ${ENV_NAME}. Deploy succeeded but advisor snapshot could not be captured."
+            exit 0
+          fi
+
+          jq '{ lints_by_key: (.lints // [] | map({key: .cache_key, level, name, detail, remediation}) | INDEX(.key)), count: (.lints // [] | length) }' \
+            post-deploy-advisor.json > post-deploy-state.json
+          POST_COUNT=$(jq -r '.count' post-deploy-state.json)
+          echo "Post-deploy advisor lint count on ${ENV_NAME}: ${POST_COUNT}"
+
+          ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=1" \
+            --jq '.artifacts[0].id // empty' 2>/dev/null || echo "")
+
+          if [ -z "${ARTIFACT_ID}" ]; then
+            echo "::notice title=Advisor baseline unavailable::No prior α artifact for ${ENV_NAME}. Skipping diff (baseline will be established after α workflow runs)."
+            exit 0
+          fi
+
+          if ! gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > baseline.zip 2>/dev/null; then
+            echo "::warning title=Advisor baseline download failed::Could not fetch artifact ${ARTIFACT_ID} on ${ENV_NAME}. Skipping diff."
+            exit 0
+          fi
+
+          if ! unzip -q -o baseline.zip -d baseline/; then
+            echo "::warning::baseline artifact unzip failed"
+            exit 0
+          fi
+
+          if [ ! -f baseline/current-state.json ]; then
+            echo "::notice::baseline artifact does not contain expected file. Skipping diff."
+            exit 0
+          fi
+
+          jq -r '.lints_by_key | keys[]' baseline/current-state.json | sort > baseline-keys.txt
+          jq -r '.lints_by_key | keys[]' post-deploy-state.json | sort > post-keys.txt
+          comm -23 post-keys.txt baseline-keys.txt > new-post-keys.txt
+          NEW_POST_COUNT=$(wc -l < new-post-keys.txt | tr -d ' ')
+          echo "New lints introduced by this deploy: ${NEW_POST_COUNT}"
+
+          if [ "${NEW_POST_COUNT}" = "0" ]; then
+            echo "::notice title=No advisor regression::Deploy did not introduce new advisor lints on ${ENV_NAME}."
+            exit 0
+          fi
+
+          jq --slurpfile keys <(jq -R -s 'split("\n") | map(select(length > 0))' new-post-keys.txt) \
+            '.lints_by_key | to_entries | map(select(.key as $k | $keys[0] | index($k))) | map(.value)' \
+            post-deploy-state.json > new-post-lints.json
+
+          echo "::warning title=Post-deploy advisor regression (PRODUCTION)::Deploy introduced ${NEW_POST_COUNT} new lint(s) on ${ENV_NAME}. Check Slack for details."
+
+          NEW_SECTIONS=$(jq '[
+            .[0:5] | .[] |
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: ("*🆕 New (post-deploy): `\(.name)` (" + .level + ")*\n" + .detail + "\n<" + .remediation + "|Remediation>")
+              }
+            }
+          ]' new-post-lints.json)
+
+          RUN_URL="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
+          COMMIT_URL="${GH_SERVER_URL}/${GH_REPO}/commit/${GH_SHA}"
+          PR_LINK=""
+          if [ -n "${PR_NUMBER:-}" ]; then
+            PR_LINK="\n*PR*: <${GH_SERVER_URL}/${GH_REPO}/pull/${PR_NUMBER}|#${PR_NUMBER}>"
+          fi
+
+          jq -n \
+            --arg header "🔴 Supabase Advisor Regression (post-deploy PRODUCTION)" \
+            --arg summary "*This deploy introduced ${NEW_POST_COUNT} new advisor lint(s) on PRODUCTION.*\n*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)\n*Baseline*: α artifact (advisor-state-${ENV_NAME})${PR_LINK}" \
+            --arg run_link "<${RUN_URL}|Workflow run> · <${COMMIT_URL}|Commit>" \
+            --argjson new_sections "${NEW_SECTIONS}" \
+            '{
+              blocks: (
+                [
+                  { type: "header", text: { type: "plain_text", text: $header, emoji: true } },
+                  { type: "section", text: { type: "mrkdwn", text: $summary } },
+                  { type: "divider" }
+                ]
+                + $new_sections
+                + [
+                  { type: "divider" },
+                  { type: "context", elements: [{ type: "mrkdwn", text: $run_link }] }
+                ]
+              )
+            }' > slack-payload.json
+
+          curl -sS -X POST -o /dev/null \
+            -H 'Content-Type: application/json' \
+            --data-binary @slack-payload.json \
+            "${SLACK_WEBHOOK_URL}" || echo "::warning::Slack notification failed (non-blocking)"
