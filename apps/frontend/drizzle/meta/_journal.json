@@ -64,6 +64,13 @@
       "when": 1783239404843,
       "tag": "0008_grant_supabase_auth_admin_to_private_handle_new_user",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783243964887,
+      "tag": "0009_events",
+      "breakpoints": true
     }
   ]
 }
