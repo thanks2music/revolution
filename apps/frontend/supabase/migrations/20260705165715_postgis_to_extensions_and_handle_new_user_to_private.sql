@@ -46,7 +46,25 @@ GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role;
 -- ============================================================================
 -- Part B: venues.geo カラムの退避 (DROP EXTENSION CASCADE で消失前に)
 -- ============================================================================
--- venues.geo は空 seed のため DROP COLUMN は safe。
+-- venues.geo は空 seed の設計 (0004 で導入以来 AI Writer 動的追加方針、
+-- 2026-07-05 時点で staging + production ともに 0 rows を確認済)。
+-- ただし authoring 時点と apply 時点の window で非決定的挿入 (手動 INSERT、
+-- backfill、先行 PR 由来のデータ流入等) が起きた場合の**静かなデータ消失**を防ぐ
+-- ため、DO $$ ブロックで precondition を hard-check する (claude[bot] R1
+-- Finding 1 採用、防御深化)。エラー時は同一 migration の後続 DDL 全てが
+-- transactional rollback される (PostgreSQL の暗黙 DDL transaction)。
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.venues WHERE geo IS NOT NULL) THEN
+    RAISE EXCEPTION
+      'Migration 0007 aborted: public.venues.geo has non-null rows. '
+      'Persistent PostGIS data would be silently destroyed by '
+      'DROP EXTENSION postgis CASCADE. Backup the geo column and '
+      'rewrite migration 0007 to preserve data before retrying.';
+  END IF;
+END $$;
+--> statement-breakpoint
+
 -- CASCADE で GiST index venues_geo_gist_idx も消失するので Part D で再作成。
 ALTER TABLE "public"."venues" DROP COLUMN "geo";
 --> statement-breakpoint
