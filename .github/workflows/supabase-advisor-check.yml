@@ -104,8 +104,8 @@ jobs:
 
       - name: Checkout repository
         if: env.SKIP != 'true'
-        # actions/checkout@v5 (deploy-supabase-migrations.yml と整合)
-        uses: actions/checkout@v5
+        # actions/checkout@v7 (deploy-supabase-migrations.yml と整合)
+        uses: actions/checkout@v7
 
       - name: Fetch security advisors from Supabase Management API
         if: env.SKIP != 'true'
