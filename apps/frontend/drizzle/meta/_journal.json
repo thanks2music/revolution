@@ -43,6 +43,13 @@
       "when": 1783234237484,
       "tag": "0005_grant_public_tables_to_postgrest_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783235136914,
+      "tag": "0006_narrow_grants_per_rls_scope",
+      "breakpoints": true
     }
   ]
 }
