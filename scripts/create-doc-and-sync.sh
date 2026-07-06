@@ -24,10 +24,21 @@ else
     exit 1
 fi
 
-# 環境変数の確認
-if [[ -z "$PROJECT_ROOT" ]]; then
-    echo -e "\033[0;31m[ERROR]\033[0m PROJECT_ROOT 環境変数が設定されていません"
-    exit 1
+# PROJECT_ROOT の解決順 (3 段フォールバック、sync-docs-to-icloud.sh と同一パターン):
+#   1. git rev-parse --show-toplevel — 第一手段 (hardcoded path 依存を排除、main / worktree 双方で正しく解決)
+#   2. .env.local の PROJECT_ROOT — 非 git context 限定の後方互換 fallback
+#   3. スクリプト位置から派生した PROJECT_ROOT_DIR — 最終フォールバック
+# 2026-07-06: one-more-time 子 dir 化に伴う stale `.env.local` PROJECT_ROOT 問題への恒久対応。
+#             sync-docs-to-icloud.sh と同一の 3-tier 解決パターン (根本原因バグが両スクリプトに存在)。
+PROJECT_ROOT_GIT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+
+if [[ -n "$PROJECT_ROOT_GIT" ]] && [[ -d "$PROJECT_ROOT_GIT" ]]; then
+    PROJECT_ROOT="$PROJECT_ROOT_GIT"
+elif [[ -z "$PROJECT_ROOT" ]] || [[ ! -d "$PROJECT_ROOT" ]]; then
+    if [[ -n "$PROJECT_ROOT" ]] && [[ ! -d "$PROJECT_ROOT" ]]; then
+        echo -e "\033[0;33m[WARNING]\033[0m PROJECT_ROOT (\"$PROJECT_ROOT\") が存在しません。スクリプト位置から自動派生した \"$PROJECT_ROOT_DIR\" を使用します。"
+    fi
+    PROJECT_ROOT="$PROJECT_ROOT_DIR"
 fi
 
 if [[ -z "$ICLOUD_DRIVE_PATH" ]]; then

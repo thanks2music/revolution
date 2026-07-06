@@ -23,13 +23,22 @@ else
     exit 1
 fi
 
-# 環境変数の確認
-# PROJECT_ROOT は .env.local で明示上書き可能 (後方互換)。未設定 or 古いパス
-# (リポジトリ移動後など、ディレクトリが存在しない) の場合は、スクリプト自身の位置から
-# 自動派生した PROJECT_ROOT_DIR (= revolution/) にフォールバックする。
-# 2026-06-21: one-more-time monorepo 配下への移動で `.env.local` の PROJECT_ROOT が
-# 旧パスを指したまま post-commit hook が失敗する事案あり、本フォールバックで対処。
-if [[ -z "$PROJECT_ROOT" ]] || [[ ! -d "$PROJECT_ROOT" ]]; then
+# PROJECT_ROOT の解決順 (3 段フォールバック):
+#   1. git rev-parse --show-toplevel — hardcoded path 依存を排除する第一手段。
+#      本スクリプトは repo 内 tracked file のため実運用ではこの tier が常勝する
+#      (main / worktree 双方で正しく repo root を返す、Todoist 6gqXXxgW9WxQj3h8 推奨方針)
+#   2. .env.local の PROJECT_ROOT — 非 git context 限定の後方互換 fallback
+#      (tarball 解凍実行など git 外での使用時のみ。git checkout 内では tier 1 が優先されるため未参照)
+#   3. スクリプト位置から派生した PROJECT_ROOT_DIR — 最終フォールバック
+# 2026-07-06: one-more-time 子 dir 化に伴う hardcoded path 起因の post-commit 失敗事案 (2026-06-10 PR #244)
+#             の恒久対応として、git rev-parse を第一候補化。
+#             .env.local 内の stale PROJECT_ROOT は BOSS の直接編集禁止ルール準拠のため未編集、
+#             実運用では tier 1 が常勝するため実害なし。
+PROJECT_ROOT_GIT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+
+if [[ -n "$PROJECT_ROOT_GIT" ]] && [[ -d "$PROJECT_ROOT_GIT" ]]; then
+    PROJECT_ROOT="$PROJECT_ROOT_GIT"
+elif [[ -z "$PROJECT_ROOT" ]] || [[ ! -d "$PROJECT_ROOT" ]]; then
     if [[ -n "$PROJECT_ROOT" ]] && [[ ! -d "$PROJECT_ROOT" ]]; then
         echo -e "\033[0;33m[WARNING]\033[0m PROJECT_ROOT (\"$PROJECT_ROOT\") が存在しません。スクリプト位置から自動派生した \"$PROJECT_ROOT_DIR\" を使用します。"
     fi
