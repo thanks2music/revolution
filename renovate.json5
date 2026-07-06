@@ -1,0 +1,182 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":prImmediately",
+    "group:allNonMajor",
+    "monorepo:nextjs",
+    "group:linters",
+    "workarounds:all",
+  ],
+
+  timezone: "Asia/Tokyo",
+
+  // Dependabot monthly at 09:00 JST を継承 (レビュー枠を朝に固定)
+  schedule: ["before 10am on the first day of the month"],
+
+  // 同時 open PR 上限。Dependabot open-pull-requests-limit: 2 を継承
+  prConcurrentLimit: 2,
+  prHourlyLimit: 4,
+
+  // Dependabot cooldown.default-days: 7 を継承 (zero-day 事故の緩和帯)
+  minimumReleaseAge: "7 days",
+
+  reviewers: ["thanks2music"],
+  labels: ["dependencies"],
+
+  dependencyDashboardTitle: "🤖 Renovate Dependency Dashboard",
+  dependencyDashboardOSVVulnerabilitySummary: "all",
+
+  // pnpm-lock.yaml を週次で再生成 (transitive dep の脆弱性置換のため)
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: ["before 4am on monday"],
+  },
+
+  packageRules: [
+    // major 更新は 14 日待機 (Dependabot semver-major-days: 14 を継承)
+    {
+      matchUpdateTypes: ["major"],
+      minimumReleaseAge: "14 days",
+    },
+
+    // @types/node の v25+ (奇数 = 非 LTS) を除外 (Dependabot 設定を継承)
+    {
+      matchPackageNames: ["@types/node"],
+      allowedVersions: "<25.0.0",
+    },
+
+    // patch 更新は自動マージ (Dependabot dependabot-auto-merge.yml patch 分岐を継承)
+    // CI 3 job (Type Check & Lint / Build Apps / Test) が pass した後にマージ
+    // → branch protection で required check 設定済み前提
+    {
+      matchUpdateTypes: ["patch"],
+      automerge: true,
+    },
+
+    // devDependencies の minor 更新は自動マージ (Dependabot 継承)
+    {
+      matchDepTypes: ["devDependencies"],
+      matchUpdateTypes: ["minor"],
+      automerge: true,
+    },
+
+    // Next.js / React 系は major で framework review 必須 (自動マージ禁止 + ラベル)
+    // Dependabot dependabot-auto-merge.yml の framework 警告コメントを構造化
+    //
+    // matchUpdateTypes: ["major"] を明示している理由 (claude[bot] Finding #1 対応):
+    // Renovate 公式仕様上、packageRules は上から順に評価され「同じ option を
+    // 設定する後続 rule が先行 rule を上書きする」(docs.renovatebot.com/configuration-options)。
+    // matchUpdateTypes を省くと patch / minor / major すべてに match し、
+    // 上位 3 ルール (patch → automerge、devDep minor → automerge) の
+    // automerge: true をこの rule の automerge: false が上書きしてしまい、
+    // 「major のみ manual review」の意図と乖離する (Next.js patch も自動マージ停止)。
+    // AI SDK rule (下記) と同じ ["major"] scope で揃える。
+    {
+      matchSourceUrls: [
+        "https://github.com/vercel/next.js",
+        "https://github.com/facebook/react",
+      ],
+      matchUpdateTypes: ["major"],
+      automerge: false,
+      labels: ["dependencies", "framework-review-required"],
+      prBodyNotes: [
+        "⚠️ Framework major update. Read release notes + test in preview before merge.",
+      ],
+    },
+
+    // Firebase / AI SDK (Anthropic / OpenAI) は major で破壊的変更多発
+    // → major は必ず manual review
+    {
+      matchPackageNames: [
+        "firebase",
+        "firebase-admin",
+        "@anthropic-ai/sdk",
+        "openai",
+        "@google/generative-ai",
+      ],
+      matchUpdateTypes: ["major"],
+      automerge: false,
+      labels: ["dependencies", "ai-sdk-review-required"],
+    },
+
+    // MCP SDK は 0.x で毎月 breaking → patch でも automerge 禁止
+    {
+      matchPackageNames: ["@modelcontextprotocol/sdk"],
+      automerge: false,
+      labels: ["dependencies", "mcp-sdk-review-required"],
+    },
+
+    // root pnpm.overrides で pin している脆弱性回避パッケージの override 定義は Renovate が触らない
+    // (現行: protobufjs@<7.5.5 → ^7.5.5, basic-ftp@<5.3.0 → >=5.3.0 <7, form-data@<2.5.4 → ^2.5.4)
+    //
+    // スコープの明示 (claude[bot] Finding #3 対応):
+    // 本 rule は "root package.json の pnpm.overrides エントリ" のみを保護する。
+    // Renovate npm manager は overrides を独立した depType として抽出するため
+    // (docs.renovatebot.com/modules/manager/npm)、matchDepTypes: ["overrides"] で該当。
+    // 直接依存として同名パッケージを別ワークスペース (例: apps/ai-writer の form-data ^4.0.4)
+    // が持つ場合、その **直接依存の update PR は Renovate が通常通り作成する**。
+    // これは意図的挙動: security-motivated override は transitive resolution の下限を強制する
+    // メカニズムであり、直接依存の update と競合しない (直接依存が override 範囲を満たせば
+    // pnpm がそれを採用、満たさなければ override を bump 適用)。
+    // 直接依存の major update PR で override 側の再確認が必要になった場合は BOSS 判断。
+    {
+      matchPackageNames: ["protobufjs", "basic-ftp", "form-data"],
+      matchManagers: ["npm"],
+      matchDepTypes: ["overrides"],
+      enabled: false,
+      description: "Managed via pnpm.overrides for security pinning; do not auto-update the override entries themselves (direct dependency updates elsewhere are still allowed).",
+    },
+
+    // App 別 label 付与 (Dependabot labels 継承)
+    {
+      matchFileNames: ["apps/frontend/**"],
+      addLabels: ["frontend"],
+    },
+    {
+      matchFileNames: ["apps/ai-writer/**"],
+      addLabels: ["ai-writer"],
+    },
+    {
+      matchFileNames: ["apps/mcp-gcp-server/**"],
+      addLabels: ["mcp-gcp-server"],
+    },
+    {
+      matchFileNames: ["apps/flutter/**"],
+      addLabels: ["flutter"],
+    },
+    {
+      matchFileNames: ["shared/schemas/**"],
+      addLabels: ["shared-schemas"],
+    },
+    {
+      matchFileNames: [".github/workflows/**"],
+      addLabels: ["github-actions"],
+    },
+  ],
+
+  // Vulnerability alerts (GitHub Advisory / OSV 経由)
+  //
+  // 設計 (claude[bot] R2 Finding #6 対応):
+  // Renovate 公式仕様上、vulnerabilityAlerts は「override specific fields of the
+  // general Renovate config」として動作し (docs.renovatebot.com/configuration-options/#vulnerabilityalerts)、
+  // packageRules の automerge: false 判定を上書きし得る。
+  // 「security 由来なら framework/AI SDK major も automerge」となる副作用を避けるため
+  // automerge をここでは指定しない (Renovate default: undefined → 上位 packageRules で決定)。
+  // 結果:
+  //   - Next.js/React major CVE     → packageRule Line 78 (major, automerge: false) が適用 = manual review
+  //   - Firebase/AI SDK major CVE   → packageRule Line 100 (major, automerge: false) が適用 = manual review
+  //   - MCP SDK 任意 CVE            → packageRule Line 112 (all, automerge: false) が適用 = manual review
+  //   - 上記以外の patch CVE        → packageRule (patch, automerge: true) が適用 = auto merge
+  //   - 上記以外の minor/major CVE  → Renovate default (automerge: false) = manual review
+  // cooldown (minimumReleaseAge) 無視 + security ラベル付与 + immediate PR 作成の
+  // 3 メリットは維持したまま、危険な自動マージのみ抑止する。
+  vulnerabilityAlerts: {
+    // security update は cooldown / schedule を無視して即時 PR
+    minimumReleaseAge: "0 days",
+    labels: ["dependencies", "security"],
+  },
+}
