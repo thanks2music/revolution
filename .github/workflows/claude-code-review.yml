@@ -12,9 +12,10 @@ on:
 
 jobs:
   claude-review:
-    # Skip Dependabot PRs: anthropics/claude-code-action rejects bot actors by default,
-    # which causes this workflow to fail noisily on every Dependabot PR.
-    if: github.actor != 'dependabot[bot]'
+    # Skip bot-authored PRs: anthropics/claude-code-action rejects bot actors by default,
+    # which causes this workflow to fail noisily on every bot PR (Dependabot / Renovate / etc).
+    # Renovate[bot] added 2026-07-06 as part of the Dependabot → Renovate migration (PR #262).
+    if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
 
     runs-on: ubuntu-latest
     permissions:

@@ -159,11 +159,24 @@
   ],
 
   // Vulnerability alerts (GitHub Advisory / OSV 経由)
+  //
+  // 設計 (claude[bot] R2 Finding #6 対応):
+  // Renovate 公式仕様上、vulnerabilityAlerts は「override specific fields of the
+  // general Renovate config」として動作し (docs.renovatebot.com/configuration-options/#vulnerabilityalerts)、
+  // packageRules の automerge: false 判定を上書きし得る。
+  // 「security 由来なら framework/AI SDK major も automerge」となる副作用を避けるため
+  // automerge をここでは指定しない (Renovate default: undefined → 上位 packageRules で決定)。
+  // 結果:
+  //   - Next.js/React major CVE     → packageRule Line 78 (major, automerge: false) が適用 = manual review
+  //   - Firebase/AI SDK major CVE   → packageRule Line 100 (major, automerge: false) が適用 = manual review
+  //   - MCP SDK 任意 CVE            → packageRule Line 112 (all, automerge: false) が適用 = manual review
+  //   - 上記以外の patch CVE        → packageRule (patch, automerge: true) が適用 = auto merge
+  //   - 上記以外の minor/major CVE  → Renovate default (automerge: false) = manual review
+  // cooldown (minimumReleaseAge) 無視 + security ラベル付与 + immediate PR 作成の
+  // 3 メリットは維持したまま、危険な自動マージのみ抑止する。
   vulnerabilityAlerts: {
     // security update は cooldown / schedule を無視して即時 PR
     minimumReleaseAge: "0 days",
     labels: ["dependencies", "security"],
-    // security patch は自動マージ (framework 系除く、上位 rule で保護)
-    automerge: true,
   },
 }
