@@ -64,17 +64,27 @@
       automerge: true,
     },
 
-    // Next.js / React 系は framework review 必須 (自動マージ禁止 + ラベル)
+    // Next.js / React 系は major で framework review 必須 (自動マージ禁止 + ラベル)
     // Dependabot dependabot-auto-merge.yml の framework 警告コメントを構造化
+    //
+    // matchUpdateTypes: ["major"] を明示している理由 (claude[bot] Finding #1 対応):
+    // Renovate 公式仕様上、packageRules は上から順に評価され「同じ option を
+    // 設定する後続 rule が先行 rule を上書きする」(docs.renovatebot.com/configuration-options)。
+    // matchUpdateTypes を省くと patch / minor / major すべてに match し、
+    // 上位 3 ルール (patch → automerge、devDep minor → automerge) の
+    // automerge: true をこの rule の automerge: false が上書きしてしまい、
+    // 「major のみ manual review」の意図と乖離する (Next.js patch も自動マージ停止)。
+    // AI SDK rule (下記) と同じ ["major"] scope で揃える。
     {
       matchSourceUrls: [
         "https://github.com/vercel/next.js",
         "https://github.com/facebook/react",
       ],
+      matchUpdateTypes: ["major"],
       automerge: false,
       labels: ["dependencies", "framework-review-required"],
       prBodyNotes: [
-        "⚠️ Framework update. Read release notes + test in preview before merge.",
+        "⚠️ Framework major update. Read release notes + test in preview before merge.",
       ],
     },
 
@@ -100,14 +110,25 @@
       labels: ["dependencies", "mcp-sdk-review-required"],
     },
 
-    // root pnpm.overrides で pin している脆弱性回避パッケージは Renovate が触らない
+    // root pnpm.overrides で pin している脆弱性回避パッケージの override 定義は Renovate が触らない
     // (現行: protobufjs@<7.5.5 → ^7.5.5, basic-ftp@<5.3.0 → >=5.3.0 <7, form-data@<2.5.4 → ^2.5.4)
+    //
+    // スコープの明示 (claude[bot] Finding #3 対応):
+    // 本 rule は "root package.json の pnpm.overrides エントリ" のみを保護する。
+    // Renovate npm manager は overrides を独立した depType として抽出するため
+    // (docs.renovatebot.com/modules/manager/npm)、matchDepTypes: ["overrides"] で該当。
+    // 直接依存として同名パッケージを別ワークスペース (例: apps/ai-writer の form-data ^4.0.4)
+    // が持つ場合、その **直接依存の update PR は Renovate が通常通り作成する**。
+    // これは意図的挙動: security-motivated override は transitive resolution の下限を強制する
+    // メカニズムであり、直接依存の update と競合しない (直接依存が override 範囲を満たせば
+    // pnpm がそれを採用、満たさなければ override を bump 適用)。
+    // 直接依存の major update PR で override 側の再確認が必要になった場合は BOSS 判断。
     {
       matchPackageNames: ["protobufjs", "basic-ftp", "form-data"],
       matchManagers: ["npm"],
       matchDepTypes: ["overrides"],
       enabled: false,
-      description: "Managed via pnpm.overrides for security pinning; do not auto-update.",
+      description: "Managed via pnpm.overrides for security pinning; do not auto-update the override entries themselves (direct dependency updates elsewhere are still allowed).",
     },
 
     // App 別 label 付与 (Dependabot labels 継承)
