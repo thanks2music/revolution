@@ -50,6 +50,34 @@
       "when": 1783235136914,
       "tag": "0006_narrow_grants_per_rls_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783238139183,
+      "tag": "0007_postgis_to_extensions_and_handle_new_user_to_private",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783239404843,
+      "tag": "0008_grant_supabase_auth_admin_to_private_handle_new_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783243964887,
+      "tag": "0009_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783248794294,
+      "tag": "0010_events_primary_category_id_idx",
+      "breakpoints": true
     }
   ]
 }

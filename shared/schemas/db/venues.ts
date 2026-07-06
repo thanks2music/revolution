@@ -43,9 +43,12 @@ import {
  *     Layer1 = zod (`.min(1).nullable().optional()`、値ありなら空文字拒否)
  *     Layer2 = DB CHECK なし (NULL 許容 + 47 enum 化遅延の判断、handoff §3.C)
  *
- * PostGIS extension は同じ migration (`<timestamp>_venues.sql`) の冒頭で
- *   `create extension if not exists postgis;` を手動追記する (drizzle-kit
- *   自動生成範囲外、custom SQL 管理 = RLS と同パターン)。
+ * PostGIS extension は `extensions` schema に配置 (2026-07-05 migration 0007 で
+ *   `public` schema から移動、Supabase Advisor lint `extension_in_public` +
+ *   `rls_disabled_in_public` (spatial_ref_sys) 解消)。qualified 参照
+ *   `extensions.geography(point, 4326)` が canonical。search_path 拡張は非推奨、
+ *   常に qualified で呼び出す (Supabase 公式 [PostGIS docs](https://supabase.com/docs/guides/database/extensions/postgis)、
+ *   Skill `/supabase-postgres-best-practices` references/security-rls-performance.md 準拠)。
  *
  * RLS は同じ migration で `enable row level security` + SELECT 公開 policy 1
  *   本だけを付与する (anon/authenticated に読み取り公開、書き込みは service
@@ -80,7 +83,10 @@ import {
  */
 const geography = customType<{ data: string; driverData: string }>({
   dataType() {
-    return 'geography(point, 4326)';
+    // Qualified reference: PostGIS は `extensions` schema にインストール済 (0007)。
+    // `public` schema からは移動済で、qualified 呼び出しが唯一の canonical パス。
+    // search_path 拡張は非推奨 (Supabase 公式 + Skill security-rls-performance.md)。
+    return 'extensions.geography(point, 4326)';
   },
   toDriver(value) {
     // PostGIS は INSERT/UPDATE 時に WKT (`POINT(lng lat)`) と WKB hex のどちらも

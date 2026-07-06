@@ -1,0 +1,1 @@
+CREATE INDEX "events_primary_category_id_idx" ON "events" USING btree ("primary_category_id");
