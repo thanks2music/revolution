@@ -152,6 +152,21 @@ describe('calculateCost — prompt cache pricing', () => {
       expect(cost.usd).toBeCloseTo(5.25, 5);
     });
 
+    it('retains gpt-4.1-nano pricing for historical cost-log replay (EOL 2026-10-23)', () => {
+      // gpt-4.1-nano: input $0.10/M, output $0.40/M — kept until API shutdown
+      const usage: TokenUsage = {
+        promptTokens: 1_000_000,
+        completionTokens: 1_000_000,
+        totalTokens: 2_000_000,
+      };
+
+      const cost = calculateCost('gpt-4.1-nano', usage);
+
+      expect(cost.breakdown.inputCost).toBeCloseTo(0.1, 5);
+      expect(cost.breakdown.outputCost).toBeCloseTo(0.4, 5);
+      expect(cost.usd).toBeCloseTo(0.5, 5);
+    });
+
     it('applies cached input pricing for gpt-5.5 (premium tier)', () => {
       // gpt-5.5: input $5.00/M, cachedInput $0.50/M, output $30.00/M
       const usage: TokenUsage = {

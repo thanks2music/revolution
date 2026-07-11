@@ -99,11 +99,17 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     outputPer1M: 2.0,
     provider: 'openai',
   },
-  // OpenAI GPT-4.1 series — gpt-4.1-nano removed 2026-06-07 (shutdown 2026-10-23, replaced by gpt-5.4-nano)
+  // OpenAI GPT-4.1 series — gpt-4.1-nano EOL 2026-10-23, replaced by gpt-5.4-nano (retained for historical cost-log replay until EOL)
   'gpt-4.1-mini': {
     inputPer1M: 0.4,
     cachedInputPer1M: 0.1,
     outputPer1M: 1.6,
+    provider: 'openai',
+  },
+  'gpt-4.1-nano': {
+    inputPer1M: 0.1,
+    cachedInputPer1M: 0.025,
+    outputPer1M: 0.4,
     provider: 'openai',
   },
   // OpenAI GPT-4o series
