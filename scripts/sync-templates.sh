@@ -50,6 +50,51 @@ log_error() {
 # 同期先パス
 DEST_DIR="$PROJECT_ROOT_DIR/apps/ai-writer/templates"
 
+# =====================================
+# 破壊的操作の事前確認 (2026-07-12 追加)
+# =====================================
+# rsync --delete で revolution 側 apps/ai-writer/templates/ を Templates 側の
+# 内容で上書きするため、Templates 側の branch/commit と revolution 側の
+# 現状を明示 + BOSS 明示 y 確認を要求する。
+#
+# 発端: 2026-07-12 Sprint C-α 着手時、Templates side feature branch と
+# revolution 側派生コピーが sync 経由で乖離していたことを発見。今後は
+# 誰が sync を実行しても事前確認を強制することで再発防止。
+#
+# --force-yes フラグ (CI/CD 等の非対話環境用) がある場合は確認スキップ。
+FORCE_YES=false
+for arg in "$@"; do
+    if [[ "$arg" == "--force-yes" ]]; then
+        FORCE_YES=true
+    fi
+done
+
+log_warning "===== sync:templates は rsync --delete で revolution 側を上書きします ====="
+log_warning "同期元 (Templates 側 branch): $(cd "$TEMPLATES_SOURCE_PATH" && git branch --show-current 2>/dev/null || echo 'unknown')"
+log_warning "同期元 latest commit: $(cd "$TEMPLATES_SOURCE_PATH" && git log -1 --oneline 2>/dev/null || echo 'unknown')"
+if [[ -d "$DEST_DIR" ]]; then
+    log_warning "同期先 (revolution 側) 現状: $(find "$DEST_DIR" -name '*.yaml' -type f 2>/dev/null | wc -l | tr -d ' ') YAML ファイル"
+else
+    log_warning "同期先 (revolution 側) 現状: ディレクトリ未作成"
+fi
+if [[ -f "$DEST_DIR/VERSION.json" ]]; then
+    log_warning "前回 sync: $(cat "$DEST_DIR/VERSION.json")"
+else
+    log_warning "前回 sync: VERSION.json 不在 = 履歴不明"
+fi
+log_warning "続行前に Templates main と revolution 側の整合性を確認してください"
+
+if [[ "$FORCE_YES" == "false" ]]; then
+    read -p "続行しますか? [y/N]: " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_error "sync:templates をキャンセルしました"
+        exit 1
+    fi
+else
+    log_info "--force-yes フラグ検知、確認プロンプトをスキップします"
+fi
+
 # メイン処理開始
 log_info "テンプレート同期を開始します..."
 log_info "同期元: $TEMPLATES_SOURCE_PATH"
@@ -138,15 +183,38 @@ if [[ -d "$CONFIG_DEST_PATH" ]]; then
     echo "  config: ${config_yaml_count}個のYAMLファイル"
 fi
 
-# VERSION.json の更新
+# VERSION.json の更新 (2026-07-12 改善: 初期作成 + branch/commit 情報記録)
 VERSION_FILE="$DEST_DIR/VERSION.json"
-if [[ -f "$VERSION_FILE" ]]; then
-    # jqが利用可能な場合は更新
-    if command -v jq &> /dev/null; then
-        CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        jq --arg date "$CURRENT_DATE" '.lastSynced = $date' "$VERSION_FILE" > "${VERSION_FILE}.tmp" && mv "${VERSION_FILE}.tmp" "$VERSION_FILE"
-        log_info "VERSION.json を更新しました"
+CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+SOURCE_BRANCH=$(cd "$TEMPLATES_SOURCE_PATH" && git branch --show-current 2>/dev/null || echo "unknown")
+SOURCE_COMMIT=$(cd "$TEMPLATES_SOURCE_PATH" && git rev-parse HEAD 2>/dev/null || echo "unknown")
+SOURCE_COMMIT_SHORT=$(cd "$TEMPLATES_SOURCE_PATH" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+if command -v jq &> /dev/null; then
+    if [[ -f "$VERSION_FILE" ]]; then
+        # 既存 file を更新
+        jq --arg date "$CURRENT_DATE" \
+           --arg branch "$SOURCE_BRANCH" \
+           --arg commit "$SOURCE_COMMIT" \
+           --arg commit_short "$SOURCE_COMMIT_SHORT" \
+           '.lastSynced = $date | .sourceBranch = $branch | .sourceCommit = $commit | .sourceCommitShort = $commit_short' \
+           "$VERSION_FILE" > "${VERSION_FILE}.tmp" && mv "${VERSION_FILE}.tmp" "$VERSION_FILE"
+        log_info "VERSION.json を更新しました (branch=$SOURCE_BRANCH, commit=$SOURCE_COMMIT_SHORT)"
+    else
+        # 初期作成
+        cat > "$VERSION_FILE" <<VERSION_EOF
+{
+  "lastSynced": "$CURRENT_DATE",
+  "sourceBranch": "$SOURCE_BRANCH",
+  "sourceCommit": "$SOURCE_COMMIT",
+  "sourceCommitShort": "$SOURCE_COMMIT_SHORT",
+  "syncedBy": "$USER"
+}
+VERSION_EOF
+        log_info "VERSION.json を新規作成しました (branch=$SOURCE_BRANCH, commit=$SOURCE_COMMIT_SHORT)"
     fi
+else
+    log_warning "jq が見つからないため VERSION.json は更新されません"
 fi
 
 log_success "テンプレート同期が完了しました！"
