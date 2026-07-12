@@ -1149,10 +1149,20 @@ export class ArticleGenerationMdxService {
       });
 
       // silent drop の observability (Codex 中指摘 + claude[bot] R1 comment #2/#5/#6 対応)。
-      // 判定は 2 系統に分岐:
-      //   (a) fallback (`detailedExtraction.開催期間`) の値があるのに helper が undefined を返した
-      //   (b) primary (`event_data.occurrences[0]`) 由来の start/end が両方あるのに end が
-      //       undefined = date-order guard で drop された (end < start)
+      // R2 (comment #4950581671) 改善: mixed source (start=primary、end=fallback 等) で
+      // date-order guard 発火時に fallback として誤ラベルされていた問題を修正、date-order
+      // 可能性を先に検知する順序に変更。
+      //
+      // 判定順序:
+      //   1. date-order guard 可能性 (両ソースで start/end が候補として存在するのに end drop)
+      //      = primary/fallback のどこかで start があり、かつ primary/fallback のどこかで end が
+      //        あるのに helper が end を undefined で返した
+      //   2. fallback 単独 parse 失敗 (fallback で end が候補として存在するが helper が拒否)
+      const primaryHadStart = primaryOccurrence?.starts_on != null;
+      const primaryHadEnd = primaryOccurrence?.ends_on != null;
+      const anyStartCandidate = fallbackHadStart || primaryHadStart;
+      const anyEndCandidate = fallbackHadEnd || primaryHadEnd;
+
       const droppedFields: string[] = [];
       if (eventFactCardFields.event_start_date === undefined) {
         if (fallbackHadStart) {
@@ -1160,13 +1170,15 @@ export class ArticleGenerationMdxService {
         }
       }
       if (eventFactCardFields.event_end_date === undefined) {
-        if (fallbackHadEnd) {
-          droppedFields.push('event_end_date (fallback extractionPeriod.終了 が存在するが helper が拒否)');
-        } else if (primaryHadBoth) {
-          // primary 経路で start/end 両方指定されたのに end のみ undefined = date-order guard 発火
+        // date-order guard 発火の可能性を優先判定 (mixed source 対応)
+        if (anyStartCandidate && anyEndCandidate) {
           droppedFields.push(
-            'event_end_date (primary event_data.occurrences[0] で end < start = date-order guard で drop)',
+            'event_end_date (start/end 両ソース候補が揃うが helper が拒否 = date-order guard で drop の可能性 (end < start)、または end 側 parse 失敗)',
           );
+        } else if (fallbackHadEnd) {
+          droppedFields.push('event_end_date (fallback extractionPeriod.終了 が存在するが helper が拒否)');
+        } else if (primaryHadEnd) {
+          droppedFields.push('event_end_date (primary event_data.occurrences[0].ends_on が存在するが helper が拒否)');
         }
       }
       if (droppedFields.length > 0) {
