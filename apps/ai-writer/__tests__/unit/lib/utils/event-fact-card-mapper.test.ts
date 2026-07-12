@@ -365,6 +365,113 @@ describe('extractEventFactCardFields', () => {
     });
   });
 
+  describe('Case F0: cross-field date-order guard (Codex 2026-07-12 review 高指摘 #2)', () => {
+    // 背景: event_start_date と event_end_date が異なるソース (primary vs fallback) から
+    // 独立に解決される可能性 → 逆順 (end < start) になり得る。EventFactCard の status
+    // 計算 (coming-soon/now/ended) が silent nonsensical になるため helper で drop する。
+
+    it('should drop event_end_date when end < start (primary starts + fallback ends 混在)', () => {
+      const input: ExtractEventFactCardFieldsInput = {
+        eventDataOccurrences: [
+          {
+            venue_slug: null,
+            venue_label: null,
+            starts_on: '2026-05-14', // primary から取得 (未来)
+            ends_on: null, // primary は null → fallback へ
+            official_url: null,
+          },
+        ],
+        extractionPeriod: {
+          終了: { 年: '2026年', 日付: '1月1日', 未定: false }, // fallback は 2026-01-01 (start より過去)
+        },
+      };
+
+      const result = extractEventFactCardFields(input);
+
+      // event_start_date は残る、event_end_date は逆順のため drop
+      expect(result.event_start_date).toBe('2026-05-14');
+      expect(result.event_end_date).toBeUndefined();
+    });
+
+    it('should drop event_end_date when both from primary but inverted (defensive)', () => {
+      const input: ExtractEventFactCardFieldsInput = {
+        eventDataOccurrences: [
+          {
+            venue_slug: null,
+            venue_label: null,
+            starts_on: '2026-05-14',
+            ends_on: '2026-04-01', // primary で逆順 (LLM 応答異常ケース)
+            official_url: null,
+          },
+        ],
+      };
+
+      const result = extractEventFactCardFields(input);
+
+      expect(result.event_start_date).toBe('2026-05-14');
+      expect(result.event_end_date).toBeUndefined();
+    });
+
+    it('should keep both when end === start (同日イベント allowed)', () => {
+      const input: ExtractEventFactCardFieldsInput = {
+        eventDataOccurrences: [
+          {
+            venue_slug: null,
+            venue_label: null,
+            starts_on: '2026-05-14',
+            ends_on: '2026-05-14', // 同日開始・終了
+            official_url: null,
+          },
+        ],
+      };
+
+      const result = extractEventFactCardFields(input);
+
+      expect(result.event_start_date).toBe('2026-05-14');
+      expect(result.event_end_date).toBe('2026-05-14');
+    });
+
+    it('should keep both when end > start (normal case, 年またぎ含む)', () => {
+      const input: ExtractEventFactCardFieldsInput = {
+        eventDataOccurrences: [
+          {
+            venue_slug: null,
+            venue_label: null,
+            starts_on: '2025-12-19',
+            ends_on: '2026-04-19', // 年またぎ
+            official_url: null,
+          },
+        ],
+      };
+
+      const result = extractEventFactCardFields(input);
+
+      expect(result.event_start_date).toBe('2025-12-19');
+      expect(result.event_end_date).toBe('2026-04-19');
+    });
+
+    it('should not affect other fields (venue / official_url) when dropping event_end_date', () => {
+      const input: ExtractEventFactCardFieldsInput = {
+        eventDataOccurrences: [
+          {
+            venue_slug: null,
+            venue_label: 'テスト会場',
+            starts_on: '2026-05-14',
+            ends_on: '2026-04-01', // 逆順
+            official_url: 'https://example.com',
+          },
+        ],
+      };
+
+      const result = extractEventFactCardFields(input);
+
+      expect(result.event_start_date).toBe('2026-05-14');
+      expect(result.event_end_date).toBeUndefined();
+      expect(result.venue).toBe('テスト会場');
+      expect(result.official_url).toBe('https://example.com');
+    });
+  });
+
   describe('Case F: 全フィールド undefined (extraction 完全不在)', () => {
     it('should return empty object when no data provided (all undefined)', () => {
       const result = extractEventFactCardFields({});

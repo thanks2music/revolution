@@ -286,6 +286,25 @@ export function extractEventFactCardFields(
     officialUrl = input.extractionOfficialUrl;
   }
 
+  // -----------------------
+  // Cross-field date-order guard (Codex 2026-07-12 review 高指摘 #2 対応)
+  // -----------------------
+  // event_start_date と event_end_date が異なるソース (primary vs fallback) から
+  // 独立に解決される可能性があるため、逆順 (end < start) になり得る。EventFactCard の
+  // status 計算 (coming-soon / now / ended) は date-order 前提のため、silent nonsensical
+  // badge を防ぐために end < start なら event_end_date を drop する。
+  //
+  // 例:
+  //   primary occurrences[0].starts_on = "2026-05-14" (未来)
+  //   fallback extractionPeriod.終了 = "2026-01-01" (過去)  ← ソース不整合
+  //   → event_end_date を drop (undefined)、event_start_date のみ返す
+  if (eventStartDate !== undefined && eventEndDate !== undefined) {
+    // どちらも YYYY-MM-DD (z.iso.date() 適合済) なので文字列比較で date-order 判定可能
+    if (eventEndDate < eventStartDate) {
+      eventEndDate = undefined;
+    }
+  }
+
   // undefined フィールドは含めずに返す (MdxFrontmatterSchema は optional 前提)
   const result: EventFactCardFields = {};
   if (eventStartDate !== undefined) result.event_start_date = eventStartDate;

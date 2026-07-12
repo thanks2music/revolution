@@ -10,10 +10,10 @@
  */
 
 // Re-export MdxFrontmatter type from shared/schemas (Schema-SDD Phase 2)
-import type { MdxFrontmatter } from '@revolution/schemas/mdx-frontmatter';
+import type { MdxFrontmatter, EventData } from '@revolution/schemas/mdx-frontmatter';
 import type { AiProviderType } from '../ai/providers/ai-provider.interface';
 
-export type { MdxFrontmatter };
+export type { MdxFrontmatter, EventData };
 
 /**
  * Input parameters for generating MDX frontmatter
@@ -117,6 +117,52 @@ export interface GenerateMdxFrontmatterInput {
    * @example "gemini-2.0-flash-exp", "claude-3-5-sonnet-20241022", "gpt-4o-mini"
    */
   aiModel?: string;
+
+  // ---------------------------------------------------------------------------
+  // Sprint C-α (MVP §11) で追加: EventFactCard 4 フィールド + event_data
+  // ---------------------------------------------------------------------------
+  // 命名規則: 入力側は camelCase (本 interface)、frontmatter 出力側は snake_case
+  //   (MdxFrontmatterSchema、既存の workTitle → work_title と同パターン)
+  // orchestrator (article-generation-mdx.service.ts、Step 5.5) が
+  //   `apps/ai-writer/lib/utils/event-fact-card-mapper.ts` の
+  //   `extractEventFactCardFields(...)` で導出した値を渡す
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Optional: 開催開始日 (YYYY-MM-DD、ISO 8601 date)
+   * @description
+   * MVP §11 EventFactCard 用。`z.iso.date()` 適合済の値を渡す
+   * (`extractEventFactCardFields` の Layer 1 で検証済)。
+   * Frontend の EventFactCard コンポーネントが「あと N 日」黄色バッジ表示に使用。
+   */
+  eventStartDate?: string;
+
+  /**
+   * Optional: 開催終了日 (YYYY-MM-DD、ISO 8601 date)
+   * @description
+   * `終了.未定 === true` の場合や無効入力時は undefined 渡し (Q4=C helper で担保)。
+   */
+  eventEndDate?: string;
+
+  /**
+   * Optional: 会場名 (通常 detailedExtraction.店舗名 と同一)
+   */
+  venue?: string;
+
+  /**
+   * Optional: 公式サイトURL (`z.string().url()` 適合済)
+   */
+  officialUrl?: string;
+
+  /**
+   * Optional: 開催ブロック雛形 (MVP §11、Sprint C-α で新設、BOSS 承認 α 2026-07-12)
+   * @description
+   * `EventDataSchema` (`@revolution/schemas/mdx-frontmatter`) 準拠。
+   * AI Writer プロンプト応答の `event_data` オブジェクトを Zod parse 済で渡す。
+   * `primary_category_slug` / `title_slugs[]` / `supplementary_category_slugs[]` (maxItems:2) /
+   * `occurrences[]` を含む。DB upsert 本実装は Sprint D、MVP は雛形応答のみ。
+   */
+  eventData?: EventData;
 }
 
 /**

@@ -23,6 +23,8 @@ import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
+import { extractEventFactCardFields } from '../utils/event-fact-card-mapper';
+import { EventDataSchema } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
 import { getStepDisplay, getStepContext } from './pipeline-steps';
 import {
@@ -1095,6 +1097,64 @@ export class ArticleGenerationMdxService {
       // 複数作品コラボ対応: works[] から全作品タイトルを抽出
       const workTitles = detailedExtraction?.works?.map((w) => w.title) || [];
 
+      // ------------------------------------------------------------------
+      // Sprint C-α (MVP §11) Step 5.5: EventFactCard 4 フィールド + event_data 導出
+      // ------------------------------------------------------------------
+      // Q4=C の deterministic mapping:
+      //   1. event_data.occurrences[0] を primary source
+      //   2. detailedExtraction.開催期間 / 店舗名 / 公式サイトURL を fallback
+      //
+      // - event_data (プロンプト応答) は EventDataSchema で Zod parse (LLM 応答の
+      //   runtime-shape trust を回避、Codex 2026-07-12 review 中指摘 #3 対応)
+      // - 4 フィールド導出は extractEventFactCardFields helper (event-fact-card-mapper.ts、
+      //   Layer 1 test 38 件で検証済、date-order guard 含む = Codex 高指摘 #2 対応)
+      // - silent drop 時は debug log で観測性確保 (Codex 中指摘対応、AI pipeline 品質)
+      // ------------------------------------------------------------------
+      let parsedEventData: ReturnType<typeof EventDataSchema.parse> | undefined;
+      const rawEventData = (detailedExtraction as any)?.event_data;
+      if (rawEventData !== undefined) {
+        const parseResult = EventDataSchema.safeParse(rawEventData);
+        if (parseResult.success) {
+          parsedEventData = parseResult.data;
+        } else {
+          // LLM 応答の event_data が schema に適合しなかった場合の observability
+          console.warn(
+            `${getStepContext('mdx-assembly', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
+            parseResult.error.issues.slice(0, 3), // 最初の 3 件の issue のみログ (noise 回避)
+          );
+        }
+      }
+
+      const eventFactCardFields = extractEventFactCardFields({
+        eventDataOccurrences: parsedEventData?.occurrences,
+        extractionPeriod: detailedExtraction?.開催期間,
+        extractionStoreName: detailedExtraction?.店舗名,
+        extractionOfficialUrl: selectionResult.primary_official_url,
+      });
+
+      // silent drop の observability (Codex 中指摘: 「AI pipeline は観測性がないと原因調査が厳しくなる」)
+      const droppedFields: string[] = [];
+      if (eventFactCardFields.event_start_date === undefined && detailedExtraction?.開催期間?.開始 != null) {
+        droppedFields.push('event_start_date (extractionPeriod.開始 は存在するが無効)');
+      }
+      if (eventFactCardFields.event_end_date === undefined && detailedExtraction?.開催期間?.終了?.未定 === false) {
+        droppedFields.push('event_end_date (extractionPeriod.終了 が存在するが無効 or date-order guard で drop)');
+      }
+      if (droppedFields.length > 0) {
+        console.warn(
+          `${getStepContext('mdx-assembly', 'event_fact_card')} ⚠️ EventFactCard フィールドが drop されました:`,
+          droppedFields,
+        );
+      }
+
+      console.log(`${getStepContext('mdx-assembly', 'event_fact_card')} EventFactCard 導出:`, {
+        event_start_date: eventFactCardFields.event_start_date ?? 'undefined',
+        event_end_date: eventFactCardFields.event_end_date ?? 'undefined',
+        venue: eventFactCardFields.venue ?? 'undefined',
+        official_url: eventFactCardFields.official_url ?? 'undefined',
+        has_event_data: parsedEventData !== undefined,
+      });
+
       const mdxArticle = generateMdxArticle(
         {
           postId: eventRecord.postId,
@@ -1117,6 +1177,12 @@ export class ArticleGenerationMdxService {
           // AI メタデータ（記事生成に使用したプロバイダーとモデル）
           aiProvider: providerName,
           aiModel: aiModel,
+          // Sprint C-α (MVP §11): EventFactCard 4 フィールド + event_data
+          eventStartDate: eventFactCardFields.event_start_date,
+          eventEndDate: eventFactCardFields.event_end_date,
+          venue: eventFactCardFields.venue,
+          officialUrl: eventFactCardFields.official_url,
+          eventData: parsedEventData,
         },
         finalContent // プレースホルダー置換済みの本文を使用
       );

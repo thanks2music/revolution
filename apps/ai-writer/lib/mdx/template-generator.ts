@@ -65,6 +65,12 @@ export function generateMdxFrontmatter(
     prefectures,
     prefectureSlugs,
     tags,
+    // Sprint C-α (MVP §11): EventFactCard 4 フィールド + event_data (Q4=C derived、Step 5.5 orchestrator から)
+    eventStartDate,
+    eventEndDate,
+    venue,
+    officialUrl,
+    eventData,
   } = input;
 
   // Validation
@@ -121,6 +127,25 @@ export function generateMdxFrontmatter(
 
   if (aiModel) {
     frontmatter.ai_model = aiModel;
+  }
+
+  // Sprint C-α (MVP §11): EventFactCard 4 フィールド + event_data (Q4=C derived、Step 5.5 orchestrator から)
+  // Frontend の EventFactCard コンポーネントが「あと N 日」黄色バッジ表示に使用。
+  // undefined フィールドは serialize しない (MdxFrontmatterSchema は optional)。
+  if (eventStartDate !== undefined) {
+    frontmatter.event_start_date = eventStartDate;
+  }
+  if (eventEndDate !== undefined) {
+    frontmatter.event_end_date = eventEndDate;
+  }
+  if (venue !== undefined) {
+    frontmatter.venue = venue;
+  }
+  if (officialUrl !== undefined) {
+    frontmatter.official_url = officialUrl;
+  }
+  if (eventData !== undefined) {
+    frontmatter.event_data = eventData;
   }
 
   return frontmatter;
@@ -228,6 +253,72 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
       .map((tag) => `"${tag.replace(/"/g, '\\"')}"`)
       .join(', ');
     lines.push(`tags: [${tagsYaml}]`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sprint C-α (MVP §11): EventFactCard 4 フィールド + 開催ブロック雛形 event_data
+  // ---------------------------------------------------------------------------
+  // Frontend の EventFactCard コンポーネントが「あと N 日」黄色バッジ表示に使用する
+  // 4 フィールド (event_start_date / event_end_date / venue / official_url) と、
+  // 機械可読の開催ブロック雛形 event_data を frontmatter に serialize。
+  //
+  // - 4 フィールドは Q4=C の deterministic mapping (event-fact-card-mapper.ts) で導出済
+  // - event_data は Zod EventDataSchema で validate 済 (Step 5.5 orchestrator で parse)
+  // - undefined フィールドは serialize しない (MdxFrontmatterSchema は optional)
+  // - event_data は nested YAML として serialize (primary_category_slug / title_slugs[] /
+  //   supplementary_category_slugs[] / occurrences[])
+  // ---------------------------------------------------------------------------
+
+  if (frontmatter.event_start_date) {
+    lines.push(`event_start_date: "${frontmatter.event_start_date}"`);
+  }
+  if (frontmatter.event_end_date) {
+    lines.push(`event_end_date: "${frontmatter.event_end_date}"`);
+  }
+  if (frontmatter.venue) {
+    const escapedVenue = frontmatter.venue.replace(/"/g, '\\"');
+    lines.push(`venue: "${escapedVenue}"`);
+  }
+  if (frontmatter.official_url) {
+    lines.push(`official_url: "${frontmatter.official_url}"`);
+  }
+
+  // event_data (nested YAML): Sprint C-α で新設、Zod EventDataSchema 準拠
+  if (frontmatter.event_data) {
+    const ed = frontmatter.event_data;
+    lines.push('event_data:');
+    lines.push(`  primary_category_slug: "${ed.primary_category_slug}"`);
+
+    // title_slugs[] (常に配列、Zod schema で必須)
+    const titleSlugsYaml = ed.title_slugs
+      .map((slug) => `"${slug}"`)
+      .join(', ');
+    lines.push(`  title_slugs: [${titleSlugsYaml}]`);
+
+    // supplementary_category_slugs[] (optional、maxItems: 2)
+    if (ed.supplementary_category_slugs && ed.supplementary_category_slugs.length > 0) {
+      const suppSlugsYaml = ed.supplementary_category_slugs
+        .map((slug) => `"${slug}"`)
+        .join(', ');
+      lines.push(`  supplementary_category_slugs: [${suppSlugsYaml}]`);
+    }
+
+    // occurrences[] (optional、MVP は通常 1 要素)
+    if (ed.occurrences && ed.occurrences.length > 0) {
+      lines.push('  occurrences:');
+      for (const occ of ed.occurrences) {
+        lines.push(`    - venue_slug: ${occ.venue_slug === null ? 'null' : `"${occ.venue_slug}"`}`);
+        if (occ.venue_label !== null) {
+          const escapedLabel = occ.venue_label.replace(/"/g, '\\"');
+          lines.push(`      venue_label: "${escapedLabel}"`);
+        } else {
+          lines.push(`      venue_label: null`);
+        }
+        lines.push(`      starts_on: "${occ.starts_on}"`);
+        lines.push(`      ends_on: ${occ.ends_on === null ? 'null' : `"${occ.ends_on}"`}`);
+        lines.push(`      official_url: ${occ.official_url === null ? 'null' : `"${occ.official_url}"`}`);
+      }
+    }
   }
 
   lines.push('---');
