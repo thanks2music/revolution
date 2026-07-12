@@ -41,16 +41,16 @@ export interface JapaneseDatePart {
 
 /**
  * `event_data.occurrences[0]` (Sprint C-α で AI Writer プロンプト応答に新設される
- * 開催ブロック雛形、`primary_category_slug` / `title_slugs[]` / `supplementary_category_slugs[]` /
- * `occurrences[]` の一部) に対応する型。
+ * 開催ブロック雛形) に対応する型。shared schema からの `z.infer` 派生を re-export する。
+ *
+ * @description
+ * claude[bot] R1 (comment #3, #5) DRY 指摘への対応で、helper 側の手書き interface を削除し
+ * `shared/schemas/mdx-frontmatter.ts` の `EventDataOccurrenceSchema` から派生した型に統一
+ * (Sprint C-α Step 5 = PR #268 R1 対応)。schema 側の regex 制約 (VENUE_SLUG_REGEX 等) が
+ * 追加された場合も、helper 側は自動追随する。
  */
-export interface EventDataOccurrence {
-  venue_slug: string | null;
-  venue_label: string | null;
-  starts_on: string; // ISO 8601 date (YYYY-MM-DD)、プロンプト側で厳密検証済想定
-  ends_on: string | null;
-  official_url: string | null;
-}
+import type { EventDataOccurrence } from '@revolution/schemas/mdx-frontmatter';
+export type { EventDataOccurrence };
 
 /**
  * `extractEventFactCardFields` の入力形状。

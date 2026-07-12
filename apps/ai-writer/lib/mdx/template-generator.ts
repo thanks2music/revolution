@@ -168,6 +168,30 @@ export function generateMdxFrontmatter(
  * // ---
  * ```
  */
+/**
+ * YAML double-quoted scalar 内で危険な文字を escape する。
+ *
+ * @description
+ * YAML 1.2 の double-quoted scalars は C-style escape を解釈するため、backslash (\)
+ * と double-quote (") の両方を escape する必要がある。旧 pattern
+ * (`.replace(/"/g, '\\"')`) は backslash 未対応で、literal `\` を含む値が来ると
+ * `\n` (改行) / `\t` (タブ) / `\b` (バックスペース) 等の C-style escape として解釈され
+ * 不正な YAML を生成する可能性がある。
+ *
+ * @param s escape 対象の文字列
+ * @returns backslash + double-quote を escape 済の文字列
+ *
+ * @remarks
+ * Sprint C-α PR #268 R1 対応 (claude[bot] comment #2/#4/#5/#6 の YAML escape ギャップ指摘)。
+ * 本関数は Sprint C-α で新規追加した箇所 (`venue`, `event_data.occurrences[].venue_label`)
+ * にのみ適用する。既存の他 escape 箇所 (`title` / `excerpt` / `categories[]` / 他 array
+ * 系全 10+ 箇所) は Sprint Refactor-A で `yaml.dump` への統一と合わせて修正予定
+ * (comment #5 の 5. 提案方向性)。
+ */
+function escapeYamlDoubleQuoted(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
   const lines: string[] = ['---'];
 
@@ -276,7 +300,8 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
     lines.push(`event_end_date: "${frontmatter.event_end_date}"`);
   }
   if (frontmatter.venue) {
-    const escapedVenue = frontmatter.venue.replace(/"/g, '\\"');
+    // Sprint C-α PR #268 R1: backslash も escape する helper に統一 (claude[bot] R1)
+    const escapedVenue = escapeYamlDoubleQuoted(frontmatter.venue);
     lines.push(`venue: "${escapedVenue}"`);
   }
   if (frontmatter.official_url) {
@@ -309,7 +334,8 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
       for (const occ of ed.occurrences) {
         lines.push(`    - venue_slug: ${occ.venue_slug === null ? 'null' : `"${occ.venue_slug}"`}`);
         if (occ.venue_label !== null) {
-          const escapedLabel = occ.venue_label.replace(/"/g, '\\"');
+          // Sprint C-α PR #268 R1: backslash も escape する helper に統一 (claude[bot] R1)
+          const escapedLabel = escapeYamlDoubleQuoted(occ.venue_label);
           lines.push(`      venue_label: "${escapedLabel}"`);
         } else {
           lines.push(`      venue_label: null`);

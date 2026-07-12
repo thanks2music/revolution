@@ -250,6 +250,21 @@ export interface ExtractionResult {
     /** 開催都道府県の特定根拠（店舗名/住所/明示的記載から） */
     開催都道府県?: string;
   };
+  /**
+   * Sprint C-α で新設された「開催ブロック雛形」(MVP §11)。プロンプト応答の
+   * `event_data` フィールドをそのまま受け渡す (未検証、`unknown` 型)。
+   *
+   * @description
+   * Templates 側 (`revolution-templates/ai-writer/posts/yaml/collabo-cafe/pipeline/2-extraction.yaml`)
+   * で output schema に追加された `event_data` を、`extraction.service.ts` は zod 検証せずに
+   * 素通しする。orchestrator (`article-generation-mdx.service.ts`) 側で
+   * `EventDataSchema.safeParse` により runtime shape 検証を実施する (Codex 中指摘 #3 対応)。
+   *
+   * `unknown` 型とすることで、直接プロパティアクセス (`event_data.occurrences[0]` 等) は
+   * 型エラーで防がれ、必ず zod 検証を経由する契約を型で表現する。claude[bot] R1 (comment
+   * #2 / #3 / #4 / #5 / #6) の型安全性ギャップ指摘への対応 (Sprint C-α PR #268 R1 対応)。
+   */
+  event_data?: unknown;
   /** Model used for extraction */
   model?: string;
   /** Token usage statistics for cost tracking */
@@ -592,6 +607,13 @@ ${schemaStr}
         コピーライト: jsonData.コピーライト || null,
         TwitterURL: jsonData.TwitterURL || null,
         _reasoning: jsonData._reasoning || undefined,
+        // Sprint C-α (PR #268 R1 対応、claude[bot] comment #2-#6 型安全性ギャップ指摘):
+        // Templates 側 (`2-extraction.yaml` v2.1.0) が LLM 応答に追加する `event_data`
+        // (MVP §11 開催ブロック雛形) を素通しする。値の検証は orchestrator 側の
+        // `EventDataSchema.safeParse` (`article-generation-mdx.service.ts`) が担当。
+        // `ExtractionResult.event_data` は `unknown` 型なので、直接プロパティアクセスは
+        // 型エラーで防がれ、必ず zod 検証を経由する契約を型で表現する。
+        event_data: jsonData.event_data,
         model,
         usage,
       };

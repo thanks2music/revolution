@@ -1111,7 +1111,10 @@ export class ArticleGenerationMdxService {
       // - silent drop 時は debug log で観測性確保 (Codex 中指摘対応、AI pipeline 品質)
       // ------------------------------------------------------------------
       let parsedEventData: ReturnType<typeof EventDataSchema.parse> | undefined;
-      const rawEventData = (detailedExtraction as any)?.event_data;
+      // Sprint C-α PR #268 R1 対応 (claude[bot] comment #2-#6): `as any` cast を廃止し、
+      // `ExtractionResult.event_data: unknown` (extraction.service.ts) 経由の型契約に置き換え。
+      // `unknown` 型なので直接プロパティアクセスは型エラーで防がれ、必ず zod 検証を経由する。
+      const rawEventData = detailedExtraction?.event_data;
       if (rawEventData !== undefined) {
         const parseResult = EventDataSchema.safeParse(rawEventData);
         if (parseResult.success) {
@@ -1125,6 +1128,19 @@ export class ArticleGenerationMdxService {
         }
       }
 
+      // fallback 経路の start/end date の存在有無を先に判定して、helper 呼び出しの副作用を
+      // 予測可能にする (droppedFields observability の判定精度向上、Sprint C-α PR #268 R1 対応)。
+      const fallbackHadStart =
+        detailedExtraction?.開催期間?.開始?.年 != null && detailedExtraction?.開催期間?.開始?.日付 != null;
+      const fallbackHadEnd =
+        detailedExtraction?.開催期間?.終了?.未定 === false &&
+        detailedExtraction?.開催期間?.終了?.年 != null &&
+        detailedExtraction?.開催期間?.終了?.日付 != null;
+      // event_data.occurrences[0] からの primary 経路の start/end 供給有無 (both が指定された時のみ
+      // date-order guard drop の対象になる、helper のロジックと一致させる)
+      const primaryOccurrence = parsedEventData?.occurrences?.[0];
+      const primaryHadBoth = primaryOccurrence?.starts_on != null && primaryOccurrence?.ends_on != null;
+
       const eventFactCardFields = extractEventFactCardFields({
         eventDataOccurrences: parsedEventData?.occurrences,
         extractionPeriod: detailedExtraction?.開催期間,
@@ -1132,13 +1148,26 @@ export class ArticleGenerationMdxService {
         extractionOfficialUrl: selectionResult.primary_official_url,
       });
 
-      // silent drop の observability (Codex 中指摘: 「AI pipeline は観測性がないと原因調査が厳しくなる」)
+      // silent drop の observability (Codex 中指摘 + claude[bot] R1 comment #2/#5/#6 対応)。
+      // 判定は 2 系統に分岐:
+      //   (a) fallback (`detailedExtraction.開催期間`) の値があるのに helper が undefined を返した
+      //   (b) primary (`event_data.occurrences[0]`) 由来の start/end が両方あるのに end が
+      //       undefined = date-order guard で drop された (end < start)
       const droppedFields: string[] = [];
-      if (eventFactCardFields.event_start_date === undefined && detailedExtraction?.開催期間?.開始 != null) {
-        droppedFields.push('event_start_date (extractionPeriod.開始 は存在するが無効)');
+      if (eventFactCardFields.event_start_date === undefined) {
+        if (fallbackHadStart) {
+          droppedFields.push('event_start_date (fallback extractionPeriod.開始 が存在するが helper が拒否)');
+        }
       }
-      if (eventFactCardFields.event_end_date === undefined && detailedExtraction?.開催期間?.終了?.未定 === false) {
-        droppedFields.push('event_end_date (extractionPeriod.終了 が存在するが無効 or date-order guard で drop)');
+      if (eventFactCardFields.event_end_date === undefined) {
+        if (fallbackHadEnd) {
+          droppedFields.push('event_end_date (fallback extractionPeriod.終了 が存在するが helper が拒否)');
+        } else if (primaryHadBoth) {
+          // primary 経路で start/end 両方指定されたのに end のみ undefined = date-order guard 発火
+          droppedFields.push(
+            'event_end_date (primary event_data.occurrences[0] で end < start = date-order guard で drop)',
+          );
+        }
       }
       if (droppedFields.length > 0) {
         console.warn(
