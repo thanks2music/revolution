@@ -17,6 +17,36 @@ import type { MdxFrontmatter } from '@revolution/schemas/mdx-frontmatter';
 
 const NESTED_KEYS = new Set(['event_data']);
 
+/**
+ * YAML double-quoted scalar 内の escape sequence を forward pass で unescape する。
+ *
+ * @description
+ * serialize 側 (`template-generator.ts` の `escapeYamlDoubleQuoted`) は
+ * `\` → `\\`、`"` → `\"` に escape する。parse 側は 1 度の走査で対称的に unescape する。
+ *
+ * chained replace の marker approach (例:
+ * `.replace(/\\\\/g, ' ').replace(/\\"/g, '"').replace(/ /g, '\\')`) は
+ * venue 名の空白等 (実運用文字) と marker 衝突で誤動作するため回避。
+ *
+ * Sprint C-α PR #268 R3 (claude[bot] R3-rev1) で official_url escape 対称化と
+ * 合わせて追加。
+ */
+function unescapeYamlDoubleQuoted(inner: string): string {
+  let result = '';
+  for (let j = 0; j < inner.length; j++) {
+    if (inner[j] === '\\' && j + 1 < inner.length) {
+      const next = inner[j + 1];
+      if (next === '"' || next === '\\') {
+        result += next;
+        j++; // consume the escape sequence
+        continue;
+      }
+    }
+    result += inner[j];
+  }
+  return result;
+}
+
 export function parseFrontmatter(content: string): MdxFrontmatter | null {
   // frontmatter部分を抽出
   const match = content.match(/^---\n([\s\S]*?)\n---/);
@@ -87,11 +117,14 @@ export function parseFrontmatter(content: string): MdxFrontmatter | null {
     else if (/^\d+$/.test(rawValue)) {
       value = parseInt(rawValue, 10);
     }
-    // クォート付き文字列を解析
-    else if (
-      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-      (rawValue.startsWith("'") && rawValue.endsWith("'"))
-    ) {
+    // クォート付き文字列を解析 (Sprint C-α PR #268 R3 対応、R3-rev1)
+    // serialize 側 (`template-generator.ts` の `escapeYamlDoubleQuoted`) と対称的に
+    // unescape する (`unescapeYamlDoubleQuoted` helper、上部定義)。
+    else if (rawValue.startsWith('"') && rawValue.endsWith('"')) {
+      value = unescapeYamlDoubleQuoted(rawValue.slice(1, -1));
+    } else if (rawValue.startsWith("'") && rawValue.endsWith("'")) {
+      // single-quoted は YAML 1.2 では `''` → `'` の escape ルールのみ。
+      // serialize 側では現状 single-quote を使っていないので、この分岐は既存挙動維持で clip only。
       value = rawValue.slice(1, -1);
     }
 

@@ -24,7 +24,7 @@ import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factor
 import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
 import { extractEventFactCardFields } from '../utils/event-fact-card-mapper';
-import { EventDataSchema } from '@revolution/schemas/mdx-frontmatter';
+import { EventDataSchema, type EventData } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
 import { getStepDisplay, getStepContext } from './pipeline-steps';
 import {
@@ -1110,7 +1110,10 @@ export class ArticleGenerationMdxService {
       //   Layer 1 test 38 件で検証済、date-order guard 含む = Codex 高指摘 #2 対応)
       // - silent drop 時は debug log で観測性確保 (Codex 中指摘対応、AI pipeline 品質)
       // ------------------------------------------------------------------
-      let parsedEventData: ReturnType<typeof EventDataSchema.parse> | undefined;
+      // Sprint C-α PR #268 R3 (claude[bot] R3-rev2): shared schema から `EventData` 型を
+      // 直接 import することで、`ReturnType<typeof EventDataSchema.parse>` の間接参照を排除。
+      // schema 定義側の意図 (LLM 応答の zod validate 後の canonical type) がより明快に。
+      let parsedEventData: EventData | undefined;
       // Sprint C-α PR #268 R1 対応 (claude[bot] comment #2-#6): `as any` cast を廃止し、
       // `ExtractionResult.event_data: unknown` (extraction.service.ts) 経由の型契約に置き換え。
       // `unknown` 型なので直接プロパティアクセスは型エラーで防がれ、必ず zod 検証を経由する。

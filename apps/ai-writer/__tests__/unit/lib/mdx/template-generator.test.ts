@@ -541,4 +541,56 @@ describe('serializeFrontmatter — event_data nested YAML round-trip (Sprint C-�
     // serializer は空配列を省略するため、parsed 側で undefined になる (schema optional 準拠)
     expect(parsed.event_data?.supplementary_category_slugs === undefined || parsed.event_data?.supplementary_category_slugs?.length === 0).toBe(true);
   });
+
+  // ---------------------------------------------------------------------------
+  // Sprint C-α PR #268 R3 (claude[bot] R3-rev1): official_url の YAML escape 検証
+  // z.string().url() は WHATWG URL parser を通すが、path/query 内の quote/backslash 等の
+  // 危険文字を reject しない。LLM 抽出 URL 由来の untrusted 入力への防御として、
+  // venue/venue_label と同じ escapeYamlDoubleQuoted helper を official_url にも適用済。
+  // ---------------------------------------------------------------------------
+
+  it('official_url (flat フィールド) に double-quote を含む場合、round-trip で正しく escape/unescape される (R3-rev1 fix)', () => {
+    const quotedUrl: MdxFrontmatter = {
+      ...baseFrontmatter,
+      official_url: 'https://example.com/path?title="Injected"',
+    };
+    const parsed = buildRoundTripContent(quotedUrl);
+    expect((parsed as { official_url?: string }).official_url).toBe(
+      'https://example.com/path?title="Injected"',
+    );
+  });
+
+  it('official_url (flat フィールド) に backslash を含む場合、round-trip で正しく escape/unescape される (R3-rev1 fix)', () => {
+    const backslashedUrl: MdxFrontmatter = {
+      ...baseFrontmatter,
+      official_url: 'https://example.com/path\\with\\backslash',
+    };
+    const parsed = buildRoundTripContent(backslashedUrl);
+    expect((parsed as { official_url?: string }).official_url).toBe(
+      'https://example.com/path\\with\\backslash',
+    );
+  });
+
+  it('event_data.occurrences[].official_url に double-quote/backslash を含む場合、round-trip で正しく escape/unescape される (R3-rev1 fix)', () => {
+    const dangerous: MdxFrontmatter = {
+      ...baseFrontmatter,
+      event_data: {
+        primary_category_slug: 'collabo-cafe',
+        title_slugs: ['sample-work'],
+        occurrences: [
+          {
+            venue_slug: null,
+            venue_label: 'テスト会場',
+            starts_on: '2026-08-01',
+            ends_on: '2026-08-31',
+            official_url: 'https://example.com/path"quote\\backslash',
+          },
+        ],
+      },
+    };
+    const parsed = buildRoundTripContent(dangerous);
+    expect(parsed.event_data?.occurrences?.[0]?.official_url).toBe(
+      'https://example.com/path"quote\\backslash',
+    );
+  });
 });

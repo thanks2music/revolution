@@ -305,7 +305,12 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
     lines.push(`venue: "${escapedVenue}"`);
   }
   if (frontmatter.official_url) {
-    lines.push(`official_url: "${frontmatter.official_url}"`);
+    // Sprint C-α PR #268 R3 (claude[bot] R3-rev1): venue/venue_label と同じ escape helper を
+    // official_url にも適用。`z.string().url()` は WHATWG URL parser を通すが、` " ` や `\`
+    // 等の character を reject しないため、LLM 抽出 URL 内に quote が含まれると
+    // YAML injection の可能性 (unescaped で double-quoted scalar 内に落ちる)。
+    const escapedOfficialUrl = escapeYamlDoubleQuoted(frontmatter.official_url);
+    lines.push(`official_url: "${escapedOfficialUrl}"`);
   }
 
   // event_data (nested YAML): Sprint C-α で新設、Zod EventDataSchema 準拠
@@ -342,7 +347,10 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
         }
         lines.push(`      starts_on: "${occ.starts_on}"`);
         lines.push(`      ends_on: ${occ.ends_on === null ? 'null' : `"${occ.ends_on}"`}`);
-        lines.push(`      official_url: ${occ.official_url === null ? 'null' : `"${occ.official_url}"`}`);
+        // Sprint C-α PR #268 R3 (claude[bot] R3-rev1): official_url も escape helper で保護
+        lines.push(
+          `      official_url: ${occ.official_url === null ? 'null' : `"${escapeYamlDoubleQuoted(occ.official_url)}"`}`,
+        );
       }
     }
   }
