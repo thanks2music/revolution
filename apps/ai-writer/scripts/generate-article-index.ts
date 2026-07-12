@@ -21,8 +21,9 @@
 import { fileURLToPath } from 'url';
 import { dirname, resolve, join, relative } from 'path';
 import { readdir, readFile, writeFile, stat } from 'fs/promises';
-import type { MdxFrontmatter } from '@revolution/schemas/mdx-frontmatter';
+import type { MdxFrontmatter, EventData } from '@revolution/schemas/mdx-frontmatter';
 import { toIsoMsDate } from '../lib/utils/date';
+import { parseFrontmatter } from '../lib/mdx/parse-frontmatter';
 
 // ES Module で __dirname を取得
 const __filename = fileURLToPath(import.meta.url);
@@ -72,6 +73,10 @@ interface ArticleIndexItem {
   event_end_date?: string;    // YYYY-MM-DD
   venue?: string;             // 開催場所 (店舗名・施設名)
   official_url?: string;      // 公式サイト URL
+
+  // Sprint C-α (MVP §11) で新設: 開催ブロック雛形 event_data。
+  // MDX frontmatter に nested YAML として serialize されたものを js-yaml で parse し伝搬する。
+  event_data?: EventData;
 }
 
 /**
@@ -122,56 +127,8 @@ function validateFrontmatter(frontmatter: MdxFrontmatter, filePath: string): str
   return missingFields;
 }
 
-/**
- * 簡易YAMLパーサー
- * frontmatterから必要なフィールドを抽出
- */
-function parseFrontmatter(content: string): MdxFrontmatter | null {
-  // frontmatter部分を抽出
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) {
-    return null;
-  }
-
-  const yamlContent = match[1];
-  const result: Record<string, unknown> = {};
-
-  // 行ごとに解析
-  const lines = yamlContent.split('\n');
-  for (const line of lines) {
-    // key: value 形式を解析
-    const keyValueMatch = line.match(/^(\w+):\s*(.*)$/);
-    if (!keyValueMatch) continue;
-
-    const [, key, rawValue] = keyValueMatch;
-    let value: unknown = rawValue;
-
-    // 配列形式 ["a", "b"] を解析
-    if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
-      try {
-        value = JSON.parse(rawValue.replace(/'/g, '"'));
-      } catch {
-        // JSON解析失敗時は文字列として保持
-        value = rawValue;
-      }
-    }
-    // 数値を解析
-    else if (/^\d+$/.test(rawValue)) {
-      value = parseInt(rawValue, 10);
-    }
-    // クォート付き文字列を解析
-    else if (
-      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-      (rawValue.startsWith("'") && rawValue.endsWith("'"))
-    ) {
-      value = rawValue.slice(1, -1);
-    }
-
-    result[key] = value;
-  }
-
-  return result as unknown as MdxFrontmatter;
-}
+// parseFrontmatter は `lib/mdx/parse-frontmatter.ts` に分離済 (Sprint C-α、
+// Layer 1 test から script 本体の top-level main() 実行副作用を経由せず import 可能に)。
 
 /**
  * ディレクトリを再帰的に走査してMDXファイルを取得
@@ -263,6 +220,10 @@ async function processmdxFile(
       event_end_date: frontmatter.event_end_date,
       venue: frontmatter.venue,
       official_url: frontmatter.official_url,
+
+      // Sprint C-α (MVP §11): 開催ブロック雛形 event_data を nested YAML から伝搬。
+      // undefined のまま渡し、JSON.stringify で key 自体が省略される。
+      event_data: frontmatter.event_data,
     };
 
     return item;
