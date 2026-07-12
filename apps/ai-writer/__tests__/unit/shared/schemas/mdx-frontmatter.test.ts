@@ -507,6 +507,312 @@ describe('MdxFrontmatterSchema', () => {
       expect(x.event_end_date).toBeUndefined();
       expect(x.venue).toBeUndefined();
       expect(x.official_url).toBeUndefined();
+      expect(x.event_data).toBeUndefined();
+    });
+  });
+
+  // ============================================================================
+  // Sprint C-α (MVP §11): EventDataSchema Layer 1 test
+  // ============================================================================
+  // Codex 2026-07-12 review 中指摘 #3 対応: runtime-shape trust 回避のため、
+  // LLM 応答が EventDataSchema に不適合な場合の rejection を直接検証。
+  // ============================================================================
+
+  describe('EventDataSchema (MVP §11、Sprint C-α で新設)', () => {
+    // 有効な event_data (最頻ケース: 単一作品カフェ)
+    const validEventData = {
+      primary_category_slug: 'collabo-cafe',
+      title_slugs: ['jujutsu-kaisen'],
+      supplementary_category_slugs: [],
+      occurrences: [
+        {
+          venue_slug: null,
+          venue_label: 'アニメイトカフェ池袋店',
+          starts_on: '2026-05-14',
+          ends_on: '2026-07-05',
+          official_url: 'https://example.com/event',
+        },
+      ],
+    };
+
+    describe('正常系', () => {
+      it('最小構成 (primary_category_slug + title_slugs のみ) が parse 成功', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['minimal-work'],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(true);
+      });
+
+      it('完全構成 (全 4 プロパティ埋め) が parse 成功', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: validEventData,
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(true);
+      });
+
+      it('混在イベント (supplementary_category_slugs 2 件) が parse 成功', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work-a', 'work-b'],
+            supplementary_category_slugs: ['pop-up-store', 'store-collabo'],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(true);
+      });
+    });
+
+    describe('supplementary_category_slugs max(2) 制約 (Q5=A)', () => {
+      it('3 件 supplementary_category_slugs は parse 失敗 (maxItems: 2)', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work-a'],
+            supplementary_category_slugs: ['pop-up-store', 'store-collabo', 'exhibition'],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('空配列 supplementary_category_slugs は parse 成功', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work-a'],
+            supplementary_category_slugs: [],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(true);
+      });
+    });
+
+    describe('slug regex 制約 (URL 正準保護)', () => {
+      it('大文字 primary_category_slug は parse 失敗 (CATEGORY_SLUG_REGEX)', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'Collabo-Cafe', // 大文字混じり
+            title_slugs: ['work-a'],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('先頭ハイフン title_slug は parse 失敗 (TITLE_SLUG_REGEX)', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['-invalid-start'], // 先頭ハイフン
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('連続ハイフン title_slug は parse 失敗', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work--double-hyphen'], // 連続ハイフン
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('日本語 title_slug は parse 失敗 (ASCII lowercase + hyphen only)', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['呪術廻戦'], // 日本語
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+    });
+
+    describe('occurrences[] validation', () => {
+      it('starts_on が YYYY-MM-DD でない (`z.iso.date()` 拒否) と parse 失敗', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work-a'],
+            occurrences: [
+              {
+                venue_slug: null,
+                venue_label: 'テスト会場',
+                starts_on: '2026-13-01', // 無効月
+                ends_on: null,
+                official_url: null,
+              },
+            ],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('starts_on = 2026-02-30 (存在しない日) は parse 失敗', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work-a'],
+            occurrences: [
+              {
+                venue_slug: null,
+                venue_label: 'テスト会場',
+                starts_on: '2026-02-30',
+                ends_on: null,
+                official_url: null,
+              },
+            ],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('official_url が無効 URL だと parse 失敗', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work-a'],
+            occurrences: [
+              {
+                venue_slug: null,
+                venue_label: 'テスト会場',
+                starts_on: '2026-05-14',
+                ends_on: null,
+                official_url: 'not-a-url',
+              },
+            ],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('ends_on = null は parse 成功 (終了日未定 or 単日イベント)', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work-a'],
+            occurrences: [
+              {
+                venue_slug: null,
+                venue_label: 'テスト会場',
+                starts_on: '2026-05-14',
+                ends_on: null,
+                official_url: null,
+              },
+            ],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(true);
+      });
+
+      it('全 primary source フィールド埋めた occurrence は parse 成功', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work-a'],
+            occurrences: [
+              {
+                venue_slug: 'valid-venue',
+                venue_label: 'BOX cafe&space',
+                starts_on: '2026-05-14',
+                ends_on: '2026-07-05',
+                official_url: 'https://example.com/event',
+              },
+            ],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(true);
+      });
+    });
+
+    describe('runtime shape trust 回避 (Codex 中指摘 #3)', () => {
+      it('primary_category_slug が missing だと parse 失敗', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            // primary_category_slug 欠落
+            title_slugs: ['work-a'],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('title_slugs が missing だと parse 失敗', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            // title_slugs 欠落
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('title_slugs が string (配列でない) だと parse 失敗', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: 'not-an-array', // 型不一致
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
+
+      it('venue_label が number だと parse 失敗 (LLM 応答異常ケース)', () => {
+        const frontmatter = {
+          ...validFrontmatterSample7,
+          event_data: {
+            primary_category_slug: 'collabo-cafe',
+            title_slugs: ['work-a'],
+            occurrences: [
+              {
+                venue_slug: null,
+                venue_label: 12345 as any, // 型不一致 (LLM が number 返した想定)
+                starts_on: '2026-05-14',
+                ends_on: null,
+                official_url: null,
+              },
+            ],
+          },
+        };
+        const result = MdxFrontmatterSchema.safeParse(frontmatter);
+        expect(result.success).toBe(false);
+      });
     });
   });
 });
