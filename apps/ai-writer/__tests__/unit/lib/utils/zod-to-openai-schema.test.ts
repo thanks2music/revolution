@@ -110,6 +110,19 @@ describe('zodToOpenAiSchema', () => {
     ]);
   });
 
+  it('throws fail-loud when input schema declares a property as .optional() (strict mode requires .nullable())', () => {
+    // OpenAI strict mode requires every property to be in `required`. Silently promoting
+    // `.optional()` fields would paper over a schema authoring mistake (author probably meant
+    // `.nullable()` to express "may be absent"). Fail loud so drift is caught at conversion time.
+    const badSchema = z.object({
+      required_field: z.string(),
+      optional_field: z.string().optional(),
+    });
+    expect(() => zodToOpenAiSchema(badSchema, 'BadSchema')).toThrow(
+      /use `\.nullable\(\)` instead of `\.optional\(\)`/
+    );
+  });
+
   it('handles enum-typed fields (used by primary_category_slug)', () => {
     const schema = z.object({
       slug: z.enum(['collabo-cafe', 'pop-up-store', 'other-collabo']),
