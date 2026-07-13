@@ -70,20 +70,20 @@ function normalizeForOpenAiStrict(schema: unknown): unknown {
   if (out.type === 'object' && out.properties && typeof out.properties === 'object') {
     const propertyKeys = Object.keys(out.properties as Record<string, unknown>);
     // Fail loud when the input schema declared some property as `.optional()` — Zod emits it
-    // via a shorter `required` array (properties key missing). OpenAI strict mode requires all
-    // properties to be listed in `required`; silently promoting `.optional()` fields would paper
-    // over a schema authoring mistake, so we throw and force the author to switch to `.nullable()`.
-    if (Array.isArray(out.required)) {
-      const declared = new Set(out.required as string[]);
-      const missing = propertyKeys.filter((k) => !declared.has(k));
-      if (missing.length > 0) {
-        throw new Error(
-          `zod-to-openai-schema: property ${missing.map((k) => `"${k}"`).join(', ')} is not in the ` +
-            `input schema's \`required\` list (likely declared as \`.optional()\`). ` +
-            `OpenAI Structured Outputs strict mode requires all properties to be required — ` +
-            `use \`.nullable()\` instead of \`.optional()\` to express "may be absent" semantics.`
-        );
-      }
+    // via a shorter `required` array (properties key missing) or, if every property is optional,
+    // by omitting the `required` key entirely. Both cases must throw so the author is forced to
+    // switch to `.nullable()` for OpenAI Structured Outputs strict mode compatibility.
+    const declared = Array.isArray(out.required)
+      ? new Set(out.required as string[])
+      : new Set<string>();
+    const missing = propertyKeys.filter((k) => !declared.has(k));
+    if (missing.length > 0 && propertyKeys.length > 0) {
+      throw new Error(
+        `zod-to-openai-schema: property ${missing.map((k) => `"${k}"`).join(', ')} is not in the ` +
+          `input schema's \`required\` list (likely declared as \`.optional()\`). ` +
+          `OpenAI Structured Outputs strict mode requires all properties to be required — ` +
+          `use \`.nullable()\` instead of \`.optional()\` to express "may be absent" semantics.`
+      );
     }
     out.additionalProperties = false;
     out.required = propertyKeys;

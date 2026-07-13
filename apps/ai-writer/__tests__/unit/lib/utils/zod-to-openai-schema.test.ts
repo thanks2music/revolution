@@ -123,6 +123,21 @@ describe('zodToOpenAiSchema', () => {
     );
   });
 
+  it('throws fail-loud when a nested object is fully all-optional (Zod v4 omits `required` entirely)', () => {
+    // Edge case: when every field on an object is `.optional()`, Zod v4's `toJSONSchema()` may
+    // omit the `required` key altogether. The fail-loud guard must trigger in this case too,
+    // otherwise all-optional schemas silently get promoted to all-required at the wire layer.
+    const nestedAllOptional = z.object({
+      outer: z.object({
+        inner_a: z.string().optional(),
+        inner_b: z.number().optional(),
+      }),
+    });
+    expect(() => zodToOpenAiSchema(nestedAllOptional, 'AllOptional')).toThrow(
+      /use `\.nullable\(\)` instead of `\.optional\(\)`/
+    );
+  });
+
   it('handles enum-typed fields (used by primary_category_slug)', () => {
     const schema = z.object({
       slug: z.enum(['collabo-cafe', 'pop-up-store', 'other-collabo']),
