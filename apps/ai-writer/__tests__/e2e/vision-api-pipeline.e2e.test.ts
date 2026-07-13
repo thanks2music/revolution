@@ -234,9 +234,14 @@ describe.each(PROVIDERS_TO_TEST)(
     );
 
     it(`should throw error if API key is missing (${provider})`, () => {
-      const apiKeyEnvVar = provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
-      const originalKey = process.env[apiKeyEnvVar];
-      delete process.env[apiKeyEnvVar];
+      // Sprint C-α PR #268 R1 対応: Vision service の env resolution 優先順位変更
+      // (ANTHROPIC_API_KEY_VISION → ANTHROPIC_API_KEY) に追随し、claude provider の
+      // missing-key test では両 env variable を delete する必要がある
+      // (`claude-vision.service.ts` L54-58 参照)。
+      const apiKeyEnvVars =
+        provider === 'openai' ? ['OPENAI_API_KEY'] : ['ANTHROPIC_API_KEY_VISION', 'ANTHROPIC_API_KEY'];
+      const originalKeys = apiKeyEnvVars.map((k) => ({ key: k, value: process.env[k] }));
+      apiKeyEnvVars.forEach((k) => delete process.env[k]);
 
       expect(() => {
         VisionApiServiceFactory.create(provider);
@@ -247,9 +252,11 @@ describe.each(PROVIDERS_TO_TEST)(
       );
 
       // Restore
-      if (originalKey) {
-        process.env[apiKeyEnvVar] = originalKey;
-      }
+      originalKeys.forEach(({ key, value }) => {
+        if (value !== undefined) {
+          process.env[key] = value;
+        }
+      });
     });
   },
 );

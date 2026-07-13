@@ -65,6 +65,12 @@ export function generateMdxFrontmatter(
     prefectures,
     prefectureSlugs,
     tags,
+    // Sprint C-α (MVP §11): EventFactCard 4 フィールド + event_data (Q4=C derived、Step 5.5 orchestrator から)
+    eventStartDate,
+    eventEndDate,
+    venue,
+    officialUrl,
+    eventData,
   } = input;
 
   // Validation
@@ -123,6 +129,25 @@ export function generateMdxFrontmatter(
     frontmatter.ai_model = aiModel;
   }
 
+  // Sprint C-α (MVP §11): EventFactCard 4 フィールド + event_data (Q4=C derived、Step 5.5 orchestrator から)
+  // Frontend の EventFactCard コンポーネントが「あと N 日」黄色バッジ表示に使用。
+  // undefined フィールドは serialize しない (MdxFrontmatterSchema は optional)。
+  if (eventStartDate !== undefined) {
+    frontmatter.event_start_date = eventStartDate;
+  }
+  if (eventEndDate !== undefined) {
+    frontmatter.event_end_date = eventEndDate;
+  }
+  if (venue !== undefined) {
+    frontmatter.venue = venue;
+  }
+  if (officialUrl !== undefined) {
+    frontmatter.official_url = officialUrl;
+  }
+  if (eventData !== undefined) {
+    frontmatter.event_data = eventData;
+  }
+
   return frontmatter;
 }
 
@@ -143,6 +168,30 @@ export function generateMdxFrontmatter(
  * // ---
  * ```
  */
+/**
+ * YAML double-quoted scalar 内で危険な文字を escape する。
+ *
+ * @description
+ * YAML 1.2 の double-quoted scalars は C-style escape を解釈するため、backslash (\)
+ * と double-quote (") の両方を escape する必要がある。旧 pattern
+ * (`.replace(/"/g, '\\"')`) は backslash 未対応で、literal `\` を含む値が来ると
+ * `\n` (改行) / `\t` (タブ) / `\b` (バックスペース) 等の C-style escape として解釈され
+ * 不正な YAML を生成する可能性がある。
+ *
+ * @param s escape 対象の文字列
+ * @returns backslash + double-quote を escape 済の文字列
+ *
+ * @remarks
+ * Sprint C-α PR #268 R1 対応 (claude[bot] comment #2/#4/#5/#6 の YAML escape ギャップ指摘)。
+ * 本関数は Sprint C-α で新規追加した箇所 (`venue`, `event_data.occurrences[].venue_label`)
+ * にのみ適用する。既存の他 escape 箇所 (`title` / `excerpt` / `categories[]` / 他 array
+ * 系全 10+ 箇所) は Sprint Refactor-A で `yaml.dump` への統一と合わせて修正予定
+ * (comment #5 の 5. 提案方向性)。
+ */
+function escapeYamlDoubleQuoted(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
   const lines: string[] = ['---'];
 
@@ -228,6 +277,82 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
       .map((tag) => `"${tag.replace(/"/g, '\\"')}"`)
       .join(', ');
     lines.push(`tags: [${tagsYaml}]`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sprint C-α (MVP §11): EventFactCard 4 フィールド + 開催ブロック雛形 event_data
+  // ---------------------------------------------------------------------------
+  // Frontend の EventFactCard コンポーネントが「あと N 日」黄色バッジ表示に使用する
+  // 4 フィールド (event_start_date / event_end_date / venue / official_url) と、
+  // 機械可読の開催ブロック雛形 event_data を frontmatter に serialize。
+  //
+  // - 4 フィールドは Q4=C の deterministic mapping (event-fact-card-mapper.ts) で導出済
+  // - event_data は Zod EventDataSchema で validate 済 (Step 5.5 orchestrator で parse)
+  // - undefined フィールドは serialize しない (MdxFrontmatterSchema は optional)
+  // - event_data は nested YAML として serialize (primary_category_slug / title_slugs[] /
+  //   supplementary_category_slugs[] / occurrences[])
+  // ---------------------------------------------------------------------------
+
+  if (frontmatter.event_start_date) {
+    lines.push(`event_start_date: "${frontmatter.event_start_date}"`);
+  }
+  if (frontmatter.event_end_date) {
+    lines.push(`event_end_date: "${frontmatter.event_end_date}"`);
+  }
+  if (frontmatter.venue) {
+    // Sprint C-α PR #268 R1: backslash も escape する helper に統一 (claude[bot] R1)
+    const escapedVenue = escapeYamlDoubleQuoted(frontmatter.venue);
+    lines.push(`venue: "${escapedVenue}"`);
+  }
+  if (frontmatter.official_url) {
+    // Sprint C-α PR #268 R3 (claude[bot] R3-rev1): venue/venue_label と同じ escape helper を
+    // official_url にも適用。`z.string().url()` は WHATWG URL parser を通すが、` " ` や `\`
+    // 等の character を reject しないため、LLM 抽出 URL 内に quote が含まれると
+    // YAML injection の可能性 (unescaped で double-quoted scalar 内に落ちる)。
+    const escapedOfficialUrl = escapeYamlDoubleQuoted(frontmatter.official_url);
+    lines.push(`official_url: "${escapedOfficialUrl}"`);
+  }
+
+  // event_data (nested YAML): Sprint C-α で新設、Zod EventDataSchema 準拠
+  if (frontmatter.event_data) {
+    const ed = frontmatter.event_data;
+    lines.push('event_data:');
+    lines.push(`  primary_category_slug: "${ed.primary_category_slug}"`);
+
+    // title_slugs[] (常に配列、Zod schema で必須)
+    const titleSlugsYaml = ed.title_slugs
+      .map((slug) => `"${slug}"`)
+      .join(', ');
+    lines.push(`  title_slugs: [${titleSlugsYaml}]`);
+
+    // supplementary_category_slugs[] (optional、maxItems: 2)
+    if (ed.supplementary_category_slugs && ed.supplementary_category_slugs.length > 0) {
+      const suppSlugsYaml = ed.supplementary_category_slugs
+        .map((slug) => `"${slug}"`)
+        .join(', ');
+      lines.push(`  supplementary_category_slugs: [${suppSlugsYaml}]`);
+    }
+
+    // occurrences[] (optional、MVP は通常 1 要素)
+    if (ed.occurrences && ed.occurrences.length > 0) {
+      lines.push('  occurrences:');
+      for (const occ of ed.occurrences) {
+        lines.push(`    - venue_slug: ${occ.venue_slug === null ? 'null' : `"${occ.venue_slug}"`}`);
+        if (occ.venue_label !== null) {
+          // Sprint C-α PR #268 R1: backslash も escape する helper に統一 (claude[bot] R1)
+          const escapedLabel = escapeYamlDoubleQuoted(occ.venue_label);
+          lines.push(`      venue_label: "${escapedLabel}"`);
+        } else {
+          lines.push(`      venue_label: null`);
+        }
+        lines.push(`      starts_on: "${occ.starts_on}"`);
+        lines.push(`      ends_on: ${occ.ends_on === null ? 'null' : `"${occ.ends_on}"`}`);
+        // Sprint C-α PR #268 R3 (claude[bot] R3-rev1): official_url も escape helper で保護
+        lines.push(
+          `      official_url: ${occ.official_url === null ? 'null' : `"${escapeYamlDoubleQuoted(occ.official_url)}"`}`,
+        );
+      }
+    }
   }
 
   lines.push('---');

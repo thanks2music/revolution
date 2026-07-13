@@ -52,11 +52,19 @@ export class ClaudeVisionService implements IVisionApiService {
   private logDir: string;
 
   constructor(config?: { apiKey?: string }) {
-    const key = config?.apiKey || process.env.ANTHROPIC_API_KEY;
+    // Vision 専用 Anthropic API key (`ANTHROPIC_API_KEY_VISION`) を優先し、無ければ
+    // 通常の `ANTHROPIC_API_KEY` にフォールバックする (Sprint C-α で追加)。
+    // BOSS 意図: Vision 用と generation 用のキーを分けることで課金トラッキング + rate limit を
+    // 分離する。旧実装は `ANTHROPIC_API_KEY` 単一のみを読んでいたため、Vision 専用キーを設定
+    // していても認識されず animatecafe 型 URL の生成が全滅していた (2026-07-12 実測)。
+    const key =
+      config?.apiKey ||
+      process.env.ANTHROPIC_API_KEY_VISION ||
+      process.env.ANTHROPIC_API_KEY;
 
     if (!key) {
       throw new Error(
-        'Claude API key is required. Set ANTHROPIC_API_KEY environment variable or pass it to the constructor.'
+        'Claude API key is required. Set ANTHROPIC_API_KEY_VISION (preferred) or ANTHROPIC_API_KEY environment variable, or pass it to the constructor.'
       );
     }
 

@@ -23,6 +23,8 @@ import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
+import { extractEventFactCardFields } from '../utils/event-fact-card-mapper';
+import { EventDataSchema, type EventData } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
 import { getStepDisplay, getStepContext } from './pipeline-steps';
 import {
@@ -1095,6 +1097,108 @@ export class ArticleGenerationMdxService {
       // 複数作品コラボ対応: works[] から全作品タイトルを抽出
       const workTitles = detailedExtraction?.works?.map((w) => w.title) || [];
 
+      // ------------------------------------------------------------------
+      // Sprint C-α (MVP §11) Step 5.5: EventFactCard 4 フィールド + event_data 導出
+      // ------------------------------------------------------------------
+      // Q4=C の deterministic mapping:
+      //   1. event_data.occurrences[0] を primary source
+      //   2. detailedExtraction.開催期間 / 店舗名 / 公式サイトURL を fallback
+      //
+      // - event_data (プロンプト応答) は EventDataSchema で Zod parse (LLM 応答の
+      //   runtime-shape trust を回避、Codex 2026-07-12 review 中指摘 #3 対応)
+      // - 4 フィールド導出は extractEventFactCardFields helper (event-fact-card-mapper.ts、
+      //   Layer 1 test 38 件で検証済、date-order guard 含む = Codex 高指摘 #2 対応)
+      // - silent drop 時は debug log で観測性確保 (Codex 中指摘対応、AI pipeline 品質)
+      // ------------------------------------------------------------------
+      // Sprint C-α PR #268 R3 (claude[bot] R3-rev2): shared schema から `EventData` 型を
+      // 直接 import することで、`ReturnType<typeof EventDataSchema.parse>` の間接参照を排除。
+      // schema 定義側の意図 (LLM 応答の zod validate 後の canonical type) がより明快に。
+      let parsedEventData: EventData | undefined;
+      // Sprint C-α PR #268 R1 対応 (claude[bot] comment #2-#6): `as any` cast を廃止し、
+      // `ExtractionResult.event_data: unknown` (extraction.service.ts) 経由の型契約に置き換え。
+      // `unknown` 型なので直接プロパティアクセスは型エラーで防がれ、必ず zod 検証を経由する。
+      const rawEventData = detailedExtraction?.event_data;
+      if (rawEventData !== undefined) {
+        const parseResult = EventDataSchema.safeParse(rawEventData);
+        if (parseResult.success) {
+          parsedEventData = parseResult.data;
+        } else {
+          // LLM 応答の event_data が schema に適合しなかった場合の observability
+          console.warn(
+            `${getStepContext('mdx-assembly', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
+            parseResult.error.issues.slice(0, 3), // 最初の 3 件の issue のみログ (noise 回避)
+          );
+        }
+      }
+
+      // fallback 経路の start/end date の存在有無を先に判定して、helper 呼び出しの副作用を
+      // 予測可能にする (droppedFields observability の判定精度向上、Sprint C-α PR #268 R1 対応)。
+      const fallbackHadStart =
+        detailedExtraction?.開催期間?.開始?.年 != null && detailedExtraction?.開催期間?.開始?.日付 != null;
+      const fallbackHadEnd =
+        detailedExtraction?.開催期間?.終了?.未定 === false &&
+        detailedExtraction?.開催期間?.終了?.年 != null &&
+        detailedExtraction?.開催期間?.終了?.日付 != null;
+      // event_data.occurrences[0] からの primary 経路の start/end 供給有無 (both が指定された時のみ
+      // date-order guard drop の対象になる、helper のロジックと一致させる)
+      const primaryOccurrence = parsedEventData?.occurrences?.[0];
+      const primaryHadBoth = primaryOccurrence?.starts_on != null && primaryOccurrence?.ends_on != null;
+
+      const eventFactCardFields = extractEventFactCardFields({
+        eventDataOccurrences: parsedEventData?.occurrences,
+        extractionPeriod: detailedExtraction?.開催期間,
+        extractionStoreName: detailedExtraction?.店舗名,
+        extractionOfficialUrl: selectionResult.primary_official_url,
+      });
+
+      // silent drop の observability (Codex 中指摘 + claude[bot] R1 comment #2/#5/#6 対応)。
+      // R2 (comment #4950581671) 改善: mixed source (start=primary、end=fallback 等) で
+      // date-order guard 発火時に fallback として誤ラベルされていた問題を修正、date-order
+      // 可能性を先に検知する順序に変更。
+      //
+      // 判定順序:
+      //   1. date-order guard 可能性 (両ソースで start/end が候補として存在するのに end drop)
+      //      = primary/fallback のどこかで start があり、かつ primary/fallback のどこかで end が
+      //        あるのに helper が end を undefined で返した
+      //   2. fallback 単独 parse 失敗 (fallback で end が候補として存在するが helper が拒否)
+      const primaryHadStart = primaryOccurrence?.starts_on != null;
+      const primaryHadEnd = primaryOccurrence?.ends_on != null;
+      const anyStartCandidate = fallbackHadStart || primaryHadStart;
+      const anyEndCandidate = fallbackHadEnd || primaryHadEnd;
+
+      const droppedFields: string[] = [];
+      if (eventFactCardFields.event_start_date === undefined) {
+        if (fallbackHadStart) {
+          droppedFields.push('event_start_date (fallback extractionPeriod.開始 が存在するが helper が拒否)');
+        }
+      }
+      if (eventFactCardFields.event_end_date === undefined) {
+        // date-order guard 発火の可能性を優先判定 (mixed source 対応)
+        if (anyStartCandidate && anyEndCandidate) {
+          droppedFields.push(
+            'event_end_date (start/end 両ソース候補が揃うが helper が拒否 = date-order guard で drop の可能性 (end < start)、または end 側 parse 失敗)',
+          );
+        } else if (fallbackHadEnd) {
+          droppedFields.push('event_end_date (fallback extractionPeriod.終了 が存在するが helper が拒否)');
+        } else if (primaryHadEnd) {
+          droppedFields.push('event_end_date (primary event_data.occurrences[0].ends_on が存在するが helper が拒否)');
+        }
+      }
+      if (droppedFields.length > 0) {
+        console.warn(
+          `${getStepContext('mdx-assembly', 'event_fact_card')} ⚠️ EventFactCard フィールドが drop されました:`,
+          droppedFields,
+        );
+      }
+
+      console.log(`${getStepContext('mdx-assembly', 'event_fact_card')} EventFactCard 導出:`, {
+        event_start_date: eventFactCardFields.event_start_date ?? 'undefined',
+        event_end_date: eventFactCardFields.event_end_date ?? 'undefined',
+        venue: eventFactCardFields.venue ?? 'undefined',
+        official_url: eventFactCardFields.official_url ?? 'undefined',
+        has_event_data: parsedEventData !== undefined,
+      });
+
       const mdxArticle = generateMdxArticle(
         {
           postId: eventRecord.postId,
@@ -1117,6 +1221,12 @@ export class ArticleGenerationMdxService {
           // AI メタデータ（記事生成に使用したプロバイダーとモデル）
           aiProvider: providerName,
           aiModel: aiModel,
+          // Sprint C-α (MVP §11): EventFactCard 4 フィールド + event_data
+          eventStartDate: eventFactCardFields.event_start_date,
+          eventEndDate: eventFactCardFields.event_end_date,
+          venue: eventFactCardFields.venue,
+          officialUrl: eventFactCardFields.official_url,
+          eventData: parsedEventData,
         },
         finalContent // プレースホルダー置換済みの本文を使用
       );

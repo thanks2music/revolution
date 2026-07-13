@@ -1,20 +1,96 @@
 {
-  "generatedAt": "2026-05-24T03:31:51.188Z",
-  "totalArticles": 1,
+  "generatedAt": "2026-07-13T13:53:07.678Z",
+  "totalArticles": 5,
   "articles": [
     {
-      "slug": "dry-run-1777859987178",
+      "slug": "dry-run-1783842264552",
+      "title": "トイ・ストーリー5 カフェ in 5都市 7月3日より開催",
+      "date": "2026-07-12T07:43:54.932Z",
+      "excerpt": "ディズニー＆ピクサー最新作「トイ・ストーリー5」公開にあわせ、東京・大阪・愛知・宮城で期間限定コラボカフェ「OH MY CAFE」がオープン。ウッディやバズ、新キャラをイメージしたフォトジェニックなメニューや限定グッズが登場。",
+      "categories": [
+        "トイ・ストーリー5",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/toy-story-5/dry-run-1783842264552.mdx",
+      "post_id": "dry-run-1783842264552",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "トイ・ストーリー5",
+      "work_titles": [
+        "トイ・ストーリー5"
+      ],
+      "work_slug": "toy-story-5",
+      "prefectures": [
+        "東京都",
+        "神奈川県",
+        "愛知県",
+        "大阪府",
+        "宮城県"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "kanagawa",
+        "aichi",
+        "osaka",
+        "miyagi"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-07-03",
+      "event_end_date": "2026-09-13",
+      "venue": "OH MY CAFE（表参道ヒルズ）、BOX cafe&space ルミネエスト新宿2号店、BOX cafe&space グローバルゲート名古屋2号店、BOX cafe&space ＫＩＴＴＥ OSAKA 2号店、BALLER:S イオンモール新利府店",
+      "official_url": "https://toy5-ohmycafe.ltr-online.com"
+    },
+    {
+      "slug": "dry-run-1783842220100",
+      "title": "ポチャッコ カフェ in 東京/大阪 7月2日よりコラボ開催",
+      "date": "2026-07-12T07:43:12.954Z",
+      "excerpt": "ポチャッコのテーマカフェ「POCHACCO CAFE」が2026年7月2日より東京・大阪で期間限定オープン。モノクロ調の店内で、限定フードやドリンク、オリジナルグッズ、予約特典が楽しめます。",
+      "categories": [
+        "ポチャッコ",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/pochacco/dry-run-1783842220100.mdx",
+      "post_id": "dry-run-1783842220100",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "ポチャッコ",
+      "work_titles": [
+        "ポチャッコ"
+      ],
+      "work_slug": "pochacco",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-07-02",
+      "event_end_date": "2026-08-16",
+      "venue": "BOX cafe&space 東京ソラマチ店、BOX cafe&space 天王寺MIO店",
+      "official_url": "https://monokuro-2026.ltr-online.com"
+    },
+    {
+      "slug": "dry-run-1783842177341",
       "title": "薬屋のひとりごと カフェ in 池袋 5月14日よりコラボ開催",
-      "date": "2026-05-04T01:59:14.830Z",
-      "excerpt": "『薬屋のひとりごと』原作小説カフェが東京・大阪で期間限定開催。作品に登場する料理をテーマにしたメニューやオリジナルグッズを楽しめ、公式レシピを原作者監修で再現。事前予約も受付中。",
+      "date": "2026-07-12T07:42:34.018Z",
+      "excerpt": "『薬屋のひとりごと』原作小説カフェが東京・大阪で期間限定開催。猫猫ゆかりの料理を原作者監修レシピで楽しめるほか、限定グッズや事前予約特典も登場。",
       "categories": [
         "薬屋のひとりごと",
         "コラボカフェ"
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/kusuriyanohitorigoto/dry-run-1777859987178.mdx",
-      "post_id": "dry-run-1777859987178",
+      "filePath": "apps/ai-writer/content/collabo-cafe/kusuriyanohitorigoto/dry-run-1783842177341.mdx",
+      "post_id": "dry-run-1783842177341",
       "year": 2026,
       "event_type": "collabo-cafe",
       "event_title": "コラボカフェ",
@@ -29,7 +105,83 @@
       "prefecture_slugs": [
         "tokyo"
       ],
-      "ogImage": "[DRY RUN] https://images.anime-events.com/collabo-cafe/2026/dry-run-1777859987178/dry-run-1777859987178/og-image.jpg"
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-05-14",
+      "event_end_date": "2026-07-05",
+      "venue": "BOX cafe&space マツモトキヨシ池袋Part2店",
+      "official_url": "https://kusuriya-cafe.ltr-online.com/lp/kusuriya-cafe-s007"
+    },
+    {
+      "slug": "dry-run-1783842143952",
+      "title": "初音ミク カフェ in 池袋/名古屋/大阪 8月7日よりコラボ開催",
+      "date": "2026-07-12T07:42:13.233Z",
+      "excerpt": "初音ミクのコラボカフェ「初音ミク Wa Modern Cafe」が東京・愛知・大阪に期間限定オープン。和モダンな御膳や甘味、限定グッズ、予約特典も登場します。",
+      "categories": [
+        "初音ミク",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/hatsune-miku/dry-run-1783842143952.mdx",
+      "post_id": "dry-run-1783842143952",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "初音ミク",
+      "work_titles": [
+        "初音ミク"
+      ],
+      "work_slug": "hatsune-miku",
+      "prefectures": [
+        "東京都",
+        "愛知県",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "aichi",
+        "osaka"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/dry-run-1783842143952/715b9009-702c-4e02-80dc-a9d12b1eb678.jpg",
+      "event_start_date": "2026-08-07",
+      "event_end_date": "2026-09-27",
+      "venue": "BOX cafe&space グランドスケープ池袋店、BOX cafe&space グローバルゲート名古屋2号店、BOX cafe&space 天王寺MIO店",
+      "official_url": "https://miku-wa-modern-cafe.ltr-online.com"
+    },
+    {
+      "slug": "dry-run-1783842113836",
+      "title": "D.Gray-man カフェ in 東京/大阪 7月15日よりコラボ開催",
+      "date": "2026-07-12T07:40:01.854Z",
+      "excerpt": "「D.Gray-man」コラボカフェが東京・キャラウムカフェと大阪・CAFE EPIC TALEで7月15日より順次開催。描き下ろしイラストの限定グッズや作品世界観のメニュー、特典コースターも登場。",
+      "categories": [
+        "D.Gray-man",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/d-gray-man/dry-run-1783842113836.mdx",
+      "post_id": "dry-run-1783842113836",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "D.Gray-man",
+      "work_titles": [
+        "D.Gray-man"
+      ],
+      "work_slug": "d-gray-man",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/dry-run-1783842113836/b4a95b5a-5895-4dff-9f6d-e73f91bf502f.png",
+      "event_start_date": "2026-07-15",
+      "event_end_date": "2026-10-18",
+      "venue": "キャラウムカフェ（池袋 マルビル4階）、CAFE EPIC TALE",
+      "official_url": "https://www.medicos-e.net/newsdetail/d-gray-man/?utm_source=collabo_cafe_dot_com&utm_medium=collabo_cafe_dot_com&utm_campaign=collabo_cafe_dot_com&utm_id=collabo_cafe_dot_com"
     }
   ]
 }
