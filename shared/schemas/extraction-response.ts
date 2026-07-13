@@ -106,22 +106,30 @@ const StrictEventDataSchema = z.object({
   occurrences: z.array(StrictEventDataOccurrenceSchema),
 });
 
+/**
+ * `_reasoning` schema の strict-mode 変種。
+ *
+ * 全 field を `.nullable()` にすることで、VTuber / character-brand / idol などの
+ * 「該当なし」が正当なイベントで LLM が hallucinated filler ('該当なし' / '不明' 等) を
+ * 強制されないようにする (Sprint C-β P0 review F4 対応、strict mode で全 required にすると
+ * schema-conform pressure で false reasoning が混入する回帰を回避)。
+ */
 const ReasoningSchema = z.object({
-  works: z.string(),
-  work_vs_store: z.string(),
-  store: z.string(),
-  開催期間: z.string(),
-  メディアタイプ: z.string(),
-  原作タイプ: z.string(),
-  原作者名: z.string(),
-  スタジオ名: z.string(),
-  監督名: z.string(),
-  シリーズ名: z.string(),
-  開催都道府県: z.string(),
-  メニュー詳細リスト: z.string(),
-  メニューテーマ説明: z.string(),
-  具体的なメニュー名リスト: z.string(),
-  event_data_reason: z.string(),
+  works: z.string().nullable(),
+  work_vs_store: z.string().nullable(),
+  store: z.string().nullable(),
+  開催期間: z.string().nullable(),
+  メディアタイプ: z.string().nullable(),
+  原作タイプ: z.string().nullable(),
+  原作者名: z.string().nullable(),
+  スタジオ名: z.string().nullable(),
+  監督名: z.string().nullable(),
+  シリーズ名: z.string().nullable(),
+  開催都道府県: z.string().nullable(),
+  メニュー詳細リスト: z.string().nullable(),
+  メニューテーマ説明: z.string().nullable(),
+  具体的なメニュー名リスト: z.string().nullable(),
+  event_data_reason: z.string().nullable(),
 });
 
 export const ExtractionResponseSchema = z.object({
@@ -139,6 +147,15 @@ export const ExtractionResponseSchema = z.object({
   略称: z.string().nullable(),
   キャラクター名: z.array(z.string()).nullable(),
   テーマ名: z.string().nullable(),
+  /**
+   * 開催回数 (「第N弾」形式に統一、v2.3.0)。
+   *
+   * YAML 側 `extraction_fields` (L277) には存在するが `output.schema` セクションに
+   * 未追加のため strict mode で silent drop していた (Sprint C-β P0 review F1 対応)。
+   * downstream `article-generation-mdx.extractedEventNumber` + title-generation quality
+   * score が参照するため schema に明示追加。
+   */
+  開催回数: z.string().nullable(),
   ノベルティ名: z.string().nullable(),
   ノベルティ種類数: z.string().nullable(),
   メニュー種類数: z.string().nullable(),

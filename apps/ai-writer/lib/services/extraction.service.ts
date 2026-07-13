@@ -11,7 +11,10 @@
  * - ExtractionService: 公式サイトHTMLから詳細情報を抽出
  */
 
-import { ExtractionResponseSchema } from '@revolution/schemas/extraction-response';
+import {
+  ExtractionResponseSchema,
+  type ExtractionResponse,
+} from '@revolution/schemas/extraction-response';
 
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
@@ -496,6 +499,24 @@ ${schemaStr}
         }
 
         jsonData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+      }
+
+      // Runtime validation against ExtractionResponseSchema.
+      // OpenAI strict mode already enforces the schema server-side (Sprint C-β P0), but
+      // Anthropic/Gemini providers ignore `responseSchema` and only honor `responseFormat: 'json'` —
+      // this safeParse closes the gap so provider-agnostic downstream code sees the same contract.
+      // On mismatch we log a warning and fall through to the lenient legacy path so a single
+      // hallucinated enum value or missing optional field doesn't abort the whole extraction
+      // (defense-in-depth, not a hard gate). Sprint C-β P0 review F2 対応.
+      const parsed = ExtractionResponseSchema.safeParse(jsonData);
+      if (!parsed.success) {
+        console.warn(
+          '[Extraction] ExtractionResponseSchema.safeParse failed — falling back to lenient parse. Provider may be non-strict (Anthropic/Gemini) or LLM emitted off-schema fields.',
+          { issues: parsed.error.issues.slice(0, 5) }
+        );
+      } else {
+        // Prefer the validated shape when available (removes untyped `any` reads downstream).
+        jsonData = parsed.data satisfies ExtractionResponse;
       }
 
       // === 新構造の取得（複数作品コラボ対応 v1.2.0） ===

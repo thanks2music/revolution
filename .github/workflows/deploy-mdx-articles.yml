@@ -77,8 +77,25 @@ jobs:
           git config --local user.name "github-actions[bot]"
 
           index_file="apps/frontend/lib/mdx/article-index.json"
-          old_content=$(git show HEAD:"$index_file" 2>/dev/null | jq 'del(.generatedAt)' || echo '{}')
-          new_content=$(jq 'del(.generatedAt)' "$index_file")
+
+          # Sprint C-β P0 review F9: distinguish "file not on HEAD" (initial run / new file) from
+          # "malformed JSON on HEAD" (merge conflict marker, partial write). Silently falling back
+          # to '{}' for both would mask a corrupted HEAD version by committing over it.
+          if git cat-file -e "HEAD:$index_file" 2>/dev/null; then
+            if ! old_content=$(git show "HEAD:$index_file" | jq -e 'del(.generatedAt)' 2>/dev/null); then
+              echo "::error::HEAD version of $index_file is malformed JSON. Refusing to overwrite."
+              echo "Manual investigation required (merge conflict marker or partial write)."
+              exit 1
+            fi
+          else
+            echo "$index_file not present on HEAD — treating as new file."
+            old_content='{}'
+          fi
+
+          if ! new_content=$(jq 'del(.generatedAt)' "$index_file"); then
+            echo "::error::Freshly generated $index_file is malformed JSON."
+            exit 1
+          fi
 
           if [ "$old_content" = "$new_content" ]; then
             echo "No meaningful changes to article index (generatedAt only)"
