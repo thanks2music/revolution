@@ -119,7 +119,7 @@ const StrictEventDataSchema = z.object({
  * を強制されないようにする。strict mode で全 required にすると schema-conform pressure で
  * false reasoning が混入する回帰を回避。
  */
-const ReasoningSchema = z.object({
+export const ReasoningSchema = z.object({
   works: z.string().nullable(),
   work_vs_store: z.string().nullable(),
   store: z.string().nullable(),
@@ -175,6 +175,7 @@ export const ExtractionResponseSchema = z.object({
 
 export type ExtractionResponse = z.infer<typeof ExtractionResponseSchema>;
 
-/** Zod SoT から derive、hand-maintained TS union との drift を排除。 */
+/** Zod SoT から derive、hand-maintained TS union / interface との drift を排除。 */
 export type MediaType = z.infer<typeof MediaTypeEnum>;
 export type SourceType = z.infer<typeof SourceTypeEnum>;
+export type ExtractionReasoning = z.infer<typeof ReasoningSchema>;

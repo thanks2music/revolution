@@ -16,6 +16,7 @@ import {
   type ExtractionResponse,
   type MediaType as MediaTypeFromSchema,
   type SourceType as SourceTypeFromSchema,
+  type ExtractionReasoning,
 } from '@revolution/schemas/extraction-response';
 
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
@@ -240,22 +241,11 @@ export interface ExtractionResult {
    * AIの判断理由（デバッグ用）
    * 主要な判断箇所についてAIがどのような根拠で結論に至ったかを記録。
    *
-   * `ReasoningSchema` は `.nullable()` (string | null) で declare するため interface も
-   * `string | null` で受ける (`string | undefined` との mismatch で `=== undefined` check が
-   * 期待通り動かない footgun を回避)。
+   * `ReasoningSchema` (extraction-response.ts) を SoT として derive し、hand-maintained subset
+   * との drift を回避。全 15 field が `string | null`、_reasoning 自体は optional。lenient
+   * fallback path では LLM が subset のみ返す可能性があるため `Partial<>` で type-safe に受ける。
    */
-  _reasoning?: {
-    /** 開催期間の判断理由（年またぎ判定ロジック含む） */
-    開催期間?: string | null;
-    /** メディアタイプの判断理由 */
-    メディアタイプ?: string | null;
-    /** 原作タイプの判断理由 */
-    原作タイプ?: string | null;
-    /** 原作者名の判断理由（敬称選択ロジック含む） */
-    原作者名?: string | null;
-    /** 開催都道府県の特定根拠（店舗名/住所/明示的記載から） */
-    開催都道府県?: string | null;
-  };
+  _reasoning?: Partial<ExtractionReasoning>;
   /**
    * Sprint C-α で新設された「開催ブロック雛形」(MVP §11)。プロンプト応答の
    * `event_data` フィールドをそのまま受け渡す (未検証、`unknown` 型)。
