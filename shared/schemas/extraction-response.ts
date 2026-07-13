@@ -17,7 +17,11 @@ import { TITLE_SLUG_REGEX } from './title';
  * (Sprint C-α で顕在化した「LLM が event_data 自体を省略する」失敗パターンの解消)。
  */
 
-const MediaTypeEnum = z.enum([
+/**
+ * メディアタイプ enum (Sprint C-β P0 R3: Zod SoT で export、TS union との drift を回避)。
+ * `MediaType` type は `z.infer<typeof MediaTypeEnum>` で derive する。
+ */
+export const MediaTypeEnum = z.enum([
   'anime',
   'anime_movie',
   'manga',
@@ -35,7 +39,11 @@ const MediaTypeEnum = z.enum([
   'other',
 ]);
 
-const SourceTypeEnum = z.enum([
+/**
+ * 原作タイプ enum (Sprint C-β P0 R3: Zod SoT で export、TS union との drift を回避)。
+ * `SourceType` type は `z.infer<typeof SourceTypeEnum>` で derive する。
+ */
+export const SourceTypeEnum = z.enum([
   'manga_based',
   'novel_based',
   'original_with_creator',
@@ -173,3 +181,7 @@ export const ExtractionResponseSchema = z.object({
 });
 
 export type ExtractionResponse = z.infer<typeof ExtractionResponseSchema>;
+
+/** Sprint C-β P0 R3: Zod SoT から derive、hand-maintained TS union との drift を排除。 */
+export type MediaType = z.infer<typeof MediaTypeEnum>;
+export type SourceType = z.infer<typeof SourceTypeEnum>;

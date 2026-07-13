@@ -92,8 +92,11 @@ jobs:
             old_content='{}'
           fi
 
-          if ! new_content=$(jq 'del(.generatedAt)' "$index_file"); then
-            echo "::error::Freshly generated $index_file is malformed JSON."
+          # Sprint C-β P0 R3-4: 両側で `jq -e` を使い symmetry を維持
+          # (null / false top-level output も失敗扱いにする — 通常の JSON object では発火しないが
+          # 万一 article-index が literal `null` 等になった場合を明示的に fail-loud にする)。
+          if ! new_content=$(jq -e 'del(.generatedAt)' "$index_file"); then
+            echo "::error::Freshly generated $index_file is malformed JSON or produced null top-level output."
             exit 1
           fi
 

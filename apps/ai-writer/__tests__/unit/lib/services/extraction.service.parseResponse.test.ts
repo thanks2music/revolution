@@ -194,6 +194,26 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract (Sprint
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  it('falls back to lenient parse when LLM emits schema-shaped but regex-invalid slug (R3-5 round-trip gap)', async () => {
+    // Sprint C-β P0 R3-5 対応: OpenAI strict mode の送信 schema は `pattern` を strip されるため、
+    // LLM は regex 違反の slug ('Foo Bar' など空白入り) を emit しても strict mode を pass する。
+    // しかし ExtractionResponseSchema.safeParse は Zod refinement (TITLE_SLUG_REGEX) を honor する
+    // ため、strict-accepted-but-Zod-rejected な入力で lenient fallback path が発火することを担保。
+    const conforming = JSON.parse(buildSchemaConformingResponse());
+    conforming.event_data.title_slugs = ['Foo Bar']; // 空白入り = TITLE_SLUG_REGEX 違反
+    const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(JSON.stringify(conforming)));
+
+    await service.extractFromOfficialSite({
+      primary_official_url: 'https://example.com',
+      page_content: 'stub',
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('ExtractionResponseSchema.safeParse failed'),
+      expect.objectContaining({ issues: expect.any(Array) })
+    );
+  });
+
   it('falls back to lenient parse when LLM emits unschemed URL (F5 downstream safety net)', async () => {
     const conforming = JSON.parse(buildSchemaConformingResponse());
     conforming.event_data.occurrences[0].official_url = 'collabo-cafe.com/xxx'; // no scheme

@@ -14,6 +14,8 @@
 import {
   ExtractionResponseSchema,
   type ExtractionResponse,
+  type MediaType as MediaTypeFromSchema,
+  type SourceType as SourceTypeFromSchema,
 } from '@revolution/schemas/extraction-response';
 
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
@@ -73,49 +75,24 @@ export interface EventPeriod {
 }
 
 /**
- * メディアタイプ
- * 作品がどのメディア形態で展開されているかを識別
+ * メディアタイプ (Sprint C-β P0 R3: Zod schema SoT から derive、hand-maintained union との
+ * drift を排除。追加/削除は `shared/schemas/extraction-response.ts` の `MediaTypeEnum` で行う)。
+ *
+ * 定義値: anime / anime_movie / manga / game / vtuber / youtuber / idol / utaite /
+ * voice_actor / vocaloid / character / movie / drama / tokusatsu / other
  */
-export type MediaType =
-  | 'anime'        // TVアニメ作品
-  | 'anime_movie'  // 劇場版アニメ（漫画原作含む）
-  | 'manga'        // 漫画作品（アニメ化されていない）
-  | 'game'         // ゲーム作品
-  | 'vtuber'       // VTuber
-  | 'youtuber'     // YouTuber・ゲーム実況者・ストリーマー
-  | 'idol'         // アイドル・芸能人・音楽アーティスト
-  | 'voice_actor'  // 声優
-  | 'vocaloid'     // ボーカロイド/音声合成キャラクター
-  | 'character'    // キャラクターブランド（サンリオ、すみっコぐらし等）
-  | 'movie'        // 映画（実写・CGアニメ含む）
-  | 'drama'        // ドラマ作品
-  | 'tokusatsu'    // 特撮作品（仮面ライダー、ウルトラマン等）
-  | 'other';       // その他
+export type MediaType = MediaTypeFromSchema;
 
 /**
- * 原作タイプ
- * 原作者（個人クリエイター）が存在するかを判断するための分類
+ * 原作タイプ (Sprint C-β P0 R3: Zod schema SoT から derive)。追加/削除は
+ * `shared/schemas/extraction-response.ts` の `SourceTypeEnum` で行う。
+ *
+ * 定義値: manga_based / novel_based / original_with_creator / game_creator_based /
+ * illustrator_based / music_creator_based / original_anime / studio_production /
+ * game_original / character_brand / vocaloid_character / youtuber / idol / voice_actor /
+ * tokusatsu / other
  */
-export type SourceType =
-  // 原作者が存在する（敬称は「先生」）
-  | 'manga_based'            // 漫画原作
-  | 'novel_based'            // 小説・ライトノベル原作
-  | 'original_with_creator'  // 個人クリエイターのオリジナル映像
-  | 'game_creator_based'     // ゲームクリエイター個人
-  | 'illustrator_based'      // イラストレーター個人
-  // クリエイター名を使う（敬称は「さん」）
-  | 'music_creator_based'    // 作曲家/ボカロP個人（米津玄師さん等）
-  // 原作者が存在しない
-  | 'original_anime'         // オリジナルアニメ
-  | 'studio_production'      // スタジオ・企業制作
-  | 'game_original'          // ゲーム会社制作
-  | 'character_brand'        // キャラクターブランド
-  | 'vocaloid_character'     // ボーカロイドキャラクター
-  | 'youtuber'               // YouTuber・VTuber・ストリーマー本人
-  | 'idol'                   // アイドル・芸能人・音楽アーティスト本人
-  | 'voice_actor'            // 声優本人
-  | 'tokusatsu'              // 特撮作品
-  | 'other';                 // その他
+export type SourceType = SourceTypeFromSchema;
 
 /**
  * Token usage statistics from AI provider
@@ -257,19 +234,23 @@ export interface ExtractionResult {
   TwitterURL: string | null;
   /**
    * AIの判断理由（デバッグ用）
-   * 主要な判断箇所についてAIがどのような根拠で結論に至ったかを記録
+   * 主要な判断箇所についてAIがどのような根拠で結論に至ったかを記録。
+   *
+   * Sprint C-β P0 R3 対応: `ReasoningSchema` が `.nullable()` (string | null) で
+   * declare するため、interface も `string | null` に統一 (旧 `string | undefined`
+   * との型 mismatch で `=== undefined` check が期待通り動かない latent footgun を回避)。
    */
   _reasoning?: {
     /** 開催期間の判断理由（年またぎ判定ロジック含む） */
-    開催期間?: string;
+    開催期間?: string | null;
     /** メディアタイプの判断理由 */
-    メディアタイプ?: string;
+    メディアタイプ?: string | null;
     /** 原作タイプの判断理由 */
-    原作タイプ?: string;
+    原作タイプ?: string | null;
     /** 原作者名の判断理由（敬称選択ロジック含む） */
-    原作者名?: string;
+    原作者名?: string | null;
     /** 開催都道府県の特定根拠（店舗名/住所/明示的記載から） */
-    開催都道府県?: string;
+    開催都道府県?: string | null;
   };
   /**
    * Sprint C-α で新設された「開催ブロック雛形」(MVP §11)。プロンプト応答の
