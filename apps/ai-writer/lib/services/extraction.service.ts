@@ -23,6 +23,18 @@ import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
 
 /**
+ * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
+ *
+ * `ExtractionResponseSchema` is static, so the Zod → JSON Schema conversion +
+ * `normalizeForOpenAiStrict` tree walk only need to run once at import time
+ * (Sprint C-β P0 R1 対応、per-request 再計算撤廃で ~30 field × N 呼び出し分の CPU/GC を削減)。
+ */
+const EXTRACTION_RESPONSE_OPENAI_SCHEMA = zodToOpenAiSchema(
+  ExtractionResponseSchema,
+  'ExtractionResponse'
+);
+
+/**
  * 抽出リクエスト
  */
 export interface ExtractionRequest {
@@ -135,8 +147,11 @@ export interface WorkEntry {
 export interface StoreEntry {
   /** 店舗名 */
   name: string;
-  /** 複数店舗フラグ */
-  multiple_locations: boolean;
+  /**
+   * 複数店舗・開催エリアに関する生テキスト (YAML SoT `2-extraction.yaml` L862 の
+   * `type: ["string", "null"]` に整合、旧 boolean フラグ表現からの訂正、Sprint C-β P0 R1 対応)。
+   */
+  multiple_locations: string | null;
 }
 
 /**
@@ -322,12 +337,11 @@ export class ExtractionService {
       // AI Provider経由でAPI呼び出し。OpenAI Provider は responseSchema を honor して Structured
       // Outputs (strict mode) で event_data object の完全出力を強制 (Sprint C-β P0)。
       // Anthropic / Gemini Provider は responseSchema を無視して responseFormat='json' fallback。
-      const responseSchema = zodToOpenAiSchema(ExtractionResponseSchema, 'ExtractionResponse');
       const response = await this.aiProvider.sendMessage(prompt, {
         maxTokens: 4000, // HTML全文対応のため増加
         temperature: 0.2, // 抽出は正確性を重視
         responseFormat: 'json',
-        responseSchema,
+        responseSchema: EXTRACTION_RESPONSE_OPENAI_SCHEMA,
       });
 
       // AI APIのレスポンスをログ出力
@@ -515,8 +529,12 @@ ${schemaStr}
           { issues: parsed.error.issues.slice(0, 5) }
         );
       } else {
-        // Prefer the validated shape when available (removes untyped `any` reads downstream).
-        jsonData = parsed.data satisfies ExtractionResponse;
+        // Replace with the validated shape. `jsonData` は below の property access で `any` として
+        // 使われ続けるが、`parsed.data` は `ExtractionResponse` 型として narrowed 済 = 内部で保持
+        // される値の shape は保証される (Sprint C-β P0 R1: previous `satisfies` は type assertion なし
+        // で documentation only だったため意味を明示的に comment 化)。
+        const validated: ExtractionResponse = parsed.data;
+        jsonData = validated;
       }
 
       // === 新構造の取得（複数作品コラボ対応 v1.2.0） ===

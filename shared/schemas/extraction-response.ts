@@ -56,6 +56,12 @@ const SourceTypeEnum = z.enum([
 
 const WorkEntrySchema = z.object({
   title: z.string(),
+  /**
+   * 英語タイトル (slug 生成用、`WorkEntry` interface 経由で slug-generation service が使用)。
+   * strict mode ではオブジェクトから未宣言 property が silent drop されるため、safeParse 経由でも
+   * 保持されるよう schema に明示。`.nullable()` で LLM が省略できる契約 (Sprint C-β P0 R1 対応)。
+   */
+  title_en: z.string().nullable(),
   is_primary: z.boolean(),
 });
 
@@ -84,12 +90,16 @@ const MenuItemSchema = z.object({
   copyright: z.string().nullable(),
 });
 
+// Note: `.url()` / `.min(1)` は `normalizeForOpenAiStrict` で API 送信時に `format` / `minLength`
+// として strip されるが、parseResponse で行う `ExtractionResponseSchema.safeParse` は Zod refinement
+// を honor するため、LLM が unschemed URL や空文字を返した場合の runtime rejection として機能する
+// (Sprint C-β P0 R1 対応、EventDataOccurrenceSchema in mdx-frontmatter.ts:44 と契約を統一)。
 const StrictEventDataOccurrenceSchema = z.object({
   venue_slug: z.string().regex(VENUE_SLUG_REGEX).nullable(),
-  venue_label: z.string().nullable(),
+  venue_label: z.string().min(1).nullable(),
   starts_on: z.iso.date(),
   ends_on: z.iso.date().nullable(),
-  official_url: z.string().nullable(),
+  official_url: z.string().url().nullable(),
 });
 
 /**
