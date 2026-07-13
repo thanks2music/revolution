@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 import { CATEGORY_SLUG_REGEX } from './category';
+import { EventDataOccurrenceSchema } from './mdx-frontmatter';
 import { TITLE_SLUG_REGEX } from './title';
-import { VENUE_SLUG_REGEX } from './venue';
 
 /**
  * Schema-SDD 真実源: extraction step (`2-extraction.yaml`) の LLM 応答 top-level JSON。
@@ -90,30 +90,21 @@ const MenuItemSchema = z.object({
   copyright: z.string().nullable(),
 });
 
-// Note: `.url()` / `.min(1)` は `normalizeForOpenAiStrict` で API 送信時に `format` / `minLength`
-// として strip されるが、parseResponse で行う `ExtractionResponseSchema.safeParse` は Zod refinement
-// を honor するため、LLM が unschemed URL や空文字を返した場合の runtime rejection として機能する
-// (Sprint C-β P0 R1 対応、EventDataOccurrenceSchema in mdx-frontmatter.ts:44 と契約を統一)。
-const StrictEventDataOccurrenceSchema = z.object({
-  venue_slug: z.string().regex(VENUE_SLUG_REGEX).nullable(),
-  venue_label: z.string().min(1).nullable(),
-  starts_on: z.iso.date(),
-  ends_on: z.iso.date().nullable(),
-  official_url: z.string().url().nullable(),
-});
-
 /**
  * `event_data` schema の strict-mode 変種。
  *
- * mdx-frontmatter.ts の `EventDataSchema` は `.optional()` を含み OpenAI strict mode 非対応
- * のため、Sprint C-β P0 では strict 変種を extraction-response 内でインライン定義する。
- * 相互互換: `EventDataSchema.safeParse(strict output)` は成功する (strict variant はより厳密)。
+ * mdx-frontmatter.ts の `EventDataSchema` は outer level で `supplementary_category_slugs` /
+ * `occurrences` に `.optional()` を持ち OpenAI strict mode 非対応のため、outer level のみ
+ * strict 変種を extraction-response 内でインライン定義。inner `EventDataOccurrenceSchema` は
+ * 既に strict-mode 適合 (全 field required, `.nullable()` 併用) のため mdx-frontmatter から
+ * 直接 import して drift を回避 (Sprint C-β P0 R2 対応)。
+ * 相互互換: `EventDataSchema.safeParse(strict output)` は成功する。
  */
 const StrictEventDataSchema = z.object({
   primary_category_slug: z.string().regex(CATEGORY_SLUG_REGEX),
   title_slugs: z.array(z.string().regex(TITLE_SLUG_REGEX)),
   supplementary_category_slugs: z.array(z.string().regex(CATEGORY_SLUG_REGEX)).max(2),
-  occurrences: z.array(StrictEventDataOccurrenceSchema),
+  occurrences: z.array(EventDataOccurrenceSchema),
 });
 
 /**

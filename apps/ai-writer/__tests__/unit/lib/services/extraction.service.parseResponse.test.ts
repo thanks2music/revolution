@@ -176,6 +176,24 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract (Sprint
     );
   });
 
+  it('derives 複数店舗情報 from store.multiple_locations when top-level field is stripped by safeParse (Sprint C-β P0 R2)', async () => {
+    // On safeParse success, jsonData becomes parsed.data (z.object strips unknown top-level keys).
+    // 複数店舗情報 is legacy (YAML SoT L919: subsumed by store.multiple_locations) and not declared
+    // in ExtractionResponseSchema, so the fallback in parseResponse must derive it from store.
+    const conforming = JSON.parse(buildSchemaConformingResponse());
+    conforming.store.multiple_locations = '東京・大阪・名古屋の 3 店舗で開催';
+    const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(JSON.stringify(conforming)));
+
+    const result = await service.extractFromOfficialSite({
+      primary_official_url: 'https://example.com',
+      page_content: 'stub',
+    });
+
+    expect(result.複数店舗情報).toBe('東京・大阪・名古屋の 3 店舗で開催');
+    // safeParse should succeed (no warning) — confirms the strip-then-fallback path fires
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it('falls back to lenient parse when LLM emits unschemed URL (F5 downstream safety net)', async () => {
     const conforming = JSON.parse(buildSchemaConformingResponse());
     conforming.event_data.occurrences[0].official_url = 'collabo-cafe.com/xxx'; // no scheme

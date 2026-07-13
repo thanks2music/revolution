@@ -640,7 +640,11 @@ ${schemaStr}
         開催期間: eventPeriod,
         公式サイトURL: officialUrl,
         略称: jsonData.略称 || null,
-        複数店舗情報: jsonData.複数店舗情報 || null,
+        // Sprint C-β P0 R2 対応: safeParse success 時に `z.object()` が top-level legacy field
+        // `複数店舗情報` を strip する regression の防御。YAML SoT (`2-extraction.yaml` L919) が
+        // `複数店舗情報 は store.multiple_locations に統合` を明示するため、legacy top-level → 新
+        // nested `store.multiple_locations` の順で fallback (作品名/店舗名 の後方互換パターンと整合)。
+        複数店舗情報: jsonData.複数店舗情報 || jsonData.store?.multiple_locations || null,
         キャラクター名: jsonData.キャラクター名 || null,
         テーマ名: jsonData.テーマ名 || null,
         開催回数: jsonData.開催回数 || null,
