@@ -7,19 +7,18 @@ import { TITLE_SLUG_REGEX } from './title';
 /**
  * Schema-SDD 真実源: extraction step (`2-extraction.yaml`) の LLM 応答 top-level JSON。
  *
- * Sprint C-β P0 で新設。OpenAI Structured Outputs (json_schema strict mode) に渡すため、
- * 以下の strict 準拠制約を満たす:
+ * OpenAI Structured Outputs (json_schema strict mode) に渡すため、以下の strict 準拠制約を満たす:
  * - すべての `properties` を `required` 化 (`.optional()` 不使用、null 許容は `.nullable()`)
  * - `additionalProperties: false` は adapter 層 (`zod-to-openai-schema.ts`) で全 object に自動付与
  *
- * `2-extraction.yaml` の `output.schema` (L826-1079、Templates R4 最終 `70eeda4`) と 1:1 対応。
- * 未知フィールドが LLM 応答に混入するのを防ぐと同時に、`event_data` object を強制出力させる
- * (Sprint C-α で顕在化した「LLM が event_data 自体を省略する」失敗パターンの解消)。
+ * `2-extraction.yaml` の `output.schema` と 1:1 対応。未知フィールドが LLM 応答に混入するのを防ぐ
+ * と同時に、strict mode の `additionalProperties: false` を通じて `event_data` object を強制出力
+ * させる。
  */
 
 /**
- * メディアタイプ enum (Sprint C-β P0 R3: Zod SoT で export、TS union との drift を回避)。
- * `MediaType` type は `z.infer<typeof MediaTypeEnum>` で derive する。
+ * メディアタイプ enum。`MediaType` type は `z.infer<typeof MediaTypeEnum>` で derive し、
+ * hand-maintained TS union との drift を回避する (追加/削除は本ファイルのみで完結)。
  */
 export const MediaTypeEnum = z.enum([
   'anime',
@@ -40,8 +39,8 @@ export const MediaTypeEnum = z.enum([
 ]);
 
 /**
- * 原作タイプ enum (Sprint C-β P0 R3: Zod SoT で export、TS union との drift を回避)。
- * `SourceType` type は `z.infer<typeof SourceTypeEnum>` で derive する。
+ * 原作タイプ enum。`SourceType` type は `z.infer<typeof SourceTypeEnum>` で derive し、
+ * hand-maintained TS union との drift を回避する。
  */
 export const SourceTypeEnum = z.enum([
   'manga_based',
@@ -67,7 +66,7 @@ const WorkEntrySchema = z.object({
   /**
    * 英語タイトル (slug 生成用、`WorkEntry` interface 経由で slug-generation service が使用)。
    * strict mode ではオブジェクトから未宣言 property が silent drop されるため、safeParse 経由でも
-   * 保持されるよう schema に明示。`.nullable()` で LLM が省略できる契約 (Sprint C-β P0 R1 対応)。
+   * 保持されるよう schema に明示。`.nullable()` で LLM が省略できる契約。
    */
   title_en: z.string().nullable(),
   is_primary: z.boolean(),
@@ -103,10 +102,9 @@ const MenuItemSchema = z.object({
  *
  * mdx-frontmatter.ts の `EventDataSchema` は outer level で `supplementary_category_slugs` /
  * `occurrences` に `.optional()` を持ち OpenAI strict mode 非対応のため、outer level のみ
- * strict 変種を extraction-response 内でインライン定義。inner `EventDataOccurrenceSchema` は
- * 既に strict-mode 適合 (全 field required, `.nullable()` 併用) のため mdx-frontmatter から
- * 直接 import して drift を回避 (Sprint C-β P0 R2 対応)。
- * 相互互換: `EventDataSchema.safeParse(strict output)` は成功する。
+ * strict 変種をインライン定義。inner `EventDataOccurrenceSchema` は既に strict-mode 適合
+ * (全 field required, `.nullable()` 併用) のため mdx-frontmatter から直接 import して drift を
+ * 回避。`EventDataSchema.safeParse(strict output)` は相互互換で成功する。
  */
 const StrictEventDataSchema = z.object({
   primary_category_slug: z.string().regex(CATEGORY_SLUG_REGEX),
@@ -116,12 +114,10 @@ const StrictEventDataSchema = z.object({
 });
 
 /**
- * `_reasoning` schema の strict-mode 変種。
- *
- * 全 field を `.nullable()` にすることで、VTuber / character-brand / idol などの
- * 「該当なし」が正当なイベントで LLM が hallucinated filler ('該当なし' / '不明' 等) を
- * 強制されないようにする (Sprint C-β P0 review F4 対応、strict mode で全 required にすると
- * schema-conform pressure で false reasoning が混入する回帰を回避)。
+ * `_reasoning` schema。全 field を `.nullable()` にすることで、VTuber / character-brand /
+ * idol などの「該当なし」が正当なイベントで LLM が hallucinated filler ('該当なし' / '不明' 等)
+ * を強制されないようにする。strict mode で全 required にすると schema-conform pressure で
+ * false reasoning が混入する回帰を回避。
  */
 const ReasoningSchema = z.object({
   works: z.string().nullable(),
@@ -157,12 +153,9 @@ export const ExtractionResponseSchema = z.object({
   キャラクター名: z.array(z.string()).nullable(),
   テーマ名: z.string().nullable(),
   /**
-   * 開催回数 (「第N弾」形式に統一、v2.3.0)。
-   *
-   * YAML 側 `extraction_fields` (L277) には存在するが `output.schema` セクションに
-   * 未追加のため strict mode で silent drop していた (Sprint C-β P0 review F1 対応)。
-   * downstream `article-generation-mdx.extractedEventNumber` + title-generation quality
-   * score が参照するため schema に明示追加。
+   * 開催回数 (「第N弾」形式、v2.3.0)。downstream `article-generation-mdx.extractedEventNumber`
+   * + title-generation quality score が参照するため、YAML `extraction_fields` にあり
+   * `output.schema` に未追加だった穴を Zod 側で明示 declare する。
    */
   開催回数: z.string().nullable(),
   ノベルティ名: z.string().nullable(),
@@ -182,6 +175,6 @@ export const ExtractionResponseSchema = z.object({
 
 export type ExtractionResponse = z.infer<typeof ExtractionResponseSchema>;
 
-/** Sprint C-β P0 R3: Zod SoT から derive、hand-maintained TS union との drift を排除。 */
+/** Zod SoT から derive、hand-maintained TS union との drift を排除。 */
 export type MediaType = z.infer<typeof MediaTypeEnum>;
 export type SourceType = z.infer<typeof SourceTypeEnum>;

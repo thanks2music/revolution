@@ -1,7 +1,7 @@
 /**
  * Zod schema → OpenAI Structured Outputs (strict mode) 対応 JSON Schema 変換 helper。
  *
- * Sprint C-β P0 で新設。OpenAI Chat Completions API の `response_format: { type: 'json_schema',
+ * OpenAI Chat Completions API の `response_format: { type: 'json_schema',
  * json_schema: { ..., strict: true } }` に渡すため、以下の strict-mode 制約を満たす JSON Schema
  * を生成する:
  * - 全 object に `additionalProperties: false` (Zod v4 `toJSONSchema` の default)
@@ -11,11 +11,10 @@
  *
  * Zod v4 の native `z.toJSONSchema()` を使用する。外部 package `zod-to-json-schema@3.25.2` は
  * peerDependency で zod v4 を宣言しつつも v4 スキーマに対して空の `$schema` のみを返す既知の
- * 互換問題があるため採用しない (実測 2026-07-14)。
+ * 互換問題があるため採用しない。
  *
  * @see https://platform.openai.com/docs/guides/structured-outputs
  * @see https://zod.dev/json-schema (Zod v4 native toJSONSchema)
- * @see revolution-templates/docs/plan/2026-07-12-sprint-c-alpha-event-data-prompt-improvement.md §8.2 P0
  */
 
 import { z } from 'zod';

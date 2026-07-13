@@ -583,9 +583,8 @@ Respond ONLY with JSON format. No other text should be included.
       };
 
       // Structured Outputs (strict mode) — responseSchema provided:
-      // The model is forced to emit JSON matching the schema exactly. Used by extraction step
-      // (Sprint C-β P0) to guarantee event_data object completeness.
-      // Fallback to weak json_object mode when only responseFormat: 'json' is given.
+      // The model is forced to emit JSON matching the schema exactly. Fallback to weak
+      // json_object mode when only responseFormat: 'json' is given (Anthropic/Gemini path).
       if (options?.responseSchema) {
         createOptions.response_format = {
           type: 'json_schema',

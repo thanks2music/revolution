@@ -123,3 +123,60 @@ describe('zodToOpenAiSchema', () => {
     ]);
   });
 });
+
+describe('zodToOpenAiSchema — ExtractionResponseSchema shape assertion (OpenAI strict-mode round-trip guard)', () => {
+  /**
+   * Zod schema の変更で unsupported keyword が strict-mode API に混入するのを防ぐ回帰テスト。
+   * ExtractionResponseSchema を実際に変換し、OpenAI が拒否する keyword 群
+   * (format / pattern / minLength / maxLength / minimum / maximum / minItems / maxItems /
+   * exclusiveMinimum / exclusiveMaximum / uniqueItems / default / multipleOf / $schema) が
+   * 出力に残っていないこと + strict mode の必須制約 (全 object に additionalProperties: false +
+   * properties が required に全登録) を assert する。
+   */
+  it('produces a strict-mode-compatible schema for ExtractionResponseSchema (no unsupported keywords, all objects additionalProperties:false + required)', async () => {
+    const { ExtractionResponseSchema } = await import(
+      '@revolution/schemas/extraction-response'
+    );
+    const { schema } = zodToOpenAiSchema(ExtractionResponseSchema, 'ExtractionResponse');
+    const stringified = JSON.stringify(schema);
+
+    const disallowed = [
+      'format',
+      'pattern',
+      'minLength',
+      'maxLength',
+      'minimum',
+      'maximum',
+      'exclusiveMinimum',
+      'exclusiveMaximum',
+      'minItems',
+      'maxItems',
+      'uniqueItems',
+      'default',
+      'multipleOf',
+      '$schema',
+    ];
+    for (const keyword of disallowed) {
+      expect(stringified).not.toContain(`"${keyword}"`);
+    }
+
+    // Recursively assert every object node has additionalProperties:false + required covers all properties.
+    const walkAssert = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        node.forEach(walkAssert);
+        return;
+      }
+      if (node === null || typeof node !== 'object') return;
+      const obj = node as Record<string, unknown>;
+      if (obj.type === 'object' && obj.properties && typeof obj.properties === 'object') {
+        expect(obj.additionalProperties).toBe(false);
+        expect(Array.isArray(obj.required)).toBe(true);
+        expect((obj.required as string[]).sort()).toEqual(
+          Object.keys(obj.properties as Record<string, unknown>).sort()
+        );
+      }
+      Object.values(obj).forEach(walkAssert);
+    };
+    walkAssert(schema);
+  });
+});

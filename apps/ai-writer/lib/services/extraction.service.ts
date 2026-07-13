@@ -27,9 +27,9 @@ import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
 /**
  * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
  *
- * `ExtractionResponseSchema` is static, so the Zod → JSON Schema conversion +
- * `normalizeForOpenAiStrict` tree walk only need to run once at import time
- * (Sprint C-β P0 R1 対応、per-request 再計算撤廃で ~30 field × N 呼び出し分の CPU/GC を削減)。
+ * `ExtractionResponseSchema` is static — the Zod → JSON Schema conversion + strict-mode
+ * keyword stripping only need to run once at import time, so we hoist to module scope to
+ * avoid repeating the ~30-field tree walk on every extraction request.
  */
 const EXTRACTION_RESPONSE_OPENAI_SCHEMA = zodToOpenAiSchema(
   ExtractionResponseSchema,
@@ -75,8 +75,8 @@ export interface EventPeriod {
 }
 
 /**
- * メディアタイプ (Sprint C-β P0 R3: Zod schema SoT から derive、hand-maintained union との
- * drift を排除。追加/削除は `shared/schemas/extraction-response.ts` の `MediaTypeEnum` で行う)。
+ * メディアタイプ (Zod schema SoT から derive、hand-maintained union との drift を排除)。
+ * 追加/削除は `shared/schemas/extraction-response.ts` の `MediaTypeEnum` で行う。
  *
  * 定義値: anime / anime_movie / manga / game / vtuber / youtuber / idol / utaite /
  * voice_actor / vocaloid / character / movie / drama / tokusatsu / other
@@ -84,7 +84,7 @@ export interface EventPeriod {
 export type MediaType = MediaTypeFromSchema;
 
 /**
- * 原作タイプ (Sprint C-β P0 R3: Zod schema SoT から derive)。追加/削除は
+ * 原作タイプ (Zod schema SoT から derive)。追加/削除は
  * `shared/schemas/extraction-response.ts` の `SourceTypeEnum` で行う。
  *
  * 定義値: manga_based / novel_based / original_with_creator / game_creator_based /
@@ -112,9 +112,9 @@ export interface WorkEntry {
   /** 日本語作品名 */
   title: string;
   /**
-   * 英語タイトル (slug 生成用、オプション、Sprint C-β P0 R4 対応で `string | null` に統一)。
-   * `WorkEntrySchema` (extraction-response.ts:63) は `.nullable()` で declare するため、
-   * safeParse success 後は `null` (undefined ではない) が流れる可能性がある。
+   * 英語タイトル (slug 生成用、オプション)。`WorkEntrySchema` (extraction-response.ts) が
+   * `.nullable()` で declare するため、safeParse success 後は `null` (undefined ではない) が
+   * 流れる可能性があり、interface も `string | null` で受ける。
    */
   title_en?: string | null;
   /** 主作品フラグ（URL slug に使用する作品） */
@@ -129,8 +129,8 @@ export interface StoreEntry {
   /** 店舗名 */
   name: string;
   /**
-   * 複数店舗・開催エリアに関する生テキスト (YAML SoT `2-extraction.yaml` L862 の
-   * `type: ["string", "null"]` に整合、旧 boolean フラグ表現からの訂正、Sprint C-β P0 R1 対応)。
+   * 複数店舗・開催エリアに関する生テキスト。YAML SoT (`2-extraction.yaml` の `store.multiple_locations:
+   * type: ["string", "null"]`) に整合させた string | null で、旧 boolean フラグ表現は誤りだった。
    */
   multiple_locations: string | null;
 }
@@ -240,9 +240,9 @@ export interface ExtractionResult {
    * AIの判断理由（デバッグ用）
    * 主要な判断箇所についてAIがどのような根拠で結論に至ったかを記録。
    *
-   * Sprint C-β P0 R3 対応: `ReasoningSchema` が `.nullable()` (string | null) で
-   * declare するため、interface も `string | null` に統一 (旧 `string | undefined`
-   * との型 mismatch で `=== undefined` check が期待通り動かない latent footgun を回避)。
+   * `ReasoningSchema` は `.nullable()` (string | null) で declare するため interface も
+   * `string | null` で受ける (`string | undefined` との mismatch で `=== undefined` check が
+   * 期待通り動かない footgun を回避)。
    */
   _reasoning?: {
     /** 開催期間の判断理由（年またぎ判定ロジック含む） */
@@ -320,7 +320,7 @@ export class ExtractionService {
       }
 
       // AI Provider経由でAPI呼び出し。OpenAI Provider は responseSchema を honor して Structured
-      // Outputs (strict mode) で event_data object の完全出力を強制 (Sprint C-β P0)。
+      // Outputs (strict mode) で event_data object の完全出力を強制する。
       // Anthropic / Gemini Provider は responseSchema を無視して responseFormat='json' fallback。
       const response = await this.aiProvider.sendMessage(prompt, {
         maxTokens: 4000, // HTML全文対応のため増加
@@ -501,12 +501,12 @@ ${schemaStr}
       }
 
       // Runtime validation against ExtractionResponseSchema.
-      // OpenAI strict mode already enforces the schema server-side (Sprint C-β P0), but
-      // Anthropic/Gemini providers ignore `responseSchema` and only honor `responseFormat: 'json'` —
-      // this safeParse closes the gap so provider-agnostic downstream code sees the same contract.
-      // On mismatch we log a warning and fall through to the lenient legacy path so a single
-      // hallucinated enum value or missing optional field doesn't abort the whole extraction
-      // (defense-in-depth, not a hard gate). Sprint C-β P0 review F2 対応.
+      // OpenAI strict mode already enforces the schema server-side, but Anthropic/Gemini providers
+      // ignore `responseSchema` and only honor `responseFormat: 'json'` — this safeParse closes
+      // the gap so provider-agnostic downstream code sees the same contract. On mismatch we log
+      // a warning and fall through to the lenient legacy path so a single hallucinated enum
+      // value or missing optional field doesn't abort the whole extraction (defense-in-depth,
+      // not a hard gate).
       const parsed = ExtractionResponseSchema.safeParse(jsonData);
       if (!parsed.success) {
         console.warn(
@@ -516,8 +516,8 @@ ${schemaStr}
       } else {
         // Replace with the validated shape. `jsonData` は below の property access で `any` として
         // 使われ続けるが、`parsed.data` は `ExtractionResponse` 型として narrowed 済 = 内部で保持
-        // される値の shape は保証される (Sprint C-β P0 R1: previous `satisfies` は type assertion なし
-        // で documentation only だったため意味を明示的に comment 化)。
+        // される値の shape は保証される (documentation-only な `satisfies` は避け、明示的な typed
+        // local variable で narrowing を表現)。
         const validated: ExtractionResponse = parsed.data;
         jsonData = validated;
       }
@@ -616,6 +616,10 @@ ${schemaStr}
         is_multi_work_collaboration: isMultiWork,
 
         // === 後方互換性フィールド ===
+        // 作品名/店舗名 は上記 `works[]`/`store` から導出済み変数を使用。
+        // OpenAI strict mode success path では safeParse が top-level `作品名`/`店舗名` を strip
+        // するため、`jsonData.作品名`/`jsonData.店舗名` は事実上 lenient fallback path のみで生きる
+        // (`複数店舗情報` と同構造)。ここで直接読まないのは意図的。
         作品名: workTitle,
         メディアタイプ: jsonData.メディアタイプ || 'anime',
         原作タイプ: jsonData.原作タイプ || 'other',
@@ -625,15 +629,14 @@ ${schemaStr}
         開催期間: eventPeriod,
         公式サイトURL: officialUrl,
         略称: jsonData.略称 || null,
-        // Sprint C-β P0 R2 対応 (R4 comment 強化):
         // `ExtractionResponseSchema` は default (non-passthrough) の `z.object()` を使うため、
         // safeParse success 時に top-level legacy field は全て silently strip される。
-        // 現状 revolution 側で fallback が必要な legacy field は以下の enumerated set のみ:
+        // 現状 fallback が必要な legacy field は以下の enumerated set のみ:
         //   - 作品名 (works[] 経由で導出、上記 workTitle 参照)
         //   - 店舗名 (store 経由で導出、上記 storeName 参照)
         //   - 複数店舗情報 (store.multiple_locations 経由、本行)
         // 将来 YAML `extraction_fields` に新 legacy field を追加する場合は、ここに同パターンの
-        // fallback を追加するか、または ExtractionResponseSchema にも declare すること。
+        // fallback を追加するか、または `ExtractionResponseSchema` にも declare すること。
         複数店舗情報: jsonData.複数店舗情報 || jsonData.store?.multiple_locations || null,
         キャラクター名: jsonData.キャラクター名 || null,
         テーマ名: jsonData.テーマ名 || null,

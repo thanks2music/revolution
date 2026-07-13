@@ -98,7 +98,7 @@ describe('OpenAIProvider — Layer 2 contract', () => {
     expect(call.max_tokens).toBeUndefined();
   });
 
-  it('passes response_format = json_schema with strict:true when responseSchema is provided (Sprint C-β P0)', async () => {
+  it('passes response_format = json_schema with strict:true when responseSchema is provided', async () => {
     const provider = new OpenAIProvider();
     const schema = {
       type: 'object',

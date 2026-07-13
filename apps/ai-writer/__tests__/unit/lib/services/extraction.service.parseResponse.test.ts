@@ -1,7 +1,7 @@
 /**
  * Layer 2 contract tests for ExtractionService.parseResponse (via extractFromOfficialSite).
  *
- * Verifies the Sprint C-β P0 safeParse-then-fallback behavior added to parseResponse:
+ * Verifies the safeParse-then-fallback behavior added to parseResponse:
  * - Schema-conforming LLM response → validated data used downstream
  * - Non-conforming response → warning logged, lenient legacy path still returns a result
  * - Provider-agnostic (Anthropic/Gemini also honor the runtime validation gate)
@@ -110,7 +110,7 @@ function buildSchemaConformingResponse() {
   });
 }
 
-describe('ExtractionService.parseResponse — Layer 2 safeParse contract (Sprint C-β P0)', () => {
+describe('ExtractionService.parseResponse — Layer 2 safeParse contract', () => {
   let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -123,7 +123,7 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract (Sprint
     jest.restoreAllMocks();
   });
 
-  it('preserves 開催回数 field through validated safeParse path (Sprint C-β P0 F1)', async () => {
+  it('preserves 開催回数 field through validated safeParse path', async () => {
     const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(buildSchemaConformingResponse()));
     const result = await service.extractFromOfficialSite({
       primary_official_url: 'https://example.com',
@@ -134,7 +134,7 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract (Sprint
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it('validated path carries event_data object through unchanged (Sprint C-β P0 main goal)', async () => {
+  it('validated path carries event_data object through unchanged (P0 main goal)', async () => {
     const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(buildSchemaConformingResponse()));
     const result = await service.extractFromOfficialSite({
       primary_official_url: 'https://example.com',
@@ -176,7 +176,7 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract (Sprint
     );
   });
 
-  it('derives 複数店舗情報 from store.multiple_locations when top-level field is stripped by safeParse (Sprint C-β P0 R2)', async () => {
+  it('derives 複数店舗情報 from store.multiple_locations when top-level field is stripped by safeParse', async () => {
     // On safeParse success, jsonData becomes parsed.data (z.object strips unknown top-level keys).
     // 複数店舗情報 is legacy (YAML SoT L919: subsumed by store.multiple_locations) and not declared
     // in ExtractionResponseSchema, so the fallback in parseResponse must derive it from store.
@@ -194,10 +194,10 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract (Sprint
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it('falls back to lenient parse when LLM emits schema-shaped but regex-invalid slug (R3-5 round-trip gap)', async () => {
-    // Sprint C-β P0 R3-5 対応: OpenAI strict mode の送信 schema は `pattern` を strip されるため、
-    // LLM は regex 違反の slug ('Foo Bar' など空白入り) を emit しても strict mode を pass する。
-    // しかし ExtractionResponseSchema.safeParse は Zod refinement (TITLE_SLUG_REGEX) を honor する
+  it('falls back to lenient parse when LLM emits schema-shaped but regex-invalid slug', async () => {
+    // OpenAI strict mode の送信 schema は `pattern` を strip されるため、LLM は regex 違反の
+    // slug ('Foo Bar' など空白入り) を emit しても strict mode を pass する。しかし
+    // ExtractionResponseSchema.safeParse は Zod refinement (TITLE_SLUG_REGEX) を honor する
     // ため、strict-accepted-but-Zod-rejected な入力で lenient fallback path が発火することを担保。
     const conforming = JSON.parse(buildSchemaConformingResponse());
     conforming.event_data.title_slugs = ['Foo Bar']; // 空白入り = TITLE_SLUG_REGEX 違反
@@ -214,7 +214,7 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract (Sprint
     );
   });
 
-  it('falls back to lenient parse when LLM emits unschemed URL (F5 downstream safety net)', async () => {
+  it('falls back to lenient parse when LLM emits unschemed URL (downstream safety net)', async () => {
     const conforming = JSON.parse(buildSchemaConformingResponse());
     conforming.event_data.occurrences[0].official_url = 'collabo-cafe.com/xxx'; // no scheme
     const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(JSON.stringify(conforming)));
