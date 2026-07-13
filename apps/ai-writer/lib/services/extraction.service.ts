@@ -111,8 +111,12 @@ export interface TokenUsage {
 export interface WorkEntry {
   /** 日本語作品名 */
   title: string;
-  /** 英語タイトル（slug 生成用、オプション） */
-  title_en?: string;
+  /**
+   * 英語タイトル (slug 生成用、オプション、Sprint C-β P0 R4 対応で `string | null` に統一)。
+   * `WorkEntrySchema` (extraction-response.ts:63) は `.nullable()` で declare するため、
+   * safeParse success 後は `null` (undefined ではない) が流れる可能性がある。
+   */
+  title_en?: string | null;
   /** 主作品フラグ（URL slug に使用する作品） */
   is_primary: boolean;
 }
@@ -621,10 +625,15 @@ ${schemaStr}
         開催期間: eventPeriod,
         公式サイトURL: officialUrl,
         略称: jsonData.略称 || null,
-        // Sprint C-β P0 R2 対応: safeParse success 時に `z.object()` が top-level legacy field
-        // `複数店舗情報` を strip する regression の防御。YAML SoT (`2-extraction.yaml` L919) が
-        // `複数店舗情報 は store.multiple_locations に統合` を明示するため、legacy top-level → 新
-        // nested `store.multiple_locations` の順で fallback (作品名/店舗名 の後方互換パターンと整合)。
+        // Sprint C-β P0 R2 対応 (R4 comment 強化):
+        // `ExtractionResponseSchema` は default (non-passthrough) の `z.object()` を使うため、
+        // safeParse success 時に top-level legacy field は全て silently strip される。
+        // 現状 revolution 側で fallback が必要な legacy field は以下の enumerated set のみ:
+        //   - 作品名 (works[] 経由で導出、上記 workTitle 参照)
+        //   - 店舗名 (store 経由で導出、上記 storeName 参照)
+        //   - 複数店舗情報 (store.multiple_locations 経由、本行)
+        // 将来 YAML `extraction_fields` に新 legacy field を追加する場合は、ここに同パターンの
+        // fallback を追加するか、または ExtractionResponseSchema にも declare すること。
         複数店舗情報: jsonData.複数店舗情報 || jsonData.store?.multiple_locations || null,
         キャラクター名: jsonData.キャラクター名 || null,
         テーマ名: jsonData.テーマ名 || null,
