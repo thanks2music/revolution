@@ -97,4 +97,52 @@ describe('OpenAIProvider — Layer 2 contract', () => {
     expect(call.max_completion_tokens).toBe(1024);
     expect(call.max_tokens).toBeUndefined();
   });
+
+  it('passes response_format = json_schema with strict:true when responseSchema is provided (Sprint C-β P0)', async () => {
+    const provider = new OpenAIProvider();
+    const schema = {
+      type: 'object',
+      properties: { foo: { type: 'string' } },
+      required: ['foo'],
+      additionalProperties: false,
+    };
+    await provider.sendMessage('extract', {
+      responseFormat: 'json',
+      responseSchema: { name: 'FooResponse', schema },
+    });
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    expect(call.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: {
+        name: 'FooResponse',
+        schema,
+        strict: true,
+      },
+    });
+  });
+
+  it('prefers responseSchema over responseFormat when both are given (strict mode wins over json_object)', async () => {
+    // Regression guard: extraction.service.ts passes both to keep the Anthropic/Gemini fallback
+    // intact; OpenAI must ignore the weaker json_object hint when a schema is present.
+    const provider = new OpenAIProvider();
+    await provider.sendMessage('extract', {
+      responseFormat: 'json',
+      responseSchema: {
+        name: 'X',
+        schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+      },
+    });
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    expect(call.response_format.type).toBe('json_schema');
+  });
+
+  it('leaves response_format unset when neither responseFormat nor responseSchema is given', async () => {
+    const provider = new OpenAIProvider();
+    await provider.sendMessage('plain text');
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    expect(call.response_format).toBeUndefined();
+  });
 });

@@ -65,17 +65,26 @@ jobs:
             exit 1
           fi
 
-      - name: Commit article index (if changed)
+      - name: Commit article index (if meaningfully changed)
+        # Sprint C-β P9: `generatedAt` (current timestamp) は毎回変化するため単純 diff だと
+        # PR event ごとに auto-commit が発生し、branch protection `strict: true` と噛み合わせで
+        # infinite loop 化する (Sprint C-α で顕在化)。generatedAt を除外して意味的差分のみで
+        # commit するよう変更。commit message は GitHub Actions の skip ディレクティブと解釈
+        # されないよう `Update article index` に統一 (Sprint C-α R1 `[skip ci]` 事故継承)。
         if: github.event_name == 'pull_request'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-          if git diff --exit-code apps/frontend/lib/mdx/article-index.json; then
-            echo "No changes to article index"
+          index_file="apps/frontend/lib/mdx/article-index.json"
+          old_content=$(git show HEAD:"$index_file" 2>/dev/null | jq 'del(.generatedAt)' || echo '{}')
+          new_content=$(jq 'del(.generatedAt)' "$index_file")
+
+          if [ "$old_content" = "$new_content" ]; then
+            echo "No meaningful changes to article index (generatedAt only)"
           else
-            git add apps/frontend/lib/mdx/article-index.json
-            git commit -m "📝 Update article index [skip ci]"
+            git add "$index_file"
+            git commit -m "Update article index"
             git push
           fi
 

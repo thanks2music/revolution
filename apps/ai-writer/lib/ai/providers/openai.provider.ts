@@ -582,9 +582,20 @@ Respond ONLY with JSON format. No other text should be included.
         temperature: options?.temperature ?? 0,
       };
 
-      // Enable JSON mode when responseFormat is 'json'
-      // This ensures the model outputs valid, parseable JSON
-      if (options?.responseFormat === 'json') {
+      // Structured Outputs (strict mode) — responseSchema provided:
+      // The model is forced to emit JSON matching the schema exactly. Used by extraction step
+      // (Sprint C-β P0) to guarantee event_data object completeness.
+      // Fallback to weak json_object mode when only responseFormat: 'json' is given.
+      if (options?.responseSchema) {
+        createOptions.response_format = {
+          type: 'json_schema',
+          json_schema: {
+            name: options.responseSchema.name,
+            schema: options.responseSchema.schema,
+            strict: true,
+          },
+        };
+      } else if (options?.responseFormat === 'json') {
         createOptions.response_format = { type: 'json_object' };
       }
 

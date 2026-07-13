@@ -11,10 +11,13 @@
  * - ExtractionService: 公式サイトHTMLから詳細情報を抽出
  */
 
+import { ExtractionResponseSchema } from '@revolution/schemas/extraction-response';
+
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
+import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
 
 /**
  * 抽出リクエスト
@@ -313,11 +316,15 @@ export class ExtractionService {
         console.log('[Extraction] ========== プロンプト終了 ==========\n');
       }
 
-      // AI Provider経由でAPI呼び出し
+      // AI Provider経由でAPI呼び出し。OpenAI Provider は responseSchema を honor して Structured
+      // Outputs (strict mode) で event_data object の完全出力を強制 (Sprint C-β P0)。
+      // Anthropic / Gemini Provider は responseSchema を無視して responseFormat='json' fallback。
+      const responseSchema = zodToOpenAiSchema(ExtractionResponseSchema, 'ExtractionResponse');
       const response = await this.aiProvider.sendMessage(prompt, {
         maxTokens: 4000, // HTML全文対応のため増加
         temperature: 0.2, // 抽出は正確性を重視
         responseFormat: 'json',
+        responseSchema,
       });
 
       // AI APIのレスポンスをログ出力

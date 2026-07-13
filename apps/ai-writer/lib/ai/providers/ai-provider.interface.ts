@@ -100,6 +100,20 @@ export interface SendMessageOptions {
   systemPrompt?: string;
   /** Expected response format hint */
   responseFormat?: 'text' | 'json';
+  /**
+   * OpenAI Structured Outputs (strict mode) 用 JSON Schema。
+   *
+   * 指定時、OpenAI Provider は `response_format: { type: 'json_schema', json_schema: { ...,
+   * strict: true } }` で LLM に schema 準拠を強制する (event_data object の完全出力等)。
+   * `responseFormat: 'json'` は fallback として維持 (Anthropic / Gemini Provider 現行動作)。
+   *
+   * Sprint C-β P0 で追加、現状は OpenAI Provider のみ honor する。
+   * @see apps/ai-writer/lib/utils/zod-to-openai-schema.ts
+   */
+  responseSchema?: {
+    name: string;
+    schema: Record<string, unknown>;
+  };
 }
 
 /**
