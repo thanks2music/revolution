@@ -81,8 +81,10 @@ jobs:
           # "file not on HEAD" (initial run / new file) と "malformed JSON on HEAD" (merge
           # conflict marker, partial write) を分離する。両方を '{}' に潰すと corrupt HEAD 版が
           # silent commit で歴史から消えるため、明示的に区別して後者は fail-loud にする。
+          # `-S` (sort keys) で key insertion order の変動 (generator refactor 由来の object
+          # spread ordering 変化等) から semantic diff が spurious に発火するのを防ぐ。
           if git cat-file -e "HEAD:$index_file" 2>/dev/null; then
-            if ! old_content=$(git show "HEAD:$index_file" | jq -e 'del(.generatedAt)' 2>/dev/null); then
+            if ! old_content=$(git show "HEAD:$index_file" | jq -Se 'del(.generatedAt)' 2>/dev/null); then
               echo "::error::HEAD version of $index_file is malformed JSON. Refusing to overwrite."
               echo "Manual investigation required (merge conflict marker or partial write)."
               exit 1
@@ -92,10 +94,10 @@ jobs:
             old_content='{}'
           fi
 
-          # 両側で `jq -e` を使い symmetry を維持 (null / false top-level output も失敗扱い)。
-          # 通常の JSON object では発火しないが、article-index が literal `null` 等になった場合を
-          # 明示的に fail-loud にする。
-          if ! new_content=$(jq -e 'del(.generatedAt)' "$index_file"); then
+          # 両側で `jq -Se` を使い symmetry を維持 (null / false top-level output も失敗扱い、
+          # key order も canonicalize)。通常の JSON object では発火しないが、article-index が
+          # literal `null` 等になった場合を明示的に fail-loud にする。
+          if ! new_content=$(jq -Se 'del(.generatedAt)' "$index_file"); then
             echo "::error::Freshly generated $index_file is malformed JSON or produced null top-level output."
             exit 1
           fi

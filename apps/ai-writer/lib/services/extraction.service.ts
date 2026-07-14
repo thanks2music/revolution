@@ -190,6 +190,11 @@ export interface ExtractionResult {
    *
    * // 原作者なし
    * 原作者名: null
+   *
+   * 注: Zod SoT (`ExtractionResponseSchema`) は `z.array(z.string()).nullable()` (単独 string
+   * 不可) を要求するため、OpenAI strict-mode success path では常に array or null。
+   * `string` (単独) の分岐は Anthropic/Gemini lenient fallback path のみ exercise される
+   * (legacy shape 後方互換)。
    */
   原作者名: string | string[] | null;
   /**
