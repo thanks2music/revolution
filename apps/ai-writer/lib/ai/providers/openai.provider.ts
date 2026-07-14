@@ -600,7 +600,20 @@ Respond ONLY with JSON format. No other text should be included.
 
       const completion = await this.client.chat.completions.create(createOptions);
 
-      const responseText = completion.choices[0]?.message?.content || '';
+      // With Structured Outputs (strict mode), the API may return `message.refusal` instead of
+      // populating `message.content` when the model declines to comply with the schema (safety
+      // refusal). Surface this explicitly so downstream sees a clear "model refused" error rather
+      // than a generic "No JSON found" from an empty content string. Strict mode makes refusals
+      // more likely in practice than the previous json_object mode.
+      const message = completion.choices[0]?.message;
+      const refusal = (message as { refusal?: string | null } | undefined)?.refusal;
+      if (refusal) {
+        throw new Error(
+          `OpenAI model refused to comply with the request (safety refusal): ${refusal}`
+        );
+      }
+
+      const responseText = message?.content || '';
 
       return {
         content: responseText,
