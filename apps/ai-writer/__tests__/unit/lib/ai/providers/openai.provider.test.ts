@@ -97,4 +97,81 @@ describe('OpenAIProvider — Layer 2 contract', () => {
     expect(call.max_completion_tokens).toBe(1024);
     expect(call.max_tokens).toBeUndefined();
   });
+
+  it('passes response_format = json_schema with strict:true when responseSchema is provided', async () => {
+    const provider = new OpenAIProvider();
+    const schema = {
+      type: 'object',
+      properties: { foo: { type: 'string' } },
+      required: ['foo'],
+      additionalProperties: false,
+    };
+    await provider.sendMessage('extract', {
+      responseFormat: 'json',
+      responseSchema: { name: 'FooResponse', schema },
+    });
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    expect(call.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: {
+        name: 'FooResponse',
+        schema,
+        strict: true,
+      },
+    });
+  });
+
+  it('prefers responseSchema over responseFormat when both are given (strict mode wins over json_object)', async () => {
+    // Regression guard: extraction.service.ts passes both to keep the Anthropic/Gemini fallback
+    // intact; OpenAI must ignore the weaker json_object hint when a schema is present.
+    const provider = new OpenAIProvider();
+    await provider.sendMessage('extract', {
+      responseFormat: 'json',
+      responseSchema: {
+        name: 'X',
+        schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+      },
+    });
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    expect(call.response_format.type).toBe('json_schema');
+  });
+
+  it('throws with an explicit refusal message when message.refusal is populated (Structured Outputs safety refusal)', async () => {
+    // OpenAI Structured Outputs can return message.refusal instead of content when the model
+    // declines to comply with the schema. Silently reading empty content would surface a
+    // misleading "No JSON found" error downstream — the provider must translate this into a
+    // clear model-refused error at the boundary.
+    mockChatCompletionsCreate.mockResolvedValueOnce({
+      id: 'chatcmpl_refusal',
+      object: 'chat.completion',
+      created: Math.floor(1_700_000_000),
+      model: 'gpt-5.4-mini',
+      usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10 },
+      choices: [
+        {
+          index: 0,
+          finish_reason: 'stop',
+          message: {
+            role: 'assistant',
+            content: null,
+            refusal: 'I cannot extract data from this URL.',
+          },
+        },
+      ],
+    });
+    const provider = new OpenAIProvider();
+    await expect(provider.sendMessage('extract', { responseFormat: 'json' })).rejects.toThrow(
+      /model refused.*I cannot extract data/
+    );
+  });
+
+  it('leaves response_format unset when neither responseFormat nor responseSchema is given', async () => {
+    const provider = new OpenAIProvider();
+    await provider.sendMessage('plain text');
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    expect(call.response_format).toBeUndefined();
+  });
 });

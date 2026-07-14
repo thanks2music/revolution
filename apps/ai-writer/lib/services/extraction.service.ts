@@ -11,10 +11,31 @@
  * - ExtractionService: 公式サイトHTMLから詳細情報を抽出
  */
 
+import {
+  ExtractionResponseSchema,
+  type ExtractionResponse,
+  type MediaType as MediaTypeFromSchema,
+  type SourceType as SourceTypeFromSchema,
+  type ExtractionReasoning,
+} from '@revolution/schemas/extraction-response';
+
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
+import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
+
+/**
+ * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
+ *
+ * `ExtractionResponseSchema` is static — the Zod → JSON Schema conversion + strict-mode
+ * keyword stripping only need to run once at import time, so we hoist to module scope to
+ * avoid repeating the ~30-field tree walk on every extraction request.
+ */
+const EXTRACTION_RESPONSE_OPENAI_SCHEMA = zodToOpenAiSchema(
+  ExtractionResponseSchema,
+  'ExtractionResponse'
+);
 
 /**
  * 抽出リクエスト
@@ -55,49 +76,24 @@ export interface EventPeriod {
 }
 
 /**
- * メディアタイプ
- * 作品がどのメディア形態で展開されているかを識別
+ * メディアタイプ (Zod schema SoT から derive、hand-maintained union との drift を排除)。
+ * 追加/削除は `shared/schemas/extraction-response.ts` の `MediaTypeEnum` で行う。
+ *
+ * 定義値: anime / anime_movie / manga / game / vtuber / youtuber / idol / utaite /
+ * voice_actor / vocaloid / character / movie / drama / tokusatsu / other
  */
-export type MediaType =
-  | 'anime'        // TVアニメ作品
-  | 'anime_movie'  // 劇場版アニメ（漫画原作含む）
-  | 'manga'        // 漫画作品（アニメ化されていない）
-  | 'game'         // ゲーム作品
-  | 'vtuber'       // VTuber
-  | 'youtuber'     // YouTuber・ゲーム実況者・ストリーマー
-  | 'idol'         // アイドル・芸能人・音楽アーティスト
-  | 'voice_actor'  // 声優
-  | 'vocaloid'     // ボーカロイド/音声合成キャラクター
-  | 'character'    // キャラクターブランド（サンリオ、すみっコぐらし等）
-  | 'movie'        // 映画（実写・CGアニメ含む）
-  | 'drama'        // ドラマ作品
-  | 'tokusatsu'    // 特撮作品（仮面ライダー、ウルトラマン等）
-  | 'other';       // その他
+export type MediaType = MediaTypeFromSchema;
 
 /**
- * 原作タイプ
- * 原作者（個人クリエイター）が存在するかを判断するための分類
+ * 原作タイプ (Zod schema SoT から derive)。追加/削除は
+ * `shared/schemas/extraction-response.ts` の `SourceTypeEnum` で行う。
+ *
+ * 定義値: manga_based / novel_based / original_with_creator / game_creator_based /
+ * illustrator_based / music_creator_based / original_anime / studio_production /
+ * game_original / character_brand / vocaloid_character / youtuber / idol / voice_actor /
+ * tokusatsu / other
  */
-export type SourceType =
-  // 原作者が存在する（敬称は「先生」）
-  | 'manga_based'            // 漫画原作
-  | 'novel_based'            // 小説・ライトノベル原作
-  | 'original_with_creator'  // 個人クリエイターのオリジナル映像
-  | 'game_creator_based'     // ゲームクリエイター個人
-  | 'illustrator_based'      // イラストレーター個人
-  // クリエイター名を使う（敬称は「さん」）
-  | 'music_creator_based'    // 作曲家/ボカロP個人（米津玄師さん等）
-  // 原作者が存在しない
-  | 'original_anime'         // オリジナルアニメ
-  | 'studio_production'      // スタジオ・企業制作
-  | 'game_original'          // ゲーム会社制作
-  | 'character_brand'        // キャラクターブランド
-  | 'vocaloid_character'     // ボーカロイドキャラクター
-  | 'youtuber'               // YouTuber・VTuber・ストリーマー本人
-  | 'idol'                   // アイドル・芸能人・音楽アーティスト本人
-  | 'voice_actor'            // 声優本人
-  | 'tokusatsu'              // 特撮作品
-  | 'other';                 // その他
+export type SourceType = SourceTypeFromSchema;
 
 /**
  * Token usage statistics from AI provider
@@ -116,8 +112,12 @@ export interface TokenUsage {
 export interface WorkEntry {
   /** 日本語作品名 */
   title: string;
-  /** 英語タイトル（slug 生成用、オプション） */
-  title_en?: string;
+  /**
+   * 英語タイトル (slug 生成用、オプション)。`WorkEntrySchema` (extraction-response.ts) が
+   * `.nullable()` で declare するため、safeParse success 後は `null` (undefined ではない) が
+   * 流れる可能性があり、interface も `string | null` で受ける。
+   */
+  title_en?: string | null;
   /** 主作品フラグ（URL slug に使用する作品） */
   is_primary: boolean;
 }
@@ -129,8 +129,11 @@ export interface WorkEntry {
 export interface StoreEntry {
   /** 店舗名 */
   name: string;
-  /** 複数店舗フラグ */
-  multiple_locations: boolean;
+  /**
+   * 複数店舗・開催エリアに関する生テキスト。YAML SoT (`2-extraction.yaml` の `store.multiple_locations:
+   * type: ["string", "null"]`) に整合させた string | null で、旧 boolean フラグ表現は誤りだった。
+   */
+  multiple_locations: string | null;
 }
 
 /**
@@ -187,6 +190,11 @@ export interface ExtractionResult {
    *
    * // 原作者なし
    * 原作者名: null
+   *
+   * 注: Zod SoT (`ExtractionResponseSchema`) は `z.array(z.string()).nullable()` (単独 string
+   * 不可) を要求するため、OpenAI strict-mode success path では常に array or null。
+   * `string` (単独) の分岐は Anthropic/Gemini lenient fallback path のみ exercise される
+   * (legacy shape 後方互換)。
    */
   原作者名: string | string[] | null;
   /**
@@ -236,20 +244,13 @@ export interface ExtractionResult {
   TwitterURL: string | null;
   /**
    * AIの判断理由（デバッグ用）
-   * 主要な判断箇所についてAIがどのような根拠で結論に至ったかを記録
+   * 主要な判断箇所についてAIがどのような根拠で結論に至ったかを記録。
+   *
+   * `ReasoningSchema` (extraction-response.ts) を SoT として derive し、hand-maintained subset
+   * との drift を回避。全 15 field が `string | null`、_reasoning 自体は optional。lenient
+   * fallback path では LLM が subset のみ返す可能性があるため `Partial<>` で type-safe に受ける。
    */
-  _reasoning?: {
-    /** 開催期間の判断理由（年またぎ判定ロジック含む） */
-    開催期間?: string;
-    /** メディアタイプの判断理由 */
-    メディアタイプ?: string;
-    /** 原作タイプの判断理由 */
-    原作タイプ?: string;
-    /** 原作者名の判断理由（敬称選択ロジック含む） */
-    原作者名?: string;
-    /** 開催都道府県の特定根拠（店舗名/住所/明示的記載から） */
-    開催都道府県?: string;
-  };
+  _reasoning?: Partial<ExtractionReasoning>;
   /**
    * Sprint C-α で新設された「開催ブロック雛形」(MVP §11)。プロンプト応答の
    * `event_data` フィールドをそのまま受け渡す (未検証、`unknown` 型)。
@@ -313,11 +314,14 @@ export class ExtractionService {
         console.log('[Extraction] ========== プロンプト終了 ==========\n');
       }
 
-      // AI Provider経由でAPI呼び出し
+      // AI Provider経由でAPI呼び出し。OpenAI Provider は responseSchema を honor して Structured
+      // Outputs (strict mode) で event_data object の完全出力を強制する。
+      // Anthropic / Gemini Provider は responseSchema を無視して responseFormat='json' fallback。
       const response = await this.aiProvider.sendMessage(prompt, {
         maxTokens: 4000, // HTML全文対応のため増加
         temperature: 0.2, // 抽出は正確性を重視
         responseFormat: 'json',
+        responseSchema: EXTRACTION_RESPONSE_OPENAI_SCHEMA,
       });
 
       // AI APIのレスポンスをログ出力
@@ -491,6 +495,28 @@ ${schemaStr}
         jsonData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
       }
 
+      // Runtime validation against ExtractionResponseSchema.
+      // OpenAI strict mode already enforces the schema server-side, but Anthropic/Gemini providers
+      // ignore `responseSchema` and only honor `responseFormat: 'json'` — this safeParse closes
+      // the gap so provider-agnostic downstream code sees the same contract. On mismatch we log
+      // a warning and fall through to the lenient legacy path so a single hallucinated enum
+      // value or missing optional field doesn't abort the whole extraction (defense-in-depth,
+      // not a hard gate).
+      const parsed = ExtractionResponseSchema.safeParse(jsonData);
+      if (!parsed.success) {
+        console.warn(
+          '[Extraction] ExtractionResponseSchema.safeParse failed — falling back to lenient parse. Provider may be non-strict (Anthropic/Gemini) or LLM emitted off-schema fields.',
+          { issues: parsed.error.issues.slice(0, 5) }
+        );
+      } else {
+        // Replace with the validated shape. `jsonData` は below の property access で `any` として
+        // 使われ続けるが、`parsed.data` は `ExtractionResponse` 型として narrowed 済 = 内部で保持
+        // される値の shape は保証される (documentation-only な `satisfies` は避け、明示的な typed
+        // local variable で narrowing を表現)。
+        const validated: ExtractionResponse = parsed.data;
+        jsonData = validated;
+      }
+
       // === 新構造の取得（複数作品コラボ対応 v1.2.0） ===
       const works: WorkEntry[] | undefined = jsonData.works;
       const store: StoreEntry | undefined = jsonData.store;
@@ -585,6 +611,10 @@ ${schemaStr}
         is_multi_work_collaboration: isMultiWork,
 
         // === 後方互換性フィールド ===
+        // 作品名/店舗名 は上記 `works[]`/`store` から導出済み変数を使用。
+        // OpenAI strict mode success path では safeParse が top-level `作品名`/`店舗名` を strip
+        // するため、`jsonData.作品名`/`jsonData.店舗名` は事実上 lenient fallback path のみで生きる
+        // (`複数店舗情報` と同構造)。ここで直接読まないのは意図的。
         作品名: workTitle,
         メディアタイプ: jsonData.メディアタイプ || 'anime',
         原作タイプ: jsonData.原作タイプ || 'other',
@@ -594,7 +624,15 @@ ${schemaStr}
         開催期間: eventPeriod,
         公式サイトURL: officialUrl,
         略称: jsonData.略称 || null,
-        複数店舗情報: jsonData.複数店舗情報 || null,
+        // `ExtractionResponseSchema` は default (non-passthrough) の `z.object()` を使うため、
+        // safeParse success 時に top-level legacy field は全て silently strip される。
+        // 現状 fallback が必要な legacy field は以下の enumerated set のみ:
+        //   - 作品名 (works[] 経由で導出、上記 workTitle 参照)
+        //   - 店舗名 (store 経由で導出、上記 storeName 参照)
+        //   - 複数店舗情報 (store.multiple_locations 経由、本行)
+        // 将来 YAML `extraction_fields` に新 legacy field を追加する場合は、ここに同パターンの
+        // fallback を追加するか、または `ExtractionResponseSchema` にも declare すること。
+        複数店舗情報: jsonData.複数店舗情報 || jsonData.store?.multiple_locations || null,
         キャラクター名: jsonData.キャラクター名 || null,
         テーマ名: jsonData.テーマ名 || null,
         開催回数: jsonData.開催回数 || null,

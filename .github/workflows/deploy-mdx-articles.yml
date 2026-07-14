@@ -65,17 +65,48 @@ jobs:
             exit 1
           fi
 
-      - name: Commit article index (if changed)
+      - name: Commit article index (if meaningfully changed)
+        # `generatedAt` (current timestamp) は毎回変化するため単純 diff だと PR event ごとに
+        # auto-commit が発生し、branch protection `strict: true` と噛み合わせで infinite loop 化
+        # する。generatedAt を除外した意味的差分のみで commit する。commit message には GitHub
+        # Actions の skip ディレクティブ (`[skip ci]` 等) を含めない — 含めると必要な後続 workflow
+        # まで skip される。
         if: github.event_name == 'pull_request'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-          if git diff --exit-code apps/frontend/lib/mdx/article-index.json; then
-            echo "No changes to article index"
+          index_file="apps/frontend/lib/mdx/article-index.json"
+
+          # "file not on HEAD" (initial run / new file) と "malformed JSON on HEAD" (merge
+          # conflict marker, partial write) を分離する。両方を '{}' に潰すと corrupt HEAD 版が
+          # silent commit で歴史から消えるため、明示的に区別して後者は fail-loud にする。
+          # `-S` (sort keys) で key insertion order の変動 (generator refactor 由来の object
+          # spread ordering 変化等) から semantic diff が spurious に発火するのを防ぐ。
+          if git cat-file -e "HEAD:$index_file" 2>/dev/null; then
+            if ! old_content=$(git show "HEAD:$index_file" | jq -Se 'del(.generatedAt)' 2>/dev/null); then
+              echo "::error::HEAD version of $index_file is malformed JSON. Refusing to overwrite."
+              echo "Manual investigation required (merge conflict marker or partial write)."
+              exit 1
+            fi
           else
-            git add apps/frontend/lib/mdx/article-index.json
-            git commit -m "📝 Update article index [skip ci]"
+            echo "$index_file not present on HEAD — treating as new file."
+            old_content='{}'
+          fi
+
+          # 両側で `jq -Se` を使い symmetry を維持 (null / false top-level output も失敗扱い、
+          # key order も canonicalize)。通常の JSON object では発火しないが、article-index が
+          # literal `null` 等になった場合を明示的に fail-loud にする。
+          if ! new_content=$(jq -Se 'del(.generatedAt)' "$index_file"); then
+            echo "::error::Freshly generated $index_file is malformed JSON or produced null top-level output."
+            exit 1
+          fi
+
+          if [ "$old_content" = "$new_content" ]; then
+            echo "No meaningful changes to article index (generatedAt only)"
+          else
+            git add "$index_file"
+            git commit -m "Update article index"
             git push
           fi
 
