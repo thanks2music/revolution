@@ -83,9 +83,10 @@ describe('pipeline-steps — Layer 1 contracts', () => {
     }
   });
 
-  it('current 18-step lineup is present (drift detector, not a hard count assert)', () => {
-    // Smoke-check the 18 ids that the refactor migrated. Adding a new step
-    // does NOT break this test because we only verify membership, not size.
+  it('current step lineup is present (drift detector, not a hard count assert)', () => {
+    // Membership-based check; adding a new step does NOT break this test.
+    // Sprint C-β P11 (2026-07-19) added `lead-generation` between title-generation
+    // and content-generation.
     const expected = [
       'article-selection',
       'rss-extraction',
@@ -97,6 +98,7 @@ describe('pipeline-steps — Layer 1 contracts', () => {
       'duplication-check',
       'metadata-generation',
       'title-generation',
+      'lead-generation', // Sprint C-β P11 (2026-07-19)
       'content-generation',
       'image-upload-r2',
       'image-placeholder-replacement',
@@ -110,5 +112,10 @@ describe('pipeline-steps — Layer 1 contracts', () => {
     for (const id of expected) {
       expect(actualIds.has(id)).toBe(true);
     }
+  });
+
+  it('Sprint C-β P11: lead-generation is placed between title-generation and content-generation', () => {
+    expect(getStepIndex('title-generation')).toBeLessThan(getStepIndex('lead-generation'));
+    expect(getStepIndex('lead-generation')).toBeLessThan(getStepIndex('content-generation'));
   });
 });

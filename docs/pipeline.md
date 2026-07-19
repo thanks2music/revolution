@@ -3,14 +3,14 @@
 > Revolution の AI Writer (Discovery) が RSS / URL から MDX 記事を生成するマルチステップパイプラインの全体像と各ステップの責務を定義するドキュメント。
 >
 > **真実源 (SoT)**: `apps/ai-writer/lib/services/pipeline-steps.ts` の `PIPELINE_STEPS` 配列。
-> **id は永続契約**、表示番号 (`[N/M]`) は配列長から動的算出され**中間挿入で変動**するため、過去ログとの突合は **id ベース**で行ってください。entry log は `[N/M id] label` (例: `[3/18 detail-extraction] 公式サイト HTML 詳細抽出`)、step 内の sub-context は `[id]` (例: `[vision-api]`) が format です。
+> **id は永続契約**、表示番号 (`[N/M]`) は配列長から動的算出され**中間挿入で変動**するため、過去ログとの突合は **id ベース**で行ってください。entry log は `[N/M id] label` (例: `[3/19 detail-extraction] 公式サイト HTML 詳細抽出`)、step 内の sub-context は `[id]` (例: `[vision-api]`) が format です。
 
 ## 目次
 
 - [概要](#概要)
 - [パイプラインフロー図 (Mermaid)](#パイプラインフロー図-mermaid)
 - [パイプラインフロー図 (draw.io)](#パイプラインフロー図-drawio)
-- [ステップ一覧 (18 step)](#ステップ一覧-18-step)
+- [ステップ一覧 (19 step)](#ステップ一覧-19-step)
 - [Sub-step (吸収済 3 件)](#sub-step-吸収済-3-件)
 - [ステップ間の依存関係 (DAG)](#ステップ間の依存関係-dag)
 - [Layer 別 TDD 戦略との対応](#layer-別-tdd-戦略との対応)
@@ -70,8 +70,11 @@ flowchart TB
         S07 --> S08 --> S09 --> S10
     end
 
-    subgraph Phase3["✍️ コンテンツ生成 (1 step)"]
+    subgraph Phase3["✍️ コンテンツ生成 (2 step)"]
+        direction TB
+        S10_5[lead-generation]
         S11[content-generation]
+        S10_5 --> S11
     end
 
     subgraph Phase4["🖼️ 画像処理 (4 step)"]
@@ -137,7 +140,7 @@ draw.io 形式で「フェーズ別グルーピング + Layer 別色分け」を
 
 ---
 
-## ステップ一覧 (18 step)
+## ステップ一覧 (19 step)
 
 各 step の責務 / 依存 / Layer 割当 / cost-tracker 記録対象を一覧します。Mid level (実装 jsdoc + 真実源コード参照で詳細補完してください)。
 
@@ -165,24 +168,25 @@ draw.io 形式で「フェーズ別グルーピング + Layer 別色分け」を
 
 | # | id | 責務 | AI 呼出 | Layer | 依存 (上流) | 出力 (下流が使用) | 条件付スキップ | recordUsage |
 |---|---|---|---|---|---|---|---|---|
-| 11 | `content-generation` | YAML テンプレート + AI で MDX 本文を生成 | あり | Layer 3 (golden file) | metadata, title, detailedExtraction, categoryImages | content (MDX 本文), generatedSections | なし | あり |
+| 11 | `lead-generation` | Templates `01-lead.yaml` の 26 条件分岐 + 26 slot definition から rule-driven でリード文を決定的に生成、rule miss 時は LLM Fallback (§6.2 メディア形態表記マップ準拠、Sprint C-β P11) | あり (Fallback 時のみ) | Layer 1 (predicate / slot table) + Layer 2 (LLM Fallback contract) | detailedExtraction, `templates/collabo-cafe/sections/01-lead.yaml`, `templates/config/media-type-mapping.yaml` | leadMdx, slots (4 スロット構造), usedTemplate, fallbackReason | なし | あり (Fallback 時のみ) |
+| 12 | `content-generation` | YAML テンプレート + AI で MDX 本文の menu/novelty/goods/summary セクションを生成 (lead は `lead-generation` step の出力を prepend) | あり | Layer 3 (golden file) | metadata, title, detailedExtraction, categoryImages, leadMdx | content (MDX 本文), generatedSections | なし | あり |
 
 ### Phase 4: 画像処理
 
 | # | id | 責務 | AI 呼出 | Layer | 依存 (上流) | 出力 (下流が使用) | 条件付スキップ | recordUsage |
 |---|---|---|---|---|---|---|---|---|
-| 12 | `image-upload-r2` | OG 画像 + カテゴリ別画像を Cloudflare R2 にアップロード | なし | Layer 5 (R2 統合) | content (OG URL), categoryImages | ogImageUpload, categoryR2Images | dryRun でスキップ | なし |
-| 13 | `image-placeholder-replacement` | content 内の `{ここに...の画像を入れる}` プレースホルダーを R2 URL に置換 | なし | Layer 1 (純粋関数) | content, categoryR2Images | placeholderReplacement, unreplacedPlaceholders | R2 画像なし時スキップ | なし |
-| 14 | `text-placeholder-replacement` | content 内の `{{店舗名}}` 等の Mustache placeholder を detailedExtraction で置換 | なし | Layer 1 | content, detailedExtraction | textPlaceholderReplacement | detailedExtraction なし時スキップ | なし |
-| 15 | `footer-placeholder-cleanup` | Frontend で動的表示する記事末尾 placeholder を削除 (UI 責務との分離) | なし | Layer 1 | content | content (cleaned) | なし | なし |
+| 13 | `image-upload-r2` | OG 画像 + カテゴリ別画像を Cloudflare R2 にアップロード | なし | Layer 5 (R2 統合) | content (OG URL), categoryImages | ogImageUpload, categoryR2Images | dryRun でスキップ | なし |
+| 14 | `image-placeholder-replacement` | content 内の `{ここに...の画像を入れる}` プレースホルダーを R2 URL に置換 | なし | Layer 1 (純粋関数) | content, categoryR2Images | placeholderReplacement, unreplacedPlaceholders | R2 画像なし時スキップ | なし |
+| 15 | `text-placeholder-replacement` | content 内の `{{店舗名}}` 等の Mustache placeholder を detailedExtraction で置換 | なし | Layer 1 | content, detailedExtraction | textPlaceholderReplacement | detailedExtraction なし時スキップ | なし |
+| 16 | `footer-placeholder-cleanup` | Frontend で動的表示する記事末尾 placeholder を削除 (UI 責務との分離) | なし | Layer 1 | content | content (cleaned) | なし | なし |
 
 ### Phase 5: 出力
 
 | # | id | 責務 | AI 呼出 | Layer | 依存 (上流) | 出力 (下流が使用) | 条件付スキップ | recordUsage |
 |---|---|---|---|---|---|---|---|---|
-| 16 | `mdx-assembly` | frontmatter + content を組み合わせて最終 MDX 文字列を生成 | なし | Layer 1 | post_id, title, slug, content, metadata 等 | mdxArticle | なし | なし |
-| 17 | `github-pr-creation` | MDX を GitHub repo にコミットして PR 作成 | なし | Layer 2 (GitHub API mock) | mdxArticle, canonicalKey | prResult (prNumber, prUrl) | dryRun / localOnly でスキップ | なし |
-| 18 | `firestore-status-update` | Firestore イベントの status を `pending → generated` に更新 | なし | Layer 2 (Firestore mock) | eventRecord, prResult | (副作用のみ) | dryRun / localOnly でスキップ | なし |
+| 17 | `mdx-assembly` | frontmatter + content を組み合わせて最終 MDX 文字列を生成 | なし | Layer 1 | post_id, title, slug, content, metadata 等 | mdxArticle | なし | なし |
+| 18 | `github-pr-creation` | MDX を GitHub repo にコミットして PR 作成 | なし | Layer 2 (GitHub API mock) | mdxArticle, canonicalKey | prResult (prNumber, prUrl) | dryRun / localOnly でスキップ | なし |
+| 19 | `firestore-status-update` | Firestore イベントの status を `pending → generated` に更新 | なし | Layer 2 (Firestore mock) | eventRecord, prResult | (副作用のみ) | dryRun / localOnly でスキップ | なし |
 
 ---
 
@@ -196,7 +200,7 @@ draw.io 形式で「フェーズ別グルーピング + Layer 別色分け」を
 | `image-upload-r2: OG` | `image-upload-r2` | content から抽出した OG URL を R2 アップロード (旧 `Step 5.5a`) |
 | `image-upload-r2: カテゴリ別` | `image-upload-r2` | categoryImages の各 URL を R2 アップロード (旧 `Step 5.5b`) |
 
-これらは log 上で `[image-upload-r2: OG] アップロード中...` のように表示されます (top-level step の `[12/18] 画像 R2 アップロード ...` の配下に出る形)。
+これらは log 上で `[image-upload-r2: OG] アップロード中...` のように表示されます (top-level step の `[13/19] 画像 R2 アップロード ...` の配下に出る形)。
 
 ---
 
@@ -226,8 +230,11 @@ graph LR
     S02 --> S10[title-generation]
     S03 --> S10
 
+    S03 --> S10_5[lead-generation]
+    S10 --> S10_5
+
     S09 --> S11[content-generation]
-    S10 --> S11
+    S10_5 --> S11
     S03 --> S11
     S05 --> S11
 

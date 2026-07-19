@@ -85,6 +85,13 @@ export interface TextPlaceholderData {
   ノベルティ名?: string | null;
   グッズ名?: string[] | null;
 
+  // Sprint C-β P11 追加 (2026-07-19、LeadGeneratorService から派生):
+  // オリジナルアニメ・スタジオ制作の作品情報 (2-extraction.yaml v3.2.0 で導入済み、
+  // 従来 replaceAll の simpleVariables に未登録で置換されていなかった)
+  スタジオ名?: string | null;
+  監督名?: string | null;
+  シリーズ名?: string | null;
+
   // ネストオブジェクト
   開催期間: EventPeriod;
 
@@ -333,6 +340,13 @@ export class TextPlaceholderReplacerService {
       ノベルティ名: data.ノベルティ名 ?? undefined,
       コラボ作品名: data.コラボ作品名,
 
+      // Sprint C-β P11 追加 (2026-07-19、LeadGeneratorService から派生):
+      // オリジナルアニメ・スタジオ制作向け field (01-lead.yaml v3.3.0 の
+      // lead_studio_director_series_with_characters 等のテンプレで参照)
+      スタジオ名: data.スタジオ名 ?? undefined,
+      監督名: data.監督名 ?? undefined,
+      シリーズ名: data.シリーズ名 ?? undefined,
+
       // v1.4.0: メディアタイプ派生変数
       is_idol_or_utaite:
         data.is_idol_or_utaite !== undefined ? String(data.is_idol_or_utaite) : undefined,
@@ -384,7 +398,8 @@ export class TextPlaceholderReplacerService {
       result = result.replace(dynamicPattern, (match, separatorKey) => {
         // データから動的セパレーターを取得（フォールバック: '・'）
         const rawSeparator = (data as any)[separatorKey];
-        const separator = typeof rawSeparator === 'string' ? rawSeparator : '・';
+        // Sprint C-β P11 §6.1 準拠: fallback default "・" → "、" に統一
+        const separator = typeof rawSeparator === 'string' ? rawSeparator : '、';
         const value = data.キャラクター名!.join(separator);
         count++;
         log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
@@ -407,7 +422,8 @@ export class TextPlaceholderReplacerService {
       result = result.replace(dynamicPattern, (match, separatorKey) => {
         // データから動的セパレーターを取得（フォールバック: '・'）
         const rawSeparator = (data as any)[separatorKey];
-        const separator = typeof rawSeparator === 'string' ? rawSeparator : '・';
+        // Sprint C-β P11 §6.1 準拠: fallback default "・" → "、" に統一
+        const separator = typeof rawSeparator === 'string' ? rawSeparator : '、';
         const value = data.グッズ名!.join(separator);
         count++;
         log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
@@ -432,7 +448,8 @@ export class TextPlaceholderReplacerService {
       result = result.replace(dynamicPattern, (match, separatorKey) => {
         // データから動的セパレーターを取得（フォールバック: '・'）
         const rawSeparator = (data as any)[separatorKey];
-        const separator = typeof rawSeparator === 'string' ? rawSeparator : '・';
+        // Sprint C-β P11 §6.1 準拠: fallback default "・" → "、" に統一
+        const separator = typeof rawSeparator === 'string' ? rawSeparator : '、';
         const value = data.メンバー名!.join(separator);
         count++;
         log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
