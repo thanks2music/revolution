@@ -777,4 +777,13 @@ describe('LeadGeneratorService - drift guard (01-lead.yaml ⇔ TS table 対応)'
     const orphan = tsKeys.filter((id) => !yamlTemplateIds.includes(id));
     expect(orphan).toEqual([]);
   });
+
+  // R3 指摘: set match のみでは「YAML 側の conditions[] の順序変更」を検出できない。
+  // CONDITION_PREDICATES の評価は generate() の `section.conditions?.find(...)` で
+  // 配列先頭から評価するため、YAML 側で specific condition が general condition の後ろに
+  // 移動すると specific が general に silent shadow される。順序も含めて対応を検証する。
+  it('CONDITION_PREDICATES の key 順序が YAML conditions[].id の順序と一致 (order-dependent shadowing 防止)', () => {
+    const tsKeys = Object.keys(__INTERNAL_CONDITION_PREDICATES__);
+    expect(tsKeys).toEqual(yamlConditionIds);
+  });
 });

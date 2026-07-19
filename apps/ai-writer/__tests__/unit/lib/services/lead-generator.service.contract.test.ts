@@ -6,7 +6,7 @@
  * - `sendMessage` が `responseSchema` (Zod → JSON schema strict mode) で呼ばれる
  * - LLM 応答が `LeadSlotsSchema` で parse される
  * - `usedTemplate` = LEAD_FALLBACK_TEMPLATE_ID + `fallbackReason` 記録
- * - Provider が invalid JSON / schema mismatch を返した場合の throw 挙動
+ * - Provider が invalid JSON / schema mismatch / rejected promise を返した場合の staticFallback degrade 挙動 (R3 対応)
  * - N9-A regression: rule-driven success path で mock provider が呼ばれない (Layer 1 assert 補完)
  *
  * Sprint C-β P0 pattern を継承 (`responseSchema` + `LeadSlotsSchema.parse`)。
@@ -190,37 +190,10 @@ describe('LeadGeneratorService.fallback - LLM path (mock AiProvider DI)', () => 
     expect(result.leadMdx).toContain('テストカフェ');
   });
 
-  it('LLM 応答が LeadSlotsSchema で parse される (invalid JSON → throw)', async () => {
-    const mockProvider = makeMockProvider();
-    mockProvider.sendMessage.mockResolvedValue({
-      content: 'this is not JSON',
-      model: 'gpt-5.4-mini',
-    });
-
-    const service = makeService({ aiProviderFactory: () => mockProvider });
-    const enriched = makeEnriched();
-
-    await expect(service.fallback(enriched, 'output_empty')).rejects.toThrow();
-  });
-
-  it('LLM 応答が schema mismatch の場合 throw (mediaForm 欠落)', async () => {
-    const mockProvider = makeMockProvider();
-    mockProvider.sendMessage.mockResolvedValue({
-      content: JSON.stringify({
-        agent: 'X',
-        verb: null,
-        adjective: null,
-        // mediaForm 欠落
-        workTitle: 'Y',
-      }),
-      model: 'gpt-5.4-mini',
-    });
-
-    const service = makeService({ aiProviderFactory: () => mockProvider });
-    const enriched = makeEnriched();
-
-    await expect(service.fallback(enriched, 'template_render_error')).rejects.toThrow();
-  });
+  // NOTE: 過去は「invalid JSON / schema mismatch で throw」を assert する 2 test を持っていたが、
+  // R3 指摘 (llmFallback throw で pipeline 全体 abort) を受けて `llmFallback()` は catch し
+  // staticFallback に degrade する挙動に変更したため、これら 2 test は正しい degrade behavior を
+  // assert する describe 4 (末尾) に置換済 (LLM path throw → static degrade)。
 
   it('複数作品コラボの enriched でも prompt に is_multi_work 情報が反映される', async () => {
     const mockProvider = makeMockProvider();
@@ -358,5 +331,49 @@ describe('LeadGeneratorService.fallback - static path (no AiProvider)', () => {
     expect(result.leadMdx).toContain('人気作品');
     expect(result.leadMdx).toContain('テスト作品');
     expect(result.leadMdx).toContain('テストカフェ');
+  });
+});
+
+// ============================================================================
+// describe 4: LLM fallback throw → static fallback degrade (R3)
+// ============================================================================
+//
+// R3 指摘: `llmFallback()` の `provider.sendMessage()` / `JSON.parse` / `LeadSlotsSchema.parse`
+// はいずれも throw 可能 (timeout / rate limit / network / invalid JSON / schema mismatch)。
+// 過去は uncaught で pipeline 全体を abort させていたが、staticFallback という deterministic な
+// degrade path が存在するため fallback-of-fallback として静的テンプレへ落とすのが正しい挙動。
+// 本 test で rejected promise / SyntaxError の 2 経路が staticFallback に degrade することを assert する。
+
+describe('LeadGeneratorService.fallback - LLM path throw → static degrade (R3)', () => {
+  it('provider.sendMessage が reject した場合 staticFallback に degrade (pipeline abort させない)', async () => {
+    const failingProvider = {
+      sendMessage: jest.fn().mockRejectedValue(new Error('network timeout')),
+    } as unknown as AiProvider;
+    const service = makeService({ aiProviderFactory: () => failingProvider });
+    const enriched = makeEnriched();
+
+    const result = await service.fallback(enriched, 'output_empty');
+
+    expect(failingProvider.sendMessage).toHaveBeenCalledTimes(1);
+    expect(result.usedTemplate).toBe(LEAD_FALLBACK_TEMPLATE_ID);
+    expect(result.fallbackReason).toBe('output_empty');
+    expect(result.leadMdx).toContain('人気作品'); // lead_generic テンプレへ degrade
+  });
+
+  it('provider が invalid JSON を返した場合 staticFallback に degrade (JSON.parse SyntaxError catch)', async () => {
+    const invalidJsonProvider = {
+      sendMessage: jest.fn().mockResolvedValue({
+        content: '{ this is not valid JSON',
+        usage: { input_tokens: 100, output_tokens: 50 },
+      }),
+    } as unknown as AiProvider;
+    const service = makeService({ aiProviderFactory: () => invalidJsonProvider });
+    const enriched = makeEnriched();
+
+    const result = await service.fallback(enriched, 'too_many_unreplaced_placeholders');
+
+    expect(result.usedTemplate).toBe(LEAD_FALLBACK_TEMPLATE_ID);
+    expect(result.fallbackReason).toBe('too_many_unreplaced_placeholders');
+    expect(result.leadMdx).toContain('人気作品'); // lead_generic テンプレへ degrade
   });
 });

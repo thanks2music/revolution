@@ -8,6 +8,8 @@
  * - config YAML の実 parse (integration-style、本物の media-type-mapping.yaml を Read)
  */
 
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import {
@@ -182,5 +184,49 @@ describe('MediaFormResolverService.resolve - N2/P5 regression prevention', () =>
     expect(resolver.resolve('novel_based', 'anime')).toBe('ライトノベル');
     expect(resolver.resolve('novel_based', 'manga')).toBe('ライトノベル');
     expect(resolver.resolve('novel_based', undefined)).toBe('ライトノベル');
+  });
+});
+
+// ============================================================================
+// describe: constructor error branches (R3 対応)
+// ============================================================================
+//
+// R3 指摘: constructor の error 系分岐 (missing file / invalid YAML / Zod validation fail) が
+// 未検証だった。tmp fixture を作って各 error path が期待通り throw することを assert する。
+
+describe('MediaFormResolverService - constructor error branches (R3)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-form-resolver-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('非存在 configPath で throw (fs.existsSync check)', () => {
+    const missingPath = path.join(tmpDir, 'nonexistent.yaml');
+    expect(() => new MediaFormResolverService(missingPath)).toThrow(
+      /Media type mapping config not found/
+    );
+  });
+
+  it('invalid YAML syntax で throw (yaml.YAMLException を捕捉して人間可読 error に変換)', () => {
+    const badYamlPath = path.join(tmpDir, 'invalid.yaml');
+    // 意図的に YAML syntax error を含む fixture (unclosed bracket + tab indentation)
+    fs.writeFileSync(badYamlPath, 'media_type_mappings:\n  anime: [invalid syntax\n\tunexpected: tab', 'utf-8');
+    expect(() => new MediaFormResolverService(badYamlPath)).toThrow();
+  });
+
+  it('Zod validation failure で throw (必須 field 欠落: original_type_labels なし)', () => {
+    const incompleteYamlPath = path.join(tmpDir, 'incomplete.yaml');
+    // 意図的に MediaFormMappingConfigSchema の必須 field (original_type_labels) を欠落させる
+    fs.writeFileSync(
+      incompleteYamlPath,
+      'media_type_mappings:\n  anime:\n    label: "アニメ"\n    character_separator: "、"\n',
+      'utf-8'
+    );
+    expect(() => new MediaFormResolverService(incompleteYamlPath)).toThrow();
   });
 });

@@ -395,17 +395,34 @@ export class LeadGeneratorService {
       );
     }
 
-    // fallback 発火の度に factory から fresh provider を resolve (R2: singleton stale 化回避)
-    const provider = this.deps.aiProviderFactory!();
-    const response = await provider.sendMessage(prompt, {
-      temperature: 0.3,
-      responseFormat: 'json',
-      responseSchema: schemaPayload,
-    });
+    // R3 対応: LLM 呼び出し (provider factory / sendMessage / JSON.parse / Zod parse) の各段は
+    // throw 可能 (timeout / rate limit / network / invalid JSON / schema mismatch)。過去は
+    // uncaught で pipeline 全体を abort させていたが、staticFallback という deterministic な
+    // degrade path が存在する以上、fallback-of-fallback として静的テンプレへ落とすのが正しい。
+    let parsed;
+    let leadMdx: string;
+    try {
+      // fallback 発火の度に factory から fresh provider を resolve (R2: singleton stale 化回避)
+      const provider = this.deps.aiProviderFactory!();
+      const response = await provider.sendMessage(prompt, {
+        temperature: 0.3,
+        responseFormat: 'json',
+        responseSchema: schemaPayload,
+      });
 
-    // Zod strict parse: LLM 応答が LeadSlots schema に準拠していることを検証
-    const parsed = LeadSlotsSchema.parse(JSON.parse(response.content));
-    const leadMdx = this.slotsToMdx(parsed, enriched);
+      // Zod strict parse: LLM 応答が LeadSlots schema に準拠していることを検証
+      parsed = LeadSlotsSchema.parse(JSON.parse(response.content));
+      leadMdx = this.slotsToMdx(parsed, enriched);
+    } catch (error) {
+      // R3 対応: LLM fallback 経路自体が失敗したため static fallback に degrade。
+      // pipeline 全体を abort させず deterministic な lead_generic テンプレを採用する。
+      // Sprint C-β P10 (observability) で structured log / metric として elevate 予定。
+      console.warn(
+        `[LeadGenerator] LLM fallback failed (reason=${reason}), degrading to staticFallback:`,
+        error instanceof Error ? error.message : error
+      );
+      return this.staticFallback(enriched, reason);
+    }
 
     return {
       leadMdx,
@@ -891,11 +908,14 @@ let leadGeneratorInstance: LeadGeneratorService | null = null;
  * LeadGeneratorService の singleton getter。
  *
  * ⚠️ **注意**: `deps` は **最初の呼び出しでのみ** consumed され、以降の呼び出しでは
- * cache 済 instance が返るため引数が無視される。ただし Sprint C-β P11 R2 対応で
- * `deps.aiProviderFactory` を **factory 関数 (`() => AiProvider`)** に変更したため、
- * fallback 発火時に factory を毎回 fresh 実行する経路になっており、long-lived process
- * での provider stale 化リスクは解消済 (env var 変更にも追随)。テストで factory 自体を
- * 差し替えたい場合のみ `resetLeadGeneratorService()` で instance を破棄する。
+ * cache 済 instance が返るため引数が無視される。特に **`yamlPath`** (test 用 override)
+ * も同 footgun の対象で、初回以降の path 差し替えは無効 = production では default path が
+ * 採用され続けるため実害はないが、test で異なる YAML fixture を差し替えたい場合は
+ * `resetLeadGeneratorService()` を呼んでから getter を再実行すること。
+ *
+ * 一方、Sprint C-β P11 R2 対応で `deps.aiProviderFactory` を **factory 関数 (`() => AiProvider`)**
+ * に変更したため、fallback 発火時に factory を毎回 fresh 実行する経路になっており、long-lived
+ * process での provider stale 化リスクは解消済 (env var 変更にも追随)。
  */
 export function getLeadGeneratorService(deps: LeadGeneratorDeps): LeadGeneratorService {
   if (!leadGeneratorInstance) {
