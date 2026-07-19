@@ -85,6 +85,13 @@ export interface TextPlaceholderData {
   ノベルティ名?: string | null;
   グッズ名?: string[] | null;
 
+  // Sprint C-β P11 追加 (2026-07-19、LeadGeneratorService から派生):
+  // オリジナルアニメ・スタジオ制作の作品情報 (2-extraction.yaml v3.2.0 で導入済み、
+  // 従来 replaceAll の simpleVariables に未登録で置換されていなかった)
+  スタジオ名?: string | null;
+  監督名?: string | null;
+  シリーズ名?: string | null;
+
   // ネストオブジェクト
   開催期間: EventPeriod;
 
@@ -332,6 +339,13 @@ export class TextPlaceholderReplacerService {
       テーマ名: data.テーマ名 ?? undefined,
       ノベルティ名: data.ノベルティ名 ?? undefined,
       コラボ作品名: data.コラボ作品名,
+
+      // Sprint C-β P11 追加 (2026-07-19、LeadGeneratorService から派生):
+      // オリジナルアニメ・スタジオ制作向け field (01-lead.yaml v3.3.0 の
+      // lead_studio_director_series_with_characters 等のテンプレで参照)
+      スタジオ名: data.スタジオ名 ?? undefined,
+      監督名: data.監督名 ?? undefined,
+      シリーズ名: data.シリーズ名 ?? undefined,
 
       // v1.4.0: メディアタイプ派生変数
       is_idol_or_utaite:
