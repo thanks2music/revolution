@@ -3,14 +3,14 @@
 > Revolution の AI Writer (Discovery) が RSS / URL から MDX 記事を生成するマルチステップパイプラインの全体像と各ステップの責務を定義するドキュメント。
 >
 > **真実源 (SoT)**: `apps/ai-writer/lib/services/pipeline-steps.ts` の `PIPELINE_STEPS` 配列。
-> **id は永続契約**、表示番号 (`[N/M]`) は配列長から動的算出され**中間挿入で変動**するため、過去ログとの突合は **id ベース**で行ってください。entry log は `[N/M id] label` (例: `[3/18 detail-extraction] 公式サイト HTML 詳細抽出`)、step 内の sub-context は `[id]` (例: `[vision-api]`) が format です。
+> **id は永続契約**、表示番号 (`[N/M]`) は配列長から動的算出され**中間挿入で変動**するため、過去ログとの突合は **id ベース**で行ってください。entry log は `[N/M id] label` (例: `[3/19 detail-extraction] 公式サイト HTML 詳細抽出`)、step 内の sub-context は `[id]` (例: `[vision-api]`) が format です。
 
 ## 目次
 
 - [概要](#概要)
 - [パイプラインフロー図 (Mermaid)](#パイプラインフロー図-mermaid)
 - [パイプラインフロー図 (draw.io)](#パイプラインフロー図-drawio)
-- [ステップ一覧 (19 step)](#ステップ一覧-18-step)
+- [ステップ一覧 (19 step)](#ステップ一覧-19-step)
 - [Sub-step (吸収済 3 件)](#sub-step-吸収済-3-件)
 - [ステップ間の依存関係 (DAG)](#ステップ間の依存関係-dag)
 - [Layer 別 TDD 戦略との対応](#layer-別-tdd-戦略との対応)

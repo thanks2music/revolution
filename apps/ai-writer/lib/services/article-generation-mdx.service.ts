@@ -880,7 +880,12 @@ export class ArticleGenerationMdxService {
         // Fallback 発火条件 (all_conditions_missed / too_many_unreplaced_placeholders /
         // output_too_short / output_empty / template_render_error / empty_work_title) を
         // rule miss 時に LLM に委譲する (Sprint C-β P11 の N1 = リード文の省略・誤生成の完全解消)。
-        aiProvider: createAiProvider(),
+        //
+        // R2 対応: instance 直渡し (`createAiProvider()`) ではなく **factory 関数** (`createAiProvider`)
+        // を渡す。singleton の cache 済 instance が最初の request の provider を baked in する
+        // 従来の footgun (long-lived Next.js server で env var 変更に追随できない) を解消し、
+        // fallback 発火の度に fresh provider を resolve する経路にする。
+        aiProviderFactory: createAiProvider,
       });
 
       const leadResult = await leadGenerator.generate({

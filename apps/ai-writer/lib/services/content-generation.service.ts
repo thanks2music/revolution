@@ -277,12 +277,20 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
    */
   private enrichExtractedDataForPrompt(
     extractedData: ExtractionResult
-  ): ExtractionResult & {
-    メディアタイプ_slug?: string;
-    メディアタイプ_label?: string;
-    メディア形態表記?: string;
-    原作者名_formatted?: string;
-  } {
+  ):
+    | (Omit<ExtractionResult, 'メディアタイプ'> & {
+        // R2 対応: `メディアタイプ` field を string (日本語 label) として明示的に redefine。
+        // 過去は `as unknown as ExtractionResult['メディアタイプ']` の型キャストで enum 型を
+        // 誤って主張していたが、Omit + 再宣言で「LLM prompt に渡す enriched view では
+        // 日本語 label が入る」ことを型レベルで正しく表現する。英語 slug は `メディアタイプ_slug`
+        // に隔離して MediaType enum 型のまま保持する。
+        メディアタイプ: string;
+        メディアタイプ_slug: ExtractionResult['メディアタイプ'];
+        メディアタイプ_label: string;
+        メディア形態表記: string;
+        原作者名_formatted: string;
+      })
+    | ExtractionResult {
     try {
       const mediaTypeMapper = getMediaTypeMapperService();
       const mediaFormResolver = getMediaFormResolverService();
@@ -295,10 +303,9 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
       return {
         ...extractedData,
         // Sprint C-β P11 Phase 3 対策: `メディアタイプ` 自体を日本語 label で上書き
-        // (LLM の literal 誤挿入を根本防止、mediaFormResolver 経由で P5 も同時解消)
-        // 型として `メディアタイプ` は `MediaType` enum の英語 slug を要求するが、
-        // 本 field は LLM prompt 用の enriched value のため overwrite する
-        メディアタイプ: mediaFormLabel as unknown as ExtractionResult['メディアタイプ'],
+        // (LLM の literal 誤挿入を根本防止、mediaFormResolver 経由で P5 も同時解消)。
+        // 返却型で `メディアタイプ: string` に redefine 済のため `as unknown as` 不要。
+        メディアタイプ: mediaFormLabel,
         // 英語 slug は _slug suffix で分岐用に隔離 (literal 使用は prompt 内で禁止 instruction)
         メディアタイプ_slug: extractedData.メディアタイプ,
         // §6.2 メディアタイプ 14 種 fallback の日本語対訳 (例: 'manga' → '漫画')
@@ -309,7 +316,9 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
         原作者名_formatted: formatAuthorName(extractedData.原作者名),
       };
     } catch (error) {
-      // config load 失敗時等の safe fallback: extractedData をそのまま返す
+      // config load 失敗時等の safe fallback: extractedData をそのまま返す。
+      // R2 Minor #2: この silent fallback は Bug 1 (英語 slug 漏れ) の silent regression risk
+      // となるため、Sprint C-β P10 (observability) で Sentry / structured log に promote 予定。
       console.warn(
         `[ContentGeneration] enrichExtractedDataForPrompt failed, falling back to raw extractedData:`,
         error instanceof Error ? error.message : error
@@ -378,8 +387,11 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
     // NOTE: _meta.yaml の sections.order は "01-lead" (数字プレフィックス付き) で
     // 定義されているため、id.includes('lead') で robust に除外する
     // (Bug 1/2 案 D 修正時の key mismatch fix)
+    // R2 対応: substring match (`includes('lead')`) は将来 "lead" を含む別 section id
+    // (例: "lead_out_notice") に false positive で silent 除外するリスクあり。numeric prefix
+    // (`01-lead` / `10-lead` 等) を stripped した上での **完全一致** に改める。
     const nonLeadEntries = Object.entries(template._sections.templates).filter(
-      ([sectionId]) => !sectionId.toLowerCase().includes('lead')
+      ([sectionId]) => sectionId.replace(/^\d+-/, '').toLowerCase() !== 'lead'
     );
 
     for (const [sectionId, sectionTemplate] of nonLeadEntries) {

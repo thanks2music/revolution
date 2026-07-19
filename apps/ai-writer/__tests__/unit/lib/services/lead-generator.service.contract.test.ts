@@ -115,7 +115,7 @@ function makeEnriched(overrides: Partial<EnrichedData> = {}): EnrichedData {
 }
 
 function makeService(overrides: {
-  aiProvider?: AiProvider;
+  aiProviderFactory?: () => AiProvider;
 }) {
   const mediaFormResolver = new MediaFormResolverService(mediaTypeMappingYamlPath);
   const mediaTypeMapper = new MediaTypeMapperService(mediaTypeMappingYamlPath);
@@ -124,7 +124,7 @@ function makeService(overrides: {
     mediaFormResolver,
     mediaTypeMapper,
     textReplacer,
-    aiProvider: overrides.aiProvider,
+    aiProviderFactory: overrides.aiProviderFactory,
     yamlPath: leadYamlPath,
   });
 }
@@ -155,7 +155,7 @@ describe('LeadGeneratorService.fallback - LLM path (mock AiProvider DI)', () => 
       usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
     });
 
-    const service = makeService({ aiProvider: mockProvider });
+    const service = makeService({ aiProviderFactory: () => mockProvider });
     const enriched = makeEnriched();
 
     const result = await service.fallback(enriched, 'output_too_short');
@@ -197,7 +197,7 @@ describe('LeadGeneratorService.fallback - LLM path (mock AiProvider DI)', () => 
       model: 'gpt-5.4-mini',
     });
 
-    const service = makeService({ aiProvider: mockProvider });
+    const service = makeService({ aiProviderFactory: () => mockProvider });
     const enriched = makeEnriched();
 
     await expect(service.fallback(enriched, 'output_empty')).rejects.toThrow();
@@ -216,7 +216,7 @@ describe('LeadGeneratorService.fallback - LLM path (mock AiProvider DI)', () => 
       model: 'gpt-5.4-mini',
     });
 
-    const service = makeService({ aiProvider: mockProvider });
+    const service = makeService({ aiProviderFactory: () => mockProvider });
     const enriched = makeEnriched();
 
     await expect(service.fallback(enriched, 'template_render_error')).rejects.toThrow();
@@ -235,7 +235,7 @@ describe('LeadGeneratorService.fallback - LLM path (mock AiProvider DI)', () => 
       model: 'gpt-5.4-mini',
     });
 
-    const service = makeService({ aiProvider: mockProvider });
+    const service = makeService({ aiProviderFactory: () => mockProvider });
     const enriched = makeEnriched({
       is_multi_work: true,
       works: [
@@ -266,7 +266,7 @@ describe('LeadGeneratorService.fallback - LLM path (mock AiProvider DI)', () => 
       model: 'gpt-5.4-mini',
     });
 
-    const service = makeService({ aiProvider: mockProvider });
+    const service = makeService({ aiProviderFactory: () => mockProvider });
     const enriched = makeEnriched();
 
     // 各 fallback reason で prompt に該当理由が debug info として含まれる
@@ -294,7 +294,7 @@ describe('LeadGeneratorService.fallback - LLM path (mock AiProvider DI)', () => 
 describe('LeadGeneratorService.generate - rule-driven success path (LLM not called)', () => {
   it('N9-A regression: character + キャラクター名 で rule-driven 成功、mock provider が呼ばれない', async () => {
     const mockProvider = makeMockProvider();
-    const service = makeService({ aiProvider: mockProvider });
+    const service = makeService({ aiProviderFactory: () => mockProvider });
 
     const result = await service.generate({
       メディアタイプ: 'character',
@@ -317,7 +317,7 @@ describe('LeadGeneratorService.generate - rule-driven success path (LLM not call
 
   it('rule-driven 成功時、AiProvider DI 済みでも sendMessage が呼ばれない (Fallback 未発火)', async () => {
     const mockProvider = makeMockProvider();
-    const service = makeService({ aiProvider: mockProvider });
+    const service = makeService({ aiProviderFactory: () => mockProvider });
 
     const result = await service.generate({
       メディアタイプ: 'anime',

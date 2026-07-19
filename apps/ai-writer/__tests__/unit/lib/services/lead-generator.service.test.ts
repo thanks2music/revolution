@@ -16,6 +16,8 @@ import { LEAD_FALLBACK_TEMPLATE_ID } from '@revolution/schemas/lead-response';
 import {
   LeadGeneratorService,
   resetLeadGeneratorService,
+  __INTERNAL_CONDITION_PREDICATES__,
+  __INTERNAL_SLOT_DEFINITIONS__,
   type LeadGeneratorInput,
 } from '../../../../lib/services/lead-generator.service';
 import {
@@ -719,5 +721,60 @@ describe('LeadGeneratorService - Fallback 経路 (LLM 未 DI 時)', () => {
 
   it('LEAD_FALLBACK_TEMPLATE_ID sentinel が正常 export されている', () => {
     expect(LEAD_FALLBACK_TEMPLATE_ID).toBe('__fallback__');
+  });
+});
+
+// ============================================================================
+// describe 12: drift guard (R2 Minor #3、01-lead.yaml ⇔ TS table 対応検証)
+// ============================================================================
+//
+// CONDITION_PREDICATES / SLOT_DEFINITIONS は 01-lead.yaml の conditions[] / templates:
+// と 1:1 で hand-maintained されている parallel table。YAML 側で新 condition や template
+// を追加/削除しても、TS 側の table 更新漏れは既存 26 case unit test では検出されない
+// (test 対象外の新 id は unit test に asserted されないため silent drift となる)。
+// 本 drift guard test で YAML と TS の対応 (双方向) を自動検証する。
+// pipeline-steps.test.ts の drift guard と同 pattern。
+
+describe('LeadGeneratorService - drift guard (01-lead.yaml ⇔ TS table 対応)', () => {
+  let yamlConditionIds: string[];
+  let yamlTemplateIds: string[];
+
+  beforeAll(() => {
+    // 直接 YAML を Read して conditions[].id / templates keys を抽出
+    const yaml = jest.requireActual<typeof import('js-yaml')>('js-yaml');
+    const fs = jest.requireActual<typeof import('fs')>('fs');
+    const yamlContent = fs.readFileSync(leadYamlPath, 'utf-8');
+    const parsed = yaml.load(yamlContent) as {
+      conditions?: Array<{ id: string; template: string }>;
+      templates?: Record<string, string>;
+    };
+    yamlConditionIds = (parsed.conditions ?? []).map((c) => c.id);
+    yamlTemplateIds = Object.keys(parsed.templates ?? {});
+  });
+
+  it('YAML conditions[].id は全て CONDITION_PREDICATES に entry を持つ (YAML → TS drift)', () => {
+    const missing = yamlConditionIds.filter(
+      (id) => !(id in __INTERNAL_CONDITION_PREDICATES__)
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it('CONDITION_PREDICATES の key は全て YAML conditions[].id に対応する (TS → YAML drift)', () => {
+    const tsKeys = Object.keys(__INTERNAL_CONDITION_PREDICATES__);
+    const orphan = tsKeys.filter((id) => !yamlConditionIds.includes(id));
+    expect(orphan).toEqual([]);
+  });
+
+  it('YAML templates: の key は全て SLOT_DEFINITIONS に entry を持つ (YAML → TS drift)', () => {
+    const missing = yamlTemplateIds.filter(
+      (id) => !(id in __INTERNAL_SLOT_DEFINITIONS__)
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it('SLOT_DEFINITIONS の key は全て YAML templates: に対応する (TS → YAML drift)', () => {
+    const tsKeys = Object.keys(__INTERNAL_SLOT_DEFINITIONS__);
+    const orphan = tsKeys.filter((id) => !yamlTemplateIds.includes(id));
+    expect(orphan).toEqual([]);
   });
 });

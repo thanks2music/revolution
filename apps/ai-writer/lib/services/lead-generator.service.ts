@@ -94,8 +94,20 @@ export interface LeadGeneratorDeps {
   mediaFormResolver: MediaFormResolverService;
   mediaTypeMapper: MediaTypeMapperService;
   textReplacer: TextPlaceholderReplacerService;
-  /** LLM Fallback 発火時のみ利用。未指定なら `lead_generic` を強制採用。 */
-  aiProvider?: AiProvider;
+  /**
+   * LLM Fallback 発火時に呼び出される **provider factory**。
+   *
+   * ⚠️ **重要 (Sprint C-β P11 R2 対応)**: 過去は `aiProvider?: AiProvider` として instance を
+   * DI していたが、long-lived Node process (Next.js server) では `getLeadGeneratorService()`
+   * singleton の cache 済 instance が最初の request の provider を baked in し、後続 request
+   * で env var 変更や config swap に追随できない stale 化リスクがあった。factory 化する
+   * ことで **fallback 発火の度に fresh instance を resolve** し、この class の footgun を解消する。
+   *
+   * - production: `aiProviderFactory: createAiProvider` (関数を直渡し、fallback 時に fresh 呼び出し)
+   * - test (LLM Fallback path): `aiProviderFactory: () => mockProvider` (mock を返す thunk)
+   * - test (static Fallback path): 省略 (undefined) — `lead_generic` テンプレ強制採用
+   */
+  aiProviderFactory?: () => AiProvider;
   /** test 用、default = apps/ai-writer/templates/collabo-cafe/sections/01-lead.yaml */
   yamlPath?: string;
 }
@@ -319,7 +331,7 @@ export class LeadGeneratorService {
     enriched: EnrichedData,
     reason: LeadFallbackReason
   ): Promise<LeadGeneratorResult> {
-    if (this.deps.aiProvider) {
+    if (this.deps.aiProviderFactory) {
       return this.llmFallback(enriched, reason);
     }
     return this.staticFallback(enriched, reason);
@@ -337,7 +349,7 @@ export class LeadGeneratorService {
 
     if (process.env.DEBUG_LEAD_GENERATOR === 'true') {
       console.warn(
-        `[LeadGenerator] Static fallback fired: reason=${reason}, using lead_generic (aiProvider not injected)`
+        `[LeadGenerator] Static fallback fired: reason=${reason}, using lead_generic (aiProviderFactory not injected)`
       );
     }
 
@@ -383,7 +395,9 @@ export class LeadGeneratorService {
       );
     }
 
-    const response = await this.deps.aiProvider!.sendMessage(prompt, {
+    // fallback 発火の度に factory から fresh provider を resolve (R2: singleton stale 化回避)
+    const provider = this.deps.aiProviderFactory!();
+    const response = await provider.sendMessage(prompt, {
       temperature: 0.3,
       responseFormat: 'json',
       responseSchema: schemaPayload,
@@ -876,13 +890,12 @@ let leadGeneratorInstance: LeadGeneratorService | null = null;
 /**
  * LeadGeneratorService の singleton getter。
  *
- * ⚠️ **重要 (footgun)**: `deps` は **最初の呼び出しでのみ** consumed され、以降の
- * 呼び出しでは cache 済 instance が返るため引数が**無視される**。特に `aiProvider` を
- * 後から差し替える場合、必ず先に `resetLeadGeneratorService()` を呼ぶこと (テスト間で
- * DI する時などが該当)。既存 MediaTypeMapperService / MediaFormResolverService は
- * factory 引数を取らない singleton だが、本 service は per-call `deps` を取る例外的
- * pattern のため、future request 毎に別 provider を注入したい要件が出た時点で
- * singleton pattern そのものを module-level deps 解決に組み替える判断が必要。
+ * ⚠️ **注意**: `deps` は **最初の呼び出しでのみ** consumed され、以降の呼び出しでは
+ * cache 済 instance が返るため引数が無視される。ただし Sprint C-β P11 R2 対応で
+ * `deps.aiProviderFactory` を **factory 関数 (`() => AiProvider`)** に変更したため、
+ * fallback 発火時に factory を毎回 fresh 実行する経路になっており、long-lived process
+ * での provider stale 化リスクは解消済 (env var 変更にも追随)。テストで factory 自体を
+ * 差し替えたい場合のみ `resetLeadGeneratorService()` で instance を破棄する。
  */
 export function getLeadGeneratorService(deps: LeadGeneratorDeps): LeadGeneratorService {
   if (!leadGeneratorInstance) {
