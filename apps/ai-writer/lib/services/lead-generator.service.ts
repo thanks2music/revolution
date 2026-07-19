@@ -31,6 +31,7 @@ import yaml from 'js-yaml';
 
 import {
   LEAD_FALLBACK_TEMPLATE_ID,
+  LeadSlotsSchema,
   type LeadFallbackReason,
   type LeadGeneratorResult,
   type LeadSlots,
@@ -38,6 +39,8 @@ import {
 
 import type { AiProvider } from '../ai/providers/ai-provider.interface';
 import type { SectionTemplate } from '../types/modular-template';
+// Sprint C-β P11 Phase 2f (2026-07-19): LLM Fallback path で使用
+import { zodToOpenAiSchema } from '../utils/zod-to-openai-schema';
 
 import type { MediaFormResolverService } from './media-form-resolver.service';
 import type { MediaTypeMapperService } from './media-type-mapper.service';
@@ -297,17 +300,37 @@ export class LeadGeneratorService {
   }
 
   /**
-   * Fallback 発火時の処理。
-   * - AiProvider 未 DI (D7): `lead_generic` テンプレを強制採用 (throw しない)
-   * - AiProvider DI 済み: LLM 呼び出し (Phase 2f で本格実装、本 Phase 2d では未 DI path のみ)
+   * Fallback 発火時の処理 (Sprint C-β P11 Phase 2d/2f)。
+   *
+   * - AiProvider 未 DI (D7): `lead_generic` テンプレを強制採用 (throw しない、static path)
+   * - AiProvider DI 済み: LLM 呼び出しで 4 スロット JSON を strict mode 生成 (Sprint C-β P0 pattern)
    */
-  private async fallback(
+  async fallback(
     enriched: EnrichedData,
     reason: LeadFallbackReason
   ): Promise<LeadGeneratorResult> {
-    // LLM Fallback 未実装 (Phase 2f 実装予定)、現状は lead_generic 強制採用
+    if (this.deps.aiProvider) {
+      return this.llmFallback(enriched, reason);
+    }
+    return this.staticFallback(enriched, reason);
+  }
+
+  /**
+   * AiProvider 未 DI 時の static fallback: `lead_generic` テンプレを強制採用。
+   */
+  private staticFallback(
+    enriched: EnrichedData,
+    reason: LeadFallbackReason
+  ): LeadGeneratorResult {
     const section = this.getLeadSection();
     const templateStr = section.templates.lead_generic;
+
+    if (process.env.DEBUG_LEAD_GENERATOR === 'true') {
+      console.warn(
+        `[LeadGenerator] Static fallback fired: reason=${reason}, using lead_generic (aiProvider not injected)`
+      );
+    }
+
     if (!templateStr) {
       // 万一 lead_generic も欠落している場合の hard fallback (通常発生しない)
       return {
@@ -323,20 +346,105 @@ export class LeadGeneratorService {
       enriched as TextPlaceholderData
     );
 
-    if (process.env.DEBUG_LEAD_GENERATOR === 'true') {
-      console.warn(
-        `[LeadGenerator] Fallback fired: reason=${reason}, using lead_generic template (aiProvider ${
-          this.deps.aiProvider ? 'DI-ed but Phase 2f not implemented' : 'not injected'
-        })`
-      );
-    }
-
     return {
       leadMdx: replacement.content,
       usedTemplate: LEAD_FALLBACK_TEMPLATE_ID,
       fallbackReason: reason,
       slots: SLOT_DEFINITIONS.lead_generic!(enriched),
     };
+  }
+
+  /**
+   * AiProvider DI 済み時の LLM fallback: `LeadSlotsSchema` を strict mode で強制生成し、
+   * 4 スロットから汎用テンプレで MDX を組み立てる。
+   *
+   * Sprint C-β P0 pattern を再利用 (`zodToOpenAiSchema` + `sendMessage.responseSchema`)。
+   */
+  private async llmFallback(
+    enriched: EnrichedData,
+    reason: LeadFallbackReason
+  ): Promise<LeadGeneratorResult> {
+    const prompt = this.buildFallbackPrompt(enriched, reason);
+    const schemaPayload = zodToOpenAiSchema(LeadSlotsSchema, 'LeadSlotsResponse');
+
+    if (process.env.DEBUG_LEAD_GENERATOR === 'true') {
+      console.warn(
+        `[LeadGenerator] LLM fallback fired: reason=${reason}, invoking AiProvider.sendMessage() with responseSchema=${schemaPayload.name}`
+      );
+    }
+
+    const response = await this.deps.aiProvider!.sendMessage(prompt, {
+      temperature: 0.3,
+      responseFormat: 'json',
+      responseSchema: schemaPayload,
+    });
+
+    // Zod strict parse: LLM 応答が LeadSlots schema に準拠していることを検証
+    const parsed = LeadSlotsSchema.parse(JSON.parse(response.content));
+    const leadMdx = this.slotsToMdx(parsed, enriched);
+
+    return {
+      leadMdx,
+      usedTemplate: LEAD_FALLBACK_TEMPLATE_ID,
+      fallbackReason: reason,
+      slots: parsed,
+    };
+  }
+
+  /**
+   * LLM Fallback 用の prompt を組み立てる。4 スロット構造を JSON で強制生成させる指示。
+   */
+  private buildFallbackPrompt(enriched: EnrichedData, reason: LeadFallbackReason): string {
+    const 作品名リスト = enriched.works.map((w) => w.title).join(' × ');
+    return [
+      'あなたは日本語のコラボカフェ記事のリード文を生成する専門 AI です。',
+      '',
+      '# 出力仕様 (Sprint C-β P11、4 スロット構造)',
+      '- agent (主体): 原作者名 / スタジオ名 / 監督名など、null 可',
+      '- verb (接続動詞): 「による」「が手掛ける」など、null 可',
+      '- adjective (形容詞): 「人気」「大人気」「世界中で愛される」など、null 可 (デフォルト「人気」)',
+      '- mediaForm (メディア形態、必須): §6.2 対訳マップ準拠の日本語表記 (「漫画」「ライトノベル」「アニメ映画」「キャラクター」「バーチャル・シンガー」等)',
+      '- workTitle (作品名、必須): primary 作品名',
+      '',
+      '# 入力情報',
+      `- 作品名: ${enriched.作品名}`,
+      `- 店舗名: ${enriched.店舗名}`,
+      `- メディアタイプ: ${enriched.メディアタイプ ?? '(未指定)'}`,
+      `- 原作タイプ: ${enriched.原作タイプ ?? '(未指定)'}`,
+      `- 原作者名: ${enriched.原作者名_formatted || '(なし)'}`,
+      `- キャラクター名: ${enriched.キャラクター名?.join('、') ?? '(なし)'}`,
+      `- §6.2 対訳マップ解決済のメディア形態表記: ${enriched.メディア形態表記}`,
+      `- 複数作品コラボ: ${enriched.is_multi_work ? `はい (${作品名リスト})` : 'いいえ'}`,
+      '',
+      `# Fallback 発火理由 (デバッグ)\n${reason}`,
+      '',
+      '# 出力形式',
+      'JSON schema LeadSlotsResponse に厳密に準拠して返してください。',
+      '{ "agent": string|null, "verb": string|null, "adjective": string|null, "mediaForm": string (非空), "workTitle": string (非空) }',
+    ].join('\n');
+  }
+
+  /**
+   * LLM が返した 4 スロットから MDX リード文を組み立てる (2 段落想定)。
+   */
+  private slotsToMdx(slots: LeadSlots, enriched: EnrichedData): string {
+    const agentPart = slots.agent ? `${slots.agent}${slots.verb ?? ''}` : '';
+    const adjPart = slots.adjective ?? '人気';
+    const 開催期間str = this.format開催期間(enriched.開催期間);
+    const firstSentence = `${agentPart}${adjPart}${slots.mediaForm}「${slots.workTitle}」× ${enriched.店舗名}にて${開催期間str}コラボカフェが開催される。`;
+    const secondSentence = `「${slots.workTitle}」コラボカフェでは、コラボメニューやグッズがお楽しみいただける。`;
+    return `${firstSentence}\n\n${secondSentence}`;
+  }
+
+  /**
+   * 開催期間を日本語表記に変換 (同年 / 年またぎ / 終了未定)。
+   */
+  private format開催期間(period: EventPeriod): string {
+    const 開始 = `${period.開始.年}${period.開始.日付}`;
+    if (period.終了.未定) return `${開始}より`;
+    if (period.終了.年 == null || period.終了.日付 == null) return `${開始}より`;
+    if (period.開始.年 === period.終了.年) return `${開始}〜${period.終了.日付}まで`;
+    return `${開始}〜${period.終了.年}${period.終了.日付}まで`;
   }
 }
 
