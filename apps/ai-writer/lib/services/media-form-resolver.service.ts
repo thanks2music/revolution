@@ -49,13 +49,18 @@ export class MediaFormResolverService {
   private configPath: string;
 
   constructor(configPath?: string) {
+    // Sprint C-β P11 (2026-07-19) SoC §4.2 alignment: config source of truth is Templates side
+    // (`revolution-templates/ai-writer/config/media-type-mapping.yaml`), synced to
+    // `apps/ai-writer/templates/config/` by `pnpm sync:templates`.
     this.configPath =
-      configPath || path.join(process.cwd(), 'config', 'media-type-mapping.yaml');
+      configPath ||
+      path.join(process.cwd(), 'templates', 'config', 'media-type-mapping.yaml');
 
     if (!fs.existsSync(this.configPath)) {
       throw new Error(
         `Media type mapping config not found: ${this.configPath}\n` +
-          'Please ensure config/media-type-mapping.yaml exists (with original_type_labels section for Sprint C-β P11).'
+          'Please ensure the Templates repository has been synced via `pnpm sync:templates` ' +
+          '(with original_type_labels section required for Sprint C-β P11 MediaFormResolverService).'
       );
     }
 

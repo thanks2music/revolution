@@ -15,9 +15,11 @@ import {
   resetMediaFormResolverService,
 } from '../../../../lib/services/media-form-resolver.service';
 
+// Sprint C-β P11 (2026-07-19) SoC §4.2: config now lives under templates/config/
+// (synced from revolution-templates side via `pnpm sync:templates`).
 const configPath = path.join(
   __dirname,
-  '../../../../config/media-type-mapping.yaml'
+  '../../../../templates/config/media-type-mapping.yaml'
 );
 
 let resolver: MediaFormResolverService;

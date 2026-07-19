@@ -157,14 +157,19 @@ export class MediaTypeMapperService {
    * @throws {Error} 必須フィールドが不足している場合
    */
   constructor(configPath?: string) {
+    // Sprint C-β P11 (2026-07-19) SoC §4.2 alignment: config source of truth is Templates side
+    // (`revolution-templates/ai-writer/config/media-type-mapping.yaml`), synced to
+    // `apps/ai-writer/templates/config/` by `pnpm sync:templates`. The legacy path
+    // `apps/ai-writer/config/media-type-mapping.yaml` is removed as part of the same sprint.
     this.configPath =
-      configPath || path.join(process.cwd(), 'config', 'media-type-mapping.yaml');
+      configPath ||
+      path.join(process.cwd(), 'templates', 'config', 'media-type-mapping.yaml');
 
     // YAML設定ファイルを読み込み
     if (!fs.existsSync(this.configPath)) {
       throw new Error(
         `Media type mapping config not found: ${this.configPath}\n` +
-          'Please ensure config/media-type-mapping.yaml exists.'
+          'Please ensure the Templates repository has been synced via `pnpm sync:templates`.'
       );
     }
 

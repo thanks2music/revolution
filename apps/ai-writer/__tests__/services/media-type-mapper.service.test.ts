@@ -569,9 +569,11 @@ media_type_mappings:
   });
 
   describe('統合テスト: 実際のYAMLファイルとの整合性', () => {
-    it('実際の config/media-type-mapping.yaml が有効であること', () => {
+    // Sprint C-β P11 (2026-07-19) SoC §4.2: config now lives under templates/config/
+    it('実際の templates/config/media-type-mapping.yaml が有効であること', () => {
       const actualConfigPath = path.join(
         process.cwd(),
+        'templates',
         'config',
         'media-type-mapping.yaml'
       );
