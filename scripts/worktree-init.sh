@@ -75,8 +75,12 @@ SYNC_PATHS=(
 
 # ----- 必須ファイル (post-condition assert 対象) -----
 # husky pre-push の MediaTypeMapperService 初期化に必須
+# Sprint C-β P11 (2026-07-19) で SoC §4.2 alignment のため
+# `apps/ai-writer/config/` から `apps/ai-writer/templates/config/` へ移動済み
+# (Templates 側 `pnpm sync:templates` の source of truth に一元化、
+#  `media-type-mapper.service.ts:159-166` の runtime code も新 path 参照済)
 REQUIRED_FILES=(
-  "apps/ai-writer/config/media-type-mapping.yaml"
+  "apps/ai-writer/templates/config/media-type-mapping.yaml"
 )
 
 # ----- rsync オプション -----
