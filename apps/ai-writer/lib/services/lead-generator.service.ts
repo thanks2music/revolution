@@ -152,6 +152,16 @@ export class LeadGeneratorService {
     const section = this.getLeadSection();
     const enriched = this.computeEnrichedData(input);
 
+    // Step 0: works[] 空 + 作品名 未指定の early guard (R1 Minor)
+    //   `works=[]` かつ `input.作品名` が未指定/空文字の場合、`workTitle=''` で
+    //   「人気漫画「」」のような壊れた出力が生成される。この state は rule miss よりも
+    //   前段の入力データ欠損を示すため、rule 評価前に fallback へ委譲する
+    //   (LLM Fallback が DI 済みなら LLM が自由生成で救う、static Fallback なら
+    //   lead_generic 強制採用で「作品」literal を使う)。
+    if (!enriched.primary_work.title || enriched.primary_work.title.trim() === '') {
+      return this.fallback(enriched, 'empty_work_title');
+    }
+
     // Step 1: 条件分岐を配列順に評価
     const matchedCondition = section.conditions?.find((cond) => {
       const predicate = CONDITION_PREDICATES[cond.id];
@@ -863,6 +873,17 @@ const SLOT_DEFINITIONS: Record<string, SlotDefinition> = {
 
 let leadGeneratorInstance: LeadGeneratorService | null = null;
 
+/**
+ * LeadGeneratorService の singleton getter。
+ *
+ * ⚠️ **重要 (footgun)**: `deps` は **最初の呼び出しでのみ** consumed され、以降の
+ * 呼び出しでは cache 済 instance が返るため引数が**無視される**。特に `aiProvider` を
+ * 後から差し替える場合、必ず先に `resetLeadGeneratorService()` を呼ぶこと (テスト間で
+ * DI する時などが該当)。既存 MediaTypeMapperService / MediaFormResolverService は
+ * factory 引数を取らない singleton だが、本 service は per-call `deps` を取る例外的
+ * pattern のため、future request 毎に別 provider を注入したい要件が出た時点で
+ * singleton pattern そのものを module-level deps 解決に組み替える判断が必要。
+ */
 export function getLeadGeneratorService(deps: LeadGeneratorDeps): LeadGeneratorService {
   if (!leadGeneratorInstance) {
     leadGeneratorInstance = new LeadGeneratorService(deps);

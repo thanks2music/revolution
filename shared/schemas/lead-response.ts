@@ -77,6 +77,7 @@ export const LeadFallbackReasonEnum = z.enum([
   'output_too_short',
   'output_empty',
   'template_render_error',
+  'empty_work_title', // Sprint C-β P11 R1: works[] 空 + 作品名 未指定で workTitle='' となるケースの early guard
 ]);
 
 export type LeadFallbackReason = z.infer<typeof LeadFallbackReasonEnum>;

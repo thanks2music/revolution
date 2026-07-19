@@ -876,8 +876,11 @@ export class ArticleGenerationMdxService {
         mediaFormResolver: getMediaFormResolverService(),
         mediaTypeMapper: getMediaTypeMapperService(),
         textReplacer: getTextPlaceholderReplacerService(),
-        // aiProvider は Phase 2f で LLM Fallback 実装時に注入。現状は
-        // lead_generic 強制採用 (fallbackReason 記録)。
+        // Phase 2f で実装した LLM Fallback を production 経路に wire in。
+        // Fallback 発火条件 (all_conditions_missed / too_many_unreplaced_placeholders /
+        // output_too_short / output_empty / template_render_error / empty_work_title) を
+        // rule miss 時に LLM に委譲する (Sprint C-β P11 の N1 = リード文の省略・誤生成の完全解消)。
+        aiProvider: createAiProvider(),
       });
 
       const leadResult = await leadGenerator.generate({
