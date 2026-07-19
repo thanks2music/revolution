@@ -17,6 +17,10 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate, SectionTemplate } from '@/lib/types/modular-template';
 import type { ExtractionResult } from './extraction.service';
+// Sprint C-β P11 (2026-07-19): §6.2 メディア形態表記マップの解決 + 日本語対訳注入
+import { getMediaFormResolverService } from './media-form-resolver.service';
+import { getMediaTypeMapperService } from './media-type-mapper.service';
+import { formatAuthorName } from '@/lib/utils/author-formatter';
 
 /**
  * Token usage statistics for cost tracking
@@ -169,7 +173,14 @@ export class ContentGenerationService {
   }
 
   /**
-   * プロンプトを構築
+   * プロンプトを構築 (Sprint C-β P11 Phase 2e/3、案 D 統合修正)
+   *
+   * Phase 2e で LeadGenerator が lead を rule-driven で生成するように pipeline を
+   * 変更したため、本 buildPrompt では **lead セクションを完全に scope 外**にする。
+   * また、`extractedData` の英語 slug (`メディアタイプ = manga` 等) を LLM が
+   * literal 参照して自然文に流出する Route 2 バグを防ぐため、日本語対訳の派生
+   * 変数を JSON に注入する。
+   *
    * @param template モジュール化YAMLテンプレート
    * @param request リクエストデータ
    * @returns 完成したプロンプト
@@ -180,7 +191,10 @@ export class ContentGenerationService {
   ): string {
     // YAMLテンプレートのルール定義をプロンプトに含める
     const rulesSection = this.buildRulesSection(template);
+    // Sprint C-β P11: lead セクションを除外して sections プロンプトを組み立てる
     const sectionsSection = this.buildSectionsSection(template);
+    // Sprint C-β P11: extractedData に日本語対訳の派生変数を注入 (Bug 1 対策)
+    const enrichedExtractedData = this.enrichExtractedDataForPrompt(request.extractedData);
 
     // 最終プロンプトを構築
     return `${template.prompts.generate_content}
@@ -193,9 +207,9 @@ ${sectionsSection}
 
 ## 入力データ
 
-### extracted_data (2-extraction の出力)
+### extracted_data (2-extraction の出力 + Sprint C-β P11 日本語対訳の派生変数)
 \`\`\`json
-${JSON.stringify(request.extractedData, null, 2)}
+${JSON.stringify(enrichedExtractedData, null, 2)}
 \`\`\`
 
 ### generated_title (3-title の出力)
@@ -210,23 +224,98 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
 
 上記の入力データとルールに従い、JSON形式でのみ出力してください。
 
-出力形式:
+出力形式 (Sprint C-β P11 で lead を除外、menu/novelty/goods/summary のみ):
 \`\`\`json
 {
-  "content": "生成されたMDX本文（全セクションを結合）",
-  "generatedSections": ["lead", "menu", "novelty", "goods", "summary"],
+  "content": "生成されたMDX本文 (menu/novelty/goods/summary の 4 セクションを結合、lead は含めない)",
+  "generatedSections": ["menu", "novelty", "goods", "summary"],
   "skippedSections": ["スキップしたセクションID"]
 }
 \`\`\`
 
-重要:
+【Sprint C-β P11 重要】リード文 (lead) は絶対に生成しない
+- lead セクションは Revolution 側 LeadGeneratorService が **rule-driven** で既に生成済み
+- 本 step の \`content\` フィールドには **menu / novelty / goods / summary の 4 セクションのみ** を含める
+- 「〜のテーマカフェが〜にて開催される」等のリード文相当の文を \`content\` 冒頭に生成することは禁止
+- MDX 本文は menu セクションの H2 見出し (\`## 作品名 × 店舗名のメニュー\`) から開始する
+- 出力後、呼び出し側で LeadGenerator 生成の leadMdx が \`content\` の先頭に concat される
+
+【Sprint C-β P11 重要】メディアタイプ・原作タイプの表記
+- 本文中で「メディアタイプ」を語る際は、日本語対訳 (メディアタイプ_label / メディア形態表記) のみを使用
+- **英語 slug (\`manga\` / \`character\` / \`anime_movie\` 等) を本文中に literal で出力することは絶対禁止**
+- 例 (誤): 「開催されるmanga「作品名」」
+- 例 (正): 「開催される漫画「作品名」」または「開催されるキャラクター「作品名」」
+- extracted_data 内の \`メディアタイプ_label\` / \`メディア形態表記\` / \`原作者名_formatted\` を優先参照
+
+【共通ルール】
 - JSON以外のテキストは一切出力しないこと
 - 各セクション間は空行で区切る
 - h1 は使用しない（タイトルで使用されるため）
 - セクションのスキップ判断は skip_if 条件に従う
-- メディアタイプ/原作タイプ/原作者有無に応じたテンプレート選択は work_type_template_selection ロジックに従う
 - 原作者有無 === true の場合のみ「○○先生」または「○○さん」形式で原作者名を使用
 - 開催期間は { 開始: { 年, 日付 }, 終了: { 年, 日付, 未定 } } 構造で渡される（年またぎ対応）`;
+  }
+
+  /**
+   * `extractedData` に §6.2 メディア形態表記 + §6.1 派生変数を注入して LLM に渡す (Bug 1 対策)。
+   *
+   * ## 課題 (Sprint C-α までの挙動)
+   *
+   * LLM は input JSON を literal 参照して自然文に埋め込む挙動があるため、英語 slug
+   * (`メディアタイプ = 'manga'`) だけを提示すると本文に "manga" が literal 挿入される
+   * (Bug 1、Route 2)。
+   *
+   * ## 対策 (Sprint C-β P11 Phase 3 案 D+)
+   *
+   * **`メディアタイプ` field 自体を日本語 label で上書き**し、英語 slug は
+   * `メディアタイプ_slug` (別名) に隔離する。上書き値は §6.2 対訳マップの
+   * **メディア形態表記 (原作タイプ 16 種優先)** を採用することで、P5 (novel_based →
+   * 「ライトノベル」等) と N2 (英語 slug 漏れ) を同時解消する。
+   *
+   * 英語 slug (`メディアタイプ_slug`) は分岐判定用として提示するが、literal 使用は
+   * prompt instruction で明示的に禁止する。
+   */
+  private enrichExtractedDataForPrompt(
+    extractedData: ExtractionResult
+  ): ExtractionResult & {
+    メディアタイプ_slug?: string;
+    メディアタイプ_label?: string;
+    メディア形態表記?: string;
+    原作者名_formatted?: string;
+  } {
+    try {
+      const mediaTypeMapper = getMediaTypeMapperService();
+      const mediaFormResolver = getMediaFormResolverService();
+
+      const mediaFormLabel = mediaFormResolver.resolve(
+        extractedData.原作タイプ,
+        extractedData.メディアタイプ
+      );
+
+      return {
+        ...extractedData,
+        // Sprint C-β P11 Phase 3 対策: `メディアタイプ` 自体を日本語 label で上書き
+        // (LLM の literal 誤挿入を根本防止、mediaFormResolver 経由で P5 も同時解消)
+        // 型として `メディアタイプ` は `MediaType` enum の英語 slug を要求するが、
+        // 本 field は LLM prompt 用の enriched value のため overwrite する
+        メディアタイプ: mediaFormLabel as unknown as ExtractionResult['メディアタイプ'],
+        // 英語 slug は _slug suffix で分岐用に隔離 (literal 使用は prompt 内で禁止 instruction)
+        メディアタイプ_slug: extractedData.メディアタイプ,
+        // §6.2 メディアタイプ 14 種 fallback の日本語対訳 (例: 'manga' → '漫画')
+        メディアタイプ_label: mediaTypeMapper.getLabel(extractedData.メディアタイプ),
+        // §6.2 メディア形態表記 (原作タイプ 16 種優先 → メディアタイプ 14 種 fallback)
+        メディア形態表記: mediaFormLabel,
+        // 原作者名の統一フォーマット (string | string[] | null → string)
+        原作者名_formatted: formatAuthorName(extractedData.原作者名),
+      };
+    } catch (error) {
+      // config load 失敗時等の safe fallback: extractedData をそのまま返す
+      console.warn(
+        `[ContentGeneration] enrichExtractedDataForPrompt failed, falling back to raw extractedData:`,
+        error instanceof Error ? error.message : error
+      );
+      return extractedData;
+    }
   }
 
   /**
@@ -261,7 +350,12 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
   }
 
   /**
-   * セクション定義をプロンプト用に構築
+   * セクション定義をプロンプト用に構築 (Sprint C-β P11 Phase 2e/3、案 D 統合修正)
+   *
+   * Phase 2e で LeadGenerator が lead を rule-driven で生成するようになったため、
+   * 本 method は **lead セクションを除外**して menu/novelty/goods/summary のみを
+   * LLM prompt に露出する。lead の template preview が prompt に含まれると LLM が
+   * 独自に lead を生成する Bug 2 (Pochacco 症状) が発生するため、除外は必須。
    */
   private buildSectionsSection(template: MergedModularTemplate): string {
     if (!template._sections?.templates) {
@@ -269,18 +363,26 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
     }
 
     const sections: string[] = [
-      '## セクション定義',
+      '## セクション定義 (Sprint C-β P11: lead は LeadGeneratorService の責務、本 step の対象外)',
       '',
       '【重要：セクションIDと見出しの扱い】',
-      '- 以下のセクションID（01-lead, 02-menu 等）は**内部識別子**です',
+      '- 以下のセクションID（02-menu, 03-novelty 等）は**内部識別子**です',
       '- **本文にセクションIDを見出しとして出力しないでください**',
       '- 各セクションの「テンプレート例」に定義されている見出し形式を使用してください',
-      '- **リード文（lead）は見出しなし**で本文を開始してください',
+      '- lead セクションは本 step の scope 外 (Revolution 側 LeadGeneratorService で rule-driven 生成済み)',
       '- メニュー/ノベルティ/グッズ/まとめセクションはテンプレート内の `## ○○` 形式の見出しを使用してください',
       '',
     ];
 
-    for (const [sectionId, sectionTemplate] of Object.entries(template._sections.templates)) {
+    // Sprint C-β P11: lead セクションを除外 (Phase 2e で LeadGeneratorService が担当)
+    // NOTE: _meta.yaml の sections.order は "01-lead" (数字プレフィックス付き) で
+    // 定義されているため、id.includes('lead') で robust に除外する
+    // (Bug 1/2 案 D 修正時の key mismatch fix)
+    const nonLeadEntries = Object.entries(template._sections.templates).filter(
+      ([sectionId]) => !sectionId.toLowerCase().includes('lead')
+    );
+
+    for (const [sectionId, sectionTemplate] of nonLeadEntries) {
       const section = sectionTemplate as SectionTemplate;
       const sectionInfo: string[] = [];
 
