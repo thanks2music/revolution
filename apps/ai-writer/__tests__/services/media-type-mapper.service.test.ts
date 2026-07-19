@@ -344,12 +344,13 @@ media_type_mappings:
     });
 
     describe('未定義のメディアタイプ', () => {
-      it('未定義のメディアタイプの場合はデフォルト "・" を返すこと', () => {
-        expect(service.getSeparator('unknown')).toBe('・');
+      // Sprint C-β P11 §6.1 準拠: default が "・" → "、" に変更 (2026-07-19)
+      it('未定義のメディアタイプの場合はデフォルト "、" を返すこと', () => {
+        expect(service.getSeparator('unknown')).toBe('、');
       });
 
-      it('空文字列の場合もデフォルト "・" を返すこと', () => {
-        expect(service.getSeparator('')).toBe('・');
+      it('空文字列の場合もデフォルト "、" を返すこと', () => {
+        expect(service.getSeparator('')).toBe('、');
       });
     });
   });
@@ -513,7 +514,8 @@ media_type_mappings:
       const service = getMediaTypeMapperService();
 
       // 実際の設定ファイルに定義されているメディアタイプをテスト
-      expect(service.getSeparator('anime')).toBe('・');
+      // Sprint C-β P11 §6.1 準拠: anime character_separator "・" → "、" (2026-07-19)
+      expect(service.getSeparator('anime')).toBe('、');
       expect(service.getSeparator('idol')).toBe(' / ');
       expect(service.getLabel('anime')).toBe('アニメ');
     });
@@ -532,9 +534,10 @@ media_type_mappings:
     });
 
     describe('大文字小文字の区別', () => {
+      // Sprint C-β P11 §6.1 準拠: default が "・" → "、" に変更 (2026-07-19)
       it('メディアタイプは大文字小文字を区別すること', () => {
-        expect(service.getSeparator('Anime')).toBe('・'); // デフォルト（未定義扱い）
-        expect(service.getSeparator('IDOL')).toBe('・'); // デフォルト（未定義扱い）
+        expect(service.getSeparator('Anime')).toBe('、'); // デフォルト（未定義扱い）
+        expect(service.getSeparator('IDOL')).toBe('、'); // デフォルト（未定義扱い）
       });
     });
 
@@ -578,7 +581,8 @@ media_type_mappings:
       const service = new MediaTypeMapperService(actualConfigPath);
 
       // 実際の設定ファイルに定義されている主要なメディアタイプをテスト
-      expect(service.getSeparator('anime')).toBe('・');
+      // Sprint C-β P11 §6.1 準拠: anime character_separator "・" → "、" (2026-07-19)
+      expect(service.getSeparator('anime')).toBe('、');
       expect(service.getSeparator('idol')).toBe(' / ');
       expect(service.getSeparator('utaite')).toBe(' / ');
       expect(service.getLabel('anime')).toBe('アニメ');

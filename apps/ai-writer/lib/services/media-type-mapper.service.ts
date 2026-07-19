@@ -6,32 +6,39 @@
  * YAML設定ファイルから読み込み、キャッシュして使用します。
  *
  * ## 主な機能
- * - メディアタイプ別セパレーター取得（"・" または " / "）
- * - メディアタイプ表示ラベル取得
+ * - メディアタイプ別セパレーター取得（"、" または " / "、§6.1 準拠）
+ * - メディアタイプ表示ラベル取得 (§6.2 準拠)
  * - idol/utaite判定（特殊セパレーター対象）
  *
  * ## 重要な仕様
  * - **原作者名には適用されません**（常に " / " 固定）
  * - キャラクター名・メンバー名にのみ適用されます
  * - Singletonパターンで実装（アプリ全体で1インスタンス）
+ * - §6.1 (2026-07-18 訂正、Sprint C-β P11 で "・" → "、" default 化): キャラ間区切りは「、」、
+ *   キャラ名内部の中黒「・」(エレン・イェーガー等) は保持。idol/utaite の実メンバー名区切りのみ " / "
  *
  * @example
  * const mapper = getMediaTypeMapperService();
  *
  * // セパレーター取得
  * mapper.getSeparator('idol')   // → ' / '
- * mapper.getSeparator('anime')  // → '・'
+ * mapper.getSeparator('anime')  // → '、'
  *
  * // idol/utaite判定
  * mapper.isIdolOrUtaite('idol')   // → true
  * mapper.isIdolOrUtaite('anime')  // → false
  *
- * // ラベル取得
+ * // ラベル取得 (§6.2 準拠)
  * mapper.getLabel('idol')  // → 'アイドル'
+ * mapper.getLabel('character')  // → 'キャラクター'
  *
  * @see /notes/archive/v1.4.0-design-draft.md
  * @see /config/media-type-mapping.yaml
+ * @see revolution-templates/CLAUDE.md §主要な設計パターン §6.1 (キャラクター名の処理) + §6.2 (メディア形態表記マップ)
  * @since v1.4.0
+ * @changelog Sprint C-β P11 (2026-07-19): character_separator default "・" → "、" 変更 (§6.1)。
+ *            §6.2 メディア形態表記マップの `original_type_labels` は姉妹サービス
+ *            `MediaFormResolverService` が解決する。
  */
 
 import * as fs from 'fs';
@@ -234,20 +241,20 @@ export class MediaTypeMapperService {
    * キャラクター/メンバー名の結合セパレーターを取得
    *
    * @param mediaType - メディアタイプ（例: 'idol', 'anime'）
-   * @returns セパレーター文字列（'・' または ' / '）
+   * @returns セパレーター文字列（'、' または ' / '、§6.1 準拠）
    *
    * @description
-   * - idol/utaite → ' / '
-   * - その他 → '・'
-   * - 未定義のメディアタイプ → '・'（デフォルト）
+   * - idol/utaite → ' / ' (実メンバー名区切り、業界慣例)
+   * - その他 → '、' (§6.1 訂正、キャラクター名内部の中黒「・」は保持)
+   * - 未定義のメディアタイプ → '、' (デフォルト、Sprint C-β P11 で "・" → "、" 変更)
    *
    * @example
    * mapper.getSeparator('idol')   // → ' / '
-   * mapper.getSeparator('anime')  // → '・'
-   * mapper.getSeparator('unknown') // → '・' (デフォルト)
+   * mapper.getSeparator('anime')  // → '、'
+   * mapper.getSeparator('unknown') // → '、' (デフォルト)
    */
   getSeparator(mediaType: string): string {
-    return this.config.media_type_mappings[mediaType]?.character_separator || '・';
+    return this.config.media_type_mappings[mediaType]?.character_separator || '、';
   }
 
   /**
