@@ -41,21 +41,23 @@ export const TemplatesCategorySchema = z
 /**
  * `industry-lexicon.yaml` 全体の schema。カテゴリ 5 つは必須 (欠落 = parse error)。
  */
-export const IndustryLexiconConfigSchema = z.object({
-  version: z
-    .string()
-    .regex(/^\d+\.\d+\.\d+$/, 'version must be in semver format (e.g., "1.0.0")'),
-  last_updated: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'last_updated must be in YYYY-MM-DD format'),
-  categories: z
-    .object({
-      menu_expressions: TermsCategorySchema,
-      goods_expressions: TermsCategorySchema,
-      visual_style: TermsCategorySchema,
-      world_view: TemplatesCategorySchema,
-      honorifics: TermsCategorySchema,
-    })
-    .strict(),
-});
+export const IndustryLexiconConfigSchema = z
+  .object({
+    version: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+$/, 'version must be in semver format (e.g., "1.0.0")'),
+    last_updated: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'last_updated must be in YYYY-MM-DD format'),
+    categories: z
+      .object({
+        menu_expressions: TermsCategorySchema,
+        goods_expressions: TermsCategorySchema,
+        visual_style: TermsCategorySchema,
+        world_view: TemplatesCategorySchema,
+        honorifics: TermsCategorySchema,
+      })
+      .strict(),
+  })
+  .strict();
 
 export type TermsCategory = z.infer<typeof TermsCategorySchema>;
 export type TemplatesCategory = z.infer<typeof TemplatesCategorySchema>;

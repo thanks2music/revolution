@@ -26,29 +26,35 @@ export const StyleGuideScopeEnum = z.enum(['lead', 'body_h2_excerpt']);
 
 /**
  * 中程度粒度の Rule 1 件。構造ルール + 抽象論のみを持ち、具体的制約は Few-shot 例に委譲する。
+ * `.strict()` で未知 field (rename 漏れ・typo) を parse-time で reject する
+ * (industry-lexicon.ts と同方針の fail-loud)。
  */
-export const StyleGuideRuleSchema = z.object({
-  id: z
-    .string()
-    .regex(/^rule_[a-z0-9_]+$/, 'rule id must be snake_case with "rule_" prefix'),
-  scope: z.array(StyleGuideScopeEnum).min(1, 'scope must not be empty'),
-  statement: z.string().min(1, 'statement must not be empty'),
-  reason: z.string().min(1, 'reason must not be empty'),
-});
+export const StyleGuideRuleSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^rule_[a-z0-9_]+$/, 'rule id must be snake_case with "rule_" prefix'),
+    scope: z.array(StyleGuideScopeEnum).min(1, 'scope must not be empty'),
+    statement: z.string().min(1, 'statement must not be empty'),
+    reason: z.string().min(1, 'reason must not be empty'),
+  })
+  .strict();
 
 /**
  * Few-shot 例 1 件。good/bad の区別は `few_shot_examples.{good,bad}` の所属配列で表現する
  * (field で分けない)。`body` は実記事・実 dry-run から抽出した実文面のみを置く (捏造例文禁止)。
  */
-export const StyleGuideFewShotExampleSchema = z.object({
-  id: z
-    .string()
-    .regex(/^example_[a-z0-9_]+$/, 'example id must be snake_case with "example_" prefix'),
-  scope: StyleGuideScopeEnum,
-  source: z.string().min(1, 'source must not be empty'),
-  body: z.string().min(1, 'body must not be empty'),
-  why: z.string().min(1, 'why must not be empty'),
-});
+export const StyleGuideFewShotExampleSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^example_[a-z0-9_]+$/, 'example id must be snake_case with "example_" prefix'),
+    scope: StyleGuideScopeEnum,
+    source: z.string().min(1, 'source must not be empty'),
+    body: z.string().min(1, 'body must not be empty'),
+    why: z.string().min(1, 'why must not be empty'),
+  })
+  .strict();
 
 /**
  * `style-guide.yaml` 全体の schema。
@@ -56,21 +62,25 @@ export const StyleGuideFewShotExampleSchema = z.object({
  * rules / few_shot_examples.{good,bad} の非空を強制する — BOSS が Sprint 完了毎に
  * Rule / 例を追記する運用で、誤って空にしてしまう regression を起動時に fail-loud で検知する。
  */
-export const StyleGuideConfigSchema = z.object({
-  version: z
-    .string()
-    .regex(/^\d+\.\d+\.\d+$/, 'version must be in semver format (e.g., "1.0.0")'),
-  last_updated: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'last_updated must be in YYYY-MM-DD format'),
-  rules: z.array(StyleGuideRuleSchema).min(1, 'at least one rule is required'),
-  few_shot_examples: z.object({
-    good: z
-      .array(StyleGuideFewShotExampleSchema)
-      .min(1, 'at least one good example is required'),
-    bad: z
-      .array(StyleGuideFewShotExampleSchema)
-      .min(1, 'at least one bad example is required'),
-  }),
-});
+export const StyleGuideConfigSchema = z
+  .object({
+    version: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+$/, 'version must be in semver format (e.g., "1.0.0")'),
+    last_updated: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'last_updated must be in YYYY-MM-DD format'),
+    rules: z.array(StyleGuideRuleSchema).min(1, 'at least one rule is required'),
+    few_shot_examples: z
+      .object({
+        good: z
+          .array(StyleGuideFewShotExampleSchema)
+          .min(1, 'at least one good example is required'),
+        bad: z
+          .array(StyleGuideFewShotExampleSchema)
+          .min(1, 'at least one bad example is required'),
+      })
+      .strict(),
+  })
+  .strict();
 
 export type StyleGuideScope = z.infer<typeof StyleGuideScopeEnum>;
 export type StyleGuideRule = z.infer<typeof StyleGuideRuleSchema>;
@@ -90,6 +100,7 @@ export const EXPECTED_RULE_IDS = [
 ] as const;
 
 /**
- * 適用スコープの canonical 契約 (初期 2 箇所)。
+ * 適用スコープの canonical 契約 (初期 2 箇所)。enum から導出して複製 drift を排除する
+ * (期待 literal 値の検証は Layer 1 test 側が担う)。
  */
-export const EXPECTED_SCOPE_VALUES: readonly StyleGuideScope[] = ['lead', 'body_h2_excerpt'];
+export const EXPECTED_SCOPE_VALUES: readonly StyleGuideScope[] = StyleGuideScopeEnum.options;

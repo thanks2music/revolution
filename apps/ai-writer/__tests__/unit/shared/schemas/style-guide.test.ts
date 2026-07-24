@@ -28,8 +28,11 @@ describe('EXPECTED_RULE_IDS (Sprint D 第 1 弾 Phase 1 初期 Rule)', () => {
 });
 
 describe('EXPECTED_SCOPE_VALUES', () => {
-  it('matches StyleGuideScopeEnum options exactly (初期スコープ = lead + body_h2_excerpt)', () => {
-    expect(EXPECTED_SCOPE_VALUES).toEqual(StyleGuideScopeEnum.options);
+  it('covers the initial 2 scopes (enum 変更が意図的であることの literal guard)', () => {
+    // EXPECTED_SCOPE_VALUES は StyleGuideScopeEnum.options から導出されるため、
+    // enum 側の literal 値をここで固定して意図しない scope 追加/削除を検知する。
+    expect(EXPECTED_SCOPE_VALUES).toEqual(['lead', 'body_h2_excerpt']);
+    expect(StyleGuideScopeEnum.options).toEqual(['lead', 'body_h2_excerpt']);
   });
 });
 
@@ -125,6 +128,33 @@ describe('StyleGuideConfigSchema', () => {
     const result = StyleGuideConfigSchema.safeParse({
       ...validConfig,
       rules: [{ ...validRule('rule_test'), scope: ['frontmatter'] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown extra key at top level (.strict())', () => {
+    const result = StyleGuideConfigSchema.safeParse({
+      ...validConfig,
+      few_shot_example: validConfig.few_shot_examples,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown extra field in a rule (.strict()、rename 漏れ検知)', () => {
+    const result = StyleGuideConfigSchema.safeParse({
+      ...validConfig,
+      rules: [{ ...validRule('rule_test'), statment: 'typo field' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown extra field in an example (.strict())', () => {
+    const result = StyleGuideConfigSchema.safeParse({
+      ...validConfig,
+      few_shot_examples: {
+        good: [{ ...validExample('example_good_test'), note: 'extra' }],
+        bad: [validExample('example_bad_test')],
+      },
     });
     expect(result.success).toBe(false);
   });

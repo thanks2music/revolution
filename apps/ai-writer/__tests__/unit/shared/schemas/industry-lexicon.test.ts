@@ -70,6 +70,14 @@ describe('IndustryLexiconConfigSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects unknown extra key at top level (.strict())', () => {
+    const result = IndustryLexiconConfigSchema.safeParse({
+      ...validConfig,
+      categorys: validConfig.categories,
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects unknown extra category (typo 併存の silent drop 防止)', () => {
     const result = IndustryLexiconConfigSchema.safeParse({
       ...validConfig,
