@@ -22,24 +22,22 @@ export default async function Home() {
 
   return (
     <Layout hidePt>
-      <section className="w-main mx-auto pt-12 md:pt-20 lg:pt-24">
+      <section className="w-main mx-auto pt-8 md:pt-14 lg:pt-16">
         <p className="font-numeric tabular-nums text-xs tracking-[0.22em] text-ink-muted uppercase">
           Vol. 01 — {yearMonth}
         </p>
-        <SparkRule className="mt-2 mb-7 md:mb-9" width="3em" />
-        <h1 className="font-display text-[2.75rem] leading-[1.05] text-ink-strong sm:text-5xl md:text-6xl lg:text-7xl">
-          体験は、
+        <SparkRule className="mt-2 mb-5 md:mb-6" width="3em" />
+        {/* 改行はモバイル 3 行 / sm 以上 2 行に固定 (日本語の auto-break は不定なため文言変更時は要調整) */}
+        <h1 className="font-display text-[1.75rem] leading-[1.35] text-ink-strong sm:text-4xl sm:leading-[1.25] md:text-[2.75rem] md:leading-[1.2] lg:text-[3.25rem]">
+          アニメイベントは
+          <br className="sm:hidden" />
+          期間限定でも、
           <br />
-          街で起きて、
-          <br />
-          ここに残す。
+          体験と思い出はタイムレス
         </h1>
-        <p className="mt-7 max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
-          コラボカフェ、ポップアップ、コラボイベント。
-          <br />
-          SNS では流れてしまう「あの日の体験」を、ひとつのページに刻む。
-          <br />
-          期間限定のアニメイベントを扱う、新しい WEB メディアです。
+        <p className="mt-4 max-w-prose text-sm leading-relaxed text-ink-body md:mt-5 md:text-base">
+          コラボカフェ、ポップアップ、コラボイベント。期間限定のアニメイベントを記録する
+          WEB メディアです。
         </p>
       </section>
 
