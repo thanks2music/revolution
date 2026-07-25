@@ -1,14 +1,21 @@
 /**
- * @fileoverview MediaFormResolverService (Sprint C-β P11)
+ * @fileoverview MediaFormResolverService (Sprint C-β P11 導入、Sprint D Phase 2-a 反転仕様に更新)
  *
  * @description
- * §6.2 メディア形態表記マップ (原作タイプ 16 種優先 + メディアタイプ 14 種 fallback) に基づき、
- * リード文 1 文目の [メディア形態] スロットに埋める日本語表記を解決するサービス。
+ * §6.2 メディア形態表記マップに基づき、リード文 1 文目の [メディア形態] スロットに埋める
+ * 日本語表記を解決するサービス。
  *
- * ## 解決優先度 (§6.2 準拠)
- * 1. 原作タイプ 16 種を優先 (manga_based → 漫画、novel_based → ライトノベル 等)
- * 2. 曖昧値 (studio_production / original_with_creator / other) はメディアタイプ 14 種にフォールバック
- * 3. 両方 miss / 未指定の場合は「作品」で代用
+ * ## 解決優先度 (Sprint D Phase 2-a canonical spec、refined reversal)
+ * 1. **メディアタイプ 14 種を優先** (anime → アニメ、manga → 漫画、character → キャラクター 等)
+ *    - ただし media label が `'作品'` (generic fallback) の場合は Step 2 に進む
+ * 2. 原作タイプ 16 種にフォールバック (曖昧値 = null 対訳は skip)
+ * 3. 両方 miss / 未指定の場合は hardcoded '作品' を返す
+ *
+ * ## 反転の狙い (Sprint D Phase 2-a)
+ * 呪術廻戦カフェ (`manga_based + anime`) 等のケースで、原作 label 「漫画」ではなく
+ * メディア label 「アニメ」を採用することでコラボイベントの subject を正しく反映する。
+ * `illustrator_based + other` 等の generic media label ケースでは原作 label にフォールバック
+ * することで「イラスト」「楽曲」「ゲーム」などの precision を維持する (refined reversal)。
  *
  * ## Singleton
  * `MediaTypeMapperService` と同構造。`getMediaFormResolverService()` 経由でアクセス。
@@ -17,7 +24,7 @@
  * @see revolution-templates/ai-writer/posts/yaml/collabo-cafe/shared/placeholders.yaml
  *      (メディア形態表記 派生変数の宣言)
  * @see MediaTypeMapperService (character_separator + label の既存 resolver)
- * @since Sprint C-β P11
+ * @since Sprint C-β P11 (導入)、Sprint D Phase 2-a (反転仕様)
  */
 
 import * as fs from 'fs';
@@ -27,6 +34,7 @@ import yaml from 'js-yaml';
 
 import {
   MediaFormMappingConfigSchema,
+  MEDIA_FORM_FALLBACK_LABEL,
   type MediaFormMappingConfig,
 } from '@revolution/schemas/media-form-mapping';
 
@@ -35,12 +43,12 @@ import {
  *
  * @description
  * YAML 設定ファイルから読み込んだ §6.2 対訳マップを管理し、原作タイプ + メディアタイプの組から
- * リード文用の日本語表記を解決する。
+ * リード文用の日本語表記を解決する (Sprint D Phase 2-a refined reversal 仕様)。
  *
  * ## 主な機能
- * - `resolve(原作タイプ?, メディアタイプ?)`: §6.2 対訳マップに従って日本語表記を返す
- * - 曖昧値 (`null` in original_type_labels) は自動的にメディアタイプにフォールバック
- * - 両方 miss / 未指定の場合は「作品」で代用
+ * - `resolve(原作タイプ?, メディアタイプ?)`: メディアタイプ優先 → 原作タイプ fallback → '作品'
+ * - メディアタイプ label が `'作品'` (generic fallback) の場合は原作タイプにフォールバック
+ * - 両方 miss / 未指定の場合は hardcoded '作品' を返す
  *
  * @class MediaFormResolverService
  */
@@ -88,25 +96,41 @@ export class MediaFormResolverService {
   }
 
   /**
-   * §6.2 対訳マップに基づいてリード文用の日本語表記を解決する。
+   * §6.2 対訳マップに基づいてリード文用の日本語表記を解決する (Sprint D Phase 2-a 反転仕様)。
    *
-   * ## 解決優先度
-   * 1. 原作タイプ 16 種を優先 (non-null value)
-   * 2. 曖昧値 (null in original_type_labels) はメディアタイプ 14 種にフォールバック
-   * 3. 両方 miss / 未指定の場合は「作品」で代用
+   * ## 解決優先度 (refined reversal)
+   * 1. **メディアタイプ 14 種を優先** (label が有効かつ「作品」でない場合はそれを返す)
+   * 2. メディア label が「作品」(generic fallback) or メディアタイプ未指定 / unknown の場合は
+   *    原作タイプ 16 種にフォールバック (曖昧値 null 対訳は skip)
+   * 3. 両方 miss / 未指定の場合は hardcoded '作品' を返す
    *
    * @param 原作タイプ - `SourceTypeEnum` の値 (manga_based / novel_based / ...) または undefined
    * @param メディアタイプ - `MediaTypeEnum` の値 (anime / manga / character / ...) または undefined
-   * @returns リード文 [メディア形態] スロット用の日本語表記 (例: 「漫画」「ライトノベル」「アニメ映画」「キャラクター」)
+   * @returns リード文 [メディア形態] スロット用の日本語表記 (例: 「アニメ」「漫画」「イラスト」「作品」)
    *
    * @example
-   * resolver.resolve('manga_based', 'anime')  // → '漫画' (原作タイプ優先)
-   * resolver.resolve('studio_production', 'anime_movie')  // → 'アニメ映画' (曖昧値 → メディアタイプ fallback)
-   * resolver.resolve(undefined, 'character')  // → 'キャラクター' (原作タイプ未指定 → メディアタイプ)
-   * resolver.resolve(undefined, undefined)  // → '作品' (両方 miss)
+   * resolver.resolve('manga_based', 'anime')           // → 'アニメ' (呪術廻戦カフェ、メディアタイプ優先)
+   * resolver.resolve('manga_based', 'manga')           // → '漫画' (D.Gray-man 漫画コラボ)
+   * resolver.resolve('illustrator_based', 'other')     // → 'イラスト' (media '作品' skip → 原作 label)
+   * resolver.resolve('studio_production', 'anime_movie') // → 'アニメ映画' (media label 有効)
+   * resolver.resolve(undefined, 'character')           // → 'キャラクター' (原作未指定 → メディア label)
+   * resolver.resolve(undefined, undefined)             // → '作品' (両方 miss)
    */
   resolve(原作タイプ?: string | null, メディアタイプ?: string | null): string {
-    // Step 1: 原作タイプ優先
+    // Step 1: メディアタイプ優先 (label が MEDIA_FORM_FALLBACK_LABEL = generic fallback の場合は Step 2 に進む)
+    if (メディアタイプ) {
+      const mediaTypeEntry = this.config.media_type_mappings[
+        メディアタイプ as keyof typeof this.config.media_type_mappings
+      ];
+      if (mediaTypeEntry?.label && mediaTypeEntry.label !== MEDIA_FORM_FALLBACK_LABEL) {
+        return mediaTypeEntry.label;
+      }
+      // media label === MEDIA_FORM_FALLBACK_LABEL (generic fallback) or unknown メディアタイプ は
+      // Step 2 に進む。将来 media_type_mappings.other.label が変更/localize されても
+      // shared constant 経由で同期される。
+    }
+
+    // Step 2: 原作タイプへフォールバック (曖昧値 = null 対訳は skip)
     if (原作タイプ) {
       const originalLabel = this.config.original_type_labels[
         原作タイプ as keyof typeof this.config.original_type_labels
@@ -115,21 +139,11 @@ export class MediaFormResolverService {
         return originalLabel;
       }
       // originalLabel === null は曖昧値 (studio_production / original_with_creator / other) の
-      // フォールバック指示、Step 2 に進む
-    }
-
-    // Step 2: メディアタイプフォールバック
-    if (メディアタイプ) {
-      const mediaTypeEntry = this.config.media_type_mappings[
-        メディアタイプ as keyof typeof this.config.media_type_mappings
-      ];
-      if (mediaTypeEntry?.label) {
-        return mediaTypeEntry.label;
-      }
+      // fallback 指示、Step 3 (最終フォールバック) に進む
     }
 
     // Step 3: 両方 miss の最終フォールバック
-    return '作品';
+    return MEDIA_FORM_FALLBACK_LABEL;
   }
 
   /**

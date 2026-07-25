@@ -129,7 +129,7 @@ describe('LeadGeneratorService - 単一作品 - 原作者あり (3 pattern)', ()
 
     expect(result.usedTemplate).toBe('lead_author_with_characters');
     expect(result.slots.agent).toBe('尾田栄一郎先生');
-    expect(result.slots.mediaForm).toBe('漫画'); // manga_based を原作タイプ優先
+    expect(result.slots.mediaForm).toBe('アニメ'); // Sprint D Phase 2-a: メディアタイプ優先
     // §6.1 準拠: 「、」区切り + 内部中黒 (該当なし) 保持
     expect(result.leadMdx).toContain('ルフィ、ゾロ、ナミ');
     expect(result.leadMdx).not.toContain('ルフィ・ゾロ・ナミ'); // 旧「・」区切り regression 防止
@@ -619,14 +619,14 @@ describe('LeadGeneratorService - 4 スロット構造 regression (mediaForm + wo
 });
 
 // ============================================================================
-// describe 8: P5 regression (novel_based → 「ライトノベル」表現、「漫画」誤生成しない)
+// describe 8: Sprint D Phase 2-a 反転仕様 (メディアタイプ優先 → 原作タイプ fallback)
 // ============================================================================
 
-describe('LeadGeneratorService - P5 regression (原作タイプ novel_based → ライトノベル)', () => {
-  it('原作タイプ novel_based + メディアタイプ anime → 「ライトノベル」で表現される', async () => {
+describe('LeadGeneratorService - Phase 2-a 反転仕様 (novel_based + anime → アニメ)', () => {
+  it('原作タイプ novel_based + メディアタイプ anime → 「アニメ」で表現される (Sprint D Phase 2-a)', async () => {
     const result = await service.generate(
       makeInput({
-        メディアタイプ: 'anime', // Sprint C-α で「漫画」誤生成の元凶
+        メディアタイプ: 'anime',
         原作タイプ: 'novel_based',
         原作者有無: true,
         原作者名: '日向夏先生',
@@ -635,15 +635,28 @@ describe('LeadGeneratorService - P5 regression (原作タイプ novel_based → 
       })
     );
 
-    // P5 fix: 原作タイプ novel_based を優先して 「ライトノベル」で表現
-    // (slot 抽出レベルで「ライトノベル」を保持。現行 01-lead.yaml v3.3.0 の
-    //  lead_author_with_characters テンプレは本文に {{メディア形態表記}} を含まないため、
-    //  leadMdx に「ライトノベル」文字列が出現するかはテンプレ改修依存 = Sprint C-β P11
-    //  Phase 4 で Templates YAML 本文にも埋め込む余地あり)
-    expect(result.slots.mediaForm).toBe('ライトノベル');
+    // Sprint D Phase 2-a: メディアタイプ優先 = 小説原作アニメコラボはコラボの subject が
+    // 「アニメ」であるため「アニメ」を採用 (旧 Sprint C-β P5 の「ライトノベル」期待は反転で無効化)。
+    expect(result.slots.mediaForm).toBe('アニメ');
     expect(result.slots.mediaForm).not.toBe('漫画');
-    // 「人気漫画「薬屋のひとりごと」」誤生成の regression 防止 (leadMdx 本文レベル)
+    // 「人気漫画」誤生成の regression 防止は反転後も維持 (media label が「アニメ」なので構造的に発生しない)
     expect(result.leadMdx).not.toContain('人気漫画');
+  });
+
+  it('原作タイプ novel_based + メディアタイプ未指定 → 「ライトノベル」で表現される (原作 label fallback)', async () => {
+    const result = await service.generate(
+      makeInput({
+        メディアタイプ: undefined, // メディアタイプ未指定 → 原作タイプにフォールバック
+        原作タイプ: 'novel_based',
+        原作者有無: true,
+        原作者名: '日向夏先生',
+        キャラクター名: ['猫猫', '壬氏'],
+        works: [{ title: '薬屋のひとりごと', is_primary: true }],
+      })
+    );
+
+    // Phase 2-a refined reversal: メディア未指定なら原作 label に fallback して「ライトノベル」
+    expect(result.slots.mediaForm).toBe('ライトノベル');
   });
 });
 
