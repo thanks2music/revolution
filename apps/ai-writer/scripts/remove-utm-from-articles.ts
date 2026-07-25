@@ -27,9 +27,10 @@
  */
 
 import { fileURLToPath } from 'url';
-import { dirname, resolve, join, relative } from 'path';
-import { readdir, readFile, writeFile, stat } from 'fs/promises';
+import { dirname, resolve, relative } from 'path';
+import { readFile, writeFile } from 'fs/promises';
 import { stripUtmFromUrl } from '../lib/utils/url';
+import { findMdxFiles } from '../lib/utils/mdx-files';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -54,24 +55,6 @@ function parseArgs(argv: string[]): CliArgs {
     dryRun: argv.includes('--dry-run'),
     verbose: argv.includes('--verbose'),
   };
-}
-
-async function findMdxFiles(rootDir: string): Promise<string[]> {
-  const found: string[] = [];
-  async function walk(dir: string): Promise<void> {
-    const entries = await readdir(dir);
-    for (const entry of entries) {
-      const full = join(dir, entry);
-      const info = await stat(full);
-      if (info.isDirectory()) {
-        await walk(full);
-      } else if (info.isFile() && entry.endsWith('.mdx')) {
-        found.push(full);
-      }
-    }
-  }
-  await walk(rootDir);
-  return found.sort();
 }
 
 async function processFile(

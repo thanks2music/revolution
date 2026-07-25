@@ -24,6 +24,7 @@ import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factor
 import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
 import { extractEventFactCardFields } from '../utils/event-fact-card-mapper';
+import { stripUtmFromUrl } from '../utils/url';
 import { EventDataSchema, type EventData } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
 import { getStepDisplay, getStepContext } from './pipeline-steps';
@@ -1060,7 +1061,12 @@ export class ArticleGenerationMdxService {
           原作者名: detailedExtraction.原作者名,
           略称: detailedExtraction.略称,
           開催回数: detailedExtraction.開催回数 ?? undefined,
-          公式サイトURL: selectionResult.primary_official_url ?? undefined,
+          // Sprint C-β P14: collabo-cafe.com origin の utm パラメータを LLM プロンプト入力
+          // 段階で剥がす (LLM が本文テーブル markdown link に utm 付き URL をそのまま
+          // 反映する経路の防御)。
+          公式サイトURL: selectionResult.primary_official_url
+            ? stripUtmFromUrl(selectionResult.primary_official_url)
+            : undefined,
           キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
           テーマ名: detailedExtraction.テーマ名 ?? undefined,
           ノベルティ名: detailedExtraction.ノベルティ名 ?? undefined,

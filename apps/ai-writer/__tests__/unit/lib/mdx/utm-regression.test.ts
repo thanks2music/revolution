@@ -13,8 +13,9 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { readdir, readFile, stat } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join, resolve, relative } from 'path';
+import { findMdxFiles } from '../../../../lib/utils/mdx-files';
 
 const AI_WRITER_ROOT = resolve(__dirname, '..', '..', '..', '..');
 const CONTENT_ROOT = join(AI_WRITER_ROOT, 'content');
@@ -28,24 +29,6 @@ const FRONTEND_ARTICLE_INDEX = resolve(
 );
 
 const COLLABO_CAFE_UTM_REGEX = /utm_(?:source|medium|campaign|id)=collabo_cafe_dot_com/i;
-
-async function findMdxFiles(rootDir: string): Promise<string[]> {
-  const found: string[] = [];
-  async function walk(dir: string): Promise<void> {
-    const entries = await readdir(dir);
-    for (const entry of entries) {
-      const full = join(dir, entry);
-      const info = await stat(full);
-      if (info.isDirectory()) {
-        await walk(full);
-      } else if (info.isFile() && entry.endsWith('.mdx')) {
-        found.push(full);
-      }
-    }
-  }
-  await walk(rootDir);
-  return found;
-}
 
 async function assertNoUtmInFile(filePath: string): Promise<void> {
   const content = await readFile(filePath, 'utf-8');
