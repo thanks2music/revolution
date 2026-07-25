@@ -27,7 +27,8 @@ export default async function Home() {
           Vol. 01 — {yearMonth}
         </p>
         <SparkRule className="mt-2 mb-4 md:mb-5" width="3em" />
-        {/* タグライン扱いの h1: 「期間限定 / でも」の 2 行固定改行に意味があるため全ブレークポイント共通 */}
+        {/* タグライン扱いの h1: 「期間限定 / でも」の 2 行固定改行に意味があるため全ブレークポイント共通。
+            min-[360px] は 2 行目 15 文字が text-xl (20px) で収まる下限 (w-main = 90vw、300px 幅 ≤ 0.9×334px) に安全域を足した値 */}
         <h1 className="font-display text-lg leading-snug text-ink-strong min-[360px]:text-xl md:text-2xl lg:text-[1.75rem]">
           アニメイベントは期間限定
           <br />
