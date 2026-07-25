@@ -71,6 +71,10 @@ import {
   getTextPlaceholderReplacerService,
   type TextPlaceholderReplacementResult,
 } from './text-placeholder-replacer.service';
+// Sprint C-β P11 (2026-07-19): rule-driven リード文生成
+import { getLeadGeneratorService } from './lead-generator.service';
+import { getMediaFormResolverService } from './media-form-resolver.service';
+import { getMediaTypeMapperService } from './media-type-mapper.service';
 import {
   createCostTracker,
   type CostTrackerService,
@@ -858,8 +862,70 @@ export class ArticleGenerationMdxService {
         );
       }
 
+      // ========================================================================
+      // lead-generation step (Sprint C-β P11): rule-driven リード文生成
+      // ========================================================================
+      // BOSS Q2=B 承認済: リード文を LLM 生成から切り出し、TypeScript 側で
+      // 4 スロット構造 ([主体]+[接続動詞]+[形容詞]+[メディア形態]+「作品名」) を
+      // rule-driven に組み立てる。LLM Fallback は Phase 2f で本格実装 (現状は
+      // AiProvider 未 DI = lead_generic 強制採用 path のみ)。
+      console.log(
+        `\n${getStepDisplay('lead-generation')} リード文を rule-driven で生成 (LeadGeneratorService、§6.2 対訳マップ)...`
+      );
+
+      const leadGenerator = getLeadGeneratorService({
+        mediaFormResolver: getMediaFormResolverService(),
+        mediaTypeMapper: getMediaTypeMapperService(),
+        textReplacer: getTextPlaceholderReplacerService(),
+        // Phase 2f で実装した LLM Fallback を production 経路に wire in。
+        // Fallback 発火条件 (all_conditions_missed / too_many_unreplaced_placeholders /
+        // output_too_short / output_empty / template_render_error / empty_work_title) を
+        // rule miss 時に LLM に委譲する (Sprint C-β P11 の N1 = リード文の省略・誤生成の完全解消)。
+        //
+        // R2 対応: instance 直渡し (`createAiProvider()`) ではなく **factory 関数** (`createAiProvider`)
+        // を渡す。singleton の cache 済 instance が最初の request の provider を baked in する
+        // 従来の footgun (long-lived Next.js server で env var 変更に追随できない) を解消し、
+        // fallback 発火の度に fresh provider を resolve する経路にする。
+        aiProviderFactory: createAiProvider,
+      });
+
+      const leadResult = await leadGenerator.generate({
+        works: detailedExtraction.works ?? [],
+        store: detailedExtraction.store ?? { name: detailedExtraction.店舗名 },
+        開催期間: detailedExtraction.開催期間,
+        メディアタイプ: detailedExtraction.メディアタイプ,
+        原作タイプ: detailedExtraction.原作タイプ,
+        原作者有無: detailedExtraction.原作者有無,
+        原作者名: detailedExtraction.原作者名,
+        キャラクター名: detailedExtraction.キャラクター名,
+        テーマ名: detailedExtraction.テーマ名,
+        ノベルティ名: detailedExtraction.ノベルティ名,
+        グッズ名: detailedExtraction.グッズ名,
+        作品名: detailedExtraction.作品名,
+        店舗名: detailedExtraction.店舗名,
+        略称: detailedExtraction.略称,
+        公式サイトURL: detailedExtraction.公式サイトURL,
+        // NOTE: スタジオ名/監督名/シリーズ名 は現状 ExtractionResult に未定義
+        // (Sprint C-β P11 スコープ外、別 Sprint で 2-extraction.yaml v3.2.0 の
+        // TS interface 反映と併せて対応予定)。undefined のため studio 系 template
+        // は発火せず、has_studio_name === false に評価される。
+      });
+
+      console.log('✅ リード文生成完了:', {
+        usedTemplate: leadResult.usedTemplate,
+        leadLength: leadResult.leadMdx.length,
+        slotMediaForm: leadResult.slots.mediaForm,
+        slotWorkTitle: leadResult.slots.workTitle,
+        fallbackReason: leadResult.fallbackReason ?? '(none)',
+      });
+
+      // ========================================================================
       // content-generation step: Generate MDX article content using ContentGenerationService
-      console.log(`\n${getStepDisplay('content-generation')} AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用）...`);
+      // ========================================================================
+      // Sprint C-β P11: 4-content.yaml v2.5.0 で lead セクションは除外済み
+      // (menu/novelty/goods/summary のみを LLM が生成)。lead は上記
+      // LeadGeneratorService の出力を先頭に concat する。
+      console.log(`\n${getStepDisplay('content-generation')} AI API (${providerDisplayName}) で記事本文を生成（YAMLテンプレート使用、menu/novelty/goods/summary）...`);
 
       // ContentGenerationService で本文を生成
       const contentService = new ContentGenerationService();
@@ -879,8 +945,18 @@ export class ArticleGenerationMdxService {
           } : undefined,
         });
 
+        // Sprint C-β P11: LeadGenerator 出力を content の先頭に concat
+        // (contentGeneration.content は menu/novelty/goods/summary の 4 セクション、
+        //  4-content.yaml v2.5.0 で lead 除外済み)
+        contentGeneration = {
+          ...contentGeneration,
+          content: `${leadResult.leadMdx}\n\n${contentGeneration.content}`,
+        };
+
         console.log('コンテンツ生成完了:', {
           contentLength: contentGeneration.content.length,
+          leadLength: leadResult.leadMdx.length,
+          bodyLength: contentGeneration.content.length - leadResult.leadMdx.length - 2,
           generatedSections: contentGeneration.generatedSections,
           skippedSections: contentGeneration.skippedSections,
         });

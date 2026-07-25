@@ -39,6 +39,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // .env.local を読み込む
+// NOTE: override は省略 (= false)。override: true にすると inline env
+// (例: `AI_PROVIDER=anthropic pnpm debug:mdx ...`) が .env.local の値で上書きされてしまう。
+// もし .env.local の変数が反映されない場合は、shell env に同名の空文字列変数が
+// export されていないか確認する必要がある (2026-07-19 検証)。
 config({ path: resolve(__dirname, '../.env.local') });
 
 // HTML + タイトル抽出

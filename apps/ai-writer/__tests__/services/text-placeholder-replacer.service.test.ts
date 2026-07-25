@@ -87,24 +87,25 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
         expect(result.content).toBe(' / ');
       });
 
-      it('メディアタイプが anime の場合は "・" を計算すること', () => {
+      // Sprint C-β P11 §6.1 準拠: anime / game の character_separator "・" → "、" (2026-07-19)
+      it('メディアタイプが anime の場合は "、" を計算すること', () => {
         const data: TextPlaceholderData = {
           メディアタイプ: 'anime',
         };
 
         const result = service.replaceAll('{{member_separator}}', data);
 
-        expect(result.content).toBe('・');
+        expect(result.content).toBe('、');
       });
 
-      it('メディアタイプが game の場合は "・" を計算すること', () => {
+      it('メディアタイプが game の場合は "、" を計算すること', () => {
         const data: TextPlaceholderData = {
           メディアタイプ: 'game',
         };
 
         const result = service.replaceAll('{{member_separator}}', data);
 
-        expect(result.content).toBe('・');
+        expect(result.content).toBe('、');
       });
     });
 
@@ -278,6 +279,7 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
         expect(result.content).toBe('田中 / 佐藤 / 鈴木'); // idol は " / "
       });
 
+      // Sprint C-β P11 §6.1 準拠: anime character_separator "・" → "、" (2026-07-19)
       it('{{キャラクター名|join:member_separator}} でメディアタイプ別セパレーターを使用すること (anime)', () => {
         const data: TextPlaceholderData = {
           メディアタイプ: 'anime',
@@ -286,10 +288,10 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
 
         const result = service.replaceAll('{{キャラクター名|join:member_separator}}', data);
 
-        expect(result.content).toBe('ルフィ・ゾロ・ナミ'); // anime は "・"
+        expect(result.content).toBe('ルフィ、ゾロ、ナミ'); // anime は "、" (§6.1 訂正)
       });
 
-      it('member_separator が未定義の場合はデフォルト "・" を使用すること', () => {
+      it('member_separator が未定義の場合はデフォルト "、" を使用すること (§6.1)', () => {
         const data: TextPlaceholderData = {
           // メディアタイプ未指定 = member_separator 未計算
           キャラクター名: ['A', 'B', 'C'],
@@ -297,7 +299,7 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
 
         const result = service.replaceAll('{{キャラクター名|join:member_separator}}', data);
 
-        expect(result.content).toBe('A・B・C');
+        expect(result.content).toBe('A、B、C');
       });
     });
 
@@ -360,6 +362,7 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
         expect(result.content).toBe('田中 / 佐藤 / 鈴木'); // idol は " / "
       });
 
+      // Sprint C-β P11 §6.1 準拠: anime character_separator "・" → "、" (2026-07-19)
       it('{{メンバー名|join:member_separator}} でメディアタイプ別セパレーターを使用すること (anime)', () => {
         const data: TextPlaceholderData = {
           メディアタイプ: 'anime',
@@ -368,7 +371,7 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
 
         const result = service.replaceAll('{{メンバー名|join:member_separator}}', data);
 
-        expect(result.content).toBe('A・B・C'); // anime は "・"
+        expect(result.content).toBe('A、B、C'); // anime は "、" (§6.1 訂正)
       });
     });
 
