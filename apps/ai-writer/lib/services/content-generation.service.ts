@@ -304,8 +304,11 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
 
       return {
         ...extractedData,
-        // Sprint C-β P11 Phase 3 対策: `メディアタイプ` 自体を日本語 label で上書き
-        // (LLM の literal 誤挿入を根本防止、mediaFormResolver 経由で P5 も同時解消)。
+        // Sprint C-β P11 Phase 3 対策 (Sprint D Phase 2-a で resolver 反転仕様に更新):
+        // `メディアタイプ` 自体を日本語 label で上書き (LLM の literal 誤挿入 = N2 を根本防止)。
+        // 反転後は mediaFormResolver が Step 1 でメディアタイプ label を優先するため、
+        // 例えば novel_based + anime は「アニメ」となり、旧 P5 期待 (「ライトノベル」) は
+        // メディアタイプ未指定/generic/unknown 時 (Step 2 fallback) のみ復活する。
         // 返却型で `メディアタイプ: string` に redefine 済のため `as unknown as` 不要。
         メディアタイプ: mediaFormLabel,
         // 英語 slug は _slug suffix で分岐用に隔離 (literal 使用は prompt 内で禁止 instruction)
