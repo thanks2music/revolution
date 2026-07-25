@@ -12,6 +12,8 @@
     "./vision-api-extraction": "./vision-api-extraction.ts",
     "./media-form-mapping": "./media-form-mapping.ts",
     "./lead-response": "./lead-response.ts",
+    "./style-guide": "./style-guide.ts",
+    "./industry-lexicon": "./industry-lexicon.ts",
     "./db/profiles": "./db/profiles.ts",
     "./db/favorites": "./db/favorites.ts",
     "./db/categories": "./db/categories.ts",
