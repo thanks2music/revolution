@@ -28,7 +28,7 @@ export default async function Home() {
         </p>
         <SparkRule className="mt-2 mb-4 md:mb-5" width="3em" />
         {/* タグライン扱いの h1: 「期間限定 / でも」の 2 行固定改行に意味があるため全ブレークポイント共通 */}
-        <h1 className="font-display text-xl leading-snug text-ink-strong md:text-2xl lg:text-[1.75rem]">
+        <h1 className="font-display text-lg leading-snug text-ink-strong min-[360px]:text-xl md:text-2xl lg:text-[1.75rem]">
           アニメイベントは期間限定
           <br />
           でも体験した思い出はタイムレス
