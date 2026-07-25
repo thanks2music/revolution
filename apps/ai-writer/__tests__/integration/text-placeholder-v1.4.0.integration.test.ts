@@ -134,8 +134,8 @@ describe('Text Placeholder v1.4.0 Integration Tests', () => {
       // 単一原作者
       expect(result.content).toContain('**原作者**: 尾田栄一郎先生');
 
-      // 動的セパレーター（anime = "・"）の検証
-      expect(result.content).toContain('ルフィ・ゾロ・ナミ・ウソップ');
+      // Sprint C-β P11 §6.1 準拠: anime character_separator "・" → "、" (2026-07-19)
+      expect(result.content).toContain('ルフィ、ゾロ、ナミ、ウソップ');
 
       // 置換回数の確認
       expect(result.replacedCount).toBeGreaterThanOrEqual(5);
@@ -161,8 +161,8 @@ describe('Text Placeholder v1.4.0 Integration Tests', () => {
       expect(result.content).toContain('**原作**: CLAMP先生 / 新條まゆ先生');
       expect(result.content).toContain('**複数原作者**: true');
 
-      // キャラクター名は anime なので "・"
-      expect(result.content).toContain('**キャラクター**: さくら・知世');
+      // Sprint C-β P11 §6.1 準拠: anime character_separator "・" → "、" (2026-07-19)
+      expect(result.content).toContain('**キャラクター**: さくら、知世');
     });
   });
 
@@ -211,8 +211,8 @@ describe('Text Placeholder v1.4.0 Integration Tests', () => {
       // メディアタイプ派生変数の検証
       expect(result.content).toContain('**メディアタイプ**: ゲーム');
 
-      // 動的セパレーター（game = "・"）の検証
-      expect(result.content).toContain('**キャラクター**: クラウド・ティファ・エアリス');
+      // Sprint C-β P11 §6.1 準拠: game character_separator "・" → "、" (2026-07-19)
+      expect(result.content).toContain('**キャラクター**: クラウド、ティファ、エアリス');
     });
   });
 
@@ -314,8 +314,8 @@ describe('Text Placeholder v1.4.0 Integration Tests', () => {
       expect(result.content).toContain('**メディアタイプ**: {{メディアタイプ_label}}');
       expect(result.content).toContain('**アイドル作品**: {{is_idol_or_utaite}}');
 
-      // member_separator 未計算時はデフォルト "・" を使用
-      expect(result.content).toContain('**キャラクター**: A・B・C');
+      // Sprint C-β P11 §6.1 準拠: member_separator 未計算時のデフォルト "・" → "、" (2026-07-19)
+      expect(result.content).toContain('**キャラクター**: A、B、C');
     });
 
     it('原作者名未指定時にデフォルト動作すること', () => {

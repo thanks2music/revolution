@@ -156,12 +156,15 @@ jobs:
         # absent (existing `it.skip` pattern), so they run only when
         # the corresponding secrets are configured in repo settings.
         #
-        # `--testPathIgnorePatterns` excludes three suites that load real
-        # YAML fixtures from `apps/ai-writer/config/` or
-        # `apps/ai-writer/templates/`. Both directories are gitignored
-        # (synced from the private `revolution-templates` repo via
-        # `pnpm sync:templates`), so they are absent on CI runners and the
-        # `fs.existsSync` assertions inside these suites fail.
+        # `--testPathIgnorePatterns` excludes suites that load real YAML
+        # fixtures from `apps/ai-writer/config/` or `apps/ai-writer/templates/`.
+        # Both directories are gitignored (synced from the private
+        # `revolution-templates` repo via `pnpm sync:templates`), so they are
+        # absent on CI runners and the `fs.existsSync` assertions inside these
+        # suites fail. Sprint C-β P11 (PR #272) adds three additional suites
+        # covering MediaFormResolverService + LeadGeneratorService (they read
+        # `apps/ai-writer/templates/config/media-type-mapping.yaml` +
+        # `apps/ai-writer/templates/collabo-cafe/sections/01-lead.yaml`).
         # Local pre-push (`.husky/pre-push`) still runs them because the
         # fixtures are present. Refactoring these to be mock-driven (or
         # syncing templates in CI via SSH key) is a separate backlog item.
@@ -171,7 +174,10 @@ jobs:
             --testPathIgnorePatterns='/.next/' \
             --testPathIgnorePatterns='__tests__/services/media-type-mapper.service.test.ts' \
             --testPathIgnorePatterns='__tests__/services/text-placeholder-replacer.service.test.ts' \
-            --testPathIgnorePatterns='__tests__/integration/text-placeholder-v1.4.0.integration.test.ts'
+            --testPathIgnorePatterns='__tests__/integration/text-placeholder-v1.4.0.integration.test.ts' \
+            --testPathIgnorePatterns='__tests__/unit/lib/services/media-form-resolver.service.test.ts' \
+            --testPathIgnorePatterns='__tests__/unit/lib/services/lead-generator.service.test.ts' \
+            --testPathIgnorePatterns='__tests__/unit/lib/services/lead-generator.service.contract.test.ts'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
