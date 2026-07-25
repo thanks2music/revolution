@@ -31,6 +31,7 @@ import { dirname, resolve, relative } from 'path';
 import { readFile, writeFile } from 'fs/promises';
 import { stripUtmFromUrl } from '../lib/utils/url';
 import { findMdxFiles } from '../lib/utils/mdx-files';
+import { URL_REGEX } from '../lib/utils/url-regex';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,9 +47,6 @@ interface CleanupReport {
   cleanedUrls: number;
   modifiedFilePaths: string[];
 }
-
-/** 本文中の絶対 URL を検出する regex (markdown link / bare URL / frontmatter 値の quoted URL いずれもマッチ) */
-const URL_REGEX = /https?:\/\/[^\s"'`)<>\]]+/g;
 
 function parseArgs(argv: string[]): CliArgs {
   return {
