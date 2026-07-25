@@ -22,20 +22,18 @@ export default async function Home() {
 
   return (
     <Layout hidePt>
-      <section className="w-main mx-auto pt-8 md:pt-14 lg:pt-16">
+      <section className="w-main mx-auto pt-8 md:pt-12 lg:pt-14">
         <p className="font-numeric tabular-nums text-xs tracking-[0.22em] text-ink-muted uppercase">
           Vol. 01 — {yearMonth}
         </p>
-        <SparkRule className="mt-2 mb-5 md:mb-6" width="3em" />
-        {/* 改行はモバイル 3 行 / sm 以上 2 行に固定 (日本語の auto-break は不定なため文言変更時は要調整) */}
-        <h1 className="font-display text-[1.75rem] leading-[1.35] text-ink-strong sm:text-4xl sm:leading-[1.25] md:text-[2.75rem] md:leading-[1.2] lg:text-[3.25rem]">
-          アニメイベントは
-          <br className="sm:hidden" />
-          期間限定でも、
+        <SparkRule className="mt-2 mb-4 md:mb-5" width="3em" />
+        {/* タグライン扱いの h1: 「期間限定 / でも」の 2 行固定改行に意味があるため全ブレークポイント共通 */}
+        <h1 className="font-display text-xl leading-snug text-ink-strong md:text-2xl lg:text-[1.75rem]">
+          アニメイベントは期間限定
           <br />
-          体験と思い出はタイムレス
+          でも体験した思い出はタイムレス
         </h1>
-        <p className="mt-4 max-w-prose text-sm leading-relaxed text-ink-body md:mt-5 md:text-base">
+        <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-body md:mt-4 md:text-base">
           コラボカフェ、ポップアップ、コラボイベント。期間限定のアニメイベントを記録する
           WEB メディアです。
         </p>
