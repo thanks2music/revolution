@@ -269,8 +269,10 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
    *
    * **`メディアタイプ` field 自体を日本語 label で上書き**し、英語 slug は
    * `メディアタイプ_slug` (別名) に隔離する。上書き値は §6.2 対訳マップの
-   * **メディア形態表記 (原作タイプ 16 種優先)** を採用することで、P5 (novel_based →
-   * 「ライトノベル」等) と N2 (英語 slug 漏れ) を同時解消する。
+   * **メディア形態表記 (Sprint D Phase 2-a 反転仕様 = メディアタイプ 14 種優先 → 原作タイプ
+   * 16 種 fallback、refined reversal)** を採用することで、N2 (英語 slug 漏れ) を解消する。
+   * 呪術廻戦カフェ (manga_based + anime) 等は反転後「アニメ」を返し、
+   * illustrator_based + other 等は refined fallback で「イラスト」等の precision を維持する。
    *
    * 英語 slug (`メディアタイプ_slug`) は分岐判定用として提示するが、literal 使用は
    * prompt instruction で明示的に禁止する。
@@ -310,7 +312,7 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
         メディアタイプ_slug: extractedData.メディアタイプ,
         // §6.2 メディアタイプ 14 種 fallback の日本語対訳 (例: 'manga' → '漫画')
         メディアタイプ_label: mediaTypeMapper.getLabel(extractedData.メディアタイプ),
-        // §6.2 メディア形態表記 (原作タイプ 16 種優先 → メディアタイプ 14 種 fallback)
+        // §6.2 メディア形態表記 (Sprint D Phase 2-a 反転: メディアタイプ 14 種優先 → 原作タイプ 16 種 fallback)
         メディア形態表記: mediaFormLabel,
         // 原作者名の統一フォーマット (string | string[] | null → string)
         原作者名_formatted: formatAuthorName(extractedData.原作者名),

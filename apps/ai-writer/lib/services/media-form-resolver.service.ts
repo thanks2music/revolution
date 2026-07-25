@@ -34,6 +34,7 @@ import yaml from 'js-yaml';
 
 import {
   MediaFormMappingConfigSchema,
+  MEDIA_FORM_FALLBACK_LABEL,
   type MediaFormMappingConfig,
 } from '@revolution/schemas/media-form-mapping';
 
@@ -116,15 +117,17 @@ export class MediaFormResolverService {
    * resolver.resolve(undefined, undefined)             // → '作品' (両方 miss)
    */
   resolve(原作タイプ?: string | null, メディアタイプ?: string | null): string {
-    // Step 1: メディアタイプ優先 (label が「作品」= generic fallback の場合は Step 2 に進む)
+    // Step 1: メディアタイプ優先 (label が MEDIA_FORM_FALLBACK_LABEL = generic fallback の場合は Step 2 に進む)
     if (メディアタイプ) {
       const mediaTypeEntry = this.config.media_type_mappings[
         メディアタイプ as keyof typeof this.config.media_type_mappings
       ];
-      if (mediaTypeEntry?.label && mediaTypeEntry.label !== '作品') {
+      if (mediaTypeEntry?.label && mediaTypeEntry.label !== MEDIA_FORM_FALLBACK_LABEL) {
         return mediaTypeEntry.label;
       }
-      // media label === '作品' (generic fallback) or unknown メディアタイプ は Step 2 に進む
+      // media label === MEDIA_FORM_FALLBACK_LABEL (generic fallback) or unknown メディアタイプ は
+      // Step 2 に進む。将来 media_type_mappings.other.label が変更/localize されても
+      // shared constant 経由で同期される。
     }
 
     // Step 2: 原作タイプへフォールバック (曖昧値 = null 対訳は skip)
@@ -140,7 +143,7 @@ export class MediaFormResolverService {
     }
 
     // Step 3: 両方 miss の最終フォールバック
-    return '作品';
+    return MEDIA_FORM_FALLBACK_LABEL;
   }
 
   /**
