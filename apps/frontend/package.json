@@ -30,7 +30,7 @@
     "@t3-oss/env-nextjs": "^0.13.8",
     "@vercel/og": "^0.8.5",
     "drizzle-orm": "^0.45.2",
-    "next": "16.2.6",
+    "next": "16.2.11",
     "next-mdx-remote": "^6.0.0",
     "postgres": "^3.4.9",
     "react": "19.2.3",
