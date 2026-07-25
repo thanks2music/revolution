@@ -30,7 +30,8 @@
     "admin:remove": "tsx lib/firebase/admin-setup.ts remove",
     "debug:mdx": "tsx scripts/debug-mdx-url.ts",
     "debug:vision": "tsx scripts/debug-vision-api.ts",
-    "generate:article-index": "tsx scripts/generate-article-index.ts"
+    "generate:article-index": "tsx scripts/generate-article-index.ts",
+    "clean:utm": "tsx scripts/remove-utm-from-articles.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.63.0",
@@ -53,7 +54,7 @@
     "jose": "^6.1.0",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.544.0",
-    "next": "16.2.6",
+    "next": "16.2.11",
     "openai": "^6.9.1",
     "pino": "^9.11.0",
     "react": "19.2.3",

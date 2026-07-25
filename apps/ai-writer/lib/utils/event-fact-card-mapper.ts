@@ -25,6 +25,7 @@
  */
 
 import { z } from 'zod';
+import { stripUtmFromUrl } from './url';
 
 // -----------------------------------------------------------------------------
 // 入力型定義
@@ -279,11 +280,14 @@ export function extractEventFactCardFields(
   // -----------------------
   // official_url
   // -----------------------
+  // Sprint C-β P14: collabo-cafe.com origin から抽出された URL に付与される
+  // `?utm_source=collabo_cafe_dot_com&...` を境界で剥がす (Layer 2 defense、
+  // extraction 経路 → frontmatter 出力の contamination 防止)。
   let officialUrl: string | undefined;
   if (primary?.official_url && isValidUrl(primary.official_url)) {
-    officialUrl = primary.official_url;
+    officialUrl = stripUtmFromUrl(primary.official_url);
   } else if (input.extractionOfficialUrl && isValidUrl(input.extractionOfficialUrl)) {
-    officialUrl = input.extractionOfficialUrl;
+    officialUrl = stripUtmFromUrl(input.extractionOfficialUrl);
   }
 
   // -----------------------

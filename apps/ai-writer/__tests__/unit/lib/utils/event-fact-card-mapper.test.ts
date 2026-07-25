@@ -559,4 +559,39 @@ describe('extractEventFactCardFields', () => {
       expect(parseResult.success).toBe(true);
     });
   });
+
+  describe('Case H: Sprint C-β P14 utm sanitization (collabo-cafe.com origin defense)', () => {
+    it('should strip utm parameters from occurrences[0].official_url', () => {
+      const input: ExtractEventFactCardFieldsInput = {
+        eventDataOccurrences: [
+          {
+            venue_slug: 'kyara-um-cafe-ikebukuro',
+            venue_label: 'キャラウムカフェ',
+            starts_on: '2026-07-15',
+            ends_on: '2026-10-18',
+            official_url:
+              'https://www.medicos-e.net/newsdetail/d-gray-man/?utm_source=collabo_cafe_dot_com&utm_medium=collabo_cafe_dot_com&utm_campaign=collabo_cafe_dot_com&utm_id=collabo_cafe_dot_com',
+          },
+        ],
+      };
+
+      const result = extractEventFactCardFields(input);
+
+      expect(result.official_url).toBe(
+        'https://www.medicos-e.net/newsdetail/d-gray-man/'
+      );
+    });
+
+    it('should strip utm parameters from extractionOfficialUrl fallback', () => {
+      const input: ExtractEventFactCardFieldsInput = {
+        extractionOfficialUrl:
+          'https://example.com/event?utm_source=collabo_cafe_dot_com&ref=preserved',
+      };
+
+      const result = extractEventFactCardFields(input);
+
+      // utm 除去済み、非 utm パラメータ (ref) は保持
+      expect(result.official_url).toBe('https://example.com/event?ref=preserved');
+    });
+  });
 });
