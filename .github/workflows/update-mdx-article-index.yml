@@ -1,4 +1,4 @@
-name: Deploy MDX Articles
+name: Update MDX Article Index
 
 on:
   pull_request:
