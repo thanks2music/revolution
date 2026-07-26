@@ -1,9 +1,11 @@
 # Stage 1: 依存関係のインストール
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # pnpm インストール
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# バージョンはルート package.json の packageManager と一致させること
+# (corepack 公式: packageManager フィールドが install の決定性を担保する)
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 # モノレポ対応: ルートとワークスペース設定をコピー
 COPY pnpm-workspace.yaml ./
@@ -13,6 +15,11 @@ COPY package.json ./
 # ai-writerのpackage.jsonをコピー
 COPY apps/ai-writer/package.json ./apps/ai-writer/
 
+# shared/schemas は ai-writer のワークスペース依存 (@revolution/schemas: workspace:*)。
+# package.json が無いと pnpm がワークスペースリンクを張れず、ビルド時に
+# 'Module not found: @revolution/schemas/*' となる
+COPY shared/schemas/package.json ./shared/schemas/
+
 # pnpm node-linker=hoisted でシンボリックリンクを実体化
 ENV PNPM_NODE_LINKER=hoisted
 
@@ -20,11 +27,13 @@ ENV PNPM_NODE_LINKER=hoisted
 RUN pnpm install --frozen-lockfile --filter=@revolution/ai-writer...
 
 # Stage 2: ビルド
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # pnpm インストール
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# バージョンはルート package.json の packageManager と一致させること
+# (corepack 公式: packageManager フィールドが install の決定性を担保する)
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 # 依存関係をコピー
 COPY --from=deps /app/node_modules ./node_modules
@@ -33,6 +42,11 @@ COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
 # ルート設定ファイルをコピー
 COPY pnpm-workspace.yaml ./
 COPY package.json ./
+
+# shared/schemas の実体をコピー。exports が .ts を直接指しており、
+# ai-writer の next.config.ts が transpilePackages: ['@revolution/schemas'] で
+# ソースを直接 transpile するため、ビルド時に実ファイルが必要
+COPY shared ./shared
 
 # ai-writerアプリをコピー
 COPY apps/ai-writer ./apps/ai-writer
@@ -64,12 +78,16 @@ WORKDIR /app/apps/ai-writer
 RUN pnpm build
 
 # Stage 3: 本番環境
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
+# Next.js standalone の server.js は PORT 未設定時 3000 で待ち受けるため、
+# EXPOSE / HEALTHCHECK が指す 8080 と揃える。
+# Cloud Run は実行時に PORT を注入するのでそちらが優先される (公式 container contract)
+ENV PORT=8080
 
 # セキュリティのため非rootユーザーを作成
 RUN addgroup --system --gid 1001 nodejs && \
