@@ -16,6 +16,13 @@ apps/*/out
 apps/*/dist
 apps/*/.turbo
 
+# shared/* ワークスペースにも同じ除外を適用する。
+# これが無いとホストの shared/schemas/node_modules が COPY shared ./shared で
+# イメージに混入し、ローカルビルドだけが通って CI が落ちる (PR #281 で実際に発生)
+shared/*/node_modules
+shared/*/dist
+shared/*/.turbo
+
 # Testing
 apps/*/coverage
 apps/*/.nyc_output
