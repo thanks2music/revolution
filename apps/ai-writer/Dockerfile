@@ -3,7 +3,9 @@ FROM node:24-alpine AS deps
 WORKDIR /app
 
 # pnpm インストール
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# バージョンはルート package.json の packageManager と一致させること
+# (corepack 公式: packageManager フィールドが install の決定性を担保する)
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 # モノレポ対応: ルートとワークスペース設定をコピー
 COPY pnpm-workspace.yaml ./
@@ -29,7 +31,9 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 
 # pnpm インストール
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# バージョンはルート package.json の packageManager と一致させること
+# (corepack 公式: packageManager フィールドが install の決定性を担保する)
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 # 依存関係をコピー
 COPY --from=deps /app/node_modules ./node_modules
@@ -80,6 +84,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
+# Next.js standalone の server.js は PORT 未設定時 3000 で待ち受けるため、
+# EXPOSE / HEALTHCHECK が指す 8080 と揃える。
+# Cloud Run は実行時に PORT を注入するのでそちらが優先される (公式 container contract)
+ENV PORT=8080
 
 # セキュリティのため非rootユーザーを作成
 RUN addgroup --system --gid 1001 nodejs && \
