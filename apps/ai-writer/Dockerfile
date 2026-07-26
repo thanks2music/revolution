@@ -1,5 +1,5 @@
 # Stage 1: 依存関係のインストール
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # pnpm インストール
@@ -13,6 +13,11 @@ COPY package.json ./
 # ai-writerのpackage.jsonをコピー
 COPY apps/ai-writer/package.json ./apps/ai-writer/
 
+# shared/schemas は ai-writer のワークスペース依存 (@revolution/schemas: workspace:*)。
+# package.json が無いと pnpm がワークスペースリンクを張れず、ビルド時に
+# 'Module not found: @revolution/schemas/*' となる
+COPY shared/schemas/package.json ./shared/schemas/
+
 # pnpm node-linker=hoisted でシンボリックリンクを実体化
 ENV PNPM_NODE_LINKER=hoisted
 
@@ -20,7 +25,7 @@ ENV PNPM_NODE_LINKER=hoisted
 RUN pnpm install --frozen-lockfile --filter=@revolution/ai-writer...
 
 # Stage 2: ビルド
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # pnpm インストール
@@ -33,6 +38,11 @@ COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
 # ルート設定ファイルをコピー
 COPY pnpm-workspace.yaml ./
 COPY package.json ./
+
+# shared/schemas の実体をコピー。exports が .ts を直接指しており、
+# ai-writer の next.config.ts が transpilePackages: ['@revolution/schemas'] で
+# ソースを直接 transpile するため、ビルド時に実ファイルが必要
+COPY shared ./shared
 
 # ai-writerアプリをコピー
 COPY apps/ai-writer ./apps/ai-writer
@@ -64,7 +74,7 @@ WORKDIR /app/apps/ai-writer
 RUN pnpm build
 
 # Stage 3: 本番環境
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
