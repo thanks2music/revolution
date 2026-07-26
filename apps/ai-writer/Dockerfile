@@ -38,6 +38,12 @@ RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 # 依存関係をコピー
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
+# shared/schemas の依存 (zod / drizzle-zod / drizzle-orm) は root へ hoist されず
+# /app/shared/schemas/node_modules に symlink として置かれるため、個別にコピーする。
+# これが無いと transpilePackages が .ts を読めても import 先を解決できず
+# 'Module not found: zod / drizzle-orm / drizzle-zod' でビルドが落ちる。
+# deps ステージの COPY shared/schemas/package.json と対で維持すること
+COPY --from=deps /app/shared/schemas/node_modules ./shared/schemas/node_modules
 
 # ルート設定ファイルをコピー
 COPY pnpm-workspace.yaml ./
