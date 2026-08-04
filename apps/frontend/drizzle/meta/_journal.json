@@ -85,6 +85,13 @@
       "when": 1785812246183,
       "tag": "0011_profiles_auth_id_separation_m1",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785817885000,
+      "tag": "0012_rename_favorites_fk_constraint",
+      "breakpoints": true
     }
   ]
 }
