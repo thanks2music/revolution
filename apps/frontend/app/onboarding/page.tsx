@@ -35,7 +35,7 @@ export default async function OnboardingPage() {
     const { data: profile } = await supabase
       .from('profiles')
       .select('display_name')
-      .eq('id', user.id)
+      .eq('auth_user_id', user.id)
       .maybeSingle();
     defaultDisplayName = profile?.display_name ?? '';
   }

@@ -49,7 +49,7 @@ export default async function MyPage() {
     ? await supabase
         .from('profiles')
         .select('username, display_name')
-        .eq('id', user.id)
+        .eq('auth_user_id', user.id)
         .maybeSingle()
     : { data: null };
 
@@ -107,6 +107,14 @@ export default async function MyPage() {
           <h2 className="font-display text-xl text-ink-strong md:text-2xl">
             アカウント管理
           </h2>
+          {/*
+            migration 0011 (M1) 以降、`display_name` / `username` は**退会時に null 化**される
+            (PII 匿名化)。ただし退会済みユーザーは認証を通れないため本ページには到達せず、
+            ここでの null は「onboarding 未完了」を意味する。`?? ''` のままでよい。
+
+            「退会済みユーザー」という表示が要るのは**他人の名前を出す画面** (レビュー一覧等)
+            で、それらは S4 スコープ。現時点で該当画面は存在しないため実装しない (YAGNI)。
+          */}
           <AccountManager
             currentUsername={profile?.username ?? ''}
             currentDisplayName={profile?.display_name ?? ''}

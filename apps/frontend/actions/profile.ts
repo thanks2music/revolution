@@ -78,7 +78,7 @@ export async function completeOnboarding(
       username: parsed.data.username,
       display_name: parsed.data.displayName,
     })
-    .eq('id', user.id)
+    .eq('auth_user_id', user.id)
     .select('id');
 
   if (updateError) {

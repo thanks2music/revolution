@@ -78,6 +78,13 @@
       "when": 1783248794294,
       "tag": "0010_events_primary_category_id_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785812246183,
+      "tag": "0011_profiles_auth_id_separation_m1",
+      "breakpoints": true
     }
   ]
 }

@@ -45,14 +45,17 @@ export const UsernameSchema = z
 
 /**
  * profiles 行の select スキーマ。username は DB 上 nullable のため nullable のまま
- * (onboarding 未完了 = NULL を表現)。
+ * (onboarding 未完了 = NULL / 退会 = NULL を表現)。
  */
 export const ProfileSchema = createSelectSchema(profiles, {
   username: UsernameSchema.nullable(),
-  // select は DB が返しうる値を忠実にモデル化する。handle_new_user トリガが
-  // onboarding 前に display_name を空文字 (coalesce(..., '')) で作成しうるため、
-  // select では min を課さない。非空保証は入力側 (ProfileUpdateSchema) で担保する。
-  displayName: z.string(),
+  // select は DB が返しうる値を忠実にモデル化する。
+  // - handle_new_user トリガが onboarding 前に display_name を空文字
+  //   (coalesce(..., '')) で作成しうるため、select では min を課さない。
+  // - ★ migration 0011 (M1) 以降、**退会時に null 化**される (PII 匿名化)。
+  //   表示層は null を「退会済みユーザー」に読み替える必要がある。
+  // 非空保証は入力側 (ProfileUpdateSchema) で担保する。
+  displayName: z.string().nullable(),
 });
 
 /**
