@@ -7,12 +7,34 @@ import { check, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/
  * Crescendolls 会員機能のプロフィールテーブル。auth.users と 1:1 で対応する。
  *
  * 設計判断 (hashed-doodling-hopper.md §データモデル に準拠):
- * - `id` は auth.users(id) を参照する PK。退会 (auth.users 削除) で cascade 削除。
+ * - `id` は **永続 ID**。auth とは別の ID 空間 (M1 で分離、下記)。
+ * - `auth_user_id` が auth.users(id) を参照し、退会で **null になる** (ON DELETE SET NULL)。
  * - `username` は **初期 NULL** = onboarding 未完了の判定キー。onboarding 完了時に
  *   update で埋める。一意性は case-insensitive (`lower(username)` の unique index)。
- * - `display_name` は NOT NULL。handle_new_user トリガーが
- *   `coalesce(raw_user_meta_data->>'full_name','')` で空文字埋めし、onboarding で必須上書き。
+ * - `display_name` は **nullable** (退会時に null 化して匿名化するため)。
+ *   handle_new_user トリガーが `coalesce(raw_user_meta_data->>'full_name','')` で
+ *   空文字埋めし、onboarding で必須上書きする点は変わらない。
  * - `avatar_url` は作らない (v2、YAGNI)。
+ *
+ * ★ M1 (認証 ID / 永続 ID の分離、migration 0011):
+ *   旧構造は `profiles.id` が auth.users(id) を ON DELETE CASCADE で直接参照しており、
+ *   **退会するとプロフィールごと消えた**。これでは「退会してもレビューは残す」
+ *   (event-review-data-model.md §4.5) が成立しない。
+ *
+ *   | 列 | 意味 | 退会時 |
+ *   |---|---|---|
+ *   | `id` | 永続 ID。reviews / review_helpful の FK 先 | 変わらない |
+ *   | `auth_user_id` | auth リンク | **null になる** |
+ *   | `withdrawn_at` | 退会時刻 | now() が入る |
+ *   | `display_name` | 表示名 | **null 化** (PII 匿名化) |
+ *   | `username` | 公開ハンドル | **null 化** (再利用のため解放) |
+ *
+ *   RLS は `auth_user_id` 基準に書き換え済み (0011 ステップ 8)。`id` 基準のままだと
+ *   reviews 系の書き込み policy が参照する副問い合わせが 0 行を返す。
+ *
+ *   なお `id` の既定値を `gen_random_uuid()` にするのは **M2 (0013、不可逆)**。
+ *   M1 の間は登録トリガが `id = NEW.id` を入れ続けるため旧 FK を戻せる。
+ *   手順と可逆性: `one-more-time/docs/schema/revolution-profiles-migration.md`
  *
  * username の三段防御:
  *   Layer1 = zod (shared/schemas/profile.ts、正規表現・長さの真実源)
@@ -32,19 +54,30 @@ import { check, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/
 export const profiles = pgTable(
   'profiles',
   {
-    // auth.users(id) を参照する PK。FK 句は custom SQL migration 側で付与する
-    // (Drizzle は auth スキーマを管理しないため)。
+    // 永続 ID。M1 以降 auth とは別の ID 空間。reviews / review_helpful の FK 先。
+    // 既定値 gen_random_uuid() が付くのは M2 (0013) から。
     id: uuid('id').primaryKey().notNull(),
-    // 初期 NULL = onboarding 未完了。onboarding 完了で埋める。
+    // auth.users(id) へのリンク。退会で null になる (ON DELETE SET NULL)。
+    // FK 句と UNIQUE は custom SQL migration 側で付与する
+    // (Drizzle は auth スキーマを管理しないため)。
+    authUserId: uuid('auth_user_id'),
+    // 初期 NULL = onboarding 未完了。onboarding 完了で埋める。退会で null に戻す。
     username: text('username'),
     // handle_new_user が coalesce で空文字埋め、onboarding で必須上書き。
-    displayName: text('display_name').notNull(),
+    // 退会時に null 化して匿名化するため nullable。
+    displayName: text('display_name'),
+    // 退会時刻。null = 現役。表示層はこれを見て「退会済みユーザー」を出す。
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    // auth.users.created_at から移送した実際の登録日時 (0011 ステップ 2b)。
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     // Layer2: DB CHECK。zod (Layer1) と同じ正規表現を二段防御として保持。
+    // 退会時の username = null は CHECK を通過する (NULL は CHECK 対象外)。
     check('profiles_username_format', sql`${table.username} ~ '^[a-zA-Z0-9_]{3,24}$'`),
     // Layer3: case-insensitive 一意。表示は入力時の大小を保持しつつ重複は大小無視で弾く。
+    // 退会で null になった行は NULL != NULL のため複数共存できる。
     uniqueIndex('profiles_username_lower_idx').on(sql`lower(${table.username})`),
   ],
 );

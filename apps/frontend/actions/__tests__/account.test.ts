@@ -16,7 +16,7 @@ const TEST_UID = '550e8400-e29b-41d4-a716-446655440000';
 jest.mock('@/lib/env', () => ({ env: {} }));
 
 jest.mock('@/lib/supabase/server', () => {
-  // profiles.update(...).eq('id', uid).select('id') のチェーン。終端 select が
+  // profiles.update(...).eq('auth_user_id', uid).select('id') のチェーン。終端 select が
   // { data, error } を解決する (0 行ガードのため data に影響行を入れる)。
   const select = jest.fn();
   const eq = jest.fn(() => ({ select }));
@@ -68,12 +68,12 @@ beforeEach(() => {
 });
 
 describe('updateUsername', () => {
-  it('updates profiles by own id', async () => {
+  it('updates profiles by own auth_user_id', async () => {
     const result = await updateUsername({ username: 'new_name' });
     expect(result.ok).toBe(true);
     expect(m.from).toHaveBeenCalledWith('profiles');
     expect(m.update).toHaveBeenCalledWith({ username: 'new_name' });
-    expect(m.eq).toHaveBeenCalledWith('id', TEST_UID);
+    expect(m.eq).toHaveBeenCalledWith('auth_user_id', TEST_UID);
   });
 
   it('maps 23505 to a username field error', async () => {
@@ -103,11 +103,11 @@ describe('updateUsername', () => {
 });
 
 describe('updateDisplayName', () => {
-  it('updates display_name by own id', async () => {
+  it('updates display_name by own auth_user_id', async () => {
     const result = await updateDisplayName({ displayName: 'あにめ花子' });
     expect(result.ok).toBe(true);
     expect(m.update).toHaveBeenCalledWith({ display_name: 'あにめ花子' });
-    expect(m.eq).toHaveBeenCalledWith('id', TEST_UID);
+    expect(m.eq).toHaveBeenCalledWith('auth_user_id', TEST_UID);
   });
 
   it('rejects empty display name', async () => {

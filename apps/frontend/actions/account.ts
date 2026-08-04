@@ -73,7 +73,7 @@ export async function updateUsername(input: { username: string }): Promise<Accou
   const { data, error } = await supabase
     .from('profiles')
     .update({ username: parsed.data.username })
-    .eq('id', user.id)
+    .eq('auth_user_id', user.id)
     .select('id');
 
   if (error) {
@@ -132,7 +132,7 @@ export async function updateDisplayName(input: { displayName: string }): Promise
   const { data, error } = await supabase
     .from('profiles')
     .update({ display_name: parsed.data.displayName })
-    .eq('id', user.id)
+    .eq('auth_user_id', user.id)
     .select('id');
 
   if (error) {

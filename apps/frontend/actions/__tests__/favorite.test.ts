@@ -1,7 +1,7 @@
 /**
  * Layer2: いいね Server Action (toggleFavorite / getFavorites) の Supabase mock contract
  *
- *   - user_id は getUser() から取得 (クライアント入力にしない = RLS と二重防御)
+ *   - auth_user_id は getUser() から取得 (クライアント入力にしない = RLS と二重防御)
  *   - target_type は 'article' 固定
  *   - 既いいね → delete (解除, liked:false) / 未いいね → insert (追加, liked:true)
  *   - insert の 23505 (複合 PK 違反) は「既にいいね済み」として liked:true で冪等終了
@@ -78,7 +78,7 @@ beforeEach(() => {
   setResult({ data: null, error: null });
 });
 
-describe('toggleFavorite — auth + user_id source', () => {
+describe('toggleFavorite — auth + auth_user_id source', () => {
   it('returns needsAuth when there is no authenticated user', async () => {
     m.auth.getUser.mockResolvedValue({ data: { user: null }, error: null });
     const result = await toggleFavorite(KEY);
@@ -96,7 +96,7 @@ describe('toggleFavorite — auth + user_id source', () => {
 });
 
 describe('toggleFavorite — add (not yet liked)', () => {
-  it('inserts using user_id from getUser and target_type=article, returns liked:true', async () => {
+  it('inserts using auth_user_id from getUser and target_type=article, returns liked:true', async () => {
     // select.maybeSingle → null (未いいね) → insert
     setResult({ data: null, error: null });
     const result = await toggleFavorite(KEY);
@@ -105,7 +105,7 @@ describe('toggleFavorite — add (not yet liked)', () => {
     expect(m.auth.getUser).toHaveBeenCalledTimes(1);
     expect(m.from).toHaveBeenCalledWith('favorites');
     expect(m.builder.insert).toHaveBeenCalledWith({
-      user_id: TEST_UID,
+      auth_user_id: TEST_UID,
       target_type: 'article',
       target_key: KEY,
     });

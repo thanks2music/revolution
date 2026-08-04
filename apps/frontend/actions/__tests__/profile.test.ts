@@ -1,7 +1,7 @@
 /**
  * Layer2: profile (onboarding) Server Action の Supabase mock contract。
  *   - getUser() から user_id を取得 (クライアント入力にしない = RLS と二重防御)
- *   - profiles.update を本人 id (.eq('id', user.id)) で呼ぶ契約
+ *   - profiles.update を本人の auth_user_id (.eq('auth_user_id', user.id)) で呼ぶ契約
  *   - 23505 (lower(username) unique 違反) を username フィールドエラーに変換
  *   - 成功時に updateUser({ data: { onboarded: true } }) で JWT claims を書く (案B)
  *   - zod (Layer1) で形式エラーを弾き Supabase を呼ばない
@@ -16,7 +16,7 @@ const TEST_UID = '550e8400-e29b-41d4-a716-446655440000';
 jest.mock('@/lib/env', () => ({ env: {} }));
 
 jest.mock('@/lib/supabase/server', () => {
-  // profiles.update(...).eq('id', uid).select('id') のチェーン。終端 select が
+  // profiles.update(...).eq('auth_user_id', uid).select('id') のチェーン。終端 select が
   // { data, error } を解決する (0 行ガードのため data に影響行を入れる)。
   const select = jest.fn();
   const eq = jest.fn(() => ({ select }));
@@ -79,7 +79,7 @@ describe('completeOnboarding — happy path', () => {
       username: 'anime_taro',
       display_name: 'あにめ太郎',
     });
-    expect(m.eq).toHaveBeenCalledWith('id', TEST_UID);
+    expect(m.eq).toHaveBeenCalledWith('auth_user_id', TEST_UID);
 
     // 案B: 完了フラグを JWT claims に書く
     expect(m.auth.updateUser).toHaveBeenCalledWith({ data: { onboarded: true } });

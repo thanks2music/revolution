@@ -3,7 +3,7 @@
 /**
  * いいね Server Actions (Crescendolls 会員機能 / M3)
  *
- * - toggleFavorite(targetKey): 記事いいねのトグル。user_id は getUser() から取得し
+ * - toggleFavorite(targetKey): 記事いいねのトグル。auth_user_id は getUser() から取得し
  *   **クライアント入力にしない** (RLS と二重防御)。target_type は 'article' 固定。
  * - getFavorites(): 本人のいいね一覧 (マイページ用)。新しい順。
  *
@@ -11,7 +11,7 @@
  * - 読み書きは **Supabase server クライアント経由** (RLS 適用)。M1 の Drizzle client は
  *   DATABASE_URL = postgres ユーザー (RLS bypass) で接続するため、いいねの本人限定を
  *   担保するには RLS が効く PostgREST 経由が正しい (二重防御)。
- * - 複合 PK (user_id, target_type, target_key) のため、insert 競合は 23505。
+ * - 複合 PK (auth_user_id, target_type, target_key) のため、insert 競合は 23505。
  *   楽観 UI のレース等で重複 insert が来ても「既にいいね済み」として正常終了する。
  * - target_key は zod (FavoriteSchema 由来) で min(1) を検証 (空キー insert を防ぐ)。
  * - throw せず型付き結果 ({ ok, liked } | { ok:false, error }) を返す。UI が
@@ -74,7 +74,7 @@ export async function getFavoriteState(targetKey: string): Promise<FavoriteState
   const { data, error } = await supabase
     .from('favorites')
     .select('target_key')
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
     .eq('target_type', TARGET_TYPE)
     .eq('target_key', parsed.data)
     .maybeSingle();
@@ -105,7 +105,7 @@ export async function toggleFavorite(
 
   const supabase = await createClient();
 
-  // user_id は getUser() から取得 (クライアント入力にしない = RLS と二重防御)。
+  // auth_user_id は getUser() から取得 (クライアント入力にしない = RLS と二重防御)。
   // per-request memoized なヘルパ経由 (同リクエスト内の重複 getUser を dedup)。
   const {
     data: { user },
@@ -120,7 +120,7 @@ export async function toggleFavorite(
   const { data: existing, error: selectError } = await supabase
     .from('favorites')
     .select('target_key')
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
     .eq('target_type', TARGET_TYPE)
     .eq('target_key', key)
     .maybeSingle();
@@ -134,7 +134,7 @@ export async function toggleFavorite(
     const { error: deleteError } = await supabase
       .from('favorites')
       .delete()
-      .eq('user_id', user.id)
+      .eq('auth_user_id', user.id)
       .eq('target_type', TARGET_TYPE)
       .eq('target_key', key);
 
@@ -146,7 +146,7 @@ export async function toggleFavorite(
 
   // 追加
   const { error: insertError } = await supabase.from('favorites').insert({
-    user_id: user.id,
+    auth_user_id: user.id,
     target_type: TARGET_TYPE,
     target_key: key,
   });
@@ -184,7 +184,7 @@ export async function getFavorites(): Promise<GetFavoritesResult> {
   const { data, error } = await supabase
     .from('favorites')
     .select('target_key, created_at')
-    .eq('user_id', user.id)
+    .eq('auth_user_id', user.id)
     .eq('target_type', TARGET_TYPE)
     .order('created_at', { ascending: false })
     .limit(FAVORITES_FETCH_LIMIT);
