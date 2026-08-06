@@ -70,6 +70,9 @@ export const reviews = pgTable(
   {
     id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
     // ★2026-08-06 cascade → restrict に変更 (claude[bot] 指摘 + BOSS 判断)。
+    //   **適用は `0013` ではなく `0014`** (0013 は PR #287 の初回 push 時点で
+    //   staging へ適用済みだったため、SoP §9.3 Option C-1 に従い forward
+    //   migration へ切り出した。`drizzle/0014_reviews_occurrence_restrict.sql`)。
     //   cascade のままだと `DELETE FROM events` 一発で
     //   events → occurrences → reviews (→ review_images / review_helpful) と
     //   連鎖し、**ユーザー投稿のレビューと写真が物理削除される**。

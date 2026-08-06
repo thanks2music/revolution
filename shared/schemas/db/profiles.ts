@@ -32,17 +32,21 @@ import { check, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/
  *   RLS は `auth_user_id` 基準に書き換え済み (0011 ステップ 8)。`id` 基準のままだと
  *   reviews 系の書き込み policy が参照する副問い合わせが 0 行を返す。
  *
- *   なお `id` の既定値を `gen_random_uuid()` にするのは **M2 (0014、不可逆)**。
+ *   なお `id` の既定値を `gen_random_uuid()` にするのは **M2 (0015、不可逆)**。
  *   M1 の間は登録トリガが `id = NEW.id` を入れ続けるため旧 FK を戻せる。
  *   手順と可逆性 + migration 番号の一次資料:
  *   `one-more-time/docs/schema/revolution-profiles-migration.md` §4
  *
  *   ⚠️ 番号の訂正 (2026-08-06): 本 docstring は M2 を `0013` と書いていたが、
- *   2026-08-04 の BOSS 確定で **`0013` = 新規 6 テーブル / `0014` = M2** の順に
+ *   2026-08-04 の BOSS 確定で **`0013` = 新規 6 テーブル → M2 は後**の順に
  *   決まった (新規テーブルは M1 にしか依存しないため、M2 を遅らせるほど
  *   ロールバック窓が長く保てる)。同じ誤りが `drizzle/0011_*.sql` L21 にも
  *   残っているが、**0011 は staging / production 適用済みのため編集しない**
  *   (PR #250 SoP §9 / PR #258・#259 の drift 事案)。
+ *
+ *   ⚠️ 番号の再訂正 (2026-08-06): 一時 `0014` と書いていたが、`0014` は
+ *   `reviews.occurrence_id` の cascade → restrict 修正 (0013 の forward fix)
+ *   が取ったため、**M2 は `0015`** になった。
  *
  * username の三段防御:
  *   Layer1 = zod (shared/schemas/profile.ts、正規表現・長さの真実源)
@@ -63,7 +67,7 @@ export const profiles = pgTable(
   'profiles',
   {
     // 永続 ID。M1 以降 auth とは別の ID 空間。reviews / review_helpful の FK 先。
-    // 既定値 gen_random_uuid() が付くのは M2 (0014) から。
+    // 既定値 gen_random_uuid() が付くのは M2 (0015) から。
     id: uuid('id').primaryKey().notNull(),
     // auth.users(id) へのリンク。退会で null になる (ON DELETE SET NULL)。
     // FK 句と UNIQUE は custom SQL migration 側で付与する
