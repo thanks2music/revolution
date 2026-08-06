@@ -69,9 +69,23 @@ export const reviews = pgTable(
   'reviews',
   {
     id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    // ★2026-08-06 cascade → restrict に変更 (claude[bot] 指摘 + BOSS 判断)。
+    //   cascade のままだと `DELETE FROM events` 一発で
+    //   events → occurrences → reviews (→ review_images / review_helpful) と
+    //   連鎖し、**ユーザー投稿のレビューと写真が物理削除される**。
+    //   本テーブルは DELETE policy を持たないソフトデリート専用設計だが、
+    //   親経由の CASCADE はそれを迂回してしまう。
+    //   `user_id` を restrict にしているのは「退会してもレビューは残す」ため
+    //   だが、守りたいものが同じである以上、occurrence 側だけ守らないのは
+    //   一貫しない。レビューが付いている occurrence は RLS 上 `verified` を
+    //   通った**公開済み**の開催なので、消す操作は DB 層で一度止める。
+    //   ※ 重複 occurrence の整理など正当な用途は、service_role が
+    //     「レビューを先に消す」順序で明示的に実行する。`occurrence_id` は
+    //     trg_reviews_freeze_occurrence で付け替え不可のため、元々
+    //     DELETE + 再 INSERT が想定手順 (functions.sql の同トリガ節を参照)。
     occurrenceId: bigint('occurrence_id', { mode: 'number' })
       .notNull()
-      .references(() => occurrences.id, { onDelete: 'cascade' }),
+      .references(() => occurrences.id, { onDelete: 'restrict' }),
     // profiles.id = 永続 ID。退会してもレビューを残すため restrict。
     userId: uuid('user_id')
       .notNull()

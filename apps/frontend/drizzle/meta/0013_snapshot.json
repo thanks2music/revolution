@@ -1,5 +1,5 @@
 {
-  "id": "2f555718-422b-45a2-bbaf-84bcd4a4a0c3",
+  "id": "2c9d628b-8675-433c-a1a5-563f82a217aa",
   "prevId": "5f2c1a7b-9e4d-4a11-b3c8-d7e6f5a40012",
   "version": "7",
   "dialect": "postgresql",
@@ -982,7 +982,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         },
         "reviews_user_id_profiles_id_fk": {

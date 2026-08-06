@@ -70,7 +70,7 @@ ALTER TABLE "occurrences" ADD CONSTRAINT "occurrences_venue_id_venues_id_fk" FOR
 ALTER TABLE "review_helpful" ADD CONSTRAINT "review_helpful_review_id_reviews_id_fk" FOREIGN KEY ("review_id") REFERENCES "public"."reviews"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "review_helpful" ADD CONSTRAINT "review_helpful_user_id_profiles_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "review_images" ADD CONSTRAINT "review_images_review_id_reviews_id_fk" FOREIGN KEY ("review_id") REFERENCES "public"."reviews"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "reviews" ADD CONSTRAINT "reviews_occurrence_id_occurrences_id_fk" FOREIGN KEY ("occurrence_id") REFERENCES "public"."occurrences"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "reviews" ADD CONSTRAINT "reviews_occurrence_id_occurrences_id_fk" FOREIGN KEY ("occurrence_id") REFERENCES "public"."occurrences"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "reviews" ADD CONSTRAINT "reviews_user_id_profiles_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "title_aliases" ADD CONSTRAINT "title_aliases_title_id_titles_id_fk" FOREIGN KEY ("title_id") REFERENCES "public"."titles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "venue_aliases" ADD CONSTRAINT "venue_aliases_venue_id_venues_id_fk" FOREIGN KEY ("venue_id") REFERENCES "public"."venues"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -82,8 +82,7 @@ CREATE INDEX "review_images_review_idx" ON "review_images" USING btree ("review_
 CREATE UNIQUE INDEX "reviews_occurrence_user_uniq" ON "reviews" USING btree ("occurrence_id","user_id");--> statement-breakpoint
 CREATE INDEX "reviews_user_idx" ON "reviews" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "title_aliases_title_idx" ON "title_aliases" USING btree ("title_id");--> statement-breakpoint
-CREATE INDEX "venue_aliases_venue_idx" ON "venue_aliases" USING btree ("venue_id");--> statement-breakpoint
-
+CREATE INDEX "venue_aliases_venue_idx" ON "venue_aliases" USING btree ("venue_id");
 -- ============================================================================
 -- 以降は drizzle-kit 自動生成範囲外の手動追記 (0009_events.sql と同じ作法)
 --   Part A: ロック / タイムアウトのガード
@@ -100,7 +99,20 @@ CREATE INDEX "venue_aliases_venue_idx" ON "venue_aliases" USING btree ("venue_id
 --      本 migration では実行しない (再実行すると 0007 の extensions schema
 --      配置を壊す)。
 --
--- 【S0 確定版から意図的に変更した 4 点 (BOSS 承認 2026-08-06)】
+-- 【S0 確定版から意図的に変更した 5 点 (BOSS 承認 2026-08-06)】
+--   0. **`reviews.occurrence_id` を cascade → restrict にした** ―
+--      cascade のままだと `DELETE FROM events` 一発で
+--      events → occurrences → reviews (→ review_images / review_helpful) と
+--      連鎖し、**ユーザー投稿のレビューと写真が物理削除される**。
+--      `reviews` は DELETE policy を持たないソフトデリート専用設計だが、
+--      親経由の CASCADE はそれを迂回してしまう。
+--      `reviews.user_id` を restrict にしているのは「退会してもレビューは
+--      残す」ためであり、守りたいものが同じである以上 occurrence 側だけ
+--      守らないのは一貫しない。レビューが付いている occurrence は RLS 上
+--      `verified` を通った**公開済み**の開催なので、消す操作は DB 層で
+--      一度止める。`events` 削除も推移的にブロックされる。
+--      → 詳細は `shared/schemas/db/reviews.ts` のコメント。
+--        一次資料 `revolution-schema.ts` にも追随させること。
 --   1. トリガ関数を `public` ではなく **`private` schema + `SET search_path = ''`**
 --      に置き、集計を書き込む 2 本を **SECURITY DEFINER** にした。
 --      理由は Part B のコメントに詳述。
