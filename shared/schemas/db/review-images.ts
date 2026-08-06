@@ -20,8 +20,15 @@ import { reviews } from './reviews';
  *
  * 設計判断 (S0「設計確定」、一次資料
  * `one-more-time/docs/schema/revolution-schema.ts` + `revolution-er-v3.md`):
- * - `review_id` は `reviews.id` を ON DELETE cascade で参照 (親レビューの物理
- *   削除は運用上発生しないが、`occurrences` 削除の連鎖で到達しうるため)。
+ * - `review_id` は `reviews.id` を ON DELETE cascade で参照。**親の連鎖で
+ *   到達する経路は `0014` で消えた** (`reviews.occurrence_id` が restrict に
+ *   なったため、レビューが残っている限り `occurrences` の削除自体が `23503`
+ *   で止まる)。それでも cascade を維持するのは、**service_role が `reviews`
+ *   行を直接物理削除する**経路の後始末が要るため — 重複 occurrence の整理は
+ *   「レビューを先に消す」順序で service_role が実行する運用で
+ *   (`reviews.ts` の occurrence_id の注記を参照)、その際に画像が孤児化する。
+ *   authenticated 側は DELETE policy を持たないソフトデリート専用なので、
+ *   この経路に来るのは service_role だけ。
  * - `object_key` は R2 のオブジェクトキー。フル URL を入れない。
  * - `sort_order` はギャラリーの並び順。UPDATE policy はこの並べ替えのために
  *   必要 (delete + insert で並べ替えると R2 のオブジェクトまで作り直しになる)。
