@@ -5,6 +5,7 @@ import {
   REVIEW_RATING_MIN,
   ReviewHelpfulInsertSchema,
   ReviewImageInsertSchema,
+  ReviewImageUpdateSchema,
   ReviewInsertSchema,
   ReviewSoftDeleteSchema,
   ReviewUpdateSchema,
@@ -171,6 +172,39 @@ describe('ReviewImageInsertSchema', () => {
     ['non-integer', 1.5],
   ])('rejects a sort_order that is %s', (_label, sortOrder) => {
     expect(() => ReviewImageInsertSchema.parse({ ...image, sortOrder })).toThrow();
+  });
+});
+
+describe('ReviewImageUpdateSchema', () => {
+  // DB の `grant update ("sort_order")` (0015) と 1:1 に対応させる。
+  it('exposes only sort_order', () => {
+    expect(Object.keys(ReviewImageUpdateSchema.shape)).toEqual(['sortOrder']);
+  });
+
+  it('accepts a reorder', () => {
+    expect(() => ReviewImageUpdateSchema.parse({ sortOrder: 2 })).not.toThrow();
+  });
+
+  it('still enforces the non-negative integer rule', () => {
+    expect(() => ReviewImageUpdateSchema.parse({ sortOrder: -1 })).toThrow();
+    expect(() => ReviewImageUpdateSchema.parse({ sortOrder: 1.5 })).toThrow();
+  });
+
+  // object_key を書き換えられると他人の R2 オブジェクトを自分のギャラリーに
+  // 表示させられる。RLS では防げないので DB は列単位 GRANT、Layer 1 は omit で塞ぐ。
+  it.each(['objectKey', 'reviewId', 'id', 'createdAt'])(
+    'does not allow %s to be updated',
+    (field) => {
+      expect(Object.keys(ReviewImageUpdateSchema.shape)).not.toContain(field);
+    },
+  );
+
+  it('drops an object_key supplied by the caller instead of trusting it', () => {
+    const parsed = ReviewImageUpdateSchema.parse({
+      sortOrder: 1,
+      objectKey: 'reviews/someone-else/private.webp',
+    });
+    expect(parsed).not.toHaveProperty('objectKey');
   });
 });
 

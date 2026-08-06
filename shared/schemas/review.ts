@@ -98,6 +98,21 @@ export const ReviewImageInsertSchema = createInsertSchema(reviewImages, {
 });
 
 /**
+ * review_images の更新スキーマ。**DB の列単位 GRANT と 1:1 に対応させる**
+ * (`0015` の `grant update ("sort_order")`)。
+ *
+ * UPDATE を許すのは並べ替えのための `sort_order` だけ。とくに `object_key` を
+ * 除いているのは、書き換えられると **他人の R2 オブジェクトを自分のギャラリーに
+ * 表示させられる**ため (RLS は「自分の未削除レビューに属する行か」しか見ないので
+ * policy では防げない)。`review_id` は `trg_review_images_freeze_review` でも
+ * 守っているが、そちらは service_role にも効かせるための多層防御で、ここは
+ * authenticated 向けの入口を塞ぐ役割。
+ */
+export const ReviewImageUpdateSchema = ReviewImageInsertSchema.pick({
+  sortOrder: true,
+});
+
+/**
  * review_helpful の insert スキーマ (「参考になった」)。
  *
  * 複合 PK `(review_id, user_id)` の重複拒否は Layer 2 のみ。

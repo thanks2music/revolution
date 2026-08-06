@@ -25,6 +25,11 @@ import { reviews } from './reviews';
  * - `object_key` は R2 のオブジェクトキー。フル URL を入れない。
  * - `sort_order` はギャラリーの並び順。UPDATE policy はこの並べ替えのために
  *   必要 (delete + insert で並べ替えると R2 のオブジェクトまで作り直しになる)。
+ *   ★ authenticated への UPDATE は **`sort_order` の列単位 GRANT** に絞っている
+ *   (`0015`)。テーブル単位だと `object_key` を任意の R2 キーへ書き換えられ、
+ *   **他人の写真を自分のギャラリーに表示させられる** (RLS は「自分の未削除
+ *   レビューに属する行か」しか見ないため policy では防げない)。
+ *   `reviews.helpful_count` を列単位 GRANT で守っているのと同じ理屈。
  * - `created_at` は **孤児画像回収ジョブ**が使う (presigned URL で先にアップ
  *   ロードされたが行が作られなかったオブジェクトの検出)。
  *
