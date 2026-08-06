@@ -92,6 +92,13 @@
       "when": 1785817885000,
       "tag": "0012_rename_favorites_fk_constraint",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785950038065,
+      "tag": "0013_occurrences_reviews_aliases",
+      "breakpoints": true
     }
   ]
 }
