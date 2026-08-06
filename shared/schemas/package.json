@@ -33,7 +33,10 @@
     "./category": "./category.ts",
     "./title": "./title.ts",
     "./venue": "./venue.ts",
-    "./event": "./event.ts"
+    "./event": "./event.ts",
+    "./occurrence": "./occurrence.ts",
+    "./review": "./review.ts",
+    "./alias": "./alias.ts"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.36.0",
