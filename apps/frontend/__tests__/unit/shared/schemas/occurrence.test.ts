@@ -84,8 +84,29 @@ describe('OccurrenceInsertSchema', () => {
     expect(() => OccurrenceInsertSchema.parse({ ...base, startsOn })).toThrow();
   });
 
+  // `z.iso.date()` は単純な regex と違い暦の妥当性まで見る。
+  it.each([
+    ['month out of range', '2026-13-01'],
+    ['day out of range', '2026-08-45'],
+    ['non-existent day for the month', '2026-02-30'],
+  ])('rejects starts_on with %s', (_label, startsOn) => {
+    expect(() => OccurrenceInsertSchema.parse({ ...base, startsOn })).toThrow();
+  });
+
+  it('accepts a real leap day', () => {
+    expect(() => OccurrenceInsertSchema.parse({ ...base, startsOn: '2028-02-29' })).not.toThrow();
+  });
+
+  it('rejects a leap day in a non-leap year', () => {
+    expect(() => OccurrenceInsertSchema.parse({ ...base, startsOn: '2026-02-29' })).toThrow();
+  });
+
   it('rejects a non-ISO ends_on', () => {
     expect(() => OccurrenceInsertSchema.parse({ ...base, endsOn: '2026/09/30' })).toThrow();
+  });
+
+  it('rejects an ends_on that is not a real calendar date', () => {
+    expect(() => OccurrenceInsertSchema.parse({ ...base, endsOn: '2026-02-30' })).toThrow();
   });
 
   it('rejects a whitespace-only venue_label', () => {
@@ -102,10 +123,20 @@ describe('OccurrenceInsertSchema', () => {
     expect(() => OccurrenceInsertSchema.parse({ ...base, venueLabel: null })).not.toThrow();
   });
 
-  // ★決定⑧: verified は RLS の公開判定が依存する。既定は false でなければならない。
-  it('defaults verified to false so unreviewed runs stay unpublished', () => {
+  // ★決定⑧: verified は RLS の公開判定が依存する。
+  // Layer 1 は **既定値を補完しない** — DB 側に `default false` があるため
+  // drizzle-zod は「任意」として扱うだけで、省略すると undefined のまま返る。
+  // false を保証しているのは Layer 2 の `default false` の方。
+  // (旧テストは `parsed.verified ?? false` で assert しており、undefined でも
+  //  通ってしまう緩さがあった。2026-08-06 claude[bot] 指摘で厳密化)
+  it('leaves verified unset rather than fabricating a default', () => {
     const parsed = OccurrenceInsertSchema.parse(base);
-    expect(parsed.verified ?? false).toBe(false);
+    expect(parsed.verified).toBeUndefined();
+  });
+
+  it('passes an explicit verified through unchanged', () => {
+    expect(OccurrenceInsertSchema.parse({ ...base, verified: true }).verified).toBe(true);
+    expect(OccurrenceInsertSchema.parse({ ...base, verified: false }).verified).toBe(false);
   });
 });
 

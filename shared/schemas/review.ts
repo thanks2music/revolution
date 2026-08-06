@@ -22,9 +22,6 @@ import { reviews } from './db/reviews';
  *   なく、ソフトデリートは専用の update 経路 (`ReviewSoftDeleteSchema`) で扱う。
  */
 
-/** ISO 8601 の日付 (YYYY-MM-DD)。Postgres `date` 型は string で入出力される。 */
-const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
 /** 星評価の下限 / 上限 (真実源)。DB CHECK `rating between 1 and 5` と二段防御。 */
 export const REVIEW_RATING_MIN = 1;
 export const REVIEW_RATING_MAX = 5;
@@ -40,7 +37,9 @@ export const ReviewSchema = createSelectSchema(reviews);
  * - user_id: `profiles.id` (**永続 ID**)。`auth_user_id` ではない。
  * - rating: 1-5 の整数。
  * - body: 任意。値ありなら空白のみを拒否 (DB CHECK と二段防御)。
- * - visited_on: 任意。値ありなら ISO 8601。
+ * - visited_on: 任意。`z.iso.date()` (zod v4) は単純な regex と違い
+ *   `2026-02-30` のような実在しない日付も拒否する
+ *   (`mdx-frontmatter.ts` の `event_start_date` と同じ作法)。
  *
  * `helpful_count` / `deleted_at` は **意図的に omit** (上記 docstring 参照)。
  */
@@ -51,11 +50,7 @@ export const ReviewInsertSchema = createInsertSchema(reviews, {
     .min(REVIEW_RATING_MIN, `rating must be >= ${REVIEW_RATING_MIN}`)
     .max(REVIEW_RATING_MAX, `rating must be <= ${REVIEW_RATING_MAX}`),
   body: z.string().trim().min(1, 'body must be non-blank').nullable().optional(),
-  visitedOn: z
-    .string()
-    .regex(ISO_DATE_REGEX, 'visited_on must be YYYY-MM-DD')
-    .nullable()
-    .optional(),
+  visitedOn: z.iso.date().nullable().optional(),
 }).omit({ helpfulCount: true, deletedAt: true });
 
 /**

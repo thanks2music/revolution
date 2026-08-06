@@ -68,6 +68,15 @@ describe('ReviewInsertSchema', () => {
     expect(() => ReviewInsertSchema.parse({ ...base, visitedOn: '2026/08/15' })).toThrow();
   });
 
+  // `z.iso.date()` は単純な regex と違い暦の妥当性まで見る。
+  it.each([
+    ['month out of range', '2026-13-01'],
+    ['non-existent day for the month', '2026-02-30'],
+    ['leap day in a non-leap year', '2026-02-29'],
+  ])('rejects a visited_on with %s', (_label, visitedOn) => {
+    expect(() => ReviewInsertSchema.parse({ ...base, visitedOn })).toThrow();
+  });
+
   it('rejects a non-uuid user_id', () => {
     expect(() => ReviewInsertSchema.parse({ ...base, userId: 'not-a-uuid' })).toThrow();
   });

@@ -31,9 +31,6 @@ import { occurrences } from './db/occurrences';
  */
 export const OCCURRENCE_SLUG_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
-/** ISO 8601 の日付 (YYYY-MM-DD)。Postgres `date` 型は string で入出力される。 */
-const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
 /**
  * `occurrence_view` が返す状態。**保存せず日付から導出**する (JST 固定)。
  * - `cancelled`: `cancelled_at` が入っている (中止)
@@ -57,14 +54,21 @@ export const OccurrenceSchema = createSelectSchema(occurrences);
  * - slug: ★決定③ で NOT NULL。ASCII lowercase + ハイフンのみ。
  *   **採番できない記事は occurrence を作らず取り込み保留 → 人手キューへ回す**
  *   (決定⑧ の品質ゲートと統合) ため、ここで緩めてはいけない。
- * - starts_on: NOT NULL。ISO 8601 (YYYY-MM-DD)。
- * - ends_on: ★決定⑤ で nullable (null = 終了日未定 / 常設)。値ありなら ISO 8601。
+ * - starts_on: NOT NULL。`z.iso.date()` (zod v4) は単純な regex と違い
+ *   月 (01-12) と日 (該当月の最大日) のレンジ違反 (例 `2026-13-45` / `2026-02-30`)
+ *   も拒否する。`mdx-frontmatter.ts` の `event_start_date` と同じ作法。
+ * - ends_on: ★決定⑤ で nullable (null = 終了日未定 / 常設)。
  *   `ends_on >= starts_on` の関係は Layer 2 の CHECK が担保する
  *   (Layer 1 では単一フィールドの形式のみを見る)。
  * - venue_id: オンライン開催では null。
  * - venue_label: 任意。値ありなら空白のみを拒否 (DB CHECK と二段防御)。
- * - verified: default false。★決定⑧ の品質ゲートで、**取り込み側が安易に true を
- *   入れないよう Layer 1 でも既定を false に保つ** (RLS の公開判定が依存する)。
+ *
+ * ⚠️ `verified` は **Layer 1 では既定値を補完しない**。DB 側に `default false` が
+ *    あるため drizzle-zod は「任意」として扱うだけで、省略して parse すると
+ *    `undefined` のまま返る (実測)。false を保証しているのは **Layer 2 の
+ *    `default false`** であって本スキーマではない。
+ *    (2026-08-06 claude[bot] 指摘で訂正。旧 docstring は「Layer 1 でも既定を
+ *     false に保つ」と書いていたが事実と異なっていた)
  */
 export const OccurrenceInsertSchema = createInsertSchema(occurrences, {
   slug: z
@@ -73,8 +77,8 @@ export const OccurrenceInsertSchema = createInsertSchema(occurrences, {
       OCCURRENCE_SLUG_REGEX,
       'ASCII lowercase + hyphen, no leading/trailing/consecutive hyphen',
     ),
-  startsOn: z.string().regex(ISO_DATE_REGEX, 'starts_on must be YYYY-MM-DD'),
-  endsOn: z.string().regex(ISO_DATE_REGEX, 'ends_on must be YYYY-MM-DD').nullable().optional(),
+  startsOn: z.iso.date(),
+  endsOn: z.iso.date().nullable().optional(),
   venueLabel: z.string().trim().min(1, 'venue_label must be non-blank').nullable().optional(),
 });
 
