@@ -92,6 +92,27 @@
       "when": 1785817885000,
       "tag": "0012_rename_favorites_fk_constraint",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785992028648,
+      "tag": "0013_occurrences_reviews_aliases",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786004272840,
+      "tag": "0014_reviews_occurrence_restrict",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1786004272841,
+      "tag": "0015_review_images_column_grant",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,54 @@
+-- ============================================================================
+-- Migration 0014: reviews.occurrence_id を ON DELETE cascade → restrict へ
+-- ============================================================================
+-- **0013 の forward fix** (SoP §9.3 Option C-1、shared/schemas/db/reviews.ts と対)。
+--
+-- 【なぜ 0013 を直さず新しい migration にしたか】
+--   0013 は PR #287 の初回 push 時点で **staging に適用済み**だった
+--   (`deploy-supabase-migrations.yml` は `pull_request` trigger で push ごとに
+--    staging へ deploy する)。適用済み migration の内容を書き換えても
+--   `supabase db push` は version を見て skip するため、
+--   **`Remote database is up to date.` と表示されたまま変更が届かない**。
+--   エラーにならず静かに素通りするのが厄介な点で、PR #258 / #259 と同じ
+--   version-drift のクラス。
+--   SoP §9.4 のフローチャート Q3「修正は forward (ALTER/INSERT/DELETE) で
+--   表現可能?」= Yes のため **C-1 (新規 migration 追加)** が既定。
+--   C-2 (旧 migration 上書き + staging repair) は「明らかな typo」または
+--   「production に絶対入ってほしくない情報」の場合のみで、本件は非該当。
+--   → `revolution/docs/operations/supabase-migration-workflow.md` §9
+--
+-- 【変更の中身】
+--   cascade のままだと `DELETE FROM events` 一発で
+--   events → occurrences → reviews (→ review_images / review_helpful) と連鎖し、
+--   **ユーザー投稿のレビューと写真が物理削除される**。
+--   `reviews` は DELETE policy を持たないソフトデリート専用設計だが、
+--   親経由の CASCADE はそれを迂回する。service_role は RLS も policy も
+--   バイパスするため、運用スクリプトのミスがそのまま届く。
+--
+--   設計自身の内部矛盾でもあった: `reviews.user_id → profiles.id` は
+--   「退会してもレビューは残す」ために restrict を明示しているのに、
+--   occurrence 経由では同じレビューが消えていた。守りたいものが同じ以上、
+--   片方だけ守るのは一貫しない。
+--
+--   レビューが付いている occurrence は RLS 上 `verified` を通った**公開済み**の
+--   開催なので、消す操作は DB 層で一度止める。`events` 削除も推移的に
+--   ブロックされるため `occurrences.event_id` 側は cascade のまま変更しない。
+--
+-- 【正当な用途は塞がない (実測確認済み)】
+--   - レビューあり occurrence の削除 → 23503 で拒否
+--   - その親 events の削除 → 23503 で拒否 (推移的)
+--   - **レビューなし occurrence の削除 → 通る** (取り込みパイプラインの
+--     重複整理は従来どおり可能)
+--   付け替えは `trg_reviews_freeze_occurrence` (0013) が禁止しているため、
+--   元々の想定手順は「レビューを先に DELETE → 正しい occurrence_id で
+--   再 INSERT」。restrict はその順序を DB 側から強制する形になる。
+--
+-- 【環境ごとの経路 (どちらも同じ最終状態に収束する)】
+--   staging   : 0013 (cascade) → 0014 (restrict)
+--   production: 0013 (cascade) → 0014 (restrict)   ← 0013 は本 PR マージ時に適用
+--   ローカル   : 同上 (`supabase db reset` で 0000-0014 を通しで適用)
+-- ============================================================================
+
+ALTER TABLE "reviews" DROP CONSTRAINT "reviews_occurrence_id_occurrences_id_fk";
+--> statement-breakpoint
+ALTER TABLE "reviews" ADD CONSTRAINT "reviews_occurrence_id_occurrences_id_fk" FOREIGN KEY ("occurrence_id") REFERENCES "public"."occurrences"("id") ON DELETE restrict ON UPDATE no action;
