@@ -88,8 +88,13 @@ export const reviews = pgTable(
   },
   (table) => [
     // 1 開催 1 ユーザー 1 レビュー。
+    // ★ 本 index の leftmost prefix が `occurrence_id` 単独の検索も賄うため、
+    //   `occurrence_id` 単独の index は **置かない**。「開催のレビュー一覧」も
+    //   `occurrences` 削除時の ON DELETE CASCADE も本 index で引けることを
+    //   EXPLAIN で実測確認済み (2026-08-06)。reviews は最も書き込みが多くなる
+    //   テーブルなので、冗長な index 1 本の維持コストがそのまま効く
+    //   (`/supabase-postgres-best-practices` query-composite-indexes)。
     uniqueIndex('reviews_occurrence_user_uniq').on(table.occurrenceId, table.userId),
-    index('reviews_occurrence_idx').on(table.occurrenceId),
     // ★ RLS 述語 + ON DELETE RESTRICT + マイページの 3 経路が依存する。
     index('reviews_user_idx').on(table.userId),
     check('reviews_rating_chk', sql`${table.rating} between 1 and 5`),

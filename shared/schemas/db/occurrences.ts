@@ -96,7 +96,14 @@ export const occurrences = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('occurrences_event_idx').on(table.eventId),
+    // ★ `event_id` 単独の index は **置かない**。下の
+    //   `occurrences_event_slug_uniq (event_id, slug)` の leftmost prefix が
+    //   `where event_id = ?` と `events` 削除時の ON DELETE CASCADE の両方を
+    //   賄えることを EXPLAIN で実測確認済み (2026-08-06)。
+    //   `review_helpful_user_idx` / `event_categories_category_idx` を置いて
+    //   いるのは、あちらが複合 index の **2 列目** で leftmost prefix に
+    //   該当しないため。ここは該当するので冗長になる
+    //   (`/supabase-postgres-best-practices` query-composite-indexes)。
     index('occurrences_venue_idx').on(table.venueId),
     // 状態導出 (開催中 / 予定 / 終了) の範囲検索用。
     index('occurrences_dates_idx').on(table.startsOn, table.endsOn),

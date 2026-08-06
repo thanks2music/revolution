@@ -74,18 +74,15 @@ ALTER TABLE "reviews" ADD CONSTRAINT "reviews_occurrence_id_occurrences_id_fk" F
 ALTER TABLE "reviews" ADD CONSTRAINT "reviews_user_id_profiles_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "title_aliases" ADD CONSTRAINT "title_aliases_title_id_titles_id_fk" FOREIGN KEY ("title_id") REFERENCES "public"."titles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "venue_aliases" ADD CONSTRAINT "venue_aliases_venue_id_venues_id_fk" FOREIGN KEY ("venue_id") REFERENCES "public"."venues"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "occurrences_event_idx" ON "occurrences" USING btree ("event_id");--> statement-breakpoint
 CREATE INDEX "occurrences_venue_idx" ON "occurrences" USING btree ("venue_id");--> statement-breakpoint
 CREATE INDEX "occurrences_dates_idx" ON "occurrences" USING btree ("starts_on","ends_on");--> statement-breakpoint
 CREATE UNIQUE INDEX "occurrences_event_slug_uniq" ON "occurrences" USING btree ("event_id","slug");--> statement-breakpoint
 CREATE INDEX "review_helpful_user_idx" ON "review_helpful" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "review_images_review_idx" ON "review_images" USING btree ("review_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "reviews_occurrence_user_uniq" ON "reviews" USING btree ("occurrence_id","user_id");--> statement-breakpoint
-CREATE INDEX "reviews_occurrence_idx" ON "reviews" USING btree ("occurrence_id");--> statement-breakpoint
 CREATE INDEX "reviews_user_idx" ON "reviews" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "title_aliases_title_idx" ON "title_aliases" USING btree ("title_id");--> statement-breakpoint
-CREATE INDEX "venue_aliases_venue_idx" ON "venue_aliases" USING btree ("venue_id");
---> statement-breakpoint
+CREATE INDEX "venue_aliases_venue_idx" ON "venue_aliases" USING btree ("venue_id");--> statement-breakpoint
 
 -- ============================================================================
 -- 以降は drizzle-kit 自動生成範囲外の手動追記 (0009_events.sql と同じ作法)
@@ -103,12 +100,33 @@ CREATE INDEX "venue_aliases_venue_idx" ON "venue_aliases" USING btree ("venue_id
 --      本 migration では実行しない (再実行すると 0007 の extensions schema
 --      配置を壊す)。
 --
--- 【S0 確定版から意図的に変更した 2 点 (BOSS 承認 2026-08-06)】
+-- 【S0 確定版から意図的に変更した 4 点 (BOSS 承認 2026-08-06)】
 --   1. トリガ関数を `public` ではなく **`private` schema + `SET search_path = ''`**
 --      に置き、集計を書き込む 2 本を **SECURITY DEFINER** にした。
 --      理由は Part B のコメントに詳述。
 --   2. `occurrence_view` に **`security_invoker = on`** を付けた。
 --      理由は Part D のコメントに詳述。
+--   3. `occurrences` に slug format + venue_label not_blank の CHECK を足した
+--      (既存 4 master テーブルの規約に揃える)。
+--   4. **冗長な index 2 本を落とした** ―
+--      `reviews_occurrence_idx (occurrence_id)` と
+--      `occurrences_event_idx (event_id)` は、それぞれ
+--      `reviews_occurrence_user_uniq (occurrence_id, user_id)` /
+--      `occurrences_event_slug_uniq (event_id, slug)` の **leftmost prefix**
+--      と完全に重複していた。落とした状態で `EXPLAIN` し、SELECT も
+--      ON DELETE CASCADE も UNIQUE 複合側で引けることを実測確認済み。
+--      設計自身の論拠 (`review_helpful_user_idx` は複合 PK の 2 列目で
+--      leftmost prefix に該当しない **から** 必要) と整合させた形。
+--      詳細は `shared/schemas/db/{reviews,occurrences}.ts` のコメント。
+--      → 一次資料 `revolution-schema.ts` にも追随させること。
+--
+-- 【`/supabase-postgres-best-practices` 監査 (2026-08-06)】
+--   上記 4 のほか、Part E に **alias 2 テーブルの拒否 policy** を追加
+--   (Advisor 0008_rls_enabled_no_policy 対応、公式推奨の対処)。
+--   適合を実測確認した項目: FK 列の index 漏れ 0 件 / `auth.uid()` を使う
+--   全 policy が `(select ...)` 包み / GRANT が RLS policy scope と一致 /
+--   timestamptz・bigint・text の採用 / 大文字識別子 0 件 /
+--   lock_timeout + statement_timeout の設定。
 -- ============================================================================
 
 -- ============================================================================
@@ -519,12 +537,40 @@ GRANT ALL ON TABLE "public"."occurrences" TO service_role;
 -- ───────────────────────────────────────────────
 -- E-2. title_aliases / venue_aliases — service_role のみ
 -- ───────────────────────────────────────────────
--- RLS を有効化し policy を作らない = anon / authenticated からは 0 行。
--- service_role は BYPASSRLS のため影響を受けない。
+-- anon / authenticated からは 0 行にする。service_role は BYPASSRLS のため
+-- 影響を受けない。
 -- ★ 2026-08-02 BOSS 確定: **非公開のまま**とする (根拠は db/title-aliases.ts)。
 ALTER TABLE "public"."title_aliases" ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE "public"."venue_aliases" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+
+-- ★ 明示的な**拒否 policy**を置く (`using (false)`)。
+--   「RLS 有効 + policy ゼロ」でも anon / authenticated からは 0 行になるが、
+--   その状態は Supabase Advisor の
+--     0008_rls_enabled_no_policy (INFO)
+--   に該当し、ER doc §6 の「Advisor が staging / production で zero-diff」を
+--   常時 2 件分崩す。
+--   公式 doc がこのケースの対処を明記している:
+--     "some users may enable RLS with no policies intentionally to restrict
+--      access over APIs. In those cases we recommend making that intent
+--      explicit with a rejection policy"
+--     https://supabase.com/docs/guides/database/database-advisors?lint=0008_rls_enabled_no_policy
+--   挙動は変わらない (service_role は従来どおり読め、anon は REVOKE ALL により
+--   42501 のまま)。**「policy を書き忘れた」のではなく「意図的に非公開」**で
+--   あることを schema 上に明示するのが目的。
+CREATE POLICY "title_aliases_none_shall_pass"
+  ON "public"."title_aliases"
+  FOR SELECT
+  TO anon, authenticated
+  USING (false);
+--> statement-breakpoint
+
+CREATE POLICY "venue_aliases_none_shall_pass"
+  ON "public"."venue_aliases"
+  FOR SELECT
+  TO anon, authenticated
+  USING (false);
 --> statement-breakpoint
 
 REVOKE ALL ON TABLE "public"."title_aliases" FROM anon, authenticated;

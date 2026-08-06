@@ -1,5 +1,5 @@
 {
-  "id": "9d2b150e-961e-473b-bd3c-4d3423839cfc",
+  "id": "2f555718-422b-45a2-bbaf-84bcd4a4a0c3",
   "prevId": "5f2c1a7b-9e4d-4a11-b3c8-d7e6f5a40012",
   "version": "7",
   "dialect": "postgresql",
@@ -493,21 +493,6 @@
         }
       },
       "indexes": {
-        "occurrences_event_idx": {
-          "name": "occurrences_event_idx",
-          "columns": [
-            {
-              "expression": "event_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "occurrences_venue_idx": {
           "name": "occurrences_venue_idx",
           "columns": [
@@ -966,21 +951,6 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "reviews_occurrence_idx": {
-          "name": "reviews_occurrence_idx",
-          "columns": [
-            {
-              "expression": "occurrence_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
