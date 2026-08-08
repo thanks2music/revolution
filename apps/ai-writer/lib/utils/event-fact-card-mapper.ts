@@ -2,7 +2,7 @@
  * EventFactCard mapping helpers
  *
  * @description
- * MVP §11 (Sprint C-α) の EventFactCard 4 フィールド (`event_start_date` /
+ * B-1、旧 §11 (Sprint C-α) の EventFactCard 4 フィールド (`event_start_date` /
  * `event_end_date` / `venue` / `official_url`) を、AI Writer extraction 結果から
  * frontmatter 契約向けに派生させる deterministic mapping ロジック。
  *

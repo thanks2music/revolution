@@ -252,7 +252,7 @@ export interface ExtractionResult {
    */
   _reasoning?: Partial<ExtractionReasoning>;
   /**
-   * Sprint C-α で新設された「開催ブロック雛形」(MVP §11)。プロンプト応答の
+   * Sprint C-α で新設された「開催ブロック雛形」(B-1、旧 §11)。プロンプト応答の
    * `event_data` フィールドをそのまま受け渡す (未検証、`unknown` 型)。
    *
    * @description
@@ -647,7 +647,7 @@ ${schemaStr}
         _reasoning: jsonData._reasoning || undefined,
         // Sprint C-α (PR #268 R1 対応、claude[bot] comment #2-#6 型安全性ギャップ指摘):
         // Templates 側 (`2-extraction.yaml` v2.1.0) が LLM 応答に追加する `event_data`
-        // (MVP §11 開催ブロック雛形) を素通しする。値の検証は orchestrator 側の
+        // (B-1、旧 §11 開催ブロック雛形) を素通しする。値の検証は orchestrator 側の
         // `EventDataSchema.safeParse` (`article-generation-mdx.service.ts`) が担当。
         // `ExtractionResult.event_data` は `unknown` 型なので、直接プロパティアクセスは
         // 型エラーで防がれ、必ず zod 検証を経由する契約を型で表現する。
