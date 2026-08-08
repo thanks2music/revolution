@@ -77,7 +77,8 @@ export const OccurrenceInsertSchema = createInsertSchema(occurrences, {
       OCCURRENCE_SLUG_REGEX,
       'ASCII lowercase + hyphen, no leading/trailing/consecutive hyphen',
     ),
-  startsOn: z.iso.date(),
+  // ★ nullable (2026-08-09)。日付未発表の開催を保存できるようにする (A-1-c パターン 1/2)。
+  startsOn: z.iso.date().nullable(),
   endsOn: z.iso.date().nullable().optional(),
   venueLabel: z.string().trim().min(1, 'venue_label must be non-blank').nullable().optional(),
 });

@@ -333,7 +333,7 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
       lines.push(`  supplementary_category_slugs: [${suppSlugsYaml}]`);
     }
 
-    // occurrences[] (optional、MVP は通常 1 要素)
+    // occurrences[] (optional、会場が N 個なら N 要素)
     if (ed.occurrences && ed.occurrences.length > 0) {
       lines.push('  occurrences:');
       for (const occ of ed.occurrences) {
@@ -345,7 +345,8 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
         } else {
           lines.push(`      venue_label: null`);
         }
-        lines.push(`      starts_on: "${occ.starts_on}"`);
+        // starts_on は nullable (日付未発表の開催)。素で埋め込むと "null" 文字列になる
+        lines.push(`      starts_on: ${occ.starts_on === null ? 'null' : `"${occ.starts_on}"`}`);
         lines.push(`      ends_on: ${occ.ends_on === null ? 'null' : `"${occ.ends_on}"`}`);
         // Sprint C-α PR #268 R3 (claude[bot] R3-rev1): official_url も escape helper で保護
         lines.push(

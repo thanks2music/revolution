@@ -47,8 +47,19 @@ export const EventDataOccurrenceSchema = z.object({
   venue_slug: z.string().regex(VENUE_SLUG_REGEX).nullable(),
   /** その会場の正式名称 (支店名込み)。**複数会場を「、」で連結してはならない** */
   venue_label: z.string().min(1).nullable(),
-  /** 開催開始日 (YYYY-MM-DD、`開催期間.開始.年 + 日付` から導出) */
-  starts_on: z.iso.date(),
+  /**
+   * 開催開始日 (YYYY-MM-DD、`開催期間.開始.年 + 日付` から導出)。
+   *
+   * ★ **nullable** (2026-08-09、BOSS 確定)。日付が未発表の段階の記事が存在するため
+   *   (`mvp-definition.md` A-1-c パターン 1/2 = 第一報のみ / 場所のみ判明)。
+   *   A-1-c は「A-4 の取り込みパイプラインは日付欠落を**欠陥ではなく正常な状態**として
+   *   upsert できる必要がある」と定めているのに、以前は必須にしていたため矛盾していた。
+   *
+   *   必須のままだと LLM は読めない日付でも何かを埋めるしかなく、実測で
+   *   `2025-01-01 〜 2025-12-31` という 1 年間まるごとの捏造が出ていた。
+   *   **捏造させるより null で「不明」と表明させる**。
+   */
+  starts_on: z.iso.date().nullable(),
   /** 開催終了日 (YYYY-MM-DD)、`開催期間.終了.未定 === true` なら null */
   ends_on: z.iso.date().nullable(),
   /** 公式サイトURL */
