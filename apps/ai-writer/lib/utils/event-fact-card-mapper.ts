@@ -245,21 +245,48 @@ export function extractEventFactCardFields(
   const primary = input.eventDataOccurrences?.[0];
 
   // -----------------------
-  // event_start_date
+  // event_start_date / event_end_date — **全会場の和集合**から導出する
   // -----------------------
+  //
+  // ★ 2026-08-09 修正 (claude[bot] Templates PR #18 指摘)。
+  //
+  //   多開催対応で `occurrences[]` が N 件になる前は、プロンプトが全会場を 1 要素に
+  //   集約しており、その 1 件の期間が `開催期間` と同一だった。そのため `[0]` を採れば
+  //   自動的にイベント全体の期間になっていた。
+  //
+  //   N 件になった後は `[0]` が「最初に列挙された 1 会場」でしかない。そのまま使うと
+  //   **1 会場の期間をイベント全体の期間として表示**してしまい、「あと N 日」バッジ・
+  //   status (coming-soon / now / ended)・終了間近順ソートがすべて狂う。
+  //
+  //   `開催期間` は既存ルール (2-extraction.yaml「全店舗の期間を比較し、最も早い開始日と
+  //   最も遅い終了日を採用」) で和集合と定義されている。FactCard もそれに揃える。
+  //
+  //   実測 3 本では `[0]` と和集合がたまたま一致していたが、会場の列挙順が日付順である
+  //   保証はないため偶然に依存していた。
+  const validStarts = (input.eventDataOccurrences ?? [])
+    .map((o) => o.starts_on)
+    .filter((d): d is string => typeof d === 'string' && isValidIsoDate(d));
+  const validEnds = (input.eventDataOccurrences ?? [])
+    .map((o) => o.ends_on)
+    .filter((d): d is string => typeof d === 'string' && isValidIsoDate(d));
+
   let eventStartDate: string | undefined;
-  if (primary?.starts_on && isValidIsoDate(primary.starts_on)) {
-    eventStartDate = primary.starts_on;
+  if (validStarts.length > 0) {
+    // ISO 8601 (YYYY-MM-DD) は辞書順 = 時系列順
+    eventStartDate = validStarts.reduce((a, b) => (a < b ? a : b));
   } else {
     eventStartDate = toIsoDate(input.extractionPeriod?.開始);
   }
 
-  // -----------------------
-  // event_end_date
-  // -----------------------
   let eventEndDate: string | undefined;
-  if (primary?.ends_on && isValidIsoDate(primary.ends_on)) {
-    eventEndDate = primary.ends_on;
+  if (validEnds.length > 0) {
+    // ★ 1 会場でも `ends_on: null` (終了日未定 / 常設) があれば、イベント全体としても
+    //   「終わりが確定していない」ため終了日を出さない。決定⑤の「ends_on is null →
+    //   ongoing」と整合させる。
+    const hasOpenEnded = (input.eventDataOccurrences ?? []).some(
+      (o) => o.starts_on != null && o.ends_on == null,
+    );
+    eventEndDate = hasOpenEnded ? undefined : validEnds.reduce((a, b) => (a > b ? a : b));
   } else if (input.extractionPeriod?.終了?.未定 === true) {
     // 終了日未定は明示的に undefined (fallback パスでも undefined)
     eventEndDate = undefined;
