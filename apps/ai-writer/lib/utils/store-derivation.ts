@@ -18,8 +18,22 @@
  * ## トイ・ストーリー5 × OH MY CAFE 表参道ヒルズ、BOX cafe&space ルミネエスト新宿2号店、… のメニュー
  * ```
  *
- * 本モジュールは store 系派生の**一元的な置き場**。works 系の重複解消 (2 箇所に
- * 同じロジックがある) は本 Phase では触らない (Sprint Refactor-A の領分)。
+ * ## ⚠️ 本モジュールはまだ配線されていない (S1-d Phase 1 時点)
+ *
+ * **上記の本文の連結バグは、本モジュールを追加しただけでは直らない。** 現時点で
+ * 直っているのは `occurrences[]` のデータ側 (frontmatter / DB 向け) だけで、
+ * その担当は `occurrence-normalizer.ts` である。
+ *
+ * 本モジュールは **Phase 3 で `lead-generator.service.ts` /
+ * `text-placeholder-replacer.service.ts` へ配線するための土台**として先に置いている。
+ * Phase 3 の着手には「代表会場名の選び方」の確定が要る (実データでは 5 記事中 2 記事が
+ * 複数ブランド跨ぎで、`store.name` をどう選ぶかが決まっていない) ため、意図的に分離した。
+ *
+ * 配線されるまで `deriveStoreContext` の呼び出し元は存在しない。これは未使用コードでは
+ * なく **Phase 3 の前提**である。
+ *
+ * works 系の重複解消 (2 箇所に同じロジックがある) は本モジュールの担当外
+ * (Sprint Refactor-A の領分)。
  *
  * ## 出力する派生変数
  *

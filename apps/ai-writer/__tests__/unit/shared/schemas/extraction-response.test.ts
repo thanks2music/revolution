@@ -115,11 +115,41 @@ describe('extraction-response schema — cross-schema compatibility', () => {
   it('preserves N occurrences through both schemas (5 venues)', () => {
     const payload = buildValidExtractionResponse();
     payload.event_data.occurrences = [
-      { venue_slug: null, venue_label: 'OH MY CAFE 表参道ヒルズ', starts_on: '2026-07-03', ends_on: '2026-09-13', official_url: null },
-      { venue_slug: null, venue_label: 'BOX cafe&space ルミネエスト新宿2号店', starts_on: '2026-07-03', ends_on: '2026-09-13', official_url: null },
-      { venue_slug: null, venue_label: 'BOX cafe&space グローバルゲート名古屋2号店', starts_on: '2026-07-10', ends_on: '2026-08-31', official_url: null },
-      { venue_slug: null, venue_label: 'BOX cafe&space ＫＩＴＴＥ OSAKA 2号店', starts_on: '2026-07-03', ends_on: '2026-09-13', official_url: null },
-      { venue_slug: null, venue_label: 'BALLER:S イオンモール新利府店', starts_on: '2026-07-17', ends_on: '2026-08-24', official_url: null },
+      {
+        venue_slug: null,
+        venue_label: 'OH MY CAFE 表参道ヒルズ',
+        starts_on: '2026-07-03',
+        ends_on: '2026-09-13',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space ルミネエスト新宿2号店',
+        starts_on: '2026-07-03',
+        ends_on: '2026-09-13',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space グローバルゲート名古屋2号店',
+        starts_on: '2026-07-10',
+        ends_on: '2026-08-31',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space ＫＩＴＴＥ OSAKA 2号店',
+        starts_on: '2026-07-03',
+        ends_on: '2026-09-13',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BALLER:S イオンモール新利府店',
+        starts_on: '2026-07-17',
+        ends_on: '2026-08-24',
+        official_url: null,
+      },
     ];
 
     const parsedStrict = ExtractionResponseSchema.safeParse(payload);
@@ -139,15 +169,29 @@ describe('extraction-response schema — cross-schema compatibility', () => {
   it('preserves the same venue appearing twice (前期/後期)', () => {
     const payload = buildValidExtractionResponse();
     payload.event_data.occurrences = [
-      { venue_slug: null, venue_label: 'BOX cafe&space グランドスケープ池袋店', starts_on: '2025-04-04', ends_on: '2025-06-02', official_url: null },
-      { venue_slug: null, venue_label: 'BOX cafe&space グランドスケープ池袋店', starts_on: '2025-06-05', ends_on: '2025-07-27', official_url: null },
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space グランドスケープ池袋店',
+        starts_on: '2025-04-04',
+        ends_on: '2025-06-02',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space グランドスケープ池袋店',
+        starts_on: '2025-06-05',
+        ends_on: '2025-07-27',
+        official_url: null,
+      },
     ];
 
     const downstream = EventDataSchema.safeParse(payload.event_data);
     expect(downstream.success).toBe(true);
     if (downstream.success) {
       expect(downstream.data.occurrences).toHaveLength(2);
-      expect(downstream.data.occurrences?.[0]?.venue_label).toBe(downstream.data.occurrences?.[1]?.venue_label);
+      expect(downstream.data.occurrences?.[0]?.venue_label).toBe(
+        downstream.data.occurrences?.[1]?.venue_label
+      );
     }
   });
 
@@ -155,7 +199,13 @@ describe('extraction-response schema — cross-schema compatibility', () => {
   it('accepts a null starts_on (日程未発表)', () => {
     const payload = buildValidExtractionResponse();
     payload.event_data.occurrences = [
-      { venue_slug: null, venue_label: '△△ホール', starts_on: null, ends_on: null, official_url: null },
+      {
+        venue_slug: null,
+        venue_label: '△△ホール',
+        starts_on: null,
+        ends_on: null,
+        official_url: null,
+      },
     ];
 
     const parsedStrict = ExtractionResponseSchema.safeParse(payload);

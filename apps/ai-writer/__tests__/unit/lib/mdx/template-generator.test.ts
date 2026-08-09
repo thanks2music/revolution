@@ -48,7 +48,9 @@ describe('generateMdxFrontmatter', () => {
 
     expect(frontmatter.author).toBe(MDX_DEFAULTS.AUTHOR);
     expect(frontmatter.ogImage).toBe(MDX_DEFAULTS.OG_IMAGE);
-    expect(frontmatter.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})$/); // ISO 8601 ms (Schema-SDD MdxFrontmatterSchema 適合)
+    expect(frontmatter.date).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})$/
+    ); // ISO 8601 ms (Schema-SDD MdxFrontmatterSchema 適合)
   });
 
   it('should accept custom date, author, and ogImage', () => {
@@ -184,12 +186,7 @@ describe('generateMdxFilePath', () => {
   });
 
   it('should handle custom base directory', () => {
-    const path = generateMdxFilePath(
-      'collabo-cafe',
-      'sample-work',
-      '01jcxy4567',
-      'custom-content'
-    );
+    const path = generateMdxFilePath('collabo-cafe', 'sample-work', '01jcxy4567', 'custom-content');
 
     expect(path).toBe('custom-content/collabo-cafe/sample-work/01jcxy4567.mdx');
   });
@@ -327,15 +324,15 @@ describe('isValidMdxFrontmatter', () => {
 describe('Integration: Full MDX Generation Flow', () => {
   it('should generate valid MDX file from start to finish', () => {
     const input: GenerateMdxFrontmatterInput = {
-    postId: '01jcxy4567',
-    year: 2025,
-    eventType: 'collabo-cafe',
-    eventTitle: 'コラボカフェ',
-    workTitle: '作品名',
-    workSlug: 'sample-work',
-    title: '作品名×店舗名2025が東京・大阪で開催決定',
-    excerpt: '作品名と店舗名のコラボイベントが2025年12月25日から開催されます。',
-    categories: ['作品名', 'コラボカフェ'],
+      postId: '01jcxy4567',
+      year: 2025,
+      eventType: 'collabo-cafe',
+      eventTitle: 'コラボカフェ',
+      workTitle: '作品名',
+      workSlug: 'sample-work',
+      title: '作品名×店舗名2025が東京・大阪で開催決定',
+      excerpt: '作品名と店舗名のコラボイベントが2025年12月25日から開催されます。',
+      categories: ['作品名', 'コラボカフェ'],
       date: '2025-11-19',
     };
 
@@ -463,6 +460,135 @@ describe('serializeFrontmatter — event_data nested YAML round-trip (Sprint C-�
     expect(occ?.official_url).toBe('https://example.com/event');
   });
 
+  // ★ 多開催 (2026-08-09、claude[bot] PR #290 指摘)。
+  //   これが今回の改修の中核なのに、round-trip テストが全て 1 件だけだった。
+  //   serialize → parse-frontmatter の往復で N 件が保たれることを固定する。
+  it('N 件の occurrences が round-trip で保持される (5 会場、会場ごとに期間が違う)', () => {
+    const multiVenue: MdxFrontmatter = {
+      ...baseFrontmatter,
+      event_data: {
+        event_name: 'トイ・ストーリー5 OH MY CAFE',
+        event_slug: 'toy-story-5-oh-my-cafe',
+        primary_category_slug: 'collabo-cafe',
+        title_slugs: ['toy-story-5'],
+        supplementary_category_slugs: [],
+        occurrences: [
+          {
+            venue_slug: null,
+            venue_label: 'OH MY CAFE 表参道ヒルズ',
+            starts_on: '2026-07-03',
+            ends_on: '2026-09-13',
+            official_url: null,
+          },
+          {
+            venue_slug: null,
+            venue_label: 'BOX cafe&space ルミネエスト新宿2号店',
+            starts_on: '2026-07-10',
+            ends_on: '2026-08-30',
+            official_url: null,
+          },
+          {
+            venue_slug: null,
+            venue_label: 'BOX cafe&space グローバルゲート名古屋2号店',
+            starts_on: '2026-07-03',
+            ends_on: '2026-08-09',
+            official_url: null,
+          },
+          {
+            venue_slug: null,
+            venue_label: 'BOX cafe&space ＫＩＴＴＥ OSAKA 2号店',
+            starts_on: '2026-07-03',
+            ends_on: '2026-08-23',
+            official_url: null,
+          },
+          {
+            venue_slug: null,
+            venue_label: 'BALLER:S イオンモール新利府店',
+            starts_on: '2026-07-03',
+            ends_on: '2026-08-30',
+            official_url: null,
+          },
+        ],
+      },
+    };
+    const parsed = buildRoundTripContent(multiVenue);
+    const occ = parsed.event_data?.occurrences;
+
+    expect(occ).toHaveLength(5);
+    // 会場名が連結されず distinct のまま保たれる
+    expect(occ?.map(o => o.venue_label)).toEqual([
+      'OH MY CAFE 表参道ヒルズ',
+      'BOX cafe&space ルミネエスト新宿2号店',
+      'BOX cafe&space グローバルゲート名古屋2号店',
+      'BOX cafe&space ＫＩＴＴＥ OSAKA 2号店',
+      'BALLER:S イオンモール新利府店',
+    ]);
+    // 会場ごとの期間差が潰れない (多会場の 8 割超でこれが起きる)
+    expect(occ?.[2]?.ends_on).toBe('2026-08-09');
+    expect(occ?.[3]?.ends_on).toBe('2026-08-23');
+    // events 側のフィールドも往復する
+    expect(parsed.event_data?.event_name).toBe('トイ・ストーリー5 OH MY CAFE');
+    expect(parsed.event_data?.event_slug).toBe('toy-story-5-oh-my-cafe');
+  });
+
+  it('同一会場が 2 期間に分かれる (前期/後期) 場合も 2 件のまま保持される', () => {
+    const twoPhases: MdxFrontmatter = {
+      ...baseFrontmatter,
+      event_data: {
+        primary_category_slug: 'collabo-cafe',
+        title_slugs: ['detective-conan'],
+        occurrences: [
+          {
+            venue_slug: null,
+            venue_label: 'BOX cafe&space グランドスケープ池袋店',
+            starts_on: '2025-04-04',
+            ends_on: '2025-06-02',
+            official_url: null,
+          },
+          {
+            venue_slug: null,
+            venue_label: 'BOX cafe&space グランドスケープ池袋店',
+            starts_on: '2025-06-05',
+            ends_on: '2025-07-27',
+            official_url: null,
+          },
+        ],
+      },
+    };
+    const parsed = buildRoundTripContent(twoPhases);
+
+    expect(parsed.event_data?.occurrences).toHaveLength(2);
+    expect(parsed.event_data?.occurrences?.[0]?.venue_label).toBe(
+      parsed.event_data?.occurrences?.[1]?.venue_label
+    );
+    expect(parsed.event_data?.occurrences?.[0]?.ends_on).toBe('2025-06-02');
+    expect(parsed.event_data?.occurrences?.[1]?.starts_on).toBe('2025-06-05');
+  });
+
+  // ★ starts_on が nullable になったため、素の埋め込みだと "null" 文字列になっていた
+  it('starts_on が null (日程未発表) でも round-trip で null のまま保たれる', () => {
+    const undatedStart: MdxFrontmatter = {
+      ...baseFrontmatter,
+      event_data: {
+        primary_category_slug: 'exhibition',
+        title_slugs: ['sample-work'],
+        occurrences: [
+          {
+            venue_slug: null,
+            venue_label: '△△ホール',
+            starts_on: null,
+            ends_on: null,
+            official_url: null,
+          },
+        ],
+      },
+    };
+    const parsed = buildRoundTripContent(undatedStart);
+
+    expect(parsed.event_data?.occurrences?.[0]?.starts_on).toBeNull();
+    expect(parsed.event_data?.occurrences?.[0]?.ends_on).toBeNull();
+  });
+
   it('ends_on が null (終了日未定 case) の round-trip', () => {
     const undated: MdxFrontmatter = {
       ...baseFrontmatter,
@@ -539,7 +665,10 @@ describe('serializeFrontmatter — event_data nested YAML round-trip (Sprint C-�
     };
     const parsed = buildRoundTripContent(emptySupp);
     // serializer は空配列を省略するため、parsed 側で undefined になる (schema optional 準拠)
-    expect(parsed.event_data?.supplementary_category_slugs === undefined || parsed.event_data?.supplementary_category_slugs?.length === 0).toBe(true);
+    expect(
+      parsed.event_data?.supplementary_category_slugs === undefined ||
+        parsed.event_data?.supplementary_category_slugs?.length === 0
+    ).toBe(true);
   });
 
   // ---------------------------------------------------------------------------
@@ -556,7 +685,7 @@ describe('serializeFrontmatter — event_data nested YAML round-trip (Sprint C-�
     };
     const parsed = buildRoundTripContent(quotedUrl);
     expect((parsed as { official_url?: string }).official_url).toBe(
-      'https://example.com/path?title="Injected"',
+      'https://example.com/path?title="Injected"'
     );
   });
 
@@ -567,7 +696,7 @@ describe('serializeFrontmatter — event_data nested YAML round-trip (Sprint C-�
     };
     const parsed = buildRoundTripContent(backslashedUrl);
     expect((parsed as { official_url?: string }).official_url).toBe(
-      'https://example.com/path\\with\\backslash',
+      'https://example.com/path\\with\\backslash'
     );
   });
 
@@ -590,7 +719,7 @@ describe('serializeFrontmatter — event_data nested YAML round-trip (Sprint C-�
     };
     const parsed = buildRoundTripContent(dangerous);
     expect(parsed.event_data?.occurrences?.[0]?.official_url).toBe(
-      'https://example.com/path"quote\\backslash',
+      'https://example.com/path"quote\\backslash'
     );
   });
 });
