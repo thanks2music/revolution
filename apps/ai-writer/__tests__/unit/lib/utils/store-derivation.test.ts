@@ -329,4 +329,67 @@ describe('deriveStoreContext — 代表会場名の決定表', () => {
       }
     });
   });
+  // ── 会場でない値の除外 (2026-08-09 BOSS 確定) ─────────────────
+  describe('会場として扱えない値を見出しから除外する', () => {
+    it('★ ONLINE販売 だけの場合、× ONLINE販売 という見出しを作らない', () => {
+      // conan-cafe.jp の実測。抽出された唯一の「会場」が販売形態だった。
+      const r = deriveStoreContext({
+        occurrences: [occ('ONLINE販売')],
+        officialUrl: 'https://conan-cafe.jp/',
+        brandSlugs: BRANDS,
+        prefectures: ['全国'],
+        eventTypeLabel: 'カフェ',
+        workTitle: '名探偵コナン',
+      });
+
+      expect(r.見出し主語).not.toContain('ONLINE販売');
+      expect(r.会場数).toBe(0);
+      expect(r.warnings.some((w) => w.includes('会場として扱えない'))).toBe(true);
+    });
+
+    it('★ 都道府県が会場として入っていても除外する', () => {
+      // jujutsukaisen-cafe.jp の実測。venue_label が 東京 / 愛知 / 大阪 だった。
+      const r = deriveStoreContext({
+        occurrences: [occ('東京'), occ('愛知'), occ('大阪')],
+        officialUrl: 'https://jujutsukaisen-cafe.jp/',
+        brandSlugs: BRANDS,
+        prefectures: ['東京都', '愛知県', '大阪府'],
+        eventTypeLabel: 'カフェ',
+        workTitle: '呪術廻戦',
+      });
+
+      // 会場としては 0 件になり、都市名の見出しへ落ちる (結果は同じだが経路が正しくなる)
+      expect(r.会場数).toBe(0);
+      expect(r.見出し形式).toBe('cities');
+      expect(r.見出し主語).toBe('呪術廻戦 カフェ in 東京・愛知・大阪');
+    });
+
+    it('会場と非会場が混在する場合、会場だけで判定する', () => {
+      const r = deriveStoreContext({
+        occurrences: [occ('BOX cafe&space 東京ソラマチ店'), occ('ONLINE販売')],
+        brandSlugs: BRANDS,
+        prefectures: ['東京都'],
+        eventTypeLabel: 'カフェ',
+        workTitle: 'テスト作品',
+      });
+
+      // 実会場 1 件 → Step 2 (支店名まで)
+      expect(r.会場数).toBe(1);
+      expect(r.代表店舗名).toBe('BOX cafe&space 東京ソラマチ店');
+      expect(r.見出し主語).not.toContain('ONLINE販売');
+    });
+
+    it('会場名が列挙されないケース (全国17箇所) は除外しない', () => {
+      const r = deriveStoreContext({
+        occurrences: [occ('全国17箇所のイオンモール内スペース')],
+        brandSlugs: BRANDS,
+        prefectures: ['全国'],
+        eventTypeLabel: 'カフェ',
+        workTitle: 'テスト作品',
+      });
+
+      expect(r.会場数).toBe(1);
+      expect(r.代表店舗名).toBe('全国17箇所のイオンモール内スペース');
+    });
+  });
 });

@@ -69,6 +69,8 @@
 
 import type { EventDataOccurrence } from '@revolution/schemas/mdx-frontmatter';
 
+import { validateVenueLabel } from './venue-label-validator';
+
 /** 表示用に会場名を連結する際の区切り。キャラクター名と同じく読点 (Templates CLAUDE.md §6.1)。 */
 const VENUE_JOIN = '、';
 
@@ -262,6 +264,13 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
   const workTitle = (input.workTitle ?? '').trim();
 
   // --- 会場の一意化。同一会場の前期/後期は 1 会場として畳む。出現順は保つ ---
+  //
+  // ★ 会場でないものはここで除外する (2026-08-09 BOSS 確定)。実測で `ONLINE販売`
+  //   (販売チャネル) や `東京` (都道府県) が会場として抽出され、そのままだと
+  //   `## 名探偵コナン × ONLINE販売のメニュー` という見出しになっていた。
+  //
+  // ★ **`occurrences[]` からは消さない。** 抽出できた事実は残し、DB 取り込み (S3)
+  //   の判断に委ねる。「見出しに出さないこと」と「データとして持たないこと」は別問題。
   const 会場一覧: string[] = [];
   const seenVenue = new Set<string>();
   for (const occ of occurrences) {
@@ -269,6 +278,12 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
     if (typeof label !== 'string' || label.length === 0) continue;
     if (seenVenue.has(label)) continue;
     seenVenue.add(label);
+
+    const invalidReason = validateVenueLabel(label, input.prefectures);
+    if (invalidReason !== null) {
+      warnings.push(`会場として扱えない値を見出しの導出から除外しました: ${invalidReason}`);
+      continue;
+    }
     会場一覧.push(label);
   }
 
