@@ -191,7 +191,12 @@ export function normalizeOccurrences(
   const seen = new Set<string>();
   const deduped: EventDataOccurrence[] = [];
   for (const occ of dated) {
-    const key = `${occ.venue_label ?? ''} ${occ.starts_on ?? ''} ${occ.ends_on ?? ''}`;
+    // 区切りに U+001F (Unit Separator) を使う。会場名にはスペースが含まれるため、
+    // スペース区切りだと理論上キーが衝突しうる
+    // (例: ("A", "B C", "") と ("A B", "C", "") が同じキーになる)。
+    // 実際には starts_on / ends_on は ISO 日付か null しか入らないので現状は起きないが、
+    // 将来フィールドが増えたときに気づけない類の衝突なので先に塞ぐ。
+    const key = [occ.venue_label ?? '', occ.starts_on ?? '', occ.ends_on ?? ''].join('\u001F');
     if (seen.has(key)) {
       warnings.push(`重複した開催を除去しました: ${occ.venue_label ?? '(会場名なし)'}`);
       continue;

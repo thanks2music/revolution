@@ -141,13 +141,24 @@ describe('OccurrenceInsertSchema', () => {
 });
 
 describe('OccurrenceStatusSchema', () => {
-  it('exposes exactly the four states derived by occurrence_view', () => {
+  // ★ 本 enum は `occurrence_view` の CASE 式と 1:1 で同期している必要がある。
+  //   view が返す値を enum が持っていないと、その行を読んだ瞬間 parse() が reject する。
+  //   `0016` で view に 'unscheduled' を足した際、この enum の更新が漏れていた
+  //   (claude[bot] PR #291 指摘)。同じ乖離を検知するため、値の集合を固定する。
+  it('exposes exactly the states derived by occurrence_view', () => {
     expect([...OCCURRENCE_STATUS_VALUES]).toEqual([
       'scheduled',
       'ongoing',
       'ended',
       'cancelled',
+      'unscheduled',
     ]);
+  });
+
+  // 日程未発表 (starts_on is null) は今回の改修の主目的そのもの。
+  // これを reject すると S3 で occurrence_view を読んだ瞬間に落ちる。
+  it('accepts unscheduled (starts_on is null、A-1-c パターン 1/2)', () => {
+    expect(() => OccurrenceStatusSchema.parse('unscheduled')).not.toThrow();
   });
 
   it.each(OCCURRENCE_STATUS_VALUES)('accepts %s', (status) => {

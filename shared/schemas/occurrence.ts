@@ -33,12 +33,24 @@ export const OCCURRENCE_SLUG_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /**
  * `occurrence_view` が返す状態。**保存せず日付から導出**する (JST 固定)。
- * - `cancelled`: `cancelled_at` が入っている (中止)
- * - `scheduled`: 開催前
- * - `ongoing`  : 開催中。**`ends_on is null` (終了日未定 / 常設) もここに入る**
- * - `ended`    : 終了
+ * - `cancelled`  : `cancelled_at` が入っている (中止)
+ * - `unscheduled`: **`starts_on is null` (日程未発表)**。★2026-08-09 追加 (migration `0016`)
+ * - `scheduled`  : 開催前
+ * - `ongoing`    : 開催中。**`ends_on is null` (終了日未定 / 常設) もここに入る**
+ * - `ended`      : 終了
+ *
+ * ★ **本 enum は `occurrence_view` の CASE 式と 1:1 で同期させること。**
+ *   view が返す値を enum が持っていないと、その行を読んだ瞬間 `parse()` が reject する。
+ *   `0016` で `unscheduled` を追加した際、ここの更新が漏れていた (claude[bot] PR #291 指摘)。
+ *   view を変更したら必ず本 enum も追随する。
  */
-export const OCCURRENCE_STATUS_VALUES = ['scheduled', 'ongoing', 'ended', 'cancelled'] as const;
+export const OCCURRENCE_STATUS_VALUES = [
+  'scheduled',
+  'ongoing',
+  'ended',
+  'cancelled',
+  'unscheduled',
+] as const;
 
 export const OccurrenceStatusSchema = z.enum(OCCURRENCE_STATUS_VALUES);
 
