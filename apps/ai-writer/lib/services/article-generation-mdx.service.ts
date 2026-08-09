@@ -23,7 +23,8 @@ import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
-import { extractEventFactCardFields } from '../utils/event-fact-card-mapper';
+import { extractEventFactCardFields, toIsoDate } from '../utils/event-fact-card-mapper';
+import { normalizeOccurrences } from '../utils/occurrence-normalizer';
 import { stripUtmFromUrl } from '../utils/url';
 import { EventDataSchema, type EventData } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
@@ -1203,7 +1204,29 @@ export class ArticleGenerationMdxService {
       if (rawEventData !== undefined) {
         const parseResult = EventDataSchema.safeParse(rawEventData);
         if (parseResult.success) {
-          parsedEventData = parseResult.data;
+          // ★ 多開催の正規化 (2026-08-09)。プロンプトで「会場ごとに 1 要素」と指示していても
+          //   LLM が連結に回帰しうるため、アプリ側でも防御的に分割する
+          //   (`store-name-validator.ts` と同じ設計思想)。
+          //   あわせて年跨ぎの終了年省略も補正する。
+          const normalized = normalizeOccurrences({
+            occurrences: parseResult.data.occurrences,
+            prefectures: detailedExtraction?.開催都道府県,
+            // 既存の日本語日付 → ISO 変換を再利用する (event-fact-card-mapper の fallback と同じ経路)。
+            // `終了.未定 === true` のときは終了日を補完しない。
+            fallbackPeriod: {
+              startsOn: toIsoDate(detailedExtraction?.開催期間?.開始) ?? null,
+              endsOn:
+                detailedExtraction?.開催期間?.終了?.未定 === true
+                  ? null
+                  : (toIsoDate(detailedExtraction?.開催期間?.終了) ?? null),
+            },
+          });
+          for (const warning of normalized.warnings) {
+            console.warn(
+              `${getStepContext('mdx-assembly', 'event_data')} ⚠️ occurrences 正規化: ${warning}`,
+            );
+          }
+          parsedEventData = { ...parseResult.data, occurrences: normalized.occurrences };
         } else {
           // LLM 応答の event_data が schema に適合しなかった場合の observability
           console.warn(

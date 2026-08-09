@@ -83,7 +83,12 @@ export const occurrences = pgTable(
     venueLabel: text('venue_label'),
     // URL 用。企画内で会場を表す。例 'tokyo-omotesando'。★決定③ で NOT NULL 化。
     slug: text('slug').notNull(),
-    startsOn: date('starts_on').notNull(),
+    // ★ 2026-08-09: NOT NULL を外した (BOSS 確定)。日付未発表の開催を保存するため。
+    //   A-1-c (段階的発表) が「日付欠落を正常な状態として upsert できる必要がある」と
+    //   定めているのに NOT NULL で矛盾しており、LLM 側で日付の捏造を誘発していた。
+    //   `occurrence_view` に `starts_on is null → '日程未定'` の分岐を同時に追加している
+    //   (分岐がないと NULL が else に落ちて「開催中」と誤表示される)。
+    startsOn: date('starts_on'),
     // ★決定⑤: null = 終了日未定 / 常設。
     endsOn: date('ends_on'),
     // 中止のみ実体保持 (status カラムは持たず日付から導出)。

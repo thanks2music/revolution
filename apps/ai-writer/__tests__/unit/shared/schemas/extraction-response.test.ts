@@ -41,6 +41,8 @@ function buildValidExtractionResponse() {
     コピーライト: null,
     TwitterURL: null,
     event_data: {
+      event_name: 'テストイベント',
+      event_slug: 'test-event',
       primary_category_slug: 'collabo-cafe',
       title_slugs: ['test-work'],
       supplementary_category_slugs: [],
@@ -105,5 +107,122 @@ describe('extraction-response schema — cross-schema compatibility', () => {
     if (downstream.success) {
       expect(downstream.data.supplementary_category_slugs).toEqual([]);
     }
+  });
+
+  // ★ 多開催 (2026-08-09)。実データでは 5 会場のイベントが常態で、
+  //   さらに同一会場が前期/後期に分かれる例もある (8 会場 × 2 期 = 16 開催)。
+  //   strict 変種と downstream の両方が N 件を保持できることを固定する。
+  it('preserves N occurrences through both schemas (5 venues)', () => {
+    const payload = buildValidExtractionResponse();
+    payload.event_data.occurrences = [
+      {
+        venue_slug: null,
+        venue_label: 'OH MY CAFE 表参道ヒルズ',
+        starts_on: '2026-07-03',
+        ends_on: '2026-09-13',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space ルミネエスト新宿2号店',
+        starts_on: '2026-07-03',
+        ends_on: '2026-09-13',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space グローバルゲート名古屋2号店',
+        starts_on: '2026-07-10',
+        ends_on: '2026-08-31',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space ＫＩＴＴＥ OSAKA 2号店',
+        starts_on: '2026-07-03',
+        ends_on: '2026-09-13',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BALLER:S イオンモール新利府店',
+        starts_on: '2026-07-17',
+        ends_on: '2026-08-24',
+        official_url: null,
+      },
+    ];
+
+    const parsedStrict = ExtractionResponseSchema.safeParse(payload);
+    expect(parsedStrict.success).toBe(true);
+    if (!parsedStrict.success) return;
+
+    const downstream = EventDataSchema.safeParse(parsedStrict.data.event_data);
+    expect(downstream.success).toBe(true);
+    if (downstream.success) {
+      expect(downstream.data.occurrences).toHaveLength(5);
+      // 会場ごとに期間が違うことが保たれる (多会場の 8 割超でこれが起きる)
+      expect(downstream.data.occurrences?.[2]?.ends_on).toBe('2026-08-31');
+      expect(downstream.data.occurrences?.[4]?.starts_on).toBe('2026-07-17');
+    }
+  });
+
+  it('preserves the same venue appearing twice (前期/後期)', () => {
+    const payload = buildValidExtractionResponse();
+    payload.event_data.occurrences = [
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space グランドスケープ池袋店',
+        starts_on: '2025-04-04',
+        ends_on: '2025-06-02',
+        official_url: null,
+      },
+      {
+        venue_slug: null,
+        venue_label: 'BOX cafe&space グランドスケープ池袋店',
+        starts_on: '2025-06-05',
+        ends_on: '2025-07-27',
+        official_url: null,
+      },
+    ];
+
+    const downstream = EventDataSchema.safeParse(payload.event_data);
+    expect(downstream.success).toBe(true);
+    if (downstream.success) {
+      expect(downstream.data.occurrences).toHaveLength(2);
+      expect(downstream.data.occurrences?.[0]?.venue_label).toBe(
+        downstream.data.occurrences?.[1]?.venue_label
+      );
+    }
+  });
+
+  // ★ 日程未発表 (A-1-c パターン 1/2)。捏造させないための契約。
+  it('accepts a null starts_on (日程未発表)', () => {
+    const payload = buildValidExtractionResponse();
+    payload.event_data.occurrences = [
+      {
+        venue_slug: null,
+        venue_label: '△△ホール',
+        starts_on: null,
+        ends_on: null,
+        official_url: null,
+      },
+    ];
+
+    const parsedStrict = ExtractionResponseSchema.safeParse(payload);
+    expect(parsedStrict.success).toBe(true);
+
+    const downstream = EventDataSchema.safeParse(payload.event_data);
+    expect(downstream.success).toBe(true);
+    if (downstream.success) {
+      expect(downstream.data.occurrences?.[0]?.starts_on).toBeNull();
+    }
+  });
+
+  // ★ event_slug は events upsert の自然キー。slug regex 違反を弾く。
+  it('rejects an event_slug that violates the slug regex', () => {
+    const payload = buildValidExtractionResponse();
+    payload.event_data.event_slug = 'Invalid Slug';
+
+    expect(ExtractionResponseSchema.safeParse(payload).success).toBe(false);
   });
 });

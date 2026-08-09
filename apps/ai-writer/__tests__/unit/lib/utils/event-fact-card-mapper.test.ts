@@ -170,7 +170,18 @@ describe('extractEventFactCardFields', () => {
       expect(result.official_url).toBe('https://example.com/event');
     });
 
-    it('should use only occurrences[0] even if occurrences[] has multiple entries (representative selection)', () => {
+    // ★ 2026-08-09 に意味が変わった (claude[bot] Templates PR #18 指摘)。
+    //   旧テスト名は 'should use only occurrences[0] even if occurrences[] has multiple
+    //   entries' で、**日付も [0] から採る**ことを固定していた。
+    //
+    //   多開催対応で occurrences が N 件になると、[0] は「最初に列挙された 1 会場」で
+    //   しかない。日付を [0] から採ると **1 会場の期間をイベント全体の期間として表示**して
+    //   しまい、「あと N 日」バッジ・status・終了間近順ソートが狂う。
+    //
+    //   `開催期間` は既存ルールで「最早開始 〜 最遅終了」= 和集合と定義されているので、
+    //   FactCard の日付もそれに揃える。venue だけは [0] のまま (代表 1 会場を表示する
+    //   UI 契約のため)。
+    it('derives dates from the union of all occurrences, but venue from occurrences[0]', () => {
       const input: ExtractEventFactCardFieldsInput = {
         eventDataOccurrences: [
           {
@@ -182,7 +193,7 @@ describe('extractEventFactCardFields', () => {
           },
           {
             venue_slug: 'secondary',
-            venue_label: 'Secondary 会場 (使われない)',
+            venue_label: 'Secondary 会場',
             starts_on: '2026-08-01',
             ends_on: '2026-09-30',
             official_url: 'https://secondary.example.com',
@@ -192,10 +203,54 @@ describe('extractEventFactCardFields', () => {
 
       const result = extractEventFactCardFields(input);
 
-      expect(result.venue).toBe('Primary 会場');
+      // 日付は全会場の和集合 (最早開始 〜 最遅終了)
       expect(result.event_start_date).toBe('2026-05-14');
-      // secondary 会場のデータは含まれない
+      expect(result.event_end_date).toBe('2026-09-30'); // ← [0].ends_on (07-05) ではない
+      // venue は代表 1 会場 (FactCard は 1 会場しか表示しない UI 契約)
+      expect(result.venue).toBe('Primary 会場');
       expect(result.venue).not.toContain('Secondary');
+    });
+
+    it('takes the earliest start even when it is not occurrences[0] (列挙順が日付順とは限らない)', () => {
+      const result = extractEventFactCardFields({
+        eventDataOccurrences: [
+          { venue_slug: null, venue_label: '後から始まる会場', starts_on: '2026-08-01', ends_on: '2026-08-31', official_url: null },
+          { venue_slug: null, venue_label: '先に始まる会場', starts_on: '2026-07-01', ends_on: '2026-07-31', official_url: null },
+        ],
+      });
+
+      expect(result.event_start_date).toBe('2026-07-01');
+      expect(result.event_end_date).toBe('2026-08-31');
+      // venue は列挙順どおり [0]
+      expect(result.venue).toBe('後から始まる会場');
+    });
+
+    // ★ 決定⑤「ends_on is null → ongoing」と整合させる。
+    it('omits event_end_date when any occurrence is open-ended (常設 / 終了日未定)', () => {
+      const result = extractEventFactCardFields({
+        eventDataOccurrences: [
+          { venue_slug: null, venue_label: '期間限定の会場', starts_on: '2026-07-01', ends_on: '2026-07-31', official_url: null },
+          { venue_slug: null, venue_label: '常設の会場', starts_on: '2026-07-01', ends_on: null, official_url: null },
+        ],
+      });
+
+      expect(result.event_start_date).toBe('2026-07-01');
+      // 1 会場でも終わりが確定していなければ、イベント全体としても終了日を出さない
+      expect(result.event_end_date).toBeUndefined();
+    });
+
+    it('falls back to 開催期間 when every occurrence has a null starts_on (日程未発表)', () => {
+      const result = extractEventFactCardFields({
+        eventDataOccurrences: [
+          { venue_slug: null, venue_label: '△△ホール', starts_on: null, ends_on: null, official_url: null },
+        ],
+        extractionPeriod: {
+          開始: { 年: '2026年', 日付: '9月1日' },
+          終了: { 年: '2026年', 日付: '9月30日', 未定: false },
+        },
+      });
+
+      expect(result.event_start_date).toBe('2026-09-01');
     });
 
     it('should reject invalid ISO date in occurrences[0].starts_on and fallback to extractionPeriod', () => {

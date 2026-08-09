@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { CATEGORY_SLUG_REGEX } from './category';
+import { EVENT_SLUG_REGEX } from './event';
 import { EventDataOccurrenceSchema } from './mdx-frontmatter';
 import { TITLE_SLUG_REGEX } from './title';
 
@@ -107,6 +108,10 @@ const MenuItemSchema = z.object({
  * 回避。`EventDataSchema.safeParse(strict output)` は相互互換で成功する。
  */
 const StrictEventDataSchema = z.object({
+  // ★ strict mode は全 field required。`event_data` は生成側が必ず出すため required でよい
+  //   (frontmatter 読み取り側の `EventDataSchema` は既存記事互換で optional にしている)。
+  event_name: z.string().min(1),
+  event_slug: z.string().regex(EVENT_SLUG_REGEX),
   primary_category_slug: z.string().regex(CATEGORY_SLUG_REGEX),
   title_slugs: z.array(z.string().regex(TITLE_SLUG_REGEX)),
   supplementary_category_slugs: z.array(z.string().regex(CATEGORY_SLUG_REGEX)).max(2),

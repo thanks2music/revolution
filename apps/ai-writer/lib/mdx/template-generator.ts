@@ -333,7 +333,14 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
       lines.push(`  supplementary_category_slugs: [${suppSlugsYaml}]`);
     }
 
-    // occurrences[] (optional、MVP は通常 1 要素)
+    // event_name / event_slug (→ events.name / events.slug)。2026-08-09 追加
+    if (ed.event_name) {
+      lines.push(`  event_name: "${escapeYamlDoubleQuoted(ed.event_name)}"`);
+    }
+    if (ed.event_slug) {
+      lines.push(`  event_slug: "${escapeYamlDoubleQuoted(ed.event_slug)}"`);
+    }
+    // occurrences[] (optional、会場が N 個なら N 要素)
     if (ed.occurrences && ed.occurrences.length > 0) {
       lines.push('  occurrences:');
       for (const occ of ed.occurrences) {
@@ -345,7 +352,8 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
         } else {
           lines.push(`      venue_label: null`);
         }
-        lines.push(`      starts_on: "${occ.starts_on}"`);
+        // starts_on は nullable (日付未発表の開催)。素で埋め込むと "null" 文字列になる
+        lines.push(`      starts_on: ${occ.starts_on === null ? 'null' : `"${occ.starts_on}"`}`);
         lines.push(`      ends_on: ${occ.ends_on === null ? 'null' : `"${occ.ends_on}"`}`);
         // Sprint C-α PR #268 R3 (claude[bot] R3-rev1): official_url も escape helper で保護
         lines.push(

@@ -77,6 +77,8 @@ function buildSchemaConformingResponse() {
     コピーライト: null,
     TwitterURL: null,
     event_data: {
+      event_name: 'テストイベント',
+      event_slug: 'test-event',
       primary_category_slug: 'collabo-cafe',
       title_slugs: ['test-work'],
       supplementary_category_slugs: [],
@@ -124,7 +126,10 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract', () =>
   });
 
   it('preserves 開催回数 field through validated safeParse path', async () => {
-    const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(buildSchemaConformingResponse()));
+    const service = new ExtractionService(
+      stubTemplateLoader(),
+      stubAiProvider(buildSchemaConformingResponse())
+    );
     const result = await service.extractFromOfficialSite({
       primary_official_url: 'https://example.com',
       page_content: 'stub',
@@ -135,7 +140,10 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract', () =>
   });
 
   it('validated path carries event_data object through unchanged (P0 main goal)', async () => {
-    const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(buildSchemaConformingResponse()));
+    const service = new ExtractionService(
+      stubTemplateLoader(),
+      stubAiProvider(buildSchemaConformingResponse())
+    );
     const result = await service.extractFromOfficialSite({
       primary_official_url: 'https://example.com',
       page_content: 'stub',
@@ -143,6 +151,8 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract', () =>
 
     expect(result.event_data).toEqual(
       expect.objectContaining({
+        event_name: 'テストイベント',
+        event_slug: 'test-event',
         primary_category_slug: 'collabo-cafe',
         title_slugs: ['test-work'],
         occurrences: expect.arrayContaining([
@@ -182,7 +192,10 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract', () =>
     // in ExtractionResponseSchema, so the fallback in parseResponse must derive it from store.
     const conforming = JSON.parse(buildSchemaConformingResponse());
     conforming.store.multiple_locations = '東京・大阪・名古屋の 3 店舗で開催';
-    const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(JSON.stringify(conforming)));
+    const service = new ExtractionService(
+      stubTemplateLoader(),
+      stubAiProvider(JSON.stringify(conforming))
+    );
 
     const result = await service.extractFromOfficialSite({
       primary_official_url: 'https://example.com',
@@ -201,7 +214,10 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract', () =>
     // ため、strict-accepted-but-Zod-rejected な入力で lenient fallback path が発火することを担保。
     const conforming = JSON.parse(buildSchemaConformingResponse());
     conforming.event_data.title_slugs = ['Foo Bar']; // 空白入り = TITLE_SLUG_REGEX 違反
-    const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(JSON.stringify(conforming)));
+    const service = new ExtractionService(
+      stubTemplateLoader(),
+      stubAiProvider(JSON.stringify(conforming))
+    );
 
     await service.extractFromOfficialSite({
       primary_official_url: 'https://example.com',
@@ -217,7 +233,10 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract', () =>
   it('falls back to lenient parse when LLM emits unschemed URL (downstream safety net)', async () => {
     const conforming = JSON.parse(buildSchemaConformingResponse());
     conforming.event_data.occurrences[0].official_url = 'collabo-cafe.com/xxx'; // no scheme
-    const service = new ExtractionService(stubTemplateLoader(), stubAiProvider(JSON.stringify(conforming)));
+    const service = new ExtractionService(
+      stubTemplateLoader(),
+      stubAiProvider(JSON.stringify(conforming))
+    );
 
     await service.extractFromOfficialSite({
       primary_official_url: 'https://example.com',
