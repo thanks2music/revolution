@@ -333,6 +333,13 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
       lines.push(`  supplementary_category_slugs: [${suppSlugsYaml}]`);
     }
 
+    // event_name / event_slug (→ events.name / events.slug)。2026-08-09 追加
+    if (ed.event_name) {
+      lines.push(`  event_name: "${escapeYamlDoubleQuoted(ed.event_name)}"`);
+    }
+    if (ed.event_slug) {
+      lines.push(`  event_slug: "${escapeYamlDoubleQuoted(ed.event_slug)}"`);
+    }
     // occurrences[] (optional、会場が N 個なら N 要素)
     if (ed.occurrences && ed.occurrences.length > 0) {
       lines.push('  occurrences:');

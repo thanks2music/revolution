@@ -77,6 +77,8 @@ function buildSchemaConformingResponse() {
     コピーライト: null,
     TwitterURL: null,
     event_data: {
+      event_name: 'テストイベント',
+      event_slug: 'test-event',
       primary_category_slug: 'collabo-cafe',
       title_slugs: ['test-work'],
       supplementary_category_slugs: [],
@@ -143,7 +145,9 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract', () =>
 
     expect(result.event_data).toEqual(
       expect.objectContaining({
-        primary_category_slug: 'collabo-cafe',
+        event_name: 'テストイベント',
+      event_slug: 'test-event',
+      primary_category_slug: 'collabo-cafe',
         title_slugs: ['test-work'],
         occurrences: expect.arrayContaining([
           expect.objectContaining({

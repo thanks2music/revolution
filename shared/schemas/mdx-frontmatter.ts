@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { CATEGORY_SLUG_REGEX } from './category';
+import { EVENT_SLUG_REGEX } from './event';
 import { TITLE_SLUG_REGEX } from './title';
 import { VENUE_SLUG_REGEX } from './venue';
 
@@ -74,6 +75,7 @@ export const EventDataOccurrenceSchema = z.object({
  * S3 (occurrence 半自動パイプライン = 運用開始ゲート A-4)**。本 schema はその入力契約。
  *
  * ## フィールド
+ * - `event_name` / `event_slug`: 企画そのもの (→ `events.name` / `events.slug`)。★2026-08-09 追加
  * - `primary_category_slug`: `events.primary_category` 相当 = URL 正準決定 (23 categories seed enum)
  * - `title_slugs[]`: コラボ複数 title 対応 (event_titles M:N)、`is_primary: true` を配列先頭
  * - `supplementary_category_slugs[]`: 混在イベント補助タグ (event_categories M:N)、maxItems: 2 (Q5=A)
@@ -89,6 +91,30 @@ export const EventDataOccurrenceSchema = z.object({
  * @see revolution-templates/ai-writer/posts/yaml/collabo-cafe/pipeline/2-extraction.yaml (プロンプト output schema、Sprint C-α Step 1c)
  */
 export const EventDataSchema = z.object({
+  /**
+   * 公式の企画名をそのまま (→ `events.name`)。
+   *
+   * ★ 2026-08-09 追加。**2026-08-03 に BOSS が確定していた** (`revolution-article-meta.md` §2.1)
+   *   にもかかわらず実装されていなかった分。
+   *
+   * `event_title` (下の `MdxFrontmatterSchema`) とは別物。あちらは名前に反して
+   * 「コラボカフェ」等のカテゴリ名が入っているため、同階層に置くと衝突する。
+   *
+   * ★ 既存記事との互換のため `.optional()`。生成側は必ず出力する。
+   */
+  event_name: z.string().min(1).optional(),
+  /**
+   * `event_name` を slug 化したもの (→ `events.slug`)。
+   *
+   * **`events` upsert の自然キー**であり、canonicalKey (`{eventSlug}:{eventType}:{year}`)
+   * の中核。決定③で `event_id` 書き戻しを廃止した代わりに、frontend がビルド時に
+   * これで join する。**URL には出さない**。
+   *
+   * ★ 種別を機械的に付与してはならない (`{作品}-cafe` 等)。公式名称の改変になり、
+   *   テイクアウトのみの企画に `-cafe` を付けると「席がないのにカフェと名乗る」ことになる。
+   *   種別は `event_type` が独立に持つ (`revolution-article-meta.md` §4.3)。
+   */
+  event_slug: z.string().regex(EVENT_SLUG_REGEX).optional(),
   primary_category_slug: z.string().regex(CATEGORY_SLUG_REGEX),
   title_slugs: z.array(z.string().regex(TITLE_SLUG_REGEX)),
   supplementary_category_slugs: z.array(z.string().regex(CATEGORY_SLUG_REGEX)).max(2).optional(),
