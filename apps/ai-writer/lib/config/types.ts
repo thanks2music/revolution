@@ -102,6 +102,23 @@ export interface EventTypeSlugsConfig {
   event_types: {
     [eventTypeName: string]: string; // event type slug
   };
+  /**
+   * 見出しに出すときの短縮表記 (slug → 表記)。
+   *
+   * ★ S1-d Phase 3 で追加。代表会場名が決まらない多ブランド開催では
+   *   `## {作品名} {種別} in {都市}` の形になり、そこに入れる種別。
+   *   「コラボカフェ」ではなく「カフェ」のように短く言い切る。
+   *
+   * ★ **`event_types` の逆引きでは代用できない。** あちらは多対一
+   *   (`コラボカフェ` / `期間限定カフェ` / … → `collabo-cafe`) なので、
+   *   slug から一意の表記を復元できない。
+   *
+   * ★ optional。未定義の slug は呼び出し側が抽出結果の種別名へフォールバックする
+   *   (**「カフェ」を既定値にしてはならない** — 席のない企画をカフェと呼ぶことになる)。
+   */
+  heading_labels?: {
+    [eventTypeSlug: string]: string;
+  };
 }
 
 /**
