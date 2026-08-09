@@ -25,6 +25,9 @@ import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../uti
 import { toIsoMsDate } from '../utils/date';
 import { extractEventFactCardFields, toIsoDate } from '../utils/event-fact-card-mapper';
 import { normalizeOccurrences } from '../utils/occurrence-normalizer';
+import { deriveStoreContext } from '../utils/store-derivation';
+import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
+import { loadYamlConfig } from '../config/yaml-loader';
 import { stripUtmFromUrl } from '../utils/url';
 import { EventDataSchema, type EventData } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
@@ -864,6 +867,80 @@ export class ArticleGenerationMdxService {
       }
 
       // ========================================================================
+      // 会場派生変数の算出 (S1-d Phase 3): 代表会場名の決定表を 1 回だけ回す
+      // ========================================================================
+      //
+      // ★ **ここで 1 回計算して以降のステップへ配る。** lead-generation /
+      //   content-generation / text-placeholder-replacement が別々に算出すると、
+      //   同じ記事の中でリード文と H2 で違う会場名が出る (§8「参照側の取りこぼし」の
+      //   典型形)。
+      //
+      // ★ occurrences の正規化もここへ前倒しする。従来は mdx-assembly まで待って
+      //   いたが、リード文と本文はそれより前に生成されるため間に合わない。
+      //   正規化結果は mdx-assembly でも再利用する (二重に走らせない)。
+      const parsedEventDataResult = (() => {
+        const raw = detailedExtraction?.event_data;
+        if (raw === undefined) return undefined;
+        const parsed = EventDataSchema.safeParse(raw);
+        if (!parsed.success) {
+          console.warn(
+            `${getStepContext('mdx-assembly', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
+            parsed.error.issues.slice(0, 3),
+          );
+          return undefined;
+        }
+        // ★ 多開催の正規化。プロンプトで「会場ごとに 1 要素」と指示していても
+        //   LLM が連結に回帰しうるため、アプリ側でも防御的に分割する
+        //   (`store-name-validator.ts` と同じ設計思想)。年跨ぎの終了年省略も補正。
+        const normalized = normalizeOccurrences({
+          occurrences: parsed.data.occurrences,
+          prefectures: detailedExtraction?.開催都道府県,
+          fallbackPeriod: {
+            startsOn: toIsoDate(detailedExtraction?.開催期間?.開始) ?? null,
+            endsOn:
+              detailedExtraction?.開催期間?.終了?.未定 === true
+                ? null
+                : (toIsoDate(detailedExtraction?.開催期間?.終了) ?? null),
+          },
+        });
+        for (const warning of normalized.warnings) {
+          console.warn(
+            `${getStepContext('mdx-assembly', 'event_data')} ⚠️ occurrences 正規化: ${warning}`,
+          );
+        }
+        return { ...parsed.data, occurrences: normalized.occurrences } satisfies EventData;
+      })();
+
+      // 種別の見出し表記。**「カフェ」をハードコードしない** — pop-up-store や
+      // 原画展に「カフェ」と書くと事実誤認になる (revolution-article-meta.md §4.3 と同趣旨)。
+      const eventTypeSlugsConfig = loadYamlConfig('EVENT_TYPE_SLUGS');
+      const eventTypeHeadingLabel = resolveEventTypeHeadingLabel({
+        eventTypeName: extraction.eventTypeName,
+        eventTypes: eventTypeSlugsConfig.event_types,
+        headingLabels: eventTypeSlugsConfig.heading_labels,
+      });
+
+      const storeContext = deriveStoreContext({
+        occurrences: parsedEventDataResult?.occurrences,
+        officialUrl: selectionResult.primary_official_url,
+        brandSlugs: loadYamlConfig('BRAND_SLUGS').brand_slugs,
+        prefectures: detailedExtraction?.開催都道府県,
+        eventTypeLabel: eventTypeHeadingLabel,
+        workTitle: canonicalWorkTitle,
+      });
+
+      for (const warning of storeContext.warnings) {
+        console.warn(`${getStepContext('lead-generation', '会場派生')} ⚠️ ${warning}`);
+      }
+      console.log(`${getStepContext('lead-generation', '会場派生')} 代表会場名の決定:`, {
+        会場数: storeContext.会場数,
+        ブランド一覧: storeContext.ブランド一覧,
+        見出し形式: storeContext.見出し形式,
+        代表店舗名: storeContext.代表店舗名 || '(なし)',
+        見出し主語: storeContext.見出し主語,
+      });
+
+      // ========================================================================
       // lead-generation step (Sprint C-β P11): rule-driven リード文生成
       // ========================================================================
       // BOSS Q2=B 承認済: リード文を LLM 生成から切り出し、TypeScript 側で
@@ -1151,6 +1228,13 @@ export class ArticleGenerationMdxService {
           開催期間: detailedExtraction.開催期間,
           works: detailedExtraction.works || [],
           store: detailedExtraction.store || { name: detailedExtraction.店舗名 },
+          // ★ S1-d Phase 3: 会場系派生変数。上で 1 回だけ算出したものを配る。
+          //   `{{見出し主語}}` は各セクションの H2 が使う (sections/*.yaml)。
+          見出し主語: storeContext.見出し主語,
+          代表店舗名: storeContext.代表店舗名,
+          会場一覧表記: storeContext.会場一覧表記,
+          会場数: storeContext.会場数,
+          is_multi_venue: storeContext.is_multi_venue,
         });
 
         finalContent = textPlaceholderReplacement.content;
@@ -1196,45 +1280,11 @@ export class ArticleGenerationMdxService {
       // Sprint C-α PR #268 R3 (claude[bot] R3-rev2): shared schema から `EventData` 型を
       // 直接 import することで、`ReturnType<typeof EventDataSchema.parse>` の間接参照を排除。
       // schema 定義側の意図 (LLM 応答の zod validate 後の canonical type) がより明快に。
-      let parsedEventData: EventData | undefined;
-      // Sprint C-α PR #268 R1 対応 (claude[bot] comment #2-#6): `as any` cast を廃止し、
-      // `ExtractionResult.event_data: unknown` (extraction.service.ts) 経由の型契約に置き換え。
-      // `unknown` 型なので直接プロパティアクセスは型エラーで防がれ、必ず zod 検証を経由する。
-      const rawEventData = detailedExtraction?.event_data;
-      if (rawEventData !== undefined) {
-        const parseResult = EventDataSchema.safeParse(rawEventData);
-        if (parseResult.success) {
-          // ★ 多開催の正規化 (2026-08-09)。プロンプトで「会場ごとに 1 要素」と指示していても
-          //   LLM が連結に回帰しうるため、アプリ側でも防御的に分割する
-          //   (`store-name-validator.ts` と同じ設計思想)。
-          //   あわせて年跨ぎの終了年省略も補正する。
-          const normalized = normalizeOccurrences({
-            occurrences: parseResult.data.occurrences,
-            prefectures: detailedExtraction?.開催都道府県,
-            // 既存の日本語日付 → ISO 変換を再利用する (event-fact-card-mapper の fallback と同じ経路)。
-            // `終了.未定 === true` のときは終了日を補完しない。
-            fallbackPeriod: {
-              startsOn: toIsoDate(detailedExtraction?.開催期間?.開始) ?? null,
-              endsOn:
-                detailedExtraction?.開催期間?.終了?.未定 === true
-                  ? null
-                  : (toIsoDate(detailedExtraction?.開催期間?.終了) ?? null),
-            },
-          });
-          for (const warning of normalized.warnings) {
-            console.warn(
-              `${getStepContext('mdx-assembly', 'event_data')} ⚠️ occurrences 正規化: ${warning}`,
-            );
-          }
-          parsedEventData = { ...parseResult.data, occurrences: normalized.occurrences };
-        } else {
-          // LLM 応答の event_data が schema に適合しなかった場合の observability
-          console.warn(
-            `${getStepContext('mdx-assembly', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
-            parseResult.error.issues.slice(0, 3), // 最初の 3 件の issue のみログ (noise 回避)
-          );
-        }
-      }
+      // ★ S1-d Phase 3 (2026-08-09): parse + 正規化は lead-generation の前へ前倒し済み。
+      //   リード文と本文の H2 が正規化前の occurrences を見てしまうのを避けるため。
+      //   ここでは**その結果を再利用する**（同じ入力で 2 回走らせると、警告ログが
+      //   二重に出るうえ、将来どちらかだけ直して挙動が割れる余地を残す）。
+      const parsedEventData: EventData | undefined = parsedEventDataResult;
 
       // fallback 経路の start/end date の存在有無を先に判定して、helper 呼び出しの副作用を
       // 予測可能にする (droppedFields observability の判定精度向上、Sprint C-α PR #268 R1 対応)。
