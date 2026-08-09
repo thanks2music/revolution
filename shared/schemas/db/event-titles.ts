@@ -10,7 +10,7 @@ import { titles } from './titles';
  * 複数の作品 (title) を含む場合 (例: 呪術廻戦 × 鬼滅の刃 のコラボカフェ) を
  * 表現する。逆方向 (1 作品が複数 event に関連) も同構造で自然表現される。
  *
- * 設計判断 (MVP「Around the World」§11 データモデル基盤先行統合、Sprint B):
+ * 設計判断 (B-1、旧 MVP §11 データモデル基盤先行統合、Sprint B):
  * - composite PK `(event_id, title_id)` で重複を防止 (同じ event に同じ title
  *   を 2 回関連付ける組み合わせは無意味)。
  * - `event_titles_title_idx` は **title_id 単独検索** (「呪術廻戦が関連する

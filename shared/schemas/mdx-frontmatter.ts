@@ -16,25 +16,36 @@ import { VENUE_SLUG_REGEX } from './venue';
  */
 
 // -----------------------------------------------------------------------------
-// EventData (Sprint C-α で新設、MVP §11「開催ブロック雛形」)
+// EventData (Sprint C-α で新設、「開催ブロック雛形」)
 // -----------------------------------------------------------------------------
 
 /**
- * `event_data.occurrences[]` の 1 要素 schema。
+ * `event_data.occurrences[]` の 1 要素 schema。**1 要素 = 1 開催 (会場 × 期間)**。
  *
  * @description
  * AI Writer プロンプト応答の開催ブロック雛形 (Templates 側 `2-extraction.yaml` の
  * output.schema.properties.event_data.occurrences[] と整合)。
  *
- * MVP は通常 1 要素 (代表店舗 + 開催期間)、Sprint D で複数開催対応 (Release: Random Access Memories)。
+ * ★ **会場が N 個なら要素も N 個**。DB の `public.occurrences` が 1 event : N occurrences
+ *   設計 (migration `0013`) であるのと 1:1 で対応する。
+ *
+ *   2026-08-07 まで本 docstring は「MVP は通常 1 要素、Sprint D で複数開催対応
+ *   (Release: Random Access Memories)」と書いていたが、**そのフェーズは 2026-08-02 に
+ *   撤廃済み**で、作業がどの計画にも継承されていなかった。実測すると 5 会場のイベントでも
+ *   1 要素に集約され、`venue_label` が「A、B、C」と連結された 1 文字列になっていた
+ *   (集約を命じていたのは `2-extraction.yaml` のプロンプト指示)。
+ *
+ *   同一会場の前期/後期のように**同じ会場が 2 期間**あるケースも、要素を 2 つ持つことで
+ *   表現する (`venue_label` の重複は正当)。
  *
  * @see revolution-templates/ai-writer/posts/yaml/collabo-cafe/pipeline/2-extraction.yaml (Sprint C-α Step 1c)
  * @see apps/ai-writer/lib/utils/event-fact-card-mapper.ts (Q4=C deterministic mapping、Sprint C-α Step 1b)
+ * @see shared/schemas/db/occurrences.ts (取り込み先の DB schema)
  */
 export const EventDataOccurrenceSchema = z.object({
-  /** venues master 登録済の場合の canonical slug (Sprint D の venue_aliases 実装まで通常 null) */
+  /** venues master 登録済の場合の canonical slug (venue_aliases 実装 = S3 まで通常 null) */
   venue_slug: z.string().regex(VENUE_SLUG_REGEX).nullable(),
-  /** 会場マスタ未登録時の一時会場名 (通常 store.name と同一) */
+  /** その会場の正式名称 (支店名込み)。**複数会場を「、」で連結してはならない** */
   venue_label: z.string().min(1).nullable(),
   /** 開催開始日 (YYYY-MM-DD、`開催期間.開始.年 + 日付` から導出) */
   starts_on: z.iso.date(),
@@ -45,17 +56,17 @@ export const EventDataOccurrenceSchema = z.object({
 });
 
 /**
- * `event_data` schema (MVP §11、Sprint C-α で新設、BOSS 承認 Q5=A)。
+ * `event_data` schema (Sprint C-α で新設、BOSS 承認 Q5=A)。
  *
  * @description
- * AI Writer 記事 JSON に含まれる機械可読の「開催ブロック雛形」。DB upsert 本実装は
- * Sprint D (Release: Random Access Memories) スコープ、MVP では雛形応答のみ。
+ * AI Writer 記事 JSON に含まれる機械可読の「開催ブロック」。**DB upsert の本実装は
+ * S3 (occurrence 半自動パイプライン = 運用開始ゲート A-4)**。本 schema はその入力契約。
  *
  * ## フィールド
  * - `primary_category_slug`: `events.primary_category` 相当 = URL 正準決定 (23 categories seed enum)
  * - `title_slugs[]`: コラボ複数 title 対応 (event_titles M:N)、`is_primary: true` を配列先頭
  * - `supplementary_category_slugs[]`: 混在イベント補助タグ (event_categories M:N)、maxItems: 2 (Q5=A)
- * - `occurrences[]`: 開催情報配列 (MVP 1 要素、Sprint D で複数)
+ * - `occurrences[]`: 開催情報配列。**会場が N 個なら N 要素**
  *
  * ## 参照ソース
  * - `CATEGORY_SLUG_REGEX` (`./category`): 23 seed slugs の URL 正準検証 (Sprint A PR #247)
@@ -123,12 +134,14 @@ export const MdxFrontmatterSchema = z.object({
   venue: z.string().min(1).optional(),
   official_url: z.string().url().optional(),
 
-  // Sprint C-α (MVP §11) で新設: 開催ブロック雛形 event_data (BOSS 承認 α、2026-07-12)
-  // - AI Writer プロンプトが `event_data.occurrences[]` として応答
+  // Sprint C-α で新設: 開催ブロック event_data (BOSS 承認 α、2026-07-12)
+  // - AI Writer プロンプトが `event_data.occurrences[]` として応答 (会場が N 個なら N 要素)
   // - MDX frontmatter に nested YAML として serialize (Step 5.4、template-generator.ts)
   // - EventFactCard 4 フィールド (event_start_date / event_end_date / venue / official_url) は
-  //   `event_data.occurrences[0]` を優先ソースとする deterministic mapping で導出 (Q4=C、Step 5.5)
-  // - DB upsert 本実装は Sprint D (Release: Random Access Memories) スコープ、MVP は雛形応答のみ
+  //   `event_data.occurrences[0]` を優先ソースとする deterministic mapping で導出 (Q4=C、Step 5.5)。
+  //   [0] を採るのは FactCard が代表 1 会場しか表示しない UI 契約のためで、
+  //   `occurrences` 自体は N 件のまま frontmatter へ serialize される
+  // - DB upsert 本実装は **S3 (occurrence 半自動パイプライン = A-4)**
   event_data: EventDataSchema.optional(),
 });
 

@@ -7,7 +7,7 @@ import { bigint, check, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
  * 作品/IP master テーブル。AI Writer / Frontend が作品参照する際の正準。
  * URL セグメント (例: `/titles/jujutsu-kaisen`) と reviews 集計の永続キーとなる。
  *
- * 設計判断 (MVP「Around the World」§11 データモデル基盤先行統合、handoff §3):
+ * 設計判断 (B-1、旧 MVP §11 データモデル基盤先行統合、handoff §3):
  * - `id` は `bigint generated always as identity` の代理キー。slug は URL に
  *   現れるため変更されうるが、event_titles からの FK は ID で張る方針
  *   (Sprint B 以降)。

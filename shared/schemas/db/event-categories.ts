@@ -16,7 +16,7 @@ import { events } from './events';
  * - **primary_category_id と event_categories は重複可** (同じ category が両方に
  *   出てくる = 主分類でありかつタグにも入れたい、というケースは正常)
  *
- * 設計判断 (MVP「Around the World」§11):
+ * 設計判断 (B-1、旧 MVP §11):
  * - composite PK `(event_id, category_id)` で重複を防止。
  * - `event_categories_category_idx` は **category_id 単独検索** (「コラボドリンク
  *   のある全 event」横断クエリ) のための btree secondary index。composite PK の

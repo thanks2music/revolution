@@ -1180,7 +1180,7 @@ export class ArticleGenerationMdxService {
       const workTitles = detailedExtraction?.works?.map((w) => w.title) || [];
 
       // ------------------------------------------------------------------
-      // Sprint C-α (MVP §11) Step 5.5: EventFactCard 4 フィールド + event_data 導出
+      // Sprint C-α (B-1、旧 §11) Step 5.5: EventFactCard 4 フィールド + event_data 導出
       // ------------------------------------------------------------------
       // Q4=C の deterministic mapping:
       //   1. event_data.occurrences[0] を primary source
@@ -1303,7 +1303,7 @@ export class ArticleGenerationMdxService {
           // AI メタデータ（記事生成に使用したプロバイダーとモデル）
           aiProvider: providerName,
           aiModel: aiModel,
-          // Sprint C-α (MVP §11): EventFactCard 4 フィールド + event_data
+          // Sprint C-α (B-1、旧 §11): EventFactCard 4 フィールド + event_data
           eventStartDate: eventFactCardFields.event_start_date,
           eventEndDate: eventFactCardFields.event_end_date,
           venue: eventFactCardFields.venue,

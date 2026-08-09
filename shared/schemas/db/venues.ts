@@ -16,7 +16,7 @@ import {
  * 永続マスタ。AI Writer / Frontend の地図表示・距離計算・都道府県別フィルタの
  * 永続キーとなる。
  *
- * 設計判断 (MVP「Around the World」§11 データモデル基盤先行統合、handoff §3):
+ * 設計判断 (B-1、旧 MVP §11 データモデル基盤先行統合、handoff §3):
  * - `id` は `bigint generated always as identity` の代理キー (categories /
  *   titles と同パターン)。slug は URL に現れるため変更されうるが、events から
  *   の FK は ID で張る方針 (Sprint B 以降)。
@@ -55,8 +55,9 @@ import {
  *   role のみ)。drizzle pgTable に enableRls は付与せず、profiles / categories
  *   / titles と同様 custom SQL 管理。
  *
- * 名寄せ補助 (venue_aliases) は Sprint D (Release: Random Access Memories) で
- *   分離実装する別タスク (本テーブルには同居しない)。
+ * 名寄せ補助 (venue_aliases) は本テーブルには同居させず別テーブルへ分離する。
+ *   **`venue_aliases` は migration `0013` で作成済み** (A-3-a / S1)。YAML を真実源とし
+ *   DB は seed 先、seed 投入と名寄せ運用は S3 の取り込みパイプライン側で行う。
  */
 
 /**

@@ -3,7 +3,7 @@
  *
  * 既存の 1 行 flat parser (数値・quoted 文字列・inline 配列) を保持しつつ、
  * `event_data:` の nested YAML ブロックのみ js-yaml で解析して伝搬する
- * (Sprint C-α、MVP §11、claude[bot] コメント #2 / #3 対応)。
+ * (Sprint C-α、B-1、旧 §11、claude[bot] コメント #2 / #3 対応)。
  *
  * 他の nested キーが増えた場合は `NESTED_KEYS` に追加すること。
  * schema-sdd-phase-3 で `MdxFrontmatterSchema.safeParse` に全面置換する TODO は

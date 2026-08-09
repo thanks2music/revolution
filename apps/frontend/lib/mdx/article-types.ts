@@ -39,13 +39,14 @@ export interface ArticleIndexItem {
   venue?: string;
   official_url?: string;
 
-  // ↓ Sprint C-α (MVP §11) で新設: 開催ブロック雛形 event_data。
+  // ↓ Sprint C-α で新設: 開催ブロック event_data。
   // Templates 側 `2-extraction.yaml` の output.schema.properties.event_data に
   // 対応する canonical slug + occurrences[] 構造。MDX frontmatter に nested YAML
   // として serialize され、`generate-article-index.ts` で本 index に伝搬される。
+  // **会場が N 個なら occurrences も N 要素**。
   //
-  // DB upsert 本実装は Sprint D (Release: Random Access Memories) スコープ、
-  // MVP は雛形応答のみ。EventFactCard は 4 フィールド (上記) を使用するのが基本、
-  // Sprint D で `event_data.occurrences[].venue_slug` 等を活用する予定。
+  // DB upsert 本実装は **S3 (occurrence 半自動パイプライン = A-4)**。
+  // EventFactCard は 4 フィールド (上記) を使用するのが基本で、
+  // `event_data.occurrences[].venue_slug` を使った会場ページへの導線は S2 以降。
   event_data?: EventData;
 }

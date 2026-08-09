@@ -65,7 +65,7 @@ export function generateMdxFrontmatter(
     prefectures,
     prefectureSlugs,
     tags,
-    // Sprint C-α (MVP §11): EventFactCard 4 フィールド + event_data (Q4=C derived、Step 5.5 orchestrator から)
+    // Sprint C-α (B-1、旧 §11): EventFactCard 4 フィールド + event_data (Q4=C derived、Step 5.5 orchestrator から)
     eventStartDate,
     eventEndDate,
     venue,
@@ -129,7 +129,7 @@ export function generateMdxFrontmatter(
     frontmatter.ai_model = aiModel;
   }
 
-  // Sprint C-α (MVP §11): EventFactCard 4 フィールド + event_data (Q4=C derived、Step 5.5 orchestrator から)
+  // Sprint C-α (B-1、旧 §11): EventFactCard 4 フィールド + event_data (Q4=C derived、Step 5.5 orchestrator から)
   // Frontend の EventFactCard コンポーネントが「あと N 日」黄色バッジ表示に使用。
   // undefined フィールドは serialize しない (MdxFrontmatterSchema は optional)。
   if (eventStartDate !== undefined) {
@@ -280,7 +280,7 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
   }
 
   // ---------------------------------------------------------------------------
-  // Sprint C-α (MVP §11): EventFactCard 4 フィールド + 開催ブロック雛形 event_data
+  // Sprint C-α (B-1、旧 §11): EventFactCard 4 フィールド + 開催ブロック雛形 event_data
   // ---------------------------------------------------------------------------
   // Frontend の EventFactCard コンポーネントが「あと N 日」黄色バッジ表示に使用する
   // 4 フィールド (event_start_date / event_end_date / venue / official_url) と、

@@ -10,7 +10,7 @@ import { categories } from './categories';
  * (会場×期間) を束ねる公開ページを持つ。event_titles / event_categories と
  * M:N で連携し、Sprint C の occurrences (開催) から FK で参照される。
  *
- * 設計判断 (MVP「Around the World」§11 データモデル基盤先行統合、Sprint B
+ * 設計判断 (B-1、旧 MVP §11 データモデル基盤先行統合、Sprint B
  * handoff `2026-07-05-mvp-events-sprint-b-handoff.md`、BOSS 承認済プラン
  * `~/.claude/plans/refactored-doodling-token.md`):
  * - `id` は `bigint generated always as identity` の代理キー (categories /
