@@ -148,8 +148,9 @@ async function generateLogFilePath(url: string): Promise<string> {
 function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
   const logStream: WriteStream = createWriteStream(logFilePath, { flags: 'a' });
 
-  // 元のconsole.logとconsole.errorを保存
+  // 元のconsole.log / console.warn / console.error を保存
   const originalLog = console.log;
+  const originalWarn = console.warn;
   const originalError = console.error;
 
   // console.logをラップ
@@ -159,6 +160,25 @@ function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
     ).join(' ');
     logStream.write(message + '\n');
     originalLog.apply(console, args);
+  };
+
+  // console.warn をラップ
+  //
+  // ★ 2026-08-09 追加。従来 warn だけ横取りされておらず、**dry-run のログに
+  //   一切載っていなかった**。パイプラインの防御層は「throw せず warn する」
+  //   規約 (observability) で作られているため、抜けていたのは
+  //   「壊れかけていることを知らせる出力」ばかりだった:
+  //     - occurrences の連結分割 / 年跨ぎ補正 / 重複除去 / 日付未確定
+  //     - 代表会場名の決定でブランド辞書に一致しなかった会場
+  //     - 公式ドメインがどのブランドとも一致せず都市名見出しへ切り替えた事実
+  //     - event_data が schema 不適合で捨てられた事実
+  //   ログを見て「警告ゼロ」と判断すると誤る状態だったため是正する。
+  console.warn = (...args: unknown[]) => {
+    const message = args.map(arg =>
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+    logStream.write('[WARN] ' + message + '\n');
+    originalWarn.apply(console, args);
   };
 
   // console.errorをラップ
@@ -173,6 +193,7 @@ function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
   // クリーンアップ関数
   const cleanup = () => {
     console.log = originalLog;
+    console.warn = originalWarn;
     console.error = originalError;
     logStream.end();
   };
