@@ -153,14 +153,29 @@ function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
   const originalWarn = console.warn;
   const originalError = console.error;
 
+  /**
+   * 引数を 1 行の文字列へ整形する。3 つのラッパーで同一処理のため共通化。
+   *
+   * ★ 従来 log / error で同じコードを 2 回書いており、**warn を足し忘れた**まま
+   *   運用されていた (dry-run のログに警告が 1 行も載っていなかった)。
+   *   4 つ目のログレベルを足すときに同じ取りこぼしをしないよう切り出す
+   *   (claude[bot] 指摘 2026-08-09)。
+   */
+  const format = (args: unknown[]): string =>
+    args
+      .map((arg) => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)))
+      .join(' ');
+
+  /** 元の console メソッドを保ちつつ、ファイルへも書き出すラッパーを作る。 */
+  const wrap =
+    (original: (...args: unknown[]) => void, prefix = '') =>
+    (...args: unknown[]) => {
+      logStream.write(prefix + format(args) + '\n');
+      original.apply(console, args);
+    };
+
   // console.logをラップ
-  console.log = (...args: unknown[]) => {
-    const message = args.map(arg =>
-      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-    ).join(' ');
-    logStream.write(message + '\n');
-    originalLog.apply(console, args);
-  };
+  console.log = wrap(originalLog);
 
   // console.warn をラップ
   //
@@ -173,22 +188,10 @@ function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
   //     - 公式ドメインがどのブランドとも一致せず都市名見出しへ切り替えた事実
   //     - event_data が schema 不適合で捨てられた事実
   //   ログを見て「警告ゼロ」と判断すると誤る状態だったため是正する。
-  console.warn = (...args: unknown[]) => {
-    const message = args.map(arg =>
-      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-    ).join(' ');
-    logStream.write('[WARN] ' + message + '\n');
-    originalWarn.apply(console, args);
-  };
+  console.warn = wrap(originalWarn, '[WARN] ');
 
   // console.errorをラップ
-  console.error = (...args: unknown[]) => {
-    const message = args.map(arg =>
-      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-    ).join(' ');
-    logStream.write('[ERROR] ' + message + '\n');
-    originalError.apply(console, args);
-  };
+  console.error = wrap(originalError, '[ERROR] ');
 
   // クリーンアップ関数
   const cleanup = () => {

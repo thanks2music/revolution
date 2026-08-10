@@ -116,8 +116,19 @@ const CITY_JOIN_TITLE = '/';
  *
  * ★ 短いトークンはホスト名の一部と偶然一致しうる。ブランド集合への限定と併せた
  *   二重の歯止め。
+ *
+ * ★ **6 に引き上げた** (claude[bot] 指摘 2026-08-09)。従来の 4 では
+ *   `brand-slugs.yaml` に実在する `aeon` (イオン) / `gigo` (GiGO) が
+ *   ちょうど閾値に乗り、`aeon` は `pantheon` `aeonflux` 等の一部としても
+ *   出現しうるため誤選択の余地があった。正規化後 5 文字以下の slug は
+ *   実測で 9 件 (avail / donki / aeon / parco / hands / gigo 等)。
+ *
+ * ★ 6 にしても実運用の判定には影響しない。実データで Step 4 が発火するのは
+ *   `ohmycafe` (8) / `boxcafeandspace` (15) / `ballers` (7) /
+ *   `charaumcafe` (11) / `cafeepictales` (13) のようにいずれも 6 を超える。
+ *   短い slug のブランドは施設・小売系で、コラボカフェのドメインには出てこない。
  */
-const MIN_DOMAIN_TOKEN_LENGTH = 4;
+const MIN_DOMAIN_TOKEN_LENGTH = 6;
 
 export interface DeriveStoreContextInput {
   /** 正規化済みの `occurrences[]`。`normalizeOccurrences` の出力を渡す */
@@ -240,6 +251,11 @@ function matchBrand(venueLabel: string, brandNames: string[]): string | null {
  * 日本語ブランド名は正規化すると空になるため slug 側だけが効く。
  *
  * 複数一致したら**一致トークンが最も長いもの**を採る。
+ *
+ * ★ 同じ長さで複数一致した場合は `candidates` (= ブランド一覧) の**出現順で先勝ち**
+ *   (`>` の厳密比較のため後続では上書きされない)。ブランド一覧は occurrences の
+ *   出現順なので、**サイト上で先に載っている会場のブランドが勝つ**ことになる。
+ *   `matchBrand` の「辞書の記述順で先勝ち」と同型の暗黙依存。
  */
 function pickBrandByDomain(
   officialUrl: string,
