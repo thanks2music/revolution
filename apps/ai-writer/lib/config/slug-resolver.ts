@@ -14,7 +14,7 @@
 import { loadYamlConfig } from './yaml-loader';
 import { generateSlugWithFallback } from './slug-generator';
 import type { CostTrackerService } from '@/lib/ai/cost';
-import type { TitleEntry } from './types';
+import type { TitleEntry, TitleRomajiMapping } from './types';
 
 // ============================================================================
 // Type Guards and Helper Functions
@@ -567,6 +567,70 @@ export function getEnglishTitle(japaneseTitle: string): string | null {
  * getShortTitle("呪術廻戦");                                  // → null (< 10 chars)
  * ```
  */
+/**
+ * 前方一致で作品名を切り出す際に「ここで作品名が終わってよい」とみなす文字。
+ *
+ * ★ **`・` と `-` を含めてはならない。** 作品名の内部に現れるため
+ *   (`トイ・ストーリー` / `PSYCHO-PASS` / `マッシュル-MASHLE-`)、境界に含めると
+ *   作品名を途中で切って別物にしてしまう。
+ *
+ * ★ 数字を含めるのは続編番号のため (`トイ・ストーリー5` / `機動戦士ガンダム00`)。
+ *
+ * ★ `!` `！` は含めない。`ハイキュー!!` `ラブライブ!` のように**タイトルの一部**である。
+ */
+const TITLE_PREFIX_BOUNDARY = /[／/：:〜～　\s＆&|｜(（[【0-9０-９]/;
+
+/**
+ * 前方一致を許す最小のキー長。
+ *
+ * ★ `氷菓` `銀魂` `原神` のような 2 文字キーは、無関係な文字列の先頭に
+ *   偶然一致しうる。完全一致・alias 一致には長さ制限をかけないが、
+ *   前方一致だけは 4 文字以上に限る。
+ */
+const MIN_PREFIX_TITLE_LENGTH = 4;
+
+/**
+ * 作品名の先頭に一致する辞書エントリのうち、**最も長いもの**の短縮名を返す。
+ *
+ * @description
+ * 最長一致を採るのは `機動戦士ガンダム` と `機動戦士ガンダム 水星の魔女` のように
+ * 一方が他方の前方一致になる組が実在するため (辞書内に 5 組)。短い方を採ると
+ * 別作品の短縮名を当ててしまう。
+ *
+ * 辞書全 176 件を入力にした検証で、**自分自身以外に誤マッチする組み合わせは 0 件**
+ * であることを確認済み (2026-08-09)。
+ */
+function findLongestPrefixTitle(
+  japaneseTitle: string,
+  titles: TitleRomajiMapping['titles']
+): { title: string; shortTitle: string } | null {
+  let best: { title: string; shortTitle: string } | null = null;
+
+  for (const [title, value] of Object.entries(titles)) {
+    if (!isTitleEntry(value)) continue;
+    if (title.length < MIN_PREFIX_TITLE_LENGTH) continue;
+    if (title === japaneseTitle) continue; // 完全一致は呼び出し元で処理済み
+    if (!japaneseTitle.startsWith(title)) continue;
+
+    const nextChar = japaneseTitle.charAt(title.length);
+    if (!TITLE_PREFIX_BOUNDARY.test(nextChar)) continue;
+
+    // ★ `short_title` が無ければ**一致したキー自体**を返す。
+    //   前方一致である以上、キーは必ず入力より短い。
+    //   「スター・ウォーズ／マンダロリアン・アンド・グローグー」に対して
+    //   辞書の「スター・ウォーズ」が答えであり、そのために
+    //   `short_title: "スター・ウォーズ"` という自己参照エントリを
+    //   辞書へ書かせるのは不自然なため。
+    const shortTitle = value.short_title ?? title;
+
+    if (best === null || title.length > best.title.length) {
+      best = { title, shortTitle };
+    }
+  }
+
+  return best;
+}
+
 export function getShortTitle(japaneseTitle: string): string | null {
   const config = loadYamlConfig('TITLE_ROMAJI');
 
@@ -591,6 +655,24 @@ export function getShortTitle(japaneseTitle: string): string | null {
         return value.short_title;
       }
     }
+  }
+
+  // ★ S1-d Phase 3 (2026-08-09): 最長前方一致
+  //
+  // 完全一致・alias 一致はどちらも**完全一致**しか見ないため、抽出された作品名に
+  // 副題が付いていると一生ヒットしない。実測で
+  //   「スター・ウォーズ／マンダロリアン・アンド・グローグー」(25 字)
+  //   「Nissy Birthday Entertainment 2026」(33 字)
+  // が辞書に当たらず、タイトルが 48 / 56 字に膨らんで開催地が削られていた。
+  //
+  // 副題は企画ごとに変わるため alias で列挙し続けるのは原理的に破綻する。
+  // よって「辞書キーが作品名の先頭に一致し、その直後が境界文字」なら採用する。
+  const prefixMatch = findLongestPrefixTitle(japaneseTitle, config.titles);
+  if (prefixMatch) {
+    console.log(
+      `[Slug Resolver] 📝 Short title found via prefix: "${japaneseTitle}" → "${prefixMatch.title}" → "${prefixMatch.shortTitle}"`
+    );
+    return prefixMatch.shortTitle;
   }
 
   return null;

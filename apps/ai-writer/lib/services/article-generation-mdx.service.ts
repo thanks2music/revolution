@@ -102,6 +102,25 @@ import type {
 } from '@/lib/types/vision-api';
 
 /**
+ * 記事タイトル用に作品名を短縮する閾値（文字数）。
+ *
+ * @description
+ * 正式名称がこの長さ以上で、かつ辞書に短縮名があれば、**タイトルでは短縮名を使う**。
+ *
+ * ★ 10 文字なのは、既存の「10 文字未満の作品は略称不可」というルール
+ *   (`3-title.yaml` / プロンプト注記) と閾値を揃えるため。新しい基準を持ち込まない。
+ *
+ * ★ **文字数だけが理由ではない。** タイトルでユーザーが検索するのは
+ *   「スター・ウォーズ」「Nissy」であって、副題や企画名ではない (BOSS 2026-08-09)。
+ *   短縮は SEO 上の意図を持つ。
+ *
+ * ★ これは「タイトルが 40 字に収まる」ことを保証しない。店舗名や日付が長ければ
+ *   なお超過しうる。その場合は `3-title.yaml` の短縮ラダーが後段で効く。
+ *   本閾値は**作品名という最も支配的な要因を先に潰す**ためのもの。
+ */
+const WORK_TITLE_SHORTEN_THRESHOLD = 10;
+
+/**
  * RSS記事からMDX記事を生成するためのリクエスト
  */
 export interface MdxGenerationRequest {
@@ -836,38 +855,13 @@ export class ArticleGenerationMdxService {
         );
       }
 
-      // title-generation step: Generate title using YAML template
-      console.log(`\n${getStepDisplay('title-generation')} AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
-
-      const titleService = new TitleGenerationService();
-      const titleResult = await titleService.generateTitle({
-        rss_title: rssItem.title,
-        rss_content: rawContent,
-        rss_link: rssItem.link,
-        // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
-        extractedPeriod: detailedExtraction?.開催期間,
-        extractedStoreName: detailedExtraction?.店舗名,
-        // 作品名は rss-extraction step の workTitle を canonical として使用
-        extractedWorkName: canonicalWorkTitle,
-        // v2.4.0: 作品名の略称（10文字以上の作品のみ設定）
-        extractedWorkNameShort: canonicalWorkTitle
-          ? getShortTitle(canonicalWorkTitle) ?? undefined
-          : undefined,
-        // v2.3.0: 開催回数（第N弾形式）
-        extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
-      });
-
-      // コストを記録
-      if (titleResult.model && titleResult.usage) {
-        costTracker.recordUsage(
-          'title-generation',
-          titleResult.model,
-          titleResult.usage
-        );
-      }
-
       // ========================================================================
       // 会場派生変数の算出 (S1-d Phase 3): 代表会場名の決定表を 1 回だけ回す
+      // ========================================================================
+      //
+      // ★ **title-generation より前**に置く。記事タイトルも開催都市を必要とし、
+      //   H2 と同じ情報源から作らないと「H2 は東京・大阪、タイトルは渋谷」のように
+      //   同じ記事で開催地が食い違う (実測 4 件、2026-08-09)。
       // ========================================================================
       //
       // ★ **ここで 1 回計算して以降のステップへ配る。** lead-generation /
@@ -940,7 +934,67 @@ export class ArticleGenerationMdxService {
         見出し主語: storeContext.見出し主語,
         // 地の文 (リード文・本文) へ流す値。見出しと食い違っていないかをログで追えるようにする
         会場表現: storeContext.会場表現 || '(なし → 抽出結果の店舗名へ退避)',
+        // 記事タイトルへ渡す都市。H2 と同じ情報源から作れているかをログで追う
+        都市表記タイトル用: storeContext.都市表記タイトル用 || '(なし)',
       });
+
+      // title-generation step: Generate title using YAML template
+      console.log(`\n${getStepDisplay('title-generation')} AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
+
+      // ★ 記事タイトル用の作品名。正式名称が長い場合は辞書の短縮名へ丸める。
+      //   `getShortTitle` は完全一致 → alias → **最長前方一致** の順に引く。
+      //   前方一致があるため「スター・ウォーズ／マンダロリアン・アンド・グローグー」も
+      //   「スター・ウォーズ」に解決できる (副題は企画ごとに変わるため alias 列挙では破綻する)。
+      const workTitleShort = canonicalWorkTitle ? (getShortTitle(canonicalWorkTitle) ?? null) : null;
+      const titleWorkName =
+        canonicalWorkTitle &&
+        canonicalWorkTitle.length >= WORK_TITLE_SHORTEN_THRESHOLD &&
+        workTitleShort
+          ? workTitleShort
+          : canonicalWorkTitle;
+
+      if (titleWorkName !== canonicalWorkTitle) {
+        console.log(
+          `${getStepContext('title-generation', '作品名')} 記事タイトル用に短縮: "${canonicalWorkTitle}" → "${titleWorkName}"`
+        );
+      }
+
+      const titleService = new TitleGenerationService();
+      const titleResult = await titleService.generateTitle({
+        rss_title: rssItem.title,
+        rss_content: rawContent,
+        rss_link: rssItem.link,
+        // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
+        extractedPeriod: detailedExtraction?.開催期間,
+        extractedStoreName: detailedExtraction?.店舗名,
+        // ★ S1-d Phase 3: 開催都市を構造化データで渡す。H2 と同じ決定表が情報源。
+        extractedCityLabel: storeContext.都市表記タイトル用 || undefined,
+        // ★ S1-d Phase 3 (2026-08-09): 作品名は**取得時点で**短縮を判定する。
+        //
+        //   従来は「タイトルが 40 字を超える場合のみ略称を使う」という条件付き指示を
+        //   プロンプトに書いていたが、LLM が守らず実測で 45 / 57 字のタイトルが出ていた
+        //   (「スター・ウォーズ／マンダロリアン・アンド・グローグー」がそのまま入る)。
+        //
+        //   条件をパイプラインの途中 (生成後の文字数) に置くと漏れる。作品名を
+        //   取得した時点で決めれば決定的になる (BOSS 判断 2026-08-09)。
+        //
+        //   ★ 短縮の理由は文字数だけではない。タイトルでユーザーが検索するのは
+        //     「スター・ウォーズ」「Nissy」であって副題・企画名ではない (BOSS)。
+        extractedWorkName: titleWorkName,
+        // 正式名称。LLM が文脈として参照できるよう別枠で渡す
+        extractedWorkNameShort: undefined,
+        // v2.3.0: 開催回数（第N弾形式）
+        extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
+      });
+
+      // コストを記録
+      if (titleResult.model && titleResult.usage) {
+        costTracker.recordUsage(
+          'title-generation',
+          titleResult.model,
+          titleResult.usage
+        );
+      }
 
       // ========================================================================
       // lead-generation step (Sprint C-β P11): rule-driven リード文生成

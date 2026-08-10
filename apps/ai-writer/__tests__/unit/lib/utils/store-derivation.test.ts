@@ -484,4 +484,76 @@ describe('deriveStoreContext — 代表会場名の決定表', () => {
       expect(r.会場表現).toBe('');
     });
   });
+  // ── タイトル用の都市表記 (P1: タイトルと H2 の情報源統一) ──────
+  describe('都市表記タイトル用', () => {
+    it('区切りは「/」で、本文の「・」とは分ける', () => {
+      const r = deriveStoreContext({
+        occurrences: [occ('キャラウムカフェ（池袋 マルビル4階）'), occ('CAFE EPIC TALE')],
+        officialUrl: 'https://www.medicos-e.net/newsdetail/d-gray-man/',
+        brandSlugs: BRANDS,
+        prefectures: ['東京都', '大阪府'],
+        eventTypeLabel: 'カフェ',
+        workTitle: 'D.Gray-man',
+      });
+
+      expect(r.都市表記).toBe('東京・大阪');
+      expect(r.都市表記タイトル用).toBe('東京/大阪');
+    });
+
+    it('★ H2 が会場名になる経路でも空にしない', () => {
+      // タイトルは会場名ではなく都市名を使う設計なので、venue 形式でも都市が要る。
+      // これが空だと「H2 は会場名、タイトルは本文から推測」に戻ってしまう。
+      const r = deriveStoreContext({
+        occurrences: [
+          occ('BOX cafe&space グランドスケープ池袋店'),
+          occ('BOX cafe&space 天王寺MIO店'),
+        ],
+        brandSlugs: BRANDS,
+        prefectures: ['東京都', '大阪府'],
+        eventTypeLabel: 'カフェ',
+        workTitle: '初音ミク',
+      });
+
+      expect(r.見出し形式).toBe('venue');
+      expect(r.代表店舗名).toBe('BOX cafe&space');
+      expect(r.都市表記タイトル用).toBe('東京/大阪');
+    });
+
+    it('タイトルは本文より 1 件早く丸める (4 件で「4都市」)', () => {
+      // 4 都道府県を列挙すると「東京/愛知/大阪/宮城」で 11 文字を占め、
+      // 実測 (トイ・ストーリー5) でタイトルが上限ちょうど 40 文字に達した。
+      const r = deriveStoreContext({
+        occurrences: [occ('OH MY CAFE 表参道ヒルズ')],
+        brandSlugs: BRANDS,
+        prefectures: ['東京都', '愛知県', '大阪府', '宮城県'],
+        eventTypeLabel: 'カフェ',
+        workTitle: 'トイ・ストーリー5',
+      });
+
+      // 本文は 4 件まで列挙、タイトルは 4 件で丸める
+      expect(r.都市表記タイトル用).toBe('4都市');
+    });
+
+    it('3 件までは列挙する (閾値の境界)', () => {
+      const r = deriveStoreContext({
+        occurrences: [occ('BOX cafe&space 東京ソラマチ店')],
+        brandSlugs: BRANDS,
+        prefectures: ['東京都', '愛知県', '大阪府'],
+        eventTypeLabel: 'カフェ',
+        workTitle: '初音ミク',
+      });
+
+      expect(r.都市表記タイトル用).toBe('東京/愛知/大阪');
+    });
+
+    it('都道府県が無ければ空文字 (呼び出し側で undefined へ落とす)', () => {
+      const r = deriveStoreContext({
+        occurrences: [occ('BOX cafe&space 東京ソラマチ店')],
+        brandSlugs: BRANDS,
+        workTitle: 'テスト作品',
+      });
+
+      expect(r.都市表記タイトル用).toBe('');
+    });
+  });
 });

@@ -93,6 +93,25 @@ const CITY_JOIN = '・';
 const CITY_LIST_MAX = 4;
 
 /**
+ * タイトル用に都市を列挙する上限。本文より **1 件厳しい**。
+ *
+ * ★ 記事タイトルは 28〜40 文字の制約があり、本文にはこの制約がない。
+ *   4 都道府県を列挙すると `東京/愛知/大阪/宮城` で 11 文字を占め、
+ *   実測 (トイ・ストーリー5) で上限ちょうど 40 文字に達した。
+ *   作品名が 1 文字伸びるだけで超過するため、タイトル側は 3 件で丸める。
+ */
+const CITY_LIST_MAX_TITLE = 3;
+
+/**
+ * タイトルで都市を連結する際の区切り。
+ *
+ * ★ 本文は `・`、タイトルは `/`。タイトルは文字数制約が厳しく短い記号が有利で、
+ *   本文にその制約はないため**用途の違いによる意図的な不統一** (BOSS 確定 2026-08-09)。
+ *   本番記事のタイトルにも `D.Gray-man カフェ in 東京/大阪` が実在する。
+ */
+const CITY_JOIN_TITLE = '/';
+
+/**
  * ドメイン照合に使うトークンの最小長。
  *
  * ★ 短いトークンはホスト名の一部と偶然一致しうる。ブランド集合への限定と併せた
@@ -149,6 +168,23 @@ export interface StoreContext {
   代表店舗名: string;
   /** Step 5 の都市表記 (`東京・大阪` / `5都市`)。それ以外は空文字 */
   都市表記: string;
+  /**
+   * **記事タイトル用**の都市表記 (`東京/大阪` / `4都市`)。
+   *
+   * @description
+   * 本文用 (`都市表記`) とは区切りも丸め閾値も異なる。タイトルは 28〜40 文字の
+   * 制約があり、本文にはこの制約がない。
+   *
+   * ★ **見出しと記事タイトルは同じ情報源から作る。** 従来タイトルは構造化データを
+   *   受け取っておらず、LLM が本文 3000 字から都市を読み取っていたため、
+   *   実測 4 件で「東京・大阪の 2 会場開催なのにタイトルは `in 渋谷`」のように
+   *   開催地が欠落していた (2026-08-09)。
+   *
+   * ★ 会場が特定できる場合 (`venue` 形式) でも**空にしない**。タイトルは
+   *   会場名ではなく都市名を使う設計 (`3-title.yaml` の短縮ラダー) のため、
+   *   H2 が会場名になるケースでもタイトルには都市が要る。
+   */
+  都市表記タイトル用: string;
   /** H2 の主語。各セクションはこれに「のメニュー」等を付ける */
   見出し主語: string;
   /**
@@ -244,17 +280,28 @@ function pickBrandByDomain(
   return best?.brand ?? null;
 }
 
-/** Step 5 の都市表記を作る。件数が多いときは「N都市」に丸める。 */
-function buildCityLabel(prefectures: string[]): string {
+/** 都道府県名を短縮し、重複を畳んで出現順に並べる。 */
+function toUniqueCities(prefectures: string[]): string[] {
   const unique: string[] = [];
   for (const pref of prefectures) {
     const short = shortenPrefecture(pref);
     if (short.length === 0 || unique.includes(short)) continue;
     unique.push(short);
   }
-  if (unique.length === 0) return '';
-  if (unique.length > CITY_LIST_MAX) return `${unique.length}都市`;
-  return unique.join(CITY_JOIN);
+  return unique;
+}
+
+/**
+ * 都市表記を作る。件数が上限を超えたら「N都市」に丸める。
+ *
+ * 区切りと上限を引数に取るのは、**本文とタイトルで要件が違う**ため
+ * (本文 = `・` / 4 件まで、タイトル = `/` / 3 件まで)。
+ * 丸めの判定ロジックを 2 箇所に書かないための共通化。
+ */
+function buildCityLabel(cities: string[], separator: string, max: number): string {
+  if (cities.length === 0) return '';
+  if (cities.length > max) return `${cities.length}都市`;
+  return cities.join(separator);
 }
 
 /**
@@ -325,12 +372,19 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
     );
   }
 
+  // ★ 都市は**どの経路でも**必要になる。H2 が会場名になる場合 (Step 2-4) でも、
+  //   記事タイトルは都市名を使う設計 (`3-title.yaml` の短縮ラダー) のため。
+  //   従来タイトルは構造化データを受け取っておらず、LLM が本文 3000 字から
+  //   読み取って開催地を落としていた (実測 4 件、2026-08-09)。
+  const 都市一覧 = toUniqueCities(input.prefectures ?? []);
+
   const base = {
     会場数: 会場一覧.length,
     is_multi_venue: 会場一覧.length >= 2,
     会場一覧,
     会場一覧表記: 会場一覧.join(VENUE_JOIN),
     ブランド一覧,
+    都市表記タイトル用: buildCityLabel(都市一覧, CITY_JOIN_TITLE, CITY_LIST_MAX_TITLE),
   };
 
   /** Step 2-4 の共通の締め。見出し主語を組み立てて返す。 */
@@ -379,7 +433,7 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
   }
 
   // --- Step 5: 都市名の見出しへ ---
-  const 都市表記 = buildCityLabel(input.prefectures ?? []);
+  const 都市表記 = buildCityLabel(都市一覧, CITY_JOIN, CITY_LIST_MAX);
   const 種別 = (input.eventTypeLabel ?? '').trim();
 
   if (都市表記.length === 0) {
