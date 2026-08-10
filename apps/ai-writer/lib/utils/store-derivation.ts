@@ -69,7 +69,7 @@
 
 import type { EventDataOccurrence } from '@revolution/schemas/mdx-frontmatter';
 
-import { validateVenueLabel } from './venue-label-validator';
+import { shortenPrefecture, validateVenueLabel } from './venue-label-validator';
 
 /** 表示用に会場名を連結する際の区切り。キャラクター名と同じく読点 (Templates CLAUDE.md §6.1)。 */
 const VENUE_JOIN = '、';
@@ -210,17 +210,6 @@ export interface StoreContext {
 /** 英数字だけを残して小文字化する。ドメインとブランド名/slug の突き合わせ用。 */
 function normalizeToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-/**
- * 都道府県名から接尾辞を落とす。
- *
- * ★ `道` は落とさない。「北海道」から落とすと「北海」という存在しない地名になる。
- */
-function shortenPrefecture(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed === '北海道') return trimmed;
-  return trimmed.replace(/[都府県]$/, '');
 }
 
 /**

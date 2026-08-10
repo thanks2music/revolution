@@ -85,8 +85,13 @@ const NON_VENUE_PATTERNS: RegExp[] = [
   /^EC(サイト|ショップ)?$/i,
 ];
 
-/** 都道府県名の接尾辞を落とす。`道` は落とさない (北海道 → 北海 になるため)。 */
-function shortenPrefecture(value: string): string {
+/**
+ * 都道府県名の接尾辞を落とす。`道` は落とさない (北海道 → 北海 になるため)。
+ *
+ * ★ `store-derivation.ts` からも使う。同じ関数が 2 箇所にあると、
+ *   一方だけ直して挙動が割れる (claude[bot] 指摘 2026-08-09)。
+ */
+export function shortenPrefecture(value: string): string {
   const trimmed = value.trim();
   if (trimmed === '北海道') return trimmed;
   return trimmed.replace(/[都府県]$/, '');

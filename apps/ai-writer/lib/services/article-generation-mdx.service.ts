@@ -966,7 +966,15 @@ export class ArticleGenerationMdxService {
         rss_link: rssItem.link,
         // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
         extractedPeriod: detailedExtraction?.開催期間,
-        extractedStoreName: detailedExtraction?.店舗名,
+        // ★ S1-d Phase 3: 店舗名も**決定表の結果**を渡す (claude[bot] 指摘 2026-08-09)。
+        //   都市だけ決定表の値にして店舗名を生値のまま残していたため、実測で
+        //   「H2 は BOX cafe&space なのにタイトルには OH MY CAFE が『確定』として渡る」
+        //   という食い違いが起きていた (くまのプーさん)。本 PR が潰したはずの形。
+        //
+        //   多ブランドで代表が決まらない場合 (`cities`) は代表店舗名が空になる。
+        //   その場合は店舗名を渡さない — 開催地は `extractedCityLabel` が担うため、
+        //   どれか 1 会場を「確定」として渡すと他会場を落とす原因になる。
+        extractedStoreName: storeContext.代表店舗名 || undefined,
         // ★ S1-d Phase 3: 開催都市を構造化データで渡す。H2 と同じ決定表が情報源。
         extractedCityLabel: storeContext.都市表記タイトル用 || undefined,
         // ★ S1-d Phase 3 (2026-08-09): 作品名は**取得時点で**短縮を判定する。

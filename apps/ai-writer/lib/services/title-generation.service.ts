@@ -204,6 +204,10 @@ ${extractedDataSection}
 
       if (request.extractedStoreName) {
         parts.push(`- 店舗名（確定）: ${request.extractedStoreName}`);
+        parts.push(
+          `  ※ **この表記をそのまま使う**。本文から他の会場名を拾って足したり、` +
+            `複数会場を「、」で連結したりしないこと（記事本文の見出しと食い違う原因になる）`
+        );
       }
 
       // ★ S1-d Phase 3: 開催都市を構造化データで渡す。
