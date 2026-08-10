@@ -86,7 +86,6 @@ export interface TitleGenerationRequest {
    *              タイトルが40文字を超える場合のみ使用可。
    * @example "ヒロアカ" for "僕のヒーローアカデミア"
    */
-  extractedWorkNameShort?: string;
 
   /**
    * 開催回数（第N弾形式）

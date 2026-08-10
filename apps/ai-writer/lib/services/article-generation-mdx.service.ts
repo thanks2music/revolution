@@ -997,11 +997,6 @@ export class ArticleGenerationMdxService {
         //   ★ 短縮の理由は文字数だけではない。タイトルでユーザーが検索するのは
         //     「スター・ウォーズ」「Nissy」であって副題・企画名ではない (BOSS)。
         extractedWorkName: titleWorkName,
-        // ★ 常に undefined。短縮判定は上の `titleWorkName` で済ませており、
-        //   ここに値を入れると「正式名称と略称を両方渡し、LLM に選ばせる」という
-        //   **本 PR が廃した設計**に戻ってしまう (LLM が条件を守らず 45 / 57 字の
-        //   タイトルを出していた)。フィールド自体は後方互換のため残している。
-        extractedWorkNameShort: undefined,
         // v2.3.0: 開催回数（第N弾形式）
         extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
       });

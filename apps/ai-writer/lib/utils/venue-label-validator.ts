@@ -62,15 +62,15 @@ const NON_VENUE_EXACT = new Set([
   'online',
 ]);
 
-/** 販売・受付チャネルであって会場ではないパターン。 */
 /**
  * 地名の連結に使われる区切り。
  *
- * ★ 本 PR 自身が「N都市」の都市表記でこの文字を使う (`東京・大阪`) ため、
+ * ★ 本モジュール自身が「N都市」の都市表記でこの文字を使う (`東京・大阪`) ため、
  *   同じ形の文字列が `venue_label` に入り込むことは十分ありうる。
  */
 const CONCAT_SEPARATOR = '・';
 
+/** 販売・受付チャネルであって会場ではないパターン。 */
 const NON_VENUE_PATTERNS: RegExp[] = [
   // ONLINE販売 / ONLINE STORE / オンライン販売 / オンラインストア
   /^ONLINE\b/i,

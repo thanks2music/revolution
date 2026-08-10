@@ -165,7 +165,9 @@ ${extractedDataSection}
    * detail-extraction step で抽出済みの情報がある場合、AIに優先的に使用させる
    *
    * @since v2.3.0 extractedEventNumber 追加
-   * @since v2.4.0 extractedWorkNameShort 追加
+   * @since v2.4.0 extractedWorkNameShort 追加 (S1-d Phase 3 で撤去。作品名の短縮判定は
+   *   呼び出し側が作品名の取得時点で行い、ここには確定値だけが渡る)
+   * @since S1-d Phase 3 extractedCityLabel 追加
    */
   private buildExtractedDataSection(request: TitleGenerationRequest): string {
     const parts: string[] = [];
@@ -175,7 +177,6 @@ ${extractedDataSection}
       request.extractedPeriod ||
       request.extractedStoreName ||
       request.extractedWorkName ||
-      request.extractedWorkNameShort ||
       request.extractedCityLabel ||
       request.extractedEventNumber;
 
@@ -196,11 +197,6 @@ ${extractedDataSection}
         );
       }
 
-      // 作品名（略称）- v2.4.0 追加。現在は呼び出し側で解決済みのため通常 undefined
-      if (request.extractedWorkNameShort) {
-        parts.push(`- 作品名（略称）: ${request.extractedWorkNameShort}`);
-        parts.push(`  ※ タイトルが40文字を超える場合のみ使用。10文字未満の作品は略称不可`);
-      }
 
       if (request.extractedStoreName) {
         parts.push(`- 店舗名（確定）: ${request.extractedStoreName}`);
