@@ -511,7 +511,7 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
     it('{{見出し主語}} を置換する (未登録だと本文に残る)', () => {
       const r = service.replaceAll('## {{見出し主語}}のメニュー', base);
 
-      expect(r.content).toBe('## トイ・ストーリー5 × OH MY CAFE のメニュー'.replace(' のメニュー', 'のメニュー'));
+      expect(r.content).toBe('## トイ・ストーリー5 × OH MY CAFEのメニュー');
       expect(r.unreplacedPlaceholders).not.toContain('{{見出し主語}}');
     });
 
