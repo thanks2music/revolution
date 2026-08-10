@@ -888,7 +888,11 @@ export class ArticleGenerationMdxService {
         //   (`store-name-validator.ts` と同じ設計思想)。年跨ぎの終了年省略も補正。
         const normalized = normalizeOccurrences({
           occurrences: parsed.data.occurrences,
-          prefectures: detailedExtraction?.開催都道府県,
+          // ★ 解決済みの `prefectures` を使う (claude[bot] 指摘 2026-08-09)。
+          //   生の `開催都道府県` は JP_PREFECTURE 辞書との照合前で、表記揺れや
+          //   ハルシネーションが混ざりうる。frontmatter は解決済みを書くため、
+          //   ここで生値を使うと**同じ記事で参照するデータ源が割れる**。
+          prefectures,
           fallbackPeriod: {
             startsOn: toIsoDate(detailedExtraction?.開催期間?.開始) ?? null,
             endsOn:
@@ -918,7 +922,11 @@ export class ArticleGenerationMdxService {
         occurrences: parsedEventDataResult?.occurrences,
         officialUrl: selectionResult.primary_official_url,
         brandSlugs: loadYamlConfig('BRAND_SLUGS').brand_slugs,
-        prefectures: detailedExtraction?.開催都道府県,
+        // ★ 解決済みの `prefectures` を使う (claude[bot] 指摘 2026-08-09)。
+        //   この値は `都市表記` (H2) と `都市表記タイトル用` (記事タイトル) の元になる。
+        //   生値を使うと、frontmatter には載らない不正な都道府県名が
+        //   **見出しとタイトルにだけ出る**という食い違いが起きる。
+        prefectures,
         eventTypeLabel: eventTypeHeadingLabel,
         workTitle: canonicalWorkTitle,
       });

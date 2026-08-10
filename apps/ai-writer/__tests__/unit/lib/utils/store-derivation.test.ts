@@ -406,6 +406,22 @@ describe('deriveStoreContext — 代表会場名の決定表', () => {
   });
   // ── claude[bot] レビュー由来 (2026-08-09) ─────────────────────
   describe('観測性とエッジケース (claude[bot] 指摘)', () => {
+    it('★ 作品名が空のとき venue 経路も cities 経路と同じ扱いにする', () => {
+      // claude[bot] 指摘 (2026-08-09): cities 側だけガードがあり、venue 側は
+      // 代表店舗名単体へ落ちて `## OH MY CAFEのメニュー` になりえた。
+      // 同じ決定表の中で分岐ごとに挙動が違う状態だった。
+      const r = deriveStoreContext({
+        occurrences: [occ('OH MY CAFE 表参道ヒルズ')],
+        brandSlugs: BRANDS,
+        workTitle: '',
+      });
+
+      expect(r.見出し形式).toBe('venue');
+      expect(r.代表店舗名).toBe('OH MY CAFE 表参道ヒルズ');
+      expect(r.見出し主語).toBe('');
+      expect(r.warnings.some((w) => w.includes('作品名が空'))).toBe(true);
+    });
+
     it('作品名が空でも「in 東京」という主語のない見出しを作らない', () => {
       const r = deriveStoreContext({
         occurrences: [occ('キャラウムカフェ 東京'), occ('CAFE EPIC TALE 大阪')],
