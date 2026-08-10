@@ -80,14 +80,6 @@ export interface TitleGenerationRequest {
   extractedWorkName?: string;
 
   /**
-   * 作品の略称（short_title）
-   * @since v2.4.0
-   * @description 10文字以上の作品のみに設定される。
-   *              タイトルが40文字を超える場合のみ使用可。
-   * @example "ヒロアカ" for "僕のヒーローアカデミア"
-   */
-
-  /**
    * 開催回数（第N弾形式）
    * @since v2.3.0
    * @description 2-extraction.yaml で抽出された開催回数。
