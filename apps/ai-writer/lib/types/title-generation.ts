@@ -58,18 +58,26 @@ export interface TitleGenerationRequest {
   extractedStoreName?: string;
 
   /**
+   * 開催都市の表記（オプション、`東京/大阪` / `4都市`）
+   *
+   * @description
+   * ★ S1-d Phase 3 で追加。**タイトルと H2 を同じ情報源から作るため。**
+   *
+   * 従来タイトルは都市の構造化データを一切受け取っておらず、LLM が
+   * `rss_content`（本文 3000 字）から読み取っていた。そのため実測 4 件で
+   * 開催地が欠落していた（東京・大阪の 2 会場開催なのに `in 渋谷` 等）。
+   *
+   * `deriveStoreContext()` の `都市表記タイトル用` を渡す。区切りは `/`、
+   * 4 都市以上は「N都市」に丸め済み（タイトルの文字数制約に合わせた閾値）。
+   *
+   * @since S1-d Phase 3 (2026-08-09)
+   */
+  extractedCityLabel?: string;
+
+  /**
    * detail-extraction step で抽出済みの作品名（オプション）
    */
   extractedWorkName?: string;
-
-  /**
-   * 作品の略称（short_title）
-   * @since v2.4.0
-   * @description 10文字以上の作品のみに設定される。
-   *              タイトルが40文字を超える場合のみ使用可。
-   * @example "ヒロアカ" for "僕のヒーローアカデミア"
-   */
-  extractedWorkNameShort?: string;
 
   /**
    * 開催回数（第N弾形式）

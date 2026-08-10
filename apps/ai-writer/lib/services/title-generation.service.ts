@@ -72,7 +72,13 @@ export class TitleGenerationService {
 
       // タイトルの文字数を検証
       const length = this.countCharacters(title);
-      const is_valid = length >= 28 && length <= 42;
+      // ★ S1-d Phase 3 で 42 → 40 に是正。従来は 3 箇所で上限が食い違っていた:
+      //   - 本 service: 42
+      //   - 3-title.yaml の短縮ラダー: 40 を目標に短縮
+      //   - CI (generate-article-index.test.ts): 40 超で **fail**
+      //   41-42 文字は service では valid なのに CI で落ちる状態だった。
+      //   実害の出る CI 側 (SEO 由来の 40) に合わせる。
+      const is_valid = length >= 28 && length <= 40;
 
       console.log('[TitleGeneration] タイトル生成完了:', {
         title,
@@ -90,7 +96,7 @@ export class TitleGenerationService {
 
       if (!is_valid) {
         console.warn(
-          `[TitleGeneration] タイトルが文字数制約（28〜42文字）を満たしていません: ${length}文字`
+          `[TitleGeneration] タイトルが文字数制約（28〜40文字）を満たしていません: ${length}文字`
         );
       }
 
@@ -148,7 +154,7 @@ ${extractedDataSection}
 以下のJSON形式で出力してください:
 \`\`\`json
 {
-  "title": "生成したタイトル（28〜42文字）",
+  "title": "生成したタイトル（28〜40文字）",
   "_reasoning": "タイトル生成の判断理由（適用したルール、日付の選択理由など）"
 }
 \`\`\``;
@@ -159,7 +165,9 @@ ${extractedDataSection}
    * detail-extraction step で抽出済みの情報がある場合、AIに優先的に使用させる
    *
    * @since v2.3.0 extractedEventNumber 追加
-   * @since v2.4.0 extractedWorkNameShort 追加
+   * @since v2.4.0 extractedWorkNameShort 追加 (S1-d Phase 3 で撤去。作品名の短縮判定は
+   *   呼び出し側が作品名の取得時点で行い、ここには確定値だけが渡る)
+   * @since S1-d Phase 3 extractedCityLabel 追加
    */
   private buildExtractedDataSection(request: TitleGenerationRequest): string {
     const parts: string[] = [];
@@ -169,25 +177,44 @@ ${extractedDataSection}
       request.extractedPeriod ||
       request.extractedStoreName ||
       request.extractedWorkName ||
-      request.extractedWorkNameShort ||
+      request.extractedCityLabel ||
       request.extractedEventNumber;
 
     if (hasExtractedData) {
       parts.push('\n## 抽出済みデータ（以下の情報は検証済みのため、優先的に使用してください）');
 
-      // 作品名（正式名称）
+      // 作品名（確定）
+      //
+      // ★ S1-d Phase 3 (2026-08-09): ここに入る値は**呼び出し側で短縮判定済み**。
+      //   従来は正式名称と略称を両方渡し「40 字を超える場合のみ略称を使う」という
+      //   条件付き指示にしていたが、LLM が守らず 45 / 57 字のタイトルが出ていた。
+      //   条件判定を呼び出し側 (作品名の取得時点) へ移し、ここでは確定値だけを渡す。
       if (request.extractedWorkName) {
         parts.push(`- 作品名（確定）: ${request.extractedWorkName}`);
+        parts.push(
+          `  ※ **この表記をそのまま使う**。本文中の正式名称や副題を足して長くしないこと` +
+            `（ユーザーが検索するのは主たる作品名であり、副題・企画名ではない）`
+        );
       }
 
-      // 作品名（略称）- v2.4.0 追加
-      if (request.extractedWorkNameShort) {
-        parts.push(`- 作品名（略称）: ${request.extractedWorkNameShort}`);
-        parts.push(`  ※ タイトルが42文字を超える場合のみ使用。10文字未満の作品は略称不可`);
-      }
 
       if (request.extractedStoreName) {
         parts.push(`- 店舗名（確定）: ${request.extractedStoreName}`);
+        parts.push(
+          `  ※ **この表記をそのまま使う**。本文から他の会場名を拾って足したり、` +
+            `複数会場を「、」で連結したりしないこと（記事本文の見出しと食い違う原因になる）`
+        );
+      }
+
+      // ★ S1-d Phase 3: 開催都市を構造化データで渡す。
+      //   従来は本文 3000 字から LLM が読み取っており、開催地が落ちていた
+      //   (実測: 東京・大阪の 2 会場開催なのに `in 渋谷`)。
+      if (request.extractedCityLabel) {
+        parts.push(`- 開催都市（確定）: ${request.extractedCityLabel}`);
+        parts.push(
+          `  ※ 「カフェ in {都市}」形式で地名を出す場合は**この値をそのまま使う**。` +
+            `本文から都市を推測して書き換えないこと（開催地の欠落・誤りの原因になる）`
+        );
       }
 
       if (request.extractedPeriod) {

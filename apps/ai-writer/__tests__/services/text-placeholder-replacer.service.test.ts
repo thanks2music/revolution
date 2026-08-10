@@ -489,4 +489,81 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
       });
     });
   });
+  // ===================================
+  // S1-d Phase 3 (2026-08-09): 会場系派生変数
+  // ===================================
+  //
+  // ★ 回帰ガード。simpleVariables は**明示登録方式**なので、`TextPlaceholderData` に
+  //   field を足すだけでは置換されない。実際 field 追加だけで dry-run したところ
+  //   `{{見出し主語}}` が 5 件そのまま本文に残った (replacedCount: 0)。
+  //   **型は通るため CI では気づけない**類の取りこぼしなので、テストで固定する。
+  describe('S1-d Phase 3 — 会場系派生変数の置換', () => {
+    const base: TextPlaceholderData = {
+      作品名: 'トイ・ストーリー5',
+      店舗名: 'OH MY CAFE',
+      見出し主語: 'トイ・ストーリー5 × OH MY CAFE',
+      代表店舗名: 'OH MY CAFE',
+      会場一覧表記: 'OH MY CAFE 表参道ヒルズ、BOX cafe&space ルミネエスト新宿2号店',
+      会場数: 5,
+      is_multi_venue: true,
+    };
+
+    it('{{見出し主語}} を置換する (未登録だと本文に残る)', () => {
+      const r = service.replaceAll('## {{見出し主語}}のメニュー', base);
+
+      expect(r.content).toBe('## トイ・ストーリー5 × OH MY CAFEのメニュー');
+      expect(r.unreplacedPlaceholders).not.toContain('{{見出し主語}}');
+    });
+
+    it('同一プレースホルダーが複数回出ても全て置換する', () => {
+      const src = [
+        '## {{見出し主語}}のメニュー',
+        '「{{見出し主語}}」では、コラボメニューがラインナップ!',
+        '## {{見出し主語}}のグッズ',
+      ].join('\n');
+
+      const r = service.replaceAll(src, base);
+
+      expect(r.content).not.toContain('{{見出し主語}}');
+      expect(r.unreplacedPlaceholders).toHaveLength(0);
+    });
+
+    it('会場系の 5 変数がすべて置換される', () => {
+      const src = '{{見出し主語}} / {{代表店舗名}} / {{会場一覧表記}} / {{会場数}} / {{is_multi_venue}}';
+
+      const r = service.replaceAll(src, base);
+
+      expect(r.content).toContain('トイ・ストーリー5 × OH MY CAFE');
+      expect(r.content).toContain('OH MY CAFE 表参道ヒルズ、BOX cafe&space ルミネエスト新宿2号店');
+      expect(r.content).toContain('5');
+      expect(r.content).toContain('true');
+      expect(r.unreplacedPlaceholders).toHaveLength(0);
+    });
+
+    it('多ブランドで代表が決まらない形 (Step 5) も置換できる', () => {
+      const r = service.replaceAll('## {{見出し主語}}のメニュー', {
+        作品名: 'D.Gray-man',
+        店舗名: 'キャラウムカフェ',
+        見出し主語: 'D.Gray-man カフェ in 東京・大阪',
+        代表店舗名: '',
+        会場数: 2,
+        is_multi_venue: true,
+      });
+
+      expect(r.content).toBe('## D.Gray-man カフェ in 東京・大阪のメニュー');
+      expect(r.content).not.toContain('MEDICOS');
+    });
+
+    it('会場数 0 / is_multi_venue false でも undefined 扱いにしない', () => {
+      // String(0) は falsy 判定に引っかかりやすい。0 と false が消えないことを固定する。
+      const r = service.replaceAll('{{会場数}}/{{is_multi_venue}}', {
+        作品名: 'テスト作品',
+        店舗名: 'テスト店舗',
+        会場数: 0,
+        is_multi_venue: false,
+      });
+
+      expect(r.content).toBe('0/false');
+    });
+  });
 });

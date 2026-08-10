@@ -25,6 +25,9 @@ import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../uti
 import { toIsoMsDate } from '../utils/date';
 import { extractEventFactCardFields, toIsoDate } from '../utils/event-fact-card-mapper';
 import { normalizeOccurrences } from '../utils/occurrence-normalizer';
+import { deriveStoreContext } from '../utils/store-derivation';
+import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
+import { loadYamlConfig } from '../config/yaml-loader';
 import { stripUtmFromUrl } from '../utils/url';
 import { EventDataSchema, type EventData } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
@@ -97,6 +100,25 @@ import type {
   VisionExtractionResult,
   FallbackLevelType,
 } from '@/lib/types/vision-api';
+
+/**
+ * 記事タイトル用に作品名を短縮する閾値（文字数）。
+ *
+ * @description
+ * 正式名称がこの長さ以上で、かつ辞書に短縮名があれば、**タイトルでは短縮名を使う**。
+ *
+ * ★ 10 文字なのは、既存の「10 文字未満の作品は略称不可」というルール
+ *   (`3-title.yaml` / プロンプト注記) と閾値を揃えるため。新しい基準を持ち込まない。
+ *
+ * ★ **文字数だけが理由ではない。** タイトルでユーザーが検索するのは
+ *   「スター・ウォーズ」「Nissy」であって、副題や企画名ではない (BOSS 2026-08-09)。
+ *   短縮は SEO 上の意図を持つ。
+ *
+ * ★ これは「タイトルが 40 字に収まる」ことを保証しない。店舗名や日付が長ければ
+ *   なお超過しうる。その場合は `3-title.yaml` の短縮ラダーが後段で効く。
+ *   本閾値は**作品名という最も支配的な要因を先に潰す**ためのもの。
+ */
+const WORK_TITLE_SHORTEN_THRESHOLD = 10;
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -833,8 +855,117 @@ export class ArticleGenerationMdxService {
         );
       }
 
+      // ========================================================================
+      // 会場派生変数の算出 (S1-d Phase 3): 代表会場名の決定表を 1 回だけ回す
+      // ========================================================================
+      //
+      // ★ **title-generation より前**に置く。記事タイトルも開催都市を必要とし、
+      //   H2 と同じ情報源から作らないと「H2 は東京・大阪、タイトルは渋谷」のように
+      //   同じ記事で開催地が食い違う (実測 4 件、2026-08-09)。
+      // ========================================================================
+      //
+      // ★ **ここで 1 回計算して以降のステップへ配る。** lead-generation /
+      //   content-generation / text-placeholder-replacement が別々に算出すると、
+      //   同じ記事の中でリード文と H2 で違う会場名が出る (§8「参照側の取りこぼし」の
+      //   典型形)。
+      //
+      // ★ occurrences の正規化もここへ前倒しする。従来は mdx-assembly まで待って
+      //   いたが、リード文と本文はそれより前に生成されるため間に合わない。
+      //   正規化結果は mdx-assembly でも再利用する (二重に走らせない)。
+      const parsedEventDataResult = (() => {
+        const raw = detailedExtraction?.event_data;
+        if (raw === undefined) return undefined;
+        const parsed = EventDataSchema.safeParse(raw);
+        if (!parsed.success) {
+          console.warn(
+            `${getStepContext('lead-generation', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
+            parsed.error.issues.slice(0, 3),
+          );
+          return undefined;
+        }
+        // ★ 多開催の正規化。プロンプトで「会場ごとに 1 要素」と指示していても
+        //   LLM が連結に回帰しうるため、アプリ側でも防御的に分割する
+        //   (`store-name-validator.ts` と同じ設計思想)。年跨ぎの終了年省略も補正。
+        const normalized = normalizeOccurrences({
+          occurrences: parsed.data.occurrences,
+          // ★ 解決済みの `prefectures` を使う (claude[bot] 指摘 2026-08-09)。
+          //   生の `開催都道府県` は JP_PREFECTURE 辞書との照合前で、表記揺れや
+          //   ハルシネーションが混ざりうる。frontmatter は解決済みを書くため、
+          //   ここで生値を使うと**同じ記事で参照するデータ源が割れる**。
+          prefectures,
+          fallbackPeriod: {
+            startsOn: toIsoDate(detailedExtraction?.開催期間?.開始) ?? null,
+            endsOn:
+              detailedExtraction?.開催期間?.終了?.未定 === true
+                ? null
+                : (toIsoDate(detailedExtraction?.開催期間?.終了) ?? null),
+          },
+        });
+        for (const warning of normalized.warnings) {
+          console.warn(
+            `${getStepContext('lead-generation', 'event_data')} ⚠️ occurrences 正規化: ${warning}`,
+          );
+        }
+        return { ...parsed.data, occurrences: normalized.occurrences } satisfies EventData;
+      })();
+
+      // 種別の見出し表記。**「カフェ」をハードコードしない** — pop-up-store や
+      // 原画展に「カフェ」と書くと事実誤認になる (revolution-article-meta.md §4.3 と同趣旨)。
+      const eventTypeSlugsConfig = loadYamlConfig('EVENT_TYPE_SLUGS');
+      const eventTypeHeadingLabel = resolveEventTypeHeadingLabel({
+        eventTypeName: extraction.eventTypeName,
+        eventTypes: eventTypeSlugsConfig.event_types,
+        headingLabels: eventTypeSlugsConfig.heading_labels,
+      });
+
+      const storeContext = deriveStoreContext({
+        occurrences: parsedEventDataResult?.occurrences,
+        officialUrl: selectionResult.primary_official_url,
+        brandSlugs: loadYamlConfig('BRAND_SLUGS').brand_slugs,
+        // ★ 解決済みの `prefectures` を使う (claude[bot] 指摘 2026-08-09)。
+        //   この値は `都市表記` (H2) と `都市表記タイトル用` (記事タイトル) の元になる。
+        //   生値を使うと、frontmatter には載らない不正な都道府県名が
+        //   **見出しとタイトルにだけ出る**という食い違いが起きる。
+        prefectures,
+        eventTypeLabel: eventTypeHeadingLabel,
+        workTitle: canonicalWorkTitle,
+      });
+
+      for (const warning of storeContext.warnings) {
+        console.warn(`${getStepContext('lead-generation', '会場派生')} ⚠️ ${warning}`);
+      }
+      console.log(`${getStepContext('lead-generation', '会場派生')} 代表会場名の決定:`, {
+        会場数: storeContext.会場数,
+        ブランド一覧: storeContext.ブランド一覧,
+        見出し形式: storeContext.見出し形式,
+        代表店舗名: storeContext.代表店舗名 || '(なし)',
+        見出し主語: storeContext.見出し主語,
+        // 地の文 (リード文・本文) へ流す値。見出しと食い違っていないかをログで追えるようにする
+        会場表現: storeContext.会場表現 || '(なし → 抽出結果の店舗名へ退避)',
+        // 記事タイトルへ渡す都市。H2 と同じ情報源から作れているかをログで追う
+        都市表記タイトル用: storeContext.都市表記タイトル用 || '(なし)',
+      });
+
       // title-generation step: Generate title using YAML template
       console.log(`\n${getStepDisplay('title-generation')} AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
+
+      // ★ 記事タイトル用の作品名。正式名称が長い場合は辞書の短縮名へ丸める。
+      //   `getShortTitle` は完全一致 → alias → **最長前方一致** の順に引く。
+      //   前方一致があるため「スター・ウォーズ／マンダロリアン・アンド・グローグー」も
+      //   「スター・ウォーズ」に解決できる (副題は企画ごとに変わるため alias 列挙では破綻する)。
+      const workTitleShort = canonicalWorkTitle ? (getShortTitle(canonicalWorkTitle) ?? null) : null;
+      const titleWorkName =
+        canonicalWorkTitle &&
+        canonicalWorkTitle.length >= WORK_TITLE_SHORTEN_THRESHOLD &&
+        workTitleShort
+          ? workTitleShort
+          : canonicalWorkTitle;
+
+      if (titleWorkName !== canonicalWorkTitle) {
+        console.log(
+          `${getStepContext('title-generation', '作品名')} 記事タイトル用に短縮: "${canonicalWorkTitle}" → "${titleWorkName}"`
+        );
+      }
 
       const titleService = new TitleGenerationService();
       const titleResult = await titleService.generateTitle({
@@ -843,13 +974,29 @@ export class ArticleGenerationMdxService {
         rss_link: rssItem.link,
         // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
         extractedPeriod: detailedExtraction?.開催期間,
-        extractedStoreName: detailedExtraction?.店舗名,
-        // 作品名は rss-extraction step の workTitle を canonical として使用
-        extractedWorkName: canonicalWorkTitle,
-        // v2.4.0: 作品名の略称（10文字以上の作品のみ設定）
-        extractedWorkNameShort: canonicalWorkTitle
-          ? getShortTitle(canonicalWorkTitle) ?? undefined
-          : undefined,
+        // ★ S1-d Phase 3: 店舗名も**決定表の結果**を渡す (claude[bot] 指摘 2026-08-09)。
+        //   都市だけ決定表の値にして店舗名を生値のまま残していたため、実測で
+        //   「H2 は BOX cafe&space なのにタイトルには OH MY CAFE が『確定』として渡る」
+        //   という食い違いが起きていた (くまのプーさん)。本 PR が潰したはずの形。
+        //
+        //   多ブランドで代表が決まらない場合 (`cities`) は代表店舗名が空になる。
+        //   その場合は店舗名を渡さない — 開催地は `extractedCityLabel` が担うため、
+        //   どれか 1 会場を「確定」として渡すと他会場を落とす原因になる。
+        extractedStoreName: storeContext.代表店舗名 || undefined,
+        // ★ S1-d Phase 3: 開催都市を構造化データで渡す。H2 と同じ決定表が情報源。
+        extractedCityLabel: storeContext.都市表記タイトル用 || undefined,
+        // ★ S1-d Phase 3 (2026-08-09): 作品名は**取得時点で**短縮を判定する。
+        //
+        //   従来は「タイトルが 40 字を超える場合のみ略称を使う」という条件付き指示を
+        //   プロンプトに書いていたが、LLM が守らず実測で 45 / 57 字のタイトルが出ていた
+        //   (「スター・ウォーズ／マンダロリアン・アンド・グローグー」がそのまま入る)。
+        //
+        //   条件をパイプラインの途中 (生成後の文字数) に置くと漏れる。作品名を
+        //   取得した時点で決めれば決定的になる (BOSS 判断 2026-08-09)。
+        //
+        //   ★ 短縮の理由は文字数だけではない。タイトルでユーザーが検索するのは
+        //     「スター・ウォーズ」「Nissy」であって副題・企画名ではない (BOSS)。
+        extractedWorkName: titleWorkName,
         // v2.3.0: 開催回数（第N弾形式）
         extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
       });
@@ -890,6 +1037,12 @@ export class ArticleGenerationMdxService {
         aiProviderFactory: createAiProvider,
       });
 
+      // ★ 会場の表記は決定表の結果 (`会場表現`) を流す。抽出結果の `店舗名` を
+      //   そのまま渡すと、H2 が「カフェ in 東京・大阪」なのにリード文は東京の 1 店だけを
+      //   名指しする、という食い違いが起きる (claude[bot] 指摘、2026-08-09 実測)。
+      //   決定表が何も作れなかった場合のみ抽出結果へ退避する。
+      const 会場表現 = storeContext.会場表現 || detailedExtraction.店舗名;
+
       const leadResult = await leadGenerator.generate({
         works: detailedExtraction.works ?? [],
         store: detailedExtraction.store ?? { name: detailedExtraction.店舗名 },
@@ -903,7 +1056,7 @@ export class ArticleGenerationMdxService {
         ノベルティ名: detailedExtraction.ノベルティ名,
         グッズ名: detailedExtraction.グッズ名,
         作品名: detailedExtraction.作品名,
-        店舗名: detailedExtraction.店舗名,
+        店舗名: 会場表現,
         略称: detailedExtraction.略称,
         公式サイトURL: detailedExtraction.公式サイトURL,
         // NOTE: スタジオ名/監督名/シリーズ名 は現状 ExtractionResult に未定義
@@ -1131,7 +1284,8 @@ export class ArticleGenerationMdxService {
         const textReplacer = getTextPlaceholderReplacerService();
         textPlaceholderReplacement = textReplacer.replaceAll(finalContent, {
           作品名: detailedExtraction.作品名,
-          店舗名: detailedExtraction.店舗名,
+          // ★ リード文と同じ値。本文の地の文で会場表現が割れないようにする。
+          店舗名: 会場表現,
           メディアタイプ: detailedExtraction.メディアタイプ,
           原作タイプ: detailedExtraction.原作タイプ,
           原作者有無: detailedExtraction.原作者有無,
@@ -1151,6 +1305,13 @@ export class ArticleGenerationMdxService {
           開催期間: detailedExtraction.開催期間,
           works: detailedExtraction.works || [],
           store: detailedExtraction.store || { name: detailedExtraction.店舗名 },
+          // ★ S1-d Phase 3: 会場系派生変数。上で 1 回だけ算出したものを配る。
+          //   `{{見出し主語}}` は各セクションの H2 が使う (sections/*.yaml)。
+          見出し主語: storeContext.見出し主語,
+          代表店舗名: storeContext.代表店舗名,
+          会場一覧表記: storeContext.会場一覧表記,
+          会場数: storeContext.会場数,
+          is_multi_venue: storeContext.is_multi_venue,
         });
 
         finalContent = textPlaceholderReplacement.content;
@@ -1196,45 +1357,11 @@ export class ArticleGenerationMdxService {
       // Sprint C-α PR #268 R3 (claude[bot] R3-rev2): shared schema から `EventData` 型を
       // 直接 import することで、`ReturnType<typeof EventDataSchema.parse>` の間接参照を排除。
       // schema 定義側の意図 (LLM 応答の zod validate 後の canonical type) がより明快に。
-      let parsedEventData: EventData | undefined;
-      // Sprint C-α PR #268 R1 対応 (claude[bot] comment #2-#6): `as any` cast を廃止し、
-      // `ExtractionResult.event_data: unknown` (extraction.service.ts) 経由の型契約に置き換え。
-      // `unknown` 型なので直接プロパティアクセスは型エラーで防がれ、必ず zod 検証を経由する。
-      const rawEventData = detailedExtraction?.event_data;
-      if (rawEventData !== undefined) {
-        const parseResult = EventDataSchema.safeParse(rawEventData);
-        if (parseResult.success) {
-          // ★ 多開催の正規化 (2026-08-09)。プロンプトで「会場ごとに 1 要素」と指示していても
-          //   LLM が連結に回帰しうるため、アプリ側でも防御的に分割する
-          //   (`store-name-validator.ts` と同じ設計思想)。
-          //   あわせて年跨ぎの終了年省略も補正する。
-          const normalized = normalizeOccurrences({
-            occurrences: parseResult.data.occurrences,
-            prefectures: detailedExtraction?.開催都道府県,
-            // 既存の日本語日付 → ISO 変換を再利用する (event-fact-card-mapper の fallback と同じ経路)。
-            // `終了.未定 === true` のときは終了日を補完しない。
-            fallbackPeriod: {
-              startsOn: toIsoDate(detailedExtraction?.開催期間?.開始) ?? null,
-              endsOn:
-                detailedExtraction?.開催期間?.終了?.未定 === true
-                  ? null
-                  : (toIsoDate(detailedExtraction?.開催期間?.終了) ?? null),
-            },
-          });
-          for (const warning of normalized.warnings) {
-            console.warn(
-              `${getStepContext('mdx-assembly', 'event_data')} ⚠️ occurrences 正規化: ${warning}`,
-            );
-          }
-          parsedEventData = { ...parseResult.data, occurrences: normalized.occurrences };
-        } else {
-          // LLM 応答の event_data が schema に適合しなかった場合の observability
-          console.warn(
-            `${getStepContext('mdx-assembly', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
-            parseResult.error.issues.slice(0, 3), // 最初の 3 件の issue のみログ (noise 回避)
-          );
-        }
-      }
+      // ★ S1-d Phase 3 (2026-08-09): parse + 正規化は lead-generation の前へ前倒し済み。
+      //   リード文と本文の H2 が正規化前の occurrences を見てしまうのを避けるため。
+      //   ここでは**その結果を再利用する**（同じ入力で 2 回走らせると、警告ログが
+      //   二重に出るうえ、将来どちらかだけ直して挙動が割れる余地を残す）。
+      const parsedEventData: EventData | undefined = parsedEventDataResult;
 
       // fallback 経路の start/end date の存在有無を先に判定して、helper 呼び出しの副作用を
       // 予測可能にする (droppedFields observability の判定精度向上、Sprint C-α PR #268 R1 対応)。

@@ -107,6 +107,43 @@ export interface TextPlaceholderData {
   is_multi_work?: boolean;
   コラボ作品名?: string;
 
+  // ===================================
+  // S1-d Phase 3 (2026-08-09): 会場系派生変数
+  // ===================================
+  //
+  // works 系だけ派生変数を持ち store 系は `店舗名` を素通しするだけ、という
+  // 非対称の解消。連結された会場名が本文の H2 見出しに流れ込んでいた根本原因。
+  //
+  // ★ **ここでは計算しない。** `deriveStoreContext()` が occurrences[] /
+  //   公式サイトのドメイン / brand-slugs.yaml / prefectures から決定的に計算した
+  //   結果を、orchestration (article-generation-mdx.service.ts) が 1 回だけ算出して
+  //   配る。works 系 (`computeDerivedVariables` で計算) とは供給経路が異なる。
+
+  /**
+   * 本文 H2 の主語。各セクションはこれに「のメニュー」等を付ける。
+   *
+   * @description
+   * 2 つの形を取る。どちらになるかは `deriveStoreContext()` の決定表が決める。
+   * - 会場が特定できる: `{作品名} × {代表会場名}`
+   * - 多ブランドで代表が決まらない: `{作品名} {種別} in {都道府県・都道府県}`
+   *
+   * @example 'トイ・ストーリー5 × OH MY CAFE'
+   * @example 'D.Gray-man カフェ in 東京・大阪'
+   */
+  見出し主語?: string;
+
+  /** 会場を 1 つだけ指すときの名前。多ブランドで決まらない場合は空文字 */
+  代表店舗名?: string;
+
+  /** 全会場を「、」で連結した**表示用**の文字列 (抽出結果ではない) */
+  会場一覧表記?: string;
+
+  /** ユニークな会場数。occurrences の要素数ではない (前期/後期は 1 と数える) */
+  会場数?: number;
+
+  /** 2 会場以上か。`is_multi_work` と対称 */
+  is_multi_venue?: boolean;
+
   // v1.4.0: メディアタイプ派生変数
   /**
    * idol/utaite判定フラグ
@@ -357,6 +394,19 @@ export class TextPlaceholderReplacerService {
       原作者名_formatted: data.原作者名_formatted,
       has_multiple_authors:
         data.has_multiple_authors !== undefined ? String(data.has_multiple_authors) : undefined,
+
+      // S1-d Phase 3 (2026-08-09): 会場系派生変数
+      //
+      // ★ 本マッピングは**明示登録方式**である。`TextPlaceholderData` に field を
+      //   足すだけでは置換されず、ここに書いて初めて `{{...}}` が解決される。
+      //   実際 field 追加だけで dry-run したところ `{{見出し主語}}` が 5 件
+      //   未置換のまま本文に残った。型は通るので CI では気づけない。
+      見出し主語: data.見出し主語,
+      代表店舗名: data.代表店舗名,
+      会場一覧表記: data.会場一覧表記,
+      会場数: data.会場数 !== undefined ? String(data.会場数) : undefined,
+      is_multi_venue:
+        data.is_multi_venue !== undefined ? String(data.is_multi_venue) : undefined,
     };
 
     for (const [varName, value] of Object.entries(simpleVariables)) {

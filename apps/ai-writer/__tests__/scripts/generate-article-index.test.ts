@@ -208,6 +208,58 @@ describe('generate-article-index.ts', () => {
     });
   });
 
+  describe('Placeholder Validation', () => {
+    /**
+     * 未置換プレースホルダーの検知 (S1-d Phase 3、claude[bot] 指摘 2026-08-09)
+     *
+     * ★ Templates と Revolution は cross-repo で、**マージ順序を誤ると
+     *   `{{見出し主語}}` が未定義のまま本文に露出する**。
+     *   `TextPlaceholderReplacerService` は値が undefined ならプレースホルダーを
+     *   そのまま残す実装で (意図したフォールバック)、パイプラインは warn を出すだけで
+     *   止まらない。つまり検知手段が dry-run ログの目視だけだった。
+     *
+     * ★ 実際に本 PR の開発中、`{{見出し主語}}` が 5 件そのまま残った状態を
+     *   dry-run で初めて発見している。型では防げず CI でも落ちなかった。
+     *   記事に混入したら気づけるよう、ここで止める。
+     */
+    it('should not contain unreplaced placeholders in article titles', () => {
+      const output = execSync(
+        `cd ${join(__dirname, '../..')} && npx tsx scripts/generate-article-index.ts --dry-run`,
+        { encoding: 'utf-8' }
+      );
+
+      const jsonMatch = output.match(/\{[\s\S]*"articles"[\s\S]*\}/);
+      const indexData = JSON.parse(jsonMatch![0]);
+
+      // `{{...}}` が残っている記事を収集する
+      const violations: Array<{ slug: string; field: string; value: string }> = [];
+      const PLACEHOLDER = /\{\{[^}]+\}\}/;
+
+      indexData.articles.forEach((article: any) => {
+        for (const field of ['title', 'excerpt'] as const) {
+          const value = article[field];
+          if (typeof value === 'string' && PLACEHOLDER.test(value)) {
+            violations.push({ slug: article.slug, field, value });
+          }
+        }
+      });
+
+      if (violations.length > 0) {
+        const errorMessage = [
+          `\n${violations.length} article(s) contain unreplaced placeholders:`,
+          ...violations.map(v => `  - [${v.slug}] ${v.field}: "${v.value}"`),
+          '',
+          'Templates と Revolution のマージ順序を確認してください。',
+          'Templates 側 PR をマージ → pnpm sync:templates → Revolution 側 PR の順が必要です。',
+        ].join('\n');
+
+        throw new Error(errorMessage);
+      }
+
+      expect(violations.length).toBe(0);
+    });
+  });
+
   describe('Title Validation', () => {
     it('should have titles within 40 characters for SEO optimization', () => {
       const output = execSync(
