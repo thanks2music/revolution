@@ -151,6 +151,22 @@ export interface StoreContext {
   都市表記: string;
   /** H2 の主語。各セクションはこれに「のメニュー」等を付ける */
   見出し主語: string;
+  /**
+   * 地の文で会場を指すときの表記。`{{店舗名}}` へ流し込む値。
+   *
+   * @description
+   * 見出しは名詞句、リード文は文である。同じ文字列は使えない
+   * (`× カフェ in 東京・大阪にてコラボカフェが開催される` は冗長で不自然)。
+   * よって見出しとは別に、文に埋めても自然な表記を用意する。
+   *
+   * ★ **これが無いと見出しとリード文で会場の表現が食い違う。** 実測では
+   *   見出しが「カフェ in 東京・大阪」なのにリード文は東京の 1 店だけを名指しし、
+   *   大阪の会場が本文から消えていた (claude[bot] 指摘、2026-08-09)。
+   *
+   * - 会場が特定できる場合: 代表店舗名 (例: `BOX cafe&space`)
+   * - 多ブランドで代表が決まらない場合: `東京・大阪の各会場` / `5都市の各会場`
+   */
+  会場表現: string;
   /** 呼び出し側がログへ出す。throw はしない (observability 規約) */
   warnings: string[];
 }
@@ -176,6 +192,10 @@ function shortenPrefecture(value: string): string {
  *
  * 最長一致を採る。「BOX cafe&space」と「BOX cafe&space 天王寺MIO店」のように
  * 辞書側に長短が混ざっても、より具体的な方を選ぶため。
+ *
+ * ★ **同じ長さのブランド名が複数一致した場合は、辞書 (YAML) の記述順で先に来た方**を採る
+ *   (`>` の厳密比較のため後続では上書きされない)。決定的ではあるが、暗黙に YAML の
+ *   記述順へ依存している。同名同長のブランドを辞書へ足す際は順序に注意すること。
  */
 function matchBrand(venueLabel: string, brandNames: string[]): string | null {
   let best: string | null = null;
@@ -323,6 +343,8 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
       workTitle.length > 0 && 代表店舗名.length > 0
         ? `${workTitle} × ${代表店舗名}`
         : workTitle || 代表店舗名,
+    // 地の文でもそのまま使える (「× BOX cafe&spaceにて開催される」)
+    会場表現: 代表店舗名,
     warnings,
   });
 
@@ -337,13 +359,23 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
   }
 
   // --- Step 4: ブランドが複数 → ドメインで「集合の中から」選ぶ ---
-  if (ブランド一覧.length >= 2 && input.officialUrl) {
-    const picked = pickBrandByDomain(input.officialUrl, ブランド一覧, brandSlugs);
-    if (picked !== null) return asVenue(picked);
-    warnings.push(
-      `ブランドが ${ブランド一覧.length} 種類ありますが、公式サイトのドメインがどれとも一致しませんでした。` +
-        `都市名での見出しに切り替えます（会場でないものを代表にしないため）。`
-    );
+  if (ブランド一覧.length >= 2) {
+    // ★ 公式 URL 未指定と、URL はあるが一致しないのは**同じ種類の情報**
+    //   (どちらも「なぜ代表会場名を選べなかったか」) なので、両方 warn する。
+    //   片方だけ黙って落とすと dry-run ログから経緯が追えなくなる。
+    if (!input.officialUrl) {
+      warnings.push(
+        `ブランドが ${ブランド一覧.length} 種類ありますが、公式サイトの URL が渡されていないため` +
+          `主催ブランドを判定できませんでした。都市名での見出しに切り替えます。`
+      );
+    } else {
+      const picked = pickBrandByDomain(input.officialUrl, ブランド一覧, brandSlugs);
+      if (picked !== null) return asVenue(picked);
+      warnings.push(
+        `ブランドが ${ブランド一覧.length} 種類ありますが、公式サイトのドメインがどれとも一致しませんでした。` +
+          `都市名での見出しに切り替えます（会場でないものを代表にしないため）。`
+      );
+    }
   }
 
   // --- Step 5: 都市名の見出しへ ---
@@ -355,7 +387,16 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
     warnings.push(
       '代表会場名を決められず、都道府県も取得できませんでした。見出しを作品名のみに退避します。'
     );
-    return { ...base, 見出し形式: 'cities', 代表店舗名: '', 都市表記: '', 見出し主語: workTitle, warnings };
+    return {
+      ...base,
+      見出し形式: 'cities',
+      代表店舗名: '',
+      都市表記: '',
+      見出し主語: workTitle,
+      // 会場を指す言葉が何も作れない。呼び出し側が抽出結果の店舗名へ退避する。
+      会場表現: '',
+      warnings,
+    };
   }
 
   if (種別.length === 0) {
@@ -367,6 +408,25 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
     );
   }
 
+  // ★ 作品名が空だと ` in 東京` → trim して `in 東京` という**主語のない見出し**になる。
+  //   都市表記も空のときは退避しているのに、こちらだけガードが無かった
+  //   (claude[bot] 指摘、2026-08-09)。同じ扱いに揃える。
+  if (workTitle.length === 0) {
+    warnings.push(
+      '作品名が空のため、都市名だけの見出しになるのを避けて見出し主語を空にしました。' +
+        '呼び出し側でセクション側の既定文言へ退避してください。'
+    );
+    return {
+      ...base,
+      見出し形式: 'cities',
+      代表店舗名: '',
+      都市表記,
+      見出し主語: '',
+      会場表現: `${都市表記}の各会場`,
+      warnings,
+    };
+  }
+
   const 見出し主語 = [workTitle, 種別].filter((s) => s.length > 0).join(' ') + ` in ${都市表記}`;
 
   return {
@@ -375,6 +435,9 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
     代表店舗名: '',
     都市表記,
     見出し主語: 見出し主語.trim(),
+    // 見出しは名詞句、地の文は文。同じ文字列は使えないため別に組む
+    // (`× カフェ in 東京・大阪にてコラボカフェが開催される` は冗長で不自然)。
+    会場表現: `${都市表記}の各会場`,
     warnings,
   };
 }

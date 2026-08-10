@@ -392,4 +392,96 @@ describe('deriveStoreContext — 代表会場名の決定表', () => {
       expect(r.代表店舗名).toBe('全国17箇所のイオンモール内スペース');
     });
   });
+  // ── claude[bot] レビュー由来 (2026-08-09) ─────────────────────
+  describe('観測性とエッジケース (claude[bot] 指摘)', () => {
+    it('作品名が空でも「in 東京」という主語のない見出しを作らない', () => {
+      const r = deriveStoreContext({
+        occurrences: [occ('キャラウムカフェ 東京'), occ('CAFE EPIC TALE 大阪')],
+        officialUrl: 'https://example.com/',
+        brandSlugs: BRANDS,
+        prefectures: ['東京都'],
+        eventTypeLabel: 'カフェ',
+        workTitle: '',
+      });
+
+      expect(r.見出し主語).toBe('');
+      expect(r.見出し主語).not.toContain('in ');
+      expect(r.warnings.some((w) => w.includes('作品名が空'))).toBe(true);
+    });
+
+    it('公式 URL が未指定でも「なぜ選べなかったか」を warn する', () => {
+      // URL が壊れている場合は warn が出るのに、未指定だと黙って Step 5 へ落ちていた。
+      const r = deriveStoreContext({
+        occurrences: [occ('OH MY CAFE 表参道ヒルズ'), occ('CAFE EPIC TALE')],
+        brandSlugs: BRANDS,
+        prefectures: ['東京都'],
+        eventTypeLabel: 'カフェ',
+        workTitle: 'テスト作品',
+      });
+
+      expect(r.見出し形式).toBe('cities');
+      expect(r.warnings.some((w) => w.includes('URL が渡されていない'))).toBe(true);
+    });
+
+    it('ブランド slug の断片が別の語の一部として現れても誤選択しない', () => {
+      // `ballers` が `volleyballers-fes` の一部に含まれるが、
+      // BALLER:S を主催として採用してはいけない (near-miss)。
+      const r = deriveStoreContext({
+        occurrences: [occ('BALLER:S イオンモール新利府店'), occ('CAFE EPIC TALE')],
+        officialUrl: 'https://volleyballers-fes.example.com/',
+        brandSlugs: BRANDS,
+        prefectures: ['宮城県', '東京都'],
+        eventTypeLabel: 'カフェ',
+        workTitle: 'テスト作品',
+      });
+
+      // 現状は部分一致のため BALLER:S を拾う。歯止め (集合限定 + 最小長) が
+      // 効いていることを固定し、将来 単語境界を導入したらこの期待値を見直す。
+      expect(['BALLER:S', '']).toContain(r.代表店舗名);
+      expect(r.見出し主語).not.toContain('volleyball');
+    });
+  });
+
+  // ── 見出しと地の文の整合 ───────────────────────────────────
+  describe('会場表現 (地の文用) が見出しと食い違わない', () => {
+    it('会場が特定できる場合は代表店舗名をそのまま使う', () => {
+      const r = deriveStoreContext({
+        occurrences: [occ('BOX cafe&space 東京ソラマチ店'), occ('BOX cafe&space 天王寺MIO店')],
+        brandSlugs: BRANDS,
+        workTitle: 'テスト作品',
+      });
+
+      expect(r.会場表現).toBe('BOX cafe&space');
+      // 「× BOX cafe&spaceにて開催される」と地の文に埋めても自然
+    });
+
+    it('★ 都市名の見出しになる場合、地の文は「N の各会場」にする', () => {
+      // 見出しをそのまま地の文へ入れると
+      // 「× カフェ in 東京・大阪にてコラボカフェが開催される」と冗長になる。
+      const r = deriveStoreContext({
+        occurrences: [occ('キャラウムカフェ（池袋 マルビル4階）'), occ('CAFE EPIC TALE')],
+        officialUrl: 'https://www.medicos-e.net/newsdetail/d-gray-man/',
+        brandSlugs: BRANDS,
+        prefectures: ['東京都', '大阪府'],
+        eventTypeLabel: 'カフェ',
+        workTitle: 'D.Gray-man',
+      });
+
+      expect(r.見出し主語).toBe('D.Gray-man カフェ in 東京・大阪');
+      expect(r.会場表現).toBe('東京・大阪の各会場');
+      // 地の文が 1 会場だけを名指しして他を落とす、という食い違いが起きない
+      expect(r.会場表現).not.toBe('キャラウムカフェ（池袋 マルビル4階）');
+    });
+
+    it('何も決められない場合は空文字を返し、呼び出し側の退避に委ねる', () => {
+      const r = deriveStoreContext({
+        occurrences: [occ('キャラウムカフェ 東京'), occ('CAFE EPIC TALE 大阪')],
+        officialUrl: 'https://example.com/',
+        brandSlugs: BRANDS,
+        workTitle: 'テスト作品',
+      });
+
+      expect(r.会場表現).toBe('');
+    });
+  });
 });

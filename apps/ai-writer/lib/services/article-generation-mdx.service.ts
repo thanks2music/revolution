@@ -884,7 +884,7 @@ export class ArticleGenerationMdxService {
         const parsed = EventDataSchema.safeParse(raw);
         if (!parsed.success) {
           console.warn(
-            `${getStepContext('mdx-assembly', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
+            `${getStepContext('lead-generation', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
             parsed.error.issues.slice(0, 3),
           );
           return undefined;
@@ -905,7 +905,7 @@ export class ArticleGenerationMdxService {
         });
         for (const warning of normalized.warnings) {
           console.warn(
-            `${getStepContext('mdx-assembly', 'event_data')} ⚠️ occurrences 正規化: ${warning}`,
+            `${getStepContext('lead-generation', 'event_data')} ⚠️ occurrences 正規化: ${warning}`,
           );
         }
         return { ...parsed.data, occurrences: normalized.occurrences } satisfies EventData;
@@ -938,6 +938,8 @@ export class ArticleGenerationMdxService {
         見出し形式: storeContext.見出し形式,
         代表店舗名: storeContext.代表店舗名 || '(なし)',
         見出し主語: storeContext.見出し主語,
+        // 地の文 (リード文・本文) へ流す値。見出しと食い違っていないかをログで追えるようにする
+        会場表現: storeContext.会場表現 || '(なし → 抽出結果の店舗名へ退避)',
       });
 
       // ========================================================================
@@ -967,6 +969,12 @@ export class ArticleGenerationMdxService {
         aiProviderFactory: createAiProvider,
       });
 
+      // ★ 会場の表記は決定表の結果 (`会場表現`) を流す。抽出結果の `店舗名` を
+      //   そのまま渡すと、H2 が「カフェ in 東京・大阪」なのにリード文は東京の 1 店だけを
+      //   名指しする、という食い違いが起きる (claude[bot] 指摘、2026-08-09 実測)。
+      //   決定表が何も作れなかった場合のみ抽出結果へ退避する。
+      const 会場表現 = storeContext.会場表現 || detailedExtraction.店舗名;
+
       const leadResult = await leadGenerator.generate({
         works: detailedExtraction.works ?? [],
         store: detailedExtraction.store ?? { name: detailedExtraction.店舗名 },
@@ -980,7 +988,7 @@ export class ArticleGenerationMdxService {
         ノベルティ名: detailedExtraction.ノベルティ名,
         グッズ名: detailedExtraction.グッズ名,
         作品名: detailedExtraction.作品名,
-        店舗名: detailedExtraction.店舗名,
+        店舗名: 会場表現,
         略称: detailedExtraction.略称,
         公式サイトURL: detailedExtraction.公式サイトURL,
         // NOTE: スタジオ名/監督名/シリーズ名 は現状 ExtractionResult に未定義
@@ -1208,7 +1216,8 @@ export class ArticleGenerationMdxService {
         const textReplacer = getTextPlaceholderReplacerService();
         textPlaceholderReplacement = textReplacer.replaceAll(finalContent, {
           作品名: detailedExtraction.作品名,
-          店舗名: detailedExtraction.店舗名,
+          // ★ リード文と同じ値。本文の地の文で会場表現が割れないようにする。
+          店舗名: 会場表現,
           メディアタイプ: detailedExtraction.メディアタイプ,
           原作タイプ: detailedExtraction.原作タイプ,
           原作者有無: detailedExtraction.原作者有無,
