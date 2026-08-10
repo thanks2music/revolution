@@ -237,16 +237,28 @@ describe('deriveStoreContext — 代表会場名の決定表', () => {
       expect(r.warnings.some((w) => w.includes('ブランド辞書に一致しない'))).toBe(true);
     });
 
-    it('venue_label が会場名でない (都道府県が入っている) 場合も落ちない', () => {
+    it('★ venue_label が「東京・愛知・大阪」でも見出しに漏らさない', () => {
       // Phase 2 以前のデータに実在する形。
+      //
+      // ★ claude[bot] 指摘 (2026-08-09): 従来この test は「throw しない」「警告が出る」
+      //   しか見ておらず、**見出しに漏れていることを検出できていなかった**。
+      //   実際 `## 呪術廻戦 × 東京・愛知・大阪のメニュー` が生成される状態だった。
+      //   本 PR が根絶した「地名の羅列が見出しに漏れる」バグと同じ形で、
+      //   区切りが「、」ではなく「・」なだけ。出力そのものを固定する。
       const r = deriveStoreContext({
         occurrences: [occ('東京・愛知・大阪')],
         brandSlugs: BRANDS,
+        prefectures: ['東京都', '愛知県', '大阪府'],
+        eventTypeLabel: 'カフェ',
         workTitle: '呪術廻戦',
       });
 
-      expect(r.warnings.length).toBeGreaterThan(0);
-      expect(() => r.見出し主語).not.toThrow();
+      expect(r.会場数).toBe(0);
+      expect(r.代表店舗名).toBe('');
+      expect(r.見出し主語).toBe('呪術廻戦 カフェ in 東京・愛知・大阪');
+      // 「× 東京・愛知・大阪」という会場名扱いの形になっていないこと
+      expect(r.見出し主語).not.toContain('×');
+      expect(r.warnings.some((w) => w.includes('会場として扱えない'))).toBe(true);
     });
 
     it('都道府県も種別も取れなければ作品名だけに退避する', () => {

@@ -95,4 +95,33 @@ describe('validateVenueLabel', () => {
       expect(validateVenueLabel('  ONLINE販売  ')).not.toBeNull();
     });
   });
+  describe('地名を「・」で連結した値を弾く (claude[bot] 指摘 2026-08-09)', () => {
+    const prefs = ['東京都', '愛知県', '大阪府'];
+
+    it('★ 東京・愛知・大阪 を弾く (実測で venue_label に入っていた値)', () => {
+      const r = validateVenueLabel('東京・愛知・大阪', prefs);
+      expect(r).not.toBeNull();
+      expect(r).toContain('連結');
+    });
+
+    it('接尾辞付きの連結も弾く', () => {
+      expect(validateVenueLabel('東京都・大阪府', prefs)).not.toBeNull();
+    });
+
+    it('★ 会場名が混ざる場合は弾かない (情報を失わないため)', () => {
+      // 「東京・BOX cafe&space」は会場名を含むので除外しない。
+      // 全要素が地名のときだけ弾く。
+      expect(validateVenueLabel('東京・BOX cafe&space 東京ソラマチ店', prefs)).toBeNull();
+    });
+
+    it('会場名の内部に出る「・」を巻き込まない', () => {
+      // occurrence-normalizer が「・」で分割しない理由と同じ。
+      expect(validateVenueLabel('ルミネエスト新宿 1号店・2号店', prefs)).toBeNull();
+      expect(validateVenueLabel('トイ・ストーリー カフェ 表参道', prefs)).toBeNull();
+    });
+
+    it('prefectures が渡されなければ連結判定をしない', () => {
+      expect(validateVenueLabel('東京・愛知・大阪')).toBeNull();
+    });
+  });
 });

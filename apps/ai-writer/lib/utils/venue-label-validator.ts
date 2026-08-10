@@ -63,6 +63,14 @@ const NON_VENUE_EXACT = new Set([
 ]);
 
 /** 販売・受付チャネルであって会場ではないパターン。 */
+/**
+ * 地名の連結に使われる区切り。
+ *
+ * ★ 本 PR 自身が「N都市」の都市表記でこの文字を使う (`東京・大阪`) ため、
+ *   同じ形の文字列が `venue_label` に入り込むことは十分ありうる。
+ */
+const CONCAT_SEPARATOR = '・';
+
 const NON_VENUE_PATTERNS: RegExp[] = [
   // ONLINE販売 / ONLINE STORE / オンライン販売 / オンラインストア
   /^ONLINE\b/i,
@@ -123,6 +131,38 @@ export function validateVenueLabel(
     if (short.length === 0) continue;
     if (trimmed === short || trimmed === pref.trim()) {
       return `「${trimmed}」は都道府県名であって会場名ではありません`;
+    }
+  }
+
+  // ★ 地名を「・」で連結した値も弾く (claude[bot] 指摘、2026-08-09)。
+  //
+  //   単一の都道府県との完全一致しか見ていなかったため、`東京・愛知・大阪` のような
+  //   **連結**が素通りしていた。1 会場として扱われて Step 2 に落ち、
+  //   `## 呪術廻戦 × 東京・愛知・大阪のメニュー` という見出しになる。
+  //   これは本 PR が根絶した「地名の羅列が見出しに漏れる」バグと**同じ形**で、
+  //   区切りが「、」ではなく「・」なだけである。
+  //
+  //   `occurrence-normalizer` は「・」で分割しない (「ルミネエスト新宿 1号店・2号店」
+  //   のように会場名の内部に出るため)。分割しない判断は正しいので、
+  //   **こちら側で「全要素が都道府県なら会場ではない」と判定する**。
+  //
+  //   ★ 一部だけ都道府県のケース (「東京・BOX cafe&space」) は弾かない。
+  //     会場名が含まれる以上、除外すると情報を失う。全要素が地名のときだけ弾く。
+  if (trimmed.includes(CONCAT_SEPARATOR)) {
+    const parts = trimmed.split(CONCAT_SEPARATOR).map((p) => p.trim()).filter((p) => p.length > 0);
+    if (parts.length >= 2) {
+      const knownCities = new Set<string>();
+      for (const pref of prefectures ?? []) {
+        const short = shortenPrefecture(pref);
+        if (short.length > 0) {
+          knownCities.add(short);
+          knownCities.add(pref.trim());
+        }
+      }
+      const allCities = parts.every((p) => knownCities.has(p));
+      if (allCities) {
+        return `「${trimmed}」は都道府県名を「${CONCAT_SEPARATOR}」で連結した値であって会場名ではありません`;
+      }
     }
   }
 
