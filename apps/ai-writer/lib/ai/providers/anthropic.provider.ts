@@ -144,11 +144,14 @@ JSON以外の説明文は出力しないでください。`;
     //   (openai.provider.ts の同メソッドと同じ理由)。
     const startedAt = Date.now();
 
+    // 実送信値と記録値を 1 箇所に束ねる (openai.provider.ts の同メソッドと同じ理由)。
+    const temperature = 0;
+
     try {
       const response = await this.client.messages.create({
         model: this.modelName,
         max_tokens: 1024,
-        temperature: 0,
+        temperature,
         messages: [{ role: 'user', content: prompt }],
       });
 
@@ -179,7 +182,7 @@ JSON以外の説明文は出力しないでください。`;
         finishReason: response.stop_reason ?? undefined,
         latencyMs: Date.now() - startedAt,
         requestId: response.id,
-        temperature: 0,
+        temperature,
         prompt,
         promptSha256: hashForAiCallRecord(prompt),
         promptChars: prompt.length,
@@ -201,7 +204,7 @@ JSON以外の説明文は出力しないでください。`;
         provider: 'anthropic',
         requestedModel: this.modelName,
         latencyMs: Date.now() - startedAt,
-        temperature: 0,
+        temperature,
         prompt,
         promptSha256: hashForAiCallRecord(prompt),
         promptChars: prompt.length,
@@ -292,7 +295,7 @@ JSON以外の説明文は出力しないでください。`;
       const response = await this.client.messages.create({
         model: this.modelName,
         max_tokens: options?.maxTokens ?? 2048,
-        temperature: options?.temperature ?? 0,
+        temperature,
         system: options?.systemPrompt,
         messages,
       });

@@ -249,11 +249,15 @@ JSON以外の説明文は出力しないでください。`;
     //   していない」状態になる (前セッションが 3 回指摘された失敗の形)。
     const startedAt = Date.now();
 
+    // 実送信値と記録値を 1 箇所に束ねる。リテラルを 2 箇所に書くと、片方だけ変えたときに
+    // 「ログ上の temperature」と「実際に送った temperature」が食い違う (観測ログが嘘になる)。
+    const temperature = 0.3;
+
     try {
       const completion = await this.client.chat.completions.create({
         model: this.modelName,
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
+        temperature,
       });
 
       const responseText = completion.choices[0]?.message?.content || '';
@@ -275,7 +279,7 @@ JSON以外の説明文は出力しないでください。`;
         finishReason: completion.choices[0]?.finish_reason,
         latencyMs: Date.now() - startedAt,
         requestId: completion.id,
-        temperature: 0.3,
+        temperature,
         prompt,
         promptSha256: hashForAiCallRecord(prompt),
         promptChars: prompt.length,
@@ -297,7 +301,7 @@ JSON以外の説明文は出力しないでください。`;
         provider: 'openai',
         requestedModel: this.modelName,
         latencyMs: Date.now() - startedAt,
-        temperature: 0.3,
+        temperature,
         prompt,
         promptSha256: hashForAiCallRecord(prompt),
         promptChars: prompt.length,
@@ -621,7 +625,7 @@ Respond ONLY with JSON format. No other text should be included.
         model: this.modelName,
         messages,
         max_completion_tokens: options?.maxTokens ?? 2048,
-        temperature: options?.temperature ?? 0,
+        temperature,
       };
 
       // Structured Outputs (strict mode) — responseSchema provided:

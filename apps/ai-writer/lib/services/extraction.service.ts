@@ -322,7 +322,10 @@ export class ExtractionService {
       const prompt = this.buildPrompt(template, request);
 
       // デバッグ: 送信プロンプトをログ出力
-      if (process.env.DEBUG_EXTRACTION_PROMPT === 'true' && !shouldSuppressInlinePromptDump('detail-extraction')) {
+      if (
+        process.env.DEBUG_EXTRACTION_PROMPT === 'true' &&
+        !shouldSuppressInlinePromptDump('detail-extraction')
+      ) {
         console.log('\n[Extraction] ========== 送信プロンプト全文 ==========');
         console.log(prompt);
         console.log('[Extraction] ========== プロンプト終了 ==========\n');

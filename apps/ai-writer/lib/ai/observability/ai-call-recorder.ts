@@ -37,9 +37,15 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import type { PipelineStepId } from '@/lib/services/pipeline-steps';
+import type { AiProviderType } from '@/lib/ai/providers/ai-provider.interface';
 
-/** 応答全文をレコードに埋め込む上限。超えた分は切り捨て、`responseTruncated` を立てる。 */
-const MAX_INLINE_RESPONSE_CHARS = 200_000;
+/**
+ * 応答全文をレコードに埋め込む上限。超えた分は切り捨て、`responseTruncated` を立てる。
+ *
+ * テストから参照できるよう export する (リテラルを test 側に書き写すと、上限を変えた
+ * ときに境界テストが黙って無意味な値を検証し続ける)。
+ */
+export const MAX_INLINE_RESPONSE_CHARS = 200_000;
 
 /**
  * 1 回の AI 呼び出しの記録。
@@ -56,8 +62,14 @@ export interface AiCallRecord {
   stepId: PipelineStepId | 'unknown';
   /** 記録時刻 (ISO 8601) */
   ts: string;
-  /** `'openai' | 'anthropic' | 'gemini'` */
-  provider: string;
+  /**
+   * プロバイダ識別子 (ベンダー名)。
+   *
+   * ⚠️ `string` ではなく `AiProviderType` を使う。ここを緩めると PR #296 のような
+   * 語彙の変更 (`gemini` → `google`) をコンパイラが検出できず、**観測ログだけが
+   * 廃止済みの語彙を書き続ける**状態になる (実際に一度そうなった)。
+   */
+  provider: AiProviderType;
 
   /** こちらが要求したモデル名 */
   requestedModel: string;
@@ -207,10 +219,26 @@ export function initAiCallRecorder(logFilePath: string): void {
 }
 
 /**
- * `DEBUG_AI_STEPS` だけが指定された経路 (API Route 等) 用の遅延初期化。
+ * `DEBUG_AI_STEPS` だけが指定された経路用の遅延初期化。
  *
  * `debug:mdx` を経由しないため basename の元になるログファイルが無い。日付 + PID で
  * 一意な runId を作る。
+ *
+ * ## ⚠️ 想定は「1 プロセス = 1 実行」だけ
+ *
+ * `state` は module スコープで、`runId` と `seq` を**プロセス単位で共有する**。
+ * 1 プロセスが複数の実行を並行処理すると、別々の実行の呼び出しが同じ `runId` の
+ * 下に混ざり、`seq` も交互に振られる。つまり **JSONL 1 本 = 1 実行という比較側
+ * (`compare-runs.ts`) の前提が崩れる**。
+ *
+ * 実行単位で分離するなら `AsyncLocalStorage` が要るが、現状は導入しない:
+ *
+ * - `NODE_ENV === 'production'` では記録自体が無効
+ * - 明示初期化なしで動くのは `DEBUG_AI_STEPS` を意図的に立てたときだけ
+ * - 実際の用途は `debug:mdx` の 1 プロセス 1 実行
+ *
+ * よって**並行リクエストを捌くサーバ経路でこの遅延初期化に頼ってはいけない**、という
+ * 制約として明記しておく (将来そこで使うなら実行単位の state 分離が前提条件)。
  */
 function ensureLazyState(): RecorderState {
   if (state) return state;
