@@ -93,7 +93,16 @@ export class TitleGenerationService {
       });
 
       // デバッグモード時は reasoning を表示
-      if (process.env.DEBUG_TITLE_PROMPT === 'true' && _reasoning) {
+      //
+      // ★ プロンプト全文と同じ理由で抑止する。`_reasoning` は応答の一部であり、
+      //   recorder が有効なら `responseText` として JSONL に丸ごと残っている。
+      //   出力は小さいが「情報が二重に出る」経路をここだけ残す理由がない
+      //   (claude[bot] 指摘 2026-08-12)。
+      if (
+        process.env.DEBUG_TITLE_PROMPT === 'true' &&
+        !shouldSuppressInlinePromptDump('title-generation') &&
+        _reasoning
+      ) {
         console.log('\n[TitleGeneration] === タイトル生成理由 ===');
         console.log(_reasoning);
         console.log('[TitleGeneration] === 理由終了 ===\n');
