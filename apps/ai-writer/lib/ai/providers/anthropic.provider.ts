@@ -21,6 +21,7 @@ import type {
   SendMessageOptions,
   SendMessageResult,
 } from './ai-provider.interface';
+import { recordAiCall, hashForAiCallRecord } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * Anthropic Claude Provider
@@ -139,6 +140,10 @@ ${input.link ? `**URL**: ${input.link}` : ''}
 
 JSON以外の説明文は出力しないでください。`;
 
+    // ★ `extractFromRss` は `sendMessage` を経由しない独自実装のため、記録も個別に要る
+    //   (openai.provider.ts の同メソッドと同じ理由)。
+    const startedAt = Date.now();
+
     try {
       const response = await this.client.messages.create({
         model: this.modelName,
@@ -157,21 +162,52 @@ JSON以外の説明文は出力しないでください。`;
         throw new Error('Unexpected response type from Claude API');
       }
 
+      const usage = response.usage
+        ? {
+            promptTokens: response.usage.input_tokens,
+            completionTokens: response.usage.output_tokens,
+            totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+          }
+        : undefined;
+
+      await recordAiCall({
+        stepId: 'rss-extraction',
+        provider: 'anthropic',
+        requestedModel: this.modelName,
+        resolvedModel: response.model,
+        systemFingerprint: null,
+        finishReason: response.stop_reason ?? undefined,
+        latencyMs: Date.now() - startedAt,
+        requestId: response.id,
+        temperature: 0,
+        prompt,
+        promptSha256: hashForAiCallRecord(prompt),
+        promptChars: prompt.length,
+        responseSha256: hashForAiCallRecord(content.text),
+        responseChars: content.text.length,
+        responseText: content.text,
+        usage,
+      });
+
       const result = this.parseRssExtractionResponse(content.text);
 
       // usage をコスト追跡用に追加
-      return {
-        ...result,
-        usage: response.usage
-          ? {
-              promptTokens: response.usage.input_tokens,
-              completionTokens: response.usage.output_tokens,
-              totalTokens: response.usage.input_tokens + response.usage.output_tokens,
-            }
-          : undefined,
-      };
+      return { ...result, usage };
     } catch (error) {
       console.error('Anthropic RSS extraction error:', error);
+
+      await recordAiCall({
+        stepId: 'rss-extraction',
+        provider: 'anthropic',
+        requestedModel: this.modelName,
+        latencyMs: Date.now() - startedAt,
+        temperature: 0,
+        prompt,
+        promptSha256: hashForAiCallRecord(prompt),
+        promptChars: prompt.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
       throw new Error(
         `Failed to extract RSS information: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -246,6 +282,10 @@ JSON以外の説明文は出力しないでください。`;
   async sendMessage(prompt: string, options?: SendMessageOptions): Promise<SendMessageResult> {
     console.log(`🤖 Using AI Provider: Anthropic Claude (${this.modelName})`);
 
+    const stepId = options?.stepId ?? 'unknown';
+    const temperature = options?.temperature ?? 0;
+    const startedAt = Date.now();
+
     try {
       const messages: Anthropic.MessageParam[] = [{ role: 'user', content: prompt }];
 
@@ -267,17 +307,62 @@ JSON以外の説明文は出力しないでください。`;
         throw new Error('Unexpected response type from Claude API');
       }
 
+      const latencyMs = Date.now() - startedAt;
+      const usage = {
+        promptTokens: response.usage.input_tokens,
+        completionTokens: response.usage.output_tokens,
+        totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+      };
+
+      await recordAiCall({
+        stepId,
+        context: options?.recordContext,
+        provider: 'anthropic',
+        requestedModel: this.modelName,
+        resolvedModel: response.model,
+        // Anthropic に `system_fingerprint` 相当の概念はない。値を持たないことを
+        // null で明示しておかないと、比較ツール側で「未記録」と「非対応」を
+        // 区別できない。
+        systemFingerprint: null,
+        finishReason: response.stop_reason ?? undefined,
+        latencyMs,
+        requestId: response.id,
+        temperature,
+        prompt,
+        promptSha256: hashForAiCallRecord(prompt),
+        promptChars: prompt.length,
+        responseSha256: hashForAiCallRecord(content.text),
+        responseChars: content.text.length,
+        responseText: content.text,
+        usage,
+      });
+
       return {
         content: content.text,
         model: this.modelName,
-        usage: {
-          promptTokens: response.usage.input_tokens,
-          completionTokens: response.usage.output_tokens,
-          totalTokens: response.usage.input_tokens + response.usage.output_tokens,
-        },
+        usage,
+        resolvedModel: response.model,
+        systemFingerprint: null,
+        finishReason: response.stop_reason ?? undefined,
+        latencyMs,
+        requestId: response.id,
       };
     } catch (error) {
       console.error('Anthropic sendMessage error:', error);
+
+      await recordAiCall({
+        stepId,
+        context: options?.recordContext,
+        provider: 'anthropic',
+        requestedModel: this.modelName,
+        latencyMs: Date.now() - startedAt,
+        temperature,
+        prompt,
+        promptSha256: hashForAiCallRecord(prompt),
+        promptChars: prompt.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
       throw new Error(
         `Failed to send message to Claude: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

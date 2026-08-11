@@ -405,6 +405,7 @@ export class LeadGeneratorService {
       // fallback 発火の度に factory から fresh provider を resolve (R2: singleton stale 化回避)
       const provider = this.deps.aiProviderFactory!();
       const response = await provider.sendMessage(prompt, {
+        stepId: 'lead-generation',
         temperature: 0.3,
         responseFormat: 'json',
         responseSchema: schemaPayload,

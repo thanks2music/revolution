@@ -97,6 +97,7 @@ export async function generateArticleMetadata(
   try {
     // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
     const response = await aiProvider.sendMessage(prompt, {
+      stepId: 'metadata-generation',
       maxTokens: METADATA_DEFAULTS.MAX_TOKENS,
       temperature: METADATA_DEFAULTS.TEMPERATURE,
       responseFormat: 'json',

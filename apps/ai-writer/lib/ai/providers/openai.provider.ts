@@ -20,6 +20,7 @@ import type {
   SendMessageOptions,
   SendMessageResult,
 } from './ai-provider.interface';
+import { recordAiCall, hashForAiCallRecord } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * Supported OpenAI models for Revolution AI Writer
@@ -243,6 +244,11 @@ ${input.link ? `**URL**: ${input.link}` : ''}
 
 JSON以外の説明文は出力しないでください。`;
 
+    // ★ `extractFromRss` は `sendMessage` を経由しない独自実装のため、記録も個別に要る。
+    //   ここを飛ばすと rss-extraction だけが観測ログから欠落し、「一部にしか手当て
+    //   していない」状態になる (前セッションが 3 回指摘された失敗の形)。
+    const startedAt = Date.now();
+
     try {
       const completion = await this.client.chat.completions.create({
         model: this.modelName,
@@ -251,21 +257,53 @@ JSON以外の説明文は出力しないでください。`;
       });
 
       const responseText = completion.choices[0]?.message?.content || '';
+      const usage = completion.usage
+        ? {
+            promptTokens: completion.usage.prompt_tokens,
+            completionTokens: completion.usage.completion_tokens,
+            totalTokens: completion.usage.total_tokens,
+          }
+        : undefined;
+
+      await recordAiCall({
+        stepId: 'rss-extraction',
+        provider: 'openai',
+        requestedModel: this.modelName,
+        resolvedModel: completion.model,
+        systemFingerprint:
+          (completion as { system_fingerprint?: string | null }).system_fingerprint ?? null,
+        finishReason: completion.choices[0]?.finish_reason,
+        latencyMs: Date.now() - startedAt,
+        requestId: completion.id,
+        temperature: 0.3,
+        prompt,
+        promptSha256: hashForAiCallRecord(prompt),
+        promptChars: prompt.length,
+        responseSha256: hashForAiCallRecord(responseText),
+        responseChars: responseText.length,
+        responseText,
+        usage,
+      });
+
       const result = this.parseRssExtractionResponse(responseText);
 
       // usage をコスト追跡用に追加
-      return {
-        ...result,
-        usage: completion.usage
-          ? {
-              promptTokens: completion.usage.prompt_tokens,
-              completionTokens: completion.usage.completion_tokens,
-              totalTokens: completion.usage.total_tokens,
-            }
-          : undefined,
-      };
+      return { ...result, usage };
     } catch (error) {
       console.error('OpenAI RSS extraction error:', error);
+
+      await recordAiCall({
+        stepId: 'rss-extraction',
+        provider: 'openai',
+        requestedModel: this.modelName,
+        latencyMs: Date.now() - startedAt,
+        temperature: 0.3,
+        prompt,
+        promptSha256: hashForAiCallRecord(prompt),
+        promptChars: prompt.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
       throw new Error(
         `Failed to extract RSS information: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -559,6 +597,10 @@ Respond ONLY with JSON format. No other text should be included.
   async sendMessage(prompt: string, options?: SendMessageOptions): Promise<SendMessageResult> {
     console.log(`🤖 Using AI Provider: OpenAI (${this.modelName})`);
 
+    const stepId = options?.stepId ?? 'unknown';
+    const temperature = options?.temperature ?? 0;
+    const startedAt = Date.now();
+
     try {
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
@@ -599,6 +641,7 @@ Respond ONLY with JSON format. No other text should be included.
       }
 
       const completion = await this.client.chat.completions.create(createOptions);
+      const latencyMs = Date.now() - startedAt;
 
       // With Structured Outputs (strict mode), the API may return `message.refusal` instead of
       // populating `message.content` when the model declines to comply with the schema (safety
@@ -615,19 +658,67 @@ Respond ONLY with JSON format. No other text should be included.
 
       const responseText = message?.content || '';
 
+      const usage = completion.usage
+        ? {
+            promptTokens: completion.usage.prompt_tokens,
+            completionTokens: completion.usage.completion_tokens,
+            totalTokens: completion.usage.total_tokens,
+          }
+        : undefined;
+
+      // `system_fingerprint` は SDK の型上 optional。OpenAI 公式が determinism の
+      // 監視手段として案内している唯一の値であり、ここで捨てると復元できない。
+      const systemFingerprint =
+        (completion as { system_fingerprint?: string | null }).system_fingerprint ?? null;
+
+      await recordAiCall({
+        stepId,
+        context: options?.recordContext,
+        provider: 'openai',
+        requestedModel: this.modelName,
+        resolvedModel: completion.model,
+        systemFingerprint,
+        finishReason: completion.choices[0]?.finish_reason,
+        latencyMs,
+        requestId: completion.id,
+        temperature,
+        prompt,
+        promptSha256: hashForAiCallRecord(prompt),
+        promptChars: prompt.length,
+        responseSha256: hashForAiCallRecord(responseText),
+        responseChars: responseText.length,
+        responseText,
+        usage,
+      });
+
       return {
         content: responseText,
         model: this.modelName,
-        usage: completion.usage
-          ? {
-              promptTokens: completion.usage.prompt_tokens,
-              completionTokens: completion.usage.completion_tokens,
-              totalTokens: completion.usage.total_tokens,
-            }
-          : undefined,
+        usage,
+        resolvedModel: completion.model,
+        systemFingerprint,
+        finishReason: completion.choices[0]?.finish_reason,
+        latencyMs,
+        requestId: completion.id,
       };
     } catch (error) {
       console.error('OpenAI sendMessage error:', error);
+
+      // ★ 失敗も成功と同じ平面に記録する。「N 回中 M 回失敗」を後から数えるには
+      //   失敗レコードが要る (成功だけ残すと歩留まりが測れない)。
+      await recordAiCall({
+        stepId,
+        context: options?.recordContext,
+        provider: 'openai',
+        requestedModel: this.modelName,
+        latencyMs: Date.now() - startedAt,
+        temperature,
+        prompt,
+        promptSha256: hashForAiCallRecord(prompt),
+        promptChars: prompt.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
       throw new Error(
         `Failed to send message to OpenAI: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

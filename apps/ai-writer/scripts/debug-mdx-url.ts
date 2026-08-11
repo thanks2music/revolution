@@ -48,6 +48,12 @@ config({ path: resolve(__dirname, '../.env.local') });
 // HTML + タイトル抽出
 import { extractArticleData } from '../lib/utils/html-extractor';
 
+// AI ステップの観測ログ
+import {
+  initAiCallRecorder,
+  getAiCallJsonlPath,
+} from '../lib/ai/observability/ai-call-recorder';
+
 // MDX生成サービス
 import { ArticleGenerationMdxService } from '../lib/services/article-generation-mdx.service';
 import type { MdxGenerationRequest } from '../lib/services/article-generation-mdx.service';
@@ -244,6 +250,16 @@ async function main() {
     const logging = setupConsoleLogging(logFilePath);
     logCleanup = logging.cleanup;
     console.log(`📝 ログファイル: ${logFilePath}`);
+
+    // ★ 観測ログ (Phase 3.5 A) を有効化する。
+    //
+    //   **`DEBUG_*` フラグに依存させない**のが要点。従来は 11 個のフラグが各サービス
+    //   に散らばっており、`DEBUG_EXTRACTION_PROMPT` だけが未設定だったために
+    //   「最重要ステップである抽出のプロンプトが 1 行も残らない」状態が続いていた。
+    //   `--log` を付けた時点で全 AI ステップを記録する形にすれば、設定漏れが
+    //   原理的に起きない。
+    initAiCallRecorder(logFilePath);
+    console.log(`📊 観測ログ (JSONL): ${getAiCallJsonlPath()}`);
   }
 
   console.log('🔍 URLからMDX記事生成デバッグ開始\n');
@@ -493,6 +509,8 @@ async function main() {
     if (logFilePath) {
       console.log('='.repeat(80));
       console.log(`📝 ログファイル保存完了: ${logFilePath}`);
+      console.log(`📊 観測ログ (JSONL): ${getAiCallJsonlPath()}`);
+      console.log('   → 同一 URL の再実行との比較: pnpm tsx scripts/compare-runs.ts <*.jsonl>');
       console.log('='.repeat(80));
     }
 

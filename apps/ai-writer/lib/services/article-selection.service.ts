@@ -15,6 +15,7 @@ import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
+import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * 記事選別サービス
@@ -54,7 +55,7 @@ export class ArticleSelectionService {
       const prompt = this.buildPrompt(template, request);
 
       // デバッグ: 送信プロンプトをログ出力
-      if (process.env.DEBUG_SELECTION_PROMPT === 'true') {
+      if (process.env.DEBUG_SELECTION_PROMPT === 'true' && !shouldSuppressInlinePromptDump('article-selection')) {
         console.log('\n[ArticleSelection] ========== 送信プロンプト全文 ==========');
         console.log(prompt);
         console.log('[ArticleSelection] ========== プロンプト終了 ==========\n');
@@ -62,6 +63,7 @@ export class ArticleSelectionService {
 
       // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
       const response = await this.aiProvider.sendMessage(prompt, {
+        stepId: 'article-selection',
         maxTokens: 2000, // HTML全文対応のため増加
         temperature: 0.3, // 判定は確実性を重視
         responseFormat: 'json',
