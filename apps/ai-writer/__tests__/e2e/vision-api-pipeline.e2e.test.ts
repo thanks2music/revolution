@@ -35,7 +35,7 @@ import { checkExtractionSufficiency } from '@/lib/config/vision-api-thresholds';
 /**
  * Providers under test
  */
-const PROVIDERS_TO_TEST: VisionProvider[] = ['openai', 'claude'];
+const PROVIDERS_TO_TEST: VisionProvider[] = ['openai', 'anthropic'];
 
 /**
  * Categories under test (Templates v1.2 contract: menu / goods / novelty).
@@ -50,7 +50,7 @@ type Category = (typeof CATEGORIES_TO_TEST)[number];
  */
 const PROVIDER_API_KEY_ENV: Record<VisionProvider, string> = {
   openai: 'OPENAI_API_KEY',
-  claude: 'ANTHROPIC_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
 };
 
 /**
