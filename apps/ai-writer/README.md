@@ -197,9 +197,65 @@ AI_PROVIDER=openai pnpm debug:mdx <URL>     # ChatGPT
 | `google` | Google Gemini | `GEMINI_API_KEY` |
 | `openai` | OpenAI ChatGPT | `OPENAI_API_KEY` |
 
-#### DEBUG_* 環境変数
+#### AI ステップの観測ログ（推奨。まずこれを使う）
 
-各パイプラインステップのプロンプトと処理内容を詳細表示します。
+**`--log` を付けるだけで、全 AI ステップの入出力が構造化ログに残ります。** `DEBUG_*` を
+1 つも設定する必要はありません。
+
+```bash
+pnpm debug:mdx --dry-run --log https://example.com/
+```
+
+| 出力 | 内容 |
+|---|---|
+| `logs/{日付}-{ドメイン}-{連番}.log` | 実行ログ（従来どおり） |
+| `logs/{同じ basename}.jsonl` | **1 行 = 1 回の AI 呼び出し**。要求/応答モデル・所要時間・token 使用量・応答全文・入出力の SHA-256 |
+| `logs/prompts/{run}-{seq}-{step}.txt` | プロンプト全文（実行間でほぼ不変かつ巨大なため別ファイルへ退避） |
+
+プロンプトが実行間で変化したかは JSONL の `promptSha256` を比べれば分かり、変化していた
+場合だけ退避ファイルを diff すればよい構造です。
+
+> **⚠️ なぜ `DEBUG_*` より先にこれを使うのか**
+>
+> `DEBUG_*_PROMPT` は 11 個に分裂しており、**`DEBUG_EXTRACTION_PROMPT` だけが未設定**
+> だったために「抽出ステップのプロンプトが 1 行も残らない」状態が続き、原因の切り分けに
+> 5 時間を要した実績があります（2026-08-11）。観測ログは**フラグに依存せず既定で記録**
+> するため、同じ取りこぼしが起きません。
+
+| 環境変数 | 説明 |
+|---|---|
+| `DEBUG_AI_STEPS=all` | `--log` を使わない経路（API Route 等）でも記録する |
+| `DEBUG_AI_STEPS=detail-extraction,title-generation` | 指定ステップのみ記録する |
+
+`NODE_ENV=production` では常に無効です（Cloud Run は ephemeral FS で再起動時に消えるため）。
+
+記録した JSONL は比較・照合ツールへそのまま渡せます（**どちらも AI API を呼ばないので課金なし**）。
+
+```bash
+# 同一 URL の N 回実行を突き合わせる（何が同じで何が割れたかだけを出す）
+pnpm debug:compare logs/2026-08-12-example-com-*.jsonl
+
+# 公式サイトの掲載内容と照合し、「系統的」か「確率的」かを判定する
+pnpm debug:compare logs/*.jsonl --source https://example.com/
+
+# 正解データだけを見る / 保存済み HTML を使う（ネットワーク不要）
+pnpm debug:verify https://example.com/
+pnpm debug:verify --html debug-logs/html-xxx.html --against logs/xxx.jsonl
+```
+
+> **⚠️ 実行どうしの一致は「正しさ」ではない。**
+> 3 回とも同じように会場を落とせば「完全に一致」だが「安定して間違っている」。
+> 合否判定には必ず `--source` / `--against` で正解データを渡すこと。渡さない場合は
+> 判定を出さず（`判定なし`）、実行間の差分だけを表示します。
+
+#### DEBUG_* 環境変数（個別フラグ）
+
+各パイプラインステップのプロンプトと処理内容を**本体ログへ**詳細表示します。
+
+> ℹ️ 観測ログ（上記）が有効なときは、**プロンプト全文の本体ログへの出力は自動で抑止**され、
+> ポインタ 1 行だけになります。同じ内容が `logs/prompts/` に残っているためで、**情報は
+> 失われず置き場所が変わるだけ**です（実測では本体ログ 2196 行のうち 1211 行 = 55% が
+> プロンプト全文で、実際の出力がテンプレ由来の文字列に埋もれていました）。
 
 | 環境変数 | 説明 | 出力内容 |
 |----------|------|---------|
@@ -223,6 +279,24 @@ DEBUG_HTML_EXTRACTION=true pnpm debug:mdx --dry-run https://example.com/
 ```
 
 ### トラブルシューティング
+
+#### まず `--log` で 1 回実行する（フラグを探す前に）
+
+```bash
+pnpm debug:mdx --dry-run --log <URL>
+```
+
+全 AI ステップの入出力が `logs/*.jsonl` に残るので、**どのステップで何が起きたかを
+1 ファイルで追えます**。以下の個別フラグは「観測ログで当たりを付けた後、本体ログに
+プロンプトを並べて読みたいとき」に使ってください。
+
+```bash
+# 特定ステップの入出力だけを取り出す
+jq -r 'select(.stepId=="detail-extraction") | .responseText' logs/<run>.jsonl
+
+# 実行間で入力が同一かを確認する (同一なのに出力が違えば非決定性)
+jq -r '[.stepId, .promptSha256[0:12], .responseSha256[0:12]] | @tsv' logs/<run>.jsonl
+```
 
 #### タイトルの日付が間違っている場合
 

@@ -21,6 +21,7 @@ import type { ExtractionResult } from './extraction.service';
 import { getMediaFormResolverService } from './media-form-resolver.service';
 import { getMediaTypeMapperService } from './media-type-mapper.service';
 import { formatAuthorName } from '@/lib/utils/author-formatter';
+import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * Token usage statistics for cost tracking
@@ -131,7 +132,10 @@ export class ContentGenerationService {
       const prompt = this.buildPrompt(template, request);
 
       // デバッグ: 送信プロンプトをログ出力
-      if (process.env.DEBUG_CONTENT_PROMPT === 'true') {
+      if (
+        process.env.DEBUG_CONTENT_PROMPT === 'true' &&
+        !shouldSuppressInlinePromptDump('content-generation')
+      ) {
         console.log('\n[ContentGeneration] ========== 送信プロンプト全文 ==========');
         console.log(prompt);
         console.log('[ContentGeneration] ========== プロンプト終了 ==========\n');
@@ -139,6 +143,7 @@ export class ContentGenerationService {
 
       // AI Provider経由でAPI呼び出し
       const response = await this.aiProvider.sendMessage(prompt, {
+        stepId: 'content-generation',
         maxTokens: 8000, // MDX本文生成のため大きめに
         temperature: 0.7, // 創造性を許容
         responseFormat: 'json',

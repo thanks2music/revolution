@@ -300,6 +300,7 @@ export class SubpageDetectorService {
 
       // AI APIを呼び出し
       const response = await this.aiProvider.sendMessage(prompt, {
+        stepId: 'subpage-detection',
         maxTokens: 500,
         temperature: 0.3,
         responseFormat: 'json',

@@ -20,6 +20,7 @@ import type {
   SendMessageOptions,
   SendMessageResult,
 } from './ai-provider.interface';
+import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * Recommended Gemini models for different use cases
@@ -66,6 +67,16 @@ export class GeminiProvider implements AiProvider {
   private genAI: GoogleGenerativeAI;
   private model: GenerativeModel;
   private apiKey: string;
+  /**
+   * `this.model` を組み立てたときのモデル名。
+   *
+   * ⚠️ 観測ログの `requestedModel` を実際に呼ぶモデルと一致させるためだけに保持する。
+   * `sendMessage` は `this.model` を使わず `GEMINI_MODELS.FLASH_LITE` で別のモデルを
+   * 組み立て直すため、本フィールドは `this.model` を使う経路 (`generateArticle` /
+   * `extractFromRss` 等) にのみ対応する。この不一致自体の是正は別タスク
+   * (Todoist「Gemini モデルを現行世代へ更新する」) で扱う。
+   */
+  private readonly configuredModelName: string;
 
   /**
    * Initialize Gemini Provider
@@ -85,6 +96,7 @@ export class GeminiProvider implements AiProvider {
 
     this.genAI = new GoogleGenerativeAI(this.apiKey);
     this.model = this.genAI.getGenerativeModel({ model: modelName });
+    this.configuredModelName = modelName;
 
     console.log(`🤖 Gemini Provider initialized with model: ${modelName}`);
   }
@@ -173,7 +185,7 @@ Slug:`;
    * @returns Extracted information with confidence score
    */
   async extractFromRss(input: RssExtractionInput): Promise<RssExtractionResult> {
-    console.log(`🤖 Using AI Provider: Google Gemini (gemini-2.5-flash-lite)`);
+    console.log(`🤖 Using AI Provider: Google Gemini (${this.configuredModelName})`);
 
     const prompt = `あなたはアニメコラボイベントの情報抽出エキスパートです。
 
@@ -214,6 +226,10 @@ ${input.link ? `**URL**: ${input.link}` : ''}
 
 JSON以外の説明文は出力しないでください。`;
 
+    // ★ `extractFromRss` は `sendMessage` を経由しない独自実装のため、記録も個別に要る
+    //   (openai.provider.ts の同メソッドと同じ理由)。
+    const startedAt = Date.now();
+
     try {
       const result = await this.model.generateContent(prompt);
       const response = result.response;
@@ -223,6 +239,29 @@ JSON以外の説明文は出力しないでください。`;
 
       // Extract usage metadata if available
       const usageMetadata = response.usageMetadata;
+      const rssUsage = usageMetadata
+        ? {
+            promptTokens: usageMetadata.promptTokenCount ?? 0,
+            completionTokens: usageMetadata.candidatesTokenCount ?? 0,
+            totalTokens: usageMetadata.totalTokenCount ?? 0,
+          }
+        : undefined;
+
+      await recordAiCall({
+        stepId: 'rss-extraction',
+        provider: 'google',
+        // `this.model` は constructor の modelName で組み立てられているため、
+        // FLASH_LITE 固定で書くと呼んでいないモデル名を記録することになる。
+        requestedModel: this.configuredModelName,
+        resolvedModel:
+          (response as { modelVersion?: string }).modelVersion ?? this.configuredModelName,
+        systemFingerprint: null,
+        finishReason: response.candidates?.[0]?.finishReason,
+        latencyMs: Date.now() - startedAt,
+        prompt,
+        responseText: text,
+        usage: rssUsage,
+      });
 
       // usage をコスト追跡用に追加
       return {
@@ -237,6 +276,16 @@ JSON以外の説明文は出力しないでください。`;
       };
     } catch (error) {
       console.error('Gemini RSS extraction error:', error);
+
+      await recordAiCall({
+        stepId: 'rss-extraction',
+        provider: 'google',
+        requestedModel: this.configuredModelName,
+        latencyMs: Date.now() - startedAt,
+        prompt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
       throw new Error(
         `Failed to extract RSS information: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -523,13 +572,17 @@ Respond ONLY with JSON format. No other text should be included.
     const modelName = GEMINI_MODELS.FLASH_LITE;
     console.log(`🤖 Using AI Provider: Google Gemini (${modelName})`);
 
+    const stepId = options?.stepId ?? 'unknown';
+    const temperature = options?.temperature ?? 0;
+    const startedAt = Date.now();
+
     try {
       // Create model with generation config
       const model = this.genAI.getGenerativeModel({
         model: modelName,
         generationConfig: {
           maxOutputTokens: options?.maxTokens ?? 2048,
-          temperature: options?.temperature ?? 0,
+          temperature,
           // Enable JSON mode when responseFormat is 'json'
           // This ensures the model outputs valid, parseable JSON
           responseMimeType:
@@ -544,20 +597,60 @@ Respond ONLY with JSON format. No other text should be included.
 
       // Extract usage metadata if available
       const usageMetadata = response.usageMetadata;
+      const latencyMs = Date.now() - startedAt;
+
+      const usage = usageMetadata
+        ? {
+            promptTokens: usageMetadata.promptTokenCount ?? 0,
+            completionTokens: usageMetadata.candidatesTokenCount ?? 0,
+            totalTokens: usageMetadata.totalTokenCount ?? 0,
+          }
+        : undefined;
+      const finishReason = response.candidates?.[0]?.finishReason;
+      // `modelVersion` は API が返すが SDK の型に無い。要求名で握り潰さず、
+      // 返ってきた場合だけ実モデル版として記録する。
+      const resolvedModel =
+        (response as { modelVersion?: string }).modelVersion ?? modelName;
+
+      await recordAiCall({
+        stepId,
+        context: options?.recordContext,
+        provider: 'google',
+        requestedModel: modelName,
+        resolvedModel,
+        // Gemini に `system_fingerprint` 相当の概念はない (null = 非対応)。
+        systemFingerprint: null,
+        finishReason,
+        latencyMs,
+        temperature,
+        prompt,
+        responseText: text,
+        usage,
+      });
 
       return {
         content: text,
         model: modelName,
-        usage: usageMetadata
-          ? {
-              promptTokens: usageMetadata.promptTokenCount ?? 0,
-              completionTokens: usageMetadata.candidatesTokenCount ?? 0,
-              totalTokens: usageMetadata.totalTokenCount ?? 0,
-            }
-          : undefined,
+        usage,
+        resolvedModel,
+        systemFingerprint: null,
+        finishReason,
+        latencyMs,
       };
     } catch (error) {
       console.error('Gemini sendMessage error:', error);
+
+      await recordAiCall({
+        stepId,
+        context: options?.recordContext,
+        provider: 'google',
+        requestedModel: modelName,
+        latencyMs: Date.now() - startedAt,
+        temperature,
+        prompt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
       throw new Error(
         `Failed to send message to Gemini: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
