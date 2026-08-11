@@ -27,6 +27,8 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { Agent } from 'undici';
 
+import { BROWSER_USER_AGENT, FETCH_TIMEOUT_MS } from '@/lib/utils/http-constants';
+
 /**
  * SSL証明書エラーのコード一覧
  * これらのエラーが発生した場合、SSL検証をスキップしてリトライする
@@ -160,18 +162,9 @@ const HEAD_KEEP_SELECTORS = [
   'meta[property^="og:"]',
 ] as const;
 
-/**
- * HTMLフェッチのタイムアウト設定（ミリ秒）
- */
-const FETCH_TIMEOUT_MS = 10000;
-
-/**
- * ブラウザライクな User-Agent
- * 一部のサイトはボット User-Agent をブロックするため、
- * ブラウザに近い User-Agent を使用する
- */
-const BROWSER_USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+// タイムアウトと User-Agent は検証ツール (`fetch-html.ts`) と共有する。
+// 別々に持つと「パイプラインが見た HTML」と「検証が見た HTML」が別物になり、
+// 不一致が出たときにどちらが誤りか判別できなくなる。
 
 /**
  * 異常に小さいHTMLと判定する閾値（bytes）

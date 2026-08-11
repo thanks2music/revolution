@@ -229,6 +229,25 @@ pnpm debug:mdx --dry-run --log https://example.com/
 
 `NODE_ENV=production` では常に無効です（Cloud Run は ephemeral FS で再起動時に消えるため）。
 
+記録した JSONL は比較・照合ツールへそのまま渡せます（**どちらも AI API を呼ばないので課金なし**）。
+
+```bash
+# 同一 URL の N 回実行を突き合わせる（何が同じで何が割れたかだけを出す）
+pnpm debug:compare logs/2026-08-12-example-com-*.jsonl
+
+# 公式サイトの掲載内容と照合し、「系統的」か「確率的」かを判定する
+pnpm debug:compare logs/*.jsonl --source https://example.com/
+
+# 正解データだけを見る / 保存済み HTML を使う（ネットワーク不要）
+pnpm debug:verify https://example.com/
+pnpm debug:verify --html debug-logs/html-xxx.html --against logs/xxx.jsonl
+```
+
+> **⚠️ 実行どうしの一致は「正しさ」ではない。**
+> 3 回とも同じように会場を落とせば「完全に一致」だが「安定して間違っている」。
+> 合否判定には必ず `--source` / `--against` で正解データを渡すこと。渡さない場合は
+> 判定を出さず（`判定なし`）、実行間の差分だけを表示します。
+
 #### DEBUG_* 環境変数（個別フラグ）
 
 各パイプラインステップのプロンプトと処理内容を**本体ログへ**詳細表示します。

@@ -516,6 +516,9 @@ async function main() {
       console.log('='.repeat(80));
       console.log(`📝 ログファイル保存完了: ${logFilePath}`);
       console.log(`📊 観測ログ (JSONL): ${getAiCallJsonlPath()}`);
+      // この案内は `scripts/compare-runs.ts` が入る本 PR で足す。
+      // 先行 PR (#293) 側に置くと、スクリプトが無い状態で存在しないコマンドを案内する。
+      console.log('   → 同一 URL の再実行との比較: pnpm debug:compare <*.jsonl>');
       console.log('='.repeat(80));
     }
 
