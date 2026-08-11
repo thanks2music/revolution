@@ -140,6 +140,14 @@ const ARTICLE_SELECTORS = [
 /**
  * コンテンツ抽出時に除去する要素
  * (extractContentHtml で使用)
+ *
+ * 前半は「描画されないもの」、後半は「ページの外枠 (chrome)」。
+ *
+ * ★ 外枠の除去は 2026-08-12 追加。それまで `script` 系しか落としておらず、
+ *   `ARTICLE_SELECTORS` 6 種すべてが外れたページでは **`nav` が 3 個そのまま
+ *   LLM へ渡っていた**。sw2026 の実測では `TOKYO INFO` / `OSAKA INFO` という
+ *   ナビ文言だけが残り、抽出が「大阪があるらしい」と察して会場名を捏造する
+ *   材料になっていた。
  */
 const CONTENT_REMOVE_SELECTORS = [
   'script',
@@ -148,7 +156,109 @@ const CONTENT_REMOVE_SELECTORS = [
   'iframe',
   'svg',
   'canvas',
+  // ページの外枠。本文ではないうえ、ナビ文言が推測の材料になる
+  'nav',
+  'header',
+  'footer',
+  'aside',
+  'form',
 ] as const;
+
+/**
+ * `selectMainContent` が「本文らしい」と判定するのに必要な最小テキスト量 (文字)。
+ *
+ * これを下回る要素しか無いページでは body 全体へ倒す。分割した結果が元より痩せる
+ * ことを避けるための下限で、実測 (LTR 8 サイト) の本文はいずれも数千文字ある。
+ */
+const MIN_MAIN_CONTENT_TEXT_LENGTH = 200;
+
+/**
+ * 本文らしいブロックの選定結果。呼び出し元がログに出せるよう経緯も返す。
+ */
+export interface MainContentSelection {
+  /** 選ばれたブロックの innerHTML */
+  html: string;
+  /** `largest-child` = body 直下から選んだ / `body` = 選べず body 全体 */
+  strategy: 'largest-child' | 'body';
+  /** 選ばれた要素の説明 (`div.page-content-wrapper` 等)。body 全体なら null */
+  selectedElement: string | null;
+  /** 除去前の body テキスト量 */
+  bodyTextLength: number;
+  /** 選定後のテキスト量 */
+  selectedTextLength: number;
+}
+
+/**
+ * セレクタが全滅したときに「本文らしいブロック」を選ぶ。
+ *
+ * ## 設計 (実測に基づく一般化)
+ *
+ * 1. **減算を先に効かせる** — `CONTENT_REMOVE_SELECTORS` で外枠ごと落とす。
+ *    これが最も確実で、どのサイトでも悪化しない。
+ * 2. **body 直下でテキスト量が最大の要素**を選ぶ。
+ *
+ * 「body 直下の **div**」ではなく「テキスト量が最大の**要素**」にしたのは実測の
+ * ためである。
+ *
+ * | サイト | body 直下 | 正解 |
+ * |---|---|---|
+ * | sw2026 / toy5 / kusuriya | 8 個 (header / nav ×2 / **div.page-content-wrapper** / modal ×2 / footer) | `page-content-wrapper` |
+ * | miku / nissy | 2 個 (`title` / 無名の全体ラッパ div) | ラッパ div = body 全体と同じ |
+ *
+ * `div` 限定にすると `section` / `main` 以外の semantic 要素を拾えない。テキスト量
+ * 基準なら miku / nissy でも「1 個しかない要素」が選ばれ、**現状から劣化しない**。
+ *
+ * @param html ページ全体の HTML
+ */
+export function selectMainContent(html: string): MainContentSelection {
+  const $ = cheerio.load(html);
+
+  for (const selector of CONTENT_REMOVE_SELECTORS) {
+    $(selector).remove();
+  }
+
+  const bodyHtml = $('body').html() ?? '';
+  const bodyTextLength = $('body').text().replace(/\s+/g, '').length;
+
+  const candidates = $('body')
+    .children()
+    .toArray()
+    .map((el) => {
+      const $el = $(el);
+      const tagName = (el as { tagName?: string }).tagName ?? 'unknown';
+      const className = $el.attr('class');
+      return {
+        label: className ? `${tagName}.${className.split(/\s+/)[0]}` : tagName,
+        html: $el.html() ?? '',
+        textLength: $el.text().replace(/\s+/g, '').length,
+      };
+    });
+
+  const best = candidates.reduce<(typeof candidates)[number] | null>(
+    (acc, cur) => (acc === null || cur.textLength > acc.textLength ? cur : acc),
+    null
+  );
+
+  // 選べない / 選んだ結果が痩せすぎる場合は body 全体へ倒す。
+  // 「分割したせいで元より情報が減った」を避けるのが目的。
+  if (!best || best.textLength < MIN_MAIN_CONTENT_TEXT_LENGTH) {
+    return {
+      html: bodyHtml,
+      strategy: 'body',
+      selectedElement: null,
+      bodyTextLength,
+      selectedTextLength: bodyTextLength,
+    };
+  }
+
+  return {
+    html: best.html,
+    strategy: 'largest-child',
+    selectedElement: best.label,
+    bodyTextLength,
+    selectedTextLength: best.textLength,
+  };
+}
 
 /**
  * head 内で保持するセレクタ
@@ -335,6 +445,21 @@ export async function extractArticleHtml(url: string): Promise<string> {
     }
 
     // すべてのセレクタで見つからない場合はフォールバック
+    //
+    // ★ ここには `extractContentHtml` と違って `selectMainContent()` を**意図的に
+    //   適用していない**。同じ関数の同じ症状に見えるが、解いている問題が別のため。
+    //
+    //   | 関数 | 入力 | 下流の目的 |
+    //   |---|---|---|
+    //   | `extractArticleHtml` (本関数) | RSS 記事ページ | **公式 URL を見つける** (article-selection) |
+    //   | `extractContentHtml` | 公式サイト | 会場・期間を読む (detail-extraction) |
+    //
+    //   `official_urls[]` は**このページ内のリンクから作られる**。`nav` / `footer` を
+    //   落とすと候補そのものが減り、「候補にルート URL が無い」という既知の穴
+    //   (1-selection.yaml v2.2.0 が対処しているもの) を悪化させる。
+    //
+    //   ノイズ削減の利得より候補喪失の損失が大きいと判断して見送った。将来ここを
+    //   触るなら、`official_urls[]` の件数が減っていないことを実データで確かめること。
     console.warn(`[HTMLExtractor] ⚠️  セレクタで要素が見つからないため、完全なHTMLを返します`);
     console.warn(`[HTMLExtractor] セレクタ試行結果: ${JSON.stringify(selectorTrials, null, 2)}`);
     console.warn(`[HTMLExtractor] HTMLプレビュー（最初の1000文字）:\n${html.substring(0, 1000)}`);
@@ -633,15 +758,10 @@ export async function extractContentHtml(url: string): Promise<string> {
       }
     }
 
-    // フォールバック: body 全体を使用し、クリーンアップ
-    console.log(`[HTMLExtractor:Content] 🔄 セレクタで見つからないため、body全体を使用`);
+    // フォールバック: 外枠を落としたうえで本文らしいブロックを選ぶ
+    console.log(`[HTMLExtractor:Content] 🔄 セレクタで見つからないため、本文ブロックを推定`);
 
-    // 不要な要素を除去
-    for (const removeSelector of CONTENT_REMOVE_SELECTORS) {
-      $(removeSelector).remove();
-    }
-
-    // head から必要な情報を抽出
+    // head から必要な情報を抽出 (除去処理より前に取る)
     const headInfo: string[] = [];
     for (const keepSelector of HEAD_KEEP_SELECTORS) {
       $(keepSelector).each((_, el) => {
@@ -652,8 +772,14 @@ export async function extractContentHtml(url: string): Promise<string> {
       });
     }
 
-    // body のコンテンツを取得
-    const bodyContent = $('body').html() || '';
+    const selection = selectMainContent(fullHtml);
+    console.log(
+      `[HTMLExtractor:Content] 本文ブロック: ${selection.strategy}` +
+        (selection.selectedElement ? ` (${selection.selectedElement})` : '') +
+        ` / テキスト ${selection.bodyTextLength.toLocaleString()} → ${selection.selectedTextLength.toLocaleString()} 文字`
+    );
+
+    const bodyContent = selection.html;
 
     // クリーンアップされたHTMLを構築
     const cleanedHtml = `<!-- Head Info -->
