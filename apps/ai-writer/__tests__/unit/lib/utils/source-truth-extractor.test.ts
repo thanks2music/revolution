@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import {
   compareWithSource,
+  formatOccurrenceCountBreakdown,
   extractSourceTruth,
   parsePeriodText,
   unescapeEmbeddedMarkup,
@@ -270,5 +271,99 @@ describe('compareWithSource', () => {
     expect(result.status).toBe('unsupported');
     expect(result.passed).toBe(false);
     expect(result.reason).toBeDefined();
+  });
+});
+
+// ★ 4 巡目レビュー由来。件数の食い違いの理由を名指しする。
+describe('件数の内訳表示', () => {
+  const truth = extractSourceTruth(LTR_TOP_PAGE);
+
+  it('重複が原因なら「重複」と名指しする', () => {
+    const result = compareWithSource(truth, [
+      { venue_label: 'BOX cafe&space マツモトキヨシ池袋Part2店', starts_on: '2026-05-14', ends_on: '2026-07-05' },
+      { venue_label: 'BOX cafe&space マツモトキヨシ池袋Part2店', starts_on: '2026-05-14', ends_on: '2026-07-05' },
+    ]);
+
+    expect(formatOccurrenceCountBreakdown(result)).toContain('重複 1 会場');
+    expect(formatOccurrenceCountBreakdown(result)).not.toContain('会場名が空');
+  });
+
+  // ★ venue_label が空の occurrence は照合できず落とされる。これを「重複除去後」と
+  //   書くと原因を誤らせる (重複していないのに重複と読める)。
+  it('会場名が空なら「会場名が空」と名指しし、重複とは書かない', () => {
+    const result = compareWithSource(truth, [
+      { venue_label: 'BOX cafe&space マツモトキヨシ池袋Part2店', starts_on: '2026-05-14', ends_on: '2026-07-05' },
+      { venue_label: 'BOX cafe&space ＫＩＴＴＥ OSAKA 2号店', starts_on: '2026-05-28', ends_on: '2026-06-28' },
+      { venue_label: null, starts_on: null, ends_on: null },
+      { venue_label: '   ', starts_on: null, ends_on: null },
+    ]);
+
+    expect(result.missingVenueLabelCount).toBe(2);
+    expect(result.duplicateVenues).toEqual([]);
+    const breakdown = formatOccurrenceCountBreakdown(result);
+    expect(breakdown).toContain('会場名が空 2 件');
+    expect(breakdown).not.toContain('重複');
+  });
+
+  it('食い違いが無ければ内訳を出さない', () => {
+    const result = compareWithSource(truth, [
+      { venue_label: 'BOX cafe&space マツモトキヨシ池袋Part2店', starts_on: '2026-05-14', ends_on: '2026-07-05' },
+      { venue_label: 'BOX cafe&space ＫＩＴＴＥ OSAKA 2号店', starts_on: '2026-05-28', ends_on: '2026-06-28' },
+    ]);
+
+    expect(formatOccurrenceCountBreakdown(result)).toBe('');
+  });
+});
+
+// ★ 4 巡目レビュー由来 (1 巡目からの持ち越し)。抽出側と対称に扱う。
+describe('正解データ側の会場名重複', () => {
+  /** 正規化後に同じキーになる 2 会場を掲載しているページ。 */
+  const COLLIDING_SOURCE = `
+<!DOCTYPE html><html><body>
+  <div class="place">
+    <h2>TOKYO</h2>
+    <p class="place_text_01">BOX cafe&amp;space ＫＩＴＴＥ OSAKA 2号店</p>
+    <p class="place_text_02"><span>【開催期間】</span> 2026年5月14日(木)〜2026年7月5日(日)</p>
+  </div>
+  <div class="place">
+    <h2>OSAKA</h2>
+    <p class="place_text_01">BOX cafe&amp;space KITTE OSAKA 2号店</p>
+    <p class="place_text_02"><span>【開催期間】</span> 2026年5月28日(木)〜2026年6月28日(日)</p>
+  </div>
+</body></html>`;
+
+  it('正解側の衝突を検出し、黙って畳まない', () => {
+    const truth = extractSourceTruth(COLLIDING_SOURCE);
+    expect(truth.venues).toHaveLength(2);
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = compareWithSource(truth, [
+      { venue_label: 'BOX cafe&space KITTE OSAKA 2号店', starts_on: '2026-05-14', ends_on: '2026-07-05' },
+    ]);
+    warnSpy.mockRestore();
+
+    // 正解データが 2 会場あるのに expectedCount は 1 になる = 測る側が壊れている
+    expect(result.duplicateSourceVenues).toHaveLength(1);
+    expect(result.expectedCount).toBe(1);
+  });
+
+  it('正解側の衝突は warn で表に出す (silent に落とさない)', () => {
+    const truth = extractSourceTruth(COLLIDING_SOURCE);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    compareWithSource(truth, []);
+
+    expect(warnSpy).toHaveBeenCalled();
+    const message = warnSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(message).toContain('正解データ側で会場名が重複');
+    warnSpy.mockRestore();
+  });
+
+  it('会場名が異なる通常のページでは空 (偽陽性を出さない)', () => {
+    const truth = extractSourceTruth(LTR_TOP_PAGE);
+    const result = compareWithSource(truth, []);
+
+    expect(result.duplicateSourceVenues).toEqual([]);
+    expect(result.expectedCount).toBe(2);
   });
 });

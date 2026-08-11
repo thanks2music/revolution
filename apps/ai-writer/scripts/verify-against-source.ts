@@ -41,7 +41,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 config({ path: resolve(__dirname, '../.env.local') });
 
-import { extractSourceTruth, compareWithSource } from '../lib/utils/source-truth-extractor';
+import {
+  compareWithSource,
+  extractSourceTruth,
+  formatOccurrenceCountBreakdown,
+} from '../lib/utils/source-truth-extractor';
 import {
   describeExtractionFailure,
   extractOccurrences,
@@ -156,15 +160,21 @@ async function main(): Promise<void> {
 
     console.log('-'.repeat(80));
     console.log(`${result.passed ? '✅ 一致' : '❌ 不一致'}  ${basename(jsonlPath)}`);
-    const countSuffix =
-      result.actualCount === result.actualUniqueCount
-        ? ''
-        : ` (生 ${result.actualCount} 件 → 重複除去後 ${result.actualUniqueCount} 件)`;
     console.log(
-      `  会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualUniqueCount}${countSuffix}  ${result.countMatches ? '' : '⚠️'}`
+      `  会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualUniqueCount}` +
+        formatOccurrenceCountBreakdown(result) +
+        `  ${result.countMatches ? '' : '⚠️'}`
     );
     if (result.duplicateVenues.length > 0) {
       console.log(`  🔴 会場名の重複: ${result.duplicateVenues.join(', ')}`);
+    }
+    if (result.missingVenueLabelCount > 0) {
+      console.log(`  🔴 会場名が空の occurrence: ${result.missingVenueLabelCount} 件`);
+    }
+    if (result.duplicateSourceVenues.length > 0) {
+      console.log(
+        `  ⚠️ 正解データ側の会場名重複: ${result.duplicateSourceVenues.join(', ')} (測る側の問題)`
+      );
     }
 
     for (const v of result.venues) {

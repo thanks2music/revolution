@@ -276,6 +276,24 @@ export interface SourceComparison {
    * 引き継ぎ書 R7 が挙げる既知の欠陥そのもの。空でなければ `passed` は false。
    */
   duplicateVenues: string[];
+  /**
+   * **正解データ側**で正規化キーが衝突した会場名。
+   *
+   * ⚠️ 公式サイトが正規化後に同じキーになる 2 会場を掲載していると、正解から
+   * 片方が消えて `expectedCount` が過少になる。**測る側が壊れている状態**なので
+   * 抽出側の欠陥より重い。`passed` を false にはしない (抽出の是非とは別問題)が、
+   * 警告として必ず表に出す。
+   *
+   * 実測 8 サイトでは会場名がすべて異なるため空。
+   */
+  duplicateSourceVenues: string[];
+  /**
+   * 抽出結果のうち `venue_label` が空だった occurrence の数。
+   *
+   * ⚠️ これがあると `actualCount` と `actualUniqueCount` が食い違うが、**理由は重複
+   * ではない**。両者の差を「重複」と決めつけて表示すると原因を誤らせる。
+   */
+  missingVenueLabelCount: number;
   /** 会場名の集合比較 */
   venues: VenueComparison[];
   /** 正解にあるのに抽出に無い会場 (= 欠落。最も重い) */
@@ -332,6 +350,10 @@ export function compareWithSource(
           .map(normalizeVenueKey)
       ).size,
       duplicateVenues: [],
+      duplicateSourceVenues: [],
+      missingVenueLabelCount: occurrences.filter(
+        (o) => !o.venue_label || o.venue_label.trim().length === 0
+      ).length,
       venues: [],
       missingVenues: [],
       fabricatedVenues: [],
@@ -342,17 +364,39 @@ export function compareWithSource(
     };
   }
 
+  // ★ `actual` 側と対称に扱う。正解データ側の衝突は「測る側が壊れている」状態で、
+  //   黙って畳むと expectedCount が過少になり、抽出側の欠落を見逃す。
   const expected = new Map<string, SourceTruthVenue>();
+  const duplicateSourceVenues: string[] = [];
   for (const v of truth.venues) {
-    if (v.venueLabel) expected.set(normalizeVenueKey(v.venueLabel), v);
+    if (!v.venueLabel) continue;
+    const key = normalizeVenueKey(v.venueLabel);
+    if (expected.has(key)) {
+      if (!duplicateSourceVenues.includes(v.venueLabel)) duplicateSourceVenues.push(v.venueLabel);
+      continue;
+    }
+    expected.set(key, v);
+  }
+
+  if (duplicateSourceVenues.length > 0) {
+    console.warn(
+      `[SourceTruth] ⚠️ 正解データ側で会場名が重複しています: ${duplicateSourceVenues.join(', ')}` +
+        ` — expectedCount が過少になり、抽出側の欠落を見逃す可能性があります`
+    );
   }
 
   // ★ Map への畳み込みで重複が silent に消える。消えた事実そのものが欠陥の signal
   //   (同じ会場を 2 回出している = 別の会場を 1 つ落としている) なので、捨てずに拾う。
   const actual = new Map<string, ExtractedOccurrence>();
   const duplicateVenues: string[] = [];
+  let missingVenueLabelCount = 0;
   for (const o of occurrences) {
-    if (!o.venue_label) continue;
+    // 会場名が空の occurrence は照合できない。**件数の食い違いの理由が「重複」と
+    // 別なので、別に数える** (混ぜると表示が原因を誤らせる)。
+    if (!o.venue_label || o.venue_label.trim().length === 0) {
+      missingVenueLabelCount++;
+      continue;
+    }
     const key = normalizeVenueKey(o.venue_label);
     if (actual.has(key)) {
       if (!duplicateVenues.includes(o.venue_label)) duplicateVenues.push(o.venue_label);
@@ -415,6 +459,8 @@ export function compareWithSource(
     actualCount,
     actualUniqueCount,
     duplicateVenues,
+    duplicateSourceVenues,
+    missingVenueLabelCount,
     venues,
     missingVenues,
     fabricatedVenues,
@@ -425,4 +471,25 @@ export function compareWithSource(
       periodMismatches.length === 0 &&
       duplicateVenues.length === 0,
   };
+}
+
+/**
+ * 会場数の内訳を人が読む 1 行にする。
+ *
+ * ⚠️ `actualCount !== actualUniqueCount` を一律「重複除去後」と書いてはいけない。
+ * 差の原因は **重複** と **会場名が空** の 2 つがあり、対処がまったく違う
+ * (前者はプロンプトの出力規則、後者は抽出そのものの失敗)。理由を名指しする。
+ *
+ * @returns 内訳がなければ空文字列
+ */
+export function formatOccurrenceCountBreakdown(result: SourceComparison): string {
+  const parts: string[] = [];
+  if (result.duplicateVenues.length > 0) {
+    parts.push(`重複 ${result.duplicateVenues.length} 会場`);
+  }
+  if (result.missingVenueLabelCount > 0) {
+    parts.push(`会場名が空 ${result.missingVenueLabelCount} 件`);
+  }
+  if (parts.length === 0) return '';
+  return ` (生 ${result.actualCount} 件 / ${parts.join(' + ')})`;
 }

@@ -309,3 +309,35 @@ describe('compareRuns / formatRunComparison', () => {
     expect(text).toContain('大阪店');
   });
 });
+
+// ★ 4 巡目レビュー由来。正解データを作れなかったときの帰属を固定する。
+describe('正解データが unsupported のときの判定 (compare-runs.ts の契約)', () => {
+  it('passFlags が空なら not-evaluated になり、systematic と読ませない', () => {
+    // `compareWithSource` は unsupported に対して常に passed: false を返すため、
+    // それを passFlags に積むと抽出が全実行成功でも「系統的失敗」になる。
+    // compare-runs.ts は truth.status を見て判定を打ち切り、空を渡す契約。
+    const runs = [
+      run('r1', [{ name: '東京店' }], 'a'.repeat(64)),
+      run('r2', [{ name: '東京店' }], 'b'.repeat(64)),
+      run('r3', [{ name: '東京店' }], 'c'.repeat(64)),
+    ];
+
+    const comparison = compareRuns(runs, []);
+    expect(comparison.nature).toBe('not-evaluated');
+
+    const output = formatRunComparison(comparison);
+    expect(output).not.toContain('系統的');
+    expect(output).toContain('判定なし');
+  });
+
+  it('参考: 誤って false を積むと systematic になる (打ち切りが必要な理由)', () => {
+    // 抽出は全実行で同じ結果を出しているのに、正解が作れないだけで
+    // 「プロンプト・セレクタの是正が要る」と表示されてしまう。
+    const runs = [
+      run('r1', [{ name: '東京店' }], 'a'.repeat(64)),
+      run('r2', [{ name: '東京店' }], 'b'.repeat(64)),
+    ];
+
+    expect(compareRuns(runs, [false, false]).nature).toBe('systematic');
+  });
+});

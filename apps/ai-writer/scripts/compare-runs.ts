@@ -45,7 +45,11 @@ import {
   type OccurrenceExtraction,
   type RunLog,
 } from '../lib/utils/run-comparison';
-import { extractSourceTruth, compareWithSource } from '../lib/utils/source-truth-extractor';
+import {
+  compareWithSource,
+  extractSourceTruth,
+  formatOccurrenceCountBreakdown,
+} from '../lib/utils/source-truth-extractor';
 import { fetchHtmlOrThrow } from '../lib/utils/fetch-html';
 import { readRunLog } from '../lib/utils/read-run-log';
 
@@ -132,6 +136,24 @@ async function main(): Promise<void> {
     if (truth.reason) console.log(`   ${truth.reason}`);
     console.log();
 
+    // ★ 正解データを作れなかった時点で合否判定を打ち切る。
+    //   `compareWithSource` は `unsupported` に対して常に `passed: false` を返す
+    //   (それ自体は正しい)。だがその false を `passFlags` に積むと、抽出が全実行で
+    //   成功していても `[false, false, false]` = **系統的失敗**と判定され、
+    //   「プロンプト・セレクタの是正が要る」と表示される。原因は抽出側ではなく
+    //   照合ツールがこのページ構造を認識できないことなので、真逆の指示になる。
+    //   これは本 PR が抽出側で潰した「測れなかった ≠ 間違っていた」の、
+    //   正解データ側での再演。`verify-against-source.ts` と同じ位置にガードを置く。
+    if (truth.status === 'unsupported') {
+      console.log('⚠️ 正解データを作れないため、合否判定は行いません。');
+      console.log('   「測れなかった」を「系統的失敗」と読ませないため、判定を打ち切ります。');
+      console.log('   （抽出結果そのものは下の実行間比較で確認できます）');
+      console.log();
+      console.log(formatRunComparison(compareRuns(runs, [])));
+      console.log();
+      return;
+    }
+
     for (const run of runs) {
       const extraction = readOccurrences(run);
 
@@ -147,15 +169,20 @@ async function main(): Promise<void> {
       passFlags.push(result.passed);
 
       console.log(`   ${result.passed ? '✅' : '❌'} ${run.label}`);
-      const countSuffix =
-        result.actualCount === result.actualUniqueCount
-          ? ''
-          : ` (生 ${result.actualCount} 件 → 重複除去後 ${result.actualUniqueCount} 件)`;
       console.log(
-        `      会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualUniqueCount}${countSuffix}`
+        `      会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualUniqueCount}` +
+          formatOccurrenceCountBreakdown(result)
       );
       if (result.duplicateVenues.length > 0) {
         console.log(`      🔴 会場名の重複: ${result.duplicateVenues.join(', ')}`);
+      }
+      if (result.missingVenueLabelCount > 0) {
+        console.log(`      🔴 会場名が空の occurrence: ${result.missingVenueLabelCount} 件`);
+      }
+      if (result.duplicateSourceVenues.length > 0) {
+        console.log(
+          `      ⚠️ 正解データ側の会場名重複: ${result.duplicateSourceVenues.join(', ')} (測る側の問題)`
+        );
       }
       if (result.missingVenues.length > 0) {
         console.log(`      🔴 欠落: ${result.missingVenues.join(', ')}`);
