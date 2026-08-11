@@ -25,6 +25,10 @@
  */
 
 import type { AiCallRecord } from '@/lib/ai/observability/ai-call-recorder';
+// ★ occurrences の形 (`event_data.occurrences[]` の wire format) は照合側と共有する。
+//   ここで別名の camelCase 型を作ると、`compareWithSource` に渡したときに
+//   キー名が食い違って全会場が「欠落」になる (2026-08-12 に実際に作った不具合)。
+import type { ExtractedOccurrence } from '@/lib/utils/source-truth-extractor';
 
 /** 1 実行ぶんの観測ログ。 */
 export interface RunLog {
@@ -60,16 +64,65 @@ export interface StepComparison {
   erroredRuns: string[];
 }
 
+/**
+ * 応答から occurrences を取り出した結果。
+ *
+ * ## なぜ「空配列」で済ませないか
+ *
+ * 「会場 0 件」には**性質の違う 4 つ**が混ざる。空配列に潰すと、
+ * **「測れなかった」が「0 件だった」= 系統的失敗として誤って帰属される**。
+ *
+ * | status | 意味 | 失敗帰属 |
+ * |---|---|---|
+ * | `ok` | parse できて occurrences を取れた (0 件もあり得る) | 内容で判定してよい |
+ * | `truncated` | 応答が上限で切り捨てられていた (`responseTruncated`) | **判定不能**。観測の欠損 |
+ * | `unparseable` | 応答が JSON として読めなかった | **判定不能**。LLM 側の失敗か observability の欠損か切り分けが要る |
+ * | `absent` | そのステップのレコード自体が無い / 応答が空 | **判定不能**。実行がそこまで到達していない |
+ */
+export type OccurrenceExtraction =
+  | { status: 'ok'; occurrences: ExtractedOccurrence[] }
+  | { status: 'truncated' }
+  | { status: 'unparseable'; reason: string }
+  | { status: 'absent' };
+
+/** 抽出できなかった理由の表示用ラベル。 */
+export function describeExtractionFailure(
+  extraction: Exclude<OccurrenceExtraction, { status: 'ok' }>
+): string {
+  switch (extraction.status) {
+    case 'truncated':
+      return '照合不能: 応答が上限で切り捨てられている (responseTruncated)';
+    case 'unparseable':
+      return `照合不能: 応答が JSON として読めない (${extraction.reason})`;
+    case 'absent':
+      return '照合不能: 該当ステップのレコードが無い';
+  }
+}
+
 /** 実行間で occurrences がどう割れたか。 */
 export interface OccurrenceComparison {
-  /** 全実行で会場名の集合が一致したか */
+  /**
+   * occurrences を実際に取り出せた実行の数。
+   *
+   * **0 なら一致・不一致のどちらでもない (判定不能)。** `venueSetIdentical` の
+   * false を「不一致」と読まないための判別子。
+   */
+  evaluatedRunCount: number;
+  /** 全実行で会場名の集合が一致したか (`evaluatedRunCount === 0` のときは常に false) */
   venueSetIdentical: boolean;
-  /** 実行ラベル → 会場名の配列 */
-  perRun: { label: string; venues: string[] }[];
-  /** 全実行に共通して出た会場 */
+  /**
+   * 実行ラベル → 会場名の配列。
+   *
+   * `extraction` が `ok` でない実行は `venues` が空になるため、**`venues.length === 0`
+   * だけを見て「会場を落とした」と結論してはいけない**。必ず `extraction.status` を見る。
+   */
+  perRun: { label: string; venues: string[]; extraction: OccurrenceExtraction }[];
+  /** 全実行に共通して出た会場 (`ok` の実行のみで判定) */
   alwaysPresent: string[];
   /** 一部の実行にしか出なかった会場 (= 揺れているもの) */
   sometimesPresent: string[];
+  /** occurrences を取り出せなかった実行 (判定から除外したもの) */
+  unevaluatedRuns: { label: string; reason: string }[];
 }
 
 /**
@@ -102,24 +155,58 @@ function uniq<T>(values: T[]): T[] {
 }
 
 /**
- * `detail-extraction` の応答から `occurrences[]` の会場名を取り出す。
+ * `detail-extraction` の応答から `occurrences[]` を取り出す。
  *
  * 応答は Structured Outputs の JSON だが、**parse に失敗しても throw しない**。
  * 比較ツールがログの不備で落ちると、調べたい対象そのものを見られなくなる。
+ *
+ * ⚠️ 失敗を空配列に潰さず `status` で返す。`responseTruncated` を見ずに parse すると、
+ * **切り捨てられた応答が「会場 0 件」= 系統的失敗として誤って帰属される**。
+ * 「測れなかった」と「0 件だった」を混同しないことが本モジュールの主張そのもの。
  */
-export function extractVenueLabels(record: AiCallRecord | undefined): string[] {
-  if (!record?.responseText) return [];
+export function extractOccurrences(record: AiCallRecord | undefined): OccurrenceExtraction {
+  if (!record || !record.responseText) return { status: 'absent' };
+
+  // truncation の判定は parse より前。切り捨てられた JSON は運良く parse できる場合も
+  // あるが、その中身は「途中まで」であって比較に使ってはいけない。
+  if (record.responseTruncated) return { status: 'truncated' };
+
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(record.responseText) as {
-      event_data?: { occurrences?: { venue_label?: string | null }[] };
+    parsed = JSON.parse(record.responseText);
+  } catch (error) {
+    return {
+      status: 'unparseable',
+      reason: error instanceof Error ? error.message : String(error),
     };
-    const occurrences = parsed.event_data?.occurrences ?? [];
-    return occurrences
-      .map((o) => o.venue_label)
-      .filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
-  } catch {
-    return [];
   }
+
+  const raw = (parsed as { event_data?: { occurrences?: unknown } })?.event_data?.occurrences;
+  if (raw !== undefined && !Array.isArray(raw)) {
+    return { status: 'unparseable', reason: 'event_data.occurrences が配列ではない' };
+  }
+
+  const occurrences: ExtractedOccurrence[] = ((raw ?? []) as Record<string, unknown>[]).map(
+    (o) => ({
+      venue_label: typeof o?.venue_label === 'string' ? o.venue_label : null,
+      starts_on: typeof o?.starts_on === 'string' ? o.starts_on : null,
+      ends_on: typeof o?.ends_on === 'string' ? o.ends_on : null,
+    })
+  );
+
+  return { status: 'ok', occurrences };
+}
+
+/**
+ * `extractOccurrences` の結果から会場名だけを取り出す。
+ *
+ * ⚠️ 非 `ok` は空配列になる。呼び出し側は必ず `status` を先に見ること。
+ */
+export function venueLabelsOf(extraction: OccurrenceExtraction): string[] {
+  if (extraction.status !== 'ok') return [];
+  return extraction.occurrences
+    .map((o) => o.venue_label)
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
 }
 
 /** ステップ単位の比較。 */
@@ -154,24 +241,54 @@ export function compareSteps(runs: RunLog[]): StepComparison[] {
   });
 }
 
-/** occurrences の会場集合を実行間で比較する。 */
+/**
+ * occurrences の会場集合を実行間で比較する。
+ *
+ * ⚠️ 会場集合の一致・不一致は **`ok` だった実行だけで判定する**。取り出せなかった実行を
+ * 「会場 0 件」として混ぜると、観測の欠損が「安定して落としている」ように見える。
+ * 除外した実行は `unevaluatedRuns` に理由付きで残す (黙って捨てない)。
+ */
 export function compareOccurrences(runs: RunLog[]): OccurrenceComparison | null {
-  const perRun = runs.map((run) => ({
-    label: run.label,
-    venues: extractVenueLabels(run.records.find((r) => r.stepId === 'detail-extraction')),
-  }));
+  // どの実行も `detail-extraction` まで到達していないなら occurrences について
+  // 述べることが無い (そのこと自体は `compareSteps` 側に出る)。
+  const anyReachedStep = runs.some((run) =>
+    run.records.some((r) => r.stepId === 'detail-extraction')
+  );
+  if (!anyReachedStep) return null;
 
-  if (perRun.every((r) => r.venues.length === 0)) return null;
+  const perRun = runs.map((run) => {
+    const extraction = extractOccurrences(
+      run.records.find((r) => r.stepId === 'detail-extraction')
+    );
+    return { label: run.label, venues: venueLabelsOf(extraction), extraction };
+  });
 
-  const all = uniq(perRun.flatMap((r) => r.venues));
-  const alwaysPresent = all.filter((v) => perRun.every((r) => r.venues.includes(v)));
+  const evaluated = perRun.filter((r) => r.extraction.status === 'ok');
+  const unevaluatedRuns = perRun
+    .filter((r) => r.extraction.status !== 'ok')
+    .map((r) => ({
+      label: r.label,
+      reason: describeExtractionFailure(
+        r.extraction as Exclude<OccurrenceExtraction, { status: 'ok' }>
+      ),
+    }));
+
+  if (evaluated.every((r) => r.venues.length === 0) && unevaluatedRuns.length === 0) return null;
+
+  const all = uniq(evaluated.flatMap((r) => r.venues));
+  const alwaysPresent = all.filter((v) => evaluated.every((r) => r.venues.includes(v)));
   const sometimesPresent = all.filter((v) => !alwaysPresent.includes(v));
 
   return {
-    venueSetIdentical: sometimesPresent.length === 0,
+    evaluatedRunCount: evaluated.length,
+    // 取り出せなかった実行が 1 つでもあれば「一致した」と主張しない。
+    // 判定に使える実行が 0 なら一致・不一致のどちらでもない (表示側で「判定不能」を出す)。
+    venueSetIdentical:
+      evaluated.length > 0 && sometimesPresent.length === 0 && unevaluatedRuns.length === 0,
     perRun,
     alwaysPresent,
     sometimesPresent,
+    unevaluatedRuns,
   };
 }
 
@@ -233,10 +350,30 @@ export function formatRunComparison(comparison: RunComparison): string {
 
   if (comparison.occurrences) {
     lines.push('');
-    lines.push(`occurrences の会場集合: ${mark(comparison.occurrences.venueSetIdentical)}`);
+    lines.push(
+      `occurrences の会場集合: ${
+        comparison.occurrences.evaluatedRunCount === 0
+          ? '⚠️ 判定不能 (どの実行からも occurrences を取り出せていない)'
+          : mark(comparison.occurrences.venueSetIdentical)
+      }`
+    );
     for (const run of comparison.occurrences.perRun) {
+      if (run.extraction.status !== 'ok') {
+        // 「0 件」と書かない。測れなかったことが会場欠落に見えるのを防ぐ。
+        lines.push(
+          `  ${run.label}: ${describeExtractionFailure(
+            run.extraction as Exclude<OccurrenceExtraction, { status: 'ok' }>
+          )}`
+        );
+        continue;
+      }
       lines.push(`  ${run.label}: ${run.venues.length} 件`);
       for (const v of run.venues) lines.push(`    - ${v}`);
+    }
+    if (comparison.occurrences.unevaluatedRuns.length > 0) {
+      lines.push(
+        `  ⚠️ 会場集合の判定から除外した実行 ${comparison.occurrences.unevaluatedRuns.length} 件 (上記の理由で照合不能)`
+      );
     }
     if (comparison.occurrences.sometimesPresent.length > 0) {
       lines.push('  ⚠️ 実行によって出たり出なかったりする会場:');

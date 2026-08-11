@@ -104,6 +104,19 @@ function toHalfWidthDigits(text: string): string {
  *   同じ考え方。
  * - 曜日の脱字 (`2025年11月21（金）` のように「日」が無い) は実データに存在するため、
  *   「日」を任意扱いにして受ける。
+ *
+ * ## ⚠️ 開始側の年が無ければ全体を null にする (意図的)
+ *
+ * `5月14日〜2026年7月5日` のように**終了側にだけ年がある**場合、終了年から開始年を
+ * 逆算すれば「もっともらしい」値は作れる。**それをやらない。**
+ *
+ * 本モジュールは「正解」を供給する側であり、ここで推測を入れると
+ * **推測値を正解として抽出結果を裁く**ことになる。誤った正解で失敗判定を出すのは、
+ * 判定しないより悪い (どちらが間違っているのか分からなくなる)。
+ *
+ * 開始年が読めないなら `{ startsOn: null, endsOn: null }` を返し、呼び出し側には
+ * 「この会場の期間は照合できない」として扱わせる。年跨ぎ補正 (上記) を入れているのは
+ * **開始年が確定しているとき限定**で、そこから機械的に決まる範囲に留めている。
  */
 export function parsePeriodText(periodText: string): {
   startsOn: string | null;
@@ -215,11 +228,18 @@ export function extractSourceTruth(html: string): SourceTruth {
 
 // ── 抽出結果との突き合わせ ────────────────────────────────────────────
 
-/** パイプラインが出した 1 開催ぶん (`event_data.occurrences[]` の必要部分)。 */
+/**
+ * パイプラインが出した 1 開催ぶん (`event_data.occurrences[]` の必要部分)。
+ *
+ * ⚠️ **キーを optional にしない。** 以前は全フィールドが `?:` だったため、
+ * camelCase の別型 (`{ venueLabel, startsOn, endsOn }`) を渡しても型チェックを
+ * 通過し、`compareWithSource` が全会場を「欠落」と報告する不具合を実際に作った
+ * (2026-08-12)。値の欠如は `null` で表し、キーの有無では表さない。
+ */
 export interface ExtractedOccurrence {
-  venue_label?: string | null;
-  starts_on?: string | null;
-  ends_on?: string | null;
+  venue_label: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
 }
 
 export interface VenueComparison {
@@ -233,10 +253,29 @@ export interface VenueComparison {
 
 export interface SourceComparison {
   status: 'supported' | 'unsupported';
-  /** 会場数の一致 */
+  /** 会場数の一致。**重複を除いた件数** (`actualUniqueCount`) で判定する */
   countMatches: boolean;
   expectedCount: number;
+  /**
+   * 抽出が返した occurrences の**生の件数** (重複を含む)。
+   *
+   * ⚠️ これと `actualUniqueCount` が食い違う = 同じ会場を 2 回出している。
+   */
   actualCount: number;
+  /**
+   * 会場名を正規化キーで畳んだあとの件数。
+   *
+   * 実測 (2026-08-11、sw2026 run 10/11) で **2 件とも渋谷店**を返した実行があった。
+   * 生の件数だけを見ると「正解 2 / 抽出 2」で一致に見えるが、実際には片方の会場が
+   * 丸ごと落ちている。判定にはこちらを使う。
+   */
+  actualUniqueCount: number;
+  /**
+   * 抽出結果の中で正規化キーが衝突した会場名 (= 同じ会場を複数回出した)。
+   *
+   * 引き継ぎ書 R7 が挙げる既知の欠陥そのもの。空でなければ `passed` は false。
+   */
+  duplicateVenues: string[];
   /** 会場名の集合比較 */
   venues: VenueComparison[];
   /** 正解にあるのに抽出に無い会場 (= 欠落。最も重い) */
@@ -286,6 +325,13 @@ export function compareWithSource(
       countMatches: false,
       expectedCount: 0,
       actualCount: occurrences.length,
+      actualUniqueCount: new Set(
+        occurrences
+          .map((o) => o.venue_label)
+          .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+          .map(normalizeVenueKey)
+      ).size,
+      duplicateVenues: [],
       venues: [],
       missingVenues: [],
       fabricatedVenues: [],
@@ -301,9 +347,18 @@ export function compareWithSource(
     if (v.venueLabel) expected.set(normalizeVenueKey(v.venueLabel), v);
   }
 
+  // ★ Map への畳み込みで重複が silent に消える。消えた事実そのものが欠陥の signal
+  //   (同じ会場を 2 回出している = 別の会場を 1 つ落としている) なので、捨てずに拾う。
   const actual = new Map<string, ExtractedOccurrence>();
+  const duplicateVenues: string[] = [];
   for (const o of occurrences) {
-    if (o.venue_label) actual.set(normalizeVenueKey(o.venue_label), o);
+    if (!o.venue_label) continue;
+    const key = normalizeVenueKey(o.venue_label);
+    if (actual.has(key)) {
+      if (!duplicateVenues.includes(o.venue_label)) duplicateVenues.push(o.venue_label);
+      continue;
+    }
+    actual.set(key, o);
   }
 
   const venues: VenueComparison[] = [];
@@ -349,12 +404,17 @@ export function compareWithSource(
 
   const expectedCount = expected.size;
   const actualCount = occurrences.length;
+  const actualUniqueCount = actual.size;
 
   return {
     status: 'supported',
-    countMatches: expectedCount === actualCount,
+    // 生の件数ではなく重複除去後で判定する。生の件数で見ると「渋谷店 × 2」が
+    // 「正解 2 / 抽出 2」の一致に化ける (sw2026 run 10/11 で実際に起きた)。
+    countMatches: expectedCount === actualUniqueCount,
     expectedCount,
     actualCount,
+    actualUniqueCount,
+    duplicateVenues,
     venues,
     missingVenues,
     fabricatedVenues,
@@ -362,6 +422,7 @@ export function compareWithSource(
     passed:
       missingVenues.length === 0 &&
       fabricatedVenues.length === 0 &&
-      periodMismatches.length === 0,
+      periodMismatches.length === 0 &&
+      duplicateVenues.length === 0,
   };
 }

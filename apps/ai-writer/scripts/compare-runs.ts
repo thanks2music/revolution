@@ -40,14 +40,14 @@ import type { AiCallRecord } from '../lib/ai/observability/ai-call-recorder';
 import {
   compareRuns,
   formatRunComparison,
-  extractVenueLabels,
+  describeExtractionFailure,
+  extractOccurrences,
+  venueLabelsOf,
+  type OccurrenceExtraction,
   type RunLog,
 } from '../lib/utils/run-comparison';
-import {
-  extractSourceTruth,
-  compareWithSource,
-  type ExtractedOccurrence,
-} from '../lib/utils/source-truth-extractor';
+import { extractSourceTruth, compareWithSource } from '../lib/utils/source-truth-extractor';
+import { fetchHtmlOrThrow } from '../lib/utils/fetch-html';
 
 interface Args {
   jsonlPaths: string[];
@@ -95,18 +95,14 @@ function readRunLog(path: string): RunLog {
   return { label: basename(path, '.jsonl'), records };
 }
 
-/** `detail-extraction` の応答から occurrences を取り出す (正解照合用)。 */
-function readOccurrences(run: RunLog): ExtractedOccurrence[] {
-  const record = run.records.find((r) => r.stepId === 'detail-extraction');
-  if (!record?.responseText) return [];
-  try {
-    const parsed = JSON.parse(record.responseText) as {
-      event_data?: { occurrences?: ExtractedOccurrence[] };
-    };
-    return parsed.event_data?.occurrences ?? [];
-  } catch {
-    return [];
-  }
+/**
+ * `detail-extraction` の応答から occurrences を取り出す (正解照合用)。
+ *
+ * ⚠️ 空配列に潰さず `status` 付きで返す。切り捨て・parse 失敗を「会場 0 件」として
+ * 扱うと、観測の欠損が系統的失敗に化ける (`run-comparison.ts` の説明を参照)。
+ */
+function readOccurrences(run: RunLog): OccurrenceExtraction {
+  return extractOccurrences(run.records.find((r) => r.stepId === 'detail-extraction'));
 }
 
 async function main(): Promise<void> {
@@ -135,7 +131,7 @@ async function main(): Promise<void> {
   if (sourceUrl || sourceHtmlPath) {
     const html = sourceHtmlPath
       ? readFileSync(sourceHtmlPath, 'utf-8')
-      : await fetch(sourceUrl!).then((r) => r.text());
+      : await fetchHtmlOrThrow(sourceUrl!);
 
     const truth = extractSourceTruth(html);
     console.log(
@@ -148,11 +144,30 @@ async function main(): Promise<void> {
     console.log();
 
     for (const run of runs) {
-      const result = compareWithSource(truth, readOccurrences(run));
+      const extraction = readOccurrences(run);
+
+      // ★ 照合できなかった実行を「不合格」に混ぜない。「測れなかった」を
+      //   「間違っていた」として数えると、系統的失敗の件数が水増しされる。
+      if (extraction.status !== 'ok') {
+        console.log(`   ⏭️ ${run.label}`);
+        console.log(`      ${describeExtractionFailure(extraction)}`);
+        continue;
+      }
+
+      const result = compareWithSource(truth, extraction.occurrences);
       passFlags.push(result.passed);
 
       console.log(`   ${result.passed ? '✅' : '❌'} ${run.label}`);
-      console.log(`      会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualCount}`);
+      const countSuffix =
+        result.actualCount === result.actualUniqueCount
+          ? ''
+          : ` (生 ${result.actualCount} 件 → 重複除去後 ${result.actualUniqueCount} 件)`;
+      console.log(
+        `      会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualUniqueCount}${countSuffix}`
+      );
+      if (result.duplicateVenues.length > 0) {
+        console.log(`      🔴 会場名の重複: ${result.duplicateVenues.join(', ')}`);
+      }
       if (result.missingVenues.length > 0) {
         console.log(`      🔴 欠落: ${result.missingVenues.join(', ')}`);
       }
@@ -170,10 +185,12 @@ async function main(): Promise<void> {
     console.log();
     // 参考情報として会場の抽出結果だけ並べる
     for (const run of runs) {
-      const venues = extractVenueLabels(
-        run.records.find((r) => r.stepId === 'detail-extraction')
-      );
-      console.log(`   ${run.label}: ${venues.length} 会場`);
+      const extraction = readOccurrences(run);
+      if (extraction.status !== 'ok') {
+        console.log(`   ${run.label}: ${describeExtractionFailure(extraction)}`);
+        continue;
+      }
+      console.log(`   ${run.label}: ${venueLabelsOf(extraction).length} 会場`);
     }
     console.log();
     passFlags = [];

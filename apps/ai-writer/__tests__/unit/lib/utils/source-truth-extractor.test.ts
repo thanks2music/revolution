@@ -96,6 +96,13 @@ describe('parsePeriodText', () => {
   it('年が読めない場合は推測せず null を返す', () => {
     expect(parsePeriodText('7月下旬より順次')).toEqual({ startsOn: null, endsOn: null });
   });
+
+  // ★ 終了年から開始年を逆算すれば「もっともらしい」値は作れるが、それをやらない。
+  //   本モジュールは正解を供給する側であり、推測値を正解として抽出結果を裁くと
+  //   「どちらが間違っているのか」が分からなくなる。挙動の意図を固定するテスト。
+  it('終了側にだけ年がある場合、開始年を逆算せず全体を null にする', () => {
+    expect(parsePeriodText('5月14日〜2026年7月5日')).toEqual({ startsOn: null, endsOn: null });
+  });
 });
 
 describe('unescapeEmbeddedMarkup', () => {
@@ -213,6 +220,44 @@ describe('compareWithSource', () => {
     expect(result.countMatches).toBe(true);
     expect(result.passed).toBe(false);
     expect(result.periodMismatches).toEqual(['BOX cafe&space ＫＩＴＴＥ OSAKA 2号店']);
+  });
+
+  // ★ 実測 (sw2026 run 10/11): 2 件とも渋谷店を返した。生の件数だけを見ると
+  //   「正解 2 / 抽出 2」で一致に見えるが、実際には片方の会場が丸ごと落ちている。
+  it('同じ会場を 2 回出したら重複として検出し、件数一致に化けさせない', () => {
+    const result = compareWithSource(truth, [
+      {
+        venue_label: 'BOX cafe&space マツモトキヨシ池袋Part2店',
+        starts_on: '2026-05-14',
+        ends_on: '2026-07-05',
+      },
+      {
+        venue_label: 'BOX cafe&space マツモトキヨシ池袋Part2店',
+        starts_on: '2026-05-14',
+        ends_on: '2026-07-05',
+      },
+    ]);
+
+    expect(result.duplicateVenues).toEqual(['BOX cafe&space マツモトキヨシ池袋Part2店']);
+    // 生の件数は 2 でも、重複除去後は 1 件しか無い
+    expect(result.actualCount).toBe(2);
+    expect(result.actualUniqueCount).toBe(1);
+    expect(result.countMatches).toBe(false);
+    expect(result.passed).toBe(false);
+    // 落ちている会場も同時に報告されること
+    expect(result.missingVenues).toEqual(['BOX cafe&space ＫＩＴＴＥ OSAKA 2号店']);
+  });
+
+  it('全角・半角の違いで重複しているケースも重複として検出する', () => {
+    // 正規化キーで畳むため、表記が違っても同一会場の重複として拾える
+    const result = compareWithSource(truth, [
+      { venue_label: 'BOX cafe&space ＫＩＴＴＥ OSAKA 2号店', starts_on: '2026-05-28', ends_on: '2026-06-28' },
+      { venue_label: 'BOX cafe&space KITTE OSAKA 2号店', starts_on: '2026-05-28', ends_on: '2026-06-28' },
+    ]);
+
+    expect(result.duplicateVenues).toEqual(['BOX cafe&space KITTE OSAKA 2号店']);
+    expect(result.actualUniqueCount).toBe(1);
+    expect(result.passed).toBe(false);
   });
 
   it('照合不能なページは合格にしない', () => {

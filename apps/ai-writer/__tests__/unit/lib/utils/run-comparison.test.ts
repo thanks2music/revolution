@@ -6,8 +6,9 @@ import {
   compareOccurrences,
   compareRuns,
   compareSteps,
-  extractVenueLabels,
+  extractOccurrences,
   formatRunComparison,
+  venueLabelsOf,
   type RunLog,
 } from '@/lib/utils/run-comparison';
 
@@ -55,23 +56,69 @@ function run(label: string, venues: { name: string }[], responseSha: string): Ru
   };
 }
 
-describe('extractVenueLabels', () => {
-  it('occurrences から会場名を取り出す', () => {
+describe('extractOccurrences', () => {
+  it('occurrences から会場名と期間を取り出す', () => {
     const rec = record({
       stepId: 'detail-extraction',
-      responseText: extractionResponse([{ name: '東京店' }, { name: '大阪店' }]),
+      responseText: extractionResponse([
+        { name: '東京店', start: '2026-05-14', end: '2026-07-05' },
+        { name: '大阪店' },
+      ]),
     });
-    expect(extractVenueLabels(rec)).toEqual(['東京店', '大阪店']);
+
+    const extraction = extractOccurrences(rec);
+    expect(extraction.status).toBe('ok');
+    expect(venueLabelsOf(extraction)).toEqual(['東京店', '大阪店']);
+    // ★ キー名は wire format (snake_case) のまま。camelCase に変換すると
+    //   `compareWithSource` へ渡したときに全会場が「欠落」になる。
+    expect(extraction).toMatchObject({
+      occurrences: [
+        { venue_label: '東京店', starts_on: '2026-05-14', ends_on: '2026-07-05' },
+        { venue_label: '大阪店', starts_on: null, ends_on: null },
+      ],
+    });
   });
 
-  it('応答が壊れていても throw せず空配列を返す', () => {
-    // 比較ツールがログの不備で落ちると、調べたい対象そのものを見られなくなる。
+  // ★ ここが本 PR の主張の核心。「測れなかった」を「0 件だった」に潰すと、
+  //   観測の欠損が系統的失敗として誤って帰属される。
+  it('応答が壊れていても throw せず unparseable で返す (空配列に潰さない)', () => {
     const rec = record({ stepId: 'detail-extraction', responseText: '{壊れた JSON' });
-    expect(extractVenueLabels(rec)).toEqual([]);
+    const extraction = extractOccurrences(rec);
+
+    expect(extraction.status).toBe('unparseable');
+    expect(venueLabelsOf(extraction)).toEqual([]);
   });
 
-  it('レコードが無い場合も空配列', () => {
-    expect(extractVenueLabels(undefined)).toEqual([]);
+  it('切り捨てられた応答は parse できても truncated で返す', () => {
+    // 切り捨てられた JSON が運良く parse できても、中身は「途中まで」であり
+    // 比較に使ってはいけない。
+    const rec = record({
+      stepId: 'detail-extraction',
+      responseText: extractionResponse([{ name: '東京店' }]),
+      responseTruncated: true,
+    });
+
+    expect(extractOccurrences(rec).status).toBe('truncated');
+  });
+
+  it('レコードが無い場合は absent で返す', () => {
+    expect(extractOccurrences(undefined).status).toBe('absent');
+  });
+
+  it('occurrences が配列でなければ unparseable で返す', () => {
+    const rec = record({
+      stepId: 'detail-extraction',
+      responseText: JSON.stringify({ event_data: { occurrences: '東京店' } }),
+    });
+
+    expect(extractOccurrences(rec).status).toBe('unparseable');
+  });
+
+  it('event_data が無い応答は ok の 0 件 (parse は成功しているため)', () => {
+    const rec = record({ stepId: 'detail-extraction', responseText: '{"other":1}' });
+    const extraction = extractOccurrences(rec);
+
+    expect(extraction).toEqual({ status: 'ok', occurrences: [] });
   });
 });
 
@@ -156,6 +203,55 @@ describe('compareOccurrences', () => {
       { label: 'r1', records: [record({ stepId: 'article-selection' })] },
     ]);
     expect(result).toBeNull();
+  });
+
+  // ★ 照合不能な実行を「会場 0 件」として混ぜると、観測の欠損が
+  //   「安定して全会場を落としている」= 系統的失敗に化ける。
+  it('取り出せなかった実行を会場 0 件として混ぜず、判定から除外する', () => {
+    const result = compareOccurrences([
+      run('r1', [{ name: '東京店' }, { name: '大阪店' }], 'a'.repeat(64)),
+      run('r2', [{ name: '東京店' }, { name: '大阪店' }], 'b'.repeat(64)),
+      {
+        label: 'r3',
+        records: [
+          record({
+            stepId: 'detail-extraction',
+            responseText: '{切り捨てられた JSON',
+            responseSha256: 'c'.repeat(64),
+          }),
+        ],
+      },
+    ])!;
+
+    // 両会場は「一部の実行にしか出ない」扱いにされない
+    expect(result.evaluatedRunCount).toBe(2);
+    expect(result.alwaysPresent).toEqual(['東京店', '大阪店']);
+    expect(result.sometimesPresent).toEqual([]);
+    // ただし取り出せなかった実行があるため「一致した」とも言わない
+    expect(result.venueSetIdentical).toBe(false);
+    expect(result.unevaluatedRuns).toHaveLength(1);
+    expect(result.unevaluatedRuns[0].label).toBe('r3');
+    expect(result.unevaluatedRuns[0].reason).toContain('照合不能');
+  });
+
+  it('どの実行からも取り出せなければ「判定不能」と表示し、不一致と言わない', () => {
+    const runs: RunLog[] = [
+      {
+        label: 'r1',
+        records: [
+          record({ stepId: 'detail-extraction', responseText: 'x', responseTruncated: true }),
+        ],
+      },
+    ];
+
+    const result = compareOccurrences(runs)!;
+    expect(result.evaluatedRunCount).toBe(0);
+    expect(result.venueSetIdentical).toBe(false);
+
+    // false を「不一致」と読ませない。表示は判定不能であること。
+    const output = formatRunComparison(compareRuns(runs));
+    expect(output).toContain('判定不能');
+    expect(output).not.toContain('occurrences の会場集合: ⚠️ 不一致');
   });
 });
 

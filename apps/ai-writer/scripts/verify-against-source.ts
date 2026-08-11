@@ -42,11 +42,13 @@ const __dirname = dirname(__filename);
 config({ path: resolve(__dirname, '../.env.local') });
 
 import type { AiCallRecord } from '../lib/ai/observability/ai-call-recorder';
+import { extractSourceTruth, compareWithSource } from '../lib/utils/source-truth-extractor';
 import {
-  extractSourceTruth,
-  compareWithSource,
-  type ExtractedOccurrence,
-} from '../lib/utils/source-truth-extractor';
+  describeExtractionFailure,
+  extractOccurrences,
+  type OccurrenceExtraction,
+} from '../lib/utils/run-comparison';
+import { fetchHtmlOrThrow } from '../lib/utils/fetch-html';
 
 interface Args {
   url?: string;
@@ -74,24 +76,19 @@ function parseArgs(): Args {
   return { url, htmlPath, againstPaths };
 }
 
-/** JSONL から `detail-extraction` の occurrences を取り出す。 */
-function readOccurrences(jsonlPath: string): ExtractedOccurrence[] {
+/**
+ * JSONL から `detail-extraction` の occurrences を取り出す。
+ *
+ * ⚠️ 空配列に潰さず `status` 付きで返す。切り捨て・parse 失敗を「会場 0 件」として
+ * 扱うと、観測の欠損が「全会場欠落」= 系統的失敗に化ける。
+ */
+function readOccurrences(jsonlPath: string): OccurrenceExtraction {
   const records = readFileSync(jsonlPath, 'utf-8')
     .split('\n')
     .filter((l) => l.trim().length > 0)
     .map((l) => JSON.parse(l) as AiCallRecord);
 
-  const record = records.find((r) => r.stepId === 'detail-extraction');
-  if (!record?.responseText) return [];
-
-  try {
-    const parsed = JSON.parse(record.responseText) as {
-      event_data?: { occurrences?: ExtractedOccurrence[] };
-    };
-    return parsed.event_data?.occurrences ?? [];
-  } catch {
-    return [];
-  }
+  return extractOccurrences(records.find((r) => r.stepId === 'detail-extraction'));
 }
 
 async function main(): Promise<void> {
@@ -105,7 +102,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const html = htmlPath ? readFileSync(htmlPath, 'utf-8') : await fetch(url!).then((r) => r.text());
+  const html = htmlPath ? readFileSync(htmlPath, 'utf-8') : await fetchHtmlOrThrow(url!);
   const truth = extractSourceTruth(html);
 
   console.log('='.repeat(80));
@@ -136,15 +133,35 @@ async function main(): Promise<void> {
   let anyFailure = false;
 
   for (const jsonlPath of againstPaths) {
-    const occurrences = readOccurrences(jsonlPath);
-    const result = compareWithSource(truth, occurrences);
+    const extraction = readOccurrences(jsonlPath);
+
+    // ★ 照合できなかったものを「一致」と読ませない。ただし「不一致」とも言わない
+    //   (どちらも事実ではない)。CI 用の終了コードは 1 にする — 観測が欠けている状態を
+    //   緑にすると、欠損に気づかないまま先へ進んでしまう。
+    if (extraction.status !== 'ok') {
+      anyFailure = true;
+      console.log('-'.repeat(80));
+      console.log(`⏭️ 照合不能  ${basename(jsonlPath)}`);
+      console.log(`  ${describeExtractionFailure(extraction)}`);
+      console.log();
+      continue;
+    }
+
+    const result = compareWithSource(truth, extraction.occurrences);
     if (!result.passed) anyFailure = true;
 
     console.log('-'.repeat(80));
     console.log(`${result.passed ? '✅ 一致' : '❌ 不一致'}  ${basename(jsonlPath)}`);
+    const countSuffix =
+      result.actualCount === result.actualUniqueCount
+        ? ''
+        : ` (生 ${result.actualCount} 件 → 重複除去後 ${result.actualUniqueCount} 件)`;
     console.log(
-      `  会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualCount}  ${result.countMatches ? '' : '⚠️'}`
+      `  会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualUniqueCount}${countSuffix}  ${result.countMatches ? '' : '⚠️'}`
     );
+    if (result.duplicateVenues.length > 0) {
+      console.log(`  🔴 会場名の重複: ${result.duplicateVenues.join(', ')}`);
+    }
 
     for (const v of result.venues) {
       if (v.presence === 'missing-from-extraction') {
