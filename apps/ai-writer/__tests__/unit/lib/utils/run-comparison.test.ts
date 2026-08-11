@@ -390,3 +390,48 @@ describe('formatRunComparison の除外実行表示', () => {
     expect(output).not.toContain('判定から除外');
   });
 });
+
+// ★ 6 巡目レビュー由来。最悪の系統的失敗が「一致」に埋もれるのを防ぐ。
+describe('全実行が 0 会場のケース', () => {
+  /** occurrences が空配列の応答を持つ実行。 */
+  function emptyRun(label: string, sha: string): RunLog {
+    return {
+      label,
+      records: [
+        record({
+          stepId: 'detail-extraction',
+          responseText: JSON.stringify({ event_data: { occurrences: [] } }),
+          responseSha256: sha,
+        }),
+      ],
+    };
+  }
+
+  it('null を返さず allEmpty を立てる (self-consistency のみの表示で沈黙させない)', () => {
+    const result = compareOccurrences([
+      emptyRun('r1', 'a'.repeat(64)),
+      emptyRun('r2', 'b'.repeat(64)),
+    ]);
+
+    expect(result).not.toBeNull();
+    expect(result!.allEmpty).toBe(true);
+    expect(result!.evaluatedRunCount).toBe(2);
+  });
+
+  it('表示で「最悪の系統的失敗の形」と明示する', () => {
+    const runs = [emptyRun('r1', 'a'.repeat(64)), emptyRun('r2', 'b'.repeat(64))];
+    const output = formatRunComparison(compareRuns(runs, []));
+
+    expect(output).toContain('会場 0 件');
+    expect(output).toContain('系統的失敗の形');
+  });
+
+  it('会場が 1 つでも取れていれば allEmpty は立たない', () => {
+    const result = compareOccurrences([
+      run('r1', [{ name: '東京店' }], 'a'.repeat(64)),
+      emptyRun('r2', 'b'.repeat(64)),
+    ]);
+
+    expect(result!.allEmpty).toBe(false);
+  });
+});

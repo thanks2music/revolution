@@ -85,7 +85,13 @@ export type OccurrenceExtraction =
   | { status: 'unparseable'; reason: string }
   | { status: 'absent' };
 
-/** 抽出できなかった理由の表示用ラベル。 */
+/**
+ * 抽出できなかった理由の表示用ラベル。
+ *
+ * ⚠️ `default` で `never` 検査をしている。`OccurrenceExtraction` に status を足したとき、
+ * ここを書き忘れると**新しい失敗が「照合不能」とだけ表示されて理由が消える**。
+ * union の追加をコンパイルエラーで気づけるようにする。
+ */
 export function describeExtractionFailure(
   extraction: Exclude<OccurrenceExtraction, { status: 'ok' }>
 ): string {
@@ -96,6 +102,12 @@ export function describeExtractionFailure(
       return `照合不能: 応答が JSON として読めない (${extraction.reason})`;
     case 'absent':
       return '照合不能: 該当ステップのレコードが無い';
+    default: {
+      const unhandled: never = extraction;
+      throw new Error(
+        `describeExtractionFailure: 未対応の status です: ${JSON.stringify(unhandled)}`
+      );
+    }
   }
 }
 
@@ -108,6 +120,14 @@ export interface OccurrenceComparison {
    * false を「不一致」と読まないための判別子。
    */
   evaluatedRunCount: number;
+  /**
+   * 取り出せた実行が**すべて 0 会場**だったか。
+   *
+   * ⚠️ これは「考えうる最悪の系統的失敗」であり、集合比較の上では「全実行一致」に
+   * 見えてしまう。`--source` を付けない自己一貫性のみの表示でここが沈黙しないよう、
+   * 独立したフラグとして持つ。
+   */
+  allEmpty: boolean;
   /** 全実行で会場名の集合が一致したか (`evaluatedRunCount === 0` のときは常に false) */
   venueSetIdentical: boolean;
   /**
@@ -273,7 +293,10 @@ export function compareOccurrences(runs: RunLog[]): OccurrenceComparison | null 
       ),
     }));
 
-  if (evaluated.every((r) => r.venues.length === 0) && unevaluatedRuns.length === 0) return null;
+  // ⚠️ ここで null を返してはいけない。**全実行が本当に 0 会場**というのは
+  //    「考えうる最悪の系統的失敗」であり、`--source` を付けない自己一貫性のみの
+  //    表示でそこが沈黙すると、最も見たい signal が消える。`allEmpty` として明示する。
+  const allEmpty = evaluated.length > 0 && evaluated.every((r) => r.venues.length === 0);
 
   const all = uniq(evaluated.flatMap((r) => r.venues));
   const alwaysPresent = all.filter((v) => evaluated.every((r) => r.venues.includes(v)));
@@ -281,6 +304,7 @@ export function compareOccurrences(runs: RunLog[]): OccurrenceComparison | null 
 
   return {
     evaluatedRunCount: evaluated.length,
+    allEmpty,
     // 取り出せなかった実行が 1 つでもあれば「一致した」と主張しない。
     // 判定に使える実行が 0 なら一致・不一致のどちらでもない (表示側で「判定不能」を出す)。
     venueSetIdentical:
@@ -378,6 +402,14 @@ export function formatRunComparison(
       }
       lines.push(`  ${run.label}: ${run.venues.length} 件`);
       for (const v of run.venues) lines.push(`    - ${v}`);
+    }
+    // ★ 全実行が 0 会場は「集合が一致」に見えるが、実際は最悪の系統的失敗。
+    //   一致の報告に埋もれさせない。
+    if (comparison.occurrences.allEmpty) {
+      lines.push(
+        `  🔴 取り出せた ${comparison.occurrences.evaluatedRunCount} 実行すべてで会場 0 件` +
+          ` (集合としては「一致」だが、これは最悪の系統的失敗の形)`
+      );
     }
     if (comparison.occurrences.unevaluatedRuns.length > 0) {
       lines.push(
