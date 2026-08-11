@@ -36,7 +36,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 config({ path: resolve(__dirname, '../.env.local') });
 
-import type { AiCallRecord } from '../lib/ai/observability/ai-call-recorder';
 import {
   compareRuns,
   formatRunComparison,
@@ -48,6 +47,7 @@ import {
 } from '../lib/utils/run-comparison';
 import { extractSourceTruth, compareWithSource } from '../lib/utils/source-truth-extractor';
 import { fetchHtmlOrThrow } from '../lib/utils/fetch-html';
+import { readRunLog } from '../lib/utils/read-run-log';
 
 interface Args {
   jsonlPaths: string[];
@@ -76,23 +76,12 @@ function parseArgs(): Args {
 }
 
 /** JSONL を 1 行ずつ読む。壊れた行は握り潰さず件数を報告する。 */
-function readRunLog(path: string): RunLog {
-  const lines = readFileSync(path, 'utf-8').split('\n').filter((l) => l.trim().length > 0);
-  const records: AiCallRecord[] = [];
-  let broken = 0;
-
-  for (const line of lines) {
-    try {
-      records.push(JSON.parse(line) as AiCallRecord);
-    } catch {
-      broken++;
-    }
+function loadRunLog(path: string): RunLog {
+  const { runLog, brokenLineCount } = readRunLog(path);
+  if (brokenLineCount > 0) {
+    console.warn(`⚠️ ${basename(path)}: ${brokenLineCount} 行を parse できませんでした`);
   }
-  if (broken > 0) {
-    console.warn(`⚠️ ${basename(path)}: ${broken} 行を parse できませんでした`);
-  }
-
-  return { label: basename(path, '.jsonl'), records };
+  return runLog;
 }
 
 /**
@@ -117,7 +106,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const runs = jsonlPaths.map(readRunLog);
+  const runs = jsonlPaths.map(loadRunLog);
 
   console.log('='.repeat(80));
   console.log('📊 実行間比較');
@@ -126,7 +115,7 @@ async function main(): Promise<void> {
 
   // 正解データがあれば、実行ごとの合否を出す。無ければ判定しない
   // (自己一貫性から正しさを推定しない)。
-  let passFlags: boolean[] = [];
+  const passFlags: boolean[] = [];
 
   if (sourceUrl || sourceHtmlPath) {
     const html = sourceHtmlPath
@@ -193,7 +182,6 @@ async function main(): Promise<void> {
       console.log(`   ${run.label}: ${venueLabelsOf(extraction).length} 会場`);
     }
     console.log();
-    passFlags = [];
   }
 
   console.log(formatRunComparison(compareRuns(runs, passFlags)));

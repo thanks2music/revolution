@@ -41,7 +41,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 config({ path: resolve(__dirname, '../.env.local') });
 
-import type { AiCallRecord } from '../lib/ai/observability/ai-call-recorder';
 import { extractSourceTruth, compareWithSource } from '../lib/utils/source-truth-extractor';
 import {
   describeExtractionFailure,
@@ -49,6 +48,7 @@ import {
   type OccurrenceExtraction,
 } from '../lib/utils/run-comparison';
 import { fetchHtmlOrThrow } from '../lib/utils/fetch-html';
+import { readRunLog } from '../lib/utils/read-run-log';
 
 interface Args {
   url?: string;
@@ -81,14 +81,18 @@ function parseArgs(): Args {
  *
  * ⚠️ 空配列に潰さず `status` 付きで返す。切り捨て・parse 失敗を「会場 0 件」として
  * 扱うと、観測の欠損が「全会場欠落」= 系統的失敗に化ける。
+ *
+ * ⚠️ JSONL の行が壊れていても throw しない (`readRunLog`)。素で `JSON.parse` すると
+ * 1 行の破損で main の catch に落ち、`exit 1` が「本物の不一致を見つけた」と
+ * 区別できなくなる。本スクリプトは CI から終了コードで判定される前提のため致命的。
  */
 function readOccurrences(jsonlPath: string): OccurrenceExtraction {
-  const records = readFileSync(jsonlPath, 'utf-8')
-    .split('\n')
-    .filter((l) => l.trim().length > 0)
-    .map((l) => JSON.parse(l) as AiCallRecord);
+  const { runLog, brokenLineCount } = readRunLog(jsonlPath);
+  if (brokenLineCount > 0) {
+    console.warn(`⚠️ ${basename(jsonlPath)}: ${brokenLineCount} 行を parse できませんでした`);
+  }
 
-  return extractOccurrences(records.find((r) => r.stepId === 'detail-extraction'));
+  return extractOccurrences(runLog.records.find((r) => r.stepId === 'detail-extraction'));
 }
 
 async function main(): Promise<void> {
