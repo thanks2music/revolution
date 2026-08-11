@@ -510,7 +510,6 @@ async function main() {
       console.log('='.repeat(80));
       console.log(`📝 ログファイル保存完了: ${logFilePath}`);
       console.log(`📊 観測ログ (JSONL): ${getAiCallJsonlPath()}`);
-      console.log('   → 同一 URL の再実行との比較: pnpm tsx scripts/compare-runs.ts <*.jsonl>');
       console.log('='.repeat(80));
     }
 

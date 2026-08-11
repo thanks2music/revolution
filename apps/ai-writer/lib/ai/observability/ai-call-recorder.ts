@@ -351,6 +351,8 @@ export async function recordAiCall(input: AiCallRecordInput): Promise<void> {
         stepId: input.stepId,
         prompt,
         promptFile: record.promptFile,
+        // 呼び出し元が計算した値を再利用する (プロンプトは数十 KB になる)
+        promptSha256: record.promptSha256,
       })
     );
   } catch (error) {
@@ -385,9 +387,17 @@ export function formatPromptPointer(params: {
   stepId: PipelineStepId | 'unknown';
   prompt: string;
   promptFile?: string;
+  /**
+   * 既に計算済みのプロンプトハッシュ。
+   *
+   * 省略すると本関数が再計算する。呼び出し元 (`recordAiCall`) は `promptSha256` を
+   * 既に持っているため渡すこと — プロンプトは数十 KB あり、同じ文字列を 2 回
+   * ハッシュする意味がない。
+   */
+  promptSha256?: string;
 }): string {
   const chars = params.prompt.length.toLocaleString();
-  const hash = sha256(params.prompt).slice(0, 12);
+  const hash = (params.promptSha256 ?? sha256(params.prompt)).slice(0, 12);
   const where = params.promptFile ? ` → ${params.promptFile}` : '';
   return `[${params.stepId}] prompt${where} (${chars} chars, sha256 ${hash})`;
 }
