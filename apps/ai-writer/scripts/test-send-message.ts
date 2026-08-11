@@ -8,7 +8,7 @@
  *
  * Usage:
  *   AI_PROVIDER=anthropic pnpm tsx scripts/test-send-message.ts
- *   AI_PROVIDER=gemini pnpm tsx scripts/test-send-message.ts
+ *   AI_PROVIDER=google pnpm tsx scripts/test-send-message.ts
  *   AI_PROVIDER=openai pnpm tsx scripts/test-send-message.ts
  */
 

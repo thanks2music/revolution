@@ -67,6 +67,16 @@ export class GeminiProvider implements AiProvider {
   private genAI: GoogleGenerativeAI;
   private model: GenerativeModel;
   private apiKey: string;
+  /**
+   * `this.model` を組み立てたときのモデル名。
+   *
+   * ⚠️ 観測ログの `requestedModel` を実際に呼ぶモデルと一致させるためだけに保持する。
+   * `sendMessage` は `this.model` を使わず `GEMINI_MODELS.FLASH_LITE` で別のモデルを
+   * 組み立て直すため、本フィールドは `this.model` を使う経路 (`generateArticle` /
+   * `extractFromRss` 等) にのみ対応する。この不一致自体の是正は別タスク
+   * (Todoist「Gemini モデルを現行世代へ更新する」) で扱う。
+   */
+  private readonly configuredModelName: string;
 
   /**
    * Initialize Gemini Provider
@@ -86,6 +96,7 @@ export class GeminiProvider implements AiProvider {
 
     this.genAI = new GoogleGenerativeAI(this.apiKey);
     this.model = this.genAI.getGenerativeModel({ model: modelName });
+    this.configuredModelName = modelName;
 
     console.log(`🤖 Gemini Provider initialized with model: ${modelName}`);
   }
@@ -174,7 +185,7 @@ Slug:`;
    * @returns Extracted information with confidence score
    */
   async extractFromRss(input: RssExtractionInput): Promise<RssExtractionResult> {
-    console.log(`🤖 Using AI Provider: Google Gemini (gemini-2.5-flash-lite)`);
+    console.log(`🤖 Using AI Provider: Google Gemini (${this.configuredModelName})`);
 
     const prompt = `あなたはアニメコラボイベントの情報抽出エキスパートです。
 
@@ -238,10 +249,12 @@ JSON以外の説明文は出力しないでください。`;
 
       await recordAiCall({
         stepId: 'rss-extraction',
-        provider: 'gemini',
-        requestedModel: GEMINI_MODELS.FLASH_LITE,
+        provider: 'google',
+        // `this.model` は constructor の modelName で組み立てられているため、
+        // FLASH_LITE 固定で書くと呼んでいないモデル名を記録することになる。
+        requestedModel: this.configuredModelName,
         resolvedModel:
-          (response as { modelVersion?: string }).modelVersion ?? GEMINI_MODELS.FLASH_LITE,
+          (response as { modelVersion?: string }).modelVersion ?? this.configuredModelName,
         systemFingerprint: null,
         finishReason: response.candidates?.[0]?.finishReason,
         latencyMs: Date.now() - startedAt,
@@ -270,8 +283,8 @@ JSON以外の説明文は出力しないでください。`;
 
       await recordAiCall({
         stepId: 'rss-extraction',
-        provider: 'gemini',
-        requestedModel: GEMINI_MODELS.FLASH_LITE,
+        provider: 'google',
+        requestedModel: this.configuredModelName,
         latencyMs: Date.now() - startedAt,
         prompt,
         promptSha256: hashForAiCallRecord(prompt),
@@ -575,7 +588,7 @@ Respond ONLY with JSON format. No other text should be included.
         model: modelName,
         generationConfig: {
           maxOutputTokens: options?.maxTokens ?? 2048,
-          temperature: options?.temperature ?? 0,
+          temperature,
           // Enable JSON mode when responseFormat is 'json'
           // This ensures the model outputs valid, parseable JSON
           responseMimeType:
@@ -608,9 +621,8 @@ Respond ONLY with JSON format. No other text should be included.
       await recordAiCall({
         stepId,
         context: options?.recordContext,
-        provider: 'gemini',
+        provider: 'google',
         requestedModel: modelName,
-        // Gemini の応答は実モデル版を返さないため要求名をそのまま置く。
         resolvedModel,
         // Gemini に `system_fingerprint` 相当の概念はない (null = 非対応)。
         systemFingerprint: null,
@@ -641,7 +653,7 @@ Respond ONLY with JSON format. No other text should be included.
       await recordAiCall({
         stepId,
         context: options?.recordContext,
-        provider: 'gemini',
+        provider: 'google',
         requestedModel: modelName,
         latencyMs: Date.now() - startedAt,
         temperature,

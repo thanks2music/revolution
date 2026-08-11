@@ -23,7 +23,7 @@ export function getConfiguredProvider(): AiProviderType {
   const provider = process.env.AI_PROVIDER as AiProviderType;
 
   // Validate provider type
-  const validProviders: AiProviderType[] = ['anthropic', 'gemini', 'openai'];
+  const validProviders: AiProviderType[] = ['anthropic', 'google', 'openai'];
   if (provider && validProviders.includes(provider)) {
     return provider;
   }
@@ -41,10 +41,11 @@ export function getConfiguredProvider(): AiProviderType {
  *
  * @description
  * Factory function that creates the appropriate AI provider based on
- * the AI_PROVIDER environment variable. Currently supports:
- * - anthropic: Claude (Anthropic)
- * - gemini: Gemini (Google) - Coming soon
- * - openai: ChatGPT (OpenAI) - Coming soon
+ * the AI_PROVIDER environment variable. Providers are selected by vendor
+ * name, not by LLM product name. Currently supports:
+ * - anthropic: Claude
+ * - google: Gemini
+ * - openai: ChatGPT
  *
  * @returns An instance of the configured AI provider
  * @throws Error if the provider type is not supported
@@ -67,7 +68,7 @@ export function createAiProvider(): AiProvider {
       console.log('🤖 Using Anthropic Claude provider');
       return new AnthropicProvider();
 
-    case 'gemini':
+    case 'google':
       console.log('🤖 Using Google Gemini provider');
       return new GeminiProvider();
 
@@ -102,7 +103,7 @@ export function createSpecificProvider(
     case 'anthropic':
       return new AnthropicProvider(apiKey);
 
-    case 'gemini':
+    case 'google':
       return new GeminiProvider(apiKey);
 
     case 'openai':

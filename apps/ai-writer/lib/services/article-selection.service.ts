@@ -55,7 +55,10 @@ export class ArticleSelectionService {
       const prompt = this.buildPrompt(template, request);
 
       // デバッグ: 送信プロンプトをログ出力
-      if (process.env.DEBUG_SELECTION_PROMPT === 'true' && !shouldSuppressInlinePromptDump('article-selection')) {
+      if (
+        process.env.DEBUG_SELECTION_PROMPT === 'true' &&
+        !shouldSuppressInlinePromptDump('article-selection')
+      ) {
         console.log('\n[ArticleSelection] ========== 送信プロンプト全文 ==========');
         console.log(prompt);
         console.log('[ArticleSelection] ========== プロンプト終了 ==========\n');

@@ -132,7 +132,10 @@ export class ContentGenerationService {
       const prompt = this.buildPrompt(template, request);
 
       // デバッグ: 送信プロンプトをログ出力
-      if (process.env.DEBUG_CONTENT_PROMPT === 'true' && !shouldSuppressInlinePromptDump('content-generation')) {
+      if (
+        process.env.DEBUG_CONTENT_PROMPT === 'true' &&
+        !shouldSuppressInlinePromptDump('content-generation')
+      ) {
         console.log('\n[ContentGeneration] ========== 送信プロンプト全文 ==========');
         console.log(prompt);
         console.log('[ContentGeneration] ========== プロンプト終了 ==========\n');

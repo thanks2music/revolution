@@ -99,7 +99,7 @@ export interface VisionOutputSchema {
         };
         provider: {
           type: 'string';
-          enum: ['openai', 'claude'];
+          enum: ['openai', 'anthropic'];
           description: string;
         };
         timestamp: {
@@ -330,8 +330,10 @@ export interface HallucinationDetectionResult {
  *
  * @description
  * Supported Vision API providers for dual-provider architecture.
+ * Identified by vendor name (not LLM product name), matching
+ * `AiProviderType` in `lib/ai/providers/ai-provider.interface.ts`.
  */
-export type VisionProvider = 'openai' | 'claude';
+export type VisionProvider = 'openai' | 'anthropic';
 
 /**
  * Vision API Configuration
@@ -419,7 +421,7 @@ export interface IVisionApiService {
   /**
    * Get provider name
    *
-   * @returns Provider name ('openai' or 'claude')
+   * @returns Provider name ('openai' or 'anthropic')
    */
   getProviderName(): VisionProvider;
 

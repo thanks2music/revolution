@@ -55,7 +55,10 @@ export class TitleGenerationService {
       const prompt = this.buildPrompt(template, request);
 
       // デバッグ: 送信プロンプトをログ出力
-      if (process.env.DEBUG_TITLE_PROMPT === 'true' && !shouldSuppressInlinePromptDump('title-generation')) {
+      if (
+        process.env.DEBUG_TITLE_PROMPT === 'true' &&
+        !shouldSuppressInlinePromptDump('title-generation')
+      ) {
         console.log('\n[TitleGeneration] ========== 送信プロンプト全文 ==========');
         console.log(prompt);
         console.log('[TitleGeneration] ========== プロンプト終了 ==========\n');

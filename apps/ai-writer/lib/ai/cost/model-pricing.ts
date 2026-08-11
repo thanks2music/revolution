@@ -19,8 +19,8 @@ export interface ModelPricing {
   cachedInputPer1M?: number;
   /** Output tokens price per 1M tokens (USD) */
   outputPer1M: number;
-  /** Provider name */
-  provider: 'openai' | 'anthropic' | 'gemini';
+  /** Provider name (vendor name, aligned with `AiProviderType`) */
+  provider: 'openai' | 'anthropic' | 'google';
 }
 
 export interface TokenUsage {
@@ -154,22 +154,22 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'gemini-2.0-flash': {
     inputPer1M: 0.1,
     outputPer1M: 0.4,
-    provider: 'gemini',
+    provider: 'google',
   },
   'gemini-2.5-flash': {
     inputPer1M: 0.15,
     outputPer1M: 0.6,
-    provider: 'gemini',
+    provider: 'google',
   },
   'gemini-1.5-flash': {
     inputPer1M: 0.075,
     outputPer1M: 0.3,
-    provider: 'gemini',
+    provider: 'google',
   },
   'gemini-1.5-pro': {
     inputPer1M: 1.25,
     outputPer1M: 5.0,
-    provider: 'gemini',
+    provider: 'google',
   },
 };
 

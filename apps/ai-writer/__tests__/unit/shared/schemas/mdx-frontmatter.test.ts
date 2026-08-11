@@ -262,7 +262,7 @@ describe('MdxFrontmatterSchema', () => {
   });
 
   describe('ai_provider の enum 検証', () => {
-    it.each(['anthropic', 'gemini', 'openai'] as const)(
+    it.each(['anthropic', 'google', 'openai'] as const)(
       'ai_provider: %s で成功',
       (provider) => {
         const result = MdxFrontmatterSchema.safeParse({

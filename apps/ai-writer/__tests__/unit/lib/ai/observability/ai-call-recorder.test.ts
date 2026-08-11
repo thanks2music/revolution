@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import {
+  MAX_INLINE_RESPONSE_CHARS,
   formatPromptPointer,
   getAiCallJsonlPath,
   initAiCallRecorder,
@@ -151,6 +152,54 @@ describe('recordAiCall', () => {
     expect(record.promptFile).toBeDefined();
     const promptFileAbs = path.resolve(process.cwd(), record.promptFile!);
     await expect(fs.readFile(promptFileAbs, 'utf-8')).resolves.toBe(prompt);
+  });
+
+  // ★ 切り捨ての境界は「測れなかった」を「正しかった」と混同させない要点。
+  //   `responseTruncated` が立たない切り捨てが起きると、比較側は不完全な JSON を
+  //   parse 失敗として扱い、**系統的失敗として誤って帰属する**。
+  it('上限ちょうどの応答は全文保持し、responseTruncated を立てない', async () => {
+    initAiCallRecorder(await makeTempLogPath());
+
+    const responseText = 'x'.repeat(MAX_INLINE_RESPONSE_CHARS);
+    await recordAiCall({
+      stepId: 'content-generation',
+      provider: 'openai',
+      requestedModel: 'gpt-5.4-mini',
+      latencyMs: 10,
+      prompt: 'p',
+      promptSha256: 'h',
+      promptChars: 1,
+      responseText,
+      responseChars: responseText.length,
+    });
+
+    const [record] = await readRecords(getAiCallJsonlPath()!);
+    expect(record.responseText).toHaveLength(MAX_INLINE_RESPONSE_CHARS);
+    expect(record.responseText).toBe(responseText);
+    expect(record.responseTruncated).toBeUndefined();
+  });
+
+  it('上限を 1 文字超えたら切り捨て、responseTruncated を立てる', async () => {
+    initAiCallRecorder(await makeTempLogPath());
+
+    const responseText = 'y'.repeat(MAX_INLINE_RESPONSE_CHARS + 1);
+    await recordAiCall({
+      stepId: 'content-generation',
+      provider: 'openai',
+      requestedModel: 'gpt-5.4-mini',
+      latencyMs: 10,
+      prompt: 'p',
+      promptSha256: 'h',
+      promptChars: 1,
+      responseText,
+      responseChars: responseText.length,
+    });
+
+    const [record] = await readRecords(getAiCallJsonlPath()!);
+    expect(record.responseTruncated).toBe(true);
+    expect(record.responseText).toHaveLength(MAX_INLINE_RESPONSE_CHARS);
+    // 切り捨て前の実長は responseChars に残ること (ここが消えると「どれだけ失ったか」が分からない)
+    expect(record.responseChars).toBe(MAX_INLINE_RESPONSE_CHARS + 1);
   });
 
   it('system_fingerprint 非対応の provider は null で記録し、未記録と区別できる', async () => {

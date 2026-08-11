@@ -137,7 +137,7 @@ function validateInputs(args: DebugVisionArgs): void {
   }
 
   // API キーチェック
-  const provider = (process.env.VISION_API_PROVIDER as VisionProvider) ?? 'claude';
+  const provider = (process.env.VISION_API_PROVIDER as VisionProvider) ?? 'anthropic';
   const apiKeyEnvVar = provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
 
   if (!process.env[apiKeyEnvVar]) {
@@ -182,7 +182,7 @@ Vision API デバッグツール
                       menu/goods/novelty = 単一カテゴリ呼び出し (extractFromImages 直接)
 
 環境変数:
-  VISION_API_PROVIDER  プロバイダー選択 (openai / claude、デフォルト: claude)
+  VISION_API_PROVIDER  プロバイダー選択 (openai / anthropic、デフォルト: anthropic)
 
 前提条件:
   .env.local に以下を設定:
@@ -190,12 +190,12 @@ Vision API デバッグツール
     - OPENAI_API_KEY=sk-...        (OpenAI使用時、非推奨: 日本語精度低)
 
 注意:
-  - OpenAI VisionAPI は日本語の解析精度が低いため、Claude（デフォルト）の使用を推奨
+  - OpenAI VisionAPI は日本語の解析精度が低いため、anthropic（Claude、デフォルト）の使用を推奨
   - --category=all では入力画像をすべて 3 カテゴリ全てに渡します
     (本番の vision-api step では category-image-extractor がカテゴリ別に振り分けて渡します)
   - Vision API サービスが自動的にログファイルを生成します（NODE_ENV != production 時のみ）
-    OpenAI: logs/YYYY-MM-DD-VisionAPI-OpenAI-{domain}-{category}-{ms}.log
-    Claude: logs/YYYY-MM-DD-VisionAPI-Claude-{domain}-{ms}.log
+    openai:    logs/YYYY-MM-DD-VisionAPI-OpenAI-{domain}-{category}-{ms}.log
+    anthropic: logs/YYYY-MM-DD-VisionAPI-Anthropic-{domain}-{ms}.log
 `);
 }
 
@@ -322,7 +322,7 @@ async function main() {
     validateInputs(args);
 
     // 3. プロバイダー決定
-    const provider = (process.env.VISION_API_PROVIDER as VisionProvider) ?? 'claude';
+    const provider = (process.env.VISION_API_PROVIDER as VisionProvider) ?? 'anthropic';
 
     console.log('🔍 Vision API デバッグ開始\n');
     console.log('='.repeat(80));
@@ -390,8 +390,8 @@ async function main() {
 
     // 8. ログファイルパス表示（Vision API サービスが自動生成）
     // Filename pattern (post commits 300f485 / cd9df62, sequence replaced by ms timestamp):
-    //   OpenAI : logs/YYYY-MM-DD-VisionAPI-OpenAI-<domain>-<category>-<ms>.log
-    //   Claude : logs/YYYY-MM-DD-VisionAPI-Claude-<domain>-<ms>.log
+    //   OpenAI    : logs/YYYY-MM-DD-VisionAPI-OpenAI-<domain>-<category>-<ms>.log
+    //   Anthropic : logs/YYYY-MM-DD-VisionAPI-Anthropic-<domain>-<ms>.log
     const today = new Date().toISOString().split('T')[0];
     const domain = extractDomainForFilename(args.imageUrls[0]);
     const providerCapitalized = provider.charAt(0).toUpperCase() + provider.slice(1);

@@ -248,7 +248,7 @@ export class ArticleGenerationMdxService {
     const providerName = getConfiguredProvider();
     const providerDisplayName = {
       anthropic: 'Anthropic Claude',
-      gemini: 'Google Gemini',
+      google: 'Google Gemini',
       openai: 'OpenAI',
     }[providerName] || providerName;
 

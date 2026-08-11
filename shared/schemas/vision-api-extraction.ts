@@ -97,7 +97,7 @@ export const VisionExtractionMetadataSchema = z.object({
 export const VisionExtractionResultSchema = z.object({
   visionExtraction: z.object({
     confidence: z.number().min(0).max(1),
-    provider: z.enum(['openai', 'claude']),
+    provider: z.enum(['openai', 'anthropic']),
     timestamp: z.string(),
     menuItems: z.array(MenuItemSchema),
     goodsItems: z.array(GoodsItemSchema),

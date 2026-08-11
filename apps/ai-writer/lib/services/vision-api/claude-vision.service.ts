@@ -82,7 +82,7 @@ export class ClaudeVisionService implements IVisionApiService {
    * Get provider name
    */
   getProviderName(): VisionProvider {
-    return 'claude';
+    return 'anthropic';
   }
 
   /**
@@ -116,7 +116,7 @@ export class ClaudeVisionService implements IVisionApiService {
     const estimatedCost = (totalTokens / 1_000_000) * 3.0; // $3.00/1M tokens
 
     return {
-      provider: 'claude',
+      provider: 'anthropic',
       totalTokens,
       breakdown: {
         imageTokens,
@@ -401,7 +401,7 @@ export class ClaudeVisionService implements IVisionApiService {
     const result: VisionExtractionResult = {
       visionExtraction: {
         confidence,
-        provider: 'claude',
+        provider: 'anthropic',
         timestamp: new Date().toISOString(),
         menuItems,
         goodsItems,
@@ -625,7 +625,10 @@ export class ClaudeVisionService implements IVisionApiService {
     // JST (UTC+9) タイムスタンプ
     const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
     const dateStr = jstDate.toISOString().split('T')[0]; // YYYY-MM-DD
-    const provider = 'Claude';
+    // ログファイル名はベンダー名で揃える (`debug-vision-api.ts` が
+    // VISION_API_PROVIDER の値から同じ綴りを組み立てて案内するため、
+    // ここを 'Claude' に戻すと案内と実ファイル名がずれる)。
+    const provider = 'Anthropic';
     const domain = this.extractDomain(imageUrls[0] || 'unknown');
     // Monotonic millisecond timestamp avoids TOCTOU + blocking readdirSync seen in
     // the previous getNextLogSequence implementation.

@@ -3,7 +3,8 @@
  *
  * @description
  * Factory pattern for creating Vision API service instances.
- * Supports OpenAI and Claude providers.
+ * Providers are selected by vendor name (`openai` / `anthropic`), matching
+ * `AiProviderType` in `lib/ai/providers/ai-provider.interface.ts`.
  *
  * @package revolution
  * @module services/vision-api/factory
@@ -28,8 +29,8 @@ import { ClaudeVisionService } from './claude-vision.service';
  * // Use default provider (from VISION_API_PROVIDER env var, or 'openai')
  * const service = VisionApiServiceFactory.create();
  *
- * // Explicitly use Claude
- * const claudeService = VisionApiServiceFactory.create('claude');
+ * // Explicitly use Anthropic Claude
+ * const claudeService = VisionApiServiceFactory.create('anthropic');
  *
  * // With custom configuration
  * const customService = VisionApiServiceFactory.create('openai', {
@@ -42,7 +43,7 @@ export class VisionApiServiceFactory {
   /**
    * Create Vision API service instance
    *
-   * @param provider - Optional provider override ('openai' or 'claude')
+   * @param provider - Optional provider override ('openai' or 'anthropic')
    * @param config - Optional configuration override
    * @returns Vision API service instance
    *
@@ -74,14 +75,14 @@ export class VisionApiServiceFactory {
         });
       }
 
-      case 'claude':
+      case 'anthropic':
         return new ClaudeVisionService({
           apiKey: config?.apiKey,
         });
 
       default:
         throw new Error(
-          `Unknown Vision API provider: ${selectedProvider}. Supported providers: openai, claude`
+          `Unknown Vision API provider: ${selectedProvider}. Supported providers: openai, anthropic`
         );
     }
   }
