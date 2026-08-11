@@ -33,6 +33,8 @@
     "admin:remove": "tsx lib/firebase/admin-setup.ts remove",
     "debug:mdx": "tsx scripts/debug-mdx-url.ts",
     "debug:vision": "tsx scripts/debug-vision-api.ts",
+    "debug:compare": "tsx scripts/compare-runs.ts",
+    "debug:verify": "tsx scripts/verify-against-source.ts",
     "generate:article-index": "tsx scripts/generate-article-index.ts",
     "clean:utm": "tsx scripts/remove-utm-from-articles.ts"
   },
