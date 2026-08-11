@@ -20,7 +20,7 @@ import type {
   SendMessageOptions,
   SendMessageResult,
 } from './ai-provider.interface';
-import { recordAiCall, hashForAiCallRecord } from '@/lib/ai/observability/ai-call-recorder';
+import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * Recommended Gemini models for different use cases
@@ -259,10 +259,6 @@ JSON以外の説明文は出力しないでください。`;
         finishReason: response.candidates?.[0]?.finishReason,
         latencyMs: Date.now() - startedAt,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
-        responseSha256: hashForAiCallRecord(text),
-        responseChars: text.length,
         responseText: text,
         usage: rssUsage,
       });
@@ -287,8 +283,6 @@ JSON以外の説明文は出力しないでください。`;
         requestedModel: this.configuredModelName,
         latencyMs: Date.now() - startedAt,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
         error: error instanceof Error ? error.message : String(error),
       });
 
@@ -630,10 +624,6 @@ Respond ONLY with JSON format. No other text should be included.
         latencyMs,
         temperature,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
-        responseSha256: hashForAiCallRecord(text),
-        responseChars: text.length,
         responseText: text,
         usage,
       });
@@ -658,8 +648,6 @@ Respond ONLY with JSON format. No other text should be included.
         latencyMs: Date.now() - startedAt,
         temperature,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
         error: error instanceof Error ? error.message : String(error),
       });
 

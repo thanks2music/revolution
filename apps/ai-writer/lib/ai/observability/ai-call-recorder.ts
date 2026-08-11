@@ -136,7 +136,18 @@ export interface AiCallRecord {
 }
 
 /** `recordAiCall` の入力。`runId` / `seq` / `ts` / `promptFile` は recorder が埋める。 */
-export type AiCallRecordInput = Omit<AiCallRecord, 'runId' | 'seq' | 'ts' | 'promptFile'> & {
+/**
+ * `recordAiCall` への入力。
+ *
+ * ⚠️ **ハッシュと文字数は渡さない。** `prompt` / `responseText` から recorder 内部で
+ * 計算する。以前は呼び出し側 13 箇所が `promptSha256: hashForAiCallRecord(prompt)` を
+ * 毎回書いており、**ハッシュ元の文字列を取り違えても誰も気づけない**構造だった
+ * (同じ引数から導出できる値を外から渡させる意味がない)。
+ */
+export type AiCallRecordInput = Omit<
+  AiCallRecord,
+  'runId' | 'seq' | 'ts' | 'promptFile' | 'promptSha256' | 'promptChars' | 'responseSha256' | 'responseChars'
+> & {
   /** プロンプト全文。ファイルへ退避され、レコードには sha と文字数だけが残る */
   prompt: string;
 };
@@ -324,6 +335,16 @@ export async function recordAiCall(input: AiCallRecordInput): Promise<void> {
       seq,
       ts: new Date().toISOString(),
       promptFile: displayPath(promptFilePath),
+      // ★ ハッシュと文字数はここで導出する。呼び出し側に書かせると、同じ引数から
+      //   導出できる値を 13 箇所で重複させたうえ、**ハッシュ元の文字列を取り違えても
+      //   誰も気づけない**。
+      promptSha256: sha256(prompt),
+      promptChars: prompt.length,
+      // `responseChars` は切り捨て前の実長。ここが切り捨て後になると「どれだけ失ったか」
+      // が分からなくなる。
+      ...(responseText !== undefined
+        ? { responseSha256: sha256(responseText), responseChars: responseText.length }
+        : {}),
       responseText: truncated
         ? responseText!.slice(0, MAX_INLINE_RESPONSE_CHARS)
         : responseText,

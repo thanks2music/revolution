@@ -272,5 +272,55 @@ describe('OpenAIProvider — Layer 2 contract', () => {
         totalTokens: 7,
       });
     });
+    // ★ 5 巡目レビュー由来。anthropic / gemini には extractFromRss のテストがあるのに
+    //   openai だけ無く、**テストカバレッジ自体が「一部にしか適用していない」形**に
+    //   なっていた (本 PR が構造的に防ごうとしている失敗そのもの)。
+    it('extractFromRss も rss-extraction として記録する', async () => {
+      mockChatCompletionsCreate.mockResolvedValue(
+        buildSendMessageResponse(
+          '{"workTitle":"作品","storeName":"店","eventTypeName":"コラボカフェ"}'
+        )
+      );
+      const provider = new OpenAIProvider();
+
+      await provider.extractFromRss({ title: 't', content: 'c' });
+
+      expect(mockedRecordAiCall).toHaveBeenCalledTimes(1);
+      expect(mockedRecordAiCall.mock.calls[0][0]).toMatchObject({
+        stepId: 'rss-extraction',
+        provider: 'openai',
+        resolvedModel: 'gpt-5.4-mini',
+      });
+    });
+
+    it('extractFromRss の temperature は実送信値と記録値が一致する', async () => {
+      mockChatCompletionsCreate.mockResolvedValue(
+        buildSendMessageResponse(
+          '{"workTitle":"作品","storeName":"店","eventTypeName":"コラボカフェ"}'
+        )
+      );
+      const provider = new OpenAIProvider();
+
+      await provider.extractFromRss({ title: 't', content: 'c' });
+
+      const sent = mockChatCompletionsCreate.mock.calls[0][0].temperature;
+      expect(mockedRecordAiCall.mock.calls[0][0].temperature).toBe(sent);
+    });
+
+    it('extractFromRss が throw しても失敗として記録する', async () => {
+      mockChatCompletionsCreate.mockRejectedValue(new Error('rss boom'));
+      const provider = new OpenAIProvider();
+
+      await expect(provider.extractFromRss({ title: 't', content: 'c' })).rejects.toThrow(
+        /Failed to extract RSS information/
+      );
+
+      expect(mockedRecordAiCall).toHaveBeenCalledTimes(1);
+      expect(mockedRecordAiCall.mock.calls[0][0]).toMatchObject({
+        stepId: 'rss-extraction',
+        provider: 'openai',
+        error: 'rss boom',
+      });
+    });
   });
 });

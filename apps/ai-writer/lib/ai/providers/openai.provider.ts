@@ -20,7 +20,7 @@ import type {
   SendMessageOptions,
   SendMessageResult,
 } from './ai-provider.interface';
-import { recordAiCall, hashForAiCallRecord } from '@/lib/ai/observability/ai-call-recorder';
+import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * Supported OpenAI models for Revolution AI Writer
@@ -281,10 +281,6 @@ JSON以外の説明文は出力しないでください。`;
         requestId: completion.id,
         temperature,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
-        responseSha256: hashForAiCallRecord(responseText),
-        responseChars: responseText.length,
         responseText,
         usage,
       });
@@ -303,8 +299,6 @@ JSON以外の説明文は出力しないでください。`;
         latencyMs: Date.now() - startedAt,
         temperature,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
         error: error instanceof Error ? error.message : String(error),
       });
 
@@ -684,8 +678,6 @@ Respond ONLY with JSON format. No other text should be included.
           requestId: completion.id,
           temperature,
           prompt,
-          promptSha256: hashForAiCallRecord(prompt),
-          promptChars: prompt.length,
           usage,
           error: `refusal: ${refusal}`,
         });
@@ -715,10 +707,6 @@ Respond ONLY with JSON format. No other text should be included.
         requestId: completion.id,
         temperature,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
-        responseSha256: hashForAiCallRecord(responseText),
-        responseChars: responseText.length,
         responseText,
         usage,
       });
@@ -748,8 +736,6 @@ Respond ONLY with JSON format. No other text should be included.
           latencyMs: Date.now() - startedAt,
           temperature,
           prompt,
-          promptSha256: hashForAiCallRecord(prompt),
-          promptChars: prompt.length,
           error: error instanceof Error ? error.message : String(error),
         });
       }

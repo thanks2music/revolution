@@ -21,7 +21,7 @@ import type {
   SendMessageOptions,
   SendMessageResult,
 } from './ai-provider.interface';
-import { recordAiCall, hashForAiCallRecord } from '@/lib/ai/observability/ai-call-recorder';
+import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * Anthropic Claude Provider
@@ -184,10 +184,6 @@ JSON以外の説明文は出力しないでください。`;
         requestId: response.id,
         temperature,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
-        responseSha256: hashForAiCallRecord(content.text),
-        responseChars: content.text.length,
         responseText: content.text,
         usage,
       });
@@ -206,8 +202,6 @@ JSON以外の説明文は出力しないでください。`;
         latencyMs: Date.now() - startedAt,
         temperature,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
         error: error instanceof Error ? error.message : String(error),
       });
 
@@ -332,10 +326,6 @@ JSON以外の説明文は出力しないでください。`;
         requestId: response.id,
         temperature,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
-        responseSha256: hashForAiCallRecord(content.text),
-        responseChars: content.text.length,
         responseText: content.text,
         usage,
       });
@@ -361,8 +351,6 @@ JSON以外の説明文は出力しないでください。`;
         latencyMs: Date.now() - startedAt,
         temperature,
         prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
         error: error instanceof Error ? error.message : String(error),
       });
 
