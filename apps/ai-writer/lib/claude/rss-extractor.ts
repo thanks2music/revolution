@@ -30,7 +30,7 @@ export type { RssExtractionInput, RssExtractionResult };
  * This function now uses the unified AI Provider abstraction layer.
  * The provider is selected based on the AI_PROVIDER environment variable:
  * - AI_PROVIDER=anthropic (default): Use Claude
- * - AI_PROVIDER=gemini: Use Google Gemini
+ * - AI_PROVIDER=google: Use Google Gemini
  * - AI_PROVIDER=openai: Use OpenAI GPT
  *
  * @example

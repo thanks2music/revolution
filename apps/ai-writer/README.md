@@ -187,14 +187,14 @@ pnpm debug:mdx --upload-images https://g-tekketsu.theme-cafe.jp/
 ```bash
 # 環境変数でプロバイダーを指定
 AI_PROVIDER=anthropic pnpm debug:mdx <URL>  # Claude（デフォルト）
-AI_PROVIDER=gemini pnpm debug:mdx <URL>     # Google Gemini
+AI_PROVIDER=google pnpm debug:mdx <URL>     # Google Gemini
 AI_PROVIDER=openai pnpm debug:mdx <URL>     # ChatGPT
 ```
 
 | 値 | 説明 | 必要な API キー |
 |----|------|---------------|
 | `anthropic` | Anthropic Claude（デフォルト） | `ANTHROPIC_API_KEY` |
-| `gemini` | Google Gemini | `GEMINI_API_KEY` |
+| `google` | Google Gemini | `GEMINI_API_KEY` |
 | `openai` | OpenAI ChatGPT | `OPENAI_API_KEY` |
 
 #### DEBUG_* 環境変数
@@ -213,7 +213,7 @@ AI_PROVIDER=openai pnpm debug:mdx <URL>     # ChatGPT
 
 ```bash
 # タイトル生成の判断理由を確認（日付誤りのデバッグに有効）
-DEBUG_TITLE_PROMPT=true AI_PROVIDER=gemini pnpm debug:mdx --dry-run https://example.com/
+DEBUG_TITLE_PROMPT=true AI_PROVIDER=google pnpm debug:mdx --dry-run https://example.com/
 
 # 複数のデバッグフラグを同時に有効化
 DEBUG_TITLE_PROMPT=true DEBUG_EXTRACTION_PROMPT=true pnpm debug:mdx --dry-run https://example.com/
@@ -262,7 +262,7 @@ DEBUG_CONTENT_PROMPT=true pnpm debug:mdx --dry-run <URL>     # content-generatio
 pnpm tsx scripts/test-ai-factory.ts
 
 # AI メッセージ送信テスト
-AI_PROVIDER=gemini pnpm tsx scripts/test-send-message.ts
+AI_PROVIDER=google pnpm tsx scripts/test-send-message.ts
 
 # R2 ストレージ接続テスト
 pnpm tsx scripts/test-r2-connection.ts

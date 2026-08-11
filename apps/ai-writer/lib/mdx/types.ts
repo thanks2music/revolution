@@ -107,7 +107,7 @@ export interface GenerateMdxFrontmatterInput {
   /**
    * Optional: AI provider used for article generation (Debug metadata)
    * Records which LLM provider was used to generate this article
-   * @example "gemini", "anthropic", "openai"
+   * @example "google", "anthropic", "openai"
    */
   aiProvider?: AiProviderType;
 
