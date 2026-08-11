@@ -122,14 +122,27 @@ describe('抑止判定の適用漏れ (drift guard)', () => {
     'content-generation.service.ts',
   ] as const;
 
-  it.each(SERVICES_WITH_PROMPT_DUMP)('%s が抑止判定を呼んでいる', (fileName) => {
+  /**
+   * `DEBUG_*_PROMPT === 'true'` を含む分岐をすべて拾い、抑止判定と AND されているかを見る。
+   *
+   * 「ファイル内に 1 回でも呼んでいれば OK」だと、同じファイルに 2 つ目のダンプを足した
+   * ときに片方だけ抑止が効かない状態を見逃す (`title-generation.service.ts` の
+   * reasoning 出力で実際に起きた)。**条件式の単位**で検査する。
+   */
+  it.each(SERVICES_WITH_PROMPT_DUMP)('%s の全ダンプ分岐が抑止判定と AND されている', (fileName) => {
     const source = readFileSync(
       path.resolve(__dirname, '../../../../lib/services', fileName),
       'utf-8'
     );
 
-    // プロンプト全文を出す分岐を持つなら、必ず抑止判定と AND されていること
-    expect(source).toContain('shouldSuppressInlinePromptDump');
-    expect(source).toMatch(/!shouldSuppressInlinePromptDump\('[a-z-]+'\)/);
+    // `if (...)` の中身を丸ごと取り、DEBUG_*_PROMPT を含むものだけを対象にする
+    const conditions = [...source.matchAll(/if\s*\(([\s\S]*?)\)\s*\{/g)]
+      .map((m) => m[1])
+      .filter((cond) => /DEBUG_[A-Z_]*PROMPT\s*===\s*'true'/.test(cond));
+
+    expect(conditions.length).toBeGreaterThan(0);
+    for (const cond of conditions) {
+      expect(cond).toMatch(/!shouldSuppressInlinePromptDump\('[a-z-]+'\)/);
+    }
   });
 });
