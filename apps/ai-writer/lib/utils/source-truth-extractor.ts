@@ -332,6 +332,11 @@ function normalizeVenueKey(label: string): string {
  *
  * 会場数 → 会場名 → 期間 の 3 段を**独立に**報告する。1 つの真偽値に潰すと
  * 「どこで壊れたか」が失われ、次の一手が決められない。
+ *
+ * ⚠️ **副作用を持たない。** 以前は正解側の会場名重複を検知したときに `console.warn` して
+ * いたが、本関数は実行ごとにループから呼ばれるため**同じ警告が実行回数ぶん重複**した。
+ * 警告は `duplicateSourceVenues` を見て呼び出し側が 1 回だけ出す
+ * (`warnOnceForSourceIssues`)。
  */
 export function compareWithSource(
   truth: SourceTruth,
@@ -378,12 +383,6 @@ export function compareWithSource(
     expected.set(key, v);
   }
 
-  if (duplicateSourceVenues.length > 0) {
-    console.warn(
-      `[SourceTruth] ⚠️ 正解データ側で会場名が重複しています: ${duplicateSourceVenues.join(', ')}` +
-        ` — expectedCount が過少になり、抽出側の欠落を見逃す可能性があります`
-    );
-  }
 
   // ★ Map への畳み込みで重複が silent に消える。消えた事実そのものが欠陥の signal
   //   (同じ会場を 2 回出している = 別の会場を 1 つ落としている) なので、捨てずに拾う。
@@ -539,4 +538,23 @@ export function formatSourceComparisonLines(result: SourceComparison, indent = '
   }
 
   return lines;
+}
+
+/**
+ * 正解データ側の問題を**一度だけ**警告する。
+ *
+ * `compareWithSource` は実行ごとにループから呼ばれるため、関数内で warn すると同じ
+ * 警告が実行回数ぶん重複する。正解データは全実行で共通なので、警告も 1 回でよい。
+ *
+ * @param result いずれかの実行の照合結果 (正解側の情報は全実行で同じ)
+ * @returns 警告を出したら true
+ */
+export function warnOnceForSourceIssues(result: SourceComparison): boolean {
+  if (result.duplicateSourceVenues.length === 0) return false;
+
+  console.warn(
+    `[SourceTruth] ⚠️ 正解データ側で会場名が重複しています: ${result.duplicateSourceVenues.join(', ')}` +
+      ` — expectedCount が過少になり、抽出側の欠落を見逃す可能性があります`
+  );
+  return true;
 }

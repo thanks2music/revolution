@@ -115,11 +115,33 @@ describe('extractOccurrences', () => {
     expect(extractOccurrences(rec).status).toBe('unparseable');
   });
 
-  it('event_data が無い応答は ok の 0 件 (parse は成功しているため)', () => {
+  // ★ 7 巡目レビュー由来。`event_data` キーが丸ごと無い応答は「測れた上で 0 件」では
+  //   なく wire format が違う = 測れていない。strict mode では required (nullable) なので、
+  //   キー自体の欠落はプロンプト逸脱か schema 未適用を意味する。
+  it('event_data キーが無い応答は unparseable (ok の 0 件に潰さない)', () => {
     const rec = record({ stepId: 'detail-extraction', responseText: '{"other":1}' });
     const extraction = extractOccurrences(rec);
 
-    expect(extraction).toEqual({ status: 'ok', occurrences: [] });
+    expect(extraction.status).toBe('unparseable');
+    expect(extraction).toMatchObject({ reason: expect.stringContaining('event_data') });
+  });
+
+  it('event_data: null は正当な「イベント情報なし」として ok の 0 件', () => {
+    const rec = record({
+      stepId: 'detail-extraction',
+      responseText: JSON.stringify({ event_data: null }),
+    });
+
+    expect(extractOccurrences(rec)).toEqual({ status: 'ok', occurrences: [] });
+  });
+
+  it('event_data はあるが occurrences が無い応答は ok の 0 件', () => {
+    const rec = record({
+      stepId: 'detail-extraction',
+      responseText: JSON.stringify({ event_data: { event_name: 'x' } }),
+    });
+
+    expect(extractOccurrences(rec)).toEqual({ status: 'ok', occurrences: [] });
   });
 });
 

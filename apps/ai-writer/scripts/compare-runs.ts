@@ -49,6 +49,7 @@ import {
   compareWithSource,
   extractSourceTruth,
   formatSourceComparisonLines,
+  warnOnceForSourceIssues,
 } from '../lib/utils/source-truth-extractor';
 import { fetchHtmlOrThrow } from '../lib/utils/fetch-html';
 import { readRunLog } from '../lib/utils/read-run-log';
@@ -128,6 +129,8 @@ async function main(): Promise<void> {
    * (per-run の ⏭️ 行までスクロールしないと気づけない)。
    */
   const skippedRunLabels: string[] = [];
+  /** 正解データ側の警告を出したか (実行ごとに重複させない)。 */
+  let sourceIssueWarned = false;
 
   if (sourceUrl || sourceHtmlPath) {
     const html = sourceHtmlPath
@@ -176,6 +179,8 @@ async function main(): Promise<void> {
 
       const result = compareWithSource(truth, extraction.occurrences);
       passFlags.push(result.passed);
+      // 正解データは全実行で共通なので警告は 1 回だけ
+      if (!sourceIssueWarned) sourceIssueWarned = warnOnceForSourceIssues(result);
 
       console.log(`   ${result.passed ? '✅' : '❌'} ${run.label}`);
       // 表示は両スクリプトで共有する (フィールドを足したとき片方だけ古くならないように)

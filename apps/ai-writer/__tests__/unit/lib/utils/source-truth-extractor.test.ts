@@ -3,6 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
   compareWithSource,
   formatOccurrenceCountBreakdown,
+  warnOnceForSourceIssues,
   extractSourceTruth,
   parsePeriodText,
   unescapeEmbeddedMarkup,
@@ -336,26 +337,45 @@ describe('正解データ側の会場名重複', () => {
     const truth = extractSourceTruth(COLLIDING_SOURCE);
     expect(truth.venues).toHaveLength(2);
 
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const result = compareWithSource(truth, [
       { venue_label: 'BOX cafe&space KITTE OSAKA 2号店', starts_on: '2026-05-14', ends_on: '2026-07-05' },
     ]);
-    warnSpy.mockRestore();
 
     // 正解データが 2 会場あるのに expectedCount は 1 になる = 測る側が壊れている
     expect(result.duplicateSourceVenues).toHaveLength(1);
     expect(result.expectedCount).toBe(1);
   });
 
-  it('正解側の衝突は warn で表に出す (silent に落とさない)', () => {
+  // ★ 7 巡目レビュー由来。`compareWithSource` は実行ごとにループから呼ばれるため、
+  //   関数内で warn すると同じ警告が実行回数ぶん重複する。警告は呼び出し側で 1 回。
+  it('compareWithSource は warn しない (副作用を持たない)', () => {
     const truth = extractSourceTruth(COLLIDING_SOURCE);
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     compareWithSource(truth, []);
 
-    expect(warnSpy).toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('warnOnceForSourceIssues が警告を出し、出したことを返す', () => {
+    const truth = extractSourceTruth(COLLIDING_SOURCE);
+    const result = compareWithSource(truth, []);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(warnOnceForSourceIssues(result)).toBe(true);
     const message = warnSpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(message).toContain('正解データ側で会場名が重複');
+    warnSpy.mockRestore();
+  });
+
+  it('衝突が無ければ warnOnceForSourceIssues は何もしない', () => {
+    const truth = extractSourceTruth(LTR_TOP_PAGE);
+    const result = compareWithSource(truth, []);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(warnOnceForSourceIssues(result)).toBe(false);
+    expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 

@@ -13,19 +13,8 @@
  * @module lib/utils/fetch-html
  */
 
-/** 取得のタイムアウト (ms)。`html-extractor.ts` の `FETCH_TIMEOUT_MS` と同値。 */
-const FETCH_TIMEOUT_MS = 10_000;
+import { BROWSER_USER_AGENT, FETCH_TIMEOUT_MS } from '@/lib/utils/http-constants';
 
-/**
- * ブラウザライクな User-Agent。
- *
- * ⚠️ **キャンペーンサイトは bot をブロックすることがある。** 素の `fetch` の UA だと
- * ブロックページが 200 で返り、`.place` が 0 件 →「LTR 系以外の構造」= `unsupported`
- * と誤って帰属される。本モジュールは抽出パイプラインが実際に見ている HTML と
- * 同じものを取りたいので、`html-extractor.ts` と同じ UA を使う。
- */
-const BROWSER_USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /**
  * HTML を取得する。HTTP ステータスが 2xx でなければ throw する。

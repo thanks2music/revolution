@@ -201,12 +201,25 @@ export function extractOccurrences(record: AiCallRecord | undefined): Occurrence
     };
   }
 
-  const raw = (parsed as { event_data?: { occurrences?: unknown } })?.event_data?.occurrences;
-  if (raw !== undefined && !Array.isArray(raw)) {
+  // ★ `event_data` キーが丸ごと無い応答は「測れた上で 0 件」ではなく **wire format が
+  //   違う** = 測れていない。strict mode では `event_data` は required (nullable) なので、
+  //   キー自体の欠落はプロンプト逸脱か schema 未適用を意味する。`ok` の 0 件に潰すと、
+  //   本モジュールが抽出側で潰したのと同じ誤帰属を作る。
+  //   ただし `event_data: null` は正当な「イベント情報なし」なので `ok` の 0 件とする。
+  const container = parsed as { event_data?: { occurrences?: unknown } | null };
+  if (!(typeof container === 'object' && container !== null && 'event_data' in container)) {
+    return { status: 'unparseable', reason: 'event_data キーが応答に存在しない' };
+  }
+
+  const raw = container.event_data?.occurrences;
+  if (raw !== undefined && raw !== null && !Array.isArray(raw)) {
     return { status: 'unparseable', reason: 'event_data.occurrences が配列ではない' };
   }
 
-  const occurrences: ExtractedOccurrence[] = ((raw ?? []) as Record<string, unknown>[]).map(
+  const occurrences: ExtractedOccurrence[] = (((raw ?? []) as unknown[]) as Record<
+    string,
+    unknown
+  >[]).map(
     (o) => ({
       venue_label: typeof o?.venue_label === 'string' ? o.venue_label : null,
       starts_on: typeof o?.starts_on === 'string' ? o.starts_on : null,

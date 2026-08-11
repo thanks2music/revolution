@@ -45,6 +45,7 @@ import {
   compareWithSource,
   extractSourceTruth,
   formatSourceComparisonLines,
+  warnOnceForSourceIssues,
 } from '../lib/utils/source-truth-extractor';
 import {
   decideVerificationExitCode,
@@ -142,6 +143,8 @@ async function main(): Promise<void> {
 
   // ★ 終了コードの判定は純粋関数へ委ねる (CI が依存する契約なのでテスト可能にする)
   const outcomes: VerificationOutcome[] = [];
+  /** 正解データ側の警告を出したか (実行ごとに重複させない)。 */
+  let sourceIssueWarned = false;
 
   for (const jsonlPath of againstPaths) {
     const extraction = readOccurrences(jsonlPath);
@@ -160,6 +163,8 @@ async function main(): Promise<void> {
 
     const result = compareWithSource(truth, extraction.occurrences);
     outcomes.push({ passed: result.passed });
+    // 正解データは全実行で共通なので警告は 1 回だけ
+    if (!sourceIssueWarned) sourceIssueWarned = warnOnceForSourceIssues(result);
 
     console.log('-'.repeat(80));
     console.log(`${result.passed ? '✅ 一致' : '❌ 不一致'}  ${basename(jsonlPath)}`);

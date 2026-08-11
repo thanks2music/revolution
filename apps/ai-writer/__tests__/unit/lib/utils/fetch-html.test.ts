@@ -40,6 +40,49 @@ describe('fetchHtmlOrThrow', () => {
     await expect(fetchHtmlOrThrow('https://example.com/')).rejects.toThrow(/HTTP 503/);
   });
 
+  // ★ 7 巡目レビュー由来。失敗帰属を守るためのモジュールなので、タイムアウト経路も
+  //   他と同じ扱いでカバーする。
+  it('タイムアウトは「取得できなかった」と分かる文言で落とす', async () => {
+    global.fetch = jest.fn(async () => {
+      const error = new Error('The operation was aborted');
+      error.name = 'AbortError';
+      throw error;
+    }) as unknown as typeof global.fetch;
+
+    await expect(fetchHtmlOrThrow('https://example.com/slow')).rejects.toThrow(
+      /タイムアウト/
+    );
+  });
+
+  it('タイムアウトのメッセージにも URL を含める', async () => {
+    global.fetch = jest.fn(async () => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      throw error;
+    }) as unknown as typeof global.fetch;
+
+    await expect(fetchHtmlOrThrow('https://example.com/slow')).rejects.toThrow(
+      /https:\/\/example\.com\/slow/
+    );
+  });
+
+  it('AbortError 以外のネットワークエラーはそのまま伝播する', async () => {
+    global.fetch = jest.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    }) as unknown as typeof global.fetch;
+
+    await expect(fetchHtmlOrThrow('https://example.com/')).rejects.toThrow(/ECONNREFUSED/);
+  });
+
+  it('ブラウザライクな User-Agent を付けて取得する (bot ブロックを避ける)', async () => {
+    mockFetch({ ok: true, status: 200, body: 'ok' });
+
+    await fetchHtmlOrThrow('https://example.com/');
+
+    const init = (global.fetch as unknown as jest.Mock).mock.calls[0][1];
+    expect(String(init.headers['User-Agent'])).toContain('Mozilla/5.0');
+  });
+
   it('エラーメッセージに URL を含める (どの取得が失敗したか分かるように)', async () => {
     mockFetch({ ok: false, status: 404, statusText: 'Not Found' });
 
