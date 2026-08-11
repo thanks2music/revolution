@@ -186,7 +186,25 @@ export interface MainContentSelection {
   bodyTextLength: number;
   /** 選定後のテキスト量 */
   selectedTextLength: number;
+  /**
+   * 2 位の候補が 1 位に十分近い場合だけ入る (テキスト量が 1 位の
+   * `RUNNER_UP_RATIO_THRESHOLD` 以上)。
+   *
+   * ⚠️ **本文が 2 つの兄弟要素に割れているページの診断材料。** 片方だけを選ぶと
+   * もう片方を黙って捨てることになるが、どちらが本文かは機械的に決められない。
+   * 挙動は変えず (1 位を選ぶ)、その事実を観測できるようにする。
+   */
+  runnerUp?: { label: string; textLength: number; ratio: number };
 }
+
+/**
+ * 2 位の候補を「1 位に十分近い」とみなす比率。
+ *
+ * 0.8 は「本文が 2 分割されている」を拾い、「本文 + サイドバー」程度の差は拾わない
+ * ことを狙った値。閾値を跨いだからといって挙動は変わらない (warn を出すだけ) ため、
+ * 厳密な最適値は要らない。
+ */
+const RUNNER_UP_RATIO_THRESHOLD = 0.8;
 
 /**
  * セレクタが全滅したときに「本文らしいブロック」を選ぶ。
@@ -208,11 +226,17 @@ export interface MainContentSelection {
  * `div` 限定にすると `section` / `main` 以外の semantic 要素を拾えない。テキスト量
  * 基準なら miku / nissy でも「1 個しかない要素」が選ばれ、**現状から劣化しない**。
  *
- * @param html ページ全体の HTML
+ * @param $ 読み込み済みの cheerio インスタンス。
+ *
+ * ⚠️ **渡されたインスタンスを破壊的に変更する** (`CONTENT_REMOVE_SELECTORS` の
+ * 要素を `remove()` する)。呼び出し元は、除去されて困る情報 (head の `title` /
+ * `og:*` 等) を**この関数より前に**取り出しておくこと。
+ *
+ * HTML 文字列ではなくインスタンスを受けるのは、`extractContentHtml` が既に
+ * `cheerio.load()` を済ませているため。文字列で受けると同じ HTML を 2 回 parse する
+ * ことになる (フォールバック経路は数十 KB の body 全体が対象)。
  */
-export function selectMainContent(html: string): MainContentSelection {
-  const $ = cheerio.load(html);
-
+export function selectMainContent($: cheerio.CheerioAPI): MainContentSelection {
   for (const selector of CONTENT_REMOVE_SELECTORS) {
     $(selector).remove();
   }
@@ -226,18 +250,19 @@ export function selectMainContent(html: string): MainContentSelection {
     .map((el) => {
       const $el = $(el);
       const tagName = (el as { tagName?: string }).tagName ?? 'unknown';
-      const className = $el.attr('class');
+      // `class=" a b"` のように先頭が空白だと split の 1 要素目が空文字になり、
+      // ラベルが `div.` になって読めなくなる。trim を挟む。
+      const firstClass = $el.attr('class')?.trim().split(/\s+/)[0];
       return {
-        label: className ? `${tagName}.${className.split(/\s+/)[0]}` : tagName,
+        label: firstClass ? `${tagName}.${firstClass}` : tagName,
         html: $el.html() ?? '',
         textLength: $el.text().replace(/\s+/g, '').length,
       };
-    });
+    })
+    // テキスト量の降順。2 位を取れるようにするため reduce ではなく sort で並べる。
+    .sort((a, b) => b.textLength - a.textLength);
 
-  const best = candidates.reduce<(typeof candidates)[number] | null>(
-    (acc, cur) => (acc === null || cur.textLength > acc.textLength ? cur : acc),
-    null
-  );
+  const best = candidates[0] ?? null;
 
   // 選べない / 選んだ結果が痩せすぎる場合は body 全体へ倒す。
   // 「分割したせいで元より情報が減った」を避けるのが目的。
@@ -251,12 +276,34 @@ export function selectMainContent(html: string): MainContentSelection {
     };
   }
 
+  // 2 位が 1 位に十分近ければ、本文が兄弟に割れている疑いを残す。
+  // 挙動は変えない (1 位を選ぶ)。黙って片方を捨てないことが目的。
+  const second = candidates[1];
+  const runnerUp =
+    second && best.textLength > 0 && second.textLength / best.textLength >= RUNNER_UP_RATIO_THRESHOLD
+      ? {
+          label: second.label,
+          textLength: second.textLength,
+          ratio: second.textLength / best.textLength,
+        }
+      : undefined;
+
+  if (runnerUp) {
+    console.warn(
+      `[HTMLExtractor] ⚠️ 本文が兄弟要素に割れている可能性: ` +
+        `1 位 ${best.label} (${best.textLength} 文字) に対し ` +
+        `2 位 ${runnerUp.label} (${runnerUp.textLength} 文字, ` +
+        `${Math.round(runnerUp.ratio * 100)}%) を捨てています`
+    );
+  }
+
   return {
     html: best.html,
     strategy: 'largest-child',
     selectedElement: best.label,
     bodyTextLength,
     selectedTextLength: best.textLength,
+    ...(runnerUp ? { runnerUp } : {}),
   };
 }
 
@@ -694,15 +741,25 @@ export function extractPageLinks(html: string, baseUrl: string): string[] {
  * カスタムランディングページ（main/article要素がないサイト）にも対応。
  *
  * 抽出戦略:
- * 1. まず既存のセレクタ（main, article等）で試行
- * 2. 見つからない場合は body 全体をフォールバック
- * 3. 不要な要素（script, style, noscript等）を除去
- * 4. head から必要な情報（title, meta description, og:*）のみ抽出
+ * 1. head から必要な情報（title, meta description, og:*）を先に確保する
+ * 2. 既存のセレクタ（main, article 等）で本文を試行
+ * 3. 見つからない場合は `selectMainContent` で外枠を落としてから本文を選ぶ
+ * 4. 不要な要素（script, style, noscript 等）を除去
  *
- * 保持する要素:
- * - header, nav: 他ページへの参照リンク用
- * - footer: コピーライト情報抽出用
- * - head内: title, meta[name="description"], meta[property^="og:"]
+ * 除去する要素（`CONTENT_REMOVE_SELECTORS`）:
+ * - script, style, noscript, iframe, svg: 本文に寄与しない
+ * - **nav, header, footer, aside, form: サイト共通の外枠**
+ *
+ * ⚠️ 外枠を残すと、フォールバック経路（body 全体）でグローバルナビや
+ * フッターのリンク集が本文と同じ重みで LLM に渡り、**本文にしか書かれていない
+ * 会場情報が埋もれる**。実測 (2026-08-11) で sw2026 のサブページが
+ * 16,271 → 9,004 bytes (-45%)、kusuriya のトップが 13,798 → 6,197 bytes (-55%)。
+ *
+ * head の抽出を除去より**前**に行うのはこのため。順序を入れ替えると
+ * `title` / `og:*` まで一緒に落ちる。
+ *
+ * ℹ️ `extractArticleHtml`（タイトル抽出用）は**意図的に外枠を残している**。
+ * あちらは `official_urls` の抽出元でもあり、他ページへの参照リンクが要る。
  *
  * @param url 公式サイトURL
  * @returns クリーンアップされたHTML
@@ -772,7 +829,10 @@ export async function extractContentHtml(url: string): Promise<string> {
       });
     }
 
-    const selection = selectMainContent(fullHtml);
+    // ⚠️ `selectMainContent` は `$` を破壊的に変更する (外枠を remove する)。
+    //    head 情報の抽出は上で済ませてあるため、ここで渡してよい。
+    //    2 回目の parse を避けるため既存インスタンスを渡す。
+    const selection = selectMainContent($);
     console.log(
       `[HTMLExtractor:Content] 本文ブロック: ${selection.strategy}` +
         (selection.selectedElement ? ` (${selection.selectedElement})` : '') +
