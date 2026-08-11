@@ -8,8 +8,19 @@
 
 import OpenAI from 'openai';
 import { OpenAIProvider } from '@/lib/ai/providers/openai.provider';
+import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
 
 jest.mock('openai');
+
+// ★ 観測ログの記録は provider 層 1 箇所に集約している。ここが呼ばれなくなると
+//   全 AI ステップのログが黙って消えるため、契約としてテストで固定する。
+jest.mock('@/lib/ai/observability/ai-call-recorder', () => ({
+  recordAiCall: jest.fn(async () => {}),
+  hashForAiCallRecord: (v: string) => `sha-${v.length}`,
+  shouldSuppressInlinePromptDump: () => false,
+}));
+
+const mockedRecordAiCall = recordAiCall as unknown as jest.Mock;
 
 const MockedOpenAI = OpenAI as unknown as jest.MockedClass<typeof OpenAI>;
 
@@ -173,5 +184,93 @@ describe('OpenAIProvider — Layer 2 contract', () => {
 
     const call = mockChatCompletionsCreate.mock.calls[0][0];
     expect(call.response_format).toBeUndefined();
+  });
+  // ── 観測ログの記録契約 (Phase 3.5) ──────────────────────────────────
+
+  describe('recordAiCall の記録契約', () => {
+    it('成功時に stepId / context / 実応答モデルを記録する', async () => {
+      const provider = new OpenAIProvider();
+      await provider.sendMessage('hello', {
+        stepId: 'detail-extraction',
+        recordContext: { primaryUrl: 'https://example.com/' },
+      });
+
+      expect(mockedRecordAiCall).toHaveBeenCalledTimes(1);
+      const record = mockedRecordAiCall.mock.calls[0][0];
+      expect(record).toMatchObject({
+        stepId: 'detail-extraction',
+        provider: 'openai',
+        requestedModel: 'gpt-5.4-mini',
+        resolvedModel: 'gpt-5.4-mini',
+        finishReason: 'stop',
+        requestId: 'chatcmpl_test',
+        temperature: 0,
+        context: { primaryUrl: 'https://example.com/' },
+      });
+      expect(record.usage).toEqual({ promptTokens: 10, completionTokens: 5, totalTokens: 15 });
+    });
+
+    it('stepId を省略した呼び出しは unknown として記録する (記録自体は失わない)', async () => {
+      const provider = new OpenAIProvider();
+      await provider.sendMessage('hello');
+
+      expect(mockedRecordAiCall.mock.calls[0][0].stepId).toBe('unknown');
+    });
+
+    // ★ 成功だけ残すと歩留まりが測れない。「N 回中 M 回失敗」を数えるには失敗記録が要る。
+    it('API 呼び出しが throw しても失敗として記録する', async () => {
+      mockChatCompletionsCreate.mockRejectedValue(new Error('rate limited'));
+      const provider = new OpenAIProvider();
+
+      await expect(
+        provider.sendMessage('hello', { stepId: 'title-generation' })
+      ).rejects.toThrow(/rate limited/);
+
+      expect(mockedRecordAiCall).toHaveBeenCalledTimes(1);
+      expect(mockedRecordAiCall.mock.calls[0][0]).toMatchObject({
+        stepId: 'title-generation',
+        provider: 'openai',
+        error: 'rate limited',
+      });
+    });
+
+    // ★ 拒否は「応答が返ってきた」失敗。error だけ残すと、どのモデルがどの条件で
+    //   拒否したかが復元できない。
+    it('safety refusal はメタデータ込みで 1 回だけ記録する', async () => {
+      mockChatCompletionsCreate.mockResolvedValue({
+        id: 'chatcmpl_refusal',
+        object: 'chat.completion',
+        created: 0,
+        model: 'gpt-5.4-mini-2026-03-17',
+        usage: { prompt_tokens: 7, completion_tokens: 0, total_tokens: 7 },
+        choices: [
+          {
+            index: 0,
+            finish_reason: 'stop',
+            message: { role: 'assistant', content: null, refusal: 'cannot comply' },
+          },
+        ],
+      });
+      const provider = new OpenAIProvider();
+
+      await expect(
+        provider.sendMessage('extract', { stepId: 'detail-extraction' })
+      ).rejects.toThrow(/model refused/);
+
+      // 二重記録しないこと (try 内で記録し、外側の catch では記録しない)
+      expect(mockedRecordAiCall).toHaveBeenCalledTimes(1);
+      expect(mockedRecordAiCall.mock.calls[0][0]).toMatchObject({
+        stepId: 'detail-extraction',
+        resolvedModel: 'gpt-5.4-mini-2026-03-17',
+        requestId: 'chatcmpl_refusal',
+        finishReason: 'stop',
+        error: 'refusal: cannot comply',
+      });
+      expect(mockedRecordAiCall.mock.calls[0][0].usage).toEqual({
+        promptTokens: 7,
+        completionTokens: 0,
+        totalTokens: 7,
+      });
+    });
   });
 });

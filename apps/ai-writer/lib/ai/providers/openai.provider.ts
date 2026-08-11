@@ -604,6 +604,9 @@ Respond ONLY with JSON format. No other text should be included.
     const stepId = options?.stepId ?? 'unknown';
     const temperature = options?.temperature ?? 0;
     const startedAt = Date.now();
+    // 応答が返ってきたうえでの失敗 (safety refusal) は try 内でメタデータ込みで記録する。
+    // その throw が外側の catch にも届くため、二重記録を避けるフラグ。
+    let alreadyRecorded = false;
 
     try {
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
@@ -654,13 +657,6 @@ Respond ONLY with JSON format. No other text should be included.
       // more likely in practice than the previous json_object mode.
       const message = completion.choices[0]?.message;
       const refusal = (message as { refusal?: string | null } | undefined)?.refusal;
-      if (refusal) {
-        throw new Error(
-          `OpenAI model refused to comply with the request (safety refusal): ${refusal}`
-        );
-      }
-
-      const responseText = message?.content || '';
 
       const usage = completion.usage
         ? {
@@ -669,6 +665,38 @@ Respond ONLY with JSON format. No other text should be included.
             totalTokens: completion.usage.total_tokens,
           }
         : undefined;
+
+      if (refusal) {
+        // ★ 拒否も「応答が返ってきた」呼び出しである。外側の catch に任せると
+        //   `error` メッセージだけが残り、**どのモデルがどの条件で拒否したか**が
+        //   復元できない (`resolvedModel` / `usage` / `requestId` / `finishReason` が
+        //   すべて落ちる)。拒否は strict mode で発生頻度が上がるため、分析材料を残す。
+        await recordAiCall({
+          stepId,
+          context: options?.recordContext,
+          provider: 'openai',
+          requestedModel: this.modelName,
+          resolvedModel: completion.model,
+          systemFingerprint:
+            (completion as { system_fingerprint?: string | null }).system_fingerprint ?? null,
+          finishReason: completion.choices[0]?.finish_reason,
+          latencyMs,
+          requestId: completion.id,
+          temperature,
+          prompt,
+          promptSha256: hashForAiCallRecord(prompt),
+          promptChars: prompt.length,
+          usage,
+          error: `refusal: ${refusal}`,
+        });
+        alreadyRecorded = true;
+
+        throw new Error(
+          `OpenAI model refused to comply with the request (safety refusal): ${refusal}`
+        );
+      }
+
+      const responseText = message?.content || '';
 
       // `system_fingerprint` は SDK の型上 optional。OpenAI 公式が determinism の
       // 監視手段として案内している唯一の値であり、ここで捨てると復元できない。
@@ -710,18 +738,21 @@ Respond ONLY with JSON format. No other text should be included.
 
       // ★ 失敗も成功と同じ平面に記録する。「N 回中 M 回失敗」を後から数えるには
       //   失敗レコードが要る (成功だけ残すと歩留まりが測れない)。
-      await recordAiCall({
-        stepId,
-        context: options?.recordContext,
-        provider: 'openai',
-        requestedModel: this.modelName,
-        latencyMs: Date.now() - startedAt,
-        temperature,
-        prompt,
-        promptSha256: hashForAiCallRecord(prompt),
-        promptChars: prompt.length,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      //   ただし refusal は try 内でメタデータ込みで記録済みなので重複させない。
+      if (!alreadyRecorded) {
+        await recordAiCall({
+          stepId,
+          context: options?.recordContext,
+          provider: 'openai',
+          requestedModel: this.modelName,
+          latencyMs: Date.now() - startedAt,
+          temperature,
+          prompt,
+          promptSha256: hashForAiCallRecord(prompt),
+          promptChars: prompt.length,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       throw new Error(
         `Failed to send message to OpenAI: ${error instanceof Error ? error.message : 'Unknown error'}`
