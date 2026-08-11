@@ -9,6 +9,8 @@
  * @module lib/ai/providers/ai-provider.interface
  */
 
+import type { PipelineStepId } from '@/lib/services/pipeline-steps';
+
 /**
  * Supported AI provider types
  *
@@ -118,6 +120,29 @@ export interface SendMessageOptions {
     name: string;
     schema: Record<string, unknown>;
   };
+  /**
+   * 呼び出し元のパイプラインステップ。観測ログの粒度を決める。
+   *
+   * `sendMessage` は全 AI ステップが通る唯一の地点だが、provider 自身は「どのステップ
+   * から呼ばれたか」を知らない。ここで受け取ることで、記録を provider 層 1 箇所に
+   * まとめられる (8 サービスへの個別実装を避ける)。
+   *
+   * 省略した呼び出しは `'unknown'` として記録され、記録自体は失われない。
+   *
+   * @see lib/ai/observability/ai-call-recorder.ts
+   */
+  stepId?: PipelineStepId;
+  /**
+   * 観測ログのレコードへそのまま載せるステップ固有の付随情報。
+   *
+   * `detail-extraction` は「どの URL を使い、どの候補を使わなかったか」「入力 HTML の
+   * ハッシュとバイト数」を入れる。この 4 つが 1 レコードに揃っていないと、
+   * **候補に大阪ページがあったのに東京ページだけが下流に流れていた**ことに気づけない
+   * (2026-08-11 の根本原因が 5 時間見つからなかった直接の理由)。
+   *
+   * 生成物ではなく「何を入力したか」を残す用途に限る。
+   */
+  recordContext?: Record<string, unknown>;
 }
 
 /**
@@ -126,7 +151,12 @@ export interface SendMessageOptions {
 export interface SendMessageResult {
   /** The generated text response */
   content: string;
-  /** Model used for generation */
+  /**
+   * こちらが **要求した** モデル名 (`this.modelName`)。
+   *
+   * ⚠️ API が実際に応答したモデルではない。実応答は `resolvedModel` を見ること。
+   * 既存の consumer (cost-tracker 等) がこの値に依存しているため意味は変えない。
+   */
   model: string;
   /** Token usage statistics (if available) */
   usage?: {
@@ -134,6 +164,37 @@ export interface SendMessageResult {
     completionTokens: number;
     totalTokens: number;
   };
+
+  // ── 観測用メタデータ (Phase 3.5 A) ──────────────────────────────────
+  // いずれも optional。provider によって取得できるものが異なるうえ、
+  // 既存の呼び出し側 9 箇所を壊さないため。
+
+  /**
+   * API が応答で返した実モデル名 (例: `gpt-5.4-mini-2026-01-30`)。
+   *
+   * 要求名は日付なしの alias であることが多い。**alias の解決先が変わっても
+   * 要求名だけ見ていると気づけない**ため、要求と応答を必ず並べて記録する。
+   */
+  resolvedModel?: string;
+  /**
+   * OpenAI の `system_fingerprint`。Anthropic / Gemini は同等の概念がなく `null`。
+   *
+   * ⚠️ **実測 (2026-08-11、`gpt-5.4-mini`) では OpenAI 自身が返さず全件 null だった。**
+   * OpenAI 公式は `seed` を Deprecated としたうえで本値の監視を案内しているが、
+   * 少なくとも現行の既定モデルでは供給されていない。**この値だけを当てにしない。**
+   *
+   * 「モデル基盤が変わったのか同一基盤での揺れか」を実際に切り分けられるのは
+   * {@link resolvedModel} のほう (`gpt-5.4-mini` → `gpt-5.4-mini-2026-03-17` の
+   * ように日付入りの実体が返る)。将来 OpenAI が供給を再開したときに備えて
+   * 記録は続けるが、判定の主役は resolvedModel とする。
+   */
+  systemFingerprint?: string | null;
+  /** OpenAI `finish_reason` / Anthropic `stop_reason`。`length` は出力が切れた合図 */
+  finishReason?: string;
+  /** API 呼び出しの所要時間 (ms) */
+  latencyMs?: number;
+  /** OpenAI `completion.id` 等。サポート問い合わせに使う */
+  requestId?: string;
 }
 
 /**

@@ -15,6 +15,7 @@ import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
+import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * タイトル生成サービス
@@ -54,7 +55,10 @@ export class TitleGenerationService {
       const prompt = this.buildPrompt(template, request);
 
       // デバッグ: 送信プロンプトをログ出力
-      if (process.env.DEBUG_TITLE_PROMPT === 'true') {
+      if (
+        process.env.DEBUG_TITLE_PROMPT === 'true' &&
+        !shouldSuppressInlinePromptDump('title-generation')
+      ) {
         console.log('\n[TitleGeneration] ========== 送信プロンプト全文 ==========');
         console.log(prompt);
         console.log('[TitleGeneration] ========== プロンプト終了 ==========\n');
@@ -62,6 +66,7 @@ export class TitleGenerationService {
 
       // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
       const response = await this.aiProvider.sendMessage(prompt, {
+        stepId: 'title-generation',
         maxTokens: 800, // JSON形式 + reasoning のため増加
         temperature: 0.7, // 創造性と正確性のバランス
         responseFormat: 'json',
@@ -88,7 +93,16 @@ export class TitleGenerationService {
       });
 
       // デバッグモード時は reasoning を表示
-      if (process.env.DEBUG_TITLE_PROMPT === 'true' && _reasoning) {
+      //
+      // ★ プロンプト全文と同じ理由で抑止する。`_reasoning` は応答の一部であり、
+      //   recorder が有効なら `responseText` として JSONL に丸ごと残っている。
+      //   出力は小さいが「情報が二重に出る」経路をここだけ残す理由がない
+      //   (claude[bot] 指摘 2026-08-12)。
+      if (
+        process.env.DEBUG_TITLE_PROMPT === 'true' &&
+        !shouldSuppressInlinePromptDump('title-generation') &&
+        _reasoning
+      ) {
         console.log('\n[TitleGeneration] === タイトル生成理由 ===');
         console.log(_reasoning);
         console.log('[TitleGeneration] === 理由終了 ===\n');

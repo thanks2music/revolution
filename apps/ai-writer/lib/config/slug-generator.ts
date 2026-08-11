@@ -89,6 +89,7 @@ ${context ? `**コンテキスト**: ${context}` : ''}
 
   // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
   const response = await aiProvider.sendMessage(prompt, {
+    stepId: 'slug-generation',
     maxTokens: 100,
     temperature: 0,
     responseFormat: 'text',

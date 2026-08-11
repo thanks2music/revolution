@@ -20,6 +20,7 @@ import type {
   SendMessageOptions,
   SendMessageResult,
 } from './ai-provider.interface';
+import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
  * Supported OpenAI models for Revolution AI Writer
@@ -243,29 +244,64 @@ ${input.link ? `**URL**: ${input.link}` : ''}
 
 JSON以外の説明文は出力しないでください。`;
 
+    // ★ `extractFromRss` は `sendMessage` を経由しない独自実装のため、記録も個別に要る。
+    //   ここを飛ばすと rss-extraction だけが観測ログから欠落し、「一部にしか手当て
+    //   していない」状態になる (前セッションが 3 回指摘された失敗の形)。
+    const startedAt = Date.now();
+
+    // 実送信値と記録値を 1 箇所に束ねる。リテラルを 2 箇所に書くと、片方だけ変えたときに
+    // 「ログ上の temperature」と「実際に送った temperature」が食い違う (観測ログが嘘になる)。
+    const temperature = 0.3;
+
     try {
       const completion = await this.client.chat.completions.create({
         model: this.modelName,
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
+        temperature,
       });
 
       const responseText = completion.choices[0]?.message?.content || '';
+      const usage = completion.usage
+        ? {
+            promptTokens: completion.usage.prompt_tokens,
+            completionTokens: completion.usage.completion_tokens,
+            totalTokens: completion.usage.total_tokens,
+          }
+        : undefined;
+
+      await recordAiCall({
+        stepId: 'rss-extraction',
+        provider: 'openai',
+        requestedModel: this.modelName,
+        resolvedModel: completion.model,
+        systemFingerprint:
+          (completion as { system_fingerprint?: string | null }).system_fingerprint ?? null,
+        finishReason: completion.choices[0]?.finish_reason,
+        latencyMs: Date.now() - startedAt,
+        requestId: completion.id,
+        temperature,
+        prompt,
+        responseText,
+        usage,
+      });
+
       const result = this.parseRssExtractionResponse(responseText);
 
       // usage をコスト追跡用に追加
-      return {
-        ...result,
-        usage: completion.usage
-          ? {
-              promptTokens: completion.usage.prompt_tokens,
-              completionTokens: completion.usage.completion_tokens,
-              totalTokens: completion.usage.total_tokens,
-            }
-          : undefined,
-      };
+      return { ...result, usage };
     } catch (error) {
       console.error('OpenAI RSS extraction error:', error);
+
+      await recordAiCall({
+        stepId: 'rss-extraction',
+        provider: 'openai',
+        requestedModel: this.modelName,
+        latencyMs: Date.now() - startedAt,
+        temperature,
+        prompt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
       throw new Error(
         `Failed to extract RSS information: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -559,6 +595,13 @@ Respond ONLY with JSON format. No other text should be included.
   async sendMessage(prompt: string, options?: SendMessageOptions): Promise<SendMessageResult> {
     console.log(`🤖 Using AI Provider: OpenAI (${this.modelName})`);
 
+    const stepId = options?.stepId ?? 'unknown';
+    const temperature = options?.temperature ?? 0;
+    const startedAt = Date.now();
+    // 応答が返ってきたうえでの失敗 (safety refusal) は try 内でメタデータ込みで記録する。
+    // その throw が外側の catch にも届くため、二重記録を避けるフラグ。
+    let alreadyRecorded = false;
+
     try {
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
 
@@ -579,7 +622,7 @@ Respond ONLY with JSON format. No other text should be included.
         model: this.modelName,
         messages,
         max_completion_tokens: options?.maxTokens ?? 2048,
-        temperature: options?.temperature ?? 0,
+        temperature,
       };
 
       // Structured Outputs (strict mode) — responseSchema provided:
@@ -599,6 +642,7 @@ Respond ONLY with JSON format. No other text should be included.
       }
 
       const completion = await this.client.chat.completions.create(createOptions);
+      const latencyMs = Date.now() - startedAt;
 
       // With Structured Outputs (strict mode), the API may return `message.refusal` instead of
       // populating `message.content` when the model declines to comply with the schema (safety
@@ -607,7 +651,38 @@ Respond ONLY with JSON format. No other text should be included.
       // more likely in practice than the previous json_object mode.
       const message = completion.choices[0]?.message;
       const refusal = (message as { refusal?: string | null } | undefined)?.refusal;
+
+      const usage = completion.usage
+        ? {
+            promptTokens: completion.usage.prompt_tokens,
+            completionTokens: completion.usage.completion_tokens,
+            totalTokens: completion.usage.total_tokens,
+          }
+        : undefined;
+
       if (refusal) {
+        // ★ 拒否も「応答が返ってきた」呼び出しである。外側の catch に任せると
+        //   `error` メッセージだけが残り、**どのモデルがどの条件で拒否したか**が
+        //   復元できない (`resolvedModel` / `usage` / `requestId` / `finishReason` が
+        //   すべて落ちる)。拒否は strict mode で発生頻度が上がるため、分析材料を残す。
+        await recordAiCall({
+          stepId,
+          context: options?.recordContext,
+          provider: 'openai',
+          requestedModel: this.modelName,
+          resolvedModel: completion.model,
+          systemFingerprint:
+            (completion as { system_fingerprint?: string | null }).system_fingerprint ?? null,
+          finishReason: completion.choices[0]?.finish_reason,
+          latencyMs,
+          requestId: completion.id,
+          temperature,
+          prompt,
+          usage,
+          error: `refusal: ${refusal}`,
+        });
+        alreadyRecorded = true;
+
         throw new Error(
           `OpenAI model refused to comply with the request (safety refusal): ${refusal}`
         );
@@ -615,19 +690,56 @@ Respond ONLY with JSON format. No other text should be included.
 
       const responseText = message?.content || '';
 
+      // `system_fingerprint` は SDK の型上 optional。OpenAI 公式が determinism の
+      // 監視手段として案内している唯一の値であり、ここで捨てると復元できない。
+      const systemFingerprint =
+        (completion as { system_fingerprint?: string | null }).system_fingerprint ?? null;
+
+      await recordAiCall({
+        stepId,
+        context: options?.recordContext,
+        provider: 'openai',
+        requestedModel: this.modelName,
+        resolvedModel: completion.model,
+        systemFingerprint,
+        finishReason: completion.choices[0]?.finish_reason,
+        latencyMs,
+        requestId: completion.id,
+        temperature,
+        prompt,
+        responseText,
+        usage,
+      });
+
       return {
         content: responseText,
         model: this.modelName,
-        usage: completion.usage
-          ? {
-              promptTokens: completion.usage.prompt_tokens,
-              completionTokens: completion.usage.completion_tokens,
-              totalTokens: completion.usage.total_tokens,
-            }
-          : undefined,
+        usage,
+        resolvedModel: completion.model,
+        systemFingerprint,
+        finishReason: completion.choices[0]?.finish_reason,
+        latencyMs,
+        requestId: completion.id,
       };
     } catch (error) {
       console.error('OpenAI sendMessage error:', error);
+
+      // ★ 失敗も成功と同じ平面に記録する。「N 回中 M 回失敗」を後から数えるには
+      //   失敗レコードが要る (成功だけ残すと歩留まりが測れない)。
+      //   ただし refusal は try 内でメタデータ込みで記録済みなので重複させない。
+      if (!alreadyRecorded) {
+        await recordAiCall({
+          stepId,
+          context: options?.recordContext,
+          provider: 'openai',
+          requestedModel: this.modelName,
+          latencyMs: Date.now() - startedAt,
+          temperature,
+          prompt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       throw new Error(
         `Failed to send message to OpenAI: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

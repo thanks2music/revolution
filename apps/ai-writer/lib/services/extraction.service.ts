@@ -24,6 +24,11 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
+import {
+  hashForAiCallRecord,
+  shouldSuppressInlinePromptDump,
+} from '@/lib/ai/observability/ai-call-recorder';
+import { getStepContext } from './pipeline-steps';
 
 /**
  * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
@@ -45,7 +50,16 @@ export interface ExtractionRequest {
   primary_official_url: string;
   /** 公式サイトのHTMLコンテンツまたはテキスト */
   page_content: string;
-  /** 補助的なURL群（オプション） */
+  /**
+   * `article-selection` が検出した公式 URL の候補一覧。
+   *
+   * ⚠️ **プロンプトには渡していない。** 現状の用途は観測ログ (Phase 3.5 F) で
+   * 「候補のうちどれを使い、どれを使わなかったか」を残すことだけ。
+   *
+   * 抽出対象を複数ページへ広げるかは Phase 3.6-4 の判断待ち。トップページに全会場が
+   * 載っているなら N ページ取得はコストの無駄になるため、先に 3.6-3 の再実測で
+   * 必要性を確かめる。
+   */
   official_urls?: string[];
 }
 
@@ -308,7 +322,10 @@ export class ExtractionService {
       const prompt = this.buildPrompt(template, request);
 
       // デバッグ: 送信プロンプトをログ出力
-      if (process.env.DEBUG_EXTRACTION_PROMPT === 'true') {
+      if (
+        process.env.DEBUG_EXTRACTION_PROMPT === 'true' &&
+        !shouldSuppressInlinePromptDump('detail-extraction')
+      ) {
         console.log('\n[Extraction] ========== 送信プロンプト全文 ==========');
         console.log(prompt);
         console.log('[Extraction] ========== プロンプト終了 ==========\n');
@@ -317,11 +334,42 @@ export class ExtractionService {
       // AI Provider経由でAPI呼び出し。OpenAI Provider は responseSchema を honor して Structured
       // Outputs (strict mode) で event_data object の完全出力を強制する。
       // Anthropic / Gemini Provider は responseSchema を無視して responseFormat='json' fallback。
+      // ★ Phase 3.5 F: 「どの URL を使い、どの候補を使わなかったか」を入力ハッシュ
+      //   とともに 1 レコードへ残す。
+      //
+      //   2026-08-11 の事案では `official_urls[]` に OSAKA ページが入っていたのに
+      //   東京ページだけが抽出に渡っていた。候補一覧 (article-selection のログ) と
+      //   使用 URL (本ステップのログ) が **65 行離れて出力されていた**ため、
+      //   人手で突き合わせるまで誰も気づけなかった。同じ行に置けば一目で分かる。
+      const candidateUrls = request.official_urls ?? [];
+      const unusedUrls = candidateUrls.filter((url) => url !== request.primary_official_url);
+      const inputHtmlSha256 = hashForAiCallRecord(request.page_content);
+
+      console.log(
+        `${getStepContext('detail-extraction', '入力')} 抽出対象: ${request.primary_official_url}`
+      );
+      console.log(
+        `${getStepContext('detail-extraction', '入力')} 候補 ${candidateUrls.length} 件中 1 件を使用 / 未使用 ${unusedUrls.length} 件: ${
+          unusedUrls.length > 0 ? unusedUrls.join(', ') : '(なし)'
+        }`
+      );
+      console.log(
+        `${getStepContext('detail-extraction', '入力')} 入力 HTML: ${request.page_content.length.toLocaleString()} chars sha256 ${inputHtmlSha256.slice(0, 12)}`
+      );
+
       const response = await this.aiProvider.sendMessage(prompt, {
+        stepId: 'detail-extraction',
         maxTokens: 4000, // HTML全文対応のため増加
         temperature: 0.2, // 抽出は正確性を重視
         responseFormat: 'json',
         responseSchema: EXTRACTION_RESPONSE_OPENAI_SCHEMA,
+        recordContext: {
+          usedUrl: request.primary_official_url,
+          candidateUrls,
+          unusedUrls,
+          inputHtmlChars: request.page_content.length,
+          inputHtmlSha256,
+        },
       });
 
       // AI APIのレスポンスをログ出力
