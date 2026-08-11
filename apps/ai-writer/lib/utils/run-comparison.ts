@@ -321,7 +321,16 @@ export function compareRuns(runs: RunLog[], passFlags: boolean[] = []): RunCompa
 }
 
 /** 比較結果を人が読む形に整形する。 */
-export function formatRunComparison(comparison: RunComparison): string {
+export function formatRunComparison(
+  comparison: RunComparison,
+  /**
+   * 合否判定から外した実行のラベル。
+   *
+   * ⚠️ **渡すこと。** 判定は評価できた実行だけを分母にするため、除外があったことを
+   * 要約に出さないと「3 実行のうち 1 つを除いた 2/2」を見て系統的と読む恐れがある。
+   */
+  skippedRunLabels: string[] = []
+): string {
   const lines: string[] = [];
   const mark = (ok: boolean) => (ok ? '一致' : '⚠️ 不一致');
 
@@ -391,8 +400,50 @@ export function formatRunComparison(comparison: RunComparison): string {
   };
   lines.push(`判定: ${natureLabel[comparison.nature]}`);
   if (comparison.passRate) {
-    lines.push(`歩留まり: ${comparison.passRate.passed} / ${comparison.passRate.total} (参考値。合否には使わない)`);
+    lines.push(
+      `歩留まり: ${comparison.passRate.passed} / ${comparison.passRate.total} (参考値。合否には使わない)`
+    );
+  }
+  // ★ 分母が全実行数と一致しないことを要約の側で言う。per-run の ⏭️ 行まで
+  //   スクロールしないと気づけない状態にしない。
+  if (skippedRunLabels.length > 0) {
+    lines.push(
+      `⚠️ 判定から除外: ${skippedRunLabels.length} / ${comparison.runLabels.length} 実行` +
+        ` (${skippedRunLabels.join(', ')})`
+    );
+    lines.push('   上の判定はこれらを除いた残りだけで出しています。');
   }
 
   return lines.join('\n');
+}
+
+/** 1 実行ぶんの照合結果の要約 (終了コード判定用)。 */
+export interface VerificationOutcome {
+  /** 照合できて合格した */
+  passed?: boolean;
+  /** 照合そのものができなかった (切り捨て / parse 失敗 / レコード無し / 正解データ不成立) */
+  unevaluated?: boolean;
+}
+
+/**
+ * CI 用の終了コードを決める。
+ *
+ * ## なぜ純粋関数に切り出すか
+ *
+ * `verify-against-source.ts` は「不一致があれば 1」と謳っており、**CI から終了コードで
+ * 判定される前提**である。ところが判定は 3 箇所で `anyFailure = true` を立てる散在した
+ * 手続きで、テストが無かった。契約が壊れても誰も気づけない。
+ *
+ * ## なぜ「照合不能」も 1 にするか
+ *
+ * 緑にすると**観測が欠けている状態に気づかないまま先へ進む**。「測れなかった」を
+ * 「問題なし」と読ませないのが本モジュール群の主張であり、終了コードでも同じ扱いにする。
+ * 「不一致」と「照合不能」の区別は標準出力の文言側で行う。
+ *
+ * @returns 0 = 全件が照合できて合格 / 1 = 不一致または照合不能が 1 件以上
+ */
+export function decideVerificationExitCode(outcomes: VerificationOutcome[]): 0 | 1 {
+  if (outcomes.length === 0) return 0;
+  const hasProblem = outcomes.some((o) => o.unevaluated === true || o.passed === false);
+  return hasProblem ? 1 : 0;
 }

@@ -5,6 +5,7 @@ import {
   classifyFailureNature,
   compareOccurrences,
   compareRuns,
+  decideVerificationExitCode,
   compareSteps,
   extractOccurrences,
   formatRunComparison,
@@ -339,5 +340,53 @@ describe('正解データが unsupported のときの判定 (compare-runs.ts の
     ];
 
     expect(compareRuns(runs, [false, false]).nature).toBe('systematic');
+  });
+});
+
+// ★ 5 巡目レビュー由来。CI が終了コードに依存する契約なのでテストで固定する。
+describe('decideVerificationExitCode', () => {
+  it('全件が照合できて合格なら 0', () => {
+    expect(decideVerificationExitCode([{ passed: true }, { passed: true }])).toBe(0);
+  });
+
+  it('1 件でも不一致なら 1', () => {
+    expect(decideVerificationExitCode([{ passed: true }, { passed: false }])).toBe(1);
+  });
+
+  // ★ 照合不能を緑にすると、観測が欠けている状態に気づかないまま先へ進む。
+  it('照合不能が混ざれば 1 (緑にしない)', () => {
+    expect(decideVerificationExitCode([{ passed: true }, { unevaluated: true }])).toBe(1);
+  });
+
+  it('全件が照合不能でも 1', () => {
+    expect(decideVerificationExitCode([{ unevaluated: true }, { unevaluated: true }])).toBe(1);
+  });
+
+  it('照合対象が無ければ 0 (--against 未指定で正解表示のみのケース)', () => {
+    expect(decideVerificationExitCode([])).toBe(0);
+  });
+});
+
+// ★ 5 巡目レビュー由来。要約だけを見て「系統的」と誤読させない。
+describe('formatRunComparison の除外実行表示', () => {
+  const runs = [
+    run('r1', [{ name: '東京店' }], 'a'.repeat(64)),
+    run('r2', [{ name: '東京店' }], 'b'.repeat(64)),
+    run('r3', [{ name: '東京店' }], 'c'.repeat(64)),
+  ];
+
+  it('除外があれば件数と内訳を要約に出す', () => {
+    // 3 実行のうち 1 つを除いた 2/2 を見て「系統的」と読むのを防ぐ
+    const output = formatRunComparison(compareRuns(runs, [false, false]), ['r3']);
+
+    expect(output).toContain('判定から除外: 1 / 3 実行');
+    expect(output).toContain('r3');
+    expect(output).toContain('残りだけで出しています');
+  });
+
+  it('除外が無ければ余計な行を出さない', () => {
+    const output = formatRunComparison(compareRuns(runs, [true, true, true]), []);
+
+    expect(output).not.toContain('判定から除外');
   });
 });

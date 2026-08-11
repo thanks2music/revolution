@@ -44,12 +44,14 @@ config({ path: resolve(__dirname, '../.env.local') });
 import {
   compareWithSource,
   extractSourceTruth,
-  formatOccurrenceCountBreakdown,
+  formatSourceComparisonLines,
 } from '../lib/utils/source-truth-extractor';
 import {
+  decideVerificationExitCode,
   describeExtractionFailure,
   extractOccurrences,
   type OccurrenceExtraction,
+  type VerificationOutcome,
 } from '../lib/utils/run-comparison';
 import { fetchHtmlOrThrow } from '../lib/utils/fetch-html';
 import { readRunLog } from '../lib/utils/read-run-log';
@@ -138,7 +140,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  let anyFailure = false;
+  // ★ 終了コードの判定は純粋関数へ委ねる (CI が依存する契約なのでテスト可能にする)
+  const outcomes: VerificationOutcome[] = [];
 
   for (const jsonlPath of againstPaths) {
     const extraction = readOccurrences(jsonlPath);
@@ -147,7 +150,7 @@ async function main(): Promise<void> {
     //   (どちらも事実ではない)。CI 用の終了コードは 1 にする — 観測が欠けている状態を
     //   緑にすると、欠損に気づかないまま先へ進んでしまう。
     if (extraction.status !== 'ok') {
-      anyFailure = true;
+      outcomes.push({ unevaluated: true });
       console.log('-'.repeat(80));
       console.log(`⏭️ 照合不能  ${basename(jsonlPath)}`);
       console.log(`  ${describeExtractionFailure(extraction)}`);
@@ -156,46 +159,25 @@ async function main(): Promise<void> {
     }
 
     const result = compareWithSource(truth, extraction.occurrences);
-    if (!result.passed) anyFailure = true;
+    outcomes.push({ passed: result.passed });
 
     console.log('-'.repeat(80));
     console.log(`${result.passed ? '✅ 一致' : '❌ 不一致'}  ${basename(jsonlPath)}`);
-    console.log(
-      `  会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualUniqueCount}` +
-        formatOccurrenceCountBreakdown(result) +
-        `  ${result.countMatches ? '' : '⚠️'}`
-    );
-    if (result.duplicateVenues.length > 0) {
-      console.log(`  🔴 会場名の重複: ${result.duplicateVenues.join(', ')}`);
-    }
-    if (result.missingVenueLabelCount > 0) {
-      console.log(`  🔴 会場名が空の occurrence: ${result.missingVenueLabelCount} 件`);
-    }
-    if (result.duplicateSourceVenues.length > 0) {
-      console.log(
-        `  ⚠️ 正解データ側の会場名重複: ${result.duplicateSourceVenues.join(', ')} (測る側の問題)`
-      );
-    }
+    // 表示は compare-runs.ts と共有する (同じデータで違う結論に見えないように)
+    for (const line of formatSourceComparisonLines(result, '  ')) console.log(line);
 
     for (const v of result.venues) {
-      if (v.presence === 'missing-from-extraction') {
-        console.log(`  🔴 欠落      : ${v.venueLabel} (正解 ${v.expected?.startsOn} 〜 ${v.expected?.endsOn})`);
-      } else if (v.presence === 'not-in-source') {
-        console.log(`  🔴 正解に無い: ${v.venueLabel} (捏造の疑い)`);
-      } else if (!v.periodMatches) {
-        console.log(`  🟡 期間相違  : ${v.venueLabel}`);
-        console.log(`      正解 ${v.expected?.startsOn} 〜 ${v.expected?.endsOn}`);
-        console.log(`      抽出 ${v.actual?.startsOn} 〜 ${v.actual?.endsOn}`);
-      } else {
+      if (v.presence === 'both' && v.periodMatches) {
         console.log(`  ✅ ${v.venueLabel} (${v.actual?.startsOn} 〜 ${v.actual?.endsOn})`);
       }
     }
+
     console.log();
   }
 
   // 不一致があれば非ゼロで終わる。偽陰性 (間違いの見逃し) が最も重いので、
-  // 判定を握り潰さない。
-  process.exit(anyFailure ? 1 : 0);
+  // 判定を握り潰さない。照合不能も 1 とする (緑にすると欠損に気づかない)。
+  process.exit(decideVerificationExitCode(outcomes));
 }
 
 main().catch((error) => {

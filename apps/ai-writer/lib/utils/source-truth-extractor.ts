@@ -493,3 +493,50 @@ export function formatOccurrenceCountBreakdown(result: SourceComparison): string
   if (parts.length === 0) return '';
   return ` (生 ${result.actualCount} 件 / ${parts.join(' + ')})`;
 }
+
+/**
+ * 1 実行ぶんの照合結果を人が読む行の配列にする。
+ *
+ * ## なぜ両スクリプトで共有するか
+ *
+ * `compare-runs.ts` と `verify-against-source.ts` が同じ内訳 (重複 / 会場名が空 /
+ * 正解側の重複 / 欠落 / 捏造 / 期間相違) をそれぞれ組み立てていた。フィールドを
+ * 足したときに**片方だけ表示が更新されず、同じデータで違う結論に見える**。
+ * 表示の同期をコードで保証する。
+ *
+ * @param result 照合結果
+ * @param indent 各行の先頭に付ける空白 (スクリプトごとに階層が違うため)
+ */
+export function formatSourceComparisonLines(result: SourceComparison, indent = ''): string[] {
+  const lines: string[] = [];
+
+  lines.push(
+    `${indent}会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualUniqueCount}` +
+      formatOccurrenceCountBreakdown(result) +
+      (result.countMatches ? '' : '  ⚠️')
+  );
+
+  if (result.duplicateVenues.length > 0) {
+    lines.push(`${indent}🔴 会場名の重複: ${result.duplicateVenues.join(', ')}`);
+  }
+  if (result.missingVenueLabelCount > 0) {
+    lines.push(`${indent}🔴 会場名が空の occurrence: ${result.missingVenueLabelCount} 件`);
+  }
+  // ★ 正解側の重複は「測る側の問題」。抽出側の欠陥と混ぜて読ませない。
+  if (result.duplicateSourceVenues.length > 0) {
+    lines.push(
+      `${indent}⚠️ 正解データ側の会場名重複: ${result.duplicateSourceVenues.join(', ')} (測る側の問題)`
+    );
+  }
+  if (result.missingVenues.length > 0) {
+    lines.push(`${indent}🔴 欠落: ${result.missingVenues.join(', ')}`);
+  }
+  if (result.fabricatedVenues.length > 0) {
+    lines.push(`${indent}🔴 正解に無い会場 (捏造の疑い): ${result.fabricatedVenues.join(', ')}`);
+  }
+  if (result.periodMismatches.length > 0) {
+    lines.push(`${indent}🟡 期間の不一致: ${result.periodMismatches.join(', ')}`);
+  }
+
+  return lines;
+}

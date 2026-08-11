@@ -48,7 +48,7 @@ import {
 import {
   compareWithSource,
   extractSourceTruth,
-  formatOccurrenceCountBreakdown,
+  formatSourceComparisonLines,
 } from '../lib/utils/source-truth-extractor';
 import { fetchHtmlOrThrow } from '../lib/utils/fetch-html';
 import { readRunLog } from '../lib/utils/read-run-log';
@@ -120,6 +120,14 @@ async function main(): Promise<void> {
   // 正解データがあれば、実行ごとの合否を出す。無ければ判定しない
   // (自己一貫性から正しさを推定しない)。
   const passFlags: boolean[] = [];
+  /**
+   * 合否判定から外した実行のラベル。
+   *
+   * ⚠️ 最終要約の「歩留まり」は評価できた実行だけを分母にする。除外があったことを
+   * 要約に出さないと、**3 実行のうち 1 つを除いた 2/2 を見て「系統的」と読む**恐れがある
+   * (per-run の ⏭️ 行までスクロールしないと気づけない)。
+   */
+  const skippedRunLabels: string[] = [];
 
   if (sourceUrl || sourceHtmlPath) {
     const html = sourceHtmlPath
@@ -160,6 +168,7 @@ async function main(): Promise<void> {
       // ★ 照合できなかった実行を「不合格」に混ぜない。「測れなかった」を
       //   「間違っていた」として数えると、系統的失敗の件数が水増しされる。
       if (extraction.status !== 'ok') {
+        skippedRunLabels.push(run.label);
         console.log(`   ⏭️ ${run.label}`);
         console.log(`      ${describeExtractionFailure(extraction)}`);
         continue;
@@ -169,30 +178,8 @@ async function main(): Promise<void> {
       passFlags.push(result.passed);
 
       console.log(`   ${result.passed ? '✅' : '❌'} ${run.label}`);
-      console.log(
-        `      会場数: 正解 ${result.expectedCount} / 抽出 ${result.actualUniqueCount}` +
-          formatOccurrenceCountBreakdown(result)
-      );
-      if (result.duplicateVenues.length > 0) {
-        console.log(`      🔴 会場名の重複: ${result.duplicateVenues.join(', ')}`);
-      }
-      if (result.missingVenueLabelCount > 0) {
-        console.log(`      🔴 会場名が空の occurrence: ${result.missingVenueLabelCount} 件`);
-      }
-      if (result.duplicateSourceVenues.length > 0) {
-        console.log(
-          `      ⚠️ 正解データ側の会場名重複: ${result.duplicateSourceVenues.join(', ')} (測る側の問題)`
-        );
-      }
-      if (result.missingVenues.length > 0) {
-        console.log(`      🔴 欠落: ${result.missingVenues.join(', ')}`);
-      }
-      if (result.fabricatedVenues.length > 0) {
-        console.log(`      🔴 正解に無い会場 (捏造の疑い): ${result.fabricatedVenues.join(', ')}`);
-      }
-      if (result.periodMismatches.length > 0) {
-        console.log(`      🟡 期間の不一致: ${result.periodMismatches.join(', ')}`);
-      }
+      // 表示は両スクリプトで共有する (フィールドを足したとき片方だけ古くならないように)
+      for (const line of formatSourceComparisonLines(result, '      ')) console.log(line);
     }
     console.log();
   } else {
@@ -211,7 +198,7 @@ async function main(): Promise<void> {
     console.log();
   }
 
-  console.log(formatRunComparison(compareRuns(runs, passFlags)));
+  console.log(formatRunComparison(compareRuns(runs, passFlags), skippedRunLabels));
   console.log();
 }
 
