@@ -54,7 +54,7 @@ GitHub Actions は WIF を使用して**キーレス認証**で GCP に接続し
 
 - **Firebase 設定**: `NEXT_PUBLIC_FIREBASE_*` 6 種の env var が存在するか（ビルド時に埋め込まれる値のため、runtime での欠落は許容）
 - **必須シークレット**: `ALLOWED_EMAILS` / `GITHUB_PAT` / `GITHUB_OWNER` / `GITHUB_REPO`、および `GOOGLE_APPLICATION_CREDENTIALS_JSON` か個別 Firebase 変数のいずれか — Cloud Run が Secret Manager から注入した env var の有無で代用（Secret Manager API への直接接続テストは行わない）
-- **AI プロバイダー**: `AI_PROVIDER`（デフォルト `anthropic`）で選択された **1 プロバイダー** の API キー env var が存在するか — 全 3 プロバイダー（Claude / Gemini / OpenAI）を網羅的に検証するわけではない
+- **AI プロバイダー**: `AI_PROVIDER`（デフォルト `anthropic`）で選択された **1 プロバイダー** の API キー env var が存在するか — 全 3 プロバイダー（`anthropic` / `google` / `openai`）を網羅的に検証するわけではない
 
 failed checks の数で `200 / 503` を返し分けます（1 件失敗まで `degraded` として 200、2 件以上で 503）。
 

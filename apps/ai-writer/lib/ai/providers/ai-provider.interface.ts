@@ -11,8 +11,13 @@
 
 /**
  * Supported AI provider types
+ *
+ * @description
+ * Identified by vendor name (not LLM product name) so that every provider
+ * slot uses the same vocabulary: `anthropic` (Claude), `google` (Gemini),
+ * `openai` (ChatGPT).
  */
-export type AiProviderType = 'anthropic' | 'gemini' | 'openai';
+export type AiProviderType = 'anthropic' | 'google' | 'openai';
 
 /**
  * Article generation request

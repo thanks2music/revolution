@@ -153,7 +153,10 @@ export const MdxFrontmatterSchema = z.object({
   work_titles: z.array(z.string().min(1)).optional(),
   prefectures: z.array(z.string().min(1)).optional(),
   prefecture_slugs: z.array(z.string().min(1)).optional(),
-  ai_provider: z.enum(['anthropic', 'gemini', 'openai']).optional(),
+  // ベンダー名で統一 (`AiProviderType` と同値)。旧値 'gemini' は 2026-08-11 に
+  // 'google' へリネーム済み — 移行時点の実記事は全て 'openai' で永続値ゼロのため
+  // 後方互換は持たせていない。
+  ai_provider: z.enum(['anthropic', 'google', 'openai']).optional(),
   ai_model: z.string().optional(),
 
   // Legacy: 過去 MDX 互換のため optional として温存 (現行 generator は prefectures/prefecture_slugs を使用)

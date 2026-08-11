@@ -179,7 +179,7 @@ describe('mergeVisionResults', () => {
   it('takes provider and timestamp from the first non-undefined call (menu > goods > novelty)', () => {
     const merged = mergeVisionResults({
       goods: makeResult({
-        provider: 'claude',
+        provider: 'anthropic',
         timestamp: '2026-05-06T01:00:00.000Z',
       }),
       novelty: makeResult({
@@ -189,7 +189,7 @@ describe('mergeVisionResults', () => {
     });
 
     // goods is the first non-undefined entry in menu→goods→novelty order
-    expect(merged.visionExtraction.provider).toBe('claude');
+    expect(merged.visionExtraction.provider).toBe('anthropic');
     expect(merged.visionExtraction.timestamp).toBe('2026-05-06T01:00:00.000Z');
   });
 
