@@ -145,7 +145,7 @@ describe('VisionExtractionResultSchema', () => {
     const result = VisionExtractionResultSchema.safeParse({
       visionExtraction: {
         confidence: 0.5,
-        provider: 'claude',
+        provider: 'anthropic',
         timestamp: '2026-05-06T00:00:00.000Z',
         menuItems: [],
         goodsItems: [],
@@ -172,7 +172,7 @@ describe('VisionExtractionResultSchema', () => {
       ...buildValid(),
       visionExtraction: {
         ...buildValid().visionExtraction,
-        provider: 'gemini', // not in enum
+        provider: 'unknown-provider', // not in enum
       },
     });
     expect(result.success).toBe(false);

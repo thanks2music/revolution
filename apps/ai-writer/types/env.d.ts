@@ -11,8 +11,8 @@ declare namespace NodeJS {
     // AI Providers
     // ========================================
 
-    /** AI プロバイダー選択 (anthropic | gemini | openai) */
-    AI_PROVIDER?: 'anthropic' | 'gemini' | 'openai';
+    /** AI プロバイダー選択 (ベンダー名で指定: anthropic | google | openai) */
+    AI_PROVIDER?: 'anthropic' | 'google' | 'openai';
 
     /** Anthropic API Key */
     ANTHROPIC_API_KEY?: string;

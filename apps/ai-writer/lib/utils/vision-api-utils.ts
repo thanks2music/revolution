@@ -416,7 +416,7 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
  * - tokens = (width × height) / 750
  * - Conservative estimate: 2,560 tokens per image (typical collaboration cafe menu)
  *
- * @param provider - Vision API provider ('openai' or 'claude')
+ * @param provider - Vision API provider ('openai' or 'anthropic')
  * @param imageUrls - Image URLs to analyze
  * @param detail - Detail level for OpenAI (default: 'high')
  * @returns Token calculation result with cost estimation
@@ -426,7 +426,7 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
  * const openaiTokens = await calculateVisionTokens('openai', imageUrls, 'high');
  * console.log(`Estimated cost: $${openaiTokens.estimatedCost}`);
  *
- * const claudeTokens = await calculateVisionTokens('claude', imageUrls);
+ * const claudeTokens = await calculateVisionTokens('anthropic', imageUrls);
  * console.log(`Estimated cost: $${claudeTokens.estimatedCost}`);
  * ```
  */
@@ -469,7 +469,7 @@ export async function calculateVisionTokens(
       },
       estimatedCost,
     };
-  } else if (provider === 'claude') {
+  } else if (provider === 'anthropic') {
     // Claude token calculation
     // Conservative estimate: 2,560 tokens per image (typical collaboration cafe menu)
     const imageTokens = imageUrls.length * 2560;
@@ -478,7 +478,7 @@ export async function calculateVisionTokens(
     const estimatedCost = (totalTokens / 1_000_000) * 3.0; // $3.00/1M tokens
 
     return {
-      provider: 'claude',
+      provider: 'anthropic',
       totalTokens,
       breakdown: {
         imageTokens,

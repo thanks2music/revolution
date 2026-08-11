@@ -104,9 +104,12 @@ export async function GET() {
 
     // Check AI provider configuration
     const aiProvider = process.env.AI_PROVIDER || 'anthropic';
+    // NOTE: プロバイダー識別子はベンダー名 (google) に統一しているが、API キーの
+    // 環境変数名は GEMINI_API_KEY のまま。env 名の統一は本番 Secret Manager と
+    // deploy-ai-writer.yml の変更を伴うため、別タスクとして意図的に分離している。
     const aiKeyMap: Record<string, string> = {
       anthropic: 'ANTHROPIC_API_KEY',
-      gemini: 'GEMINI_API_KEY',
+      google: 'GEMINI_API_KEY',
       openai: 'OPENAI_API_KEY',
     };
 
