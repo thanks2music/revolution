@@ -16,6 +16,8 @@
  * オプション:
  *   --dry-run        Firestore登録、GitHub PR作成、画像アップロードをすべてスキップ（AI処理のみ実行）
  *   --log            実行ログをファイルに出力（logs/{日付}-{ドメイン}-{連番}.log）
+ *                    + AI ステップの観測ログ（logs/{同じ basename}.jsonl と
+ *                      logs/prompts/*.txt）。DEBUG_* の設定は不要
  *   --local          ローカル環境にMDXファイルを保存（--dry-run を自動的に有効化）
  *                    保存先: apps/ai-writer/content/{eventType}/{workSlug}/{postId}.mdx
  *   --upload-images  画像をR2にアップロードしつつローカル保存（--local + R2アップロード）
@@ -228,6 +230,10 @@ async function main() {
     console.log('オプション:');
     console.log('  --dry-run        Firestore登録、GitHub PR作成、画像アップロードをすべてスキップ');
     console.log('  --log            実行ログをファイルに出力（logs/{日付}-{ドメイン}-{連番}.log）');
+    console.log('                   あわせて AI ステップの観測ログを出力:');
+    console.log('                     logs/{同じ basename}.jsonl  1 行 = 1 回の AI 呼び出し');
+    console.log('                     logs/prompts/*.txt          プロンプト全文の退避先');
+    console.log('                   DEBUG_* の設定は不要（既定で全ステップを記録）');
     console.log('  --local          ローカル環境にMDXファイルを保存（--dry-runを自動有効化）');
     console.log('                   保存先: apps/ai-writer/content/{eventType}/{workSlug}/{postId}.mdx');
     console.log('  --upload-images  画像をR2にアップロードしつつローカル保存');
