@@ -111,13 +111,28 @@ describe('selectMainContent', () => {
     expect(result.html).toContain('これも短い');
   });
 
-  it('テキスト量の推移を返す (ログで削減効果を確認するため)', () => {
+  // ★ bodyTextLength は「外枠を除去する前」でなければならない。除去後を起点にすると
+  //   運用ログの削減率から外枠除去の効果が丸ごと抜け、実際より小さく記録される。
+  it('テキスト量の推移を 3 段で返す (外枠除去の効果と選定の効果を分けて出せる)', () => {
     const result = selectMainContent(cheerio.load(PAGE_WITH_CHROME));
 
     expect(result.bodyTextLength).toBeGreaterThan(0);
     expect(result.selectedTextLength).toBeGreaterThan(0);
-    // 外枠を落としたぶん、選定後は body 以下になる
-    expect(result.selectedTextLength).toBeLessThanOrEqual(result.bodyTextLength);
+
+    // 1 → 2 は外枠除去の効果。fixture には nav / header / footer / script があるため必ず減る
+    expect(result.bodyTextLengthAfterRemoval).toBeLessThan(result.bodyTextLength);
+    // 2 → 3 は兄弟のうち選ばれなかったぶん (modal 等)
+    expect(result.selectedTextLength).toBeLessThanOrEqual(result.bodyTextLengthAfterRemoval);
+  });
+
+  it('bodyTextLength に外枠のテキストが含まれている (除去後の値になっていない)', () => {
+    // 「コピーライト表記」「TOKYO INFO」等は除去対象。それらを含む長さであること。
+    const $ = cheerio.load(PAGE_WITH_CHROME);
+    const rawLength = $('body').text().replace(/\s+/g, '').length;
+
+    const result = selectMainContent($);
+
+    expect(result.bodyTextLength).toBe(rawLength);
   });
 
   it('body が空でも throw しない', () => {

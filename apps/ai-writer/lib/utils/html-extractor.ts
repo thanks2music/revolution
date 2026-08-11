@@ -148,6 +148,20 @@ const ARTICLE_SELECTORS = [
  *   LLM へ渡っていた**。sw2026 の実測では `TOKYO INFO` / `OSAKA INFO` という
  *   ナビ文言だけが残り、抽出が「大阪があるらしい」と察して会場名を捏造する
  *   材料になっていた。
+ *
+ * ⚠️ **除去はドキュメント全体に効く (body 直下に限定されない)。** 本文ブロックの
+ *   **内部にネストした** `nav` / `aside` / `form` も一緒に落ちる。実測 8 サイトでは
+ *   該当がなかったが、「本文内のページ内ジャンプ nav」「本文内の補足 aside」
+ *   「説明文込みの予約 form」を持つサイトが来ると本文の一部を失う。
+ *
+ *   限定しない判断の根拠: 外枠は body 直下にあるとは限らない (ラッパ div の中に
+ *   header/nav を置くサイトが多数)。直下限定にすると**今直したはずの捏造材料が
+ *   そのまま残る**ため、取りこぼしより誤情報の生成を重く見た。
+ *
+ *   監視方法: `MainContentSelection.bodyTextLength` → `bodyTextLengthAfterRemoval`
+ *   の差分が「除去で落ちたテキスト量」。運用ログに 3 段で出しているので、
+ *   本文まで落ちている疑いはこの差分の異常な大きさとして観測できる。
+ *   Phase 3.6-3 の再実測ではこの値も確認する。
  */
 const CONTENT_REMOVE_SELECTORS = [
   'script',
@@ -182,8 +196,15 @@ export interface MainContentSelection {
   strategy: 'largest-child' | 'body';
   /** 選ばれた要素の説明 (`div.page-content-wrapper` 等)。body 全体なら null */
   selectedElement: string | null;
-  /** 除去前の body テキスト量 */
+  /**
+   * **外枠を除去する前**の body テキスト量。
+   *
+   * ⚠️ 削減効果 (`-45%` 等) はこの値を起点に測る。除去後を起点にすると、
+   * **外枠除去の効果が丸ごと勘定から抜け落ちて、実際より小さい削減率が記録される**。
+   */
   bodyTextLength: number;
+  /** 外枠を除去した後、ブロック選定の前の body テキスト量 */
+  bodyTextLengthAfterRemoval: number;
   /** 選定後のテキスト量 */
   selectedTextLength: number;
   /**
@@ -237,12 +258,16 @@ const RUNNER_UP_RATIO_THRESHOLD = 0.8;
  * ことになる (フォールバック経路は数十 KB の body 全体が対象)。
  */
 export function selectMainContent($: cheerio.CheerioAPI): MainContentSelection {
+  // ★ 除去より前に測る。除去後を起点にすると「外枠を落とした効果」が勘定から抜け、
+  //   運用ログの削減率が実際より小さく出る (PR 本文の -45% と食い違う)。
+  const bodyTextLength = $('body').text().replace(/\s+/g, '').length;
+
   for (const selector of CONTENT_REMOVE_SELECTORS) {
     $(selector).remove();
   }
 
   const bodyHtml = $('body').html() ?? '';
-  const bodyTextLength = $('body').text().replace(/\s+/g, '').length;
+  const bodyTextLengthAfterRemoval = $('body').text().replace(/\s+/g, '').length;
 
   const candidates = $('body')
     .children()
@@ -255,7 +280,9 @@ export function selectMainContent($: cheerio.CheerioAPI): MainContentSelection {
       const firstClass = $el.attr('class')?.trim().split(/\s+/)[0];
       return {
         label: firstClass ? `${tagName}.${firstClass}` : tagName,
-        html: $el.html() ?? '',
+        // ⚠️ ここで `.html()` を呼ばない。使うのは 1 位だけなので、全候補を
+        //    シリアライズすると modal 等の大きな未選択要素のコストを丸ごと払う。
+        $el,
         textLength: $el.text().replace(/\s+/g, '').length,
       };
     })
@@ -272,7 +299,8 @@ export function selectMainContent($: cheerio.CheerioAPI): MainContentSelection {
       strategy: 'body',
       selectedElement: null,
       bodyTextLength,
-      selectedTextLength: bodyTextLength,
+      bodyTextLengthAfterRemoval,
+      selectedTextLength: bodyTextLengthAfterRemoval,
     };
   }
 
@@ -298,10 +326,12 @@ export function selectMainContent($: cheerio.CheerioAPI): MainContentSelection {
   }
 
   return {
-    html: best.html,
+    // 勝者が決まってから初めてシリアライズする。
+    html: best.$el.html() ?? '',
     strategy: 'largest-child',
     selectedElement: best.label,
     bodyTextLength,
+    bodyTextLengthAfterRemoval,
     selectedTextLength: best.textLength,
     ...(runnerUp ? { runnerUp } : {}),
   };
@@ -836,7 +866,11 @@ export async function extractContentHtml(url: string): Promise<string> {
     console.log(
       `[HTMLExtractor:Content] 本文ブロック: ${selection.strategy}` +
         (selection.selectedElement ? ` (${selection.selectedElement})` : '') +
-        ` / テキスト ${selection.bodyTextLength.toLocaleString()} → ${selection.selectedTextLength.toLocaleString()} 文字`
+        // 3 段で出す。外枠除去の効果 (1→2) とブロック選定の効果 (2→3) は原因が別で、
+        // 1 つの差分に潰すと「どちらが効いたか」が分からなくなる。
+        ` / テキスト ${selection.bodyTextLength.toLocaleString()}` +
+        ` → 外枠除去後 ${selection.bodyTextLengthAfterRemoval.toLocaleString()}` +
+        ` → 選定後 ${selection.selectedTextLength.toLocaleString()} 文字`
     );
 
     const bodyContent = selection.html;
