@@ -24,7 +24,7 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
-import { LLM_INPUT_BUDGET_CHARS } from '@/lib/utils/compact-html';
+import { EXTRACTION_MAX_OUTPUT_TOKENS, truncateForLlm } from '@/lib/utils/compact-html';
 import {
   hashForAiCallRecord,
   shouldSuppressInlinePromptDump,
@@ -360,7 +360,9 @@ export class ExtractionService {
 
       const response = await this.aiProvider.sendMessage(prompt, {
         stepId: 'detail-extraction',
-        maxTokens: 4000, // HTML全文対応のため増加
+        // ⚠️ 定義元は `compact-html.ts`。予算計算 (`NON_CONTENT_TOKENS_ESTIMATE`) が
+        //    この値から導出されるため、ここでリテラルを書くと drift する。
+        maxTokens: EXTRACTION_MAX_OUTPUT_TOKENS,
         temperature: 0.2, // 抽出は正確性を重視
         responseFormat: 'json',
         responseSchema: EXTRACTION_RESPONSE_OPENAI_SCHEMA,
@@ -414,6 +416,12 @@ export class ExtractionService {
     // YAMLテンプレートのルール定義をプロンプトに含める
     const rulesSection = this.buildRulesSection(template);
 
+    // ⚠️ 予算超過分は LLM へ届かない。上限とサロゲート安全な切り詰めは
+    //    `compact-html.ts` の `truncateForLlm` が唯一の定義元 (ここでリテラルを
+    //    書くと、圧縮側の警告閾値と drift して「警告は出ないのに切り捨てられている」
+    //    状態になる)。
+    const { text: pageContent, truncated } = truncateForLlm(request.page_content);
+
     // 最終プロンプトを構築
     return `${template.prompts.extraction}
 
@@ -426,7 +434,7 @@ ${rulesSection}
 - primary_official_url: ${request.primary_official_url}
 - ページコンテンツ:
 
-${request.page_content.substring(0, LLM_INPUT_BUDGET_CHARS)}${request.page_content.length > LLM_INPUT_BUDGET_CHARS ? '\n...(truncated)' : ''}
+${pageContent}${truncated ? '\n...(truncated)' : ''}
 
 ---
 

@@ -792,7 +792,7 @@ export function extractPageLinks(html: string, baseUrl: string): string[] {
 /**
  * `compactHtmlForLlm` を適用し、削減量を**必ずログへ出す**。
  *
- * 下流 (`extraction.service.ts:428`) は 15,000 文字でハード切り詰めするが、
+ * 下流 (`extraction.service.ts`) は `LLM_INPUT_BUDGET_CHARS` 文字でハード切り詰めするが、
  * **切り詰めが起きたことはプロンプト本文の `...(truncated)` にしか現れず、
  * ログにも観測レコードにも出ない**。`conan-cafe.jp` で会場一覧が届かず
  * 都市単位に畳まれた不具合 (2026-08-12) は、この沈黙のせいで発見が偶然に頼った。
@@ -867,7 +867,7 @@ export async function extractContentHtml(url: string): Promise<string> {
             `[HTMLExtractor:Content] ✅ セレクタ抽出成功: "${selector}", ${extractedHtml.length} bytes`
           );
 
-          // 下流 (`extraction.service.ts`) は 15,000 文字でハード切り詰めするため、
+          // 下流 (`extraction.service.ts`) は `LLM_INPUT_BUDGET_CHARS` 文字で切り詰めるため、
           // マークアップを削って同じ窓に入る情報量を増やす。命中経路にも適用する
           // のは、命中したブロックが大きいサイトでも同じ切り詰めを受けるため。
           const compacted = logCompaction(extractedHtml, `セレクタ "${selector}"`);

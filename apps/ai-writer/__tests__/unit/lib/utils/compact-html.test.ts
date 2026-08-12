@@ -1,11 +1,166 @@
 /**
  * Layer 1: `compactHtmlForLlm` の純粋関数テスト。
  *
- * 本モジュールの目的は「15,000 文字の窓に入る情報量を増やす」ことであり、
+ * 本モジュールの目的は「`LLM_INPUT_BUDGET_CHARS` の窓に入る情報量を増やす」ことであり、
  * **情報を減らさないこと**が最重要の不変条件。サイズが縮んでも会場名・日付・
  * リンクが消えたら本末転倒なので、削減とセットで保全を固定する。
  */
-import { compactHtmlForLlm } from '@/lib/utils/compact-html';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/config/claude-models';
+import {
+  CHARS_PER_TOKEN_ESTIMATE,
+  CHARS_PER_TOKEN_WORST_CASE,
+  compactHtmlForLlm,
+  EXTRACTION_MAX_OUTPUT_TOKENS,
+  EXTRACTION_TEMPLATE_TOKENS_ESTIMATE,
+  LLM_INPUT_BUDGET_CHARS,
+  NON_CONTENT_TOKENS_ESTIMATE,
+  SMALLEST_CONTEXT_WINDOW_TOKENS,
+  truncateForLlm,
+} from '@/lib/utils/compact-html';
+
+/**
+ * 予算そのものの不変条件。
+ *
+ * `LLM_INPUT_BUDGET_CHARS` は 2025-12-08 から 2026-08-12 まで **根拠のないマジック
+ * ナンバー (15,000)** のまま放置され、`conan-cafe.jp` で会場一覧が静かに切り捨てられる
+ * 原因になった。同じ状態を再生産しないよう、**導出の前提が崩れたらテストが落ちる**
+ * 形にしておく。
+ */
+describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
+  // ⚠️ 次の 2 件は現在の値では前者が後者に数学的に含意される (0.5 × 窓 < 窓)。
+  //    それでも両方置くのは、表しているものが違うため。
+  //    - 1 件目 = **ハード制約** (窓に収まらなければ API が拒否する)
+  //    - 2 件目 = **方針** (希釈リスクが未測定なので使い切らない)
+  //    将来 2 件目の閾値を 0.8 等に緩めたときに 1 件目だけが残って効く。
+  //    方針を緩める判断とハード制約を混ぜないため、意図的に分けている。
+  it('[ハード制約] 最小のコンテキスト窓に、テンプレートと出力を足しても収まる', () => {
+    // ★ 平均 (1.96) ではなく観測最小 (1.88) を使う。chars/token が小さいほど同じ
+    //   文字数でより多くのトークンを消費するため、制約の検証には最悪値が正しい。
+    const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_WORST_CASE;
+    const totalTokens = contentTokens + NON_CONTENT_TOKENS_ESTIMATE;
+
+    expect(totalTokens).toBeLessThan(SMALLEST_CONTEXT_WINDOW_TOKENS);
+  });
+
+  it('[方針] 最小のコンテキスト窓の 50% 未満に留める', () => {
+    // 希釈リスクが未測定であるため、理論上限まで使い切らない方針を固定する。
+    const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_WORST_CASE;
+    const usageRatio =
+      (contentTokens + NON_CONTENT_TOKENS_ESTIMATE) / SMALLEST_CONTEXT_WINDOW_TOKENS;
+
+    expect(usageRatio).toBeLessThan(0.5);
+  });
+
+  it('conan-cafe.jp の圧縮前サイズ (35,344 文字) を包含する', () => {
+    // 圧縮が将来退行しても会場一覧が届くことを保証する下限。
+    // この値を下回ると Phase 3.7 で直した不具合が再発しうる。
+    expect(LLM_INPUT_BUDGET_CHARS).toBeGreaterThanOrEqual(35_344);
+  });
+
+  it('NON_CONTENT_TOKENS_ESTIMATE は内訳から導出され、リテラルではない', () => {
+    // extraction.service.ts の maxTokens を変えたら自動的にここも変わり、
+    // 上の [ハード制約] / [方針] が再評価されることを保証する。
+    // リテラル 28_000 に戻すと maxTokens 変更時に drift するため、構造を固定する。
+    expect(NON_CONTENT_TOKENS_ESTIMATE).toBe(
+      EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + EXTRACTION_MAX_OUTPUT_TOKENS
+    );
+  });
+
+  it('平均と観測最悪値が「最悪値のほうが多くのトークンを消費する」関係にある', () => {
+    // 逆転していると [ハード制約] テストが甘くなるため、関係自体を固定する。
+    expect(CHARS_PER_TOKEN_WORST_CASE).toBeLessThan(CHARS_PER_TOKEN_ESTIMATE);
+    expect(LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_WORST_CASE).toBeGreaterThan(
+      LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_ESTIMATE
+    );
+  });
+
+  /**
+   * `SMALLEST_CONTEXT_WINDOW_TOKENS` が既定の Anthropic モデルから機械的に導かれて
+   * いないことへの歯止め (drift guard)。
+   *
+   * 既定モデルが別の窓サイズのものへ変われば `SMALLEST_CONTEXT_WINDOW_TOKENS` も
+   * 変わるべきだが、両者はコード上つながっていない。**放置すると本 PR が
+   * `LLM_INPUT_BUDGET_CHARS` について直したのと同じ「根拠が実態から剥がれる」状態**に
+   * なるため、モデル名を固定してテストを落とす形で再確認を強制する。
+   *
+   * このテストが落ちたら: 新しいモデルの公式コンテキスト窓を確認し、
+   * `SMALLEST_CONTEXT_WINDOW_TOKENS` と本テストの期待値を同時に更新する。
+   */
+  it('[drift guard] 既定の Anthropic モデルが変わったら窓サイズの再確認を強制する', () => {
+    // claude-sonnet-4-5 = 200,000 tokens
+    // https://platform.claude.com/docs/en/build-with-claude/context-windows
+    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-sonnet-4-5-20250929');
+    expect(SMALLEST_CONTEXT_WINDOW_TOKENS).toBe(200_000);
+  });
+});
+
+/**
+ * `truncateForLlm` の Layer 1 テスト。
+ *
+ * `extraction.service.truncation.test.ts` (Layer 2) が消費側の境界を固定しているが、
+ * **純粋関数としての契約はここで直接固める**。DI やプロンプト構築を経由しないため、
+ * 何を保証しているかが読み取りやすい。
+ */
+describe('truncateForLlm', () => {
+  it('予算未満はそのまま返し、truncated=false', () => {
+    const r = truncateForLlm('あいうえお', 10);
+
+    expect(r.text).toBe('あいうえお');
+    expect(r.truncated).toBe(false);
+  });
+
+  it('予算とちょうど同じ長さは切り詰めない (off-by-one)', () => {
+    const r = truncateForLlm('あいうえお', 5);
+
+    expect(r.text).toBe('あいうえお');
+    expect(r.truncated).toBe(false);
+  });
+
+  it('予算を 1 超えたら切り詰め、truncated=true', () => {
+    const r = truncateForLlm('あいうえお', 4);
+
+    expect(r.text).toBe('あいうえ');
+    expect(r.truncated).toBe(true);
+  });
+
+  it('サロゲートペアの内側で切らない — 1 コードユニット戻す', () => {
+    // 'あ🎉いう' のコードユニット構成 (実測):
+    //   [0] 0x3042 あ / [1] 0xD83C 上位 / [2] 0xDF89 下位 / [3] 0x3044 い / [4] 0x3046 う
+    // 予算 2 だと [1] の直後 = ペアの内側で切れる。
+    const r = truncateForLlm('あ🎉いう', 2);
+
+    expect(r.truncated).toBe(true);
+    expect(r.text).toBe('あ'); // ペアを割らず 1 戻した結果
+    expect(r.text).toHaveLength(1);
+    // 孤立した上位サロゲートが残っていないこと
+    const last = r.text.charCodeAt(r.text.length - 1);
+    expect(last >= 0xd800 && last <= 0xdbff).toBe(false);
+  });
+
+  it('サロゲートペアの境界とちょうど一致する場合は戻さない', () => {
+    // 予算 3 = [0]あ + [1]上位 + [2]下位 → ペアが完全に収まるので調整不要
+    const r = truncateForLlm('あ🎉いう', 3);
+
+    expect(r.truncated).toBe(true);
+    expect(r.text).toBe('あ🎉');
+    expect(r.text).toHaveLength(3);
+  });
+
+  it('既定値は LLM_INPUT_BUDGET_CHARS を使う', () => {
+    // 呼び出し側がリテラルを書かなくて済むことを固定する。
+    const r = truncateForLlm('あ'.repeat(LLM_INPUT_BUDGET_CHARS + 1));
+
+    expect(r.truncated).toBe(true);
+    expect(r.text).toHaveLength(LLM_INPUT_BUDGET_CHARS);
+  });
+
+  it('空文字を渡しても throw しない', () => {
+    const r = truncateForLlm('', 10);
+
+    expect(r.text).toBe('');
+    expect(r.truncated).toBe(false);
+  });
+});
 
 describe('compactHtmlForLlm', () => {
   describe('落とすもの', () => {
