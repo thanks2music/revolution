@@ -120,7 +120,9 @@ async function main(): Promise<void> {
   console.log(`🔎 公式サイトとの事実照合: ${url ?? htmlPath}`);
   console.log('='.repeat(80));
   console.log();
-  console.log(`正解データ: ${truth.status} (${truth.matchedVia ?? '-'}) / ${truth.venues.length} 会場`);
+  console.log(
+    `正解データ: ${truth.status} (profile=${truth.profileId ?? '-'} / ${truth.matchedVia ?? '-'}) / ${truth.venues.length} 会場`
+  );
 
   if (truth.status === 'unsupported') {
     console.log(`  ${truth.reason}`);

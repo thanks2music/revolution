@@ -7,7 +7,7 @@
  * 抽出パイプラインの正しさを測る物差しに LLM を使うと、**測る側も間違える**ので
  * 不一致が出たときにどちらが誤りか判別できない。正解データは決定論的に作る必要がある。
  *
- * ## 何を根拠にしているか (実測、2026-08-11 / 2026-08-12)
+ * ## 何を根拠にしているか (実測、2026-08-11 / 2026-08-12 / 2026-08-13)
  *
  * LTR 系 8 サイトの保存 HTML を総当たりしたところ、**全サイトが
  * `.place` × N ＝ 会場数**の構造を持っていた。
@@ -19,6 +19,9 @@
  *     <p class="place_text_02"><span>【開催期間】</span> 2026年6月4日(木)〜2026年8月16日(日)</p>
  * ```
  *
+ * 2026-08-13 に **hivelocity 系** (`conan-cafe.jp` / `jujutsukaisen-cafe.jp`) を追加した。
+ * ブロックは `.p-top-information__bloc`、地域は `h2`、会場名は `h3`。
+ *
  * ⚠️ **`miku-wa-modern-cafe` と `nissy-cafe-2026` は HTML が `\uXXXX` /
  * `\&quot;` でエスケープされた JSON payload に埋まっている。** 生の文字列検索では
  * `.place` が 0 件に見え、実際に一度「この 2 サイトは構造が違う」と誤認した。
@@ -27,10 +30,14 @@
  *
  * ## 適用範囲
  *
- * `.place` 構造は LTR 系サイト固有である。本モジュールは**検証ツール**であり、
- * 抽出パイプライン本体ではないため、この依存は許容する
+ * ブロック構造はサイト系列ごとに異なるため `SITE_PROFILES` で列挙する。本モジュールは
+ * **検証ツール**であり抽出パイプライン本体ではないため、このサイト固有知識は許容する
  * (「LTR 固有の対症療法にしない」方針はパイプライン改修に対するもの)。
  * 構造の異なるサイトは推測で埋めず `unsupported` を返し、**黙って合格にしない**。
+ *
+ * ⚠️ **profile の追加は実測に基づくものだけに限る。** 「たぶんこの class 名だろう」で
+ * 足すと、誤ったセレクタが誤った正解データを作り、**正しい抽出結果を失格にする**。
+ * 追加時は必ず実サイトを取得し、会場数と会場名が公式表示と一致することを確認する。
  *
  * ## 既知の限界 (実測で確認済み、意図的に受容)
  *
@@ -70,10 +77,53 @@ export interface SourceTruth {
   status: 'supported' | 'unsupported';
   /** 認識に使った経路。`escaped` はエスケープ解除後に一致したことを示す */
   matchedVia: 'plain' | 'escaped' | null;
+  /** 認識に使った profile の id。`unsupported` なら null */
+  profileId: SiteProfileId | null;
   venues: SourceTruthVenue[];
   /** `unsupported` のときの理由 (人が読む用) */
   reason?: string;
 }
+
+export type SiteProfileId = 'ltr' | 'hivelocity';
+
+/**
+ * 会場ブロックの構造をサイト系列ごとに宣言する。
+ *
+ * ## 期間セレクタを持たない理由 (実測で決定、2026-08-13)
+ *
+ * 当初は系列ごとに期間のセレクタ (`.place_text_02` / `h4`) を持たせる設計だったが、
+ * **hivelocity は `h4` が 10 件中 2 件で空**だった (`conan-cafe.jp` の HARAJUKU と
+ * OSAKA（KITTE）。サイト側の装飾差で `<p style="color:#dd3333"><font size=5>` に
+ * なっている)。タグ固定で読むと**この 2 件が黙って期間なしになる**。
+ *
+ * そこで**ブロック内テキストから日付範囲を正規表現で読む**方式に変えたところ、
+ * 5 サイト 18 会場すべてで期間が取れた。さらに LTR 3 サイトでは
+ * **セレクタ経路と正規表現経路の結果が 5/5 完全一致**したため、
+ * LTR 専用の期間セレクタを残す理由が実測で消えた。よって期間は profile に持たせず
+ * 一律テキスト読みにする。
+ */
+interface SiteProfile {
+  id: SiteProfileId;
+  /** 1 会場 = 1 ブロックとなる要素 */
+  blockSelector: string;
+  /** ブロック内の地域見出し (`TOKYO` / `SHIBUYA` 等) */
+  regionSelector: string;
+  /** ブロック内の会場名 */
+  venueSelector: string;
+}
+
+/** 実測で確認済みの profile のみを並べる。先に一致したものを採用する。 */
+const SITE_PROFILES: readonly SiteProfile[] = [
+  // LTR 系 8 サイト (実測 2026-08-11)
+  { id: 'ltr', blockSelector: '.place', regionSelector: 'h2', venueSelector: '.place_text_01' },
+  // hivelocity 系: conan-cafe.jp (10 会場) / jujutsukaisen-cafe.jp (3 会場) (実測 2026-08-13)
+  {
+    id: 'hivelocity',
+    blockSelector: '.p-top-information__bloc',
+    regionSelector: 'h2',
+    venueSelector: 'h3',
+  },
+];
 
 /**
  * `\uXXXX` / `\&quot;` / `\/` 等のエスケープを解く。
@@ -165,23 +215,58 @@ function decodeEntities(text: string): string {
     .replace(/&nbsp;/g, ' ');
 }
 
-/** `.place` ブロックを 1 つ読み取る。 */
-function readPlaceBlock($el: PlaceSelection): SourceTruthVenue {
-  const norm = (value: string | undefined): string | null => {
-    const trimmed = decodeEntities(value ?? '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return trimmed.length > 0 ? trimmed : null;
-  };
+/**
+ * 「開始日 〜 終了日」の日付範囲。開始・終了とも具体的な日付であることを要求する。
+ *
+ * 間の `[^0-9]{0,12}?` は曜日表記 (`(金)` / `（日）`) と空白を跨ぐためのもの。
+ * 終了側の `\d{0,4}年?` は年の省略 (`2025年12月20日〜2月8日`) を許す。
+ */
+const DATE_RANGE =
+  /(\d{4}年\s*\d{1,2}月\s*\d{1,2}日[^0-9]{0,12}?[〜~～-][^0-9]{0,12}?\d{0,4}年?\s*\d{1,2}月\s*\d{1,2}日)/;
 
-  const regionLabel = norm($el.find('h2').first().text());
-  const venueLabel = norm($el.find('.place_text_01').first().text());
+/**
+ * 終了日が未定の期間 (`2026年4月10日（金）～順次開催!!` / `〜` で切れている等)。
+ *
+ * ## なぜフォールバックとして持つか
+ *
+ * `DATE_RANGE` は終了日を要求するため open-ended を弾く。旧実装 (LTR の
+ * `.place_text_02` 直読み) は開始日だけでも拾えていたので、テキスト読みへ移行する際に
+ * **その能力を落とさない**ために置く。`DATE_RANGE` が一致した場合は使われないため、
+ * 実測 18/18 の結果には影響しない (発火経路が排他)。
+ *
+ * ⚠️ **イベント全体のリード文にある期間を会場へ配ってはいけない。** 実データでは
+ * `conan-cafe.jp` / `kusuriya-cafe` ともページ冒頭の惹句が
+ * 「…期間限定オープン！！ 2026年4月10日（金）～順次開催!!」の形を持つが、これは
+ * イベント全体の話であって会場ごとの期間ではない。本正規表現は**会場ブロック内の
+ * テキストだけ**に当てる (`readVenueBlock` が `$block.text()` を渡す) ことでこれを担保する。
+ */
+const OPEN_ENDED_PERIOD = /(\d{4}年\s*\d{1,2}月\s*\d{1,2}日[^0-9]{0,12}?(?:[〜~～-]|より|から))/;
 
-  // 【開催期間】は `.place_text_02` の中に `<span>【開催期間】</span> 日付` の形で入る。
-  // span を落としてから読むことで見出し語が日付側へ混ざらないようにする。
-  const $period = $el.find('.place_text_02').first().clone();
-  $period.find('span').remove();
-  const periodText = norm($period.text());
+/** 空白を潰し実体参照を戻す。空文字列は null に畳む。 */
+function norm(value: string | undefined): string | null {
+  const trimmed = decodeEntities(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * ブロック内テキストから期間の記述を切り出す。
+ *
+ * 見つからなければ null = **「この会場の期間は読めなかった」**。呼び出し側はこれを
+ * 「期間が一致しない」ではなく「照合できない」として扱う (`unmeasuredPeriodVenues`)。
+ * 読めなかったものを 0 や推測値で埋めると、正しい抽出結果を失格にする。
+ */
+export function extractPeriodText(blockText: string): string | null {
+  const text = norm(blockText) ?? '';
+  return text.match(DATE_RANGE)?.[1] ?? text.match(OPEN_ENDED_PERIOD)?.[1] ?? null;
+}
+
+/** 会場ブロックを 1 つ読み取る。 */
+function readVenueBlock($el: PlaceSelection, profile: SiteProfile): SourceTruthVenue {
+  const regionLabel = norm($el.find(profile.regionSelector).first().text());
+  const venueLabel = norm($el.find(profile.venueSelector).first().text());
+  const periodText = extractPeriodText($el.text());
 
   const { startsOn, endsOn } = periodText
     ? parsePeriodText(periodText)
@@ -190,12 +275,22 @@ function readPlaceBlock($el: PlaceSelection): SourceTruthVenue {
   return { regionLabel, venueLabel, periodText, startsOn, endsOn };
 }
 
-/** 与えた HTML から `.place` ブロックを列挙する。 */
-function collectPlaces(html: string): SourceTruthVenue[] {
+/**
+ * 与えた HTML から会場ブロックを列挙する。
+ *
+ * `SITE_PROFILES` を順に試し、**最初にブロックが 1 件以上見つかった profile を採用**する。
+ * 見つからなければ null (呼び出し側がエスケープ解除して再試行する)。
+ */
+function collectVenues(
+  html: string
+): { profile: SiteProfile; venues: SourceTruthVenue[] } | null {
   const $ = cheerio.load(html);
-  return $('.place')
-    .toArray()
-    .map((el) => readPlaceBlock($(el)));
+  for (const profile of SITE_PROFILES) {
+    const blocks = $(profile.blockSelector).toArray();
+    if (blocks.length === 0) continue;
+    return { profile, venues: blocks.map((el) => readVenueBlock($(el), profile)) };
+  }
+  return null;
 }
 
 /**
@@ -205,24 +300,36 @@ function collectPlaces(html: string): SourceTruthVenue[] {
  * それでも見つからなければ `unsupported` を返す — **推測で埋めない**。
  */
 export function extractSourceTruth(html: string): SourceTruth {
-  const plain = collectPlaces(html);
-  if (plain.length > 0) {
-    return { status: 'supported', matchedVia: 'plain', venues: plain };
+  const plain = collectVenues(html);
+  if (plain) {
+    return {
+      status: 'supported',
+      matchedVia: 'plain',
+      profileId: plain.profile.id,
+      venues: plain.venues,
+    };
   }
 
   // ★ miku / nissy はここで初めて見つかる。この分岐が無いと 8 サイト中 2 つを
   //   「構造が違う」と誤認する (実際に一度誤認した)。
-  const escaped = collectPlaces(unescapeEmbeddedMarkup(html));
-  if (escaped.length > 0) {
-    return { status: 'supported', matchedVia: 'escaped', venues: escaped };
+  const escaped = collectVenues(unescapeEmbeddedMarkup(html));
+  if (escaped) {
+    return {
+      status: 'supported',
+      matchedVia: 'escaped',
+      profileId: escaped.profile.id,
+      venues: escaped.venues,
+    };
   }
 
   return {
     status: 'unsupported',
     matchedVia: null,
+    profileId: null,
     venues: [],
     reason:
-      '`.place` ブロックが見つかりません (エスケープ解除後も 0 件)。LTR 系以外のサイト構造か、取得したページが会場一覧を含まない下層ページの可能性があります。',
+      `既知の会場ブロック構造が見つかりません (試した profile: ${SITE_PROFILES.map((p) => `${p.id} = \`${p.blockSelector}\``).join(' / ')}。エスケープ解除後も 0 件)。` +
+      '未対応のサイト系列か、取得したページが会場一覧を含まない下層ページの可能性があります。',
   };
 }
 
@@ -302,6 +409,19 @@ export interface SourceComparison {
   fabricatedVenues: string[];
   /** 期間が食い違う会場 */
   periodMismatches: string[];
+  /**
+   * **正解データ側で期間を読めなかった**会場 (= 照合不能)。
+   *
+   * ⚠️ `periodMismatches` (不一致) と**別枠にする**。両者は原因も対処もまったく違う:
+   *
+   * - 不一致 = 抽出が間違っている → 再抽出する価値がある
+   * - 未取得 = 測る側が読めていない → 再抽出しても直らない。profile か正規表現の問題
+   *
+   * 混ぜると「再抽出すれば直る」と誤認し、直らないものを何度も回すことになる。
+   * **`passed` には含めない** — 測れなかったことを不合格にするのは
+   * 「測れなかった ≠ 間違っていた」の違反。ただし黙らせず必ず表に出す。
+   */
+  unmeasuredPeriodVenues: string[];
   /** 総合判定。`unsupported` のときは常に false (黙って合格にしない) */
   passed: boolean;
   reason?: string;
@@ -363,6 +483,7 @@ export function compareWithSource(
       missingVenues: [],
       fabricatedVenues: [],
       periodMismatches: [],
+      unmeasuredPeriodVenues: [],
       // ★ 照合できないものを合格にしない。「測れなかった」と「正しかった」は別。
       passed: false,
       reason: truth.reason,
@@ -408,6 +529,7 @@ export function compareWithSource(
   const missingVenues: string[] = [];
   const fabricatedVenues: string[] = [];
   const periodMismatches: string[] = [];
+  const unmeasuredPeriodVenues: string[] = [];
 
   for (const [key, source] of expected) {
     const found = actual.get(key);
@@ -421,18 +543,28 @@ export function compareWithSource(
       continue;
     }
 
+    const base = {
+      venueLabel: source.venueLabel!,
+      presence: 'both' as const,
+      expected: { startsOn: source.startsOn, endsOn: source.endsOn },
+      actual: { startsOn: found.starts_on ?? null, endsOn: found.ends_on ?? null },
+    };
+
+    // ★ 正解側の開始日が読めていないなら、期間は「不一致」ではなく「照合不能」。
+    //   ここで比較すると、抽出が正しくても null !== '2026-05-14' で不一致になり、
+    //   測る側の欠落を抽出側の誤りとして報告してしまう。
+    if (source.startsOn === null) {
+      unmeasuredPeriodVenues.push(source.venueLabel!);
+      venues.push(base);
+      continue;
+    }
+
     const periodMatches =
-      (source.startsOn ?? null) === (found.starts_on ?? null) &&
+      source.startsOn === (found.starts_on ?? null) &&
       (source.endsOn ?? null) === (found.ends_on ?? null);
     if (!periodMatches) periodMismatches.push(source.venueLabel!);
 
-    venues.push({
-      venueLabel: source.venueLabel!,
-      presence: 'both',
-      expected: { startsOn: source.startsOn, endsOn: source.endsOn },
-      actual: { startsOn: found.starts_on ?? null, endsOn: found.ends_on ?? null },
-      periodMatches,
-    });
+    venues.push({ ...base, periodMatches });
   }
 
   for (const [key, found] of actual) {
@@ -464,6 +596,9 @@ export function compareWithSource(
     missingVenues,
     fabricatedVenues,
     periodMismatches,
+    unmeasuredPeriodVenues,
+    // ★ `unmeasuredPeriodVenues` は含めない。測る側が読めなかっただけで、
+    //   抽出結果が誤っている根拠にはならない (再抽出しても直らない)。
     passed:
       missingVenues.length === 0 &&
       fabricatedVenues.length === 0 &&
@@ -535,6 +670,14 @@ export function formatSourceComparisonLines(result: SourceComparison, indent = '
   }
   if (result.periodMismatches.length > 0) {
     lines.push(`${indent}🟡 期間の不一致: ${result.periodMismatches.join(', ')}`);
+  }
+  // ★ 不一致の下に、別の記号・別の文言で置く。同じ 🟡 にすると読み手が
+  //   「再抽出すれば直る」と誤認する (未取得は再抽出しても直らない)。
+  if (result.unmeasuredPeriodVenues.length > 0) {
+    lines.push(
+      `${indent}⚠️ 正解側で期間を読めなかった会場: ${result.unmeasuredPeriodVenues.join(', ')}` +
+        ' (測る側の問題 / 不一致ではない)'
+    );
   }
 
   return lines;
