@@ -24,7 +24,7 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
-import { LLM_INPUT_BUDGET_CHARS } from '@/lib/utils/compact-html';
+import { EXTRACTION_MAX_OUTPUT_TOKENS, LLM_INPUT_BUDGET_CHARS } from '@/lib/utils/compact-html';
 import {
   hashForAiCallRecord,
   shouldSuppressInlinePromptDump,
@@ -360,7 +360,9 @@ export class ExtractionService {
 
       const response = await this.aiProvider.sendMessage(prompt, {
         stepId: 'detail-extraction',
-        maxTokens: 4000, // HTML全文対応のため増加
+        // ⚠️ 定義元は `compact-html.ts`。予算計算 (`NON_CONTENT_TOKENS_ESTIMATE`) が
+        //    この値から導出されるため、ここでリテラルを書くと drift する。
+        maxTokens: EXTRACTION_MAX_OUTPUT_TOKENS,
         temperature: 0.2, // 抽出は正確性を重視
         responseFormat: 'json',
         responseSchema: EXTRACTION_RESPONSE_OPENAI_SCHEMA,

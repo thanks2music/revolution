@@ -78,6 +78,19 @@ import * as cheerio from 'cheerio';
 export const CHARS_PER_TOKEN_ESTIMATE = 1.96;
 
 /**
+ * 同じ実測レンジの**最小値** (1.88)。
+ *
+ * chars/token が小さいほど**同じ文字数でより多くのトークンを消費する**ため、
+ * 予算が窓に収まるかを検証する制約テストにはこちら (観測上の最悪値) を使う。
+ * 平均 (`CHARS_PER_TOKEN_ESTIMATE`) を使うと、実際には超えるケースを通してしまう。
+ *
+ * ⚠️ **理論的な下限ではなく「観測範囲での最悪値」**。ASCII 比率がさらに低い
+ * (= 日本語だけの) ページが来れば 1.88 を下回りうる。ただし本定数の用途は
+ * 29〜30% 程度の使用率で余裕を確認することなので、精度は問題にならない。
+ */
+export const CHARS_PER_TOKEN_WORST_CASE = 1.88;
+
+/**
  * `detail-extraction` のプロンプトへ埋め込めるページ本文の上限 (文字)。
  *
  * `extraction.service.ts` がこの値で `substring` するため、超えた分は **LLM へ届かない**。
@@ -123,14 +136,16 @@ export const CHARS_PER_TOKEN_ESTIMATE = 1.96;
  * | − 出力 (`extraction.service.ts` の `maxTokens`) | −4,000 | 実装値 |
  * | = 本文に使える理論上の余地 | 172,000 (≒ 337,000 文字) | |
  * | **本定数** | **30,600 (60,000 文字) = 本文だけで窓の 15.3%** | |
- * | (参考) テンプレ・出力を含めた総使用率 | **29.3%** (テストが強制する会計) | |
+ * | (参考) テンプレ・出力を含めた総使用率 | **30.0%** (最悪ケース。テストが強制する会計) | |
  *
  * ### なぜ理論上限まで上げないか
  *
  * 1. **`conan-cafe.jp` の圧縮前 35,344 文字を包含する**。圧縮が将来退行しても会場一覧は届く
- * 2. 総プロンプトが ≒ 58,600 tokens = Sonnet 4.5 の **29.3%** に収まり、3 provider すべてで余裕
- *    (本文 30,600 + `NON_CONTENT_TOKENS_ESTIMATE` 28,000。**出力 4,000 を含めた会計**で、
- *    テストが強制する数値と一致させてある)
+ * 2. 総プロンプトが **最悪ケースでも ≒ 59,900 tokens = Sonnet 4.5 の 30.0%** に収まり、
+ *    3 provider すべてで余裕がある。会計は本文 (60,000 / `CHARS_PER_TOKEN_WORST_CASE`
+ *    = 31,915) + `NON_CONTENT_TOKENS_ESTIMATE` (28,000 = テンプレ 24,000 + 出力 4,000)。
+ *    **観測平均ではなく観測最小の chars/token を使う** (同じ文字数でより多くの
+ *    トークンを消費する側)。テストが強制する会計と一致させてある
  * 3. **希釈リスクを測定していない**。入力を増やすと抽出精度が落ちるかは未検証なので、
  *    根拠なく大きく振らない
  *
@@ -162,12 +177,42 @@ export const CHARS_PER_TOKEN_ESTIMATE = 1.96;
 export const LLM_INPUT_BUDGET_CHARS = 60_000;
 
 /**
- * 本文以外がプロンプトで占めるトークン数の実測上限 (テンプレート + 出力)。
+ * プロンプトのテンプレート部 (Few-shot 等) が占めるトークン数の実測値。
+ *
+ * 観測ログの `promptTokens` 全体 (26,000〜31,400) から本文相当分を差し引いた概算。
+ */
+export const EXTRACTION_TEMPLATE_TOKENS_ESTIMATE = 24_000;
+
+/**
+ * `detail-extraction` の出力トークン上限。**`extraction.service.ts` が実際に
+ * `maxTokens` へ渡す値**であり、本モジュールが唯一の定義元。
+ *
+ * ## なぜここに置くか
+ *
+ * 以前は `extraction.service.ts` 内のインラインリテラル (`maxTokens: 4000`) で、
+ * 予算計算 (`NON_CONTENT_TOKENS_ESTIMATE`) とは**何のつながりもなかった**。
+ * この値は過去に `// HTML全文対応のため増加` というコメント付きで変更された履歴が
+ * あり、今後も変わりうる。**変わっても予算計算が追随せず、テストも落ちない**という
+ * 穴が残っていた (`SMALLEST_CONTEXT_WINDOW_TOKENS` に対して drift guard を入れたのと
+ * 同じ種類の問題)。
+ *
+ * そこで定義元を予算モジュール側へ移し、`NON_CONTENT_TOKENS_ESTIMATE` が**構造的に
+ * 導出される**ようにした。drift guard で検知するのではなく、**そもそも drift しない**。
+ *
+ * ⚠️ 逆向きの import (`compact-html` → `extraction.service`) は循環になるため、
+ * 定義元を本モジュールに置き `extraction.service.ts` が参照する向きにしている。
+ */
+export const EXTRACTION_MAX_OUTPUT_TOKENS = 4_000;
+
+/**
+ * 本文以外がプロンプト + 応答で占めるトークン数 (テンプレート + 出力)。
  *
  * `LLM_INPUT_BUDGET_CHARS` が最小のコンテキスト窓に収まることをテストで検証するために
- * 使う。値の出所は上の内訳表 (テンプレート 24,000 + 出力 `maxTokens` 4,000)。
+ * 使う。**リテラルを書かず内訳から導出する**ことで、`maxTokens` を変えたら自動的に
+ * ここも変わり、制約テストが再評価される。
  */
-export const NON_CONTENT_TOKENS_ESTIMATE = 28_000;
+export const NON_CONTENT_TOKENS_ESTIMATE =
+  EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + EXTRACTION_MAX_OUTPUT_TOKENS;
 
 /**
  * サポートする provider のうち**最小**のコンテキスト窓 (tokens)。

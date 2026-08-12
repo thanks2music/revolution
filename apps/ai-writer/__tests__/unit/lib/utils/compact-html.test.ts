@@ -8,7 +8,10 @@
 import { DEFAULT_CLAUDE_MODEL } from '@/lib/config/claude-models';
 import {
   CHARS_PER_TOKEN_ESTIMATE,
+  CHARS_PER_TOKEN_WORST_CASE,
   compactHtmlForLlm,
+  EXTRACTION_MAX_OUTPUT_TOKENS,
+  EXTRACTION_TEMPLATE_TOKENS_ESTIMATE,
   LLM_INPUT_BUDGET_CHARS,
   NON_CONTENT_TOKENS_ESTIMATE,
   SMALLEST_CONTEXT_WINDOW_TOKENS,
@@ -30,7 +33,9 @@ describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
   //    将来 2 件目の閾値を 0.8 等に緩めたときに 1 件目だけが残って効く。
   //    方針を緩める判断とハード制約を混ぜないため、意図的に分けている。
   it('[ハード制約] 最小のコンテキスト窓に、テンプレートと出力を足しても収まる', () => {
-    const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_ESTIMATE;
+    // ★ 平均 (1.96) ではなく観測最小 (1.88) を使う。chars/token が小さいほど同じ
+    //   文字数でより多くのトークンを消費するため、制約の検証には最悪値が正しい。
+    const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_WORST_CASE;
     const totalTokens = contentTokens + NON_CONTENT_TOKENS_ESTIMATE;
 
     expect(totalTokens).toBeLessThan(SMALLEST_CONTEXT_WINDOW_TOKENS);
@@ -38,7 +43,7 @@ describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
 
   it('[方針] 最小のコンテキスト窓の 50% 未満に留める', () => {
     // 希釈リスクが未測定であるため、理論上限まで使い切らない方針を固定する。
-    const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_ESTIMATE;
+    const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_WORST_CASE;
     const usageRatio =
       (contentTokens + NON_CONTENT_TOKENS_ESTIMATE) / SMALLEST_CONTEXT_WINDOW_TOKENS;
 
@@ -49,6 +54,23 @@ describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
     // 圧縮が将来退行しても会場一覧が届くことを保証する下限。
     // この値を下回ると Phase 3.7 で直した不具合が再発しうる。
     expect(LLM_INPUT_BUDGET_CHARS).toBeGreaterThanOrEqual(35_344);
+  });
+
+  it('NON_CONTENT_TOKENS_ESTIMATE は内訳から導出され、リテラルではない', () => {
+    // extraction.service.ts の maxTokens を変えたら自動的にここも変わり、
+    // 上の [ハード制約] / [方針] が再評価されることを保証する。
+    // リテラル 28_000 に戻すと maxTokens 変更時に drift するため、構造を固定する。
+    expect(NON_CONTENT_TOKENS_ESTIMATE).toBe(
+      EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + EXTRACTION_MAX_OUTPUT_TOKENS
+    );
+  });
+
+  it('平均と観測最悪値が「最悪値のほうが多くのトークンを消費する」関係にある', () => {
+    // 逆転していると [ハード制約] テストが甘くなるため、関係自体を固定する。
+    expect(CHARS_PER_TOKEN_WORST_CASE).toBeLessThan(CHARS_PER_TOKEN_ESTIMATE);
+    expect(LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_WORST_CASE).toBeGreaterThan(
+      LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_ESTIMATE
+    );
   });
 
   /**
