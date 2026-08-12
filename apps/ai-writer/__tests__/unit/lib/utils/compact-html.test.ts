@@ -15,6 +15,7 @@ import {
   LLM_INPUT_BUDGET_CHARS,
   NON_CONTENT_TOKENS_ESTIMATE,
   SMALLEST_CONTEXT_WINDOW_TOKENS,
+  truncateForLlm,
 } from '@/lib/utils/compact-html';
 
 /**
@@ -90,6 +91,74 @@ describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
     // https://platform.claude.com/docs/en/build-with-claude/context-windows
     expect(DEFAULT_CLAUDE_MODEL).toBe('claude-sonnet-4-5-20250929');
     expect(SMALLEST_CONTEXT_WINDOW_TOKENS).toBe(200_000);
+  });
+});
+
+/**
+ * `truncateForLlm` の Layer 1 テスト。
+ *
+ * `extraction.service.truncation.test.ts` (Layer 2) が消費側の境界を固定しているが、
+ * **純粋関数としての契約はここで直接固める**。DI やプロンプト構築を経由しないため、
+ * 何を保証しているかが読み取りやすい。
+ */
+describe('truncateForLlm', () => {
+  it('予算未満はそのまま返し、truncated=false', () => {
+    const r = truncateForLlm('あいうえお', 10);
+
+    expect(r.text).toBe('あいうえお');
+    expect(r.truncated).toBe(false);
+  });
+
+  it('予算とちょうど同じ長さは切り詰めない (off-by-one)', () => {
+    const r = truncateForLlm('あいうえお', 5);
+
+    expect(r.text).toBe('あいうえお');
+    expect(r.truncated).toBe(false);
+  });
+
+  it('予算を 1 超えたら切り詰め、truncated=true', () => {
+    const r = truncateForLlm('あいうえお', 4);
+
+    expect(r.text).toBe('あいうえ');
+    expect(r.truncated).toBe(true);
+  });
+
+  it('サロゲートペアの内側で切らない — 1 コードユニット戻す', () => {
+    // 'あ🎉いう' のコードユニット構成 (実測):
+    //   [0] 0x3042 あ / [1] 0xD83C 上位 / [2] 0xDF89 下位 / [3] 0x3044 い / [4] 0x3046 う
+    // 予算 2 だと [1] の直後 = ペアの内側で切れる。
+    const r = truncateForLlm('あ🎉いう', 2);
+
+    expect(r.truncated).toBe(true);
+    expect(r.text).toBe('あ'); // ペアを割らず 1 戻した結果
+    expect(r.text).toHaveLength(1);
+    // 孤立した上位サロゲートが残っていないこと
+    const last = r.text.charCodeAt(r.text.length - 1);
+    expect(last >= 0xd800 && last <= 0xdbff).toBe(false);
+  });
+
+  it('サロゲートペアの境界とちょうど一致する場合は戻さない', () => {
+    // 予算 3 = [0]あ + [1]上位 + [2]下位 → ペアが完全に収まるので調整不要
+    const r = truncateForLlm('あ🎉いう', 3);
+
+    expect(r.truncated).toBe(true);
+    expect(r.text).toBe('あ🎉');
+    expect(r.text).toHaveLength(3);
+  });
+
+  it('既定値は LLM_INPUT_BUDGET_CHARS を使う', () => {
+    // 呼び出し側がリテラルを書かなくて済むことを固定する。
+    const r = truncateForLlm('あ'.repeat(LLM_INPUT_BUDGET_CHARS + 1));
+
+    expect(r.truncated).toBe(true);
+    expect(r.text).toHaveLength(LLM_INPUT_BUDGET_CHARS);
+  });
+
+  it('空文字を渡しても throw しない', () => {
+    const r = truncateForLlm('', 10);
+
+    expect(r.text).toBe('');
+    expect(r.truncated).toBe(false);
   });
 });
 
