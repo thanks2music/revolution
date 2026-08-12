@@ -1,10 +1,11 @@
 /**
  * Layer 1: `compactHtmlForLlm` の純粋関数テスト。
  *
- * 本モジュールの目的は「15,000 文字の窓に入る情報量を増やす」ことであり、
+ * 本モジュールの目的は「`LLM_INPUT_BUDGET_CHARS` の窓に入る情報量を増やす」ことであり、
  * **情報を減らさないこと**が最重要の不変条件。サイズが縮んでも会場名・日付・
  * リンクが消えたら本末転倒なので、削減とセットで保全を固定する。
  */
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/config/claude-models';
 import {
   CHARS_PER_TOKEN_ESTIMATE,
   compactHtmlForLlm,
@@ -22,17 +23,24 @@ import {
  * 形にしておく。
  */
 describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
-  it('最小のコンテキスト窓に、テンプレートと出力を足しても収まる', () => {
+  // ⚠️ 次の 2 件は現在の値では前者が後者に数学的に含意される (0.5 × 窓 < 窓)。
+  //    それでも両方置くのは、表しているものが違うため。
+  //    - 1 件目 = **ハード制約** (窓に収まらなければ API が拒否する)
+  //    - 2 件目 = **方針** (希釈リスクが未測定なので使い切らない)
+  //    将来 2 件目の閾値を 0.8 等に緩めたときに 1 件目だけが残って効く。
+  //    方針を緩める判断とハード制約を混ぜないため、意図的に分けている。
+  it('[ハード制約] 最小のコンテキスト窓に、テンプレートと出力を足しても収まる', () => {
     const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_ESTIMATE;
     const totalTokens = contentTokens + NON_CONTENT_TOKENS_ESTIMATE;
 
     expect(totalTokens).toBeLessThan(SMALLEST_CONTEXT_WINDOW_TOKENS);
   });
 
-  it('最小のコンテキスト窓に対して十分な余裕 (50% 以上) を残す', () => {
+  it('[方針] 最小のコンテキスト窓の 50% 未満に留める', () => {
     // 希釈リスクが未測定であるため、理論上限まで使い切らない方針を固定する。
     const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_ESTIMATE;
-    const usageRatio = (contentTokens + NON_CONTENT_TOKENS_ESTIMATE) / SMALLEST_CONTEXT_WINDOW_TOKENS;
+    const usageRatio =
+      (contentTokens + NON_CONTENT_TOKENS_ESTIMATE) / SMALLEST_CONTEXT_WINDOW_TOKENS;
 
     expect(usageRatio).toBeLessThan(0.5);
   });
@@ -41,6 +49,25 @@ describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
     // 圧縮が将来退行しても会場一覧が届くことを保証する下限。
     // この値を下回ると Phase 3.7 で直した不具合が再発しうる。
     expect(LLM_INPUT_BUDGET_CHARS).toBeGreaterThanOrEqual(35_344);
+  });
+
+  /**
+   * `SMALLEST_CONTEXT_WINDOW_TOKENS` が既定の Anthropic モデルから機械的に導かれて
+   * いないことへの歯止め (drift guard)。
+   *
+   * 既定モデルが別の窓サイズのものへ変われば `SMALLEST_CONTEXT_WINDOW_TOKENS` も
+   * 変わるべきだが、両者はコード上つながっていない。**放置すると本 PR が
+   * `LLM_INPUT_BUDGET_CHARS` について直したのと同じ「根拠が実態から剥がれる」状態**に
+   * なるため、モデル名を固定してテストを落とす形で再確認を強制する。
+   *
+   * このテストが落ちたら: 新しいモデルの公式コンテキスト窓を確認し、
+   * `SMALLEST_CONTEXT_WINDOW_TOKENS` と本テストの期待値を同時に更新する。
+   */
+  it('[drift guard] 既定の Anthropic モデルが変わったら窓サイズの再確認を強制する', () => {
+    // claude-sonnet-4-5 = 200,000 tokens
+    // https://platform.claude.com/docs/en/build-with-claude/context-windows
+    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-sonnet-4-5-20250929');
+    expect(SMALLEST_CONTEXT_WINDOW_TOKENS).toBe(200_000);
   });
 });
 
