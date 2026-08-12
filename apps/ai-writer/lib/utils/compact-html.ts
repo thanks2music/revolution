@@ -132,20 +132,21 @@ export const CHARS_PER_TOKEN_WORST_CASE = 1.88;
  * | 要素 | tokens | 根拠 |
  * |---|---|---|
  * | Sonnet 4.5 のコンテキスト窓 | 200,000 | 公式 |
- * | − プロンプトのテンプレート部 (Few-shot 等) | −24,000 | 実測 (全体 26,000〜31,400 から本文分を差し引き) |
+ * | − プロンプトのテンプレート部 (Few-shot 等) | −25,125 | **実測 21 本の最大値** (最小 20,921 / 平均 23,967) |
  * | − 出力 (`extraction.service.ts` の `maxTokens`) | −4,000 | 実装値 |
  * | = 本文に使える理論上の余地 | 172,000 (≒ 337,000 文字) | |
  * | **本定数** | **30,600 (60,000 文字) = 本文だけで窓の 15.3%** | |
- * | (参考) テンプレ・出力を含めた総使用率 | **30.0%** (最悪ケース。テストが強制する会計) | |
+ * | (参考) テンプレ・出力を含めた総使用率 | **30.5%** (最悪ケース。テストが強制する会計) | |
  *
  * ### なぜ理論上限まで上げないか
  *
  * 1. **`conan-cafe.jp` の圧縮前 35,344 文字を包含する**。圧縮が将来退行しても会場一覧は届く
- * 2. 総プロンプトが **最悪ケースでも ≒ 59,900 tokens = Sonnet 4.5 の 30.0%** に収まり、
+ * 2. 総プロンプトが **最悪ケースでも ≒ 61,000 tokens = Sonnet 4.5 の 30.5%** に収まり、
  *    3 provider すべてで余裕がある。会計は本文 (60,000 / `CHARS_PER_TOKEN_WORST_CASE`
- *    = 31,915) + `NON_CONTENT_TOKENS_ESTIMATE` (28,000 = テンプレ 24,000 + 出力 4,000)。
- *    **観測平均ではなく観測最小の chars/token を使う** (同じ文字数でより多くの
- *    トークンを消費する側)。テストが強制する会計と一致させてある
+ *    = 31,915) + `NON_CONTENT_TOKENS_ESTIMATE` (29,125 = テンプレ 25,125 + 出力 4,000)。
+ *    **観測平均ではなく観測最大・最小の悪い側を使う** (テンプレは実測最大、
+ *    chars/token は実測最小 = 同じ文字数でより多くのトークンを消費する側)。
+ *    テストが強制する会計と一致させてある
  * 3. **希釈リスクを測定していない**。入力を増やすと抽出精度が落ちるかは未検証なので、
  *    根拠なく大きく振らない
  *
@@ -177,11 +178,36 @@ export const CHARS_PER_TOKEN_WORST_CASE = 1.88;
 export const LLM_INPUT_BUDGET_CHARS = 60_000;
 
 /**
- * プロンプトのテンプレート部 (Few-shot 等) が占めるトークン数の実測値。
+ * プロンプトのテンプレート部 (Few-shot 等) が占めるトークン数。
  *
- * 観測ログの `promptTokens` 全体 (26,000〜31,400) から本文相当分を差し引いた概算。
+ * ## 導出 (観測ログ 21 本の実測、2026-08-12)
+ *
+ * 各実行の `promptTokens` から「本文の文字数 / `CHARS_PER_TOKEN_WORST_CASE`」を
+ * 差し引いて算出。**本文分を最悪値で見積もる = テンプレ分が最小に出る**ため、
+ * 得られる値は保守的に小さい側に寄る。
+ *
+ * | 統計 | tokens |
+ * |---|---|
+ * | 最小 | 20,921 |
+ * | 平均 | 23,967 |
+ * | **最大** | **25,125** |
+ *
+ * **実測最大を採用する。** 平均や切りの良い数字を使うと過小評価になり、
+ * 予算が窓に収まるという結論が実態より甘くなる (= 危険な方向)。
+ *
+ * ⚠️ **この値は機械的に導出できない。** 正確に求めるには読み込み済み YAML
+ * テンプレートに対して tokenizer を走らせる必要があり、それは Layer 1 テストの
+ * 範囲を超える (観測ログは gitignored のため CI からも参照できない)。
+ * つまり **Few-shot を大幅に増やしても、この定数が陳腐化したことを検出する仕組みは
+ * ない**。`LLM_INPUT_BUDGET_CHARS` が 7 ヶ月間放置されたのと同じ構造のリスクが、
+ * 1 段removed な形でここに残っている。
+ *
+ * 緩和策として、(a) 実測手順を本 docstring に残す (上表の算出方法) (b) 予算全体を
+ * 窓の 50% 未満に抑える方針をテストで固定する — の 2 つで、多少の陳腐化では
+ * ハード制約を破らないようにしてある。**Few-shot を大きく増やす変更をする際は、
+ * 本定数を実測し直すこと。**
  */
-export const EXTRACTION_TEMPLATE_TOKENS_ESTIMATE = 24_000;
+export const EXTRACTION_TEMPLATE_TOKENS_ESTIMATE = 25_125;
 
 /**
  * `detail-extraction` の出力トークン上限。**`extraction.service.ts` が実際に
@@ -294,6 +320,41 @@ export interface CompactHtmlResult {
  */
 function restoreAmpersand(html: string): string {
   return html.replace(/&amp;/g, '&');
+}
+
+/**
+ * 予算に合わせて文字列を切り詰める。**サロゲートペアを割らない**。
+ *
+ * ## なぜ専用関数にするか
+ *
+ * 素の `String.prototype.substring` は **UTF-16 コードユニット単位**で切るため、
+ * 切断点がサロゲートペアの内側に落ちると**対を欠いた不正な文字**が末尾に残る。
+ * `compactHtmlForLlm` は `img` を `[画像: <alt>]` へ畳むので、alt に絵文字を含む
+ * ページでは実際にペアが本文へ入りうる。
+ *
+ * 旧上限 15,000 でも同じリスクはあったが、**予算を 4 倍にすると切断点が実データの
+ * 多バイト文字に当たる確率も上がる**ため、ここで塞いでおく。
+ *
+ * 実装は「切ったあとの末尾が上位サロゲートなら 1 コードユニット戻す」。
+ * `Array.from(str).slice(...)` でも同じ結果になるが、60,000 要素の配列を作らずに
+ * 済むこちらを選んだ (呼び出しは記事 1 本ごとに走る)。
+ *
+ * @param text 切り詰め対象
+ * @param budgetChars 上限 (コードユニット数)
+ * @returns 切り詰め後の文字列と、切り詰めが起きたか
+ */
+export function truncateForLlm(
+  text: string,
+  budgetChars: number = LLM_INPUT_BUDGET_CHARS
+): { text: string; truncated: boolean } {
+  if (text.length <= budgetChars) return { text, truncated: false };
+
+  let end = budgetChars;
+  // 上位サロゲート (0xD800-0xDBFF) で終わっていたら対の相手が切れているので 1 つ戻す
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+
+  return { text: text.slice(0, end), truncated: true };
 }
 
 /** タグを除いた実テキストの文字数を数える。密度の分子。 */
