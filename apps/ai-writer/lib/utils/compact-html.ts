@@ -61,6 +61,17 @@
 import * as cheerio from 'cheerio';
 
 /**
+ * 実測した「文字数 → トークン数」の換算比。
+ *
+ * 観測ログ 18 本 (`logs/*-03-detail-extraction` の `promptChars` / `promptTokens`) の
+ * 実測で **1.88〜2.15、平均 1.96**。日本語テキスト (1 文字 ≒ 1 token) と ASCII の
+ * タグ・URL (4 文字 ≒ 1 token) が混ざって約 2 に収束する。
+ *
+ * 予算をトークンで語るための概算にのみ使う。課金や打ち切り判定には使わない。
+ */
+export const CHARS_PER_TOKEN_ESTIMATE = 1.96;
+
+/**
  * `detail-extraction` のプロンプトへ埋め込めるページ本文の上限 (文字)。
  *
  * `extraction.service.ts` がこの値で `substring` するため、超えた分は **LLM へ届かない**。
@@ -69,8 +80,90 @@ import * as cheerio from 'cheerio';
  * ⚠️ **マジックナンバーとして 2 箇所に散らさない。** 切り詰める側と警告する側で値が
  * ずれると「警告は出ないのに切り捨てられている」状態になり、`conan-cafe.jp` で
  * 起きた沈黙 (会場一覧が届かず都市単位に畳まれる) を再生産する。
+ *
+ * ---
+ *
+ * ## この値の導出 (2026-08-12 改定: 15,000 → 60,000)
+ *
+ * ### 旧値 15,000 に根拠はなかった
+ *
+ * `git log -S "15000"` で追うと **2025-12-08 の `19a75ef`** (`ExtractionService` 新規
+ * 作成) から一度も変わっておらず、**根拠を示すコメントが存在しなかった**。現行の
+ * 既定モデル `gpt-5.4-mini` の採用 (2026-07-11, PR #243) より **7 ヶ月前**の値である。
+ *
+ * ### 制約は「最小のコンテキスト窓」で決まる
+ *
+ * `extraction.service.ts` は `AiProvider.sendMessage` 経由の **provider 非依存**な
+ * 実装なので、設定された provider のどれでも安全でなければならない。
+ *
+ * | provider | 実使用モデル | コンテキスト窓 | 出典 |
+ * |---|---|---|---|
+ * | OpenAI (既定) | `gpt-5.4-mini` | 400,000 (GPT-5 mini 系) | https://developers.openai.com/api/docs/models/gpt-5-mini |
+ * | Anthropic | `claude-sonnet-4-5-20250929` | **200,000** ← 最小 | https://platform.claude.com/docs/en/build-with-claude/context-windows |
+ * | Google | `gemini-2.5-flash-lite` | 1,048,576 (2.5 Flash 系) | https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-preview-09-2025 |
+ *
+ * ⚠️ **未確認の点**: `gpt-5.4-mini` / `gemini-2.5-flash-lite` の専用ページは見つからず、
+ * それぞれ `gpt-5-mini` (400k) / `gemini-2.5-flash-preview` (1,048,576) からの推定。
+ * OpenAI は Amazon Bedrock 経由だと GPT-5.4/5.5/5.6 が 272,000 に制限される
+ * (https://developers.openai.com/api/docs/guides/amazon-bedrock)。**確実なのは
+ * Anthropic Sonnet 4.5 の 200,000 のみ**で、本定数はこれを binding constraint とする。
+ *
+ * ### 内訳 (実測ベース)
+ *
+ * | 要素 | tokens | 根拠 |
+ * |---|---|---|
+ * | Sonnet 4.5 のコンテキスト窓 | 200,000 | 公式 |
+ * | − プロンプトのテンプレート部 (Few-shot 等) | −24,000 | 実測 (全体 26,000〜31,400 から本文分を差し引き) |
+ * | − 出力 (`extraction.service.ts` の `maxTokens`) | −4,000 | 実装値 |
+ * | = 本文に使える理論上の余地 | 172,000 (≒ 337,000 文字) | |
+ * | **本定数** | **30,600 (60,000 文字) = 窓の 15%** | |
+ *
+ * ### なぜ理論上限まで上げないか
+ *
+ * 1. **`conan-cafe.jp` の圧縮前 35,344 文字を包含する**。圧縮が将来退行しても会場一覧は届く
+ * 2. 総プロンプトが ≒ 55,000 tokens = Sonnet 4.5 の **27%** に収まり、3 provider すべてで余裕
+ * 3. **希釈リスクを測定していない**。入力を増やすと抽出精度が落ちるかは未検証なので、
+ *    根拠なく大きく振らない
+ *
+ * ### ⚠️ これは品質レバーではなく「安全網」である
+ *
+ * 実測は「量」ではなく「**必要な情報が入っているか**」が効くことを示している。
+ *
+ * | 実行 | 実テキスト | 結果 |
+ * |---|---|---|
+ * | sw2026 改修前 | 4,346 文字 | ❌ 不正解 (大阪が入力に無い) |
+ * | sw2026 改修後 | **862 文字** | ✅ 正解 |
+ * | conan 改修後 | 2,399 文字 | ✅ 10/10 正解 |
+ *
+ * **上限を上げても、`selectMainContent` が拾わなかった情報は増えない。** 本定数を
+ * 上げる目的は、圧縮 (`compactHtmlForLlm`) で収まらない重いページが来たときに
+ * **静かに情報を失わない**ことだけである。
+ *
+ * ### コストへの影響は実質ゼロ
+ *
+ * 圧縮後の実測は conan 6,653 / sw2026 2,939 / kusuriya 2,440 / bluelock 2,103 文字で
+ * **すべて旧上限 15,000 未満**。つまり通常は上限に到達せず、引き上げても送信量は
+ * 変わらない。上限が効くのは圧縮しても収まらない例外的なページだけ。
  */
-export const LLM_INPUT_BUDGET_CHARS = 15_000;
+export const LLM_INPUT_BUDGET_CHARS = 60_000;
+
+/**
+ * 本文以外がプロンプトで占めるトークン数の実測上限 (テンプレート + 出力)。
+ *
+ * `LLM_INPUT_BUDGET_CHARS` が最小のコンテキスト窓に収まることをテストで検証するために
+ * 使う。値の出所は上の内訳表 (テンプレート 24,000 + 出力 `maxTokens` 4,000)。
+ */
+export const NON_CONTENT_TOKENS_ESTIMATE = 28_000;
+
+/**
+ * サポートする provider のうち**最小**のコンテキスト窓 (tokens)。
+ *
+ * 2026-08-12 時点では Anthropic `claude-sonnet-4-5-20250929` の 200,000。
+ * provider 非依存の実装である以上、予算はここに合わせる必要がある。
+ *
+ * @see https://platform.claude.com/docs/en/build-with-claude/context-windows
+ */
+export const SMALLEST_CONTEXT_WINDOW_TOKENS = 200_000;
 
 /**
  * 保持する属性。これ以外は落とす。

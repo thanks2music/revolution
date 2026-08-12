@@ -5,7 +5,44 @@
  * **情報を減らさないこと**が最重要の不変条件。サイズが縮んでも会場名・日付・
  * リンクが消えたら本末転倒なので、削減とセットで保全を固定する。
  */
-import { compactHtmlForLlm } from '@/lib/utils/compact-html';
+import {
+  CHARS_PER_TOKEN_ESTIMATE,
+  compactHtmlForLlm,
+  LLM_INPUT_BUDGET_CHARS,
+  NON_CONTENT_TOKENS_ESTIMATE,
+  SMALLEST_CONTEXT_WINDOW_TOKENS,
+} from '@/lib/utils/compact-html';
+
+/**
+ * 予算そのものの不変条件。
+ *
+ * `LLM_INPUT_BUDGET_CHARS` は 2025-12-08 から 2026-08-12 まで **根拠のないマジック
+ * ナンバー (15,000)** のまま放置され、`conan-cafe.jp` で会場一覧が静かに切り捨てられる
+ * 原因になった。同じ状態を再生産しないよう、**導出の前提が崩れたらテストが落ちる**
+ * 形にしておく。
+ */
+describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
+  it('最小のコンテキスト窓に、テンプレートと出力を足しても収まる', () => {
+    const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_ESTIMATE;
+    const totalTokens = contentTokens + NON_CONTENT_TOKENS_ESTIMATE;
+
+    expect(totalTokens).toBeLessThan(SMALLEST_CONTEXT_WINDOW_TOKENS);
+  });
+
+  it('最小のコンテキスト窓に対して十分な余裕 (50% 以上) を残す', () => {
+    // 希釈リスクが未測定であるため、理論上限まで使い切らない方針を固定する。
+    const contentTokens = LLM_INPUT_BUDGET_CHARS / CHARS_PER_TOKEN_ESTIMATE;
+    const usageRatio = (contentTokens + NON_CONTENT_TOKENS_ESTIMATE) / SMALLEST_CONTEXT_WINDOW_TOKENS;
+
+    expect(usageRatio).toBeLessThan(0.5);
+  });
+
+  it('conan-cafe.jp の圧縮前サイズ (35,344 文字) を包含する', () => {
+    // 圧縮が将来退行しても会場一覧が届くことを保証する下限。
+    // この値を下回ると Phase 3.7 で直した不具合が再発しうる。
+    expect(LLM_INPUT_BUDGET_CHARS).toBeGreaterThanOrEqual(35_344);
+  });
+});
 
 describe('compactHtmlForLlm', () => {
   describe('落とすもの', () => {
