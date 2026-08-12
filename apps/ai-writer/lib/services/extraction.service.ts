@@ -24,6 +24,7 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
+import { LLM_INPUT_BUDGET_CHARS } from '@/lib/utils/compact-html';
 import {
   hashForAiCallRecord,
   shouldSuppressInlinePromptDump,
@@ -425,7 +426,7 @@ ${rulesSection}
 - primary_official_url: ${request.primary_official_url}
 - ページコンテンツ:
 
-${request.page_content.substring(0, 15000)}${request.page_content.length > 15000 ? '\n...(truncated)' : ''}
+${request.page_content.substring(0, LLM_INPUT_BUDGET_CHARS)}${request.page_content.length > LLM_INPUT_BUDGET_CHARS ? '\n...(truncated)' : ''}
 
 ---
 

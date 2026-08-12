@@ -277,8 +277,15 @@ describe('extractContentHtml', () => {
 
     // head 情報が残っていること
     expect(html).toContain('<title>「STAR WARS」CAFE</title>');
-    // 本文が残っていること
-    expect(html).toContain('BOX cafe&amp;space SHIBUYA109渋谷店');
+    // 本文が残っていること。
+    // ★ 2026-08-12 変更: 期待値を `&amp;space` → `&space` に更新した。
+    //   cheerio が生の `&` を `&amp;` へ再エスケープしていたのを
+    //   `compactHtmlForLlm` が戻すようになったため。実サイトは生の `&` で書いており
+    //   (conan-cafe.jp で `cafe&space` 7 件 / `&amp;` 0 件)、既存記事 61 箇所も
+    //   `BOX cafe&space` である。`&amp;` が LLM 経由で `venue_label` に混ざると
+    //   `venues` マスタの名寄せが壊れるため、生の形を正とする。
+    expect(html).toContain('BOX cafe&space SHIBUYA109渋谷店');
+    expect(html).not.toContain('&amp;space');
     expect(html).toContain('Collabo_Index SHINSAIBASHI');
     // 外枠が落ちていること
     expect(html).not.toContain('TOKYO INFO');
