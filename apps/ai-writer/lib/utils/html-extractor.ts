@@ -27,6 +27,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { Agent } from 'undici';
 
+import { compactHtmlForLlm, LLM_INPUT_BUDGET_CHARS } from '@/lib/utils/compact-html';
 import { BROWSER_USER_AGENT, FETCH_TIMEOUT_MS } from '@/lib/utils/http-constants';
 
 /**
@@ -788,6 +789,42 @@ export function extractPageLinks(html: string, baseUrl: string): string[] {
  * @returns クリーンアップされたHTML
  * @throws フェッチエラー、タイムアウトエラー
  */
+/**
+ * `compactHtmlForLlm` を適用し、削減量を**必ずログへ出す**。
+ *
+ * 下流 (`extraction.service.ts:428`) は 15,000 文字でハード切り詰めするが、
+ * **切り詰めが起きたことはプロンプト本文の `...(truncated)` にしか現れず、
+ * ログにも観測レコードにも出ない**。`conan-cafe.jp` で会場一覧が届かず
+ * 都市単位に畳まれた不具合 (2026-08-12) は、この沈黙のせいで発見が偶然に頼った。
+ *
+ * そこで圧縮の効果と「窓に収まるか」をここで loud に出す。前セッションで
+ * `console.warn` がログに載っておらず「警告ゼロ」と誤判断しかけたのと同じクラスの
+ * 問題を作らないため。
+ */
+function logCompaction(html: string, label: string): string {
+  const { html: compacted, beforeChars, afterChars, textChars } = compactHtmlForLlm(html);
+  const densityBefore = ((textChars / beforeChars) * 100).toFixed(1);
+  const densityAfter = ((textChars / afterChars) * 100).toFixed(1);
+
+  console.log(
+    `[HTMLExtractor:Content] 圧縮 (${label}): ` +
+      `${beforeChars.toLocaleString()} → ${afterChars.toLocaleString()} 文字 ` +
+      `/ 密度 ${densityBefore}% → ${densityAfter}% ` +
+      `/ 実テキスト ${textChars.toLocaleString()} 文字`
+  );
+
+  // 下流の切り詰め上限。ここを超えると本文の後半が LLM へ届かない。
+  if (afterChars > LLM_INPUT_BUDGET_CHARS) {
+    console.warn(
+      `[HTMLExtractor:Content] ⚠️ 圧縮後も ${LLM_INPUT_BUDGET_CHARS.toLocaleString()} 文字を超えています ` +
+        `(${afterChars.toLocaleString()} 文字)。detail-extraction で後半が切り捨てられ、` +
+        `ページ後方の情報 (会場一覧・会場別期間など) が LLM へ届かないおそれがあります`
+    );
+  }
+
+  return compacted;
+}
+
 export async function extractContentHtml(url: string): Promise<string> {
   try {
     // Google リダイレクトURLから実際のURLを抽出
@@ -830,10 +867,15 @@ export async function extractContentHtml(url: string): Promise<string> {
             `[HTMLExtractor:Content] ✅ セレクタ抽出成功: "${selector}", ${extractedHtml.length} bytes`
           );
 
-          // デバッグモード時にHTMLを保存
-          await saveHtmlForDebug(extractedHtml, actualUrl);
+          // 下流 (`extraction.service.ts`) は 15,000 文字でハード切り詰めするため、
+          // マークアップを削って同じ窓に入る情報量を増やす。命中経路にも適用する
+          // のは、命中したブロックが大きいサイトでも同じ切り詰めを受けるため。
+          const compacted = logCompaction(extractedHtml, `セレクタ "${selector}"`);
 
-          return extractedHtml;
+          // デバッグモード時にHTMLを保存
+          await saveHtmlForDebug(compacted, actualUrl);
+
+          return compacted;
         }
       }
     }
@@ -866,7 +908,9 @@ export async function extractContentHtml(url: string): Promise<string> {
         ` → 選定後 ${selection.selectedTextLength.toLocaleString()} 文字`
     );
 
-    const bodyContent = selection.html;
+    // ⚠️ 圧縮は body 部分にのみ適用する。head 情報 (`title` / `meta[og:*]`) を
+    //    一緒に通すと、属性除去で `meta` の `content` が落ちて og 情報が失われる。
+    const bodyContent = logCompaction(selection.html, '本文ブロック');
 
     // クリーンアップされたHTMLを構築
     const cleanedHtml = `<!-- Head Info -->
