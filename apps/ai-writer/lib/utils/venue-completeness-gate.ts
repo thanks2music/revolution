@@ -58,7 +58,8 @@ import {
  *
  * ⚠️ **系統的な欠落には効かない。** `sw2026` の圧縮前入力は 3 回とも同じ会場
  * (`Collabo_Index SHINSAIBASHI`) を落としており、回数を増やしても救えない。
- * これは `shouldStopEarly` で検出して打ち切る。
+ * ただし**打ち切らずに上限まで使う** — 確率的な欠落でも同じ会場が 2 回続くことが
+ * 実測であったため、系統的かどうかは {@link resolveFailureKind} の事後分類で判定する。
  */
 export const MAX_EXTRACTION_ATTEMPTS = 3;
 
@@ -138,7 +139,12 @@ export interface VenueCompletenessGateInput<TExtraction> {
    * 呼び出し側はこれを `recordContext` へ載せて観測ログに残す。
    * **プロンプトへ混ぜてはならない** (自己成就の防止)。
    */
-  runAttempt: (attempt: number, previous: VenueGateAttempt | null) => Promise<TExtraction>;
+  runAttempt: (
+    attempt: number,
+    previous: VenueGateAttempt | null,
+    /** 実効的な上限。`maxAttempts` の上書きを呼び出し側のログへ正しく反映するため */
+    maxAttempts: number
+  ) => Promise<TExtraction>;
   /** 抽出結果から `event_data` を取り出す */
   getEventData: (extraction: TExtraction) => unknown;
   /** 抽出結果から `開催期間` を取り出す (`fallbackPeriod` の元) */
@@ -170,7 +176,7 @@ export async function runVenueCompletenessGate<TExtraction>(
   const measurability = assessMeasurability(input.rawHtml);
   if (!measurability.measurable) {
     return {
-      extraction: await input.runAttempt(1, null),
+      extraction: await input.runAttempt(1, null, maxAttempts),
       verdict: {
         status: 'unmeasured',
         reason: measurability.reason,
@@ -186,7 +192,7 @@ export async function runVenueCompletenessGate<TExtraction>(
   let extraction!: TExtraction;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    extraction = await input.runAttempt(attempt, attempts[attempts.length - 1] ?? null);
+    extraction = await input.runAttempt(attempt, attempts[attempts.length - 1] ?? null, maxAttempts);
 
     const parsed = parseAndNormalizeEventData({
       rawEventData: input.getEventData(extraction),
@@ -359,10 +365,25 @@ function resolveFailureKind(args: {
   return 'unconverged';
 }
 
+/**
+ * 2 つの会場名リストを**集合として**比較する。
+ *
+ * ⚠️ 素朴な「長さ一致 + 片方向の包含」では**重複要素に対して非対称**になる
+ * (claude[bot] 4 巡目指摘、2026-08-14 採用)。実測:
+ *
+ * ```
+ * a=[X,Y] b=[X,X] → true   ← 誤り (集合としては {X,Y} ≠ {X})
+ * a=[X,X] b=[X,Y] → false  ← 引数を入れ替えると結果が変わる
+ * ```
+ *
+ * 現状 `missingVenues` は `compareWithSource` が `expected` Map を走査して作るため
+ * 一意だが、**それは別モジュールの不変条件への暗黙の依存**である。集合サイズを
+ * 突き合わせて構造的に閉じる。
+ */
 function sameVenueSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
   const left = new Set(a);
-  return b.every((v) => left.has(v));
+  const right = new Set(b);
+  return left.size === right.size && [...right].every((v) => left.has(v));
 }
 
 function buildFailure(
@@ -401,7 +422,15 @@ function buildSkipReason(kind: VenueGateFailureKind, attempts: VenueGateAttempt[
         : attempts.every((a) => a.parseStatus === 'invalid')
           ? 'event_data が EventDataSchema に不適合'
           : 'event_data を読めない (キー欠落と schema 不適合が混在)';
-      return `会場情報を取得できませんでした: ${cause}まま${tries}。${scale} (${names})`;
+      // ⚠️ **会場名を列挙しない** (claude[bot] 4 巡目指摘、2026-08-14 採用)。
+      //    応答を読めなかった試行は occurrences 0 件として照合されるため
+      //    `missingVenues` は必ず「正解の全会場」になる。それを並べると
+      //    「特定の会場が抜けた」ように読め、真の原因 (wire format / schema) から
+      //    目を逸らす。ここで要るのは会場名ではなく**応答が読めなかったという事実**。
+      return (
+        `会場情報を取得できませんでした: ${cause}まま${tries}。` +
+        `正解データは ${latest.expectedCount} 会場を認識していますが、抽出結果を読めていません`
+      );
     }
     case 'input-truncated':
       return (

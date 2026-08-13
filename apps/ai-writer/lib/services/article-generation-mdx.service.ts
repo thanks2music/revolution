@@ -385,11 +385,13 @@ export class ArticleGenerationMdxService {
           const gateResult = await runVenueCompletenessGate({
             rawHtml: contentHtml.raw,
             llmInputChars: llmInput.length,
-            runAttempt: async (attempt, previous) => {
+            // ⚠️ 分母は定数ではなく**実効値**を使う。`maxAttempts` を上書きされたときに
+            //    表示だけがずれる (claude[bot] 4 巡目指摘、2026-08-14 採用)。
+            runAttempt: async (attempt, previous, maxAttempts) => {
               if (attempt > 1) {
                 console.warn(
                   `${getStepContext('detail-extraction', '会場網羅性')} ⚠️ 会場が ${previous?.missingVenues.length ?? 0} 件欠落したため再抽出します ` +
-                    `(${attempt}/${MAX_EXTRACTION_ATTEMPTS} 回目): ${previous?.missingVenues.join(', ') ?? ''}`
+                    `(${attempt}/${maxAttempts} 回目): ${previous?.missingVenues.join(', ') ?? ''}`
                 );
               }
               const result = await extractionService.extractFromOfficialSite({
