@@ -3,7 +3,9 @@ import { describe, expect, it } from '@jest/globals';
 import {
   compareWithSource,
   formatOccurrenceCountBreakdown,
+  formatSourceComparisonLines,
   warnOnceForSourceIssues,
+  extractPeriodText,
   extractSourceTruth,
   parsePeriodText,
   unescapeEmbeddedMarkup,
@@ -49,6 +51,42 @@ const ESCAPED_PAYLOAD_PAGE = `
 const SUBPAGE_WITHOUT_PLACES = `
 <!DOCTYPE html><html><head><title>TOKYO INFORMATION</title></head>
 <body><div class="page-content-wrapper"><h1>TOKYO 開催情報</h1><p>開催期間 2026年5月14日〜7月5日</p></div></body></html>`;
+
+/**
+ * hivelocity 系 (`conan-cafe.jp` / `jujutsukaisen-cafe.jp`) の構造をそのまま写したもの。
+ *
+ * ⚠️ **3 番目のブロックは期間が `h4` ではなく `<p><font>` に入っている。** これは
+ * `conan-cafe.jp` の HARAJUKU / OSAKA（KITTE）で実在する装飾差で、期間をタグ固定で
+ * 読むと 10 件中 2 件が黙って期間なしになる (実測 2026-08-13)。
+ *
+ * ⚠️ **冒頭のリード文にイベント全体の期間 (`〜順次開催!!`) がある。** これも実在の形で、
+ * 会場ごとの期間として各会場へ配ってはいけない。ブロック内テキストだけを見ることで
+ * 混入しないことを固定する。
+ */
+const HIVELOCITY_TOP_PAGE = `
+<!DOCTYPE html><html><head><title>名探偵コナンカフェ</title></head>
+<body>
+  <div class="p-top-lead">
+    <p>6都市で「名探偵コナンカフェ」期間限定オープン！！ 2026年4月10日（金）～順次開催!!</p>
+  </div>
+  <div class="p-top-information">
+    <div class="p-top-information__bloc">
+      <h2>SHIBUYA</h2>
+      <h3>BOX cafe&amp;space GEMS渋谷店</h3>
+      <h4>2026年4月10日 (金) 〜 2026年6月28日 (日)</h4>
+    </div>
+    <div class="p-top-information__bloc">
+      <h2>KANAGAWA</h2>
+      <h3>Cafe Fan Base</h3>
+      <h4>2026年5月14日 (木) 〜 2026年7月26日 (日)</h4>
+    </div>
+    <div class="p-top-information__bloc">
+      <h2>HARAJUKU</h2>
+      <h3>BOX cafe&amp;space キュープラザ原宿店</h3>
+      <p style="color:#dd3333"><font size=5>2026年6月11日（木）〜2026年7月19日（日）</font></p>
+    </div>
+  </div>
+</body></html>`;
 
 describe('parsePeriodText', () => {
   it('開始・終了とも年つきの期間を読む', () => {
@@ -159,6 +197,83 @@ describe('extractSourceTruth', () => {
     expect(truth.venues).toHaveLength(0);
     expect(truth.reason).toBeDefined();
   });
+
+  it('どの profile で認識したかを返す', () => {
+    // 照合が失敗したとき「測る側のどの経路を通ったか」が分からないと切り分けられない。
+    expect(extractSourceTruth(LTR_TOP_PAGE).profileId).toBe('ltr');
+    expect(extractSourceTruth(HIVELOCITY_TOP_PAGE).profileId).toBe('hivelocity');
+    expect(extractSourceTruth(SUBPAGE_WITHOUT_PLACES).profileId).toBeNull();
+  });
+
+  it('hivelocity 系のブロック構造から会場名と期間を読む', () => {
+    const truth = extractSourceTruth(HIVELOCITY_TOP_PAGE);
+
+    expect(truth.status).toBe('supported');
+    expect(truth.venues).toHaveLength(3);
+    expect(truth.venues[0]).toMatchObject({
+      regionLabel: 'SHIBUYA',
+      venueLabel: 'BOX cafe&space GEMS渋谷店',
+      startsOn: '2026-04-10',
+      endsOn: '2026-06-28',
+    });
+    expect(truth.venues[1].venueLabel).toBe('Cafe Fan Base');
+  });
+
+  // ★ これが本 profile 追加の肝。`h4` 固定で読むと conan-cafe.jp で 10 件中 2 件が
+  //   期間なしになる (HARAJUKU / OSAKA（KITTE）が `<p><font>` になっている)。
+  it('期間が h4 でなく装飾された p に入っていても読む (実在の装飾差)', () => {
+    const truth = extractSourceTruth(HIVELOCITY_TOP_PAGE);
+
+    expect(truth.venues[2]).toMatchObject({
+      venueLabel: 'BOX cafe&space キュープラザ原宿店',
+      startsOn: '2026-06-11',
+      endsOn: '2026-07-19',
+    });
+  });
+
+  // ★ ページ冒頭の「2026年4月10日（金）～順次開催!!」はイベント全体の惹句であり、
+  //   会場ごとの期間ではない。これを各会場へ配ると「測れなかったものを測れたことにする」。
+  it('イベント全体リード文の期間を会場ごとの期間へ混入させない', () => {
+    const truth = extractSourceTruth(HIVELOCITY_TOP_PAGE);
+
+    // リード文は 4/10〜順次。KANAGAWA の会場は 5/14〜7/26 で、リード文とは無関係。
+    expect(truth.venues[1].startsOn).toBe('2026-05-14');
+    expect(truth.venues.every((v) => v.periodText?.includes('順次') !== true)).toBe(true);
+  });
+});
+
+describe('extractPeriodText', () => {
+  it('開始・終了とも具体的な日付範囲を切り出す', () => {
+    expect(extractPeriodText('【開催期間】 2026年5月14日(木)〜2026年7月5日(日) 会場: BOX cafe')).toBe(
+      '2026年5月14日(木)〜2026年7月5日'
+    );
+  });
+
+  it('終了年が省略された範囲も切り出す (年跨ぎは parsePeriodText が補正)', () => {
+    expect(extractPeriodText('2025年12月20日〜2月8日')).toBe('2025年12月20日〜2月8日');
+  });
+
+  // ★ 旧実装 (`.place_text_02` 直読み) は開始日だけでも拾えていた。テキスト読みへ
+  //   移行する際にこの能力を落とさないためのフォールバック。
+  it('終了日が未定でも開始日を落とさない', () => {
+    expect(extractPeriodText('2026年4月10日（金）～順次開催!!')).toBe('2026年4月10日（金）～');
+    expect(parsePeriodText(extractPeriodText('2026年4月10日（金）より順次')!)).toEqual({
+      startsOn: '2026-04-10',
+      endsOn: null,
+    });
+  });
+
+  it('日付が無ければ null を返す (推測で埋めない)', () => {
+    expect(extractPeriodText('開催期間は後日発表いたします')).toBeNull();
+    expect(extractPeriodText('')).toBeNull();
+  });
+
+  // ★ 範囲が取れるなら open-ended フォールバックは発火しない = 実測 18/18 に影響しない
+  it('日付範囲がある場合は open-ended フォールバックより優先する', () => {
+    expect(extractPeriodText('2026年4月10日 (金) 〜 2026年6月28日 (日)')).toBe(
+      '2026年4月10日 (金) 〜 2026年6月28日'
+    );
+  });
 });
 
 describe('compareWithSource', () => {
@@ -222,6 +337,48 @@ describe('compareWithSource', () => {
     expect(result.countMatches).toBe(true);
     expect(result.passed).toBe(false);
     expect(result.periodMismatches).toEqual(['BOX cafe&space ＫＩＴＴＥ OSAKA 2号店']);
+    // ★ 正解側は期間を読めているので「未取得」ではない。ここを取り違えると
+    //   本物の不一致が「測る側の問題」として握り潰される。
+    expect(result.unmeasuredPeriodVenues).toEqual([]);
+  });
+
+  // ★ 正解側で期間が読めていない会場を「不一致」と報告してはいけない。
+  //   抽出が正しくても null !== '2026-05-14' で不一致になり、測る側の欠落を
+  //   抽出側の誤りとして報告してしまう。原因も対処も違う (再抽出しても直らない)。
+  it('正解側で期間を読めなかった会場は不一致でなく照合不能として分離する', () => {
+    const truthWithUnreadablePeriod = extractSourceTruth(`
+      <div class="place">
+        <h2>TOKYO</h2>
+        <p class="place_text_01">BOX cafe&amp;space 池袋店</p>
+        <p class="place_text_02"><span>【開催期間】</span> 後日発表</p>
+      </div>`);
+
+    expect(truthWithUnreadablePeriod.venues[0].startsOn).toBeNull();
+
+    const result = compareWithSource(truthWithUnreadablePeriod, [
+      { venue_label: 'BOX cafe&space 池袋店', starts_on: '2026-05-14', ends_on: '2026-07-05' },
+    ]);
+
+    expect(result.unmeasuredPeriodVenues).toEqual(['BOX cafe&space 池袋店']);
+    expect(result.periodMismatches).toEqual([]);
+    // 測れなかったことを不合格にしない (「測れなかった ≠ 間違っていた」)
+    expect(result.passed).toBe(true);
+  });
+
+  it('照合不能な期間は表示上も不一致と別行にする', () => {
+    const truthWithUnreadablePeriod = extractSourceTruth(`
+      <div class="place">
+        <h2>TOKYO</h2><p class="place_text_01">A店</p>
+        <p class="place_text_02">後日発表</p>
+      </div>`);
+    const lines = formatSourceComparisonLines(
+      compareWithSource(truthWithUnreadablePeriod, [
+        { venue_label: 'A店', starts_on: '2026-05-14', ends_on: null },
+      ])
+    );
+
+    expect(lines.some((l) => l.includes('期間を読めなかった会場') && l.includes('A店'))).toBe(true);
+    expect(lines.some((l) => l.includes('期間の不一致'))).toBe(false);
   });
 
   // ★ 実測 (sw2026 run 10/11): 2 件とも渋谷店を返した。生の件数だけを見ると

@@ -139,7 +139,7 @@ async function main(): Promise<void> {
 
     const truth = extractSourceTruth(html);
     console.log(
-      `🔎 正解データ: ${truth.status} (${truth.matchedVia ?? '-'}) / ${truth.venues.length} 会場`
+      `🔎 正解データ: ${truth.status} (profile=${truth.profileId ?? '-'} / ${truth.matchedVia ?? '-'}) / ${truth.venues.length} 会場`
     );
     for (const v of truth.venues) {
       console.log(`   [${v.regionLabel ?? '-'}] ${v.venueLabel} | ${v.startsOn} 〜 ${v.endsOn}`);
