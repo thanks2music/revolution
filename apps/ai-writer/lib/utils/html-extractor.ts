@@ -405,12 +405,55 @@ export function extractActualUrl(url: string): string {
 }
 
 /**
+ * `saveHtmlForDebug` が保存する HTML の段階。
+ *
+ * @description
+ * 本ファイルは **7 箇所から別々の段階の HTML** を保存する。ファイル名に段階が
+ * 入っていないと「最新のファイル」を掴んだときにどの段階を引いたか分からず、
+ * 実際に事故が起きた:
+ *
+ * `verify-against-source.ts --html` に `content-compacted` を渡すと、圧縮で
+ * class 属性が全て落ちているため正解データが `unsupported` を返す。これは
+ * 「**profile が未対応**」に見えるが、実際は「**入力ファイルの段階が違う**」。
+ *
+ * ⚠️ 会場ブロックの照合に使えるのは `class` が残っている段階だけ
+ * (`article-selected` / `article-full` / `data-selected` / `data-full`)。
+ * `content-compacted` と `content-cleaned` は圧縮を通っているため使えない。
+ */
+type DebugHtmlStage =
+  /** `extractArticleHtml`: セレクタ命中ブロックの生 innerHTML */
+  | 'article-selected'
+  /** `extractArticleHtml`: セレクタ不発でページ全体の生 HTML へフォールバック */
+  | 'article-full'
+  /** `extractArticleData`: セレクタ命中ブロックの生 innerHTML */
+  | 'data-selected'
+  /** `extractArticleData`: セレクタ不発でページ全体の生 HTML へフォールバック */
+  | 'data-full'
+  /**
+   * `extractContentHtml`: 圧縮前のページ全体 (= `ContentHtmlResult.raw`)。
+   *
+   * **会場の網羅性ゲートが照合に使う入力そのもの。** これを保存しておくと
+   * `verify-against-source.ts --html` で「ゲートが何を見たか」を後から
+   * オフラインで再現できる (S1-d Phase 3.8 Step A)。
+   */
+  | 'content-raw'
+  /** `extractContentHtml`: LLM 入力用に圧縮した後 (class 属性なし) */
+  | 'content-compacted'
+  /** `extractContentHtml`: head 情報 + 圧縮済み body を連結した後 (class 属性なし) */
+  | 'content-cleaned';
+
+/**
  * デバッグモード時にHTMLをファイルに保存
  *
  * @param html 保存するHTML
  * @param url 元のURL（ファイル名生成に使用）
+ * @param stage どの段階の HTML か（ファイル名に含めて後から判別できるようにする）
  */
-async function saveHtmlForDebug(html: string, url: string): Promise<void> {
+async function saveHtmlForDebug(
+  html: string,
+  url: string,
+  stage: DebugHtmlStage
+): Promise<void> {
   // 環境変数チェック
   if (process.env.DEBUG_HTML_EXTRACTION !== 'true') {
     return;
@@ -421,10 +464,13 @@ async function saveHtmlForDebug(html: string, url: string): Promise<void> {
     const debugDir = path.join(process.cwd(), 'debug-logs');
     await fs.mkdir(debugDir, { recursive: true });
 
-    // ファイル名生成（タイムスタンプ + URL由来）
+    // ファイル名生成（タイムスタンプ + URL由来 + 段階）
+    //
+    // ⚠️ 段階は**末尾**に置く。既存ファイル (段階なし) と混在しても
+    // `html-{hostname}-{timestamp}` の前方一致検索がそのまま効くようにするため。
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const urlSlug = new URL(url).hostname.replace(/\./g, '-');
-    const filename = `html-${urlSlug}-${timestamp}.html`;
+    const filename = `html-${urlSlug}-${timestamp}-${stage}.html`;
     const filepath = path.join(debugDir, filename);
 
     // HTMLを保存
@@ -504,7 +550,7 @@ export async function extractArticleHtml(url: string): Promise<string> {
           console.log(`[HTMLExtractor] 抽出HTMLプレビュー: ${preview}...`);
 
           // デバッグモード時にHTMLを保存
-          await saveHtmlForDebug(extractedHtml, actualUrl);
+          await saveHtmlForDebug(extractedHtml, actualUrl, 'article-selected');
 
           return extractedHtml;
         } else {
@@ -536,7 +582,7 @@ export async function extractArticleHtml(url: string): Promise<string> {
     console.warn(`[HTMLExtractor] HTMLプレビュー（最初の1000文字）:\n${html.substring(0, 1000)}`);
 
     // デバッグモード時にHTMLを保存（フォールバック時も保存）
-    await saveHtmlForDebug(html, actualUrl);
+    await saveHtmlForDebug(html, actualUrl, 'article-full');
 
     return html;
   } catch (error) {
@@ -676,7 +722,7 @@ export async function extractArticleData(url: string): Promise<{
           );
 
           // デバッグモード時にHTMLを保存
-          await saveHtmlForDebug(articleHtml, actualUrl);
+          await saveHtmlForDebug(articleHtml, actualUrl, 'data-selected');
           break;
         }
       }
@@ -686,7 +732,7 @@ export async function extractArticleData(url: string): Promise<{
     if (!articleHtml) {
       console.warn(`[HTMLExtractor] ⚠️  セレクタで要素が見つからないため、完全なHTMLを返します`);
       articleHtml = fullHtml;
-      await saveHtmlForDebug(fullHtml, actualUrl);
+      await saveHtmlForDebug(fullHtml, actualUrl, 'data-full');
     }
 
     return {
@@ -786,7 +832,8 @@ export function extractPageLinks(html: string, baseUrl: string): string[] {
  * あちらは `official_urls` の抽出元でもあり、他ページへの参照リンクが要る。
  *
  * @param url 公式サイトURL
- * @returns クリーンアップされたHTML
+ * @returns `compacted` (LLM 入力用) と `raw` (照合用) の 2 本。詳細は
+ *   {@link ContentHtmlResult}
  * @throws フェッチエラー、タイムアウトエラー
  */
 /**
@@ -825,7 +872,60 @@ function logCompaction(html: string, label: string): string {
   return compacted;
 }
 
-export async function extractContentHtml(url: string): Promise<string> {
+/**
+ * `extractContentHtml` の戻り値。
+ *
+ * ## なぜ 2 本返すのか (2026-08-14、S1-d Phase 3.8 Step A)
+ *
+ * 圧縮 (`compactHtmlForLlm`) は `KEEP_ATTRIBUTES` (`href` / `alt` / `title` / `id`)
+ * 以外の属性を**全て落とす**。**`class` はここに含まれないため全滅する** —
+ * `conan-cafe.jp` の実測で 211 個 → **0 個**。
+ *
+ * 一方 `source-truth-extractor.ts` の `SITE_PROFILES` は会場ブロックを
+ * `.place` (ltr) / `.p-top-information__bloc` (hivelocity) という **class セレクタ**
+ * で探す。よって圧縮後 HTML を照合へ渡すと**どのサイトも `unsupported`** になる。
+ *
+ * 🔴 しかも `unsupported` は設計上「**判定せず通す**」(判定できないことを不合格に
+ * しない = Phase 3.5 からの一貫方針) ため、**ゲートが 1 度も発火しないまま
+ * loud にも停まらない**。「圧縮後を渡す」は静かに機能を殺す種類の誤りなので、
+ * 戻り値の型で圧縮前を持ち回すことを強制する。
+ *
+ * ## `raw` に何を入れるか
+ *
+ * **フェッチしたページ全体** (`fullHtml`) を入れる。セレクタ命中ブロックの生
+ * innerHTML ではない。理由は 2 つ:
+ *
+ * 1. `ARTICLE_SELECTORS` 命中経路は保存 HTML 281 本の実測で **0/281** = 実運用では
+ *    一度も発火していない。命中ブロックを `raw` にすると、実際に通る
+ *    フォールバック経路には対応する値が存在しない
+ * 2. フルページと本文選定後で**会場ブロック数は 281/281 一致**した。絞る利得は
+ *    ゼロで、取りこぼすリスクだけが増える。誤差の方向も重要で、余分な会場ブロックが
+ *    混ざれば「偽の停止」(人が気づく) だが、取りこぼせば `unsupported` →
+ *    **黙って通過** (気づけない)
+ *
+ * ⚠️ `selectMainContent($)` は `$` を破壊的に変更するため、**後から `$` を使って
+ * 圧縮前を再構成することはできない**。`fullHtml` を持ち回すこと。
+ */
+export interface ContentHtmlResult {
+  /**
+   * LLM 入力用に圧縮した HTML。**class 属性は落ちている。**
+   *
+   * 従来 `extractContentHtml` が返していたものと同一で、下流 (detail-extraction /
+   * subpage-detection / category-image-extraction / content-generation /
+   * image-upload-r2) はすべてこちらを受け取る (挙動不変)。
+   */
+  compacted: string;
+  /**
+   * 圧縮前のページ全体 HTML。**class 属性が残っている。**
+   *
+   * 正解データ抽出 (`extractSourceTruth`) 専用。**LLM へ渡してはならない**
+   * (圧縮前は `conan-cafe.jp` で 105,218 bytes あり、入力予算 60,000 文字を大きく
+   * 超えて後半が切り捨てられる)。
+   */
+  raw: string;
+}
+
+export async function extractContentHtml(url: string): Promise<ContentHtmlResult> {
   try {
     // Google リダイレクトURLから実際のURLを抽出
     const actualUrl = extractActualUrl(url);
@@ -852,6 +952,10 @@ export async function extractContentHtml(url: string): Promise<string> {
     const fullHtml = await response.text();
     console.log(`[HTMLExtractor:Content] HTML取得完了: ${fullHtml.length} bytes`);
 
+    // ★ 照合用 (`raw`) をそのまま保存する。圧縮後しか残っていないと
+    //   「ゲートが何を見て unsupported と判定したか」を後から確認できない。
+    await saveHtmlForDebug(fullHtml, actualUrl, 'content-raw');
+
     // cheerioでパース
     const $ = cheerio.load(fullHtml);
 
@@ -873,9 +977,9 @@ export async function extractContentHtml(url: string): Promise<string> {
           const compacted = logCompaction(extractedHtml, `セレクタ "${selector}"`);
 
           // デバッグモード時にHTMLを保存
-          await saveHtmlForDebug(compacted, actualUrl);
+          await saveHtmlForDebug(compacted, actualUrl, 'content-compacted');
 
-          return compacted;
+          return { compacted, raw: fullHtml };
         }
       }
     }
@@ -932,9 +1036,9 @@ ${bodyContent}`;
     console.log(`[HTMLExtractor:Content] プレビュー: ${preview}...`);
 
     // デバッグモード時にHTMLを保存
-    await saveHtmlForDebug(cleanedHtml, actualUrl);
+    await saveHtmlForDebug(cleanedHtml, actualUrl, 'content-cleaned');
 
-    return cleanedHtml;
+    return { compacted: cleanedHtml, raw: fullHtml };
   } catch (error) {
     if (error instanceof Error) {
       if (error.name === 'AbortError') {

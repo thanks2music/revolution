@@ -48,12 +48,62 @@ import type { AiProviderType } from '@/lib/ai/providers/ai-provider.interface';
 export const MAX_INLINE_RESPONSE_CHARS = 200_000;
 
 /**
+ * JSONL 1 行の種別。
+ *
+ * ⚠️ **`undefined` は `'ai-call'` とみなす。** 2026-08-14 より前のログには
+ * このキーが無いため、必須にすると既存ログが全て読めなくなる。
+ */
+export type RunLogRecordKind = 'ai-call' | 'pipeline-event';
+
+/**
+ * AI 呼び出しではない、パイプライン側の判定を記録する行。
+ *
+ * ## なぜ AI 呼び出しと分けるのか (2026-08-14、S1-d Phase 3.8 Step A)
+ *
+ * 会場の網羅性ゲートの判定は**呼び出しの後**に決まるため、`recordContext`
+ * (呼び出し**前**に渡すフィールド) には構造上入れられない。かといって
+ * `AiCallRecord` として書くと `responseText` を持たない行が混ざり、
+ * `extractOccurrences` が `absent` を返して**照合ツールが「測れなかった」と
+ * 誤報する**。
+ *
+ * よって別種別として書き、`readRunLog` が分離する。
+ *
+ * 🔴 **`stepId` というキー名を使わない。** 照合ツールは
+ * `records.find((r) => r.stepId === 'detail-extraction')` で対象を選ぶため、
+ * 同名キーを持たせると (分離に漏れがあったとき) この行が選ばれてしまう。
+ * 関連ステップは `relatedStepId` で持つ。
+ */
+export interface PipelineEventRecord {
+  kind: 'pipeline-event';
+  /** 実行の識別子。`AiCallRecord.runId` と揃う */
+  runId: string;
+  /** 実行内の通し番号。AI 呼び出しと同じ採番を共有する (前後関係が追える) */
+  seq: number;
+  /** 記録時刻 (ISO 8601) */
+  ts: string;
+  /** イベント種別 (例: `venue-completeness-gate`) */
+  event: string;
+  /** 関連するパイプラインステップ。⚠️ キー名を `stepId` にしないこと (上記) */
+  relatedStepId: PipelineStepId;
+  /** イベント固有のペイロード */
+  payload: Record<string, unknown>;
+}
+
+/** `recordPipelineEvent` の入力。`runId` / `seq` / `ts` は recorder が付ける。 */
+export type PipelineEventRecordInput = Omit<PipelineEventRecord, 'kind' | 'runId' | 'seq' | 'ts'>;
+
+/**
  * 1 回の AI 呼び出しの記録。
  *
  * `compare-runs.ts` (Phase 3.5 D) と `verify-against-source.ts` (同 E) が本型を
  * 入力とするため、**フィールドの削除・改名は両スクリプトの破壊的変更**になる。
  */
 export interface AiCallRecord {
+  /**
+   * 行種別。既存ログとの後方互換のため **optional**。
+   * 省略されていれば `'ai-call'` とみなす。
+   */
+  kind?: 'ai-call';
   /** 実行の識別子。`debug:mdx --log` ではログファイルの basename と一致する */
   runId: string;
   /** 実行内の通し番号 (1 始まり)。同一ステップが複数回呼ばれても区別できる */
@@ -378,6 +428,46 @@ export async function recordAiCall(input: AiCallRecordInput): Promise<void> {
     );
   } catch (error) {
     console.warn('[AiCallRecorder] 記録に失敗 (処理は続行):', error);
+  }
+}
+
+/**
+ * パイプライン側の判定を JSONL へ 1 行追記する。
+ *
+ * **この関数は決して throw しない** (`recordAiCall` と同じ方針)。
+ *
+ * ⚠️ **本番 (`NODE_ENV === 'production'`) では何も書かない。** 記事を止める判断の
+ * 記録をこれ**だけ**に頼ってはならず、呼び出し側は console と `skipReason` にも
+ * 必ず出すこと。
+ */
+export async function recordPipelineEvent(input: PipelineEventRecordInput): Promise<void> {
+  if (!isAiCallRecordingEnabled(input.relatedStepId)) return;
+
+  try {
+    const s = ensureLazyState();
+    const record: PipelineEventRecord = {
+      kind: 'pipeline-event',
+      runId: s.runId,
+      // AI 呼び出しと採番を共有する。別採番にすると「どの呼び出しの後の判定か」が
+      // 追えなくなる。
+      seq: ++s.seq,
+      ts: new Date().toISOString(),
+      ...input,
+    };
+
+    // `recordAiCall` と同じチェーンに載せて直列化する
+    s.writeChain = s.writeChain
+      .then(async () => {
+        await fs.mkdir(path.dirname(s.jsonlPath), { recursive: true });
+        await fs.appendFile(s.jsonlPath, JSON.stringify(record) + '\n', 'utf-8');
+      })
+      .catch((error) => {
+        console.warn('[AiCallRecorder] イベント記録に失敗 (処理は続行):', error);
+      });
+
+    await s.writeChain;
+  } catch (error) {
+    console.warn('[AiCallRecorder] イベント記録に失敗 (処理は続行):', error);
   }
 }
 

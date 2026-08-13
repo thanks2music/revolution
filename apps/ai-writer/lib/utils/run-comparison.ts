@@ -25,9 +25,14 @@
  */
 
 import type { AiCallRecord } from '@/lib/ai/observability/ai-call-recorder';
+import type { PipelineStepId } from '@/lib/services/pipeline-steps';
 // ★ occurrences の形 (`event_data.occurrences[]` の wire format) は照合側と共有する。
 //   ここで別名の camelCase 型を作ると、`compareWithSource` に渡したときに
 //   キー名が食い違って全会場が「欠落」になる (2026-08-12 に実際に作った不具合)。
+import {
+  parseAndNormalizeEventData,
+  type EventPeriodLike,
+} from '@/lib/utils/event-data-normalization';
 import type { ExtractedOccurrence } from '@/lib/utils/source-truth-extractor';
 
 /** 1 実行ぶんの観測ログ。 */
@@ -184,22 +189,37 @@ function uniq<T>(values: T[]): T[] {
  * **切り捨てられた応答が「会場 0 件」= 系統的失敗として誤って帰属される**。
  * 「測れなかった」と「0 件だった」を混同しないことが本モジュールの主張そのもの。
  */
-export function extractOccurrences(record: AiCallRecord | undefined): OccurrenceExtraction {
+/**
+ * レコードの `responseText` を JSON として読む。**parse に失敗しても throw しない。**
+ *
+ * `extractOccurrences` と `extractNormalizedOccurrences` の共通前段。切り出したのは、
+ * 両者が同じ応答を**二重に `JSON.parse` していた**ため (claude[bot] 2 巡目指摘、
+ * 2026-08-14 採用)。応答は `MAX_INLINE_RESPONSE_CHARS` = 200,000 文字まで載りうるので
+ * 無視できない。
+ */
+function readResponseJson(
+  record: AiCallRecord | undefined
+): Exclude<OccurrenceExtraction, { status: 'ok' }> | { status: 'ok'; parsed: unknown } {
   if (!record || !record.responseText) return { status: 'absent' };
 
   // truncation の判定は parse より前。切り捨てられた JSON は運良く parse できる場合も
   // あるが、その中身は「途中まで」であって比較に使ってはいけない。
   if (record.responseTruncated) return { status: 'truncated' };
 
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(record.responseText);
+    return { status: 'ok', parsed: JSON.parse(record.responseText) };
   } catch (error) {
     return {
       status: 'unparseable',
       reason: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+export function extractOccurrences(record: AiCallRecord | undefined): OccurrenceExtraction {
+  const read = readResponseJson(record);
+  if (read.status !== 'ok') return read;
+  const parsed = read.parsed;
 
   // ★ `event_data` キーが丸ごと無い応答は「測れた上で 0 件」ではなく **wire format が
   //   違う** = 測れていない。strict mode では `event_data` は required (nullable) なので、
@@ -231,6 +251,65 @@ export function extractOccurrences(record: AiCallRecord | undefined): Occurrence
 }
 
 /**
+ * 応答から occurrences を取り出し、**パイプラインと同じ正規化**を通す。
+ *
+ * ## なぜ生のままではいけないのか (2026-08-14、S1-d Phase 3.8 Step A)
+ *
+ * パイプラインは `parseAndNormalizeEventData` を通した occurrences を frontmatter へ
+ * 書き、会場の網羅性ゲートも**その正規化後の値**で判定する。一方 `extractOccurrences`
+ * は LLM の生応答をそのまま返すため、両者が食い違いうる。
+ *
+ * 最も効くのが**連結された会場名**の扱い。LLM が `"A店、B店、C店"` を 1 要素で返した
+ * とき、正規化は 3 件へ分割するのに対し生のままだと 1 件のままで、
+ * **「欠落 2 件 + 正解に無い会場 1 件」に化ける**。CLI とパイプラインで判定が
+ * 食い違うと、どちらが正しいのか誰にも分からなくなる。
+ *
+ * ⚠️ **`extractOccurrences` (生 wire) は残す。** 「LLM が言ったこと」と
+ * 「パイプラインが使ったもの」は別の問いで、片方に潰すと本モジュールが守っている
+ * 失敗帰属 (§ `OccurrenceExtraction`) が壊れる。CLI は両方を表示する。
+ *
+ * ⚠️ 正規化には `開催期間` (`fallbackPeriod` の元) が要るため、`event_data` だけでなく
+ * 応答全体を読む。`prefectures` は warn にしか使われず**出力 occurrences に影響
+ * しない**ので渡さない (パイプラインの結果と一致する)。
+ */
+export function extractNormalizedOccurrences(
+  record: AiCallRecord | undefined
+): OccurrenceExtraction {
+  const read = readResponseJson(record);
+  if (read.status !== 'ok') return read;
+
+  // ★ `extractOccurrences` を呼び直さない (同じ応答を 2 回 parse することになる)。
+  //   `event_data` キーの有無など wire format の検査は下記 `parseAndNormalizeEventData`
+  //   が status で返すため、ここで重ねる必要もない。
+  const parsed = read.parsed as { event_data?: unknown; 開催期間?: unknown };
+
+  const normalized = parseAndNormalizeEventData({
+    rawEventData: parsed.event_data,
+    period: (parsed.開催期間 ?? null) as EventPeriodLike | null,
+  });
+
+  switch (normalized.status) {
+    case 'ok':
+      return { status: 'ok', occurrences: normalized.occurrences };
+    case 'absent':
+      // 🔴 **0 件に潰さない。** `event_data` キーが応答に無いのは「測れた上で 0 件」
+      //    ではなく **wire format が違う** = 測れていない。`extractOccurrences` も
+      //    同じ理由・同じ文面で `unparseable` を返しており、ここだけ緩めると
+      //    「測れなかった」が「0 会場だった」として比較や照合へ混入する。
+      //
+      //    ⚠️ 二重 parse を解消した際 (claude[bot] 2 巡目 #2 の対応) に
+      //    `extractOccurrences` の呼び出しを外したことで、「前段が弾いてくれる」と
+      //    いう前提が崩れたまま本分岐が残っていた (同 4 巡目で指摘・是正)。
+      return { status: 'unparseable', reason: 'event_data キーが応答に存在しない' };
+    case 'invalid':
+      return {
+        status: 'unparseable',
+        reason: `event_data が EventDataSchema に不適合: ${normalized.issues.join(' / ')}`,
+      };
+  }
+}
+
+/**
  * `extractOccurrences` の結果から会場名だけを取り出す。
  *
  * ⚠️ 非 `ok` は空配列になる。呼び出し側は必ず `status` を先に見ること。
@@ -242,6 +321,37 @@ export function venueLabelsOf(extraction: OccurrenceExtraction): string[] {
     .filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
 }
 
+/**
+ * そのステップで**実際に採用された**レコードを返す。
+ *
+ * ## なぜ `find` ではいけないのか (2026-08-14、S1-d Phase 3.8 Step A)
+ *
+ * 会場の網羅性ゲートが入ったことで、`detail-extraction` は **1 実行で複数回**
+ * 記録されるようになった (欠落を検出したら最大 3 回まで再抽出する)。
+ *
+ * `find` は**最初の**レコードを返すため、3 回目で会場が揃った実行でも
+ * **1 回目 (= 却下された失敗) の応答**を読んでしまう。その結果、
+ *
+ * - `verify-against-source` が「合格した記事」を不合格と報告する
+ * - `compareSteps` が採用されていない応答で実行間の一致・不一致を語る
+ *
+ * パイプラインは**成功した時点で break し、失敗した場合も最後の試行を採用する**
+ * ため、どちらの場合も「最後のレコード」が採用されたものになる。
+ *
+ * @param records 実行のレコード列 (記録順 = `seq` 昇順)
+ * @param stepId 対象ステップ
+ */
+export function selectAdoptedRecord(
+  records: AiCallRecord[],
+  stepId: PipelineStepId | 'unknown'
+): AiCallRecord | undefined {
+  // `findLast` は ES2023。tsconfig の lib が古い環境でも動くよう手で後ろから探す
+  for (let i = records.length - 1; i >= 0; i--) {
+    if (records[i].stepId === stepId) return records[i];
+  }
+  return undefined;
+}
+
 /** ステップ単位の比較。 */
 export function compareSteps(runs: RunLog[]): StepComparison[] {
   const stepIds = uniq(runs.flatMap((r) => r.records.map((rec) => rec.stepId)));
@@ -250,7 +360,8 @@ export function compareSteps(runs: RunLog[]): StepComparison[] {
     const perRun = runs
       .map((run) => ({
         label: run.label,
-        record: run.records.find((rec) => rec.stepId === stepId),
+        // ⚠️ 再試行があるステップでは最初のレコード = 却下された試行になりうる
+        record: selectAdoptedRecord(run.records, stepId),
       }))
       .filter((x): x is { label: string; record: AiCallRecord } => x.record !== undefined);
 
@@ -290,8 +401,8 @@ export function compareOccurrences(runs: RunLog[]): OccurrenceComparison | null 
   if (!anyReachedStep) return null;
 
   const perRun = runs.map((run) => {
-    const extraction = extractOccurrences(
-      run.records.find((r) => r.stepId === 'detail-extraction')
+    const extraction = extractNormalizedOccurrences(
+      selectAdoptedRecord(run.records, 'detail-extraction')
     );
     return { label: run.label, venues: venueLabelsOf(extraction), extraction };
   });

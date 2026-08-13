@@ -18,12 +18,22 @@
 import { readFileSync } from 'fs';
 import { basename } from 'path';
 
-import type { AiCallRecord } from '@/lib/ai/observability/ai-call-recorder';
+import type {
+  AiCallRecord,
+  PipelineEventRecord,
+} from '@/lib/ai/observability/ai-call-recorder';
 import type { RunLog } from '@/lib/utils/run-comparison';
 
 /** JSONL の読み込み結果。壊れた行の件数も返す (黙って捨てない)。 */
 export interface RunLogReadResult {
   runLog: RunLog;
+  /**
+   * AI 呼び出しではないパイプライン側の判定 (会場の網羅性ゲート等)。
+   *
+   * ⚠️ **`runLog.records` へ混ぜない。** これらは `responseText` を持たないため、
+   * `extractOccurrences` が `absent` を返し「測れなかった」と誤報する。
+   */
+  events: PipelineEventRecord[];
   /** parse できなかった行の数 */
   brokenLineCount: number;
 }
@@ -42,18 +52,30 @@ export function readRunLog(path: string): RunLogReadResult {
     .filter((l) => l.trim().length > 0);
 
   const records: AiCallRecord[] = [];
+  const events: PipelineEventRecord[] = [];
   let brokenLineCount = 0;
 
   for (const line of lines) {
+    let parsed: unknown;
     try {
-      records.push(JSON.parse(line) as AiCallRecord);
+      parsed = JSON.parse(line);
     } catch {
       brokenLineCount++;
+      continue;
+    }
+
+    // ⚠️ `kind` を持たない行は AI 呼び出しとみなす。2026-08-14 より前のログには
+    //    このキーが無く、必須にすると既存ログが 1 行も読めなくなる。
+    if ((parsed as { kind?: string }).kind === 'pipeline-event') {
+      events.push(parsed as PipelineEventRecord);
+    } else {
+      records.push(parsed as AiCallRecord);
     }
   }
 
   return {
     runLog: { label: basename(path, '.jsonl'), records },
+    events,
     brokenLineCount,
   };
 }
