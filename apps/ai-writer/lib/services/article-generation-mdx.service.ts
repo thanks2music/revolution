@@ -34,7 +34,7 @@ import { deriveStoreContext } from '../utils/store-derivation';
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
 import { stripUtmFromUrl } from '../utils/url';
-import { EventDataSchema, type EventData } from '@revolution/schemas/mdx-frontmatter';
+import { type EventData } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
 import { getStepDisplay, getStepContext } from './pipeline-steps';
 import {
