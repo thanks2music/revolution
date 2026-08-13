@@ -8,6 +8,7 @@ import {
   extractPeriodText,
   extractSourceTruth,
   parsePeriodText,
+  readPeriod,
   unescapeEmbeddedMarkup,
 } from '@/lib/utils/source-truth-extractor';
 
@@ -276,6 +277,56 @@ describe('extractPeriodText', () => {
   });
 });
 
+describe('readPeriod (2026-08-13 Step B-2)', () => {
+  it('開始・終了とも読めたら dated', () => {
+    expect(readPeriod('【開催期間】 2026年5月14日(木)〜2026年7月5日(日)')).toEqual({
+      kind: 'dated',
+      text: '2026年5月14日(木)〜2026年7月5日',
+    });
+  });
+
+  it('公式が終了日を書いていなければ open-ended', () => {
+    expect(readPeriod('2026年4月10日（金）～順次開催!!')).toEqual({
+      kind: 'open-ended',
+      text: '2026年4月10日（金）～',
+    });
+    // 範囲マーカーで切れているだけのケースも「書いていない」側
+    expect(readPeriod('2026年4月10日（金）～').kind).toBe('open-ended');
+  });
+
+  // ★ 本 describe の中核。`OPEN_ENDED_PERIOD` は `より`/`から` を拾うのに `DATE_RANGE` は
+  //   `〜~～-` しか受けないため、この表記では**終了日が書いてあるのに読み落とす**。
+  //   open-ended と混ぜると正解側の endsOn が null になり、抽出が正しくても不一致になる。
+  it('終了日が書いてあるのに読めなかったら unreadable', () => {
+    expect(readPeriod('2026年4月10日（金）より 5月20日（水）まで')).toEqual({
+      kind: 'unreadable',
+      text: '2026年4月10日（金）より',
+    });
+    // 装飾の挿入で DATE_RANGE のギャップ (12 字) を超えた場合も同じ
+    expect(
+      readPeriod('2026年4月10日（金）～ ※大変ご好評をいただいたため ～ 5月20日（水）').kind
+    ).toBe('unreadable');
+    // 全角数字の後続日付も拾う (検出側が緩いのは安全な方向)
+    expect(readPeriod('2026年4月10日（金）より ５月２０日（水）まで').kind).toBe('unreadable');
+  });
+
+  it('日付の記述が無ければ absent', () => {
+    expect(readPeriod('開催期間は後日発表いたします')).toEqual({ kind: 'absent', text: null });
+    expect(readPeriod('')).toEqual({ kind: 'absent', text: null });
+  });
+
+  it('extractPeriodText は readPeriod の text をそのまま返す (判定ロジックは 1 箇所)', () => {
+    for (const input of [
+      '2026年5月14日(木)〜2026年7月5日(日)',
+      '2026年4月10日（金）～順次開催!!',
+      '2026年4月10日（金）より 5月20日（水）まで',
+      '開催期間は後日発表いたします',
+    ]) {
+      expect(extractPeriodText(input)).toBe(readPeriod(input).text);
+    }
+  });
+});
+
 describe('compareWithSource', () => {
   const truth = extractSourceTruth(LTR_TOP_PAGE);
 
@@ -362,6 +413,61 @@ describe('compareWithSource', () => {
     expect(result.unmeasuredPeriodVenues).toEqual(['BOX cafe&space 池袋店']);
     expect(result.periodMismatches).toEqual([]);
     // 測れなかったことを不合格にしない (「測れなかった ≠ 間違っていた」)
+    expect(result.passed).toBe(true);
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // 2026-08-13 Step B-2: 「終了日が読めなかった」を「終了日が無い」と混同しない。
+  //   ★ 下記 2 本は**セットで意味を持つ**。①だけを書くと「正解側が読み落としたのに
+  //     不一致と報告する」挙動を正としてロックしてしまう。
+  // ─────────────────────────────────────────────────────────────
+
+  // ① 公式が終了日を書いていない (= それが事実) のに抽出が終了日を出したら、
+  //    それは捏造なので**不一致として検出されなければならない**。
+  it('公式が終了日未定なのに抽出が終了日を出したら不一致として検出する', () => {
+    const openEnded = extractSourceTruth(`
+      <div class="place">
+        <h2>TOKYO</h2>
+        <p class="place_text_01">BOX cafe&amp;space 池袋店</p>
+        <p class="place_text_02"><span>【開催期間】</span> 2026年4月10日（金）～順次開催!!</p>
+      </div>`);
+
+    expect(openEnded.venues[0].periodKind).toBe('open-ended');
+    expect(openEnded.venues[0].startsOn).toBe('2026-04-10');
+    expect(openEnded.venues[0].endsOn).toBeNull();
+
+    const result = compareWithSource(openEnded, [
+      { venue_label: 'BOX cafe&space 池袋店', starts_on: '2026-04-10', ends_on: '2026-06-28' },
+    ]);
+
+    expect(result.periodMismatches).toEqual(['BOX cafe&space 池袋店']);
+    expect(result.unmeasuredPeriodVenues).toEqual([]);
+    expect(result.passed).toBe(false);
+  });
+
+  // ② 公式は終了日を書いているのに正解側が読み落としたケースは、
+  //    **不一致ではなく照合不能**でなければならない (測る側の欠落を抽出側の誤りにしない)。
+  it('「◯月◯日より △月△日まで」で正解側が終了日を読み落としたら照合不能に分離する', () => {
+    const unreadableEnd = extractSourceTruth(`
+      <div class="place">
+        <h2>TOKYO</h2>
+        <p class="place_text_01">BOX cafe&amp;space 池袋店</p>
+        <p class="place_text_02"><span>【開催期間】</span> 2026年4月10日（金）より 6月28日（日）まで</p>
+      </div>`);
+
+    // 測る側は終了日を落としている (これ自体は現状の regex の限界)
+    expect(unreadableEnd.venues[0].periodKind).toBe('unreadable');
+    expect(unreadableEnd.venues[0].startsOn).toBe('2026-04-10');
+    expect(unreadableEnd.venues[0].endsOn).toBeNull();
+
+    // 抽出側は**正しく**終了日を読めている
+    const result = compareWithSource(unreadableEnd, [
+      { venue_label: 'BOX cafe&space 池袋店', starts_on: '2026-04-10', ends_on: '2026-06-28' },
+    ]);
+
+    expect(result.periodMismatches).toEqual([]);
+    expect(result.unmeasuredPeriodVenues).toEqual(['BOX cafe&space 池袋店']);
+    // 測れなかったことを不合格にしない
     expect(result.passed).toBe(true);
   });
 

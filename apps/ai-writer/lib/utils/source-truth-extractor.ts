@@ -66,6 +66,14 @@ export interface SourceTruthVenue {
   venueLabel: string | null;
   /** 【開催期間】欄の生テキスト。日付の解釈は呼び出し側に委ねる */
   periodText: string | null;
+  /**
+   * 期間テキストの読み取り種別 (`readPeriod` の判定)。
+   *
+   * ⚠️ **`endsOn === null` の理由がこれで分かれる。** `open-ended` は「公式が終了日を
+   * 書いていない」= それが事実。`unreadable` は「書いてあるのに読めなかった」= 測る側の
+   * 欠落。前者は比較してよく、後者は比較してはいけない (`compareWithSource` 参照)。
+   */
+  periodKind: PeriodReadingKind;
   /** `periodText` から取り出した開始日 (`YYYY-MM-DD`)。解釈できなければ null */
   startsOn: string | null;
   /** 同終了日。年が省略されていた場合は開始年で補う */
@@ -251,28 +259,104 @@ function norm(value: string | undefined): string | null {
 }
 
 /**
+ * `OPEN_ENDED_PERIOD` の後ろに**別の日付が続いているか**の判定用。
+ *
+ * 年は省略されうる (`2026年4月10日より 5月20日まで`) ため月日だけで足りる。
+ * 全角数字も拾うのは、**検出側が抽出側より緩いのは安全な方向**だから
+ * (緩いほど「読めなかった」に倒れ、判定を控える側に働く)。
+ */
+const TRAILING_DATE = /\d{1,2}\s*月\s*\d{1,2}/;
+
+/** 期間テキストの読み取り結果の種別。 */
+export type PeriodReadingKind =
+  /** 開始日と終了日の両方が読めた */
+  | 'dated'
+  /** 開始日だけがあり、**公式サイトが終了日を書いていない** (`〜順次開催` 等) */
+  | 'open-ended'
+  /** 終了日が**書かれているのに読めなかった** (`◯月◯日より △月△日まで` 等) */
+  | 'unreadable'
+  /** 日付の記述そのものが無い */
+  | 'absent';
+
+export interface PeriodReading {
+  kind: PeriodReadingKind;
+  /** 切り出した期間テキスト。`absent` は null */
+  text: string | null;
+}
+
+/**
+ * ブロック内テキストから期間の記述を読み取り、**3 つの状態を区別して**返す。
+ *
+ * ## なぜ `open-ended` と `unreadable` を分けるのか (2026-08-13 追加、Step B-2)
+ *
+ * `OPEN_ENDED_PERIOD` は範囲マーカーとして `より` / `から` も拾うが、`DATE_RANGE` は
+ * `〜~～-` しか受けない。そのため **「◯月◯日より △月△日まで」表記のサイトでは
+ * 終了日が書いてあるのに `DATE_RANGE` が外れ、フォールバックが開始日だけを拾う**。
+ *
+ * 両者を `open-ended` に混ぜると、正解側の `endsOn` が null になり、抽出側が終了日を
+ * **正しく**読めていても `periodMismatches` に入る。これは `compareWithSource` が
+ * 開始日側で明示的に禁じている「**測る側の欠落を抽出側の誤りとして報告する**」事故
+ * そのもの (下記 `source.startsOn === null` のガードを参照)。
+ *
+ * よって「後ろに別の日付が続いているか」で分ける:
+ *
+ * | 入力 | 判定 | 比較時の扱い |
+ * |---|---|---|
+ * | `2026年4月10日（金）～2026年6月28日（日）` | `dated` | 開始・終了とも比較する |
+ * | `2026年4月10日（金）～順次開催!!` | `open-ended` | 比較する (**正解の終了日は「無い」が事実**。抽出が終了日を出したら捏造として検出したい) |
+ * | `2026年4月10日（金）より 5月20日（水）まで` | `unreadable` | **比較しない** (`unmeasuredPeriodVenues`) |
+ * | `開催期間は後日発表いたします` | `absent` | 比較しない |
+ *
+ * ⚠️ **`unreadable` へ倒れるのは意図的に緩い。** ブロック内に会場の期間とは無関係な
+ * 日付 (予約開始日・更新日等) があると、真の open-ended でも `unreadable` と判定する。
+ * これは claude[bot] が指摘した「ブロック内の先頭マッチを拾う」設計の一般化リスクと
+ * 同根で、**判定を控える方向の誤りなので許容する**。誤って「不一致」を出して正しい
+ * 抽出結果を失格にするより、「照合できない」と申告する方が安全 (`unmeasuredPeriodVenues`
+ * は `passed` に含めない)。逆向きに倒すには profile ごとの期間セレクタが必要になるが、
+ * それは実測で棄却された経路 (上記 `SITE_PROFILES` の docstring 参照)。
+ */
+export function readPeriod(blockText: string): PeriodReading {
+  const text = norm(blockText) ?? '';
+
+  const dated = text.match(DATE_RANGE)?.[1];
+  if (dated) return { kind: 'dated', text: dated };
+
+  const open = text.match(OPEN_ENDED_PERIOD);
+  if (!open || open.index === undefined) return { kind: 'absent', text: null };
+
+  const tail = toHalfWidthDigits(text.slice(open.index + open[1].length));
+  return {
+    kind: TRAILING_DATE.test(tail) ? 'unreadable' : 'open-ended',
+    text: open[1],
+  };
+}
+
+/**
  * ブロック内テキストから期間の記述を切り出す。
  *
  * 見つからなければ null = **「この会場の期間は読めなかった」**。呼び出し側はこれを
  * 「期間が一致しない」ではなく「照合できない」として扱う (`unmeasuredPeriodVenues`)。
  * 読めなかったものを 0 や推測値で埋めると、正しい抽出結果を失格にする。
+ *
+ * **切り出した文字列だけが必要な場合の薄いラッパ**。`open-ended` と `unreadable` の
+ * 区別が要る場所では `readPeriod` を直接使う (両者を 1 箇所で決めるため、正規表現の
+ * 判定ロジックは `readPeriod` にしか置かない)。
  */
 export function extractPeriodText(blockText: string): string | null {
-  const text = norm(blockText) ?? '';
-  return text.match(DATE_RANGE)?.[1] ?? text.match(OPEN_ENDED_PERIOD)?.[1] ?? null;
+  return readPeriod(blockText).text;
 }
 
 /** 会場ブロックを 1 つ読み取る。 */
 function readVenueBlock($el: PlaceSelection, profile: SiteProfile): SourceTruthVenue {
   const regionLabel = norm($el.find(profile.regionSelector).first().text());
   const venueLabel = norm($el.find(profile.venueSelector).first().text());
-  const periodText = extractPeriodText($el.text());
+  const { kind: periodKind, text: periodText } = readPeriod($el.text());
 
   const { startsOn, endsOn } = periodText
     ? parsePeriodText(periodText)
     : { startsOn: null, endsOn: null };
 
-  return { regionLabel, venueLabel, periodText, startsOn, endsOn };
+  return { regionLabel, venueLabel, periodText, periodKind, startsOn, endsOn };
 }
 
 /**
@@ -504,7 +588,6 @@ export function compareWithSource(
     expected.set(key, v);
   }
 
-
   // ★ Map への畳み込みで重複が silent に消える。消えた事実そのものが欠陥の signal
   //   (同じ会場を 2 回出している = 別の会場を 1 つ落としている) なので、捨てずに拾う。
   const actual = new Map<string, ExtractedOccurrence>();
@@ -550,10 +633,18 @@ export function compareWithSource(
       actual: { startsOn: found.starts_on ?? null, endsOn: found.ends_on ?? null },
     };
 
-    // ★ 正解側の開始日が読めていないなら、期間は「不一致」ではなく「照合不能」。
+    // ★ 正解側が期間を読めていないなら、「不一致」ではなく「照合不能」。
     //   ここで比較すると、抽出が正しくても null !== '2026-05-14' で不一致になり、
     //   測る側の欠落を抽出側の誤りとして報告してしまう。
-    if (source.startsOn === null) {
+    //
+    //   読めていない状態は 2 つある (2026-08-13 Step B-2 で後者を追加):
+    //   - `startsOn === null`        … 開始日が読めなかった
+    //   - `periodKind === 'unreadable'` … 終了日が**書いてあるのに**読めなかった
+    //                                    (`◯月◯日より △月△日まで` 表記。詳細は `readPeriod`)
+    //
+    //   ⚠️ `open-ended` はここに入れない。「公式が終了日を書いていない」= それが事実で
+    //      あり、抽出側が終了日を出してきたら**捏造として検出したい**ため比較へ回す。
+    if (source.startsOn === null || source.periodKind === 'unreadable') {
       unmeasuredPeriodVenues.push(source.venueLabel!);
       venues.push(base);
       continue;
