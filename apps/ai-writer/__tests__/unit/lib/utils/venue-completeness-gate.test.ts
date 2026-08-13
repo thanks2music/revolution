@@ -230,6 +230,52 @@ describe('runVenueCompletenessGate', () => {
     expect(verdict.attempts.every((a) => a.parseStatus === 'absent')).toBe(true);
   });
 
+  // ★ claude[bot] 2 巡目指摘 (2026-08-14 採用)。応答を読めなかった試行は
+  //   occurrences [] として照合されるため missingVenues が「正解の全会場」になる。
+  //   これを比較の母集団に混ぜると**測れなかった試行を「落ち続けた」証拠として数える**。
+  describe('systematic の判定には測れた試行だけを使う', () => {
+    it('測れた試行が 1 つしかなければ systematic と結論しない', async () => {
+      const { verdict } = await runGate(
+        TWO_VENUE_PAGE,
+        [
+          undefined, // 1 回目: wire format 事故 (測れていない)
+          eventData([OCCURRENCE_SHIBUYA]), // 2 回目: 測れて大阪が欠落
+        ],
+        { maxAttempts: 2 }
+      );
+
+      expect(verdict.status).toBe('failed');
+      if (verdict.status !== 'failed') throw new Error('unreachable');
+      // 測れたのは 1 回だけ。「落ち続けた」とは言えない
+      expect(verdict.kind).toBe('unconverged');
+      expect(verdict.attempts.map((a) => a.parseStatus)).toEqual(['absent', 'ok']);
+    });
+
+    it('測れた試行が 2 回とも同じ集合を落としていれば systematic', async () => {
+      const { verdict } = await runGate(TWO_VENUE_PAGE, [
+        undefined, // 測れていない (母集団から除外される)
+        eventData([OCCURRENCE_SHIBUYA]),
+        eventData([OCCURRENCE_SHIBUYA]),
+      ]);
+
+      expect(verdict.status).toBe('failed');
+      if (verdict.status !== 'failed') throw new Error('unreachable');
+      expect(verdict.kind).toBe('systematic');
+    });
+
+    it('測れた試行の欠落集合が違えば unconverged', async () => {
+      const { verdict } = await runGate(TWO_VENUE_PAGE, [
+        undefined,
+        eventData([OCCURRENCE_SHIBUYA]), // 大阪が欠落
+        eventData([OCCURRENCE_OSAKA]), // 渋谷が欠落
+      ]);
+
+      expect(verdict.status).toBe('failed');
+      if (verdict.status !== 'failed') throw new Error('unreachable');
+      expect(verdict.kind).toBe('unconverged');
+    });
+  });
+
   it('キー欠落と schema 不適合が混在する場合はその旨を出す', async () => {
     const { verdict } = await runGate(TWO_VENUE_PAGE, [
       undefined, // キー欠落

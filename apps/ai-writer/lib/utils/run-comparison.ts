@@ -189,22 +189,37 @@ function uniq<T>(values: T[]): T[] {
  * **切り捨てられた応答が「会場 0 件」= 系統的失敗として誤って帰属される**。
  * 「測れなかった」と「0 件だった」を混同しないことが本モジュールの主張そのもの。
  */
-export function extractOccurrences(record: AiCallRecord | undefined): OccurrenceExtraction {
+/**
+ * レコードの `responseText` を JSON として読む。**parse に失敗しても throw しない。**
+ *
+ * `extractOccurrences` と `extractNormalizedOccurrences` の共通前段。切り出したのは、
+ * 両者が同じ応答を**二重に `JSON.parse` していた**ため (claude[bot] 2 巡目指摘、
+ * 2026-08-14 採用)。応答は `MAX_INLINE_RESPONSE_CHARS` = 200,000 文字まで載りうるので
+ * 無視できない。
+ */
+function readResponseJson(
+  record: AiCallRecord | undefined
+): Exclude<OccurrenceExtraction, { status: 'ok' }> | { status: 'ok'; parsed: unknown } {
   if (!record || !record.responseText) return { status: 'absent' };
 
   // truncation の判定は parse より前。切り捨てられた JSON は運良く parse できる場合も
   // あるが、その中身は「途中まで」であって比較に使ってはいけない。
   if (record.responseTruncated) return { status: 'truncated' };
 
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(record.responseText);
+    return { status: 'ok', parsed: JSON.parse(record.responseText) };
   } catch (error) {
     return {
       status: 'unparseable',
       reason: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+export function extractOccurrences(record: AiCallRecord | undefined): OccurrenceExtraction {
+  const read = readResponseJson(record);
+  if (read.status !== 'ok') return read;
+  const parsed = read.parsed;
 
   // ★ `event_data` キーが丸ごと無い応答は「測れた上で 0 件」ではなく **wire format が
   //   違う** = 測れていない。strict mode では `event_data` は required (nullable) なので、
@@ -260,20 +275,13 @@ export function extractOccurrences(record: AiCallRecord | undefined): Occurrence
 export function extractNormalizedOccurrences(
   record: AiCallRecord | undefined
 ): OccurrenceExtraction {
-  const raw = extractOccurrences(record);
-  if (raw.status !== 'ok') return raw;
+  const read = readResponseJson(record);
+  if (read.status !== 'ok') return read;
 
-  // `extractOccurrences` が parse 済みであることは status で保証されているが、
-  // 正規化には応答全体 (`開催期間`) が要るのでもう一度読む。
-  let parsed: { event_data?: unknown; 開催期間?: unknown };
-  try {
-    parsed = JSON.parse(record!.responseText!) as typeof parsed;
-  } catch (error) {
-    return {
-      status: 'unparseable',
-      reason: error instanceof Error ? error.message : String(error),
-    };
-  }
+  // ★ `extractOccurrences` を呼び直さない (同じ応答を 2 回 parse することになる)。
+  //   `event_data` キーの有無など wire format の検査は下記 `parseAndNormalizeEventData`
+  //   が status で返すため、ここで重ねる必要もない。
+  const parsed = read.parsed as { event_data?: unknown; 開催期間?: unknown };
 
   const normalized = parseAndNormalizeEventData({
     rawEventData: parsed.event_data,

@@ -408,7 +408,7 @@ export function extractActualUrl(url: string): string {
  * `saveHtmlForDebug` が保存する HTML の段階。
  *
  * @description
- * 本ファイルは **6 箇所から別々の段階の HTML** を保存する。ファイル名に段階が
+ * 本ファイルは **7 箇所から別々の段階の HTML** を保存する。ファイル名に段階が
  * 入っていないと「最新のファイル」を掴んだときにどの段階を引いたか分からず、
  * 実際に事故が起きた:
  *

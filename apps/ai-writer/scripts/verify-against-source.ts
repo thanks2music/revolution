@@ -57,6 +57,7 @@ import {
   type VerificationOutcome,
 } from '../lib/utils/run-comparison';
 import { fetchHtmlOrThrow } from '../lib/utils/fetch-html';
+import type { PipelineEventRecord } from '../lib/ai/observability/ai-call-recorder';
 import { readRunLog } from '../lib/utils/read-run-log';
 
 interface Args {
@@ -100,8 +101,10 @@ function readOccurrences(jsonlPath: string): {
   normalized: OccurrenceExtraction;
   /** LLM が返したままの値。正規化との差を表示するためだけに使う */
   raw: OccurrenceExtraction;
+  /** 実行時にパイプラインが下したゲート判定 (記録されていれば) */
+  gate?: PipelineEventRecord;
 } {
-  const { runLog, brokenLineCount } = readRunLog(jsonlPath);
+  const { runLog, events, brokenLineCount } = readRunLog(jsonlPath);
   if (brokenLineCount > 0) {
     console.warn(`⚠️ ${basename(jsonlPath)}: ${brokenLineCount} 行を parse できませんでした`);
   }
@@ -114,7 +117,28 @@ function readOccurrences(jsonlPath: string): {
   return {
     normalized: extractNormalizedOccurrences(record),
     raw: extractOccurrences(record),
+    gate: events.find((e) => e.event === 'venue-completeness-gate'),
   };
+}
+
+/**
+ * パイプラインが実行時に下したゲート判定を 1 行で出す。
+ *
+ * ⚠️ **本 CLI の照合結果とは別物。** こちらは「実行したときにパイプラインが何を見て
+ * どう判断したか」で、CLI 側は「いま手元の HTML で照合し直すとどうなるか」。
+ * サイトが更新されていれば両者は食い違いうるので、混ぜて表示しない。
+ */
+function formatGateVerdict(event: PipelineEventRecord): string {
+  const p = event.payload as {
+    status?: string;
+    attemptCount?: number;
+    kind?: string;
+    reason?: string;
+  };
+
+  if (p.status === 'unmeasured') return `  🚦 実行時のゲート: 判定なしで通過 (${p.reason ?? ''})`;
+  if (p.status === 'passed') return `  🚦 実行時のゲート: 合格 (${p.attemptCount} 回試行)`;
+  return `  🚦 実行時のゲート: 停止 (${p.kind} / ${p.attemptCount} 回試行)`;
 }
 
 async function main(): Promise<void> {
@@ -164,7 +188,7 @@ async function main(): Promise<void> {
   let sourceIssueWarned = false;
 
   for (const jsonlPath of againstPaths) {
-    const { normalized: extraction, raw: rawExtraction } = readOccurrences(jsonlPath);
+    const { normalized: extraction, raw: rawExtraction, gate } = readOccurrences(jsonlPath);
 
     // ★ 照合できなかったものを「一致」と読ませない。ただし「不一致」とも言わない
     //   (どちらも事実ではない)。CI 用の終了コードは 1 にする — 観測が欠けている状態を
@@ -195,6 +219,7 @@ async function main(): Promise<void> {
 
     console.log('-'.repeat(80));
     console.log(`${result.passed ? '✅ 一致' : '❌ 不一致'}  ${basename(jsonlPath)}`);
+    if (gate) console.log(formatGateVerdict(gate));
     // 表示は compare-runs.ts と共有する (同じデータで違う結論に見えないように)
     for (const line of formatSourceComparisonLines(result, '  ')) console.log(line);
 

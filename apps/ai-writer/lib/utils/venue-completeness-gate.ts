@@ -333,6 +333,16 @@ function shouldStopEarly(args: { inputTruncated: boolean }): boolean {
  * 2026-08-14 採用)。`responseSchema` を適用しているのは `openai.provider.ts` だけで、
  * anthropic / gemini 経由では structured output が保証されないため
  * `event_data` キーごと欠落しうる。実挙動で `systematic` と誤診断されることを再現した。
+ *
+ * ⚠️ **`systematic` の判定には `parseStatus === 'ok'` の試行だけを使う** (claude[bot]
+ * 2 巡目指摘、2026-08-14 採用)。応答を読めなかった試行は `occurrences: []` として
+ * 照合するため `missingVenues` が「正解の全会場」になる。これを比較の母集団へ混ぜると、
+ * **測れなかった試行を「同じ会場が落ち続けた」証拠として数えてしまう**。
+ *
+ * 実測した誤判定 (会場 1 件のページ / `absent, ok, ok`): 1 回目の wire format 事故を
+ * 含めて `systematic` = 「プロンプトまたは抽出対象 HTML の是正が必要」と診断していた。
+ * 加えて `absent, ok` の 2 試行では、**測れた試行が 1 つしかないのに**「落ち続けた」と
+ * 結論しうる。系統的かどうかは 2 回以上**測れて初めて**言える。
  */
 function resolveFailureKind(args: {
   attempts: VenueGateAttempt[];
@@ -341,7 +351,8 @@ function resolveFailureKind(args: {
   if (args.inputTruncated) return 'input-truncated';
   if (args.attempts.every((a) => a.parseStatus !== 'ok')) return 'event-data-unreadable';
 
-  const [first, ...rest] = args.attempts;
+  const measured = args.attempts.filter((a) => a.parseStatus === 'ok');
+  const [first, ...rest] = measured;
   if (rest.length > 0 && rest.every((a) => sameVenueSet(a.missingVenues, first.missingVenues))) {
     return 'systematic';
   }
