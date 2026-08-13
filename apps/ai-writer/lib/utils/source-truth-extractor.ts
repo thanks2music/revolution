@@ -331,6 +331,10 @@ export function readPeriod(blockText: string): PeriodReading {
   if (dated) return { kind: 'dated', text: dated };
 
   const open = text.match(OPEN_ENDED_PERIOD);
+  // `open.index === undefined` は非 global の `match` では実質起こらない (null は `!open` 側で
+  // 弾かれる)。`RegExpMatchArray.index` が `number | undefined` 型であるため、下の算術で
+  // narrowing を得るために残している。**非 null 断言 (`open.index!`) に置き換えないこと** —
+  // 断言は型チェックを黙らせるだけで、想定が崩れたときに気付けなくなる。
   if (!open || open.index === undefined) return { kind: 'absent', text: null };
 
   const tail = toHalfWidthDigits(text.slice(open.index + open[1].length));
