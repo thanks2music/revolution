@@ -83,8 +83,14 @@ export interface VenueGateAttempt {
 
 /** ゲートを通さなかった (通せなかった) 理由。`skipReason` の文面を分ける根拠になる。 */
 export type VenueGateFailureKind =
-  /** `event_data` が `EventDataSchema` に不適合のまま収束しなかった */
-  | 'event-data-invalid'
+  /**
+   * `event_data` を読めないまま収束しなかった。
+   *
+   * 「キーが応答に無い (`absent`)」と「あるが `EventDataSchema` に不適合 (`invalid`)」の
+   * 両方を含む。**どちらも会場が落ちたのではなく応答の形が違う**ので、対処先は
+   * プロンプト / schema 側であり、`systematic` (= 抽出対象 HTML の是正) とは別。
+   */
+  | 'event-data-unreadable'
   /** LLM 入力が予算超過で切り詰められている。決定論的な欠落なので再試行しない */
   | 'input-truncated'
   /** 欠落した会場の集合が試行間で一致した = 系統的。再試行では直らない */
@@ -313,22 +319,27 @@ function shouldStopEarly(args: { inputTruncated: boolean }): boolean {
  *
  * 1. `input-truncated` — 我々自身の入力が欠けているという**検証可能な事実**。
  *    他の症状より先に直すべきものなので最優先で名指しする
- * 2. `event-data-invalid` — 全試行で schema 不適合。会場が落ちたのではなく
- *    **応答の形が違う**ので、対処先がプロンプト / schema 側になる
+ * 2. `event-data-unreadable` — 全試行で `event_data` を読めなかった。会場が落ちたの
+ *    ではなく**応答の形が違う**ので、対処先がプロンプト / schema 側になる
  * 3. `systematic` — **全試行が同じ会場集合を落とした**。再試行では直らないので、
  *    プロンプトか抽出対象 HTML の是正が要る
  * 4. `unconverged` — 欠落する会場が試行ごとに変わった (確率的) が収束しなかった
  *
- * ⚠️ `systematic` の判定を `event-data-invalid` より後に置くのは、schema 不適合だと
- * `missingVenues` が毎回「正解の全会場」= 同一集合になり、**schema の問題が
+ * ⚠️ `systematic` の判定を `event-data-unreadable` より後に置くのは、応答を読めないと
+ * `missingVenues` が毎回「正解の全会場」= 同一集合になり、**wire format の問題が
  * 「系統的な会場欠落」に化けて原因を誤らせる**ため。
+ *
+ * ⚠️ **`absent` (キーが応答に無い) も `invalid` と同じ扱いにする** (claude[bot] 指摘、
+ * 2026-08-14 採用)。`responseSchema` を適用しているのは `openai.provider.ts` だけで、
+ * anthropic / gemini 経由では structured output が保証されないため
+ * `event_data` キーごと欠落しうる。実挙動で `systematic` と誤診断されることを再現した。
  */
 function resolveFailureKind(args: {
   attempts: VenueGateAttempt[];
   inputTruncated: boolean;
 }): VenueGateFailureKind {
   if (args.inputTruncated) return 'input-truncated';
-  if (args.attempts.every((a) => a.parseStatus === 'invalid')) return 'event-data-invalid';
+  if (args.attempts.every((a) => a.parseStatus !== 'ok')) return 'event-data-unreadable';
 
   const [first, ...rest] = args.attempts;
   if (rest.length > 0 && rest.every((a) => sameVenueSet(a.missingVenues, first.missingVenues))) {
@@ -371,11 +382,16 @@ function buildSkipReason(kind: VenueGateFailureKind, attempts: VenueGateAttempt[
   const tries = `${attempts.length} 回試行`;
 
   switch (kind) {
-    case 'event-data-invalid':
-      return (
-        `会場情報を取得できませんでした: event_data が EventDataSchema に不適合のまま${tries}。` +
-        `${scale} (${names})`
-      );
+    case 'event-data-unreadable': {
+      // ★ 「キーが無い」と「形が違う」は対処が別。前者は wire format / プロンプト、
+      //   後者は schema 定義を見る。同じ文面に潰すと次に読む人が原因を誤る。
+      const cause = attempts.every((a) => a.parseStatus === 'absent')
+        ? 'event_data キーが応答に存在しない'
+        : attempts.every((a) => a.parseStatus === 'invalid')
+          ? 'event_data が EventDataSchema に不適合'
+          : 'event_data を読めない (キー欠落と schema 不適合が混在)';
+      return `会場情報を取得できませんでした: ${cause}まま${tries}。${scale} (${names})`;
+    }
     case 'input-truncated':
       return (
         `会場情報が欠落しました: LLM 入力が ${LLM_INPUT_BUDGET_CHARS.toLocaleString()} 文字を超えて` +

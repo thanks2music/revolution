@@ -209,9 +209,38 @@ describe('runVenueCompletenessGate', () => {
 
     expect(verdict.status).toBe('failed');
     if (verdict.status !== 'failed') throw new Error('unreachable');
-    expect(verdict.kind).toBe('event-data-invalid');
+    expect(verdict.kind).toBe('event-data-unreadable');
     expect(verdict.skipReason).toContain('EventDataSchema に不適合');
     expect(verdict.attempts.every((a) => a.parseStatus === 'invalid')).toBe(true);
+  });
+
+  // ★ claude[bot] 指摘 (2026-08-14 採用)。`responseSchema` を適用しているのは
+  //   `openai.provider.ts` だけで、anthropic / gemini 経由では structured output が
+  //   保証されず `event_data` キーごと欠落しうる。このとき missingVenues は毎回
+  //   「正解の全会場」= 同一集合になるため、対策前は `systematic` と誤診断され
+  //   「プロンプトまたは抽出対象 HTML の是正が必要」と**誤った対処先**を指していた。
+  it('event_data キーが応答に無い場合も schema 不適合と同じ種別にし、原因を書き分ける', async () => {
+    const { verdict } = await runGate(TWO_VENUE_PAGE, [undefined]);
+
+    expect(verdict.status).toBe('failed');
+    if (verdict.status !== 'failed') throw new Error('unreachable');
+    expect(verdict.kind).toBe('event-data-unreadable');
+    expect(verdict.kind).not.toBe('systematic');
+    expect(verdict.skipReason).toContain('event_data キーが応答に存在しない');
+    expect(verdict.attempts.every((a) => a.parseStatus === 'absent')).toBe(true);
+  });
+
+  it('キー欠落と schema 不適合が混在する場合はその旨を出す', async () => {
+    const { verdict } = await runGate(TWO_VENUE_PAGE, [
+      undefined, // キー欠落
+      { occurrences: [] }, // schema 不適合
+      undefined,
+    ]);
+
+    expect(verdict.status).toBe('failed');
+    if (verdict.status !== 'failed') throw new Error('unreachable');
+    expect(verdict.kind).toBe('event-data-unreadable');
+    expect(verdict.skipReason).toContain('キー欠落と schema 不適合が混在');
   });
 
   describe('測れない場合は判定せず通す (Phase 3.5 からの一貫方針)', () => {
