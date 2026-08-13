@@ -292,6 +292,9 @@ describe('readPeriod (2026-08-13 Step B-2)', () => {
     });
     // 範囲マーカーで切れているだけのケースも「書いていない」側
     expect(readPeriod('2026年4月10日（金）～').kind).toBe('open-ended');
+    // `より` / `から` でも後続の日付が無ければ open-ended (マーカー種別で結論を変えない)
+    expect(readPeriod('2026年4月10日（金）より順次').kind).toBe('open-ended');
+    expect(readPeriod('2026年4月10日（金）から順次').kind).toBe('open-ended');
   });
 
   // ★ 本 describe の中核。`OPEN_ENDED_PERIOD` は `より`/`から` を拾うのに `DATE_RANGE` は
@@ -308,6 +311,9 @@ describe('readPeriod (2026-08-13 Step B-2)', () => {
     ).toBe('unreadable');
     // 全角数字の後続日付も拾う (検出側が緩いのは安全な方向)
     expect(readPeriod('2026年4月10日（金）より ５月２０日（水）まで').kind).toBe('unreadable');
+    // `から` は `OPEN_ENDED_PERIOD` で `より` と同じ選択肢だが、**同じ経路だから省く**のは
+    // 本 PR が否定している考え方 (「片方だけのテストは片方だけの挙動を固定する」) なので明示する
+    expect(readPeriod('2026年4月10日（金）から 5月20日（水）まで').kind).toBe('unreadable');
   });
 
   it('日付の記述が無ければ absent', () => {
