@@ -156,7 +156,10 @@ export interface VenueCompletenessGateResult<TExtraction> {
 export async function runVenueCompletenessGate<TExtraction>(
   input: VenueCompletenessGateInput<TExtraction>
 ): Promise<VenueCompletenessGateResult<TExtraction>> {
-  const maxAttempts = input.maxAttempts ?? MAX_EXTRACTION_ATTEMPTS;
+  // ⚠️ 下限 1。0 以下を渡されるとループが 1 度も回らず `extraction` が未代入のまま
+  //    返り、下流が undefined を掴む (definite assignment assertion が隠してしまう)。
+  //    抽出はゲートの有無に関わらず必ず 1 回は必要なので、ここで担保する。
+  const maxAttempts = Math.max(1, input.maxAttempts ?? MAX_EXTRACTION_ATTEMPTS);
 
   const measurability = assessMeasurability(input.rawHtml);
   if (!measurability.measurable) {

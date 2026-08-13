@@ -248,6 +248,19 @@ describe('runVenueCompletenessGate', () => {
     });
   });
 
+  // ★ 抽出はゲートの有無に関わらず必ず 1 回は必要。0 以下でループが回らないと
+  //   `extraction` が未代入で返り、下流が undefined を掴む。
+  it('maxAttempts が 0 以下でも 1 回は抽出する', async () => {
+    const { verdict, calls } = await runGate(
+      TWO_VENUE_PAGE,
+      [eventData([OCCURRENCE_SHIBUYA, OCCURRENCE_OSAKA])],
+      { maxAttempts: 0 }
+    );
+
+    expect(calls).toBe(1);
+    expect(verdict.status).toBe('passed');
+  });
+
   it('抽出が throw したらそのまま伝播させる (握り潰して無音にしない)', async () => {
     await expect(
       runVenueCompletenessGate<FakeExtraction>({
