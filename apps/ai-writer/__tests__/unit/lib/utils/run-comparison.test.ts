@@ -7,8 +7,10 @@ import {
   compareRuns,
   decideVerificationExitCode,
   compareSteps,
+  extractNormalizedOccurrences,
   extractOccurrences,
   formatRunComparison,
+  selectAdoptedRecord,
   venueLabelsOf,
   type RunLog,
 } from '@/lib/utils/run-comparison';
@@ -30,14 +32,26 @@ function record(overrides: Partial<AiCallRecord> & { stepId: AiCallRecord['stepI
   };
 }
 
-/** `detail-extraction` の応答 (Structured Outputs の JSON) を作る。 */
+/**
+ * `detail-extraction` の応答 (Structured Outputs の JSON) を作る。
+ *
+ * ⚠️ `primary_category_slug` / `title_slugs` は `EventDataSchema` の**必須**フィールド。
+ * 実応答は strict mode で必ず含む (2026-08-14 に既存ログ 22 本で確認)。
+ * これを省くと `extractNormalizedOccurrences` が schema 不適合として照合不能を返し、
+ * 「LLM が会場を落とした」ではなく「fixture が実応答の形をしていない」ことを
+ * 測ってしまう。
+ */
 function extractionResponse(venues: { name: string; start?: string | null; end?: string | null }[]): string {
   return JSON.stringify({
     event_data: {
+      primary_category_slug: 'collabo-cafe',
+      title_slugs: ['test-work'],
       occurrences: venues.map((v) => ({
+        venue_slug: null,
         venue_label: v.name,
         starts_on: v.start ?? null,
         ends_on: v.end ?? null,
+        official_url: null,
       })),
     },
   });
@@ -422,7 +436,14 @@ describe('全実行が 0 会場のケース', () => {
       records: [
         record({
           stepId: 'detail-extraction',
-          responseText: JSON.stringify({ event_data: { occurrences: [] } }),
+          // schema 必須フィールドを含める (上記 `extractionResponse` の注記と同じ理由)
+          responseText: JSON.stringify({
+            event_data: {
+              primary_category_slug: 'collabo-cafe',
+              title_slugs: ['test-work'],
+              occurrences: [],
+            },
+          }),
           responseSha256: sha,
         }),
       ],
@@ -455,5 +476,116 @@ describe('全実行が 0 会場のケース', () => {
     ]);
 
     expect(result!.allEmpty).toBe(false);
+  });
+});
+
+/**
+ * 会場の網羅性ゲート (S1-d Phase 3.8 Step A) が入ったことで、`detail-extraction` は
+ * **1 実行で複数レコード**になる。採用されるのは常に最後のレコード。
+ */
+describe('selectAdoptedRecord', () => {
+  it('同一ステップが複数あれば最後のレコードを返す', () => {
+    const records = [
+      record({ stepId: 'detail-extraction', responseText: extractionResponse([{ name: 'A店' }]) }),
+      record({
+        stepId: 'detail-extraction',
+        responseText: extractionResponse([{ name: 'A店' }, { name: 'B店' }]),
+      }),
+    ];
+
+    const adopted = selectAdoptedRecord(records, 'detail-extraction');
+    expect(adopted?.responseText).toContain('B店');
+  });
+
+  // ★ これが `find` との違い。1 回目 (却下された試行) を掴むと、合格した記事を
+  //   不合格と報告してしまう。
+  it('最初のレコードではなく採用されたものを返す', () => {
+    const rejected = record({
+      stepId: 'detail-extraction',
+      responseText: extractionResponse([{ name: 'A店' }]),
+    });
+    const adopted = record({
+      stepId: 'detail-extraction',
+      responseText: extractionResponse([{ name: 'A店' }, { name: 'B店' }]),
+    });
+
+    expect(selectAdoptedRecord([rejected, adopted], 'detail-extraction')).toBe(adopted);
+    expect([rejected, adopted].find((r) => r.stepId === 'detail-extraction')).toBe(rejected);
+  });
+
+  it('間に別ステップが挟まっていても対象ステップだけを見る', () => {
+    const records = [
+      record({ stepId: 'detail-extraction', responseText: extractionResponse([{ name: 'A店' }]) }),
+      record({ stepId: 'title-generation', responseText: '{}' }),
+    ];
+
+    expect(selectAdoptedRecord(records, 'detail-extraction')?.responseText).toContain('A店');
+  });
+
+  it('該当ステップが無ければ undefined', () => {
+    expect(selectAdoptedRecord([record({ stepId: 'title-generation' })], 'detail-extraction'))
+      .toBeUndefined();
+  });
+});
+
+describe('extractNormalizedOccurrences', () => {
+  /** schema 必須フィールドを含む完全な応答。 */
+  function fullResponse(occurrences: unknown[]): string {
+    return JSON.stringify({
+      開催期間: {
+        開始: { 年: '2026年', 日付: '5月14日' },
+        終了: { 年: '2026年', 日付: '7月5日', 未定: false },
+      },
+      event_data: {
+        primary_category_slug: 'collabo-cafe',
+        title_slugs: ['test-work'],
+        occurrences,
+      },
+    });
+  }
+
+  // ★ CLI とパイプラインが同じものを測るための本体。生のままだと
+  //   「欠落 2 件 + 正解に無い会場 1 件」に化ける。
+  it('連結された会場名を分割する (パイプラインと同じ正規化)', () => {
+    const rec = record({
+      stepId: 'detail-extraction',
+      responseText: fullResponse([
+        { venue_slug: null, venue_label: 'A店、B店、C店', starts_on: null, ends_on: null, official_url: null },
+      ]),
+    });
+
+    expect(extractOccurrences(rec)).toEqual({
+      status: 'ok',
+      occurrences: [{ venue_label: 'A店、B店、C店', starts_on: null, ends_on: null }],
+    });
+
+    const normalized = extractNormalizedOccurrences(rec);
+    expect(normalized.status).toBe('ok');
+    if (normalized.status !== 'ok') throw new Error('unreachable');
+    expect(normalized.occurrences.map((o) => o.venue_label)).toEqual(['A店', 'B店', 'C店']);
+    // 欠落していた日付は `開催期間` から補完される
+    expect(normalized.occurrences[0].starts_on).toBe('2026-05-14');
+  });
+
+  it('非 ok の status はそのまま伝える (測れなかったを 0 件に潰さない)', () => {
+    expect(extractNormalizedOccurrences(undefined)).toEqual({ status: 'absent' });
+    expect(
+      extractNormalizedOccurrences(
+        record({ stepId: 'detail-extraction', responseText: '{}', responseTruncated: true })
+      )
+    ).toEqual({ status: 'truncated' });
+  });
+
+  it('event_data が schema 不適合なら理由付きで照合不能にする', () => {
+    const rec = record({
+      stepId: 'detail-extraction',
+      // `primary_category_slug` / `title_slugs` を欠く
+      responseText: JSON.stringify({ event_data: { occurrences: [] } }),
+    });
+
+    const result = extractNormalizedOccurrences(rec);
+    expect(result.status).toBe('unparseable');
+    if (result.status !== 'unparseable') throw new Error('unreachable');
+    expect(result.reason).toContain('EventDataSchema に不適合');
   });
 });

@@ -50,7 +50,9 @@ import {
 import {
   decideVerificationExitCode,
   describeExtractionFailure,
+  extractNormalizedOccurrences,
   extractOccurrences,
+  selectAdoptedRecord,
   type OccurrenceExtraction,
   type VerificationOutcome,
 } from '../lib/utils/run-comparison';
@@ -93,13 +95,26 @@ function parseArgs(): Args {
  * 1 行の破損で main の catch に落ち、`exit 1` が「本物の不一致を見つけた」と
  * 区別できなくなる。本スクリプトは CI から終了コードで判定される前提のため致命的。
  */
-function readOccurrences(jsonlPath: string): OccurrenceExtraction {
+function readOccurrences(jsonlPath: string): {
+  /** 判定に使う値。パイプラインが frontmatter へ書くのと同じ正規化を通したもの */
+  normalized: OccurrenceExtraction;
+  /** LLM が返したままの値。正規化との差を表示するためだけに使う */
+  raw: OccurrenceExtraction;
+} {
   const { runLog, brokenLineCount } = readRunLog(jsonlPath);
   if (brokenLineCount > 0) {
     console.warn(`⚠️ ${basename(jsonlPath)}: ${brokenLineCount} 行を parse できませんでした`);
   }
 
-  return extractOccurrences(runLog.records.find((r) => r.stepId === 'detail-extraction'));
+  // ⚠️ `find` ではなく `selectAdoptedRecord`。会場の網羅性ゲートが入ったことで
+  //    `detail-extraction` は 1 実行で最大 3 レコードになり、`find` は
+  //    **却下された 1 回目**を掴む (S1-d Phase 3.8 Step A)。
+  const record = selectAdoptedRecord(runLog.records, 'detail-extraction');
+
+  return {
+    normalized: extractNormalizedOccurrences(record),
+    raw: extractOccurrences(record),
+  };
 }
 
 async function main(): Promise<void> {
@@ -149,7 +164,7 @@ async function main(): Promise<void> {
   let sourceIssueWarned = false;
 
   for (const jsonlPath of againstPaths) {
-    const extraction = readOccurrences(jsonlPath);
+    const { normalized: extraction, raw: rawExtraction } = readOccurrences(jsonlPath);
 
     // ★ 照合できなかったものを「一致」と読ませない。ただし「不一致」とも言わない
     //   (どちらも事実ではない)。CI 用の終了コードは 1 にする — 観測が欠けている状態を
@@ -165,6 +180,16 @@ async function main(): Promise<void> {
 
     const result = compareWithSource(truth, extraction.occurrences);
     outcomes.push({ passed: result.passed });
+
+    // ★ パイプラインは正規化後の occurrences を frontmatter へ書き、ゲートも
+    //   その値で判定する。生との差 (「A店、B店」の分割等) が出た実行は、
+    //   生のまま数えると欠落・捏造に化けるので明示する。
+    if (rawExtraction.status === 'ok' && rawExtraction.occurrences.length !== extraction.occurrences.length) {
+      console.log(
+        `  ℹ️ 正規化: 生 ${rawExtraction.occurrences.length} 件 → ${extraction.occurrences.length} 件` +
+          ' (連結された会場名の分割・重複除去)'
+      );
+    }
     // 正解データは全実行で共通なので警告は 1 回だけ
     if (!sourceIssueWarned) sourceIssueWarned = warnOnceForSourceIssues(result);
 

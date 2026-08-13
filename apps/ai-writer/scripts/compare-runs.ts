@@ -40,7 +40,8 @@ import {
   compareRuns,
   formatRunComparison,
   describeExtractionFailure,
-  extractOccurrences,
+  extractNormalizedOccurrences,
+  selectAdoptedRecord,
   venueLabelsOf,
   type OccurrenceExtraction,
   type RunLog,
@@ -96,7 +97,11 @@ function loadRunLog(path: string): RunLog {
  * 扱うと、観測の欠損が系統的失敗に化ける (`run-comparison.ts` の説明を参照)。
  */
 function readOccurrences(run: RunLog): OccurrenceExtraction {
-  return extractOccurrences(run.records.find((r) => r.stepId === 'detail-extraction'));
+  // ⚠️ `find` ではなく `selectAdoptedRecord`。会場の網羅性ゲートが入ったことで
+  //    `detail-extraction` は 1 実行で最大 3 レコードになり、`find` は
+  //    **却下された 1 回目**を掴む (S1-d Phase 3.8 Step A)。
+  //    正規化もパイプラインと揃える (判定が食い違わないように)。
+  return extractNormalizedOccurrences(selectAdoptedRecord(run.records, 'detail-extraction'));
 }
 
 async function main(): Promise<void> {

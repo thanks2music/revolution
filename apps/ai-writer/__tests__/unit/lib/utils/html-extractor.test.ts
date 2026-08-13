@@ -260,7 +260,7 @@ describe('extractContentHtml', () => {
   it('セレクタが命中すればその innerHTML を返す', async () => {
     mockFetchHtml(PAGE_WITH_MAIN);
 
-    const html = await extractContentHtml('https://example.com/');
+    const { compacted: html } = await extractContentHtml('https://example.com/');
 
     expect(html).toContain('main 要素の本文です。');
     // セレクタ経路では main の中身だけを返すため、外枠は入らない
@@ -273,7 +273,7 @@ describe('extractContentHtml', () => {
   it('フォールバック経路では head 情報を保持したまま外枠を落とす', async () => {
     mockFetchHtml(PAGE_WITH_CHROME);
 
-    const html = await extractContentHtml('https://example.com/');
+    const { compacted: html } = await extractContentHtml('https://example.com/');
 
     // head 情報が残っていること
     expect(html).toContain('<title>「STAR WARS」CAFE</title>');
@@ -301,7 +301,7 @@ describe('extractContentHtml', () => {
     );
     mockFetchHtml(html);
 
-    const result = await extractContentHtml('https://example.com/');
+    const { compacted: result } = await extractContentHtml('https://example.com/');
 
     expect(result).toContain('og:title');
     expect(result).toContain('name="description"');
@@ -311,5 +311,44 @@ describe('extractContentHtml', () => {
     mockFetchHtml('<html><body>404</body></html>', { ok: false, status: 404 });
 
     await expect(extractContentHtml('https://example.com/missing')).rejects.toThrow(/404/);
+  });
+
+  /**
+   * 🔴 会場の網羅性ゲート (S1-d Phase 3.8 Step A) の生命線。
+   *
+   * `raw` はフェッチした**ページ全体をそのまま**返さなければならない。加工すると
+   * class 属性やブロック構造が失われ、`SITE_PROFILES` のセレクタが効かなくなって
+   * 全サイト `unsupported` = ゲートが黙って無効化される。
+   */
+  describe('raw (圧縮前 HTML)', () => {
+    it('セレクタ命中経路でもフェッチ生文字列を返す (ブロックを絞らない)', async () => {
+      mockFetchHtml(PAGE_WITH_MAIN);
+
+      const { raw } = await extractContentHtml('https://example.com/');
+
+      expect(raw).toBe(PAGE_WITH_MAIN);
+    });
+
+    it('フォールバック経路でもフェッチ生文字列を返す', async () => {
+      mockFetchHtml(PAGE_WITH_CHROME);
+
+      const { raw } = await extractContentHtml('https://example.com/');
+
+      expect(raw).toBe(PAGE_WITH_CHROME);
+    });
+
+    // ★ `selectMainContent` は `$` を破壊的に変更する。raw をそこから作ろうとすると
+    //   外枠が落ちた HTML になるため、`fullHtml` を持ち回っていることを確かめる。
+    it('外枠を除去した compacted とは別物である', async () => {
+      mockFetchHtml(PAGE_WITH_CHROME);
+
+      const { compacted, raw } = await extractContentHtml('https://example.com/');
+
+      expect(raw).toContain('class=');
+      expect(compacted).not.toContain('class=');
+      // compacted 側では外枠が落ちている
+      expect(raw).toContain('TOKYO INFO');
+      expect(compacted).not.toContain('TOKYO INFO');
+    });
   });
 });

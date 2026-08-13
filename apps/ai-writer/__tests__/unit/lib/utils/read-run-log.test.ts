@@ -80,3 +80,54 @@ describe('readRunLog', () => {
     expect(brokenLineCount).toBe(2);
   });
 });
+
+/**
+ * 🔴 会場の網羅性ゲート (S1-d Phase 3.8 Step A) の判定行を AI 呼び出しと分離する。
+ *
+ * 混ざると `selectAdoptedRecord(records, 'detail-extraction')` が判定行を掴み、
+ * `responseText` を持たないため `extractOccurrences` が `absent` を返して
+ * **CLI が「測れなかった」と誤報し exit 1 になる**。
+ */
+describe('pipeline-event 行の分離', () => {
+  const gateEventLine = JSON.stringify({
+    kind: 'pipeline-event',
+    runId: 'run-01',
+    seq: 2,
+    ts: '2026-08-14T00:00:00.000Z',
+    event: 'venue-completeness-gate',
+    relatedStepId: 'detail-extraction',
+    payload: { status: 'passed', attemptCount: 2 },
+  });
+
+  it('records には混ぜず events へ振り分ける', async () => {
+    const p = await writeJsonl('run.jsonl', [validLine, gateEventLine]);
+
+    const { runLog, events, brokenLineCount } = readRunLog(p);
+
+    expect(runLog.records).toHaveLength(1);
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toBe('venue-completeness-gate');
+    expect(brokenLineCount).toBe(0);
+  });
+
+  // ⚠️ 判定行は `stepId` というキーを持たない (`relatedStepId` を使う)。
+  //    分離に漏れがあっても照合ツールに拾われないようにする二重の防御。
+  it('判定行は stepId キーを持たない', async () => {
+    const p = await writeJsonl('run.jsonl', [gateEventLine]);
+
+    const { events } = readRunLog(p);
+
+    expect(events[0]).not.toHaveProperty('stepId');
+    expect(events[0].relatedStepId).toBe('detail-extraction');
+  });
+
+  // ★ 2026-08-14 より前のログには `kind` が無い。必須にすると既存ログが全滅する。
+  it('kind の無い行は AI 呼び出しとして読む (既存ログの後方互換)', async () => {
+    const p = await writeJsonl('run.jsonl', [validLine]);
+
+    const { runLog, events } = readRunLog(p);
+
+    expect(runLog.records).toHaveLength(1);
+    expect(events).toHaveLength(0);
+  });
+});

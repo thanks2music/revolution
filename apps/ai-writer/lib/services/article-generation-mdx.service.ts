@@ -23,8 +23,14 @@ import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
-import { extractEventFactCardFields, toIsoDate } from '../utils/event-fact-card-mapper';
-import { normalizeOccurrences } from '../utils/occurrence-normalizer';
+import { recordPipelineEvent } from '../ai/observability/ai-call-recorder';
+import { parseAndNormalizeEventData } from '../utils/event-data-normalization';
+import { extractEventFactCardFields } from '../utils/event-fact-card-mapper';
+import {
+  MAX_EXTRACTION_ATTEMPTS,
+  runVenueCompletenessGate,
+  type VenueGateVerdict,
+} from '../utils/venue-completeness-gate';
 import { deriveStoreContext } from '../utils/store-derivation';
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
@@ -351,16 +357,80 @@ export class ArticleGenerationMdxService {
         try {
           // 公式サイトのHTMLを1回だけ取得（content-generation step と image-upload-r2 step で再利用）
           console.log('公式サイトURLからHTML取得中:', selectionResult.primary_official_url);
-          officialHtml = await extractContentHtml(selectionResult.primary_official_url);
-          console.log('公式サイトHTML取得完了:', officialHtml.length, 'bytes');
+          // ⚠️ `raw` (圧縮前) は会場の網羅性ゲート専用。LLM へ渡すのは `compacted` だけ
+          //    (圧縮は class 属性を全て落とすため、raw でないと会場ブロックを認識できない)。
+          const contentHtml = await extractContentHtml(selectionResult.primary_official_url);
+          officialHtml = contentHtml.compacted;
+          console.log(
+            '公式サイトHTML取得完了:',
+            officialHtml.length,
+            'bytes (圧縮前',
+            contentHtml.raw.length,
+            'bytes)'
+          );
 
           // ExtractionService で詳細情報を抽出
+          //
+          // ★ 会場の網羅性ゲート (S1-d Phase 3.8 Step A) を通す。occurrences は
+          //   同一入力でも確率的に落ちるため (conan-cafe.jp で 10/8/10/8)、公式サイトの
+          //   正解データと照合し、会場が欠けていれば再抽出する。
+          //   ⚠️ 照合には**圧縮前**の `contentHtml.raw` を渡す (圧縮は class 属性を
+          //     全て落とすため、compacted を渡すと全サイト unsupported になり
+          //     ゲートが黙って無効化される)。
           const extractionService = new ExtractionService();
-          detailedExtraction = await extractionService.extractFromOfficialSite({
-            primary_official_url: selectionResult.primary_official_url,
-            page_content: officialHtml,
-            official_urls: selectionResult.official_urls,
+          const primaryOfficialUrl = selectionResult.primary_official_url;
+          const officialUrls = selectionResult.official_urls;
+          const llmInput = officialHtml;
+
+          const gateResult = await runVenueCompletenessGate({
+            rawHtml: contentHtml.raw,
+            llmInputChars: llmInput.length,
+            runAttempt: async (attempt, previous) => {
+              if (attempt > 1) {
+                console.warn(
+                  `${getStepContext('detail-extraction', '会場網羅性')} ⚠️ 会場が ${previous?.missingVenues.length ?? 0} 件欠落したため再抽出します ` +
+                    `(${attempt}/${MAX_EXTRACTION_ATTEMPTS} 回目): ${previous?.missingVenues.join(', ') ?? ''}`
+                );
+              }
+              const result = await extractionService.extractFromOfficialSite({
+                primary_official_url: primaryOfficialUrl,
+                page_content: llmInput,
+                official_urls: officialUrls,
+                // ⚠️ 観測ログ専用。プロンプトへは渡らない (自己成就の防止)
+                observationContext: {
+                  venueGateAttempt: attempt,
+                  venueGatePrevious: previous,
+                },
+              });
+
+              // ★ コストはここで記録する。ループの外に置くと**再試行分が計上されない**
+              //   (採用された最後の 1 回しか数えられない)。
+              if (result.model && result.usage) {
+                costTracker.recordUsage('detail-extraction', result.model, result.usage);
+              }
+              return result;
+            },
+            getEventData: (extraction) => extraction.event_data,
+            getPeriod: (extraction) => extraction.開催期間,
           });
+
+          detailedExtraction = gateResult.extraction;
+
+          // ★ 判定は必ず 3 経路へ出す。観測ログ (JSONL) は本番では無効なので、
+          //   console と skipReason だけが本番で残る唯一の痕跡になる。
+          logVenueGateVerdict(gateResult.verdict);
+          await recordVenueGateVerdict(gateResult.verdict, primaryOfficialUrl);
+
+          if (gateResult.verdict.status === 'failed') {
+            console.error(
+              `❌ ${getStepContext('detail-extraction', '会場網羅性')} ${gateResult.verdict.skipReason}`
+            );
+            return {
+              success: false,
+              skipped: true,
+              skipReason: gateResult.verdict.skipReason,
+            };
+          }
 
           console.log('詳細抽出結果:', {
             // 新構造（複数作品コラボ対応 v1.2.0）
@@ -378,14 +448,8 @@ export class ArticleGenerationMdxService {
             略称: detailedExtraction.略称,
           });
 
-          // コストを記録
-          if (detailedExtraction.model && detailedExtraction.usage) {
-            costTracker.recordUsage(
-              'detail-extraction',
-              detailedExtraction.model,
-              detailedExtraction.usage
-            );
-          }
+          // ★ コストの記録は `runAttempt` の中で試行ごとに済ませている。
+          //   ここで再度記録すると採用された試行だけ二重計上になる。
         } catch (extractionError) {
           console.error('❌ 公式サイトからの詳細抽出に失敗しました:', extractionError);
           // 必須フィールドが取得できない場合は記事生成を中止
@@ -872,41 +936,35 @@ export class ArticleGenerationMdxService {
       // ★ occurrences の正規化もここへ前倒しする。従来は mdx-assembly まで待って
       //   いたが、リード文と本文はそれより前に生成されるため間に合わない。
       //   正規化結果は mdx-assembly でも再利用する (二重に走らせない)。
+      //
+      // ★ parse + 正規化の実体は `parseAndNormalizeEventData` に集約している。
+      //   会場の網羅性ゲート (detail-extraction) と照合 CLI も同じ関数を通すため、
+      //   ここで別実装を書くと「ゲートは通ったのに記事は別の occurrences」になる。
       const parsedEventDataResult = (() => {
-        const raw = detailedExtraction?.event_data;
-        if (raw === undefined) return undefined;
-        const parsed = EventDataSchema.safeParse(raw);
-        if (!parsed.success) {
-          console.warn(
-            `${getStepContext('lead-generation', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
-            parsed.error.issues.slice(0, 3),
-          );
-          return undefined;
-        }
-        // ★ 多開催の正規化。プロンプトで「会場ごとに 1 要素」と指示していても
-        //   LLM が連結に回帰しうるため、アプリ側でも防御的に分割する
-        //   (`store-name-validator.ts` と同じ設計思想)。年跨ぎの終了年省略も補正。
-        const normalized = normalizeOccurrences({
-          occurrences: parsed.data.occurrences,
+        const result = parseAndNormalizeEventData({
+          rawEventData: detailedExtraction?.event_data,
+          period: detailedExtraction?.開催期間,
           // ★ 解決済みの `prefectures` を使う (claude[bot] 指摘 2026-08-09)。
           //   生の `開催都道府県` は JP_PREFECTURE 辞書との照合前で、表記揺れや
           //   ハルシネーションが混ざりうる。frontmatter は解決済みを書くため、
           //   ここで生値を使うと**同じ記事で参照するデータ源が割れる**。
           prefectures,
-          fallbackPeriod: {
-            startsOn: toIsoDate(detailedExtraction?.開催期間?.開始) ?? null,
-            endsOn:
-              detailedExtraction?.開催期間?.終了?.未定 === true
-                ? null
-                : (toIsoDate(detailedExtraction?.開催期間?.終了) ?? null),
-          },
         });
-        for (const warning of normalized.warnings) {
+
+        if (result.status === 'absent') return undefined;
+        if (result.status === 'invalid') {
+          console.warn(
+            `${getStepContext('lead-generation', 'event_data')} ⚠️ プロンプト応答の event_data が EventDataSchema に不適合、undefined として扱い:`,
+            result.issues,
+          );
+          return undefined;
+        }
+        for (const warning of result.warnings) {
           console.warn(
             `${getStepContext('lead-generation', 'event_data')} ⚠️ occurrences 正規化: ${warning}`,
           );
         }
-        return { ...parsed.data, occurrences: normalized.occurrences } satisfies EventData;
+        return result.eventData;
       })();
 
       // 種別の見出し表記。**「カフェ」をハードコードしない** — pop-up-store や
@@ -1831,6 +1889,75 @@ export class ArticleGenerationMdxService {
       errors,
     };
   }
+}
+
+/**
+ * 会場の網羅性ゲートの判定を **console へ** 出す。
+ *
+ * ⚠️ 観測ログ (JSONL) は `NODE_ENV === 'production'` で無効なので、本番で残るのは
+ * ここと `skipReason` だけになる。素通りさせたケース (`unmeasured`) も必ず出す —
+ * 「判定していない」ことが見えないと、ゲートが機能していると誤解する。
+ */
+function logVenueGateVerdict(verdict: VenueGateVerdict): void {
+  const ctx = getStepContext('detail-extraction', '会場網羅性');
+
+  if (verdict.status === 'unmeasured') {
+    console.warn(
+      `${ctx} ⚠️ 判定なしで通過 (正解データを作れず): ${verdict.reason}。` +
+        `この記事の occurrences は網羅性を検証していません`
+    );
+    return;
+  }
+
+  const latest = verdict.attempts[verdict.attempts.length - 1];
+  const summary =
+    `正解 ${latest.expectedCount} / 抽出 ${latest.actualUniqueCount} 会場` +
+    ` (${verdict.attempts.length} 回試行)`;
+
+  if (verdict.status === 'passed') {
+    console.log(`${ctx} ✅ 会場が揃いました: ${summary}`);
+  } else {
+    console.error(`${ctx} 🔴 ${verdict.kind}: ${summary}`);
+  }
+
+  // ゲートしない指摘も必ず出す。停止させないだけで、無視してよい訳ではない
+  for (const attempt of verdict.attempts) {
+    const notes = [
+      attempt.fabricatedVenues.length > 0 && `正解に無い会場: ${attempt.fabricatedVenues.join(', ')}`,
+      attempt.periodMismatches.length > 0 && `期間の不一致: ${attempt.periodMismatches.join(', ')}`,
+      attempt.duplicateVenues.length > 0 && `会場名の重複: ${attempt.duplicateVenues.join(', ')}`,
+      attempt.unmeasuredPeriodVenues.length > 0 &&
+        `期間を照合できず: ${attempt.unmeasuredPeriodVenues.join(', ')}`,
+    ].filter((n): n is string => typeof n === 'string');
+
+    if (notes.length > 0) {
+      console.warn(`${ctx} ⚠️ 試行 ${attempt.attempt} (停止させない指摘): ${notes.join(' / ')}`);
+    }
+  }
+}
+
+/** 会場の網羅性ゲートの判定を観測ログ (JSONL) へ 1 行追記する。 */
+async function recordVenueGateVerdict(
+  verdict: VenueGateVerdict,
+  officialUrl: string
+): Promise<void> {
+  await recordPipelineEvent({
+    event: 'venue-completeness-gate',
+    relatedStepId: 'detail-extraction',
+    payload: {
+      officialUrl,
+      status: verdict.status,
+      ...(verdict.status === 'unmeasured'
+        ? { reason: verdict.reason, truthStatus: verdict.truthStatus }
+        : {
+            attemptCount: verdict.attempts.length,
+            attempts: verdict.attempts,
+            ...(verdict.status === 'failed'
+              ? { kind: verdict.kind, missingVenues: verdict.missingVenues }
+              : {}),
+          }),
+    },
+  });
 }
 
 export default ArticleGenerationMdxService;

@@ -62,6 +62,18 @@ export interface ExtractionRequest {
    * 必要性を確かめる。
    */
   official_urls?: string[];
+  /**
+   * 観測ログ (`AiCallRecord.context`) へそのまま載せる追加情報。
+   *
+   * ⚠️ **プロンプトへ混ぜてはならない。** 呼び出し側 (会場の網羅性ゲート) は
+   * ここに「試行回数」と「前回の照合結果」を入れるが、それは**抽出の答え合わせ**
+   * であって入力ではない。プロンプトへ渡すとゲートが自己成就し、以後この指標は
+   * 何も測らなくなる。
+   *
+   * 本サービスが `source-truth-extractor` を import しないのも同じ理由で、
+   * 測る側と測られる側を結合させないため opaque な `Record` で受ける。
+   */
+  observationContext?: Record<string, unknown>;
 }
 
 /**
@@ -372,6 +384,8 @@ export class ExtractionService {
           unusedUrls,
           inputHtmlChars: request.page_content.length,
           inputHtmlSha256,
+          // ⚠️ 観測専用。プロンプト (`prompt` 変数) には一切入っていない
+          ...request.observationContext,
         },
       });
 
