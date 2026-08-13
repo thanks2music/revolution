@@ -384,8 +384,11 @@ export class ExtractionService {
           unusedUrls,
           inputHtmlChars: request.page_content.length,
           inputHtmlSha256,
-          // ⚠️ 観測専用。プロンプト (`prompt` 変数) には一切入っていない
-          ...request.observationContext,
+          // ⚠️ 観測専用。プロンプト (`prompt` 変数) には一切入っていない。
+          //    **同階層へ spread しない** — 呼び出し元が `inputHtmlSha256` 等と同名の
+          //    キーを積むと既存のログフィールドを黙って上書きする
+          //    (claude[bot] 3 巡目指摘、2026-08-14 採用)。
+          ...(request.observationContext ? { observation: request.observationContext } : {}),
         },
       });
 
