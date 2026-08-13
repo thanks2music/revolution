@@ -292,9 +292,15 @@ export function extractNormalizedOccurrences(
     case 'ok':
       return { status: 'ok', occurrences: normalized.occurrences };
     case 'absent':
-      // `event_data` キーが無い応答は `extractOccurrences` が既に弾いている。
-      // ここに来るのは `event_data: undefined` を明示した場合のみで、0 件と同義。
-      return { status: 'ok', occurrences: [] };
+      // 🔴 **0 件に潰さない。** `event_data` キーが応答に無いのは「測れた上で 0 件」
+      //    ではなく **wire format が違う** = 測れていない。`extractOccurrences` も
+      //    同じ理由・同じ文面で `unparseable` を返しており、ここだけ緩めると
+      //    「測れなかった」が「0 会場だった」として比較や照合へ混入する。
+      //
+      //    ⚠️ 二重 parse を解消した際 (claude[bot] 2 巡目 #2 の対応) に
+      //    `extractOccurrences` の呼び出しを外したことで、「前段が弾いてくれる」と
+      //    いう前提が崩れたまま本分岐が残っていた (同 4 巡目で指摘・是正)。
+      return { status: 'unparseable', reason: 'event_data キーが応答に存在しない' };
     case 'invalid':
       return {
         status: 'unparseable',

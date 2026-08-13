@@ -576,6 +576,36 @@ describe('extractNormalizedOccurrences', () => {
     ).toEqual({ status: 'truncated' });
   });
 
+  // 🔴 claude[bot] 5 巡目指摘 (2026-08-14 採用)。二重 parse を解消した際に
+  //   `extractOccurrences` の呼び出しを外したため「前段が弾く」前提が崩れ、
+  //   キー欠落が `{ status: 'ok', occurrences: [] }` に潰れていた。
+  //   **「測れなかった」を「0 件だった」に変換する**のは本モジュールの主張そのものへの違反。
+  it('event_data キーが応答に無い場合は 0 件に潰さず照合不能にする', () => {
+    const rec = record({
+      stepId: 'detail-extraction',
+      responseText: JSON.stringify({ 作品名: 'X', 開催期間: {} }), // event_data キーが無い
+    });
+
+    const result = extractNormalizedOccurrences(rec);
+    expect(result.status).toBe('unparseable');
+    if (result.status !== 'unparseable') throw new Error('unreachable');
+    expect(result.reason).toContain('event_data キーが応答に存在しない');
+  });
+
+  // ★ 生 wire 版と正規化版で wire format の失敗判定がズレていないことを固定する。
+  //   片方だけ緩いと、CLI の表示 (生) と判定 (正規化) が食い違う。
+  it('wire format の失敗判定は extractOccurrences と一致する', () => {
+    const cases = [
+      JSON.stringify({ 作品名: 'X' }), // event_data キーなし
+      '{ not json',
+    ];
+
+    for (const responseText of cases) {
+      const rec = record({ stepId: 'detail-extraction', responseText });
+      expect(extractNormalizedOccurrences(rec).status).toBe(extractOccurrences(rec).status);
+    }
+  });
+
   it('event_data が schema 不適合なら理由付きで照合不能にする', () => {
     const rec = record({
       stepId: 'detail-extraction',

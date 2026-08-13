@@ -27,7 +27,6 @@ import { recordPipelineEvent } from '../ai/observability/ai-call-recorder';
 import { parseAndNormalizeEventData } from '../utils/event-data-normalization';
 import { extractEventFactCardFields } from '../utils/event-fact-card-mapper';
 import {
-  MAX_EXTRACTION_ATTEMPTS,
   runVenueCompletenessGate,
   type VenueGateVerdict,
 } from '../utils/venue-completeness-gate';
