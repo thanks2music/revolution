@@ -314,6 +314,15 @@ export interface PeriodReading {
  * 抽出結果を失格にするより、「照合できない」と申告する方が安全 (`unmeasuredPeriodVenues`
  * は `passed` に含めない)。逆向きに倒すには profile ごとの期間セレクタが必要になるが、
  * それは実測で棄却された経路 (上記 `SITE_PROFILES` の docstring 参照)。
+ *
+ * ⚠️ **`TRAILING_DATE` はブロック末尾まで走査する。** そのため会場ブロックに周辺コピーが
+ * 多いサイトでは、真の open-ended でも離れた位置の無関係な日付 (予約開始日・更新日等) を
+ * 拾って `unreadable` に倒れうる。**走査窓を狭める / 文の区切りで打ち切るといった対策は
+ * 現時点では入れない** — 実測 5 サイト 18 会場にその形の入力が 1 件も無く、**サンプル無しで
+ * ヒューリスティクスを足すのは `SITE_PROFILES` に定めた「追加は実測に基づくものだけ」に
+ * 反する**ため。**Sprint E で profile を増やす際に実データで再評価する** (そこが顕在化
+ * しうる最初の地点。claude[bot] が PR #300 で同じ懸念を指摘し、follow-up note を残す
+ * 判断で合意している)。
  */
 export function readPeriod(blockText: string): PeriodReading {
   const text = norm(blockText) ?? '';
