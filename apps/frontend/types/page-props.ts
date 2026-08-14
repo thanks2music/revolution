@@ -34,26 +34,6 @@ export type ArticlePageParams = {
 };
 
 /**
- * Article page params for new route structure
- *
- * @description
- * Used in /[event_type]/[work_slug]/[slug] route
- *
- * @example
- * // URL: /collabo-cafe/sample-work/01kafsdmvd
- * {
- *   event_type: 'collabo-cafe',
- *   work_slug: 'sample-work',
- *   slug: '01kafsdmvd'
- * }
- */
-export type ArticlePageParamsNew = {
-  event_type: string;
-  work_slug: string;
-  slug: string;
-};
-
-/**
  * Occurrence (開催) detail page params
  *
  * @description
@@ -72,21 +52,15 @@ export type OccurrencePageParams = {
 };
 
 /**
- * Page props for legacy article pages
+ * Page props for article pages
  *
  * @description
- * Used in /articles/[slug]/page.tsx and /articles/[slug]/opengraph-image.tsx
+ * Used in /articles/[slug]/page.tsx and /articles/[slug]/opengraph-image.tsx.
+ * 2026-08-14 の URL 移行で **記事のルートはこれ 1 本のみ**になった
+ * (旧 `/[event_type]/[work_slug]/[slug]` は廃止)。
  */
 export type ArticlePageProps = PageProps<ArticlePageParams>;
 
 /** Page props for the occurrence detail page. */
 export type OccurrencePageProps = PageProps<OccurrencePageParams>;
 
-/**
- * Page props for new article pages
- *
- * @description
- * Used in /[event_type]/[work_slug]/[slug]/page.tsx
- * and /[event_type]/[work_slug]/[slug]/opengraph-image.tsx
- */
-export type ArticlePagePropsNew = PageProps<ArticlePageParamsNew>;

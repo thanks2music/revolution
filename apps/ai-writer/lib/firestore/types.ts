@@ -85,7 +85,7 @@ export interface EventCanonicalKey {
   year: number;
 
   /**
-   * Post ID (10-character ULID)
+   * Post ID (16-char ULID prefix: 10-char timestamp + 6-char randomness)
    * @example "01jcxy4567"
    */
   postId: string;

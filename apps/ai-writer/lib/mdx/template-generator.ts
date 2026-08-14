@@ -82,7 +82,9 @@ export function generateMdxFrontmatter(
     throw new Error('Content fields (title, excerpt, categories) are required');
   }
 
-  // slug is the same as postId (pure 10-character ULID)
+  // slug is the same as postId (16-char ULID prefix: 10-char timestamp + 6-char randomness).
+  // ★ この等式が「記事の公開 URL = post_id」を意味するため、post_id の一意性は
+  //    そのまま URL の一意性である (2026-08-14 に 10 文字 → 16 文字へ、衝突除去)。
   const slug = postId;
 
   const frontmatter: MdxFrontmatter = {

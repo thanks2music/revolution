@@ -1,14 +1,17 @@
 /**
- * Layer1: いいね識別子ヘルパ (buildArticleKey / resolveArticleByKey)
+ * Layer1: 記事 URL といいね識別子 (getArticleUrl / buildArticleKey / resolveArticleByKey)
  *
- * - buildArticleKey: 記事 → favorites.target_key (URL path 連結キー、先頭スラッシュなし)。
- *   getArticleUrl と同じ正規化ルール (3 セグメント / レガシー articles/{slug})。
- * - resolveArticleByKey: target_key → 記事 (逆引き、3 つ揃いで一意特定、レガシー fallback)。
+ * ## 2026-08-14 の URL 移行を反映
+ *
+ * 旧設計は `/{event_type}/{work_slug}/{slug}` の 3 セグメント + レガシー
+ * `articles/{slug}` フォールバックの 2 系統だった。**移行後は
+ * `/articles/{post_id}` の 1 本のみ**で、`event_type` / `work_slug` は
+ * URL にもキーにも現れない。
  *
  * 純粋関数のため I/O を持たず、記事配列はテスト内で組み立てる。
  */
 
-import { buildArticleKey, resolveArticleByKey } from '@/lib/mdx/article-url';
+import { buildArticleKey, getArticleUrl, resolveArticleByKey } from '@/lib/mdx/article-url';
 import type { ArticleIndexItem } from '@/lib/mdx/article-types';
 
 function makeArticle(overrides: Partial<ArticleIndexItem>): ArticleIndexItem {
@@ -27,143 +30,101 @@ function makeArticle(overrides: Partial<ArticleIndexItem>): ArticleIndexItem {
   };
 }
 
-describe('buildArticleKey', () => {
-  it('builds event_type/work_slug/slug for a normal nested article', () => {
+describe('getArticleUrl', () => {
+  it('always builds /articles/{slug}', () => {
+    expect(getArticleUrl(makeArticle({ slug: '01jcxy4567znp2f5' }))).toBe(
+      '/articles/01jcxy4567znp2f5',
+    );
+  });
+
+  it('ignores event_type and work_slug (they are no longer part of the URL)', () => {
+    // 旧設計ではこれが `/collabo-cafe/kusuriyanohitorigoto/abc` になっていた。
     const article = makeArticle({
-      slug: 'dry-run-1',
+      slug: 'abc',
       event_type: 'collabo-cafe',
       work_slug: 'kusuriyanohitorigoto',
     });
-    expect(buildArticleKey(article)).toBe('collabo-cafe/kusuriyanohitorigoto/dry-run-1');
+    expect(getArticleUrl(article)).toBe('/articles/abc');
+  });
+});
+
+describe('buildArticleKey', () => {
+  it('always builds articles/{slug}', () => {
+    expect(buildArticleKey(makeArticle({ slug: 'abc' }))).toBe('articles/abc');
   });
 
-  it('falls back to articles/{slug} when event_type is null', () => {
-    const article = makeArticle({ slug: 'legacy-1', event_type: null, work_slug: null });
-    expect(buildArticleKey(article)).toBe('articles/legacy-1');
-  });
-
-  it("falls back to articles/{slug} when event_type === 'articles'", () => {
-    const article = makeArticle({ slug: 'legacy-2', event_type: 'articles', work_slug: 'x' });
-    expect(buildArticleKey(article)).toBe('articles/legacy-2');
-  });
-
-  it('falls back to articles/{slug} when work_slug is null', () => {
-    const article = makeArticle({ slug: 'legacy-3', event_type: 'collabo-cafe', work_slug: null });
-    expect(buildArticleKey(article)).toBe('articles/legacy-3');
-  });
-
-  it('produces the same string as getArticleUrl minus the leading slash', () => {
+  it('ignores event_type and work_slug', () => {
     const article = makeArticle({
       slug: 'abc',
       event_type: 'pop-up-store',
       work_slug: 'chainsaw-man',
     });
-    // getArticleUrl は /pop-up-store/chainsaw-man/abc を返す
-    expect(`/${buildArticleKey(article)}`).toBe('/pop-up-store/chainsaw-man/abc');
+    expect(buildArticleKey(article)).toBe('articles/abc');
+  });
+
+  it('stays equal to getArticleUrl minus the leading slash', () => {
+    // URL とキーを 1 つの正規化ルールに集約する、という設計意図の維持を固定する。
+    const article = makeArticle({ slug: 'abc', event_type: 'collabo-cafe', work_slug: 'w' });
+    expect(`/${buildArticleKey(article)}`).toBe(getArticleUrl(article));
   });
 });
 
 describe('resolveArticleByKey', () => {
-  const nested = makeArticle({
-    slug: 'dup',
-    event_type: 'collabo-cafe',
-    work_slug: 'work-a',
-    filePath: 'a/dup.mdx',
-  });
-  // 同じ slug 'dup' を別 work で持つ記事 (slug 単独一意でないケース)
-  const nestedSameSlug = makeArticle({
-    slug: 'dup',
-    event_type: 'pop-up-store',
-    work_slug: 'work-b',
-    filePath: 'b/dup.mdx',
-  });
-  const legacy = makeArticle({
-    slug: 'legacy-1',
-    event_type: null,
-    work_slug: null,
-    filePath: 'legacy/legacy-1.mdx',
-  });
-  const articles = [nested, nestedSameSlug, legacy];
+  const a = makeArticle({ slug: 'aaa', filePath: 'a/aaa.mdx' });
+  const b = makeArticle({ slug: 'bbb', filePath: 'b/bbb.mdx' });
+  const articles = [a, b];
 
-  it('resolves a nested article by its full 3-segment key', () => {
-    const key = buildArticleKey(nested);
-    expect(resolveArticleByKey(key, articles)).toBe(nested);
-  });
-
-  it('distinguishes two articles sharing the same slug (uses full key, not slug alone)', () => {
-    expect(resolveArticleByKey(buildArticleKey(nested), articles)).toBe(nested);
-    expect(resolveArticleByKey(buildArticleKey(nestedSameSlug), articles)).toBe(nestedSameSlug);
-  });
-
-  it('resolves a legacy article by articles/{slug}', () => {
-    expect(resolveArticleByKey('articles/legacy-1', articles)).toBe(legacy);
+  it('resolves an article by its key', () => {
+    expect(resolveArticleByKey(buildArticleKey(a), articles)).toBe(a);
+    expect(resolveArticleByKey('articles/bbb', articles)).toBe(b);
   });
 
   it('returns null for an unknown key', () => {
-    expect(resolveArticleByKey('collabo-cafe/work-a/does-not-exist', articles)).toBeNull();
+    expect(resolveArticleByKey('articles/does-not-exist', articles)).toBeNull();
   });
 
   it('returns null for an empty key', () => {
     expect(resolveArticleByKey('', articles)).toBeNull();
   });
 
-  it('returns null for a malformed key', () => {
-    expect(resolveArticleByKey('just-one-segment', articles)).toBeNull();
+  it('returns null for a bare slug without the namespace prefix', () => {
+    // `target_type` があるので `articles/` は冗長だが、現時点では形式の一部。
+    // opaque key 化 (別フィーチャー) で外す予定。
+    expect(resolveArticleByKey('aaa', articles)).toBeNull();
   });
 
-  // 回帰 (#3): legacy 形式キー `articles/{slug}` は、同名 slug を持つ非レガシー
-  // (nested) 記事へ誤解決してはならない。legacy fallback は「対象記事自身が legacy」の
-  // ときだけ slug 一致を許す。
-  describe('namespace strictness — legacy key must not cross into nested articles', () => {
-    it('does not resolve articles/{slug} to a nested article sharing that slug', () => {
-      // nested 記事 (event_type/work_slug あり) が slug 'shared-slug' を持つが、
-      // legacy 記事は存在しないケース。
-      const nestedOnly = makeArticle({
-        slug: 'shared-slug',
-        event_type: 'collabo-cafe',
-        work_slug: 'work-c',
-        filePath: 'c/shared-slug.mdx',
-      });
-      const pool = [nestedOnly];
-      // legacy キー articles/shared-slug は nested 記事へ交差解決せず null。
-      expect(resolveArticleByKey('articles/shared-slug', pool)).toBeNull();
-    });
+  it('returns null for an old 3-segment key', () => {
+    // 旧形式のキーは `favorites` に 1 件も存在しない (staging/production とも 0 件を実測)
+    // ため、解決できないことを仕様として固定する。
+    expect(resolveArticleByKey('collabo-cafe/work-a/aaa', articles)).toBeNull();
+  });
 
-    it('resolves articles/{slug} to the legacy article even when a nested article shares the slug', () => {
-      // 同名 slug 'collide' を、legacy 記事と nested 記事の両方が持つケース。
-      const legacyCollide = makeArticle({
-        slug: 'collide',
-        event_type: null,
-        work_slug: null,
-        filePath: 'legacy/collide.mdx',
-      });
-      const nestedCollide = makeArticle({
-        slug: 'collide',
-        event_type: 'pop-up-store',
-        work_slug: 'work-d',
-        filePath: 'd/collide.mdx',
-      });
-      const pool = [nestedCollide, legacyCollide];
-      // legacy キーは legacy 記事に解決する (nested を先に並べても誤らない)。
-      expect(resolveArticleByKey('articles/collide', pool)).toBe(legacyCollide);
-      // nested キーは nested 記事に解決する (相互に交差しない)。
-      expect(resolveArticleByKey(buildArticleKey(nestedCollide), pool)).toBe(
-        nestedCollide,
-      );
-    });
+  /**
+   * ★ **`slug` の一意性がここで耐荷重になった**ことを明示するテスト。
+   *
+   * 旧設計は URL とキーに `event_type` / `work_slug` を含めていたため、
+   * 「slug 単独はグローバル一意でない (path 配下のみ一意)」という前提で成立していた。
+   * 旧テストには *同じ slug を別 work で持つ 2 記事を区別する* ケースがあった。
+   *
+   * URL が `/articles/{slug}` の 1 本になった今、**同じ slug の 2 記事は同じ URL /
+   * 同じキーになり、区別できない**。つまり `slug` (= `post_id`) の一意性が
+   * URL の一意性そのものになった。
+   *
+   * だからこそ本 PR は `post_id` の衝突除去 (ULID のランダム部を復活させる) を
+   * 同梱している。**片方だけ入れると、同一ミリ秒に生成された 2 記事が同じ URL を
+   * 持ち、いいねも混ざる。**
+   *
+   * 経緯: `one-more-time/docs/schema/favorites-opaque-key-plan.md` §2
+   */
+  it('cannot distinguish two articles sharing a slug (slug uniqueness is now load-bearing)', () => {
+    const dup1 = makeArticle({ slug: 'dup', work_slug: 'work-a', filePath: 'a/dup.mdx' });
+    const dup2 = makeArticle({ slug: 'dup', work_slug: 'work-b', filePath: 'b/dup.mdx' });
 
-    it("treats event_type==='articles' as legacy for the slug fallback", () => {
-      // event_type が 'articles' (work_slug あり) でも buildArticleKey は articles/{slug}
-      // を生成する = legacy 扱い。legacy キーで slug 一致解決できる。
-      const pseudoLegacy = makeArticle({
-        slug: 'pseudo',
-        event_type: 'articles',
-        work_slug: 'ignored',
-        filePath: 'p/pseudo.mdx',
-      });
-      expect(resolveArticleByKey('articles/pseudo', [pseudoLegacy])).toBe(
-        pseudoLegacy,
-      );
-    });
+    // 2 記事のキーが同一になる = 区別できない。
+    expect(buildArticleKey(dup1)).toBe(buildArticleKey(dup2));
+
+    // 逆引きは先に見つかった方を返すだけ。これは実装の欠陥ではなく、
+    // 「slug は一意である」という前提に依存している、という事実。
+    expect(resolveArticleByKey('articles/dup', [dup1, dup2])).toBe(dup1);
   });
 });
