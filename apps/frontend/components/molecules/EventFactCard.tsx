@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { StatusBadge, type EventStatus } from '@/components/atoms/badge/StatusBadge';
+import { isSafeHttpUrl } from '@/lib/url-safety';
 import type { ArticleIndexItem } from '@/lib/mdx/articles';
 
 type Props = {
@@ -24,9 +25,6 @@ const parseLocalDate = (iso: string): Date | null => {
   const fallback = new Date(trimmed);
   return Number.isNaN(fallback.getTime()) ? null : fallback;
 };
-
-/** Allow only http(s) hrefs to defuse `javascript:` / `data:` XSS vectors. */
-const isSafeHttpUrl = (url: string): boolean => /^https?:\/\//i.test(url.trim());
 
 const computeStatus = (
   start?: string,

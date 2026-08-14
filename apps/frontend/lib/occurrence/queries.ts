@@ -1,4 +1,5 @@
 import { OccurrenceViewSchema } from '@revolution/schemas/occurrence';
+import { cache } from 'react';
 import { z } from 'zod';
 
 import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
@@ -149,8 +150,18 @@ export async function listOccurrenceParams(): Promise<
  *
  * `eventId` は URL 由来の文字列なので、数値化に失敗したら**問い合わせずに**
  * null を返す (`/events/abc/...` のような入力で DB へ無駄に投げない)。
+ *
+ * ## `React.cache()` でリクエスト内メモ化する
+ *
+ * 本関数は `generateMetadata` とページ本体の**両方から同じ引数で呼ばれる**。
+ * 1 回の呼び出しで最大 6 クエリ (occurrence / event / venue / titles /
+ * siblings / siblings の会場名) を投げるため、素の関数のままだと DB 往復が倍になる。
+ *
+ * Next.js が自動 dedup するのは `fetch()` であって、supabase-js が内部で何を
+ * 使うかに依存する暗黙の挙動。**同じクラスの問題を `lib/auth/current-user.ts`
+ * で既に踏んで `React.cache()` で直した実績がある**ので、同じ形で明示的に閉じる。
  */
-export async function getOccurrenceDetail(
+export const getOccurrenceDetail = cache(async function getOccurrenceDetail(
   eventIdRaw: string,
   occurrenceSlug: string,
 ): Promise<OccurrencePageData | null> {
@@ -192,12 +203,29 @@ export async function getOccurrenceDetail(
       .from('occurrence_view')
       .select(OCCURRENCE_COLUMNS)
       .eq('event_id', eventId)
-      .neq('slug', occurrenceSlug),
+      .neq('slug', occurrenceSlug)
+      // 明示的に並べる。既定順は PostgREST / DB 任せで、行が増えたときに
+      // 表示順が黙って変わる。日程未発表 (starts_on is null) は末尾へ。
+      .order('starts_on', { ascending: true, nullsFirst: false }),
   ]);
 
-  if (eventResult.error) {
-    throw new Error(`failed to load event: ${eventResult.error.message}`);
+  // ⚠️ **4 つすべてのエラーを見る**。PostgREST は失敗時に error を立てて
+  // data を null にするため、error を見ないと「クエリが落ちた」が
+  // 「該当 0 件」と区別できない。会場が理由なく「会場未定」になったり、
+  // 実在する他開催が消えたりしても、画面上は正常に見えてしまう。
+  // 本ファイルの他の箇所 (listOccurrenceParams / attachVenueNames) は
+  // 既に throw しており、ここだけ抜けていた (PR #302 レビュー指摘)。
+  for (const [label, result] of [
+    ['event', eventResult],
+    ['venue', venueResult],
+    ['titles', titleResult],
+    ['siblings', siblingResult],
+  ] as const) {
+    if (result.error) {
+      throw new Error(`failed to load ${label}: ${result.error.message}`);
+    }
   }
+
   // 企画が引けない開催は URL としては生きているが実体が無い。404 に倒す。
   if (!eventResult.data) return null;
 
@@ -214,7 +242,7 @@ export async function getOccurrenceDetail(
       .filter((t): t is z.infer<typeof TitleSchema> => t !== null),
     siblings: await attachVenueNames(siblings),
   };
-}
+});
 
 /**
  * 開催の配列に会場名を付ける。会場は 1 クエリでまとめて引く (N+1 を作らない)。

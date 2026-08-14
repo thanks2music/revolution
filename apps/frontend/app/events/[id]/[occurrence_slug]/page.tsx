@@ -33,6 +33,7 @@ import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
 import Layout from '@/components/templates/Layout';
 import { getOccurrenceDetail, listOccurrenceParams } from '@/lib/occurrence/queries';
 import { toBadgeStatus } from '@/lib/occurrence/status';
+import { isSafeHttpUrl } from '@/lib/url-safety';
 import type { OccurrencePageProps } from '@/types/page-props';
 
 // 記事ページ (`[event_type]/[work_slug]/[slug]`) と同じ 120 秒。開催情報は
@@ -151,12 +152,18 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             )}
           </dd>
 
-          {event.officialUrl && (
+          {/*
+            `official_url` はスクレイピング元 HTML から LLM が抽出した値で、
+            zod (`z.string().url()`) も DB CHECK も **スキームを制限していない**
+            (2026-08-14 実測: `javascript:` / `data:` が両方を通過する)。
+            描画側で http(s) に限定する (`lib/url-safety.ts` に理由を記載)。
+          */}
+          {isSafeHttpUrl(event.officialUrl) && (
             <>
               <dt className="font-display text-sm text-ink-muted">公式</dt>
               <dd>
                 <a
-                  href={event.officialUrl}
+                  href={event.officialUrl!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary-700 underline"
