@@ -44,7 +44,7 @@ export function toTier(daysLeft: number): RemainingDaysTier {
 }
 
 const tierStyle: Record<RemainingDaysTier, string> = {
-  // --days-* は淡色。前景は必ず ink-strong (白文字を載せない)。
+  // 前景に ink-strong を使う理由は `styles/globals.css` のトークン定義を参照。
   urgent: 'bg-days-urgent text-ink-strong',
   soon: 'bg-days-soon text-ink-strong',
   normal: 'bg-bg-tinted text-ink-body',
@@ -79,5 +79,3 @@ export const RemainingDaysBadge = ({ endsOn, now, className = '' }: Props) => {
     </span>
   );
 };
-
-export default RemainingDaysBadge;

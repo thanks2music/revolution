@@ -2,17 +2,17 @@ import { describe, expect, it } from '@jest/globals';
 import { OCCURRENCE_STATUS_VALUES } from '@revolution/schemas/occurrence';
 
 import { groupOccurrencesByStatus } from '@/lib/event/grouping';
-import type { OccurrenceListItem } from '@/lib/occurrence/queries';
+import type { Occurrence } from '@/lib/occurrence/queries';
 
-const make = (over: Partial<OccurrenceListItem>): OccurrenceListItem => ({
+const make = (over: Partial<Occurrence>): Occurrence => ({
   id: 1,
   eventId: 2,
-  venueId: null,
   venueLabel: null,
   slug: 'slug',
   startsOn: '2026-08-01',
   endsOn: '2026-09-01',
   status: 'ongoing',
+  venues: null,
   venueName: '会場',
   ...over,
 });

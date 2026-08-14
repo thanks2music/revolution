@@ -11,45 +11,44 @@ import {
   type Title,
 } from '@/lib/event/contracts';
 import {
-  attachVenueNames,
+  listOccurrenceParams,
   OCCURRENCE_COLUMNS,
-  OccurrenceDetailSchema,
-  type OccurrenceListItem,
+  type Occurrence,
+  toOccurrences,
 } from '@/lib/occurrence/queries';
 import { parseCanonicalId } from '@/lib/route-params';
-import { fetchAllRows } from '@/lib/supabase/paginate';
-import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
+import { createPublicClient } from '@/lib/supabase/public';
 
 /**
  * 企画 (event) の読み取り。
  *
  * ## occurrence 側から再利用しているもの
  *
- * `OCCURRENCE_COLUMNS` / `OccurrenceDetailSchema` / `attachVenueNames` は
- * 開催詳細ページと共有する。**列・契約・会場名の解決規則を 2 箇所に持たない**
- * ことが目的で、片方だけ列を足したときに zod と select がずれるのを防ぐ。
+ * `OCCURRENCE_COLUMNS` / `toOccurrences` (zod parse + 会場名の解決) は開催詳細
+ * ページと共有する。**列・契約・会場名の解決規則を 2 箇所に持たない**ことが
+ * 目的で、片方だけ列を足したときに zod と select がずれるのを防ぐ。
  *
  * 依存の向きは 企画 → 開催。企画ページは開催の一覧を出す画面なので自然な向き。
  *
  * ## S2 の時点で作らないもの
  *
- * デザイン (`docs/plan/2026-08-02-mvp-design-implementation-gap-and-task-breakdown.md` §43)
- * は 6 ブロックを要求するが、**3 つはデータ源が存在しない** (2026-08-14 実測):
+ * デザインは 6 ブロックを要求するが、**3 つはデータ源が存在しない** (2026-08-14 実測):
  *
  * | ブロック | 状況 |
  * |---|---|
  * | 評価サマリ (平均 / 件数 / 分布) | `reviews` 0 件。**S4** の範囲 |
- * | 全会場共通情報タブ | **`event_attributes` テーブルが存在しない** (A-3-a の migration 未完) |
+ * | 全会場共通情報タブ | **`event_attributes` テーブルが存在しない**。private な `.jarvis/product/mvp-definition.md` §A-3-a が migration 必須項目として挙げているが未作成 |
  * | この企画の記事 | `article-index.json` に企画を特定する項目が無い (`event_slug` も `event_id` も持たない)。紐付けは canonicalKey 再設計を伴う **S3** の範囲 |
  *
- * 依存が揃った時点で足す。
+ * データ源の形が決まる前に空状態の器や feature flag を置くと、デザイン確定時に
+ * 捨てるコードになる (YAGNI)。依存が揃った時点で足す。
  */
 
 export type EventPageData = {
   event: z.infer<typeof EventSchema>;
   titles: Title[];
   /** この企画のすべての開催 (会場名を解決済み)。グルーピングは表示側で行う。 */
-  occurrences: OccurrenceListItem[];
+  occurrences: Occurrence[];
   /** 同じ作品に紐づく他の企画 (自分を除く)。 */
   relatedEvents: EventSummary[];
 };
@@ -57,41 +56,21 @@ export type EventPageData = {
 /**
  * `generateStaticParams` 用。開催を 1 件以上持つ企画の ID を列挙する。
  *
- * 開催が 0 件の企画はページを出しても「会場を選ぶ」が空になるだけなので、
- * 静的生成の対象にしない (オンデマンドでは到達できる)。
+ * ## 開催の列挙から導出する
  *
- * 資格情報が無いビルドで 0 件を返す理由は
- * `lib/supabase/public.ts` の `hasPublicSupabaseCredentials` を参照。
+ * 「開催を 1 件以上持つ企画」は **`listOccurrenceParams()` の結果を dedupe した
+ * もの**そのもの。独立したクエリを持つと、同じ `occurrence_view` の全件走査が
+ * 2 周するうえ、**「静的生成対象の企画」という 1 つの定義が 2 箇所に存在**して
+ * 片方だけ条件を変えると `/events/{id}` と `/events/{id}/{slug}` の集合がずれる。
+ *
+ * 資格情報が無いビルドで 0 件を返す扱い、`db.max_rows` を跨ぐページング、
+ * 失敗時の throw もすべて `listOccurrenceParams` に一本化される。
  */
 export async function listEventParams(): Promise<{ id: string }[]> {
-  if (!hasPublicSupabaseCredentials()) {
-    console.warn(
-      '[event] Supabase の公開接続情報が無いため、企画ページの静的生成をスキップしました ' +
-        '(資格情報を持たないビルドでは想定どおり)。ページは実行時にオンデマンド生成されます。',
-    );
-    return [];
-  }
-
-  const supabase = createPublicClient();
-
-  // ⚠️ 単発 select にしない。PostgREST は `db.max_rows` で**エラーなしに**打ち切る。
-  //    ここは「全件列挙」が前提の関数なので、打ち切られると静的生成から無言で漏れる。
-  //    詳細は `lib/supabase/paginate.ts`。
-  const rows = z.array(z.object({ eventId: z.number() })).parse(
-    await fetchAllRows({
-      label: 'event params',
-      fetchPage: (from, to) =>
-        supabase
-          .from('occurrence_view')
-          .select('eventId:event_id')
-          .order('event_id', { ascending: true })
-          .range(from, to),
-    }),
-  );
-
-  // 同じ企画が開催数だけ出てくるので畳む。Set は挿入順を保つので
-  // order の昇順がそのまま残り、ビルドごとにパス順が変わらない。
-  return [...new Set(rows.map((row) => row.eventId))].map((id) => ({ id: String(id) }));
+  const occurrences = await listOccurrenceParams();
+  // Set は挿入順を保つので、列挙側の order がそのまま残る
+  // (ビルドごとにパス順が変わらない)。
+  return [...new Set(occurrences.map((row) => row.id))].map((id) => ({ id }));
 }
 
 /**
@@ -110,62 +89,39 @@ export const getEventDetail = cache(async function getEventDetail(
 
   const supabase = createPublicClient();
 
-  const { data: eventRow, error: eventError } = await supabase
-    .from('events')
-    .select(EVENT_COLUMNS)
-    .eq('id', eventId)
-    .maybeSingle();
-
-  if (eventError) {
-    throw new Error(`failed to load event: ${eventError.message}`);
-  }
-  if (!eventRow) return null;
-
-  const event = EventSchema.parse(eventRow);
-
-  // 作品と開催は独立なので同時に投げる。
-  const titlesQuery = supabase
-    .from('event_titles')
-    .select(EVENT_TITLES_COLUMNS)
-    .eq('event_id', eventId);
-  const occurrencesQuery = supabase
-    .from('occurrence_view')
-    .select(OCCURRENCE_COLUMNS)
-    .eq('event_id', eventId);
+  // ⚠️ builder を変数に置かず `Promise.all` の引数として直接構築する
+  //    (lazy な PromiseLike のため。理由は `getOccurrenceDetail` のコメント)。
+  const [eventResult, titleResult, occurrenceResult] = await Promise.all([
+    supabase.from('events').select(EVENT_COLUMNS).eq('id', eventId).maybeSingle(),
+    supabase.from('event_titles').select(EVENT_TITLES_COLUMNS).eq('event_id', eventId),
+    supabase.from('occurrence_view').select(OCCURRENCE_COLUMNS).eq('event_id', eventId),
+  ]);
 
   // ⚠️ error を見ないと「クエリが落ちた」が「該当 0 件」と区別できず、
   //    実在する開催が黙って消える。PR #302 で同じ穴を踏んでいる。
-  const titleResult = await titlesQuery;
-  if (titleResult.error) {
-    throw new Error(`failed to load titles: ${titleResult.error.message}`);
+  for (const [label, result] of [
+    ['event', eventResult],
+    ['titles', titleResult],
+    ['occurrences', occurrenceResult],
+  ] as const) {
+    if (result.error) {
+      throw new Error(`failed to load ${label}: ${result.error.message}`);
+    }
   }
+
+  if (!eventResult.data) return null;
+
   const titles = parseEmbeddedTitles(titleResult.data);
 
-  // ★ 関連企画は **titles が揃った時点で開始する**。開催の取得を待たない。
-  //   関連企画が依存しているのは作品 slug だけなので、`Promise.all` で
-  //   開催と一緒に待つと**関連企画の往復が不要にクリティカルパスへ乗る**
-  //   (PR #303 レビュー指摘)。
-  const relatedEventsPromise = findRelatedEvents(
-    eventId,
-    titles.map((title) => title.slug),
-  );
-
-  // ⚠️ 両方を `Promise.all` で待つ。片方を先に await して throw すると、
-  //    もう片方の rejection が unhandled になる。
-  const [occurrenceResult, relatedEvents] = await Promise.all([
-    occurrencesQuery,
-    relatedEventsPromise,
-  ]);
-
-  if (occurrenceResult.error) {
-    throw new Error(`failed to load occurrences: ${occurrenceResult.error.message}`);
-  }
-
-  const occurrences = await attachVenueNames(
-    z.array(OccurrenceDetailSchema).parse(occurrenceResult.data ?? []),
-  );
-
-  return { event, titles, occurrences, relatedEvents };
+  return {
+    event: EventSchema.parse(eventResult.data),
+    titles,
+    occurrences: toOccurrences(occurrenceResult.data),
+    relatedEvents: await findRelatedEvents(
+      eventId,
+      titles.map((title) => title.slug),
+    ),
+  };
 });
 
 /**
@@ -185,24 +141,21 @@ const RELATED_EVENTS_LIMIT = 12;
  * | 目減りの理由 | 例 |
  * |---|---|
  * | 1 企画が複数作品に紐づくと**同じ企画が行数分重複する** | 3 作品コラボの企画は 3 行を占める |
- * | 公開済み開催を持たない企画を後段で落とす (`withPublishedOccurrences`) | 候補 12 件全滅なら表示 0 件 |
+ * | 公開済み開催を持たない企画を後段で落とす | 候補 12 件全滅なら表示 0 件 |
  *
  * 表示上限と同値にすると、**実際は関連企画があるのにセクションが空に見える**。
- * 十分大きく取ってからアプリ側で絞る。
  */
 const RELATED_EVENTS_CANDIDATE_ROWS = 200;
 
 /**
  * 同じ作品に紐づく他の企画。作品が 1 つも無ければ空配列。
  *
- * `event_titles` を作品 slug 側から引き直す。
- *
- * ## 自己参照はクエリ側で除く (PR #303 レビュー指摘)
+ * ## 自己参照はクエリ側で除く
  *
  * `titleSlugs` は**自分自身の作品 slug 一覧**なので、この条件で引くと対象企画自身が
  * **作品数だけヒットする**。旧実装は「自分が 1 件混ざる」前提で `limit(LIMIT + 1)`
  * としていたが、2 作品以上に紐づく企画では自分自身が 2 行以上を占め、
- * 本来表示すべき関連企画を取得ウィンドウから押し出していた。
+ * 本来表示すべき関連企画を取得ウィンドウから押し出していた (PR #303 レビュー指摘)。
  *
  * `neq('events.id', ...)` で**クエリの時点で自分を除く**ことで、
  * 「何件余分に取るか」を数える必要そのものを消した。
@@ -213,12 +166,6 @@ const RELATED_EVENTS_CANDIDATE_ROWS = 200;
  * 「会場を選ぶ」が空になる。**リンクを踏んだ先が空**という体験を作らないため、
  * 開催を持つ企画だけに絞る。`listEventParams` が静的生成の対象を
  * 「開催を 1 件以上持つ企画」に限っているのと同じ基準に揃えている。
- *
- * ## 件数と順序を明示する
- *
- * `limit` も `order` も付けないと**全件を DB 任せの順序で描画**してしまい、
- * 表示順がビルドごとに変わる。候補の打ち切りが起きたら `log` に残す
- * (黙って切り詰めると「関連企画はこれだけ」と読めてしまう)。
  */
 async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise<EventSummary[]> {
   if (titleSlugs.length === 0) return [];
@@ -247,8 +194,7 @@ async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise
     //    導入されていない (`@sentry/*` は package.json に無く、
     //    `llm-context/sentry-rules.md` は「導入の際にやる事」の段階)。
     //    よって本行は **Vercel のランタイムログに残るだけ**で、通知は飛ばない。
-    //    Sentry を入れたら captureMessage 等へ差し替える
-    //    (PR #303 レビュー指摘: 「本当にどこかに surface するのか確認せよ」)。
+    //    Sentry を入れたら captureMessage 等へ差し替える。
     console.warn(
       `[event] 関連企画の候補が上限 ${RELATED_EVENTS_CANDIDATE_ROWS} 行に達しました ` +
         `(event_id=${eventId})。表示に漏れが出ている可能性があります。`,
@@ -265,7 +211,10 @@ async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise
   }
   if (byId.size === 0) return [];
 
-  return withPublishedOccurrences([...byId.values()]);
+  // 表示件数の切り詰めは**ここ (表示件数を決める責務の場所)** で行う。
+  // withPublishedOccurrences の中でやると、関数名にない 2 つ目の仕事になる。
+  const published = await withPublishedOccurrences([...byId.values()]);
+  return published.slice(0, RELATED_EVENTS_LIMIT);
 }
 
 /**
@@ -295,5 +244,5 @@ async function withPublishedOccurrences(events: EventSummary[]): Promise<EventSu
       .map((row) => row.eventId),
   );
 
-  return events.filter((event) => withOccurrences.has(event.id)).slice(0, RELATED_EVENTS_LIMIT);
+  return events.filter((event) => withOccurrences.has(event.id));
 }

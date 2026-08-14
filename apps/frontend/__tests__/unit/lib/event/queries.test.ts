@@ -79,6 +79,8 @@ beforeEach(() => {
 
 describe('listEventParams', () => {
   it('returns [] without querying when credentials are absent', async () => {
+    // 導出元 (listOccurrenceParams) が資格情報チェックを持つので、
+    // 企画側は自前でチェックしない = 判定が 1 箇所に閉じる。
     mockHasCredentials.mockReturnValue(false);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -91,11 +93,19 @@ describe('listEventParams', () => {
 
   it('collapses one row per occurrence into one param per event', async () => {
     // occurrence_view は開催ごとに 1 行返るので、同じ企画が開催数だけ出てくる。
+    // ★ 2026-08-14 以降、listEventParams は **listOccurrenceParams から導出**する
+    //   (同じ view の全件走査を 2 周させない / 「静的生成対象の企画」の定義を
+    //    1 箇所に保つ)。よって mock も開催列挙のクエリ形に合わせる。
     mockHasCredentials.mockReturnValue(true);
     mockCreatePublicClient.mockReturnValue(
       makeClient({
         occurrence_view: {
-          data: [{ eventId: 2 }, { eventId: 2 }, { eventId: 3 }, { eventId: 2 }],
+          data: [
+            { eventId: 2, slug: 'a' },
+            { eventId: 2, slug: 'b' },
+            { eventId: 3, slug: 'c' },
+            { eventId: 2, slug: 'd' },
+          ],
           error: null,
         },
       }),

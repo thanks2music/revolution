@@ -29,12 +29,18 @@ jest.mock('@/lib/supabase/public', () => ({
  * PostgREST のクエリビルダを模したチェーン。`.select().eq().neq().order()` の
  * どの順で呼ばれても最後に `result` へ解決する thenable を返す。
  */
-function makeQuery(result: { data: unknown; error: unknown }) {
+function makeQuery(
+  result: { data: unknown; error: unknown },
+  calls: { method: string; args: unknown[] }[] = [],
+) {
   const chain: Record<string, unknown> = {};
   // `range` を含めること。`generateStaticParams` 用のクエリは max-rows で
   // 無言に打ち切られるのを避けるためページングしている (`lib/supabase/paginate.ts`)。
   for (const method of ['select', 'eq', 'neq', 'order', 'in', 'range']) {
-    chain[method] = () => chain;
+    chain[method] = (...args: unknown[]) => {
+      calls.push({ method, args });
+      return chain;
+    };
   }
   chain.maybeSingle = () => Promise.resolve(result);
   chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve);
@@ -50,7 +56,10 @@ type QueryResult = { data: unknown; error: unknown };
  * 「開催本体 (maybeSingle)」と「他の開催 (siblings)」で 2 回引かれるため、
  * 両者に別の結果を返せる必要がある。
  */
-function makeClient(byTable: Record<string, QueryResult | QueryResult[]>) {
+function makeClient(
+  byTable: Record<string, QueryResult | QueryResult[]>,
+  calls: { method: string; args: unknown[] }[] = [],
+) {
   const queues = new Map<string, QueryResult[]>();
   for (const [table, value] of Object.entries(byTable)) {
     queues.set(table, Array.isArray(value) ? [...value] : [value]);
@@ -66,21 +75,26 @@ function makeClient(byTable: Record<string, QueryResult | QueryResult[]>) {
             ? queue.shift()!
             : queue[0]
           : { data: null, error: null };
-      return makeQuery(result);
+      return makeQuery(result, calls);
     },
   };
 }
 
-/** 検証を通る最小の occurrence 行。 */
+/**
+ * 検証を通る最小の occurrence 行。
+ *
+ * `venues` は PostgREST の**埋め込み結果**。会場マスタを持たない開催では null。
+ * (2026-08-14 に別クエリ + Map 解決から埋め込みへ変更)
+ */
 const OCCURRENCE_ROW = {
   id: 1,
   eventId: 2,
-  venueId: 10,
   venueLabel: null,
   slug: 'tokyo-shibuya',
   startsOn: '2026-08-04',
   endsOn: '2026-09-08',
   status: 'ongoing',
+  venues: null,
 };
 
 const EVENT_ROW = {
@@ -195,91 +209,122 @@ describe('getOccurrenceDetail', () => {
   /**
    * ★ PR #302 のレビューで指摘された実バグの回帰テスト。
    *
-   * `eventResult.error` しか見ていなかったため、venue / titles / siblings が
-   * 失敗しても `data: null` が「0 件」として扱われ、**実在する会場が理由なく
-   * 「会場未定」になる / 他開催が黙って消える**という壊れ方をしていた。
-   * 画面上は正常に見えるので気づけない類の欠陥。
+   * `eventResult.error` しか見ていなかったため、他のクエリが失敗しても
+   * `data: null` が「0 件」として扱われ、**実在する開催が黙って消える**
+   * という壊れ方をしていた。画面上は正常に見えるので気づけない類の欠陥。
+   *
+   * ⚠️ クエリ構成は 2026-08-14 に変わっている (会場は埋め込みへ、siblings は
+   *    本体と同じ 1 クエリから JS で分離)。よって検査対象は 3 つ。
    */
   it.each([
-    ['venues', 'venue lookup failed'],
+    ['occurrence_view', 'occurrences lookup failed'],
+    ['events', 'event lookup failed'],
     ['event_titles', 'titles lookup failed'],
   ])('throws when the %s query fails instead of showing empty data', async (table, message) => {
     mockHasCredentials.mockReturnValue(true);
     mockCreatePublicClient.mockReturnValue(
       makeClient({
-        occurrence_view: [
-          { data: OCCURRENCE_ROW, error: null }, // 開催本体
-          { data: [], error: null }, // 他の開催
-        ],
+        occurrence_view: { data: [OCCURRENCE_ROW], error: null },
         events: { data: EVENT_ROW, error: null },
+        event_titles: { data: [], error: null },
         [table]: { data: null, error: { message } },
       }),
     );
 
     const { getOccurrenceDetail } = await importQueries();
-    await expect(getOccurrenceDetail('2', 'tokyo-shibuya')).rejects.toThrow(
-      new RegExp(message),
-    );
+    await expect(getOccurrenceDetail('2', 'tokyo-shibuya')).rejects.toThrow(new RegExp(message));
   });
 
-  it('throws when the siblings query fails', async () => {
+  /**
+   * 本体と siblings を**同じ 1 クエリ**から分けていることを固定する。
+   *
+   * 述語だけ変えて 2 回叩くと、クエリが 1 本増えるうえ「本体が返るまで
+   * siblings を投げられない」依存が生まれる (PR #303 レビュー指摘)。
+   */
+  it('splits the body and siblings from a single occurrence query', async () => {
     mockHasCredentials.mockReturnValue(true);
+    const calls: { method: string; args: unknown[] }[] = [];
     mockCreatePublicClient.mockReturnValue(
-      makeClient({
-        occurrence_view: [
-          { data: OCCURRENCE_ROW, error: null },
-          { data: null, error: { message: 'siblings lookup failed' } },
-        ],
-        events: { data: EVENT_ROW, error: null },
-        venues: { data: null, error: null },
-        event_titles: { data: [], error: null },
-      }),
-    );
-
-    const { getOccurrenceDetail } = await importQueries();
-    await expect(getOccurrenceDetail('2', 'tokyo-shibuya')).rejects.toThrow(
-      /siblings lookup failed/,
-    );
-  });
-
-  it('resolves venue names by master first, then venue_label, and never falls back to slug', async () => {
-    mockHasCredentials.mockReturnValue(true);
-    mockCreatePublicClient.mockReturnValue(
-      makeClient({
-        occurrence_view: [
-          { data: OCCURRENCE_ROW, error: null },
-          {
+      makeClient(
+        {
+          occurrence_view: {
             data: [
-              { ...OCCURRENCE_ROW, id: 2, slug: 'osaka-umeda', venueId: 11, venueLabel: null },
-              {
-                ...OCCURRENCE_ROW,
-                id: 3,
-                slug: 'fukuoka-tenjin',
-                venueId: null,
-                venueLabel: 'ラベルだけの会場',
-              },
-              { ...OCCURRENCE_ROW, id: 4, slug: 'unknown', venueId: null, venueLabel: null },
+              OCCURRENCE_ROW,
+              { ...OCCURRENCE_ROW, id: 2, slug: 'osaka-umeda' },
+              { ...OCCURRENCE_ROW, id: 3, slug: 'aichi-sakae' },
             ],
             error: null,
           },
-        ],
-        events: { data: EVENT_ROW, error: null },
-        venues: [
-          { data: null, error: null }, // 本体の会場 (venueId=10) は解決しない想定
-          { data: [{ id: 11, name: 'マスタ由来の会場' }], error: null }, // siblings 用の一括取得
-        ],
-        event_titles: { data: [], error: null },
-      }),
+          events: { data: EVENT_ROW, error: null },
+          event_titles: { data: [], error: null },
+        },
+        calls,
+      ),
     );
 
     const { getOccurrenceDetail } = await importQueries();
     const result = await getOccurrenceDetail('2', 'tokyo-shibuya');
 
-    expect(result?.siblings.map((s) => s.venueName)).toEqual([
-      'マスタ由来の会場', // venues マスタ
-      'ラベルだけの会場', // venue_label
-      // slug ('unknown') で代用しない。slug は URL 用の識別子であって人が読む名前ではない。
-      null,
-    ]);
+    expect(result?.occurrence.slug).toBe('tokyo-shibuya');
+    expect(result?.siblings.map((s) => s.slug)).toEqual(['osaka-umeda', 'aichi-sakae']);
+    // 本体の絞り込みを DB 側でやっていないこと (slug の等値フィルタが無い)。
+    expect(calls.filter((c) => c.method === 'eq' && c.args[0] === 'slug')).toHaveLength(0);
+  });
+
+  it('returns null when the requested slug is not among the event occurrences', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        occurrence_view: { data: [OCCURRENCE_ROW], error: null },
+        events: { data: EVENT_ROW, error: null },
+        event_titles: { data: [], error: null },
+      }),
+    );
+
+    const { getOccurrenceDetail } = await importQueries();
+    await expect(getOccurrenceDetail('2', 'nope')).resolves.toBeNull();
+  });
+});
+
+/**
+ * 会場表示名の解決 (Layer 1、純粋関数)。
+ *
+ * 以前は取得層の `attachVenueNames` が追加クエリ + Map で解決していたが、
+ * **view でも PostgREST の埋め込みが効く**ことが実測で分かったため
+ * (2026-08-14)、埋め込み結果からの純粋な解決に変わった。
+ * 規則そのものは変えていないので、ここで固定し続ける。
+ */
+describe('resolveVenueName', () => {
+  const row = {
+    id: 1,
+    eventId: 2,
+    venueLabel: null as string | null,
+    slug: 'slug',
+    startsOn: '2026-08-01',
+    endsOn: '2026-09-01',
+    status: 'ongoing' as const,
+    venues: null as { slug: string; name: string; prefecture: string | null; city: string | null; address: string | null } | null,
+  };
+
+  it('prefers the venue master name', async () => {
+    const { resolveVenueName } = await importQueries();
+    expect(
+      resolveVenueName({
+        ...row,
+        venueLabel: 'ラベル',
+        venues: { slug: 'v', name: 'マスタ由来の会場', prefecture: null, city: null, address: null },
+      }),
+    ).toBe('マスタ由来の会場');
+  });
+
+  it('falls back to venue_label when there is no master row', async () => {
+    const { resolveVenueName } = await importQueries();
+    expect(resolveVenueName({ ...row, venueLabel: 'ラベルだけの会場' })).toBe('ラベルだけの会場');
+  });
+
+  it('returns null instead of substituting the slug', async () => {
+    // slug は URL 用の識別子であって人が読む名前ではない。
+    const { resolveVenueName } = await importQueries();
+    expect(resolveVenueName({ ...row, slug: 'tokyo-shibuya' })).toBeNull();
   });
 });

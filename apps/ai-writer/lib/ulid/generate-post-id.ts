@@ -54,37 +54,29 @@ export interface GeneratePostIdOptions {
    */
   seedTime?: number;
 
-  /**
-   * Length of the generated post ID.
-   *
-   * ⚠️ **10 以下にしないこと。** ULID の先頭 10 文字はタイムスタンプ部なので、
-   * 10 文字で切るとランダム部が消えて同一ミリ秒の生成が衝突する。
-   * `POST_ID_TIMESTAMP_LENGTH` より大きい値を渡すこと。
-   *
-   * @default 16
-   */
-  length?: number;
 }
 
 /**
  * ULID のタイムスタンプ部の長さ (仕様)。48bit を Crockford base32 で 10 文字。
- * **これ以下に切るとランダム部が完全に消える。**
+ * テストが「タイムスタンプ部は同一ミリ秒なら一致する」を確認するために参照する。
  */
 export const POST_ID_TIMESTAMP_LENGTH = 10;
 
 /**
- * Default configuration
- *
- * 16 = タイムスタンプ 10 + ランダム 6 文字 (30bit)。
+ * post_id の長さ。**タイムスタンプ 10 + ランダム 6 文字 (30bit)**。
  *
  * ランダム 6 文字を選んだ理由: 同一ミリ秒に N 件生成したときの衝突確率は
  * 概ね N² / (2 × 2^30)。N=50 (S5 の並列生成を想定した上限) でも約 0.0001% に収まる。
  * 4 文字 (20bit) だと同条件で約 0.12% で、**衝突すると 2 記事が同じ公開 URL を
  * 持つ**うえ気づく手段が無いため、余裕を取った。
+ *
+ * ⚠️ **可変長にはしない。** 以前は `length` オプションを持っていたが、
+ * 本番の呼び出し側は誰も使わずテスト専用で、その 1 つの knob が
+ * 「10 以下を弾く throw」「isValidPostId の第 2 引数」「生成と検証の非対称」
+ * (PR #303 レビュー指摘) を連鎖的に生んでいた。YAGNI に従い撤去した。
+ * 可変長が本当に必要になった時に足す。
  */
-const DEFAULT_CONFIG = {
-  length: 16,
-} as const;
+export const POST_ID_LENGTH = 16;
 
 /**
  * Generates a unique post ID using ULID
@@ -111,28 +103,19 @@ const DEFAULT_CONFIG = {
  * @throws {Error} If ULID generation fails
  */
 export function generatePostId(options: GeneratePostIdOptions = {}): PostId {
-  const { seedTime, length = DEFAULT_CONFIG.length } = options;
-
-  // ランダム部が 1 文字も残らない長さを黙って受け付けない。
-  // ここを緩めると「同一ミリ秒で同じ ID」が復活する。
-  if (length <= POST_ID_TIMESTAMP_LENGTH) {
-    throw new Error(
-      `Invalid post ID length: ${length}. ULID の先頭 ${POST_ID_TIMESTAMP_LENGTH} 文字は` +
-        'タイムスタンプ部のため、それ以下に切るとランダム部が消えて同一ミリ秒の生成が衝突します。',
-    );
-  }
+  const { seedTime } = options;
 
   try {
     // Generate ULID with optional seed time
     const rawUlid = seedTime !== undefined ? ulid(seedTime) : ulid();
 
-    // Convert to lowercase and truncate to specified length
-    const postId = rawUlid.toLowerCase().slice(0, length);
+    // タイムスタンプ部 + ランダム部の先頭を残す (ランダム部を捨てないこと)。
+    const postId = rawUlid.toLowerCase().slice(0, POST_ID_LENGTH);
 
     // Validation: Ensure post ID meets requirements
-    if (postId.length !== length) {
+    if (postId.length !== POST_ID_LENGTH) {
       throw new Error(
-        `Generated post ID has invalid length: expected ${length}, got ${postId.length}`
+        `Generated post ID has invalid length: expected ${POST_ID_LENGTH}, got ${postId.length}`
       );
     }
 
@@ -155,13 +138,11 @@ export function generatePostId(options: GeneratePostIdOptions = {}): PostId {
 /**
  * Validates if a string is a valid post ID
  *
- * ⚠️ **既定の期待長は `DEFAULT_CONFIG.length` (16)**。`generatePostId({ length })` で
- * カスタム長を生成した場合、既定のままだと弾かれる。**生成時と検証時で同じ長さを
- * 渡すこと。** (PR #303 レビュー指摘: 生成が任意長を許すのに検証が固定長で、
- * 非対称になっていた)
+ * 生成側が固定長 (`POST_ID_LENGTH`) になったので、期待長を引数で受けない。
+ * 以前は可変長を許して第 2 引数を持っていたが、生成と検証で長さを渡し忘れる
+ * 非対称を生んでいた (PR #303)。
  *
  * @param {string} postId - The post ID to validate
- * @param {number} [expectedLength] - 期待する長さ。既定は生成時の既定長 (16)
  * @returns {boolean} True if valid, false otherwise
  *
  * @example
@@ -171,10 +152,8 @@ export function generatePostId(options: GeneratePostIdOptions = {}): PostId {
  * isValidPostId("01jcxy4567");       // false (too short — 旧 10 文字形式)
  * ```
  */
-export function isValidPostId(postId: string, expectedLength: number = DEFAULT_CONFIG.length): boolean {
+export function isValidPostId(postId: string): boolean {
   return (
-    typeof postId === 'string' &&
-    postId.length === expectedLength &&
-    /^[0-9a-z]+$/.test(postId)
+    typeof postId === 'string' && postId.length === POST_ID_LENGTH && /^[0-9a-z]+$/.test(postId)
   );
 }

@@ -20,9 +20,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
-import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
+import { OccurrenceCard } from '@/components/molecules/OccurrenceCard';
 import Layout from '@/components/templates/Layout';
+import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { groupOccurrencesByStatus } from '@/lib/event/grouping';
 import { getEventDetail, listEventParams } from '@/lib/event/queries';
 import { generateContentMetadata } from '@/lib/metadata';
@@ -58,7 +58,7 @@ export async function generateMetadata(props: EventPageProps): Promise<Metadata>
   return generateContentMetadata({
     title: `${data.event.name} — Revolution`,
     description,
-    path: `/events/${data.event.id}`,
+    path: getEventUrl(data.event.id),
   });
 }
 
@@ -132,22 +132,7 @@ export default async function EventPage(props: EventPageProps) {
               <ul className="grid gap-3">
                 {group.items.map((occurrence) => (
                   <li key={occurrence.id}>
-                    <Link
-                      href={`/events/${event.id}/${occurrence.slug}`}
-                      className="flex flex-wrap items-center gap-3 border border-[var(--line-soft)] bg-bg-elevated p-4 hover:border-[var(--line-strong)]"
-                    >
-                      <StatusBadge status={toBadgeStatus(occurrence.status)} />
-                      {/* 残日数は開催中のみ (開催前に出すと意味が反転する。開催詳細と同じ判断)。 */}
-                      {occurrence.status === 'ongoing' && (
-                        <RemainingDaysBadge endsOn={occurrence.endsOn} />
-                      )}
-                      <span className="font-display text-ink-strong">
-                        {occurrence.venueName ?? '会場未定'}
-                      </span>
-                      <span className="font-numeric tabular-nums text-sm text-ink-muted">
-                        {formatPeriod(occurrence.startsOn, occurrence.endsOn)}
-                      </span>
-                    </Link>
+                    <OccurrenceCard eventId={event.id} occurrence={occurrence} />
                   </li>
                 ))}
               </ul>
@@ -164,7 +149,7 @@ export default async function EventPage(props: EventPageProps) {
               {relatedEvents.map((related) => (
                 <li key={related.id}>
                   <Link
-                    href={`/events/${related.id}`}
+                    href={getEventUrl(related.id)}
                     className="block border border-[var(--line-soft)] bg-bg-elevated p-4 font-display text-ink-strong hover:border-[var(--line-strong)]"
                   >
                     {related.name}

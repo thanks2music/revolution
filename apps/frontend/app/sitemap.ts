@@ -16,6 +16,7 @@
 
 import { MetadataRoute } from 'next';
 import { env } from '@/lib/env';
+import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { listEventParams } from '@/lib/event/queries';
 import { getAllArticles, getArticleUrl } from '@/lib/mdx/articles';
 import { listOccurrenceParams } from '@/lib/occurrence/queries';
@@ -51,7 +52,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ]);
 
     const eventPages: MetadataRoute.Sitemap = eventParams.map((param) => ({
-      url: `${baseUrl}/events/${param.id}`,
+      url: `${baseUrl}${getEventUrl(param.id)}`,
       lastModified: new Date(),
       changeFrequency: 'daily' as const,
       // 企画は開催をまとめる回遊のハブなので記事より少し高く置く。
@@ -59,7 +60,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }));
 
     const occurrencePages: MetadataRoute.Sitemap = occurrenceParams.map((param) => ({
-      url: `${baseUrl}/events/${param.id}/${param.occurrence_slug}`,
+      url: `${baseUrl}${getOccurrenceUrl(param.id, param.occurrence_slug)}`,
       lastModified: new Date(),
       // 状態 (開催中 / 終了) が日付で変わるので、記事より更新頻度を高く申告する。
       changeFrequency: 'daily' as const,

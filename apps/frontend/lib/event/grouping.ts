@@ -1,6 +1,6 @@
 import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 
-import type { OccurrenceListItem } from '@/lib/occurrence/queries';
+import type { Occurrence } from '@/lib/occurrence/queries';
 
 /**
  * 企画ページの「会場を選ぶ」で開催を状態別にまとめる (Layer 1、純粋関数)。
@@ -20,14 +20,14 @@ import type { OccurrenceListItem } from '@/lib/occurrence/queries';
  * 判定させず**ここで落とす**。
  */
 
-/** 表示上のまとまり。`occurrence_view` の 5 状態と 1:1。 */
-export type OccurrenceGroupKey = OccurrenceStatus;
+/** 表示上のまとまり。`occurrence_view` の 5 状態と 1:1 なので別名は作らない。 */
+type OccurrenceGroupKey = OccurrenceStatus;
 
 export type OccurrenceGroup = {
   key: OccurrenceGroupKey;
   /** 見出し。状態バッジの文言とは別に、セクション名として読ませる。 */
   label: string;
-  items: OccurrenceListItem[];
+  items: Occurrence[];
 };
 
 /**
@@ -45,41 +45,33 @@ export type OccurrenceGroup = {
 type WithinOrder = 'ends-asc' | 'starts-asc' | 'name';
 
 /**
- * 表示順 + 見出し + グループ内の並び。配列の順序がそのまま画面の順序になる。
+ * 表示順 + 見出し + グループ内の並び。**配列の順序がそのまま画面の順序**。
  *
  * ## 網羅性を型で守る
  *
- * `Record<OccurrenceGroupKey, ...>` で全状態の定義を強制し、そこから配列を作る。
- * こうしないと **zod enum と `toBadgeStatus` (コンパイラが強制する) だけ直して
- * ここを忘れる**ことができ、その状態の開催が「会場を選ぶ」から無言で落ちて
- * 件数表示 (`occurrences.length`) とグループ内合計が食い違う
- * (PR #303 レビュー指摘)。`toBadgeStatus` が `never` 代入で守っているのと同じ強度に揃える。
+ * 下の `MissingGroup` が「`OccurrenceStatus` のうち、この配列に無いもの」を計算し、
+ * 空でなければコンパイルエラーになる。こうしないと **zod enum と
+ * `toBadgeStatus` (Record が強制する) だけ直してここを忘れる**ことができ、
+ * その状態の開催が「会場を選ぶ」から無言で落ちて件数表示と合計が食い違う
+ * (PR #303 レビュー指摘)。
+ *
+ * ⚠️ 配列なので**同じ key を 2 回書ける**(同じグループが 2 度描画される)。
+ *    Record + 別配列の二重構造にすればキー重複も防げるが、その形は
+ *    「状態を 1 つ足すときの編集点が 2 箇所」「label と表示順が離れる」という
+ *    別のコストを生むため採らない。順序・見出し・並び順が 1 箇所に集まる形を優先した。
  */
-const GROUP_DEFINITIONS: Record<OccurrenceGroupKey, { label: string; within: WithinOrder }> = {
-  ongoing: { label: '開催中', within: 'ends-asc' },
-  scheduled: { label: '開催予定', within: 'starts-asc' },
-  unscheduled: { label: '日程未発表', within: 'name' },
-  ended: { label: '終了', within: 'ends-asc' },
-  cancelled: { label: '中止', within: 'name' },
-};
+const GROUPS = [
+  { key: 'ongoing', label: '開催中', within: 'ends-asc' },
+  { key: 'scheduled', label: '開催予定', within: 'starts-asc' },
+  { key: 'unscheduled', label: '日程未発表', within: 'name' },
+  { key: 'ended', label: '終了', within: 'ends-asc' },
+  { key: 'cancelled', label: '中止', within: 'name' },
+] as const satisfies readonly { key: OccurrenceGroupKey; label: string; within: WithinOrder }[];
 
-/**
- * 画面に出す順。**`GROUP_DEFINITIONS` の全キーを列挙する必要がある**ことを
- * 型で保証したいので、下の `assertExhaustive` で漏れを検出する。
- */
-const GROUP_ORDER = [
-  'ongoing',
-  'scheduled',
-  'unscheduled',
-  'ended',
-  'cancelled',
-] as const satisfies readonly OccurrenceGroupKey[];
-
-// 表示順の列挙漏れをコンパイル時に検出する。`GROUP_DEFINITIONS` に状態を足して
-// `GROUP_ORDER` に足し忘れると、ここで型エラーになる。
-type MissingFromOrder = Exclude<OccurrenceGroupKey, (typeof GROUP_ORDER)[number]>;
-const _assertAllStatusesOrdered: MissingFromOrder extends never ? true : never = true;
-void _assertAllStatusesOrdered;
+// 網羅漏れをコンパイル時に検出する。状態を足して GROUPS に書き忘れると型エラー。
+type MissingGroup = Exclude<OccurrenceGroupKey, (typeof GROUPS)[number]['key']>;
+const _assertAllStatusesGrouped: MissingGroup extends never ? true : never = true;
+void _assertAllStatusesGrouped;
 
 /**
  * グループ内の並び。`WithinOrder` の定義どおりに比較する。
@@ -89,7 +81,7 @@ void _assertAllStatusesOrdered;
  *    先頭に来たりソートが不安定になったりする。
  */
 function compareWithin(within: WithinOrder) {
-  return (a: OccurrenceListItem, b: OccurrenceListItem): number => {
+  return (a: Occurrence, b: Occurrence): number => {
     const byName = () => (a.venueName ?? a.slug).localeCompare(b.venueName ?? b.slug, 'ja');
 
     if (within === 'name') return byName();
@@ -109,13 +101,10 @@ function compareWithin(within: WithinOrder) {
 }
 
 /** 開催を状態別のグループへまとめる。空のグループは含まない。 */
-export function groupOccurrencesByStatus(items: OccurrenceListItem[]): OccurrenceGroup[] {
-  return GROUP_ORDER.map((key) => {
-    const { label, within } = GROUP_DEFINITIONS[key];
-    return {
-      key,
-      label,
-      items: items.filter((item) => item.status === key).sort(compareWithin(within)),
-    };
-  }).filter((group) => group.items.length > 0);
+export function groupOccurrencesByStatus(items: Occurrence[]): OccurrenceGroup[] {
+  return GROUPS.map(({ key, label, within }) => ({
+    key,
+    label,
+    items: items.filter((item) => item.status === key).sort(compareWithin(within)),
+  })).filter((group) => group.items.length > 0);
 }

@@ -44,7 +44,9 @@ export function getArticleUrl(article: Pick<ArticleIndexItem, 'slug'>): string {
  * この中間状態にデータ上のリスクはない。
  */
 export function buildArticleKey(article: Pick<ArticleIndexItem, 'slug'>): string {
-  return `articles/${article.slug}`;
+  // ★ URL から導出する。「先頭の `/` を剥いだものと一致する」という不変条件を
+  //   docstring とテストだけで表現していると、片方だけ変えたときに乖離する。
+  return getArticleUrl(article).slice(1);
 }
 
 /**
@@ -71,6 +73,7 @@ export function resolveArticleByKey<T extends Pick<ArticleIndexItem, 'slug'>>(
   key: string,
   articles: readonly T[],
 ): T | null {
-  if (!key) return null;
+  // 空文字や不正な形式は「一致する記事が無い」に自然に落ちるので、専用の
+  // 早期 return は置かない。
   return articles.find((article) => buildArticleKey(article) === key) ?? null;
 }

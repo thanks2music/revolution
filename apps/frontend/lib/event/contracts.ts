@@ -1,43 +1,47 @@
+import { EventSchema as EventRowSchema } from '@revolution/schemas/event';
+import { TitleSchema as TitleRowSchema } from '@revolution/schemas/title';
 import { z } from 'zod';
 
 /**
- * `events` / `titles` を読むときの契約と select 句 (真実源)。
+ * `events` / `titles` を読むときの契約と select 句。
  *
- * ## なぜ独立したモジュールなのか
+ * ## 契約は `shared/schemas/` の SSoT から派生させる
  *
- * 開催詳細ページと企画ページの**両方**が `events` と `titles` を読む。
- * それぞれのファイルに zod と select 句を書くと、片方だけ列を足したときに
- * **契約と select が黙ってずれる**。`OCCURRENCE_COLUMNS` を共有したのと
- * 同じ理由で、events / titles も 1 箇所に置く
- * (PR #303 のレビュー指摘: 「events 側では共有目的が達成できていない」)。
+ * Schema-SDD では **zod が真実源で、境界スキーマは `shared/schemas/` に置く**
+ * (`llm-context/development-principles.md` §Schema-SDD)。`shared/schemas/event.ts`
+ * と `title.ts` は `createSelectSchema(events)` / `createSelectSchema(titles)` で
+ * **Drizzle のテーブル定義から自動導出**されている。
  *
- * 依存の向きを一方向に保つため、`lib/occurrence/queries.ts` と
- * `lib/event/queries.ts` の**どちらからも import される葉モジュール**にしている
- * (企画 → 開催の依存があるので、共有物を企画側に置くと循環する)。
+ * ここで `z.object({...})` を手書きすると、列の nullability が二重管理になる。
+ * 例えば `description` を NOT NULL 化する migration を打つと shared 側と ai-writer は
+ * 追随するが、**手書き側だけ `string | null` を主張し続ける**。
  *
- * ## snake_case → camelCase は select の別名で吸収する
+ * `.pick()` で必要な列だけに絞るのは `lib/occurrence/queries.ts` が
+ * `OccurrenceViewSchema.pick({...})` でやっているのと同じ形。
  *
- * 列と契約の対応をここで閉じる。アプリ側で詰め替えると詰め替えコードが
- * 第 2 の契約になる。
+ * ## frontend に残すのは PostgREST 固有のものだけ
+ *
+ * select 句 (`EVENT_COLUMNS` 等) と埋め込み結果の取り出し
+ * (`parseEmbeddedTitles`) は PostgREST の都合なので frontend の関心。
+ * **契約 (zod) は shared、クエリの書き方は frontend** という分割にしている。
  */
 
-export const EventSchema = z.object({
-  id: z.number(),
-  slug: z.string(),
-  name: z.string(),
-  description: z.string().nullable(),
-  officialUrl: z.string().nullable(),
+/** 企画。ページ表示に使う列だけに絞った契約。 */
+export const EventSchema = EventRowSchema.pick({
+  id: true,
+  slug: true,
+  name: true,
+  description: true,
+  officialUrl: true,
 });
 
 export type Event = z.infer<typeof EventSchema>;
 
-/** 上記に対応する PostgREST の select 句。 */
+/** 上記に対応する PostgREST の select 句 (別名で camelCase へ揃える)。 */
 export const EVENT_COLUMNS = 'id, slug, name, description, officialUrl:official_url';
 
-export const TitleSchema = z.object({
-  slug: z.string(),
-  name: z.string(),
-});
+/** 作品。パンくずと導線に使う列だけ。 */
+export const TitleSchema = TitleRowSchema.pick({ slug: true, name: true });
 
 export type Title = z.infer<typeof TitleSchema>;
 
@@ -59,9 +63,6 @@ export function parseEmbeddedTitles(data: unknown): Title[] {
 }
 
 /** 一覧・リンク用の最小の企画情報。 */
-export const EventSummarySchema = z.object({
-  id: z.number(),
-  name: z.string(),
-});
+export const EventSummarySchema = EventRowSchema.pick({ id: true, name: true });
 
 export type EventSummary = z.infer<typeof EventSummarySchema>;

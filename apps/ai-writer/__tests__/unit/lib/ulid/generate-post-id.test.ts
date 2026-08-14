@@ -8,6 +8,7 @@ import { describe, it, expect } from '@jest/globals';
 import {
   generatePostId,
   isValidPostId,
+  POST_ID_LENGTH,
   POST_ID_TIMESTAMP_LENGTH,
   type PostId,
 } from '../../../../lib/ulid/generate-post-id';
@@ -18,7 +19,7 @@ describe('generatePostId', () => {
 
     expect(postId).toBeDefined();
     expect(typeof postId).toBe('string');
-    expect(postId.length).toBe(16);
+    expect(postId.length).toBe(POST_ID_LENGTH);
     expect(postId).toMatch(/^[0-9a-z]{16}$/);
   });
 
@@ -64,12 +65,9 @@ describe('generatePostId', () => {
     expect(a).not.toBe(b);
   });
 
-  it('rejects a length that would erase the randomness', () => {
-    // ここを緩めると「同一ミリ秒で同じ ID」が復活する。
-    expect(() => generatePostId({ length: POST_ID_TIMESTAMP_LENGTH })).toThrow(
-      /タイムスタンプ部/,
-    );
-    expect(() => generatePostId({ length: 8 })).toThrow(/タイムスタンプ部/);
+  it('keeps randomness beyond the timestamp prefix', () => {
+    // ここが 0 になると「同一ミリ秒で同じ ID」が復活する。
+    expect(POST_ID_LENGTH).toBeGreaterThan(POST_ID_TIMESTAMP_LENGTH);
   });
 
   it('should generate different post IDs with different seed times', () => {
@@ -87,22 +85,11 @@ describe('generatePostId', () => {
     expect(postId).not.toMatch(/[^0-9a-z]/); // No special chars
   });
 
-  it('validates a custom-length ID when the same length is passed to isValidPostId', () => {
-    // 生成が任意長を許すのに検証が固定長だと非対称になる (PR #303 レビュー指摘)。
-    const long = generatePostId({ length: 20 });
-    expect(isValidPostId(long)).toBe(false); // 既定 (16) では弾かれる
-    expect(isValidPostId(long, 20)).toBe(true); // 同じ長さを渡せば通る
-  });
-
-  it('should support custom length above the timestamp prefix', () => {
-    // ⚠️ 旧テストは length: 5 を「サポートする」と固定していたが、5 文字では
-    //    タイムスタンプ部すら収まらず**ランダム部が完全に消える**。
-    //    ランダム部を残せる長さ (> 10) のみを許可する仕様に変えた (2026-08-14)。
-    const postId15 = generatePostId({ length: 15 });
-    const postId20 = generatePostId({ length: 20 });
-
-    expect(postId15.length).toBe(15);
-    expect(postId20.length).toBe(20);
+  it('always produces the fixed length (no length knob)', () => {
+    // 可変長は撤去した。テスト専用の knob が「生成と検証の非対称」を生んでいたため
+    // (PR #303)。長さが仕様として固定であることを固定する。
+    expect(generatePostId()).toHaveLength(POST_ID_LENGTH);
+    expect(generatePostId({ seedTime: 1234567890000 })).toHaveLength(POST_ID_LENGTH);
   });
 });
 

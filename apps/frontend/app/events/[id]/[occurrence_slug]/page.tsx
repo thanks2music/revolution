@@ -10,12 +10,12 @@
  * 開催はレビューの紐付け先 (S4) でもあるため、S2 の中で最初に作る
  * (`docs/event-review-data-model.md` §7)。
  *
- * ## ルートの優先順位
+ * ## ルートの衝突は本 PR 内で解消済み
  *
- * 既存の `app/[event_type]/[work_slug]/[slug]` も 3 セグメントなので URL 形は
- * 衝突するが、Next.js は**静的セグメントを動的セグメントより優先する**ため
- * `/events/...` は本ルートが受ける。加えて記事側の `event_type` は実測で
- * `collabo-cafe` のみで、`events` を生成しない。
+ * 設計当初は記事の 3 セグメントルート (`app/[event_type]/[work_slug]/[slug]`) と
+ * URL 形が衝突していた (Next.js は静的セグメントを動的セグメントより優先するため
+ * `/events/...` は本ルートが受ける、という前提で成立させていた)。
+ * **その記事ルートは URL 移行で削除済み**なので、現在この衝突は存在しない。
  *
  * ## SSG を保つ制約
  *
@@ -30,7 +30,9 @@ import { notFound } from 'next/navigation';
 
 import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
 import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
+import { OccurrenceCard, VENUE_NAME_FALLBACK } from '@/components/molecules/OccurrenceCard';
 import Layout from '@/components/templates/Layout';
+import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { generateContentMetadata } from '@/lib/metadata';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail, listOccurrenceParams } from '@/lib/occurrence/queries';
@@ -38,9 +40,8 @@ import { toBadgeStatus } from '@/lib/occurrence/status';
 import { isSafeHttpUrl } from '@/lib/url-safety';
 import type { OccurrencePageProps } from '@/types/page-props';
 
-// 記事ページ (`[event_type]/[work_slug]/[slug]`) と同じ 120 秒。開催情報は
-// 記事より更新頻度が低いが、S3 の取り込みが走った直後に反映されてほしいので
-// 長くしない。
+// 記事ページ (`/articles/[slug]`) と同じ 120 秒。開催情報は記事より更新頻度が
+// 低いが、S3 の取り込みが走った直後に反映されてほしいので長くしない。
 export const revalidate = 120;
 
 export async function generateStaticParams() {
@@ -55,13 +56,13 @@ export async function generateMetadata(props: OccurrencePageProps): Promise<Meta
     return { title: '開催情報が見つかりません — Revolution' };
   }
 
-  const venueName = data.venue?.name ?? data.occurrence.venueLabel ?? '会場未定';
+  const venueName = data.occurrence.venueName ?? VENUE_NAME_FALLBACK;
   const period = formatPeriod(data.occurrence.startsOn, data.occurrence.endsOn);
 
   return generateContentMetadata({
     title: `${data.event.name} ${venueName} — Revolution`,
     description: `${data.event.name} の ${venueName} 開催情報 (${period})`,
-    path: `/events/${data.event.id}/${data.occurrence.slug}`,
+    path: getOccurrenceUrl(data.event.id, data.occurrence.slug),
   });
 }
 
@@ -71,8 +72,9 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
 
   if (!data) notFound();
 
-  const { occurrence, event, venue, titles, siblings } = data;
-  const venueName = venue?.name ?? occurrence.venueLabel ?? '会場未定';
+  const { occurrence, event, titles, siblings } = data;
+  const venue = occurrence.venues;
+  const venueName = occurrence.venueName ?? VENUE_NAME_FALLBACK;
   const badgeStatus = toBadgeStatus(occurrence.status);
 
   return (
@@ -97,7 +99,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             ))}
             <li className="flex items-center gap-2">
               <span aria-hidden="true">/</span>
-              <Link href={`/events/${event.id}`} className="hover:underline">
+              <Link href={getEventUrl(event.id)} className="hover:underline">
                 {event.name}
               </Link>
             </li>
@@ -180,18 +182,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             <ul className="grid gap-3">
               {siblings.map((sibling) => (
                 <li key={sibling.id}>
-                  <Link
-                    href={`/events/${event.id}/${sibling.slug}`}
-                    className="flex flex-wrap items-center gap-3 border border-[var(--line-soft)] bg-bg-elevated p-4 hover:border-[var(--line-strong)]"
-                  >
-                    <StatusBadge status={toBadgeStatus(sibling.status)} />
-                    <span className="font-display text-ink-strong">
-                      {sibling.venueName ?? '会場未定'}
-                    </span>
-                    <span className="font-numeric tabular-nums text-sm text-ink-muted">
-                      {formatPeriod(sibling.startsOn, sibling.endsOn)}
-                    </span>
-                  </Link>
+                  <OccurrenceCard eventId={event.id} occurrence={sibling} />
                 </li>
               ))}
             </ul>
