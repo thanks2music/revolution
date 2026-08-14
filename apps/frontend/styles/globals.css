@@ -33,6 +33,21 @@
   --accent-yellow: #ffe94b;
   --accent-yellow-deep: #f5c400;
 
+  /*
+   * 開催状態 / 残日数の色 (Claude Design のステータス色 7 種のうち、S2 の
+   * 開催詳細ページで必要になる 3 つ。出典: docs/plan/2026-08-02-mvp-design-status-and-remaining-tasks.md §67)。
+   *
+   * - --status-cancelled #b4382f : 中止。白文字とのコントラスト 5.96:1 (AA PASS)
+   * - --days-soon        #fff0bf : 残日数 中程度。暗文字 (--ink-strong) を載せる
+   * - --days-urgent      #ffe0cc : 残日数 逼迫。暗文字 (--ink-strong) を載せる
+   *
+   * ⚠️ --days-* は淡色のため**白文字を載せてはいけない**。残日数バッジは
+   *    常に --ink-strong を前景に使う。
+   */
+  --status-cancelled: #b4382f;
+  --days-soon: #fff0bf;
+  --days-urgent: #ffe0cc;
+
   --line-soft: rgba(15, 27, 45, 0.08);
   --line-strong: rgba(15, 27, 45, 0.18);
 

@@ -207,6 +207,11 @@ vendor/composer/autoload_*.php
 # Supabase CLI 用 migration ファイル (Phase 1c で導入、drizzle SSoT からコピー) も追跡する
 # `.branches/` / `.temp/` は引き続き ignore (Supabase CLI ローカル一時ディレクトリ)
 !apps/frontend/supabase/migrations/**/*.sql
+# staging 用の画面確認フィクスチャも追跡する (2026-08-14、S2 で追加)。
+# 追跡しないと「S2 の画面確認ができる状態」を再現する手段が手元にしか残らず、
+# 新しい環境で作り直しになる。中身は偽名のダミーデータのみで機微情報を含まない。
+# ⚠️ migration ではないので自動適用されない。適用先は staging 限定 (ファイル冒頭参照)。
+!apps/frontend/supabase/seed/**/*.sql
 *.dump
 *.backup
 database/
