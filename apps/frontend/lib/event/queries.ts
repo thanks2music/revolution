@@ -154,11 +154,45 @@ export const getEventDetail = cache(async function getEventDetail(
 });
 
 /**
+ * 関連企画の**表示**上限。
+ *
+ * 「同じ作品の他の企画」は回遊のための補助導線であって一覧ではない。
+ * 全件を出したい要求が生まれたら作品ハブ (`/titles/{slug}`) の役目になる。
+ */
+const RELATED_EVENTS_LIMIT = 12;
+
+/**
+ * 候補として取得する **`event_titles` の行数**上限。
+ *
+ * ⚠️ **表示上限と同じ値にしてはいけない。** この limit が効くのは
+ * 「企画の数」ではなく「join 行の数」で、表示までに 2 段階の目減りがある:
+ *
+ * | 目減りの理由 | 例 |
+ * |---|---|
+ * | 1 企画が複数作品に紐づくと**同じ企画が行数分重複する** | 3 作品コラボの企画は 3 行を占める |
+ * | 公開済み開催を持たない企画を後段で落とす (`withPublishedOccurrences`) | 候補 12 件全滅なら表示 0 件 |
+ *
+ * 表示上限と同値にすると、**実際は関連企画があるのにセクションが空に見える**。
+ * 十分大きく取ってからアプリ側で絞る。
+ */
+const RELATED_EVENTS_CANDIDATE_ROWS = 200;
+
+/**
  * 同じ作品に紐づく他の企画。作品が 1 つも無ければ空配列。
  *
- * `event_titles` を作品 slug 側から引き直す。**自分自身は除く**。
+ * `event_titles` を作品 slug 側から引き直す。
  *
- * ## 空ページへリンクしない (PR #303 レビュー指摘)
+ * ## 自己参照はクエリ側で除く (PR #303 レビュー指摘)
+ *
+ * `titleSlugs` は**自分自身の作品 slug 一覧**なので、この条件で引くと対象企画自身が
+ * **作品数だけヒットする**。旧実装は「自分が 1 件混ざる」前提で `limit(LIMIT + 1)`
+ * としていたが、2 作品以上に紐づく企画では自分自身が 2 行以上を占め、
+ * 本来表示すべき関連企画を取得ウィンドウから押し出していた。
+ *
+ * `neq('events.id', ...)` で**クエリの時点で自分を除く**ことで、
+ * 「何件余分に取るか」を数える必要そのものを消した。
+ *
+ * ## 空ページへリンクしない
  *
  * 公開済み (`verified`) の開催を 1 件も持たない企画は、ページを開いても
  * 「会場を選ぶ」が空になる。**リンクを踏んだ先が空**という体験を作らないため、
@@ -167,18 +201,10 @@ export const getEventDetail = cache(async function getEventDetail(
  *
  * ## 件数と順序を明示する
  *
- * 人気作品では関連企画が大量に付き得る。`limit` も `order` も付けないと
- * **全件を DB 任せの順序で描画**してしまい、表示順がビルドごとに変わる。
+ * `limit` も `order` も付けないと**全件を DB 任せの順序で描画**してしまい、
+ * 表示順がビルドごとに変わる。候補の打ち切りが起きたら `log` に残す
+ * (黙って切り詰めると「関連企画はこれだけ」と読めてしまう)。
  */
-
-/**
- * 関連企画の表示上限。
- *
- * 「同じ作品の他の企画」は回遊のための補助導線であって一覧ではない。
- * 全件を出したい要求が生まれたら作品ハブ (`/titles/{slug}`) の役目になる。
- */
-const RELATED_EVENTS_LIMIT = 12;
-
 async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise<EventSummary[]> {
   if (titleSlugs.length === 0) return [];
 
@@ -187,10 +213,11 @@ async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise
     .from('event_titles')
     .select('events!inner(id, name), titles!inner(slug)')
     .in('titles.slug', titleSlugs)
+    // 自己参照をクエリ側で除く。作品数に応じて余分に取る必要がなくなる。
+    .neq('events.id', eventId)
     // 表示順を DB 任せにしない。名前順なら実行ごとに変わらない。
     .order('name', { ascending: true, referencedTable: 'events' })
-    // 自分自身が混ざるので 1 件多く取ってから除外する。
-    .limit(RELATED_EVENTS_LIMIT + 1);
+    .limit(RELATED_EVENTS_CANDIDATE_ROWS);
 
   if (error) {
     throw new Error(`failed to load related events: ${error.message}`);
@@ -198,11 +225,19 @@ async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise
 
   const rows = z.array(z.object({ events: EventSummarySchema.nullable() })).parse(data ?? []);
 
+  if (rows.length === RELATED_EVENTS_CANDIDATE_ROWS) {
+    // 上限に達した = 候補を取りこぼしている可能性がある。黙らせない。
+    console.warn(
+      `[event] 関連企画の候補が上限 ${RELATED_EVENTS_CANDIDATE_ROWS} 行に達しました ` +
+        `(event_id=${eventId})。表示に漏れが出ている可能性があります。`,
+    );
+  }
+
   // 複数作品に紐づく企画は重複して返るので畳む。Map は挿入順を保つので
   // 上の order がそのまま残る。
   const byId = new Map<number, EventSummary>();
   for (const row of rows) {
-    if (row.events && row.events.id !== eventId) {
+    if (row.events) {
       byId.set(row.events.id, row.events);
     }
   }

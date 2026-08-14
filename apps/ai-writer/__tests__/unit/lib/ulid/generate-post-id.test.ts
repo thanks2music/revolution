@@ -87,6 +87,13 @@ describe('generatePostId', () => {
     expect(postId).not.toMatch(/[^0-9a-z]/); // No special chars
   });
 
+  it('validates a custom-length ID when the same length is passed to isValidPostId', () => {
+    // 生成が任意長を許すのに検証が固定長だと非対称になる (PR #303 レビュー指摘)。
+    const long = generatePostId({ length: 20 });
+    expect(isValidPostId(long)).toBe(false); // 既定 (16) では弾かれる
+    expect(isValidPostId(long, 20)).toBe(true); // 同じ長さを渡せば通る
+  });
+
   it('should support custom length above the timestamp prefix', () => {
     // ⚠️ 旧テストは length: 5 を「サポートする」と固定していたが、5 文字では
     //    タイムスタンプ部すら収まらず**ランダム部が完全に消える**。

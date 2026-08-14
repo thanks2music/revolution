@@ -155,7 +155,13 @@ export function generatePostId(options: GeneratePostIdOptions = {}): PostId {
 /**
  * Validates if a string is a valid post ID
  *
+ * ⚠️ **既定の期待長は `DEFAULT_CONFIG.length` (16)**。`generatePostId({ length })` で
+ * カスタム長を生成した場合、既定のままだと弾かれる。**生成時と検証時で同じ長さを
+ * 渡すこと。** (PR #303 レビュー指摘: 生成が任意長を許すのに検証が固定長で、
+ * 非対称になっていた)
+ *
  * @param {string} postId - The post ID to validate
+ * @param {number} [expectedLength] - 期待する長さ。既定は生成時の既定長 (16)
  * @returns {boolean} True if valid, false otherwise
  *
  * @example
@@ -165,10 +171,10 @@ export function generatePostId(options: GeneratePostIdOptions = {}): PostId {
  * isValidPostId("01jcxy4567");       // false (too short — 旧 10 文字形式)
  * ```
  */
-export function isValidPostId(postId: string): boolean {
+export function isValidPostId(postId: string, expectedLength: number = DEFAULT_CONFIG.length): boolean {
   return (
     typeof postId === 'string' &&
-    postId.length === DEFAULT_CONFIG.length &&
+    postId.length === expectedLength &&
     /^[0-9a-z]+$/.test(postId)
   );
 }
