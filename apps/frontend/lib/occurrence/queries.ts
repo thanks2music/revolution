@@ -50,7 +50,7 @@ export const OccurrenceDetailSchema = OccurrenceViewSchema.pick({
 export type OccurrenceDetail = z.infer<typeof OccurrenceDetailSchema>;
 
 /** 上記に対応する PostgREST の select 句 (別名で camelCase へ揃える)。 */
-const OCCURRENCE_COLUMNS =
+export const OCCURRENCE_COLUMNS =
   'id, eventId:event_id, venueId:venue_id, venueLabel:venue_label, slug, startsOn:starts_on, endsOn:ends_on, status';
 
 const EventSchema = z.object({
@@ -251,7 +251,7 @@ export const getOccurrenceDetail = cache(async function getOccurrenceDetail(
  * どちらも無い場合は null を返し、**slug で代用しない** — slug は URL 用の
  * 識別子であって人が読む名前ではないため、画面に出すと機械的な文字列が露出する。
  */
-async function attachVenueNames(rows: OccurrenceDetail[]): Promise<OccurrenceListItem[]> {
+export async function attachVenueNames(rows: OccurrenceDetail[]): Promise<OccurrenceListItem[]> {
   const venueIds = [...new Set(rows.map((r) => r.venueId).filter((v): v is number => v !== null))];
 
   const nameById = new Map<number, string>();

@@ -31,6 +31,7 @@ import { notFound } from 'next/navigation';
 import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
 import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
 import Layout from '@/components/templates/Layout';
+import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail, listOccurrenceParams } from '@/lib/occurrence/queries';
 import { toBadgeStatus } from '@/lib/occurrence/status';
 import { isSafeHttpUrl } from '@/lib/url-safety';
@@ -43,16 +44,6 @@ export const revalidate = 120;
 
 export async function generateStaticParams() {
   return listOccurrenceParams();
-}
-
-/** 期間の表示。`YYYY-MM-DD` を素のまま出さず、日本語表記へ寄せる。 */
-function formatPeriod(startsOn: string | null, endsOn: string | null): string {
-  if (!startsOn) return '日程未発表';
-  const start = startsOn.replace(/-/g, '.');
-  // `ends_on` が null は「終了日未定 / 常設」。空欄にせず明示する
-  // (★決定⑤、`shared/schemas/db/occurrences.ts`)。
-  if (!endsOn) return `${start} 〜 (終了日未定)`;
-  return `${start} 〜 ${endsOn.replace(/-/g, '.')}`;
 }
 
 export async function generateMetadata(props: OccurrencePageProps): Promise<Metadata> {
@@ -104,7 +95,9 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             ))}
             <li className="flex items-center gap-2">
               <span aria-hidden="true">/</span>
-              <span>{event.name}</span>
+              <Link href={`/events/${event.id}`} className="hover:underline">
+                {event.name}
+              </Link>
             </li>
             <li className="flex items-center gap-2">
               <span aria-hidden="true">/</span>
