@@ -35,8 +35,19 @@
  *
  * `javascript:` / `data:` / `vbscript:` などを弾く。相対 URL も false を返す
  * (本関数は**外部リンク用**であり、サイト内リンクは Next.js の `Link` を使う)。
+ *
+ * ## 型ガード (`url is string`) にしている理由
+ *
+ * 単なる `boolean` を返すと、呼び出し側で `null` が絞り込まれず
+ * `href={url!}` のような **non-null assertion が必要になる**。assertion は
+ * 「人間が正しさを保証する」宣言であり、コンパイラの検査を外す。
+ *
+ * 型ガードにすれば `if (isSafeHttpUrl(x))` の中で `x: string` に絞り込まれ、
+ * **コンパイラが保証する**形になる。オプショナルな URL を描画するページは
+ * 今後も増えるので、最初のページでこの形を確立しておく
+ * (PR #303 レビュー指摘: 「この pattern は今後コピペされる」)。
  */
-export function isSafeHttpUrl(url: string | null | undefined): boolean {
+export function isSafeHttpUrl(url: string | null | undefined): url is string {
   if (!url) return false;
   return /^https?:\/\//i.test(url.trim());
 }

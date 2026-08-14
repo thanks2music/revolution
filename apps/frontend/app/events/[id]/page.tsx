@@ -105,7 +105,7 @@ export default async function EventPage(props: EventPageProps) {
         {isSafeHttpUrl(event.officialUrl) && (
           <p className="mb-10">
             <a
-              href={event.officialUrl!}
+              href={event.officialUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary-700 underline"

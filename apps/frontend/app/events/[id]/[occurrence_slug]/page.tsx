@@ -158,7 +158,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
               <dt className="font-display text-sm text-ink-muted">公式</dt>
               <dd>
                 <a
-                  href={event.officialUrl!}
+                  href={event.officialUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary-700 underline"

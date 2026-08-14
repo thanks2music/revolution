@@ -123,34 +123,49 @@ export const getEventDetail = cache(async function getEventDetail(
 
   const event = EventSchema.parse(eventRow);
 
-  const [titleResult, occurrenceResult] = await Promise.all([
-    supabase.from('event_titles').select(EVENT_TITLES_COLUMNS).eq('event_id', eventId),
-    supabase.from('occurrence_view').select(OCCURRENCE_COLUMNS).eq('event_id', eventId),
-  ]);
+  // 作品と開催は独立なので同時に投げる。
+  const titlesQuery = supabase
+    .from('event_titles')
+    .select(EVENT_TITLES_COLUMNS)
+    .eq('event_id', eventId);
+  const occurrencesQuery = supabase
+    .from('occurrence_view')
+    .select(OCCURRENCE_COLUMNS)
+    .eq('event_id', eventId);
 
   // ⚠️ error を見ないと「クエリが落ちた」が「該当 0 件」と区別できず、
   //    実在する開催が黙って消える。PR #302 で同じ穴を踏んでいる。
-  for (const [label, result] of [
-    ['titles', titleResult],
-    ['occurrences', occurrenceResult],
-  ] as const) {
-    if (result.error) {
-      throw new Error(`failed to load ${label}: ${result.error.message}`);
-    }
+  const titleResult = await titlesQuery;
+  if (titleResult.error) {
+    throw new Error(`failed to load titles: ${titleResult.error.message}`);
   }
-
   const titles = parseEmbeddedTitles(titleResult.data);
+
+  // ★ 関連企画は **titles が揃った時点で開始する**。開催の取得を待たない。
+  //   関連企画が依存しているのは作品 slug だけなので、`Promise.all` で
+  //   開催と一緒に待つと**関連企画の往復が不要にクリティカルパスへ乗る**
+  //   (PR #303 レビュー指摘)。
+  const relatedEventsPromise = findRelatedEvents(
+    eventId,
+    titles.map((title) => title.slug),
+  );
+
+  // ⚠️ 両方を `Promise.all` で待つ。片方を先に await して throw すると、
+  //    もう片方の rejection が unhandled になる。
+  const [occurrenceResult, relatedEvents] = await Promise.all([
+    occurrencesQuery,
+    relatedEventsPromise,
+  ]);
+
+  if (occurrenceResult.error) {
+    throw new Error(`failed to load occurrences: ${occurrenceResult.error.message}`);
+  }
 
   const occurrences = await attachVenueNames(
     z.array(OccurrenceDetailSchema).parse(occurrenceResult.data ?? []),
   );
 
-  return {
-    event,
-    titles,
-    occurrences,
-    relatedEvents: await findRelatedEvents(eventId, titles.map((t) => t.slug)),
-  };
+  return { event, titles, occurrences, relatedEvents };
 });
 
 /**
@@ -227,6 +242,13 @@ async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise
 
   if (rows.length === RELATED_EVENTS_CANDIDATE_ROWS) {
     // 上限に達した = 候補を取りこぼしている可能性がある。黙らせない。
+    //
+    // ⚠️ **これはアラートではない。** 2026-08-14 時点で frontend に Sentry は
+    //    導入されていない (`@sentry/*` は package.json に無く、
+    //    `llm-context/sentry-rules.md` は「導入の際にやる事」の段階)。
+    //    よって本行は **Vercel のランタイムログに残るだけ**で、通知は飛ばない。
+    //    Sentry を入れたら captureMessage 等へ差し替える
+    //    (PR #303 レビュー指摘: 「本当にどこかに surface するのか確認せよ」)。
     console.warn(
       `[event] 関連企画の候補が上限 ${RELATED_EVENTS_CANDIDATE_ROWS} 行に達しました ` +
         `(event_id=${eventId})。表示に漏れが出ている可能性があります。`,
