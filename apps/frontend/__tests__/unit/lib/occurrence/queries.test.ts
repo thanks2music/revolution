@@ -31,7 +31,9 @@ jest.mock('@/lib/supabase/public', () => ({
  */
 function makeQuery(result: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'neq', 'order', 'in']) {
+  // `range` を含めること。`generateStaticParams` 用のクエリは max-rows で
+  // 無言に打ち切られるのを避けるためページングしている (`lib/supabase/paginate.ts`)。
+  for (const method of ['select', 'eq', 'neq', 'order', 'in', 'range']) {
     chain[method] = () => chain;
   }
   chain.maybeSingle = () => Promise.resolve(result);

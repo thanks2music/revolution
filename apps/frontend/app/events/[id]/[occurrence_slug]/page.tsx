@@ -31,6 +31,7 @@ import { notFound } from 'next/navigation';
 import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
 import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
 import Layout from '@/components/templates/Layout';
+import { generateContentMetadata } from '@/lib/metadata';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail, listOccurrenceParams } from '@/lib/occurrence/queries';
 import { toBadgeStatus } from '@/lib/occurrence/status';
@@ -57,10 +58,11 @@ export async function generateMetadata(props: OccurrencePageProps): Promise<Meta
   const venueName = data.venue?.name ?? data.occurrence.venueLabel ?? '会場未定';
   const period = formatPeriod(data.occurrence.startsOn, data.occurrence.endsOn);
 
-  return {
+  return generateContentMetadata({
     title: `${data.event.name} ${venueName} — Revolution`,
     description: `${data.event.name} の ${venueName} 開催情報 (${period})`,
-  };
+    path: `/events/${data.event.id}/${data.occurrence.slug}`,
+  });
 }
 
 export default async function OccurrenceDetailPage(props: OccurrencePageProps) {

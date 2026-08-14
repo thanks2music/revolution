@@ -25,6 +25,7 @@ import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
 import Layout from '@/components/templates/Layout';
 import { groupOccurrencesByStatus } from '@/lib/event/grouping';
 import { getEventDetail, listEventParams } from '@/lib/event/queries';
+import { generateContentMetadata } from '@/lib/metadata';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { toBadgeStatus } from '@/lib/occurrence/status';
 import { isSafeHttpUrl } from '@/lib/url-safety';
@@ -48,12 +49,17 @@ export async function generateMetadata(props: EventPageProps): Promise<Metadata>
   }
 
   const venueCount = data.occurrences.length;
-  return {
+  // ⚠️ `??` では**空文字を素通しして `<meta description="">` になる**
+  //    (本文側は `&&` でガードしているので挙動が食い違っていた)。
+  //    `description` は DB で NOT NULL ではなく、空白のみを拒否する CHECK も無い。
+  const fallback = `${data.event.name} の開催情報${venueCount > 0 ? ` (${venueCount} 会場)` : ''}`;
+  const description = data.event.description?.trim() ? data.event.description : fallback;
+
+  return generateContentMetadata({
     title: `${data.event.name} — Revolution`,
-    description:
-      data.event.description ??
-      `${data.event.name} の開催情報${venueCount > 0 ? ` (${venueCount} 会場)` : ''}`,
-  };
+    description,
+    path: `/events/${data.event.id}`,
+  });
 }
 
 export default async function EventPage(props: EventPageProps) {

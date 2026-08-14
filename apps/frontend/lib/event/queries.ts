@@ -2,11 +2,22 @@ import { cache } from 'react';
 import { z } from 'zod';
 
 import {
+  EVENT_COLUMNS,
+  EVENT_TITLES_COLUMNS,
+  EventSchema,
+  EventSummarySchema,
+  type EventSummary,
+  parseEmbeddedTitles,
+  type Title,
+} from '@/lib/event/contracts';
+import {
   attachVenueNames,
   OCCURRENCE_COLUMNS,
   OccurrenceDetailSchema,
   type OccurrenceListItem,
 } from '@/lib/occurrence/queries';
+import { parseCanonicalId } from '@/lib/route-params';
+import { fetchAllRows } from '@/lib/supabase/paginate';
 import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
 
 /**
@@ -34,34 +45,14 @@ import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase
  * 依存が揃った時点で足す。
  */
 
-const EventSchema = z.object({
-  id: z.number(),
-  slug: z.string(),
-  name: z.string(),
-  description: z.string().nullable(),
-  officialUrl: z.string().nullable(),
-});
-
-const TitleSchema = z.object({
-  slug: z.string(),
-  name: z.string(),
-});
-
-const EventSummarySchema = z.object({
-  id: z.number(),
-  name: z.string(),
-});
-
 export type EventPageData = {
   event: z.infer<typeof EventSchema>;
-  titles: z.infer<typeof TitleSchema>[];
+  titles: Title[];
   /** この企画のすべての開催 (会場名を解決済み)。グルーピングは表示側で行う。 */
   occurrences: OccurrenceListItem[];
   /** 同じ作品に紐づく他の企画 (自分を除く)。 */
-  relatedEvents: z.infer<typeof EventSummarySchema>[];
+  relatedEvents: EventSummary[];
 };
-
-const EVENT_COLUMNS = 'id, slug, name, description, officialUrl:official_url';
 
 /**
  * `generateStaticParams` 用。開催を 1 件以上持つ企画の ID を列挙する。
@@ -82,14 +73,24 @@ export async function listEventParams(): Promise<{ id: string }[]> {
   }
 
   const supabase = createPublicClient();
-  const { data, error } = await supabase.from('occurrence_view').select('eventId:event_id');
 
-  if (error) {
-    throw new Error(`failed to list event params: ${error.message}`);
-  }
+  // ⚠️ 単発 select にしない。PostgREST は `db.max_rows` で**エラーなしに**打ち切る。
+  //    ここは「全件列挙」が前提の関数なので、打ち切られると静的生成から無言で漏れる。
+  //    詳細は `lib/supabase/paginate.ts`。
+  const rows = z.array(z.object({ eventId: z.number() })).parse(
+    await fetchAllRows({
+      label: 'event params',
+      fetchPage: (from, to) =>
+        supabase
+          .from('occurrence_view')
+          .select('eventId:event_id')
+          .order('event_id', { ascending: true })
+          .range(from, to),
+    }),
+  );
 
-  const rows = z.array(z.object({ eventId: z.number() })).parse(data ?? []);
-  // 同じ企画が開催数だけ出てくるので畳む。
+  // 同じ企画が開催数だけ出てくるので畳む。Set は挿入順を保つので
+  // order の昇順がそのまま残り、ビルドごとにパス順が変わらない。
   return [...new Set(rows.map((row) => row.eventId))].map((id) => ({ id: String(id) }));
 }
 
@@ -103,8 +104,9 @@ export async function listEventParams(): Promise<{ id: string }[]> {
 export const getEventDetail = cache(async function getEventDetail(
   eventIdRaw: string,
 ): Promise<EventPageData | null> {
-  const eventId = Number(eventIdRaw);
-  if (!Number.isInteger(eventId) || eventId <= 0) return null;
+  // 表記ゆれ (`2.0` / `0x2` / `02` …) を 404 にする。理由は `lib/route-params.ts`。
+  const eventId = parseCanonicalId(eventIdRaw);
+  if (eventId === null) return null;
 
   const supabase = createPublicClient();
 
@@ -122,7 +124,7 @@ export const getEventDetail = cache(async function getEventDetail(
   const event = EventSchema.parse(eventRow);
 
   const [titleResult, occurrenceResult] = await Promise.all([
-    supabase.from('event_titles').select('titles(slug, name)').eq('event_id', eventId),
+    supabase.from('event_titles').select(EVENT_TITLES_COLUMNS).eq('event_id', eventId),
     supabase.from('occurrence_view').select(OCCURRENCE_COLUMNS).eq('event_id', eventId),
   ]);
 
@@ -137,11 +139,7 @@ export const getEventDetail = cache(async function getEventDetail(
     }
   }
 
-  const titles = z
-    .array(z.object({ titles: TitleSchema.nullable() }))
-    .parse(titleResult.data ?? [])
-    .map((row) => row.titles)
-    .filter((t): t is z.infer<typeof TitleSchema> => t !== null);
+  const titles = parseEmbeddedTitles(titleResult.data);
 
   const occurrences = await attachVenueNames(
     z.array(OccurrenceDetailSchema).parse(occurrenceResult.data ?? []),
@@ -159,33 +157,86 @@ export const getEventDetail = cache(async function getEventDetail(
  * 同じ作品に紐づく他の企画。作品が 1 つも無ければ空配列。
  *
  * `event_titles` を作品 slug 側から引き直す。**自分自身は除く**。
+ *
+ * ## 空ページへリンクしない (PR #303 レビュー指摘)
+ *
+ * 公開済み (`verified`) の開催を 1 件も持たない企画は、ページを開いても
+ * 「会場を選ぶ」が空になる。**リンクを踏んだ先が空**という体験を作らないため、
+ * 開催を持つ企画だけに絞る。`listEventParams` が静的生成の対象を
+ * 「開催を 1 件以上持つ企画」に限っているのと同じ基準に揃えている。
+ *
+ * ## 件数と順序を明示する
+ *
+ * 人気作品では関連企画が大量に付き得る。`limit` も `order` も付けないと
+ * **全件を DB 任せの順序で描画**してしまい、表示順がビルドごとに変わる。
  */
-async function findRelatedEvents(
-  eventId: number,
-  titleSlugs: string[],
-): Promise<z.infer<typeof EventSummarySchema>[]> {
+
+/**
+ * 関連企画の表示上限。
+ *
+ * 「同じ作品の他の企画」は回遊のための補助導線であって一覧ではない。
+ * 全件を出したい要求が生まれたら作品ハブ (`/titles/{slug}`) の役目になる。
+ */
+const RELATED_EVENTS_LIMIT = 12;
+
+async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise<EventSummary[]> {
   if (titleSlugs.length === 0) return [];
 
   const supabase = createPublicClient();
   const { data, error } = await supabase
     .from('event_titles')
-    .select('events(id, name), titles!inner(slug)')
-    .in('titles.slug', titleSlugs);
+    .select('events!inner(id, name), titles!inner(slug)')
+    .in('titles.slug', titleSlugs)
+    // 表示順を DB 任せにしない。名前順なら実行ごとに変わらない。
+    .order('name', { ascending: true, referencedTable: 'events' })
+    // 自分自身が混ざるので 1 件多く取ってから除外する。
+    .limit(RELATED_EVENTS_LIMIT + 1);
 
   if (error) {
     throw new Error(`failed to load related events: ${error.message}`);
   }
 
-  const rows = z
-    .array(z.object({ events: EventSummarySchema.nullable() }))
-    .parse(data ?? []);
+  const rows = z.array(z.object({ events: EventSummarySchema.nullable() })).parse(data ?? []);
 
-  // 複数作品に紐づく企画は重複して返るので畳む。
-  const byId = new Map<number, z.infer<typeof EventSummarySchema>>();
+  // 複数作品に紐づく企画は重複して返るので畳む。Map は挿入順を保つので
+  // 上の order がそのまま残る。
+  const byId = new Map<number, EventSummary>();
   for (const row of rows) {
     if (row.events && row.events.id !== eventId) {
       byId.set(row.events.id, row.events);
     }
   }
-  return [...byId.values()];
+  if (byId.size === 0) return [];
+
+  return withPublishedOccurrences([...byId.values()]);
+}
+
+/**
+ * 公開済みの開催を 1 件以上持つ企画だけを残す。順序は入力のまま。
+ *
+ * `occurrence_view` は anon から読むと `verified = true` の行しか返らないので、
+ * 「返ってきた event_id の集合」がそのまま「公開できる企画」になる。
+ */
+async function withPublishedOccurrences(events: EventSummary[]): Promise<EventSummary[]> {
+  const supabase = createPublicClient();
+  const { data, error } = await supabase
+    .from('occurrence_view')
+    .select('eventId:event_id')
+    .in(
+      'event_id',
+      events.map((event) => event.id),
+    );
+
+  if (error) {
+    throw new Error(`failed to check related events for occurrences: ${error.message}`);
+  }
+
+  const withOccurrences = new Set(
+    z
+      .array(z.object({ eventId: z.number() }))
+      .parse(data ?? [])
+      .map((row) => row.eventId),
+  );
+
+  return events.filter((event) => withOccurrences.has(event.id)).slice(0, RELATED_EVENTS_LIMIT);
 }

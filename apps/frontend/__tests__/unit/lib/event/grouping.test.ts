@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import { OCCURRENCE_STATUS_VALUES } from '@revolution/schemas/occurrence';
 
 import { groupOccurrencesByStatus } from '@/lib/event/grouping';
 import type { OccurrenceListItem } from '@/lib/occurrence/queries';
@@ -78,5 +79,47 @@ describe('groupOccurrencesByStatus', () => {
       make({ id: 2, status: 'unscheduled', startsOn: null, endsOn: null, venueName: 'あ' }),
     ]);
     expect(groups[0].items.map((i) => i.venueName)).toEqual(['あ', 'び']);
+  });
+
+  /**
+   * ★ PR #303 レビュー指摘の回帰テスト。
+   *
+   * 旧実装は `scheduled` 以外をすべて `ends_on` 優先で並べていたため、
+   * docstring の「日程未発表 / 中止 = 会場名順」と挙動が乖離していた。
+   * **中止は通常 `ends_on` を持ち**、日程未発表も DB CHECK 上は
+   * `starts_on is null` + `ends_on` あり を許すので、実データで露出する。
+   * 旧テストは両グループを `endsOn: null` のケースしか固定していなかった。
+   */
+  it('sorts cancelled by venue name even when the occurrences have end dates', () => {
+    const groups = groupOccurrencesByStatus([
+      make({ id: 1, status: 'cancelled', endsOn: '2026-09-30', venueName: 'あ' }),
+      make({ id: 2, status: 'cancelled', endsOn: '2026-09-01', venueName: 'い' }),
+    ]);
+    // ends_on で並べれば ['い', 'あ'] になる。中止に「終了間近順」は意味がない。
+    expect(groups[0].items.map((i) => i.venueName)).toEqual(['あ', 'い']);
+  });
+
+  it('sorts unscheduled by venue name even when an end date exists', () => {
+    const groups = groupOccurrencesByStatus([
+      make({ id: 1, status: 'unscheduled', startsOn: null, endsOn: '2026-12-31', venueName: 'あ' }),
+      make({ id: 2, status: 'unscheduled', startsOn: null, endsOn: '2026-09-01', venueName: 'い' }),
+    ]);
+    expect(groups[0].items.map((i) => i.venueName)).toEqual(['あ', 'い']);
+  });
+
+  /**
+   * 全状態がグループに現れることを固定する。`GROUP_ORDER` から状態が漏れると
+   * その開催が「会場を選ぶ」から無言で落ち、件数表示と合計が食い違う。
+   * 型でも守っているが、実行時にも押さえる。
+   */
+  it('assigns every occurrence to some group (nothing silently disappears)', () => {
+    const items = OCCURRENCE_STATUS_VALUES.map((status, index) =>
+      make({ id: index + 1, status, slug: `slug-${index}` }),
+    );
+    const groups = groupOccurrencesByStatus(items);
+    const grouped = groups.flatMap((g) => g.items);
+
+    expect(grouped).toHaveLength(items.length);
+    expect(new Set(grouped.map((i) => i.id))).toEqual(new Set(items.map((i) => i.id)));
   });
 });

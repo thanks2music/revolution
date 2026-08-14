@@ -2,6 +2,15 @@ import { OccurrenceViewSchema } from '@revolution/schemas/occurrence';
 import { cache } from 'react';
 import { z } from 'zod';
 
+import {
+  EVENT_COLUMNS,
+  EVENT_TITLES_COLUMNS,
+  EventSchema,
+  parseEmbeddedTitles,
+  type Title,
+} from '@/lib/event/contracts';
+import { parseCanonicalId } from '@/lib/route-params';
+import { fetchAllRows } from '@/lib/supabase/paginate';
 import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
 
 /**
@@ -53,25 +62,12 @@ export type OccurrenceDetail = z.infer<typeof OccurrenceDetailSchema>;
 export const OCCURRENCE_COLUMNS =
   'id, eventId:event_id, venueId:venue_id, venueLabel:venue_label, slug, startsOn:starts_on, endsOn:ends_on, status';
 
-const EventSchema = z.object({
-  id: z.number(),
-  slug: z.string(),
-  name: z.string(),
-  description: z.string().nullable(),
-  officialUrl: z.string().nullable(),
-});
-
 const VenueSchema = z.object({
   slug: z.string(),
   name: z.string(),
   prefecture: z.string().nullable(),
   city: z.string().nullable(),
   address: z.string().nullable(),
-});
-
-const TitleSchema = z.object({
-  slug: z.string(),
-  name: z.string(),
 });
 
 /**
@@ -91,7 +87,7 @@ export type OccurrencePageData = {
   occurrence: OccurrenceDetail;
   event: z.infer<typeof EventSchema>;
   venue: z.infer<typeof VenueSchema> | null;
-  titles: z.infer<typeof TitleSchema>[];
+  titles: Title[];
   /** 同じ企画の他の開催 (自分を除く)。 */
   siblings: OccurrenceListItem[];
 };
@@ -129,27 +125,35 @@ export async function listOccurrenceParams(): Promise<
   }
 
   const supabase = createPublicClient();
-  const { data, error } = await supabase
-    .from('occurrence_view')
-    .select('eventId:event_id, slug');
 
-  if (error) {
-    // ビルドを黙って 0 件で通すと「ページが 1 枚も出ない」ことに気づけない。
-    // 取得自体の失敗は明示的に落とす (0 件との区別が要点)。
-    throw new Error(`failed to list occurrence params: ${error.message}`);
-  }
+  // ⚠️ **単発 select にしてはいけない**。PostgREST はサーバ側の `db.max_rows`
+  //    (Supabase 既定 1000) で結果を打ち切るが、**エラーにはならない**。
+  //    行が閾値を超えた瞬間から「順序不定の先頭 N 件しか静的生成されない」
+  //    という無言の劣化が始まる。`id` 昇順を明示してページングする
+  //    (order 無しの range はページ間で行が重複・欠落し得る)。
+  //    取得失敗は `fetchAllRows` が throw する (0 件との区別を保つ)。
+  const rows = await fetchAllRows({
+    label: 'occurrence params',
+    fetchPage: (from, to) =>
+      supabase
+        .from('occurrence_view')
+        .select('eventId:event_id, slug')
+        .order('id', { ascending: true })
+        .range(from, to),
+  });
 
   return z
     .array(z.object({ eventId: z.number(), slug: z.string() }))
-    .parse(data ?? [])
+    .parse(rows)
     .map((row) => ({ id: String(row.eventId), occurrence_slug: row.slug }));
 }
 
 /**
  * 開催詳細 1 件 + 表示に要る周辺データ。見つからなければ null。
  *
- * `eventId` は URL 由来の文字列なので、数値化に失敗したら**問い合わせずに**
- * null を返す (`/events/abc/...` のような入力で DB へ無駄に投げない)。
+ * `eventId` は URL 由来の文字列なので、**正準形でなければ問い合わせずに** null を
+ * 返す (`/events/abc/...` で DB へ無駄に投げない + `/events/2.0` のような
+ * 表記ゆれを 404 にして重複コンテンツを作らない)。
  *
  * ## `React.cache()` でリクエスト内メモ化する
  *
@@ -165,8 +169,11 @@ export const getOccurrenceDetail = cache(async function getOccurrenceDetail(
   eventIdRaw: string,
   occurrenceSlug: string,
 ): Promise<OccurrencePageData | null> {
-  const eventId = Number(eventIdRaw);
-  if (!Number.isInteger(eventId) || eventId <= 0) return null;
+  // `Number()` は `2.0` / `0x2` / `+2` / `02` などを同じ 2 に潰すため使わない。
+  // 正準形以外を通すと同一コンテンツが無限の URL 変種で 200 を返す
+  // (`lib/route-params.ts` に実測表あり)。
+  const eventId = parseCanonicalId(eventIdRaw);
+  if (eventId === null) return null;
 
   const supabase = createPublicClient();
 
@@ -185,11 +192,7 @@ export const getOccurrenceDetail = cache(async function getOccurrenceDetail(
   const occurrence = OccurrenceDetailSchema.parse(occurrenceRow);
 
   const [eventResult, venueResult, titleResult, siblingResult] = await Promise.all([
-    supabase
-      .from('events')
-      .select('id, slug, name, description, officialUrl:official_url')
-      .eq('id', eventId)
-      .maybeSingle(),
+    supabase.from('events').select(EVENT_COLUMNS).eq('id', eventId).maybeSingle(),
     occurrence.venueId
       ? supabase
           .from('venues')
@@ -198,7 +201,7 @@ export const getOccurrenceDetail = cache(async function getOccurrenceDetail(
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     // event_titles は titles への FK を持つので PostgREST の埋め込みが効く。
-    supabase.from('event_titles').select('titles(slug, name)').eq('event_id', eventId),
+    supabase.from('event_titles').select(EVENT_TITLES_COLUMNS).eq('event_id', eventId),
     supabase
       .from('occurrence_view')
       .select(OCCURRENCE_COLUMNS)
@@ -235,11 +238,7 @@ export const getOccurrenceDetail = cache(async function getOccurrenceDetail(
     occurrence,
     event: EventSchema.parse(eventResult.data),
     venue: venueResult.data ? VenueSchema.parse(venueResult.data) : null,
-    titles: z
-      .array(z.object({ titles: TitleSchema.nullable() }))
-      .parse(titleResult.data ?? [])
-      .map((row) => row.titles)
-      .filter((t): t is z.infer<typeof TitleSchema> => t !== null),
+    titles: parseEmbeddedTitles(titleResult.data),
     siblings: await attachVenueNames(siblings),
   };
 });

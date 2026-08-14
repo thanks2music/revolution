@@ -144,6 +144,60 @@ export function generateArticleMetadata({
 }
 
 /**
+ * 記事以外のコンテンツページ (開催 / 企画 / 作品 / 会場) のメタデータを生成。
+ *
+ * ## なぜ専用の関数を足したか (PR #303 レビュー指摘)
+ *
+ * 既存の記事 / カテゴリページは本モジュール経由で openGraph / twitter /
+ * canonical (`og:url`) を出しているのに、S2 で新設したページは
+ * `title` + `description` しか返しておらず、**OG 画像も canonical も無い**状態だった。
+ * SEO が主要な流入経路である以上、ページ種別が増えるたびに素の `Metadata` を
+ * 手書きすると、こうした欠落が静かに増える。
+ *
+ * `generateArticleMetadata` を流用しないのは `og:type` が `article` 固定で、
+ * 開催・企画は記事ではないため (`website` が妥当)。
+ *
+ * @param path - canonical パス。**先頭スラッシュ付きの絶対パス**を渡す
+ */
+export function generateContentMetadata({
+  title,
+  description,
+  path,
+  imageUrl,
+}: {
+  title: string;
+  description: string;
+  path: string;
+  imageUrl?: string;
+}): Metadata {
+  const url = `${siteConfig.url}${path}`;
+  const ogImage = imageUrl || siteConfig.ogImage;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: 'website',
+      locale: 'ja_JP',
+      url,
+      siteName: siteConfig.name,
+      title,
+      description,
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      site: siteConfig.twitterHandle,
+      creator: siteConfig.twitterHandle,
+      title,
+      description,
+      images: [ogImage],
+    },
+  };
+}
+
+/**
  * カテゴリページのメタデータを生成
  */
 export function generateCategoryMetadata({
