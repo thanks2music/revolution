@@ -34,6 +34,15 @@ const config: Config = {
           yellow: 'var(--accent-yellow)',
           'yellow-deep': 'var(--accent-yellow-deep)',
         },
+        // 開催状態 / 残日数 (S2 の開催詳細ページで使用)。
+        // --days-* は淡色のため前景は常に ink-strong (globals.css のコメント参照)。
+        status: {
+          cancelled: 'var(--status-cancelled)',
+        },
+        days: {
+          soon: 'var(--days-soon)',
+          urgent: 'var(--days-urgent)',
+        },
       },
       borderColor: {
         DEFAULT: 'var(--line-soft)',

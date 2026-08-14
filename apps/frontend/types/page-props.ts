@@ -54,12 +54,33 @@ export type ArticlePageParamsNew = {
 };
 
 /**
+ * Occurrence (開催) detail page params
+ *
+ * @description
+ * Used in /events/[id]/[occurrence_slug] route.
+ * `id` is the event (企画) ID; `occurrence_slug` identifies the venue-scoped
+ * occurrence within that event. URL 設計は 2026-08-03 確定
+ * (`docs/event-review-data-model.md` §7)。events.slug は URL に露出しない。
+ *
+ * @example
+ * // URL: /events/2/tokyo-shibuya
+ * { id: '2', occurrence_slug: 'tokyo-shibuya' }
+ */
+export type OccurrencePageParams = {
+  id: string;
+  occurrence_slug: string;
+};
+
+/**
  * Page props for legacy article pages
  *
  * @description
  * Used in /articles/[slug]/page.tsx and /articles/[slug]/opengraph-image.tsx
  */
 export type ArticlePageProps = PageProps<ArticlePageParams>;
+
+/** Page props for the occurrence detail page. */
+export type OccurrencePageProps = PageProps<OccurrencePageParams>;
 
 /**
  * Page props for new article pages
