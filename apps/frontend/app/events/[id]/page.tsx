@@ -53,7 +53,10 @@ export async function generateMetadata(props: EventPageProps): Promise<Metadata>
   //    (本文側は `&&` でガードしているので挙動が食い違っていた)。
   //    `description` は DB で NOT NULL ではなく、空白のみを拒否する CHECK も無い。
   const fallback = `${data.event.name} の開催情報${venueCount > 0 ? ` (${venueCount} 会場)` : ''}`;
-  const description = data.event.description?.trim() ? data.event.description : fallback;
+  // ⚠️ 判定だけでなく**出力にも trim 済みの値**を使う。判定に trim を使いながら
+  //    元の値を出すと、前後に空白を含む説明文がそのまま meta に載る。
+  const trimmed = data.event.description?.trim();
+  const description = trimmed ? trimmed : fallback;
 
   return generateContentMetadata({
     title: `${data.event.name} — Revolution`,

@@ -100,16 +100,57 @@ describe('sitemap', () => {
     expect(result).toHaveLength(4);
   });
 
-  it('falls back to the static pages when a lookup throws', async () => {
-    // sitemap 生成の失敗でページ全体を落とさない、という既存の設計を維持する。
+  /**
+   * ★ PR #303 レビュー指摘の回帰テスト。
+   *
+   * 以前は記事と DB 由来ページを**同じ try/catch で囲んでいた**ため、
+   * Supabase の一時障害で `listEventParams` が throw すると
+   * **取得済みの記事一覧まで sitemap から丸ごと消えていた**。
+   * 「開催・企画が取れなくても記事は残す」という意図をコメントに書きながら、
+   * 実装がそうなっていなかった。
+   */
+  it('keeps the article pages when the database lookup throws', async () => {
+    mockGetAllArticles.mockReturnValue([{ slug: 'abc', date: '2026-01-01' }]);
     mockListEventParams.mockRejectedValue(new Error('db down'));
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     const sitemap = await importSitemap();
     const result = urls(await sitemap());
 
-    expect(result).toEqual(['https://example.com']);
+    // root + article は残り、企画・開催だけが落ちる。
+    expect(result).toContain('https://example.com');
+    expect(result).toContain('https://example.com/articles/abc');
+    expect(result.some((u) => u.includes('/events/'))).toBe(false);
     expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('keeps the database pages when the article lookup throws', async () => {
+    // 逆向きも同じ。片方の失敗がもう片方を巻き込まない。
+    mockGetAllArticles.mockImplementation(() => {
+      throw new Error('fs down');
+    });
+    mockListEventParams.mockResolvedValue([{ id: '2' }]);
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const sitemap = await importSitemap();
+    const result = urls(await sitemap());
+
+    expect(result).toContain('https://example.com/events/2');
+    expect(result.some((u) => u.includes('/articles/'))).toBe(false);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('still returns the root when everything fails', async () => {
+    mockGetAllArticles.mockImplementation(() => {
+      throw new Error('fs down');
+    });
+    mockListEventParams.mockRejectedValue(new Error('db down'));
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const sitemap = await importSitemap();
+    expect(urls(await sitemap())).toEqual(['https://example.com']);
     error.mockRestore();
   });
 });
