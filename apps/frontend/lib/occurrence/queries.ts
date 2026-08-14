@@ -1,7 +1,7 @@
 import { OccurrenceViewSchema } from '@revolution/schemas/occurrence';
 import { z } from 'zod';
 
-import { createPublicClient } from '@/lib/supabase/public';
+import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
 
 /**
  * 開催 (occurrence) の読み取り。
@@ -98,13 +98,35 @@ export type OccurrencePageData = {
 /**
  * `generateStaticParams` 用。公開済み開催の (企画 ID, 開催 slug) を列挙する。
  *
- * ⚠️ **0 件を「異常」として扱わない**。S3 (取り込みパイプライン) が繋がるまで
- * 本番の occurrences は空であり、それは設計どおりの状態
- * (`strategy.md` §5-2: S3 の依存が S2)。ここで throw すると本番ビルドが落ちる。
+ * ## 0 件を「異常」として扱わない
+ *
+ * S3 (取り込みパイプライン) が繋がるまで本番の occurrences は空であり、
+ * それは設計どおりの状態 (`strategy.md` §5-2: S3 の依存が S2)。
+ * ここで throw すると本番ビルドが落ちる。
+ *
+ * ## 資格情報が無いビルドでも通す (2026-08-14、CI 失敗を受けて追加)
+ *
+ * CI の `Build Apps` は Supabase の変数を渡さない (`hasPublicSupabaseCredentials`
+ * の docstring 参照)。**資格情報が無い = 静的生成できないが、それはビルドの
+ * 失敗ではない**ので 0 パスを返し、実行時のオンデマンド生成に委ねる
+ * (`dynamicParams` は既定で true)。
+ *
+ * 一方 **資格情報があるのにクエリが失敗した場合は throw する**。ここを一律
+ * catch にすると、Vercel 本番ビルドで DB が落ちていても 0 ページで静かに成功し、
+ * 「ページが 1 枚も出ない」ことに気づけなくなる。
  */
 export async function listOccurrenceParams(): Promise<
   { id: string; occurrence_slug: string }[]
 > {
+  if (!hasPublicSupabaseCredentials()) {
+    // 黙って 0 件にしない。ビルドログに理由を残す。
+    console.warn(
+      '[occurrence] Supabase の公開接続情報が無いため、開催ページの静的生成をスキップしました ' +
+        '(資格情報を持たないビルドでは想定どおり)。ページは実行時にオンデマンド生成されます。',
+    );
+    return [];
+  }
+
   const supabase = createPublicClient();
   const { data, error } = await supabase
     .from('occurrence_view')

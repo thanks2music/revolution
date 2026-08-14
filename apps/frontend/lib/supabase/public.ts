@@ -32,6 +32,30 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 import { env } from '@/lib/env';
 
+/**
+ * 公開データ用の接続情報が揃っているか。
+ *
+ * ## なぜ必要か (2026-08-14、PR #302 の CI 失敗で判明)
+ *
+ * CI の `Build Apps` は **`SKIP_ENV_VALIDATION=true` で Supabase の変数を渡さない**
+ * (`.github/workflows/ci.yml`)。ジョブの目的は「コンパイルが通ること」であって
+ * DB への到達性ではないため、これは意図的な設計。
+ *
+ * 一方 `generateStaticParams` はビルド時に走る。**開催詳細ページは「ビルド時に
+ * DB を叩く最初のページ」**で、既存の DB 参照ページ (mypage / onboarding / login)
+ * はすべて dynamic なのでビルド時には走らず、この問題を踏んでいなかった。
+ *
+ * よって呼び出し側は「資格情報が無い」(= 資格情報を持たないビルド) と
+ * 「資格情報はあるがクエリが失敗した」(= 実際の障害) を区別する。
+ * 後者は従来どおり throw させる。
+ *
+ * ⚠️ `env` は `SKIP_ENV_VALIDATION=true` のとき検証を飛ばして素通しするため、
+ *    ここでは値が undefined / 空文字になり得る前提で判定する。
+ */
+export function hasPublicSupabaseCredentials(): boolean {
+  return Boolean(env.NEXT_PUBLIC_SUPABASE_URL) && Boolean(env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
+}
+
 export function createPublicClient() {
   return createSupabaseClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
