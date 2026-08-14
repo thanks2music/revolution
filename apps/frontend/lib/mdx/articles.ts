@@ -162,27 +162,6 @@ export function getLatestArticles(limit = 10): ArticleIndexItem[] {
 export { getArticleUrl } from './article-url';
 
 /**
- * パスパラメータから記事を検索
- *
- * @param eventType イベント種別 (collabo-cafe, pop-up-store, etc.)
- * @param workSlug 作品スラッグ (sample-work, chainsaw-man, etc.)
- * @param slug 記事スラッグ (01kafsdmvd, etc.)
- */
-export function getArticleByPath(
-  eventType: string,
-  workSlug: string,
-  slug: string
-): ArticleIndexItem | null {
-  const index = getArticleIndex();
-  return (
-    index.articles.find(
-      article =>
-        article.event_type === eventType && article.work_slug === workSlug && article.slug === slug
-    ) || null
-  );
-}
-
-/**
  * 同じ作品 (`work_slug`) または共通カテゴリを持つ記事を抽出する。
  * RelatedArticles のフィルタを呼び出し側ではなくデータ層に寄せる。
  *

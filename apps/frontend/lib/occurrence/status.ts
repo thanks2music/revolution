@@ -12,36 +12,28 @@ import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
  *
  * ## view に値が増えたら型エラーになる
  *
- * `switch` を網羅させ、default で `never` に代入している。`occurrence_view` の
- * CASE 式に 6 つ目の状態が増えて `OCCURRENCE_STATUS_VALUES` に追加されると、
- * **ここがコンパイルエラーになる**。
+ * `Record<OccurrenceStatus, EventStatus>` はキーの欠落をコンパイルエラーにする。
+ * `occurrence_view` の CASE 式に 6 つ目の状態が増えて
+ * `OCCURRENCE_STATUS_VALUES` に追加されると、**ここが型エラーになる**。
+ * (`lib/event/grouping.ts` も同じ Record 方式で網羅性を守っている)
  *
  * これは実際に踏んだ事故への対策である。`0016` で `unscheduled` を追加した際、
  * zod の enum 更新が漏れて「view が返す値を enum が持たず parse が reject する」
  * 状態になった (claude[bot] PR #291 指摘)。同じ漏れが表示側でも起きると、
  * 今度は**バッジが undefined のスタイルで描画される**。黙って壊れる経路を塞ぐ。
  */
+const BADGE_STATUS: Record<OccurrenceStatus, EventStatus> = {
+  scheduled: 'coming-soon',
+  ongoing: 'now',
+  ended: 'ended',
+  unscheduled: 'unscheduled',
+  // 中止バッジは出すが、**中止ページとしての表現 (中止理由の注記など) は未実装**。
+  // ページ全体のデザインが未作成のため (C-3、2026-08-14 BOSS 判断で後回し)。
+  cancelled: 'cancelled',
+};
+
 export function toBadgeStatus(status: OccurrenceStatus): EventStatus {
-  switch (status) {
-    case 'scheduled':
-      return 'coming-soon';
-    case 'ongoing':
-      return 'now';
-    case 'ended':
-      return 'ended';
-    case 'unscheduled':
-      return 'unscheduled';
-    case 'cancelled':
-      // 中止バッジは出すが、**中止ページとしての表現 (中止理由の注記など) は
-      // 未実装**。ページ全体のデザインが未作成のため (C-3、2026-08-14 BOSS 判断で
-      // 後回し)。ここで落ちないことだけを保証し、作り込みはデザイン確定後に行う。
-      return 'cancelled';
-    default: {
-      // 網羅性の担保。到達不能だが、値が増えたときにここで型エラーになる。
-      const exhaustive: never = status;
-      return exhaustive;
-    }
-  }
+  return BADGE_STATUS[status];
 }
 
 /**

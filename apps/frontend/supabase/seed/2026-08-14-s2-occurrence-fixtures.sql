@@ -50,6 +50,25 @@
 
 begin;
 
+-- ── 前提条件の検査 (これが無いと全 insert が無言で no-op になる) ──────
+--
+-- ⚠️ 企画の insert は `primary_category_id` を `categories` から引く
+-- `insert ... select` である。**categories が未投入だと select が 0 行を返し、
+-- insert も 0 行**になる。エラーにはならないので commit は成功し、
+-- 以降の開催 insert も (企画が無いので) すべて 0 行で通り、
+-- 末尾の検算 SELECT が空になるだけで**どこも失敗しない**。
+--
+-- 「黙って何も起きない」を避けるため、前提が無いことを明示的に失敗させる
+-- (PR #303 レビュー指摘)。
+do $$
+begin
+  if not exists (select 1 from public.categories where slug = 'collabo-cafe') then
+    raise exception
+      'categories が未投入です (slug=collabo-cafe が無い)。migration `0002_categories` を先に適用してください。'
+      using hint = 'このフィクスチャは categories を前提にしています。先に migration を流してください。';
+  end if;
+end $$;
+
 -- ── 作品 ──────────────────────────────────────────────────────────────
 insert into public.titles (slug, name, name_kana, kind)
 values ('seed-kaiju-nichijou', 'シード怪獣の日常', 'しーどかいじゅうのにちじょう', 'anime')

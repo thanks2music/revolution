@@ -1,8 +1,21 @@
 name: CI
 
 on:
+  # ⚠️ **`branches` filter を意図的に付けていない** (2026-08-14 に削除)。
+  #
+  # `pull_request` の `branches` は **base ブランチ**に対して効く。`[main]` を
+  # 指定していたため、stacked PR (base が `feature/*`) では CI が 1 度も走らず、
+  # `Build Apps` / `Type Check & Lint` / `Test` が未検証のまま
+  # 「0 件失敗」と表示されていた (PR #303 で実測)。
+  #
+  # 同じリポジトリの `claude-code-review.yml` は `branches` filter を持たないため
+  # bot レビューだけが stacked PR に走る、という非対称も生んでいた。
+  #
+  # filter を外すと base を問わず CI が走る。CI は読み取り専用の検証のみで、
+  # デプロイを伴わないため base を絞る理由がない。
+  # **`deploy-supabase-migrations.yml` などの `branches: [main]` は本番反映を
+  # 伴うので外してはいけない。**
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 

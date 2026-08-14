@@ -55,7 +55,7 @@ interface ArticleIndexItem {
   filePath: string;
 
   // 必須フィールド（MDX パイプライン固有）
-  post_id: string;           // ULID（10文字）
+  post_id: string;           // ULID の先頭 16 文字（タイムスタンプ 10 + ランダム 6）
   year: number;              // 年度フィルタリング用
   event_type: string;        // イベントタイプ（例: collabo-cafe）
   event_title: string;       // イベント日本語名（例: コラボカフェ）
