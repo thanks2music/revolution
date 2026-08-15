@@ -118,6 +118,16 @@ Developer plan の priority 判定は **log level のみ**で決まり、Alert R
 - `DuplicateSlugError` → **drop**。同一記事の再投入で日常的に起き、呼び出し側は 409 を返して正常処理している
 - `retryable === true` の GitHub エラー → `level: 'warning'` へ降格
 
+> **⚠️ `DuplicateSlugError` の除外方法は経路によって違う (意図的)。**
+>
+> | 経路 | 方法 | なぜ |
+> |---|---|---|
+> | `cron/rss/route.ts` | `instanceof` で分岐し **captureException を呼ばない** | 同じ catch で 409 を返す分岐がすでにあり、そこに 1 行足すだけで済む。SDK まで往復させる必要がない |
+> | `article-generation-mdx.service.ts` の全体 catch | **常に captureException し `beforeSendFilter` で drop** | 18 step 全体を包む catch で、ここに来る例外の種類を列挙できない。個別に除外を書くと**除外リストの保守が必要になる**ため、選別は `beforeSendFilter` に一元化する |
+>
+> つまり **「例外の種類が特定できる箇所は呼ばない / 特定できない箇所は送って filter に任せる」** が方針。
+> 新しく計装を足すときもこの基準で選ぶ。結果はどちらも「送信されない」で同じ。
+
 ### Server Actions は throw しない
 
 frontend の Server Actions は Result パターン (`{ ok: false }`) を返すため、
