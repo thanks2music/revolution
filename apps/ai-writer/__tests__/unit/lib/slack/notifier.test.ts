@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import * as Sentry from '@sentry/nextjs';
 
 import {
   sendSlackNotification,
@@ -14,6 +15,9 @@ beforeEach(() => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
   jest.spyOn(console, 'log').mockImplementation(() => {});
+  // Sentry は moduleNameMapper で手動 mock に解決される module 単位の jest.fn()。
+  // restoreAllMocks では消えないため明示的に clear する。
+  (Sentry.captureMessage as jest.Mock).mockClear();
 });
 
 afterEach(() => {
@@ -147,5 +151,50 @@ describe('呼び出し元の catch 節で元エラーが保持されること (�
     };
 
     await expect(run()).rejects.toThrow('Branch already exists: ai-writer/mdx-collabo-cafe-xxx');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Sentry 計装のコントラクト (Sentry 導入 PR で追加)
+//
+// 通知が届いていないこと自体は気づきにくいので Sentry へ流すが、業務処理は
+// 継続しているため **warning 止まり**にしてある (Developer plan の priority は
+// log level で決まり、warning = Medium = メール通知の対象外)。
+// error に格上げすると、Slack 未設定の環境で毎回メールが飛ぶことになる。
+// ────────────────────────────────────────────────────────────────────────────
+describe('Sentry への通知 (計装コントラクト)', () => {
+  it('送信失敗は warning として captureMessage する', async () => {
+    process.env.SLACK_WEBHOOK_URL = 'https://hooks.slack.example/T000/B000/xxx';
+    mockFetch({ ok: false, status: 500, body: 'internal error' });
+
+    await sendSlackNotification(params);
+
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
+      string,
+      { level: string },
+    ];
+    expect(options.level).toBe('warning');
+  });
+
+  // 未設定は「失敗」ではなく「スキップ」。ここを拾うと、Slack を使っていない
+  // 環境で記事生成のたびにイベントが飛び無料枠を溶かす。
+  it('SLACK_WEBHOOK_URL 未設定のスキップでは captureMessage しない', async () => {
+    delete process.env.SLACK_WEBHOOK_URL;
+    mockFetch({ ok: true });
+
+    await sendSlackNotification(params);
+    await sendSimpleSlackMessage('hello');
+
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('送信成功時は captureMessage しない', async () => {
+    process.env.SLACK_WEBHOOK_URL = 'https://hooks.slack.example/T000/B000/xxx';
+    mockFetch({ ok: true });
+
+    await sendSlackNotification(params);
+
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 });

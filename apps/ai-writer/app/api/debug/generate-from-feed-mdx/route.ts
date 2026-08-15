@@ -48,6 +48,17 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      // ⚠️ **この route 自体は captureException を呼ばない (意図的)。**
+      //
+      // 3 分類でいう「何もしない」に該当する。cron と違い**管理者が画面を見ながら
+      // 手動で叩く**デバッグ用エンドポイントで、失敗は SSE で即座に本人へ表示される。
+      // 無人経路のように「気づけない」性質が無いため、Issue にすると
+      // 無料枠 (5K events/月) を検証作業で溶かすだけになる。
+      //
+      // パイプライン本体の失敗は `ArticleGenerationMdxService` 側の catch が
+      // captureException する (そちらが本経路の計装)。ここでの flush はその
+      // イベントを送り切るために必要。
+      //
       // ⚠️ stream を閉じる helper はすべて **async** で、閉じる直前に Sentry を flush する。
       //
       // この handler は stream を返した時点で return するため、実処理は start() 内で走る。

@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import * as Sentry from '@sentry/nextjs';
 import type { MergedModularTemplate } from '../../../../lib/types/modular-template';
 import type { AiProvider } from '../../../../lib/ai/providers/ai-provider.interface';
 import {
@@ -260,5 +261,55 @@ describe('ContentGenerationService', () => {
         expect(result).toContain('`{ここにグッズの画像を入れる}`');
       });
     });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Sentry 計装のコントラクト (Sentry 導入 PR で追加)
+//
+// `enrichExtractedDataForPrompt` の catch は **記事を生成し続けたまま品質だけ落とす**
+// silent fallback で、コード内コメントが「Sprint C-β P10 で Sentry に promote 予定」と
+// 明記していた箇所。level は warning 止まりにしてある — 記事生成は継続しており
+// 「誰かが起きて対応すべき」ではないため (warning = Medium = メール通知の対象外)。
+// ────────────────────────────────────────────────────────────────────────────
+describe('ContentGenerationService の Sentry 計装', () => {
+  const getEnrich = (service: ContentGenerationService) =>
+    (service as any).enrichExtractedDataForPrompt.bind(service);
+
+  let service: ContentGenerationService;
+
+  beforeEach(() => {
+    (Sentry.captureMessage as jest.Mock).mockClear();
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    service = new ContentGenerationService(
+      createMockTemplateLoader() as any,
+      createMockAiProvider()
+    );
+  });
+
+  it('enrich が落ちたら warning として captureMessage する', () => {
+    // null を渡すと `extractedData.原作タイプ` の参照で TypeError になり catch へ落ちる
+    const result = getEnrich(service)(null);
+
+    // 振る舞いは従来どおり (入力をそのまま返す = 記事生成は続行する)
+    expect(result).toBeNull();
+
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
+      string,
+      { level: string; tags: Record<string, string> },
+    ];
+    expect(options.level).toBe('warning');
+    expect(options.tags.pipeline).toBe('mdx');
+  });
+
+  it('正常時は captureMessage しない', () => {
+    getEnrich(service)({
+      原作タイプ: 'manga_based',
+      メディアタイプ: 'manga',
+      原作者名: '作者名',
+    });
+
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 });
