@@ -1,143 +1,346 @@
 {
-  "generatedAt": "2026-08-15T09:02:31.082Z",
+  "generatedAt": "2026-08-15T15:14:02.806Z",
   "totalArticles": 9,
   "articles": [
     {
-      "slug": "01m01y4kvc06nvjh",
-      "title": "名探偵コナン カフェ in 6都市 4月10日よりコラボ開催",
-      "date": "2026-08-15T05:25:16.656Z",
-      "excerpt": "劇場版『名探偵コナン ハイウェイの堕天使』公開記念のコラボカフェ「名探偵コナンカフェ2026」が、東京・神奈川・愛知・大阪・宮城・北海道の6都市8会場で2026年4月10日より順次開催。",
+      "slug": "01m02zq83vk1w94t",
+      "title": "くまのプーさん カフェ in 東京/大阪 8月20日よりコラボ開催",
+      "date": "2026-08-15T15:12:21.936Z",
+      "excerpt": "「くまのプーさん」OH MY CAFEが開催決定。原作デビュー100周年を祝う世界観あふれるコラボカフェで、東京・大阪の2店舗にて限定メニューやグッズを楽しめます。",
       "categories": [
-        "名探偵コナン",
+        "くまのプーさん",
         "コラボカフェ"
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/detective-conan/01m01y4kvc06nvjh.mdx",
-      "post_id": "01m01y4kvc06nvjh",
+      "filePath": "apps/ai-writer/content/collabo-cafe/winnie-the-pooh/01m02zq83vk1w94t.mdx",
+      "post_id": "01m02zq83vk1w94t",
       "year": 2026,
       "event_type": "collabo-cafe",
       "event_title": "コラボカフェ",
-      "work_title": "名探偵コナン",
+      "work_title": "くまのプーさん",
       "work_titles": [
-        "名探偵コナン"
+        "くまのプーさん"
       ],
-      "work_slug": "detective-conan",
+      "work_slug": "winnie-the-pooh",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-08-20",
+      "event_end_date": "2026-10-25",
+      "venue": "BOX cafe&space 東京ソラマチ店",
+      "official_url": "https://hunny2026-ohmycafe.ltr-online.com",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "winnie-the-pooh"
+        ],
+        "event_name": "「くまのプーさん」OH MY CAFE",
+        "event_slug": "kuma-no-pu-san-oh-my-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space 東京ソラマチ店",
+            "starts_on": "2026-08-20",
+            "ends_on": "2026-10-25",
+            "official_url": "https://hunny2026-ohmycafe.ltr-online.com"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space HEP FIVE店",
+            "starts_on": "2026-09-10",
+            "ends_on": "2026-10-18",
+            "official_url": "https://hunny2026-ohmycafe.ltr-online.com"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "01m02znk1jq5t6cp",
+      "title": "トイ・ストーリー5 OH MY CAFE 7月3日より開催",
+      "date": "2026-08-15T15:11:18.432Z",
+      "excerpt": "「トイ・ストーリー5」OH MY CAFEが2026年7月3日から全国5都市で開催。ウッディ、バズ、ジェシーをイメージした限定メニューやグッズ、テイクアウトドリンクが楽しめるコラボカフェです。",
+      "categories": [
+        "トイ・ストーリー5",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/toy-story-5/01m02znk1jq5t6cp.mdx",
+      "post_id": "01m02znk1jq5t6cp",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "トイ・ストーリー5",
+      "work_titles": [
+        "トイ・ストーリー5"
+      ],
+      "work_slug": "toy-story-5",
       "prefectures": [
         "東京都",
         "神奈川県",
         "愛知県",
         "大阪府",
-        "宮城県",
-        "北海道"
+        "宮城県"
       ],
       "prefecture_slugs": [
         "tokyo",
         "kanagawa",
         "aichi",
         "osaka",
-        "miyagi",
-        "hokkaido"
+        "miyagi"
       ],
-      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m01y4kvc06nvjh/20e843ff-7cde-463b-b362-ef700ccf8150.png",
-      "event_start_date": "2026-04-10",
-      "event_end_date": "2026-08-02",
-      "venue": "BOX cafe&space GEMS渋谷店",
-      "official_url": "https://conan-cafe.jp/",
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-07-03",
+      "event_end_date": "2026-09-13",
+      "venue": "OH MY CAFE",
+      "official_url": "https://toy5-ohmycafe.ltr-online.com",
       "event_data": {
         "primary_category_slug": "collabo-cafe",
         "title_slugs": [
-          "meitantei-conan"
+          "toy-story-5"
         ],
-        "event_name": "名探偵コナンカフェ2026",
-        "event_slug": "meitantei-conan-cafe-2026",
+        "event_name": "「トイ・ストーリー5」OH MY CAFE",
+        "event_slug": "toy-story-5-oh-my-cafe",
         "occurrences": [
           {
             "venue_slug": null,
-            "venue_label": "BOX cafe&space GEMS渋谷店",
-            "starts_on": "2026-04-10",
-            "ends_on": "2026-06-28",
-            "official_url": "https://conan-cafe.jp/"
+            "venue_label": "OH MY CAFE",
+            "starts_on": "2026-07-03",
+            "ends_on": "2026-09-13",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
           },
           {
             "venue_slug": null,
-            "venue_label": "BOX cafe&space HEP FIVE店",
-            "starts_on": "2026-04-10",
-            "ends_on": "2026-08-02",
-            "official_url": "https://conan-cafe.jp/"
+            "venue_label": "BOX cafe&space ルミネエスト新宿2号店",
+            "starts_on": "2026-07-10",
+            "ends_on": "2026-08-30",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
           },
           {
             "venue_slug": null,
-            "venue_label": "BOX cafe&space グローバルゲート名古屋1号店",
-            "starts_on": "2026-04-24",
-            "ends_on": "2026-07-05",
-            "official_url": "https://conan-cafe.jp/"
+            "venue_label": "BOX cafe&space グローバルゲート名古屋2号店",
+            "starts_on": "2026-07-03",
+            "ends_on": "2026-08-09",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space ＫＩＴＴＥ OSAKA 2号店",
+            "starts_on": "2026-07-03",
+            "ends_on": "2026-08-23",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
           },
           {
             "venue_slug": null,
             "venue_label": "BALLER:S イオンモール新利府店",
-            "starts_on": "2026-04-24",
-            "ends_on": "2026-06-28",
-            "official_url": "https://conan-cafe.jp/"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space グランドスケープ池袋店",
-            "starts_on": "2026-04-17",
-            "ends_on": "2026-08-02",
-            "official_url": "https://conan-cafe.jp/"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space 東京ソラマチ店",
-            "starts_on": "2026-04-17",
-            "ends_on": "2026-06-28",
-            "official_url": "https://conan-cafe.jp/"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space キュープラザ原宿店",
-            "starts_on": "2026-06-11",
-            "ends_on": "2026-07-19",
-            "official_url": "https://conan-cafe.jp/"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space ＫＩＴＴＥ OSAKA １号店",
-            "starts_on": "2026-06-11",
-            "ends_on": "2026-07-19",
-            "official_url": "https://conan-cafe.jp/"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "Cafe Fan Base",
-            "starts_on": "2026-05-14",
-            "ends_on": "2026-07-26",
-            "official_url": "https://conan-cafe.jp/"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "コーチャンフォー新川通り店 カフェ インターリュード",
-            "starts_on": "2026-04-17",
-            "ends_on": "2026-06-07",
-            "official_url": "https://conan-cafe.jp/"
+            "starts_on": "2026-07-03",
+            "ends_on": "2026-08-30",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
           }
         ]
       }
     },
     {
-      "slug": "01m01xyrwenz9tdf",
-      "title": "呪術廻戦 カフェ in 東京/愛知/大阪 7月9日より第5弾コラボ開催",
-      "date": "2026-08-15T05:22:15.503Z",
-      "excerpt": "「呪術廻戦カフェ2026 5th Anniversary」が東京・愛知・大阪で2026年7月9日より期間限定オープン。アニメ5周年を記念したお祝いパーティー風のコラボカフェで、限定メニューやグッズも登場します。",
+      "slug": "01m02zkq4xb26jge",
+      "title": "ポチャッコ カフェ in 東京/大阪 7月2日よりコラボ開催",
+      "date": "2026-08-15T15:10:28.912Z",
+      "excerpt": "ポチャッコのテーマカフェ「POCHACCO CAFE」が東京・大阪で期間限定オープン。モノクロ調の世界観と涼しげなメニュー、限定グッズが楽しめるコラボカフェです。",
+      "categories": [
+        "ポチャッコ",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/pochacco/01m02zkq4xb26jge.mdx",
+      "post_id": "01m02zkq4xb26jge",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "ポチャッコ",
+      "work_titles": [
+        "ポチャッコ"
+      ],
+      "work_slug": "pochacco",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-07-02",
+      "event_end_date": "2026-08-16",
+      "venue": "BOX cafe&space 東京ソラマチ店",
+      "official_url": "https://monokuro-2026.ltr-online.com",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "pochacco"
+        ],
+        "event_name": "POCHACCO CAFE",
+        "event_slug": "pochacco-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space 東京ソラマチ店",
+            "starts_on": "2026-07-02",
+            "ends_on": "2026-08-16",
+            "official_url": "https://monokuro-2026.ltr-online.com"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space 天王寺MIO店",
+            "starts_on": "2026-07-02",
+            "ends_on": "2026-08-09",
+            "official_url": "https://monokuro-2026.ltr-online.com"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "01m02zj7t5n9evh7",
+      "title": "スター・ウォーズ カフェ in 東京/大阪 5月28日よりコラボ開催",
+      "date": "2026-08-15T15:09:39.910Z",
+      "excerpt": "映画『スター・ウォーズ／マンダロリアン・アンド・グローグー』公開記念のコラボカフェ「STAR WARS」CAFE : Galactic Dinerが登場。グローグーやマンダロリアンをイメージしたメニューに加え、ローグ・ワン10周年記念メニューも楽しめます。",
+      "categories": [
+        "スター・ウォーズ／マンダロリアン・アンド・グローグー",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/mandalorian-grogu/01m02zj7t5n9evh7.mdx",
+      "post_id": "01m02zj7t5n9evh7",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "スター・ウォーズ／マンダロリアン・アンド・グローグー",
+      "work_titles": [
+        "スター・ウォーズ",
+        "マンダロリアン",
+        "ローグ・ワン／スター・ウォーズ・ストーリー"
+      ],
+      "work_slug": "mandalorian-grogu",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-05-28",
+      "event_end_date": "2026-08-16",
+      "venue": "Collabo_Index SHINSAIBASHI",
+      "official_url": "https://sw2026.ltr-online.com/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "star-wars",
+          "the-mandalorian",
+          "rogue-one-a-star-wars-story"
+        ],
+        "event_name": "「STAR WARS」CAFE : Galactic Diner",
+        "event_slug": "star-wars-cafe-galactic-diner",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "Collabo_Index SHINSAIBASHI",
+            "starts_on": "2026-05-28",
+            "ends_on": "2026-07-12",
+            "official_url": "https://sw2026.ltr-online.com/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space SHIBUYA109渋谷店",
+            "starts_on": "2026-06-04",
+            "ends_on": "2026-08-16",
+            "official_url": "https://sw2026.ltr-online.com/"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "01m02zgprcsn8er6",
+      "title": "薬屋のひとりごと カフェ in 東京/大阪 5月14日よりコラボ開催",
+      "date": "2026-08-15T15:08:51.064Z",
+      "excerpt": "『薬屋のひとりごと』原作小説カフェが東京・大阪で期間限定開催。猫猫のスープや氷菓など原作者監修の公式レシピを味わえる、料理テーマのコラボカフェです。",
+      "categories": [
+        "薬屋のひとりごと",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/kusuriyanohitorigoto/01m02zgprcsn8er6.mdx",
+      "post_id": "01m02zgprcsn8er6",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "薬屋のひとりごと",
+      "work_titles": [
+        "薬屋のひとりごと"
+      ],
+      "work_slug": "kusuriyanohitorigoto",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-05-14",
+      "event_end_date": "2026-07-05",
+      "venue": "BOX cafe&space マツモトキヨシ池袋Part2店",
+      "official_url": "https://kusuriya-cafe.ltr-online.com",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "kusuriya-no-hitorigoto"
+        ],
+        "event_name": "『薬屋のひとりごと』原作小説カフェ",
+        "event_slug": "kusuriya-no-hitorigoto-gensaku-shousetsu-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space マツモトキヨシ池袋Part2店",
+            "starts_on": "2026-05-14",
+            "ends_on": "2026-07-05",
+            "official_url": "https://kusuriya-cafe.ltr-online.com"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space ＫＩＴＴＥ OSAKA 2号店",
+            "starts_on": "2026-05-28",
+            "ends_on": "2026-06-28",
+            "official_url": "https://kusuriya-cafe.ltr-online.com"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "01m02zf3z8gd28s4",
+      "title": "呪術廻戦 カフェ in 東京/愛知/大阪 7月9日より第5弾開催",
+      "date": "2026-08-15T15:07:55.660Z",
+      "excerpt": "「呪術廻戦カフェ2026 5th Anniversary」が東京・愛知・大阪で2026年7月9日から期間限定オープン。アニメ5周年を記念したお祝いパーティー風のコラボカフェで、限定メニューやグッズも登場します。",
       "categories": [
         "呪術廻戦",
         "コラボカフェ"
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/jujutsu-kaisen/01m01xyrwenz9tdf.mdx",
-      "post_id": "01m01xyrwenz9tdf",
+      "filePath": "apps/ai-writer/content/collabo-cafe/jujutsu-kaisen/01m02zf3z8gd28s4.mdx",
+      "post_id": "01m02zf3z8gd28s4",
       "year": 2026,
       "event_type": "collabo-cafe",
       "event_title": "コラボカフェ",
@@ -156,7 +359,7 @@
         "aichi",
         "osaka"
       ],
-      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m01xyrwenz9tdf/332afe6a-e318-41e7-9d87-a2119a72ce78.png",
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m02zf3z8gd28s4/3286f0b7-f938-4e43-a8c4-a1fb2d3ad100.png",
       "event_start_date": "2026-07-09",
       "event_end_date": "2026-09-27",
       "venue": "BOX cafe&space ルミネエスト新宿1号店",
@@ -194,18 +397,18 @@
       }
     },
     {
-      "slug": "01m01xw86trj3471",
-      "title": "初音ミク コラボカフェ in Wa Modern cafe 1月1日より開催",
-      "date": "2026-08-15T05:21:15.426Z",
-      "excerpt": "初音ミクのコラボカフェ「Wa Modern CAFE」が2026年8月7日より東京・愛知・大阪で順次開催。和モダンな限定メニューやグッズ、事前予約情報を紹介します。",
+      "slug": "01m02zdp18zzqxnf",
+      "title": "初音ミク カフェ in 東京/愛知/大阪 8月7日よりコラボ開催",
+      "date": "2026-08-15T15:07:22.540Z",
+      "excerpt": "初音ミク「Wa Modern CAFE」が2026年8月7日より東京・愛知・大阪で順次開催。和モダンをテーマにした限定メニューや描きおろしグッズ、事前予約情報を紹介。",
       "categories": [
         "初音ミク",
         "コラボカフェ"
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/hatsune-miku/01m01xw86trj3471.mdx",
-      "post_id": "01m01xw86trj3471",
+      "filePath": "apps/ai-writer/content/collabo-cafe/hatsune-miku/01m02zdp18zzqxnf.mdx",
+      "post_id": "01m02zdp18zzqxnf",
       "year": 2026,
       "event_type": "collabo-cafe",
       "event_title": "コラボカフェ",
@@ -214,11 +417,20 @@
         "初音ミク"
       ],
       "work_slug": "hatsune-miku",
-      "prefectures": [],
-      "prefecture_slugs": [],
-      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m01xw86trj3471/c970e66c-793d-4962-a13c-18b563ae5caa.jpg",
-      "event_start_date": "2025-01-01",
-      "venue": "Wa Modern cafe",
+      "prefectures": [
+        "東京都",
+        "愛知県",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "aichi",
+        "osaka"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m02zdp18zzqxnf/9f28364a-b6f4-4504-af9c-9ba48abbb57e.jpg",
+      "event_start_date": "2026-08-07",
+      "event_end_date": "2026-09-27",
+      "venue": "BOX cafe&space グランドスケープ池袋店",
       "official_url": "https://miku-wa-modern-cafe.ltr-online.com/",
       "event_data": {
         "primary_category_slug": "collabo-cafe",
@@ -230,347 +442,164 @@
         "occurrences": [
           {
             "venue_slug": null,
-            "venue_label": "Wa Modern cafe",
-            "starts_on": "2025-01-01",
-            "ends_on": null,
+            "venue_label": "BOX cafe&space グランドスケープ池袋店",
+            "starts_on": "2026-08-07",
+            "ends_on": "2026-09-27",
+            "official_url": "https://miku-wa-modern-cafe.ltr-online.com/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space グローバルゲート名古屋2号店",
+            "starts_on": "2026-08-14",
+            "ends_on": "2026-09-27",
+            "official_url": "https://miku-wa-modern-cafe.ltr-online.com/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space 天王寺MIO店",
+            "starts_on": "2026-08-14",
+            "ends_on": "2026-09-27",
             "official_url": "https://miku-wa-modern-cafe.ltr-online.com/"
           }
         ]
       }
     },
     {
-      "slug": "01m01xvazmtech86",
-      "title": "トイ・ストーリー5 OH MY CAFE 7月3日よりコラボ開催",
-      "date": "2026-08-15T05:20:25.316Z",
-      "excerpt": "「トイ・ストーリー5」OH MY CAFEが2026年7月3日から開催。ウッディ、バズ、ジェシーをイメージした限定メニューやグッズ、テイクアウトドリンクが楽しめるコラボカフェです。",
+      "slug": "01m02zcdrevxhcj4",
+      "title": "名探偵コナン カフェ in 6都市 4月10日よりコラボ開催",
+      "date": "2026-08-15T15:06:17.704Z",
+      "excerpt": "劇場版「名探偵コナン ハイウェイの堕天使」公開記念のコラボカフェが2026年4月10日より東京・神奈川・愛知・大阪・宮城・北海道の6都市8会場で順次開催。港町レトロをテーマにした限定メニューやグッズも登場します。",
       "categories": [
-        "トイ・ストーリー5",
+        "名探偵コナン",
         "コラボカフェ"
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/toy-story-5/01m01xvazmtech86.mdx",
-      "post_id": "01m01xvazmtech86",
+      "filePath": "apps/ai-writer/content/collabo-cafe/detective-conan/01m02zcdrevxhcj4.mdx",
+      "post_id": "01m02zcdrevxhcj4",
       "year": 2026,
       "event_type": "collabo-cafe",
       "event_title": "コラボカフェ",
-      "work_title": "トイ・ストーリー5",
+      "work_title": "名探偵コナン",
       "work_titles": [
-        "トイ・ストーリー5"
+        "名探偵コナン"
       ],
-      "work_slug": "toy-story-5",
+      "work_slug": "detective-conan",
       "prefectures": [
         "東京都",
+        "神奈川県",
         "愛知県",
         "大阪府",
-        "宮城県"
+        "宮城県",
+        "北海道"
       ],
       "prefecture_slugs": [
         "tokyo",
+        "kanagawa",
         "aichi",
         "osaka",
-        "miyagi"
+        "miyagi",
+        "hokkaido"
       ],
-      "ogImage": "/images/og-image-compressed.png",
-      "event_start_date": "2026-07-03",
-      "event_end_date": "2026-09-13",
-      "venue": "OH MY CAFE",
-      "official_url": "https://toy5-ohmycafe.ltr-online.com",
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m02zcdrevxhcj4/97820592-e21b-4420-b719-c4a00056bcb6.png",
+      "event_start_date": "2026-04-10",
+      "event_end_date": "2026-08-02",
+      "venue": "BOX cafe&space GEMS渋谷店",
+      "official_url": "https://conan-cafe.jp/",
       "event_data": {
         "primary_category_slug": "collabo-cafe",
         "title_slugs": [
-          "toy-story-5"
+          "meitantei-conan"
         ],
-        "event_name": "トイ・ストーリー5 OH MY CAFE",
-        "event_slug": "toy-story-5-oh-my-cafe",
+        "event_name": "名探偵コナンカフェ2026",
+        "event_slug": "meitantei-conan-cafe-2026",
         "occurrences": [
           {
             "venue_slug": null,
-            "venue_label": "OH MY CAFE",
-            "starts_on": "2026-07-03",
-            "ends_on": "2026-09-13",
-            "official_url": "https://toy5-ohmycafe.ltr-online.com"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space グローバルゲート名古屋2号店",
-            "starts_on": "2026-07-03",
-            "ends_on": "2026-08-09",
-            "official_url": "https://toy5-ohmycafe.ltr-online.com"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space ＫＩＴＴＥ OSAKA 2号店",
-            "starts_on": "2026-07-03",
-            "ends_on": "2026-08-23",
-            "official_url": "https://toy5-ohmycafe.ltr-online.com"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BALLER:S イオンモール新利府店",
-            "starts_on": "2026-07-03",
-            "ends_on": "2026-08-30",
-            "official_url": "https://toy5-ohmycafe.ltr-online.com"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space ルミネエスト新宿2号店",
-            "starts_on": "2026-07-10",
-            "ends_on": "2026-08-30",
-            "official_url": "https://toy5-ohmycafe.ltr-online.com"
-          }
-        ]
-      }
-    },
-    {
-      "slug": "01m01xsssamvndvr",
-      "title": "くまのプーさん カフェ in 東京/大阪 8月20日よりコラボ開催",
-      "date": "2026-08-15T05:19:33.325Z",
-      "excerpt": "「くまのプーさん」OH MY CAFEが2026年夏に東京・大阪で開催。原作デビュー100周年を祝う限定メニューやグッズが登場し、事前予約は8月5日19時開始。",
-      "categories": [
-        "くまのプーさん",
-        "コラボカフェ"
-      ],
-      "tags": [],
-      "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/winnie-the-pooh/01m01xsssamvndvr.mdx",
-      "post_id": "01m01xsssamvndvr",
-      "year": 2026,
-      "event_type": "collabo-cafe",
-      "event_title": "コラボカフェ",
-      "work_title": "くまのプーさん",
-      "work_titles": [
-        "くまのプーさん"
-      ],
-      "work_slug": "winnie-the-pooh",
-      "prefectures": [
-        "東京都",
-        "大阪府"
-      ],
-      "prefecture_slugs": [
-        "tokyo",
-        "osaka"
-      ],
-      "ogImage": "/images/og-image-compressed.png",
-      "event_start_date": "2026-08-20",
-      "event_end_date": "2026-10-25",
-      "venue": "BOX cafe&space 東京ソラマチ店",
-      "official_url": "https://hunny2026-ohmycafe.ltr-online.com/",
-      "event_data": {
-        "primary_category_slug": "collabo-cafe",
-        "title_slugs": [
-          "winnie-the-pooh"
-        ],
-        "event_name": "「くまのプーさん」OH MY CAFE",
-        "event_slug": "kuma-no-pu-san-oh-my-cafe",
-        "occurrences": [
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space 東京ソラマチ店",
-            "starts_on": "2026-08-20",
-            "ends_on": "2026-10-25",
-            "official_url": "https://hunny2026-ohmycafe.ltr-online.com/"
+            "venue_label": "BOX cafe&space GEMS渋谷店",
+            "starts_on": "2026-04-10",
+            "ends_on": "2026-06-28",
+            "official_url": "https://conan-cafe.jp/"
           },
           {
             "venue_slug": null,
             "venue_label": "BOX cafe&space HEP FIVE店",
-            "starts_on": "2026-09-10",
-            "ends_on": "2026-10-18",
-            "official_url": "https://hunny2026-ohmycafe.ltr-online.com/"
-          }
-        ]
-      }
-    },
-    {
-      "slug": "01m01xr873hcxp3f",
-      "title": "ポチャッコ カフェ in 東京/大阪 7月2日よりコラボ開催",
-      "date": "2026-08-15T05:18:46.825Z",
-      "excerpt": "ポチャッコのモノクロ調テーマカフェ「POCHACCO CAFE」が東京・大阪で期間限定オープン。フォトジェニックなメニューや限定グッズ、事前予約特典も楽しめるコラボカフェです。",
-      "categories": [
-        "ポチャッコ",
-        "コラボカフェ"
-      ],
-      "tags": [],
-      "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/pochacco/01m01xr873hcxp3f.mdx",
-      "post_id": "01m01xr873hcxp3f",
-      "year": 2026,
-      "event_type": "collabo-cafe",
-      "event_title": "コラボカフェ",
-      "work_title": "ポチャッコ",
-      "work_titles": [
-        "ポチャッコ"
-      ],
-      "work_slug": "pochacco",
-      "prefectures": [
-        "東京都",
-        "大阪府"
-      ],
-      "prefecture_slugs": [
-        "tokyo",
-        "osaka"
-      ],
-      "ogImage": "/images/og-image-compressed.png",
-      "event_start_date": "2026-07-02",
-      "event_end_date": "2026-08-16",
-      "venue": "BOX cafe&space 東京ソラマチ店",
-      "official_url": "https://monokuro-2026.ltr-online.com/",
-      "event_data": {
-        "primary_category_slug": "collabo-cafe",
-        "title_slugs": [
-          "pochacco"
-        ],
-        "event_name": "POCHACCO CAFE",
-        "event_slug": "pochacco-cafe",
-        "occurrences": [
+            "starts_on": "2026-04-10",
+            "ends_on": "2026-08-02",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space グランドスケープ池袋店",
+            "starts_on": "2026-04-17",
+            "ends_on": "2026-08-02",
+            "official_url": "https://conan-cafe.jp/"
+          },
           {
             "venue_slug": null,
             "venue_label": "BOX cafe&space 東京ソラマチ店",
-            "starts_on": "2026-07-02",
-            "ends_on": "2026-08-16",
-            "official_url": "https://monokuro-2026.ltr-online.com/"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space 天王寺MIO店",
-            "starts_on": "2026-07-02",
-            "ends_on": "2026-08-09",
-            "official_url": "https://monokuro-2026.ltr-online.com/"
-          }
-        ]
-      }
-    },
-    {
-      "slug": "01m01xptggp7npn0",
-      "title": "スター・ウォーズ カフェ in 東京/大阪 5月28日よりコラボ開催",
-      "date": "2026-08-15T05:17:54.238Z",
-      "excerpt": "映画「スター・ウォーズ／マンダロリアン・アンド・グローグー」公開記念のコラボカフェ「STAR WARS」CAFE : Galactic Dinerが登場。マンダロリアンやグローグーをイメージしたメニューに加え、ローグ・ワン10周年特別メニューも楽しめます。",
-      "categories": [
-        "スター・ウォーズ／マンダロリアン・アンド・グローグー",
-        "コラボカフェ"
-      ],
-      "tags": [],
-      "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/mandalorian-grogu/01m01xptggp7npn0.mdx",
-      "post_id": "01m01xptggp7npn0",
-      "year": 2026,
-      "event_type": "collabo-cafe",
-      "event_title": "コラボカフェ",
-      "work_title": "スター・ウォーズ／マンダロリアン・アンド・グローグー",
-      "work_titles": [
-        "STAR WARS"
-      ],
-      "work_slug": "mandalorian-grogu",
-      "prefectures": [
-        "東京都",
-        "大阪府"
-      ],
-      "prefecture_slugs": [
-        "tokyo",
-        "osaka"
-      ],
-      "ogImage": "/images/og-image-compressed.png",
-      "event_start_date": "2026-05-28",
-      "event_end_date": "2026-08-16",
-      "venue": "Collabo_Index SHINSAIBASHI",
-      "official_url": "https://sw2026.ltr-online.com/",
-      "event_data": {
-        "primary_category_slug": "collabo-cafe",
-        "title_slugs": [
-          "star-wars"
-        ],
-        "event_name": "STAR WARS CAFE : Galactic Diner",
-        "event_slug": "star-wars-cafe-galactic-diner",
-        "occurrences": [
-          {
-            "venue_slug": null,
-            "venue_label": "Collabo_Index SHINSAIBASHI",
-            "starts_on": "2026-05-28",
-            "ends_on": "2026-07-12",
-            "official_url": "https://sw2026.ltr-online.com/"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space SHIBUYA109渋谷店",
-            "starts_on": "2026-06-04",
-            "ends_on": "2026-08-16",
-            "official_url": "https://sw2026.ltr-online.com/"
-          }
-        ]
-      }
-    },
-    {
-      "slug": "01m01xn6s4dzsbn7",
-      "title": "薬屋のひとりごと カフェ in 東京/大阪 5月14日よりコラボ開催",
-      "date": "2026-08-15T05:17:08.379Z",
-      "excerpt": "『薬屋のひとりごと』原作小説カフェが東京・大阪で期間限定開催。原作監修の公式レシピで、猫猫のスープや氷菓など作品の料理を味わえるコラボカフェ。",
-      "categories": [
-        "薬屋のひとりごと",
-        "コラボカフェ"
-      ],
-      "tags": [],
-      "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/kusuriyanohitorigoto/01m01xn6s4dzsbn7.mdx",
-      "post_id": "01m01xn6s4dzsbn7",
-      "year": 2026,
-      "event_type": "collabo-cafe",
-      "event_title": "コラボカフェ",
-      "work_title": "薬屋のひとりごと",
-      "work_titles": [
-        "薬屋のひとりごと"
-      ],
-      "work_slug": "kusuriyanohitorigoto",
-      "prefectures": [
-        "東京都",
-        "大阪府"
-      ],
-      "prefecture_slugs": [
-        "tokyo",
-        "osaka"
-      ],
-      "ogImage": "/images/og-image-compressed.png",
-      "event_start_date": "2026-05-14",
-      "event_end_date": "2026-07-05",
-      "venue": "BOX cafe&space マツモトキヨシ池袋Part2店",
-      "official_url": "https://kusuriya-cafe.ltr-online.com",
-      "event_data": {
-        "primary_category_slug": "collabo-cafe",
-        "title_slugs": [
-          "kusuriya-no-hitorigoto"
-        ],
-        "event_name": "『薬屋のひとりごと』原作小説カフェ",
-        "event_slug": "kusuriya-no-hitorigoto-gensaku-shosetsu-cafe",
-        "occurrences": [
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space マツモトキヨシ池袋Part2店",
-            "starts_on": "2026-05-14",
-            "ends_on": "2026-07-05",
-            "official_url": "https://kusuriya-cafe.ltr-online.com"
-          },
-          {
-            "venue_slug": null,
-            "venue_label": "BOX cafe&space ＫＩＴＴＥ OSAKA 2号店",
-            "starts_on": "2026-05-28",
+            "starts_on": "2026-04-17",
             "ends_on": "2026-06-28",
-            "official_url": "https://kusuriya-cafe.ltr-online.com"
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "コーチャンフォー新川通り店 カフェ インターリュード",
+            "starts_on": "2026-04-17",
+            "ends_on": "2026-06-07",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space グローバルゲート名古屋1号店",
+            "starts_on": "2026-04-24",
+            "ends_on": "2026-07-05",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BALLER:S イオンモール新利府店",
+            "starts_on": "2026-04-24",
+            "ends_on": "2026-06-28",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "Cafe Fan Base",
+            "starts_on": "2026-05-14",
+            "ends_on": "2026-07-26",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space キュープラザ原宿店",
+            "starts_on": "2026-06-11",
+            "ends_on": "2026-07-19",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space ＫＩＴＴＥ OSAKA １号店",
+            "starts_on": "2026-06-11",
+            "ends_on": "2026-07-19",
+            "official_url": "https://conan-cafe.jp/"
           }
         ]
       }
     },
     {
-      "slug": "01m01xjdz2t0z2v8",
-      "title": "ブルーロック カフェ in 東京 8月20日よりコラボ開催",
-      "date": "2026-08-15T05:15:35.235Z",
-      "excerpt": "劇場版『ブルーロック』公開記念のコラボカフェ「ブルーロックカフェ -青い監獄-」が開催。TVアニメ第1期の世界観を再現したフードやドリンク、限定グッズが登場し、東京・BOX cafe&space GEMS渋谷店で2026年8月20日から9月20日まで実施。",
+      "slug": "01m02zah3mp8jwf7",
+      "title": "ブルーロック カフェ in 東京 8月20日より第1弾コラボ開催",
+      "date": "2026-08-15T15:05:26.527Z",
+      "excerpt": "劇場版「ブルーロック」公開記念のコラボカフェ「ブルーロックカフェ -青い監獄-」が東京・BOX cafe&space GEMS渋谷店で開催。キャラをイメージしたフードやドリンク、限定グッズが登場します。",
       "categories": [
         "ブルーロック",
         "コラボカフェ"
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/blue-lock/01m01xjdz2t0z2v8.mdx",
-      "post_id": "01m01xjdz2t0z2v8",
+      "filePath": "apps/ai-writer/content/collabo-cafe/blue-lock/01m02zah3mp8jwf7.mdx",
+      "post_id": "01m02zah3mp8jwf7",
       "year": 2026,
       "event_type": "collabo-cafe",
       "event_title": "コラボカフェ",
