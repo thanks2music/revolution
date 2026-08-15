@@ -148,6 +148,30 @@ resolver 層で差し替えれば transform 自体が走らない。
 
 各テストで `jest.mock()` を書く方式も却下 (書き忘れ 1 箇所で CI が謎に落ちる)。
 
+### 計装テストを書くときの落とし穴 2 つ
+
+**1. `jest.resetModules()` + 動的 import の suite では Sentry を取り直す**
+
+テストファイル冒頭で静的 import した `@sentry/nextjs` は、`resetModules()` 後に
+対象モジュールが掴むものと**別インスタンス**になり、呼び出しを観測できない
+(assertion が「0 回」で空振りする)。対象を import した後に同じレジストリから取り直すこと。
+
+```ts
+const sentry = (await import('@sentry/nextjs')) as unknown as { captureMessage: jest.Mock };
+```
+
+**2. 「呼ばれないこと」の検証は gitignored な YAML に依存させない**
+
+`apps/ai-writer/templates/` と `config/` は private リポジトリから `pnpm sync:templates` で
+同期される **gitignored ディレクトリで、CI ランナーには存在しない**。
+`getMediaTypeMapperService()` / `getMediaFormResolverService()` 等はこれを読むため、
+正常系を実体で通そうとすると **CI でだけ catch へ落ちて「captureMessage が呼ばれないはず」が反転する**。
+
+`ci.yml` は YAML 依存の suite を `testPathIgnorePatterns` で除外しているが、
+**その一覧に無いファイルは CI で実行される**。正常系を検証したい場合は
+依存サービスを mock し、必要なら別ファイルに分離すること
+(例: `__tests__/unit/lib/services/content-generation-sentry.test.ts`)。
+
 ## 現在の設定
 
 | 項目 | 値 | 備考 |
