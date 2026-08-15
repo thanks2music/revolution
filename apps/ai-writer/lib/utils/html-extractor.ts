@@ -29,6 +29,7 @@ import { Agent } from 'undici';
 
 import { compactHtmlForLlm, LLM_INPUT_BUDGET_CHARS } from '@/lib/utils/compact-html';
 import { BROWSER_USER_AGENT, FETCH_TIMEOUT_MS } from '@/lib/utils/http-constants';
+import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
 
 /**
  * SSL証明書エラーのコード一覧
@@ -949,8 +950,27 @@ export async function extractContentHtml(url: string): Promise<ContentHtmlResult
       throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
     }
 
-    const fullHtml = await response.text();
-    console.log(`[HTMLExtractor:Content] HTML取得完了: ${fullHtml.length} bytes`);
+    const fetchedHtml = await response.text();
+    console.log(`[HTMLExtractor:Content] HTML取得完了: ${fetchedHtml.length} bytes`);
+
+    // ------------------------------------------------------------------
+    // Inertia.js の `data-page` ペイロードを展開する (2026-08-15 追加)
+    //
+    // Inertia (+ Svelte) のサイトは本文を DOM ではなく root 要素の data-page 属性へ
+    // JSON で埋め込み、クライアント側で hydrate する。生 HTML を fetch するだけの
+    // 本パイプラインからは本文が「存在しない」ように見え、LLM がページタイトルだけを
+    // 頼りに記事を捏造していた (miku: 生本文 19 字 / nissy: 38 字)。
+    //
+    // 展開すると miku は .place 3 ブロック、nissy は 7 ブロックが復元でき、
+    // 会場網羅ゲートも正しく measure できるようになる。
+    // 非 Inertia のサイトでは入力をそのまま返すため副作用はない。
+    // ------------------------------------------------------------------
+    const fullHtml = expandInertiaPayload(fetchedHtml);
+    if (fullHtml.length !== fetchedHtml.length) {
+      console.log(
+        `[HTMLExtractor:Content] 🧩 Inertia ペイロードを展開: ${fetchedHtml.length} → ${fullHtml.length} bytes`
+      );
+    }
 
     // ★ 照合用 (`raw`) をそのまま保存する。圧縮後しか残っていないと
     //   「ゲートが何を見て unsupported と判定したか」を後から確認できない。

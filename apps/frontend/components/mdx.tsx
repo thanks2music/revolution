@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { MDXRemote, MDXRemoteProps } from 'next-mdx-remote/rsc';
+import remarkGfm from 'remark-gfm';
 
 /**
  * カスタムリンクコンポーネント
@@ -154,12 +155,25 @@ const components = {
 /**
  * カスタムMDXコンポーネント
  * next-mdx-remote/rsc を使用してMDXをレンダリング
+ *
+ * ★2026-08-16: remark-gfm を追加。
+ *   上の components に table / thead / tbody / tr / th / td のスタイルが定義済み
+ *   だったにもかかわらず plugin が未配線で、AI Writer が出力する「まとめテーブル」
+ *   (| 項目 | 内容 | 形式) が 1 行のパイプ文字列としてそのまま表示されていた。
+ *   GFM は表のほかに打ち消し線・タスクリスト・自動リンクも有効にする。
  */
 export function CustomMDX(props: MDXRemoteProps) {
   return (
     <MDXRemote
       {...props}
       components={{ ...components, ...(props.components || {}) }}
+      options={{
+        ...props.options,
+        mdxOptions: {
+          ...props.options?.mdxOptions,
+          remarkPlugins: [remarkGfm, ...(props.options?.mdxOptions?.remarkPlugins ?? [])],
+        },
+      }}
     />
   );
 }
