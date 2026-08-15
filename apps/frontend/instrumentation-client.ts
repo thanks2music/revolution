@@ -10,6 +10,14 @@ import * as Sentry from '@sentry/nextjs';
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
+  // ⚠️ server/edge 側の `SENTRY_ENVIRONMENT ?? VERCEL_ENV ?? NODE_ENV` はここでは使えない。
+  // どちらも NEXT_PUBLIC_ prefix が無く、ブラウザバンドルには inline されないため
+  // undefined になる (= 未設定と同じ)。Vercel が framework 環境変数として
+  // production / preview のビルド時に自動付与する NEXT_PUBLIC_VERCEL_ENV を使う。
+  // これが無いと Preview のクライアントエラーが Production と同じバケットに混ざる。
+  // https://vercel.com/docs/environment-variables/framework-environment-variables
+  environment: process.env.NEXT_PUBLIC_VERCEL_ENV,
+
   // Session Replay は入れない (無料枠 50/月 では監視に足りず、worker-src の CSP 追加も要るため)
   tracesSampleRate: 0.1,
 

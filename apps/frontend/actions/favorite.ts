@@ -85,6 +85,10 @@ export async function getFavoriteState(targetKey: string): Promise<FavoriteState
   // 同様に error を検査し、エラー時は throw して LikeButton の .catch を発火させ、
   // 「いいね状態を取得できませんでした」を表示させる (自信を持って false に倒さない)。
   if (error) {
+    // throw しても Server Action は onRequestError に乗らず、呼び出し元 (LikeButton) は
+    // .catch でローカル表示に倒すだけなので、ここで送らないと Sentry には一切届かない。
+    // toggleFavorite / getFavorites と同じ DB 障害なので同じ扱いに揃える。
+    Sentry.captureException(error, { tags: { action: 'getFavoriteState' } });
     throw new Error('Failed to load favorite state');
   }
 
