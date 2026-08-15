@@ -25,6 +25,7 @@
     "@headlessui/react": "^2.1.2",
     "@heroicons/react": "v1",
     "@revolution/schemas": "workspace:*",
+    "@sentry/nextjs": "^10.70.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.1",
     "@t3-oss/env-nextjs": "^0.13.8",
