@@ -223,6 +223,18 @@ export async function POST(request: NextRequest) {
             }
 
             // Execute MDX generation
+            //
+            // ⚠️ **以下の catch にある DuplicateSlugError の retry 分岐は現状 dead code**
+            // (本 PR の変更ではなく既存の挙動。Sentry 導入で可視化されたので記録する)。
+            //
+            // generateMdxFromRSS() は本体全体を try/catch で包んで必ず
+            // `{ success: false, error }` を返し、内部で throw した DuplicateSlugError も
+            // **再スローしない**。よってこの行は throw せず、次行の
+            // `generationSuccessful = true` が result.success に関わらず必ず実行され、
+            // while ループは 1 回で抜ける。「重複なら次の記事を試す」は動作していない。
+            //
+            // 直すと「重複時に次の記事へ進む」という**振る舞いの変更**になるため、
+            // 監視導入の本 PR には含めない (Follow-up として起票する)。
             result = await mdxService.generateMdxFromRSS(generationRequest);
             generationSuccessful = true;
 

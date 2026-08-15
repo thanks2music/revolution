@@ -13,6 +13,13 @@ Sentry.init({
   tracesSampleRate: 0.1,
 
   sendDefaultPii: false,
+
+  // frontend と揃える。管理 UI は低トラフィックだが、除外条件を片方だけ持つと
+  // 「なぜ差があるのか」が後から分からなくなる。
+  ignoreErrors: [
+    'ResizeObserver loop limit exceeded',
+    'ResizeObserver loop completed with undelivered notifications',
+  ],
 });
 
 /**

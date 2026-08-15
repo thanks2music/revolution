@@ -109,11 +109,22 @@ describe('cron/rss route の Sentry 計装', () => {
     expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it('成功時も含め、レスポンスを返す前に flush される', async () => {
+  it('未知のエラーの経路で flush される', async () => {
     parseRssFeed.mockRejectedValueOnce(new Error('boom'));
 
     await POST(makeRequest());
 
+    expect(Sentry.flush).toHaveBeenCalledWith(2000);
+  });
+
+  // flush は finally に置いてあるので、**例外を経由しない経路でも**走る。
+  // catch 分岐だけを検証していると「例外時しか flush していない」実装に
+  // 差し替わっても気づけないため、早期 return する経路で固定する。
+  it('例外を経由しない早期 return の経路でも flush される', async () => {
+    // feedUrl 未指定 → try の中で 400 を return する (catch を通らない)
+    const res = await POST(makeRequest({}));
+
+    expect(res.status).toBe(400);
     expect(Sentry.flush).toHaveBeenCalledWith(2000);
   });
 

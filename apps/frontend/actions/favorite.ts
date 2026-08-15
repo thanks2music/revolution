@@ -195,6 +195,9 @@ export async function getFavorites(): Promise<GetFavoritesResult> {
     .limit(FAVORITES_FETCH_LIMIT);
 
   if (error) {
+    // toggleFavorite の select / delete / insert と同じ DB 起因の失敗。
+    // マイページのいいね一覧が丸ごと出ない症状になるが、ユーザー側では直せない。
+    Sentry.captureException(error, { tags: { action: 'getFavorites' } });
     return { ok: false, error: 'いいね一覧を取得できませんでした' };
   }
 

@@ -12,7 +12,9 @@ Sentry.init({
   // Cloud Run では `--set-env-vars` で runtime に注入され、同一イメージのまま環境を切り替えられる。
   // NEXT_PUBLIC_SENTRY_DSN はビルド時にリテラル置換されるため、ローカル (.env.local に
   // NEXT_PUBLIC_ だけ書いている場合) のフォールバックとして残す。
-  dsn: process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN,
+  // `??` ではなく `||` を使う。`??` は null / undefined でしかフォールバックしないため、
+  // Cloud Run で SENTRY_DSN が空文字に設定されると SDK が無言で no-op になる。
+  dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
 
   environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV,
 
