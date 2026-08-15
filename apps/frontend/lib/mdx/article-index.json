@@ -1,7 +1,75 @@
 {
-  "generatedAt": "2026-08-15T09:02:31.082Z",
-  "totalArticles": 9,
+  "generatedAt": "2026-08-15T15:09:36.251Z",
+  "totalArticles": 10,
   "articles": [
+    {
+      "slug": "01m02zf3z8gd28s4",
+      "title": "呪術廻戦 カフェ in 東京/愛知/大阪 7月9日より第5弾開催",
+      "date": "2026-08-15T15:07:55.660Z",
+      "excerpt": "「呪術廻戦カフェ2026 5th Anniversary」が東京・愛知・大阪で2026年7月9日から期間限定オープン。アニメ5周年を記念したお祝いパーティー風のコラボカフェで、限定メニューやグッズも登場します。",
+      "categories": [
+        "呪術廻戦",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/jujutsu-kaisen/01m02zf3z8gd28s4.mdx",
+      "post_id": "01m02zf3z8gd28s4",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "呪術廻戦",
+      "work_titles": [
+        "呪術廻戦"
+      ],
+      "work_slug": "jujutsu-kaisen",
+      "prefectures": [
+        "東京都",
+        "愛知県",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "aichi",
+        "osaka"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m02zf3z8gd28s4/3286f0b7-f938-4e43-a8c4-a1fb2d3ad100.png",
+      "event_start_date": "2026-07-09",
+      "event_end_date": "2026-09-27",
+      "venue": "BOX cafe&space ルミネエスト新宿1号店",
+      "official_url": "https://jujutsukaisen-cafe.jp/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "jujutsu-kaisen"
+        ],
+        "event_name": "呪術廻戦カフェ2026 5th Anniversary",
+        "event_slug": "jujutsu-kaisen-cafe-2026-5th-anniversary",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space ルミネエスト新宿1号店",
+            "starts_on": "2026-07-09",
+            "ends_on": "2026-09-27",
+            "official_url": "https://jujutsukaisen-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space グローバルゲート名古屋1号店",
+            "starts_on": "2026-07-09",
+            "ends_on": "2026-08-23",
+            "official_url": "https://jujutsukaisen-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space ＫＩＴＴＥ OSAKA １号店",
+            "starts_on": "2026-07-23",
+            "ends_on": "2026-09-06",
+            "official_url": "https://jujutsukaisen-cafe.jp/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m01y4kvc06nvjh",
       "title": "名探偵コナン カフェ in 6都市 4月10日よりコラボ開催",
