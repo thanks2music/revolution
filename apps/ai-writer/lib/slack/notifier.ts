@@ -196,20 +196,24 @@ function formatDetailedMessage(params: SlackNotificationParams): SlackMessagePay
 }
 
 /**
- * Slack Webhook URL を取得
+ * Slack Webhook URL を取得。未設定なら null を返す。
  *
- * 優先順位:
- * 1. 環境変数 SLACK_WEBHOOK_URL
- * 2. デフォルトWebhook URL
+ * @description
+ * **未設定を例外にしてはいけない。** 本関数の利用者は Slack 通知の 2 関数だけで、
+ * どちらも「通知の失敗はメイン処理を止めない」fire-and-forget として設計されている
+ * (JSDoc の `@throws` にも「ログ出力のみで例外は再スローしない」と明記)。
+ *
+ * ここで throw すると、呼び出し元の未設定ガードより手前で例外が飛ぶため、
+ * `create-mdx-pr.ts` の catch 節から呼ばれたときに **PR 作成の本来のエラーが
+ * 「SLACK webhook URL is not configured」に差し替わって消える**。
+ * 同 catch 節は Slack 通知のあとに元エラーを再スローする構造なので、
+ * 通知で例外が飛ぶと再スローに到達しない。
+ *
+ * 旧実装は throw していたため、2 つの呼び出し元が持つ `if (!webhookUrl)` ガードが
+ * どちらも到達不能なデッドコードになっていた。null を返すことでガードが機能する。
  */
-function getSlackWebhookUrl(): string {
-  const url = process.env.SLACK_WEBHOOK_URL || '';
-
-  if (!url) {
-    throw new Error('SLACK webhook URL is not configured. Set SLACK_WEBHOOK_URL');
-  }
-
-  return url;
+function getSlackWebhookUrl(): string | null {
+  return process.env.SLACK_WEBHOOK_URL || null;
 }
 
 /**
