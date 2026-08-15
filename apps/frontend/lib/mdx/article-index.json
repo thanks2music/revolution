@@ -1,7 +1,57 @@
 {
-  "generatedAt": "2026-07-19T09:35:31.101Z",
-  "totalArticles": 5,
+  "generatedAt": "2026-08-15T05:16:57.672Z",
+  "totalArticles": 6,
   "articles": [
+    {
+      "slug": "01m01xjdz2t0z2v8",
+      "title": "ブルーロック カフェ in 東京 8月20日よりコラボ開催",
+      "date": "2026-08-15T05:15:35.235Z",
+      "excerpt": "劇場版『ブルーロック』公開記念のコラボカフェ「ブルーロックカフェ -青い監獄-」が開催。TVアニメ第1期の世界観を再現したフードやドリンク、限定グッズが登場し、東京・BOX cafe&space GEMS渋谷店で2026年8月20日から9月20日まで実施。",
+      "categories": [
+        "ブルーロック",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/blue-lock/01m01xjdz2t0z2v8.mdx",
+      "post_id": "01m01xjdz2t0z2v8",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "ブルーロック",
+      "work_titles": [
+        "ブルーロック"
+      ],
+      "work_slug": "blue-lock",
+      "prefectures": [
+        "東京都"
+      ],
+      "prefecture_slugs": [
+        "tokyo"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-08-20",
+      "event_end_date": "2026-09-20",
+      "venue": "BOX cafe&space GEMS渋谷店",
+      "official_url": "https://bluelockcafe2026.ltr-online.com",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "blue-lock"
+        ],
+        "event_name": "ブルーロックカフェ -青い監獄-",
+        "event_slug": "blue-lock-cafe-aoi-kangoku",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space GEMS渋谷店",
+            "starts_on": "2026-08-20",
+            "ends_on": "2026-09-20",
+            "official_url": "https://bluelockcafe2026.ltr-online.com"
+          }
+        ]
+      }
+    },
     {
       "slug": "dry-run-1783842264552",
       "title": "トイ・ストーリー5 カフェ in 5都市 7月3日より開催",
