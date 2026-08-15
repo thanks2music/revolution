@@ -74,6 +74,21 @@ ENV NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
 ENV NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 ENV NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID
 
+# Sentry (build 時のみ必要。⚠️ runner stage には絶対に置かないこと)
+# - NEXT_PUBLIC_SENTRY_DSN: クライアントバンドルへ inline される。runtime に同名を
+#   注入しても読まれないため、build-arg で渡す経路が必須
+# - SENTRY_AUTH_TOKEN: source map アップロード専用。**秘密値**。最終イメージは runner
+#   stage なので builder の ARG/ENV はイメージ history に残らない
+#   (検証: docker history <image> | grep -i sentry_auth が空であること)
+# - SENTRY_RELEASE: builder には .git が無く plugin の git 自動検出が必ず失敗するため、
+#   CI から github.sha を明示的に渡す
+ARG NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ARG SENTRY_AUTH_TOKEN
+ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
+ARG SENTRY_RELEASE
+ENV SENTRY_RELEASE=$SENTRY_RELEASE
+
 # 注意: ALLOWED_EMAILS は実行時にSecret Managerから渡されるため、ここでは設定しない
 
 # Next.js テレメトリーを無効化
