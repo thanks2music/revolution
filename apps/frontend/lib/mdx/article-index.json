@@ -1,7 +1,93 @@
 {
-  "generatedAt": "2026-08-15T09:02:31.082Z",
-  "totalArticles": 9,
+  "generatedAt": "2026-08-15T15:12:48.892Z",
+  "totalArticles": 10,
   "articles": [
+    {
+      "slug": "01m02znk1jq5t6cp",
+      "title": "トイ・ストーリー5 OH MY CAFE 7月3日より開催",
+      "date": "2026-08-15T15:11:18.432Z",
+      "excerpt": "「トイ・ストーリー5」OH MY CAFEが2026年7月3日から全国5都市で開催。ウッディ、バズ、ジェシーをイメージした限定メニューやグッズ、テイクアウトドリンクが楽しめるコラボカフェです。",
+      "categories": [
+        "トイ・ストーリー5",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/toy-story-5/01m02znk1jq5t6cp.mdx",
+      "post_id": "01m02znk1jq5t6cp",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "トイ・ストーリー5",
+      "work_titles": [
+        "トイ・ストーリー5"
+      ],
+      "work_slug": "toy-story-5",
+      "prefectures": [
+        "東京都",
+        "神奈川県",
+        "愛知県",
+        "大阪府",
+        "宮城県"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "kanagawa",
+        "aichi",
+        "osaka",
+        "miyagi"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-07-03",
+      "event_end_date": "2026-09-13",
+      "venue": "OH MY CAFE",
+      "official_url": "https://toy5-ohmycafe.ltr-online.com",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "toy-story-5"
+        ],
+        "event_name": "「トイ・ストーリー5」OH MY CAFE",
+        "event_slug": "toy-story-5-oh-my-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "OH MY CAFE",
+            "starts_on": "2026-07-03",
+            "ends_on": "2026-09-13",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space ルミネエスト新宿2号店",
+            "starts_on": "2026-07-10",
+            "ends_on": "2026-08-30",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space グローバルゲート名古屋2号店",
+            "starts_on": "2026-07-03",
+            "ends_on": "2026-08-09",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space ＫＩＴＴＥ OSAKA 2号店",
+            "starts_on": "2026-07-03",
+            "ends_on": "2026-08-23",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BALLER:S イオンモール新利府店",
+            "starts_on": "2026-07-03",
+            "ends_on": "2026-08-30",
+            "official_url": "https://toy5-ohmycafe.ltr-online.com"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m01y4kvc06nvjh",
       "title": "名探偵コナン カフェ in 6都市 4月10日よりコラボ開催",
