@@ -1,7 +1,130 @@
 {
-  "generatedAt": "2026-08-15T09:02:31.082Z",
-  "totalArticles": 9,
+  "generatedAt": "2026-08-15T15:07:47.474Z",
+  "totalArticles": 10,
   "articles": [
+    {
+      "slug": "01m02zcdrevxhcj4",
+      "title": "名探偵コナン カフェ in 6都市 4月10日よりコラボ開催",
+      "date": "2026-08-15T15:06:17.704Z",
+      "excerpt": "劇場版「名探偵コナン ハイウェイの堕天使」公開記念のコラボカフェが2026年4月10日より東京・神奈川・愛知・大阪・宮城・北海道の6都市8会場で順次開催。港町レトロをテーマにした限定メニューやグッズも登場します。",
+      "categories": [
+        "名探偵コナン",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/detective-conan/01m02zcdrevxhcj4.mdx",
+      "post_id": "01m02zcdrevxhcj4",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "名探偵コナン",
+      "work_titles": [
+        "名探偵コナン"
+      ],
+      "work_slug": "detective-conan",
+      "prefectures": [
+        "東京都",
+        "神奈川県",
+        "愛知県",
+        "大阪府",
+        "宮城県",
+        "北海道"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "kanagawa",
+        "aichi",
+        "osaka",
+        "miyagi",
+        "hokkaido"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m02zcdrevxhcj4/97820592-e21b-4420-b719-c4a00056bcb6.png",
+      "event_start_date": "2026-04-10",
+      "event_end_date": "2026-08-02",
+      "venue": "BOX cafe&space GEMS渋谷店",
+      "official_url": "https://conan-cafe.jp/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "meitantei-conan"
+        ],
+        "event_name": "名探偵コナンカフェ2026",
+        "event_slug": "meitantei-conan-cafe-2026",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space GEMS渋谷店",
+            "starts_on": "2026-04-10",
+            "ends_on": "2026-06-28",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space HEP FIVE店",
+            "starts_on": "2026-04-10",
+            "ends_on": "2026-08-02",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space グランドスケープ池袋店",
+            "starts_on": "2026-04-17",
+            "ends_on": "2026-08-02",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space 東京ソラマチ店",
+            "starts_on": "2026-04-17",
+            "ends_on": "2026-06-28",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "コーチャンフォー新川通り店 カフェ インターリュード",
+            "starts_on": "2026-04-17",
+            "ends_on": "2026-06-07",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space グローバルゲート名古屋1号店",
+            "starts_on": "2026-04-24",
+            "ends_on": "2026-07-05",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BALLER:S イオンモール新利府店",
+            "starts_on": "2026-04-24",
+            "ends_on": "2026-06-28",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "Cafe Fan Base",
+            "starts_on": "2026-05-14",
+            "ends_on": "2026-07-26",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space キュープラザ原宿店",
+            "starts_on": "2026-06-11",
+            "ends_on": "2026-07-19",
+            "official_url": "https://conan-cafe.jp/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space ＫＩＴＴＥ OSAKA １号店",
+            "starts_on": "2026-06-11",
+            "ends_on": "2026-07-19",
+            "official_url": "https://conan-cafe.jp/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m01y4kvc06nvjh",
       "title": "名探偵コナン カフェ in 6都市 4月10日よりコラボ開催",
