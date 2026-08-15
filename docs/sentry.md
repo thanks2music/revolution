@@ -46,8 +46,12 @@ Next.js は `NEXT_PUBLIC_*` を**バンドル時にリテラル置換**する。
 - `NEXT_PUBLIC_SENTRY_DSN` は runtime に同名で注入しても**読まれない** → build-arg で渡す必要がある
 - `SENTRY_DSN` は prefix が無いので inline されず runtime に読める → **同一イメージのまま環境を切り替えられる**
 
-`sentry.server.config.ts` は `SENTRY_DSN ?? NEXT_PUBLIC_SENTRY_DSN` の順で解決するため、
+`sentry.server.config.ts` は `SENTRY_DSN || NEXT_PUBLIC_SENTRY_DSN` の順で解決するため、
 ローカル (`.env.local` に `NEXT_PUBLIC_` だけ書く) でも動く。
+
+> **`??` ではなく `||` を使う**。`??` は `null` / `undefined` でしかフォールバックしないため、
+> `SENTRY_DSN` を**空文字で設定**すると（Cloud Run / Vercel の env で起こりうる）
+> フォールバックが働かず SDK が無言で no-op になる。4 つの設定ファイルすべてで `||` に揃えてある。
 
 ### GitHub 側だけ変数名が違う理由
 

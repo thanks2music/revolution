@@ -8,7 +8,9 @@ import * as Sentry from '@sentry/nextjs';
 Sentry.init({
   // frontend は Vercel でビルド・実行されるため NEXT_PUBLIC_ の 1 本で足りるが、
   // ai-writer と経路を揃え、将来 prefix なしで注入したくなった場合にも対応できるようにする。
-  dsn: process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN,
+  // `??` ではなく `||`。`??` は null / undefined でしかフォールバックしないため、
+  // Vercel で SENTRY_DSN を空文字で設定すると SDK が無言で no-op になる。ai-writer と同方針。
+  dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
 
   environment: process.env.SENTRY_ENVIRONMENT ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV,
 
