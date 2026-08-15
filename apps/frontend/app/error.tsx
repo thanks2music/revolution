@@ -6,6 +6,7 @@
 
 'use client';
 
+import * as Sentry from '@sentry/nextjs';
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 
@@ -19,6 +20,7 @@ export default function Error({
   const retryButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    Sentry.captureException(error);
     // エラーをコンソールにログ出力（開発環境でのデバッグ用）
     console.error('Error boundary caught:', error);
   }, [error]);

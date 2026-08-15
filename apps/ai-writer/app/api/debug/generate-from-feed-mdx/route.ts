@@ -20,6 +20,7 @@ import {
   type MdxGenerationRequest,
 } from '@/lib/services/article-generation-mdx.service';
 import { DuplicateSlugError } from '@/lib/errors/github';
+import { flushSentry } from '@/lib/observability/sentry';
 
 /**
  * POST /api/debug/generate-from-feed-mdx
@@ -47,9 +48,27 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const sendError = (error: string) => {
+      // ⚠️ **この route 自体は captureException を呼ばない (意図的)。**
+      //
+      // 3 分類でいう「何もしない」に該当する。cron と違い**管理者が画面を見ながら
+      // 手動で叩く**デバッグ用エンドポイントで、失敗は SSE で即座に本人へ表示される。
+      // 無人経路のように「気づけない」性質が無いため、Issue にすると
+      // 無料枠 (5K events/月) を検証作業で溶かすだけになる。
+      //
+      // パイプライン本体の失敗は `ArticleGenerationMdxService` 側の catch が
+      // captureException する (そちらが本経路の計装)。ここでの flush はその
+      // イベントを送り切るために必要。
+      //
+      // ⚠️ stream を閉じる helper はすべて **async** で、閉じる直前に Sentry を flush する。
+      //
+      // この handler は stream を返した時点で return するため、実処理は start() 内で走る。
+      // つまり SDK v10 の `flushIfServerless` による route handler の自動 flush は
+      // **この経路には効かない**。Cloud Run はレスポンス送出完了 (= stream の close) 後に
+      // CPU を throttle するので、close より後では送信が完了しない。
+      const sendError = async (error: string) => {
         const eventData = `data: ${JSON.stringify({ error })}\n\n`;
         controller.enqueue(encoder.encode(eventData));
+        await flushSentry(2000);
         controller.close();
       };
 
@@ -59,7 +78,7 @@ export async function POST(request: NextRequest) {
         console.log(`[API /api/debug/generate-from-feed-mdx] Authenticated user: ${authUser.email}`);
       } catch (error) {
         console.error('[API /api/debug/generate-from-feed-mdx] Authentication failed:', error);
-        sendError('Authentication required');
+        await sendError('Authentication required');
         return;
       }
 
@@ -73,11 +92,11 @@ export async function POST(request: NextRequest) {
         itemIndex = body.itemIndex ?? 0;
 
         if (!feedUrl) {
-          sendError('feedUrl is required');
+          await sendError('feedUrl is required');
           return;
         }
       } catch (error) {
-        sendError('Invalid request body');
+        await sendError('Invalid request body');
         return;
       }
 
@@ -86,9 +105,10 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(eventData));
       };
 
-      const sendComplete = (result: any) => {
+      const sendComplete = async (result: any) => {
         const eventData = `data: ${JSON.stringify({ complete: true, result })}\n\n`;
         controller.enqueue(encoder.encode(eventData));
+        await flushSentry(2000);
         controller.close();
       };
 
@@ -114,12 +134,12 @@ export async function POST(request: NextRequest) {
         const items = parsedFeed.items || [];
 
         if (items.length === 0) {
-          sendError('RSSフィードに記事が見つかりませんでした');
+          await sendError('RSSフィードに記事が見つかりませんでした');
           return;
         }
 
         if (itemIndex >= items.length) {
-          sendError(`指定されたインデックス ${itemIndex} は範囲外です（最大: ${items.length - 1}）`);
+          await sendError(`指定されたインデックス ${itemIndex} は範囲外です（最大: ${items.length - 1}）`);
           return;
         }
 
@@ -203,6 +223,18 @@ export async function POST(request: NextRequest) {
             }
 
             // Execute MDX generation
+            //
+            // ⚠️ **以下の catch にある DuplicateSlugError の retry 分岐は現状 dead code**
+            // (本 PR の変更ではなく既存の挙動。Sentry 導入で可視化されたので記録する)。
+            //
+            // generateMdxFromRSS() は本体全体を try/catch で包んで必ず
+            // `{ success: false, error }` を返し、内部で throw した DuplicateSlugError も
+            // **再スローしない**。よってこの行は throw せず、次行の
+            // `generationSuccessful = true` が result.success に関わらず必ず実行され、
+            // while ループは 1 回で抜ける。「重複なら次の記事を試す」は動作していない。
+            //
+            // 直すと「重複時に次の記事へ進む」という**振る舞いの変更**になるため、
+            // 監視導入の本 PR には含めない (Follow-up として起票する)。
             result = await mdxService.generateMdxFromRSS(generationRequest);
             generationSuccessful = true;
 
@@ -233,7 +265,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (!generationSuccessful) {
-          sendError(
+          await sendError(
             `すべての記事が重複しています（${currentIndex - itemIndex}件確認）。` +
             (lastError ? `\n最後のエラー: ${lastError.message}` : '')
           );
@@ -241,12 +273,12 @@ export async function POST(request: NextRequest) {
         }
 
         if (!result.success) {
-          sendError(result.error || 'MDX記事の生成に失敗しました');
+          await sendError(result.error || 'MDX記事の生成に失敗しました');
           return;
         }
 
         // Send completion event
-        sendComplete({
+        await sendComplete({
           success: true,
           mdxArticle: {
             title: rssItem.title,
@@ -288,11 +320,12 @@ export async function POST(request: NextRequest) {
             }
           })}\n\n`;
           controller.enqueue(encoder.encode(eventData));
+          await flushSentry(2000);
           controller.close();
           return;
         }
 
-        sendError(error instanceof Error ? error.message : 'Unknown error occurred');
+        await sendError(error instanceof Error ? error.message : 'Unknown error occurred');
       }
     },
   });

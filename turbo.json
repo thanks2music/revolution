@@ -6,11 +6,13 @@
     "NEXT_PUBLIC_*",
     "VERCEL",
     "VERCEL_ENV",
-    "VERCEL_URL"
+    "VERCEL_URL",
+    "SENTRY_RELEASE"
   ],
   "globalPassThroughEnv": [
     "ENABLE_EXPERIMENTAL_COREPACK",
-    "SKIP_ENV_VALIDATION"
+    "SKIP_ENV_VALIDATION",
+    "SENTRY_AUTH_TOKEN"
   ],
   "tasks": {
     "dev": {

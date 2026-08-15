@@ -52,6 +52,11 @@ const config = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^@revolution/schemas/(.*)$': '<rootDir>/../../shared/schemas/$1',
+    // `@sentry/nextjs` は常に手動 mock へ解決する。
+    // 実体は `@sentry/node` + `@opentelemetry/*` の巨大依存を引き、jsdom 環境では
+    // OTel の Node 固有 API 依存で壊れる。resolver 層で差し替えるため transform も走らない。
+    // 詳細: `__mocks__/@sentry/nextjs.ts` の JSDoc
+    '^@sentry/nextjs$': '<rootDir>/__mocks__/@sentry/nextjs.ts',
   },
 
 }

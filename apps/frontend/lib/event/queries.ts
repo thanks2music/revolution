@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs';
 import { cache } from 'react';
 import { z } from 'zod';
 
@@ -190,15 +191,18 @@ async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise
   if (rows.length === RELATED_EVENTS_CANDIDATE_ROWS) {
     // 上限に達した = 候補を取りこぼしている可能性がある。黙らせない。
     //
-    // ⚠️ **これはアラートではない。** 2026-08-14 時点で frontend に Sentry は
-    //    導入されていない (`@sentry/*` は package.json に無く、
-    //    `llm-context/sentry-rules.md` は「導入の際にやる事」の段階)。
-    //    よって本行は **Vercel のランタイムログに残るだけ**で、通知は飛ばない。
-    //    Sentry を入れたら captureMessage 等へ差し替える。
+    // Sentry 導入済み (2026-08-15)。level は warning に留める:
+    // 表示に漏れが出うるだけで機能は動いており、「誰かが起きて対応すべき」ではない。
+    // fingerprint を固定して、event_id ごとに Issue が増えないようにする。
     console.warn(
       `[event] 関連企画の候補が上限 ${RELATED_EVENTS_CANDIDATE_ROWS} 行に達しました ` +
         `(event_id=${eventId})。表示に漏れが出ている可能性があります。`,
     );
+    Sentry.captureMessage('関連企画の候補が取得上限に達した', {
+      level: 'warning',
+      fingerprint: ['related-events-candidate-cap'],
+      extra: { eventId, cap: RELATED_EVENTS_CANDIDATE_ROWS },
+    });
   }
 
   // 複数作品に紐づく企画は重複して返るので畳む。Map は挿入順を保つので

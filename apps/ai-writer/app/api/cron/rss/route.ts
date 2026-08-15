@@ -10,9 +10,11 @@
 
 export const dynamic = 'force-dynamic';
 
+import * as Sentry from '@sentry/nextjs';
 import { NextRequest, NextResponse } from 'next/server';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { createHash, timingSafeEqual } from 'crypto';
+import { flushSentry } from '../../../../lib/observability/sentry';
 import { createMdxPr } from '../../../../lib/github/create-mdx-pr';
 import {
   DuplicateSlugError,
@@ -148,6 +150,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // リトライ可能エラー: 5xx (Cloud Scheduler が自動リトライ)
       console.error('Retryable GitHub error', { error });
 
+      // 「対応すべき事象」ではなくリトライで回復する見込みがあるため warning 止まり。
+      // fingerprint を status で束ね、同種のリトライを 1 Issue に集約する
+      // (無料枠 5K events/月 を個別 Issue で溶かさないため)。
+      Sentry.captureMessage('Retryable GitHub error in cron/rss', {
+        level: 'warning',
+        fingerprint: ['github-retryable', String(getGitHubErrorStatus(error))],
+        tags: { entrypoint: 'cron' },
+      });
+
       return NextResponse.json(
         { error: 'Temporary failure, will retry' },
         { status: getGitHubErrorStatus(error) }
@@ -157,7 +168,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // その他のエラー: 500
     console.error('Unexpected error in cron/rss', { error });
 
+    // 未知のエラーは「誰かが起きて対応すべき」もの。無人 cron 経路の主目的の計装。
+    Sentry.captureException(error, { tags: { entrypoint: 'cron' } });
+
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } finally {
+    // ⚠️ Cloud Run はレスポンス送出後に CPU が throttle されるため、
+    // 「返してから背後で送る」型では届かない。async 関数の finally は
+    // await 完了後に return されるので、ここで待てば送信が完了する。
+    await flushSentry(2000);
   }
 }
 

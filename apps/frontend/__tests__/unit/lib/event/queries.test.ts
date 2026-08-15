@@ -248,6 +248,56 @@ describe('findRelatedEvents (via getEventDetail)', () => {
     expect(result?.relatedEvents).toEqual([{ id: 7, name: '開催あり' }]);
   });
 
+  /**
+   * 候補ウィンドウ上限 (200 行) に張り付いた = 関連企画を取りこぼしている可能性がある。
+   *
+   * console.warn だけでは Vercel のランタイムログに埋もれて誰も気づけないため、
+   * Sentry へ warning として届くことを固定する。level は warning 止まり
+   * (表示に漏れが出うるだけで機能は動いており「起きて対応すべき」ではない)。
+   * fingerprint を固定しないと event_id ごとに Issue が増えて無料枠を食う。
+   */
+  it('reports to Sentry as a warning when the candidate window is saturated', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    const CANDIDATE_ROWS = 200;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        events: { data: EVENT_ROW, error: null },
+        event_titles: [
+          { data: [{ titles: { slug: 'w1', name: 'W1' } }], error: null },
+          // ちょうど上限行数を返す = 取りこぼしの疑いがある状態
+          {
+            data: Array.from({ length: CANDIDATE_ROWS }, (_, i) => ({
+              events: { id: 1000 + i, name: `関連 ${i}` },
+            })),
+            error: null,
+          },
+        ],
+        occurrence_view: [
+          { data: [], error: null },
+          { data: [{ eventId: 1000 }], error: null },
+        ],
+      }),
+    );
+
+    const { getEventDetail } = await importQueries();
+    await getEventDetail('2');
+
+    // ⚠️ resetModules + 動的 import のため、queries.ts と同じレジストリから取る
+    const sentry = (await import('@sentry/nextjs')) as unknown as {
+      captureMessage: jest.Mock;
+    };
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        level: 'warning',
+        fingerprint: ['related-events-candidate-cap'],
+      }),
+    );
+    warn.mockRestore();
+  });
+
   it('returns no related events when the event has no titles', async () => {
     // 作品が無ければ引く条件が無い。DB へ投げずに空を返す。
     mockHasCredentials.mockReturnValue(true);

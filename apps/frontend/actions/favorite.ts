@@ -18,6 +18,7 @@
  *   楽観更新のロールバック判断に使う。
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { createClient } from '@/lib/supabase/server';
@@ -84,6 +85,10 @@ export async function getFavoriteState(targetKey: string): Promise<FavoriteState
   // 同様に error を検査し、エラー時は throw して LikeButton の .catch を発火させ、
   // 「いいね状態を取得できませんでした」を表示させる (自信を持って false に倒さない)。
   if (error) {
+    // throw しても Server Action は onRequestError に乗らず、呼び出し元 (LikeButton) は
+    // .catch でローカル表示に倒すだけなので、ここで送らないと Sentry には一切届かない。
+    // toggleFavorite / getFavorites と同じ DB 障害なので同じ扱いに揃える。
+    Sentry.captureException(error, { tags: { action: 'getFavoriteState' } });
     throw new Error('Failed to load favorite state');
   }
 
@@ -126,6 +131,7 @@ export async function toggleFavorite(
     .maybeSingle();
 
   if (selectError) {
+    Sentry.captureException(selectError, { tags: { action: 'toggleFavorite.select' } });
     return { ok: false, error: 'いいねの状態を取得できませんでした' };
   }
 
@@ -139,6 +145,7 @@ export async function toggleFavorite(
       .eq('target_key', key);
 
     if (deleteError) {
+      Sentry.captureException(deleteError, { tags: { action: 'toggleFavorite.delete' } });
       return { ok: false, error: 'いいねの解除に失敗しました' };
     }
     return { ok: true, liked: false };
@@ -155,8 +162,10 @@ export async function toggleFavorite(
     // 楽観 UI のレース等で並行 insert が来た場合は複合 PK 違反 (23505)。
     // 既にいいね済みとして liked:true で正常終了する (冪等)。
     if (insertError.code === PG_UNIQUE_VIOLATION) {
+      // 二重 like は楽観 UI のレースで日常的に起きる想定内。拾わない。
       return { ok: true, liked: true };
     }
+    Sentry.captureException(insertError, { tags: { action: 'toggleFavorite.insert' } });
     return { ok: false, error: 'いいねの追加に失敗しました' };
   }
 
@@ -190,6 +199,9 @@ export async function getFavorites(): Promise<GetFavoritesResult> {
     .limit(FAVORITES_FETCH_LIMIT);
 
   if (error) {
+    // toggleFavorite の select / delete / insert と同じ DB 起因の失敗。
+    // マイページのいいね一覧が丸ごと出ない症状になるが、ユーザー側では直せない。
+    Sentry.captureException(error, { tags: { action: 'getFavorites' } });
     return { ok: false, error: 'いいね一覧を取得できませんでした' };
   }
 

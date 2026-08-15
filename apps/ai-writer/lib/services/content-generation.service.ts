@@ -12,6 +12,7 @@
  * - 作品タイプに応じた柔軟な文章生成が可能
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
@@ -337,11 +338,20 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
     } catch (error) {
       // config load 失敗時等の safe fallback: extractedData をそのまま返す。
       // R2 Minor #2: この silent fallback は Bug 1 (英語 slug 漏れ) の silent regression risk
-      // となるため、Sprint C-β P10 (observability) で Sentry / structured log に promote 予定。
+      // となるため、Sprint C-β P10 (observability) で Sentry に promote 予定 → **本 PR で履行**。
       console.warn(
         `[ContentGeneration] enrichExtractedDataForPrompt failed, falling back to raw extractedData:`,
         error instanceof Error ? error.message : error
       );
+
+      // 記事は生成され続けるため「起きて対応すべき」ではないが、静かに品質が落ちるので
+      // warning として可視化する (warning = Medium priority = メール通知の対象外)。
+      Sentry.captureMessage('enrichExtractedDataForPrompt failed, using raw extractedData', {
+        level: 'warning',
+        tags: { pipeline: 'mdx' },
+        extra: { error: error instanceof Error ? error.message : String(error) },
+      });
+
       return extractedData;
     }
   }

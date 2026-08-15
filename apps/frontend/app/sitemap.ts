@@ -25,6 +25,7 @@
  *    (`lib/supabase/public.ts` の `hasPublicSupabaseCredentials` 参照)。
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { MetadataRoute } from 'next';
 import { env } from '@/lib/env';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
@@ -48,6 +49,7 @@ function buildArticlePages(baseUrl: string): MetadataRoute.Sitemap {
   } catch (error) {
     // 黙って 0 件にしない。sitemap から記事が消えるのは SEO 上の事故。
     console.error('サイトマップ生成エラー (記事):', error);
+    Sentry.captureException(error, { tags: { sitemap: 'articles' } });
     return [];
   }
 }
@@ -83,6 +85,7 @@ async function buildDatabasePages(baseUrl: string): Promise<MetadataRoute.Sitema
     ];
   } catch (error) {
     console.error('サイトマップ生成エラー (企画・開催):', error);
+    Sentry.captureException(error, { tags: { sitemap: 'events' } });
     return [];
   }
 }

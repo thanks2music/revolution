@@ -47,6 +47,19 @@ beforeEach(() => {
   mockListOccurrenceParams.mockReset().mockResolvedValue([]);
 });
 
+/**
+ * `@sentry/nextjs` の手動 mock を **sitemap.ts と同じモジュールレジストリから**取得する。
+ *
+ * 本 suite は `jest.resetModules()` + 動的 import で sitemap を読み直すため、
+ * テストファイル冒頭で静的 import した Sentry は sitemap.ts が掴むものとは
+ * **別インスタンス**になり、呼び出しが観測できない。必ず importSitemap() の後に呼ぶこと。
+ */
+async function importSentryMock() {
+  return (await import('@sentry/nextjs')) as unknown as {
+    captureException: jest.Mock;
+  };
+}
+
 const urls = (entries: { url: string }[]) => entries.map((e) => e.url);
 
 describe('sitemap', () => {
@@ -122,6 +135,12 @@ describe('sitemap', () => {
     expect(result).toContain('https://example.com/articles/abc');
     expect(result.some((u) => u.includes('/events/'))).toBe(false);
     expect(error).toHaveBeenCalled();
+    // sitemap からページが消えるのは SEO 事故。console だけでは誰も気づけないので
+    // Sentry に届くことまで固定する (tags で articles / events を切り分ける)。
+    const sentry = await importSentryMock();
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.anything(), {
+      tags: { sitemap: 'events' },
+    });
     error.mockRestore();
   });
 
@@ -139,6 +158,10 @@ describe('sitemap', () => {
     expect(result).toContain('https://example.com/events/2');
     expect(result.some((u) => u.includes('/articles/'))).toBe(false);
     expect(error).toHaveBeenCalled();
+    const sentry = await importSentryMock();
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.anything(), {
+      tags: { sitemap: 'articles' },
+    });
     error.mockRestore();
   });
 

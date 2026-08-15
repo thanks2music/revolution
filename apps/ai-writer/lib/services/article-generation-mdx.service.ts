@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs';
 import { generateMdxArticle } from '../mdx/template-generator';
 import { type MdxArticle } from '../mdx/types';
 import { createMdxPr, type CreateMdxPrResult } from '../github/create-mdx-pr';
@@ -1268,6 +1269,18 @@ export class ArticleGenerationMdxService {
                   }
                 } catch (error) {
                   console.warn(`  ⚠️ ${category} 画像アップロード失敗: ${sourceUrl}`, error);
+
+                  // 個別 Issue にはしない。1 記事で複数枚が同時に失敗するのが典型で、
+                  // 4 箇所を個別に captureException すると無料枠を食ううえ
+                  // 「同じ 1 回の実行で起きた」相関が失われる。
+                  // 頂点の captureException (本 service 全体 catch) に breadcrumb として
+                  // 全部乗せたほうが原因究明の情報量が多い。
+                  Sentry.addBreadcrumb({
+                    category: 'image-upload',
+                    level: 'warning',
+                    message: `カテゴリ画像アップロード失敗: ${category}`,
+                    data: { sourceUrl, error: error instanceof Error ? error.message : String(error) },
+                  });
                 }
               }
 
@@ -1297,6 +1310,16 @@ export class ArticleGenerationMdxService {
         } catch (imageError) {
           console.error('❌ 画像アップロードエラー:', imageError);
           console.log('⚠️ デフォルトOG画像を使用します');
+
+          // デフォルト OG 画像への fallback は **記事が黙って劣化する** 経路。
+          // R2_* env が本番の deploy workflow に無いため、ここを常時通っている疑いがある。
+          // 実態を掴むまでは breadcrumb に留め、観測結果を見て対処する。
+          Sentry.addBreadcrumb({
+            category: 'image-upload',
+            level: 'warning',
+            message: '画像アップロード失敗のためデフォルト OG 画像へ fallback',
+            data: { error: imageError instanceof Error ? imageError.message : String(imageError) },
+          });
         }
       } else {
         console.log('⚠️ 公式サイトURLがないため、画像アップロードをスキップします');
@@ -1678,6 +1701,16 @@ export class ArticleGenerationMdxService {
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
       console.error('エラー:', error);
+
+      // このメソッドは全 step を包む catch で `{ success: false }` を返すため、
+      // どの step で落ちても例外が外へ出ない。Sentry 導入以前は本番で
+      // 「失敗したこと」しか分からなかった。
+      //
+      // ⚠️ 計装ポイントは 2 系統ある。cron 経路 (`app/api/cron/rss/route.ts`) は
+      // 独自の runMdxPipeline() を内包しており、本メソッドを **呼んでいない**。
+      // cron は route の catch、SSE / CLI 経路は本 catch でカバーする。
+      // 片方だけに入れると、もう片方が観測ゼロになる。
+      Sentry.captureException(error, { tags: { pipeline: 'mdx' } });
 
       // If event was registered but generation failed, update status
       if (error instanceof Error && error.message.includes('canonicalKey')) {
