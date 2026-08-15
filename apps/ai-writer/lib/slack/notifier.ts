@@ -10,6 +10,8 @@
  * @see {@link /notes/archive/super-mvp-scope.md} Task 6
  */
 
+import * as Sentry from '@sentry/nextjs';
+
 /**
  * Slack通知のタイプ
  */
@@ -273,6 +275,14 @@ export async function sendSlackNotification(params: SlackNotificationParams): Pr
     if (error instanceof Error) {
       console.error('  Message:', error.message);
     }
+
+    // 通知が届いていないこと自体は気づきにくいので可視化する。
+    // ただし業務は継続しているため warning 止まり (メール通知の対象外)。
+    Sentry.captureMessage('Slack notification failed', {
+      level: 'warning',
+      extra: { error: error instanceof Error ? error.message : String(error) },
+    });
+
     // 例外は再スローしない（通知失敗がメイン処理を止めないように）
   }
 }
