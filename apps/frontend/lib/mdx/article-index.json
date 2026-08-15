@@ -1,7 +1,66 @@
 {
-  "generatedAt": "2026-07-19T09:35:31.101Z",
-  "totalArticles": 5,
+  "generatedAt": "2026-08-15T05:20:08.377Z",
+  "totalArticles": 6,
   "articles": [
+    {
+      "slug": "01m01xr873hcxp3f",
+      "title": "ポチャッコ カフェ in 東京/大阪 7月2日よりコラボ開催",
+      "date": "2026-08-15T05:18:46.825Z",
+      "excerpt": "ポチャッコのモノクロ調テーマカフェ「POCHACCO CAFE」が東京・大阪で期間限定オープン。フォトジェニックなメニューや限定グッズ、事前予約特典も楽しめるコラボカフェです。",
+      "categories": [
+        "ポチャッコ",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/pochacco/01m01xr873hcxp3f.mdx",
+      "post_id": "01m01xr873hcxp3f",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "ポチャッコ",
+      "work_titles": [
+        "ポチャッコ"
+      ],
+      "work_slug": "pochacco",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-07-02",
+      "event_end_date": "2026-08-16",
+      "venue": "BOX cafe&space 東京ソラマチ店",
+      "official_url": "https://monokuro-2026.ltr-online.com/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "pochacco"
+        ],
+        "event_name": "POCHACCO CAFE",
+        "event_slug": "pochacco-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space 東京ソラマチ店",
+            "starts_on": "2026-07-02",
+            "ends_on": "2026-08-16",
+            "official_url": "https://monokuro-2026.ltr-online.com/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space 天王寺MIO店",
+            "starts_on": "2026-07-02",
+            "ends_on": "2026-08-09",
+            "official_url": "https://monokuro-2026.ltr-online.com/"
+          }
+        ]
+      }
+    },
     {
       "slug": "dry-run-1783842264552",
       "title": "トイ・ストーリー5 カフェ in 5都市 7月3日より開催",
