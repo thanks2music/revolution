@@ -1,7 +1,70 @@
 {
-  "generatedAt": "2026-08-15T09:02:31.082Z",
-  "totalArticles": 9,
+  "generatedAt": "2026-08-15T15:10:57.056Z",
+  "totalArticles": 10,
   "articles": [
+    {
+      "slug": "01m02zj7t5n9evh7",
+      "title": "スター・ウォーズ カフェ in 東京/大阪 5月28日よりコラボ開催",
+      "date": "2026-08-15T15:09:39.910Z",
+      "excerpt": "映画『スター・ウォーズ／マンダロリアン・アンド・グローグー』公開記念のコラボカフェ「STAR WARS」CAFE : Galactic Dinerが登場。グローグーやマンダロリアンをイメージしたメニューに加え、ローグ・ワン10周年記念メニューも楽しめます。",
+      "categories": [
+        "スター・ウォーズ／マンダロリアン・アンド・グローグー",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/mandalorian-grogu/01m02zj7t5n9evh7.mdx",
+      "post_id": "01m02zj7t5n9evh7",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "スター・ウォーズ／マンダロリアン・アンド・グローグー",
+      "work_titles": [
+        "スター・ウォーズ",
+        "マンダロリアン",
+        "ローグ・ワン／スター・ウォーズ・ストーリー"
+      ],
+      "work_slug": "mandalorian-grogu",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-05-28",
+      "event_end_date": "2026-08-16",
+      "venue": "Collabo_Index SHINSAIBASHI",
+      "official_url": "https://sw2026.ltr-online.com/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "star-wars",
+          "the-mandalorian",
+          "rogue-one-a-star-wars-story"
+        ],
+        "event_name": "「STAR WARS」CAFE : Galactic Diner",
+        "event_slug": "star-wars-cafe-galactic-diner",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "Collabo_Index SHINSAIBASHI",
+            "starts_on": "2026-05-28",
+            "ends_on": "2026-07-12",
+            "official_url": "https://sw2026.ltr-online.com/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space SHIBUYA109渋谷店",
+            "starts_on": "2026-06-04",
+            "ends_on": "2026-08-16",
+            "official_url": "https://sw2026.ltr-online.com/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m01y4kvc06nvjh",
       "title": "名探偵コナン カフェ in 6都市 4月10日よりコラボ開催",
