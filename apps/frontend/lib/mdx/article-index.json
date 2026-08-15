@@ -1,7 +1,66 @@
 {
-  "generatedAt": "2026-07-19T09:35:31.101Z",
-  "totalArticles": 5,
+  "generatedAt": "2026-08-15T05:19:14.161Z",
+  "totalArticles": 6,
   "articles": [
+    {
+      "slug": "01m01xptggp7npn0",
+      "title": "スター・ウォーズ カフェ in 東京/大阪 5月28日よりコラボ開催",
+      "date": "2026-08-15T05:17:54.238Z",
+      "excerpt": "映画「スター・ウォーズ／マンダロリアン・アンド・グローグー」公開記念のコラボカフェ「STAR WARS」CAFE : Galactic Dinerが登場。マンダロリアンやグローグーをイメージしたメニューに加え、ローグ・ワン10周年特別メニューも楽しめます。",
+      "categories": [
+        "スター・ウォーズ／マンダロリアン・アンド・グローグー",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/mandalorian-grogu/01m01xptggp7npn0.mdx",
+      "post_id": "01m01xptggp7npn0",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "スター・ウォーズ／マンダロリアン・アンド・グローグー",
+      "work_titles": [
+        "STAR WARS"
+      ],
+      "work_slug": "mandalorian-grogu",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-05-28",
+      "event_end_date": "2026-08-16",
+      "venue": "Collabo_Index SHINSAIBASHI",
+      "official_url": "https://sw2026.ltr-online.com/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "star-wars"
+        ],
+        "event_name": "STAR WARS CAFE : Galactic Diner",
+        "event_slug": "star-wars-cafe-galactic-diner",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "Collabo_Index SHINSAIBASHI",
+            "starts_on": "2026-05-28",
+            "ends_on": "2026-07-12",
+            "official_url": "https://sw2026.ltr-online.com/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space SHIBUYA109渋谷店",
+            "starts_on": "2026-06-04",
+            "ends_on": "2026-08-16",
+            "official_url": "https://sw2026.ltr-online.com/"
+          }
+        ]
+      }
+    },
     {
       "slug": "dry-run-1783842264552",
       "title": "トイ・ストーリー5 カフェ in 5都市 7月3日より開催",
