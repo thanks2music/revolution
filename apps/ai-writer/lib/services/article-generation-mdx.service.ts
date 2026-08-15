@@ -34,6 +34,7 @@ import { deriveStoreContext } from '../utils/store-derivation';
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
 import { stripUtmFromUrl } from '../utils/url';
+import { selfCloseVoidElements } from '../utils/mdx-safety';
 import {
   findUnreplacedPlaceholders,
   removeImagePlaceholderLines,
@@ -1415,6 +1416,12 @@ export class ArticleGenerationMdxService {
       // 係り受けが壊れるため、**除去せず記事ごと skip** する。
       // ------------------------------------------------------------------
       finalContent = removeImagePlaceholderLines(finalContent);
+
+      // MDX は JSX として評価されるため、void 要素が自己閉じでないとビルドが落ちる。
+      // 実測 (2026-08-16): LLM が `<br>` を出力し
+      // 「Expected a closing tag for `<br>`」で prerender が失敗した。
+      // 同じ企画の 1 世代前の記事には無く、出力の揺れで発生するためここで正規化する。
+      finalContent = selfCloseVoidElements(finalContent);
 
       const residualPlaceholders = findUnreplacedPlaceholders(finalContent);
       if (residualPlaceholders.length > 0) {
