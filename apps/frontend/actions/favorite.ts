@@ -18,6 +18,7 @@
  *   楽観更新のロールバック判断に使う。
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { createClient } from '@/lib/supabase/server';
@@ -126,6 +127,7 @@ export async function toggleFavorite(
     .maybeSingle();
 
   if (selectError) {
+    Sentry.captureException(selectError, { tags: { action: 'toggleFavorite.select' } });
     return { ok: false, error: 'いいねの状態を取得できませんでした' };
   }
 
@@ -139,6 +141,7 @@ export async function toggleFavorite(
       .eq('target_key', key);
 
     if (deleteError) {
+      Sentry.captureException(deleteError, { tags: { action: 'toggleFavorite.delete' } });
       return { ok: false, error: 'いいねの解除に失敗しました' };
     }
     return { ok: true, liked: false };
@@ -155,8 +158,10 @@ export async function toggleFavorite(
     // 楽観 UI のレース等で並行 insert が来た場合は複合 PK 違反 (23505)。
     // 既にいいね済みとして liked:true で正常終了する (冪等)。
     if (insertError.code === PG_UNIQUE_VIOLATION) {
+      // 二重 like は楽観 UI のレースで日常的に起きる想定内。拾わない。
       return { ok: true, liked: true };
     }
+    Sentry.captureException(insertError, { tags: { action: 'toggleFavorite.insert' } });
     return { ok: false, error: 'いいねの追加に失敗しました' };
   }
 

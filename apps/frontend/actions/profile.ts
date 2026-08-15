@@ -20,6 +20,7 @@
  *   行う (案B、middleware が DB を叩かず JWT claims で判定するため)。
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { ProfileUpdateSchema, UsernameSchema } from '@revolution/schemas/profile';
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -83,12 +84,14 @@ export async function completeOnboarding(
 
   if (updateError) {
     if (updateError.code === PG_UNIQUE_VIOLATION) {
+      // ユーザー入力起因の想定内。拾わない。
       return {
         ok: false,
         error: 'このユーザー名は既に使用されています。別の名前をお試しください。',
         field: 'username',
       };
     }
+    Sentry.captureException(updateError, { tags: { action: 'completeOnboarding' } });
     return {
       ok: false,
       error: '保存に失敗しました。時間をおいて再度お試しください。',
@@ -120,6 +123,8 @@ export async function completeOnboarding(
   if (metaError) {
     // profiles は更新済みだが metadata 反映に失敗。次回ログインで JWT が更新される
     // ため致命的ではないが、UX のため再試行を促す。
+    // 「profiles だけ進んで claims が遅れる」半端な状態なので可視化しておく。
+    Sentry.captureException(metaError, { tags: { action: 'completeOnboarding.updateUser' } });
     return {
       ok: false,
       error:
@@ -131,6 +136,9 @@ export async function completeOnboarding(
   // updateUser 後のセッション refresh で新 JWT (onboarded:true) を cookie へ反映。
   const { error: refreshError } = await supabase.auth.refreshSession();
   if (refreshError) {
+    Sentry.captureException(refreshError, {
+      tags: { action: 'completeOnboarding.refreshSession' },
+    });
     // refresh 失敗時も profiles + metadata は更新済み (= 実質 onboarded 完了)。
     // ここで /mypage へ遷移させない: cookie の JWT が旧いまま (onboarded が claims に
     // 乗っていない) だと middleware の getClaims() が onboarded:false と判定し /onboarding

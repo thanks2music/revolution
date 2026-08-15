@@ -14,6 +14,7 @@
  * 返り値は表示用の型付き結果 (throw しない設計)。UI 側で error メッセージを出す。
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { createClient } from '@/lib/supabase/server';
@@ -45,6 +46,9 @@ export async function sendOtp(email: string): Promise<AuthActionResult> {
   });
 
   if (error) {
+    // メール基盤の障害か rate limit。ユーザー側では直せず、放置すると
+    // 「ログインできない」という最も痛い症状が無音で続く。
+    Sentry.captureException(error, { tags: { action: 'signInWithOtp' } });
     return {
       ok: false,
       error: 'コードの送信に失敗しました。時間をおいて再度お試しください。',
@@ -81,6 +85,8 @@ export async function verifyOtp(
   });
 
   if (error) {
+    // ⚠️ **意図的に拾わない。** コードの打ち間違い・期限切れは日常的に起きる
+    // ユーザー入力起因の事象で、拾うと無料枠 (5K events/月) が即座に溶ける。
     return {
       ok: false,
       error: 'コードが正しくないか期限切れです。もう一度お試しください。',
@@ -119,6 +125,7 @@ export async function signOut(): Promise<AuthActionResult> {
   const supabase = await createClient();
   const { error } = await supabase.auth.signOut();
   if (error) {
+    Sentry.captureException(error, { tags: { action: 'signOut' } });
     return { ok: false, error: 'ログアウトに失敗しました' };
   }
   return { ok: true };

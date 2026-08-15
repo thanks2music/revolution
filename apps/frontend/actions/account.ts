@@ -20,6 +20,7 @@
  * - throw せず型付き結果を返す (UI でフィールド別エラー表示)。
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { ProfileUpdateSchema } from '@revolution/schemas/profile';
@@ -78,12 +79,16 @@ export async function updateUsername(input: { username: string }): Promise<Accou
 
   if (error) {
     if (error.code === PG_UNIQUE_VIOLATION) {
+      // username 重複はユーザー入力起因の想定内。拾うと無料枠が溶けるので捨てる。
       return {
         ok: false,
         error: 'このユーザー名は既に使用されています。別の名前をお試しください。',
         field: 'username',
       };
     }
+    // ここから先は DB 起因 = インフラの問題。Server Action は throw しないため
+    // onRequestError には一切乗らない。明示的に拾わないと永久に観測できない。
+    Sentry.captureException(error, { tags: { action: 'updateUsername' } });
     return {
       ok: false,
       error: '保存に失敗しました。時間をおいて再度お試しください。',
@@ -136,6 +141,7 @@ export async function updateDisplayName(input: { displayName: string }): Promise
     .select('id');
 
   if (error) {
+    Sentry.captureException(error, { tags: { action: 'updateDisplayName' } });
     return {
       ok: false,
       error: '保存に失敗しました。時間をおいて再度お試しください。',
@@ -190,6 +196,8 @@ export async function updateEmail(input: { email: string }): Promise<AccountResu
 
   const { error } = await supabase.auth.updateUser({ email: parsed.data });
   if (error) {
+    // メール基盤 / rate limit 起因。ユーザーには直せない。
+    Sentry.captureException(error, { tags: { action: 'updateEmail' } });
     return {
       ok: false,
       error: 'メールアドレスの変更に失敗しました。時間をおいて再度お試しください。',
@@ -229,6 +237,7 @@ export async function updatePassword(input: { password: string }): Promise<Accou
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data });
   if (error) {
+    Sentry.captureException(error, { tags: { action: 'updatePassword' } });
     return {
       ok: false,
       error: 'パスワードの設定に失敗しました。時間をおいて再度お試しください。',
