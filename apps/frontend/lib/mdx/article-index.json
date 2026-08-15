@@ -1,7 +1,52 @@
 {
-  "generatedAt": "2026-07-19T09:35:31.101Z",
-  "totalArticles": 5,
+  "generatedAt": "2026-08-15T05:22:42.777Z",
+  "totalArticles": 6,
   "articles": [
+    {
+      "slug": "01m01xxaby4mdpvr",
+      "title": "Nissy Birthday Entertainment 2026 Cafe 1月1日より開催",
+      "date": "2026-08-15T05:21:41.925Z",
+      "excerpt": "Nissy Birthday Entertainment 2026の第2弾として、コラボカフェ「Nissy Birthday Entertainment 2026 Cafe」が2026年8月24日より東京・愛知・大阪・宮城・北海道で順次開催。限定メニューやグッズ、GiGO限定ドリンクも登場します。",
+      "categories": [
+        "Nissy Birthday Entertainment 2026",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/nissy-birthday-entertainment-2026/01m01xxaby4mdpvr.mdx",
+      "post_id": "01m01xxaby4mdpvr",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "Nissy Birthday Entertainment 2026",
+      "work_titles": [
+        "Nissy"
+      ],
+      "work_slug": "nissy-birthday-entertainment-2026",
+      "prefectures": [],
+      "prefecture_slugs": [],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m01xxaby4mdpvr/69c4618c-5e53-4822-9667-a5ba758e90cd.jpg",
+      "event_start_date": "2026-01-01",
+      "venue": "Nissy Birthday Entertainment 2026 Cafe",
+      "official_url": "https://nissy-cafe-2026.ltr-online.com/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "nissy"
+        ],
+        "event_name": "Nissy Birthday Entertainment 2026 Cafe",
+        "event_slug": "nissy-birthday-entertainment-2026-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "Nissy Birthday Entertainment 2026 Cafe",
+            "starts_on": "2026-01-01",
+            "ends_on": null,
+            "official_url": "https://nissy-cafe-2026.ltr-online.com/"
+          }
+        ]
+      }
+    },
     {
       "slug": "dry-run-1783842264552",
       "title": "トイ・ストーリー5 カフェ in 5都市 7月3日より開催",
