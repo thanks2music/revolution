@@ -1,8 +1,9 @@
 /**
  * Layer 2: cron/rss route の Sentry 計装コントラクト。
  *
- * この route は Cloud Scheduler から無人で叩かれる本番経路であり、
- * **観測できるのは Sentry に届いたものだけ**。よって以下を契約として固定する:
+ * この route は Cloud Scheduler から無人で叩かれる想定の経路
+ * (現在 Scheduler は未設定) であり、稼働すれば**観測できるのは Sentry に届いたものだけ**になる。
+ * よって以下を契約として固定する:
  *
  * 1. 未知のエラーは captureException される (対応すべきものが消えない)
  * 2. DuplicateSlugError は captureException されない (想定内。枠を食わせない)

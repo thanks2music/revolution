@@ -5,15 +5,18 @@
 
 ## なぜ入れたか
 
-`apps/ai-writer` は Cloud Run で**無人稼働**している (`app/api/cron/rss` を Cloud Scheduler が叩く) が、
-導入前は本番の観測手段が実質ゼロだった:
+`apps/ai-writer` は Cloud Run 上に用意してあるが、**現在 Cloud Scheduler は未設定で、定期実行していない**
+(2026-08-16 時点)。AI ライターの品質を先に上げる方針のため、無人稼働はまだ始めていない。
+
+それでも先に入れたのは、導入前は本番の観測手段が実質ゼロだったため:
 
 - logger 不在 (`pino` は依存にあるが import 0 件)
 - AI 呼び出しの観測ログ `lib/ai/observability/ai-call-recorder.ts` は `NODE_ENV === 'production'` で無効
 - `lib/services/article-generation-mdx.service.ts` はパイプライン全体を catch して `{ success: false }` を
   返すだけで、どの step で落ちても例外が消える
 
-つまり「動いていない」ことにすら気づけない状態だった。
+この状態のまま無人稼働を始めると「動いていない」ことにすら気づけない。
+**観測手段を先に用意してから Scheduler を有効化する**、という順序のための導入。
 
 ## 2 project 構成
 
@@ -80,7 +83,7 @@ SDK v10 の `flushIfServerless` は `K_SERVICE` で Cloud Run を検出し App R
 ## ⚠️ 計装ポイントは 2 系統ある
 
 `app/api/cron/rss/route.ts` は**独自の `runMdxPipeline()` を内包**しており、
-18 step 本体の `ArticleGenerationMdxService.generateMdxFromRSS()` を**呼んでいない**。
+パイプライン本体の `ArticleGenerationMdxService.generateMdxFromRSS()` を**呼んでいない**。
 
 | 経路 | カバーする計装 |
 |---|---|
@@ -88,6 +91,26 @@ SDK v10 の `flushIfServerless` は `K_SERVICE` で Cloud Run を検出し App R
 | SSE (管理 UI) / CLI | service の catch (`tags: pipeline=mdx`) |
 
 **片方にだけ入れると、もう片方が観測ゼロになる。** 計装を足すときは必ず両方を確認すること。
+
+### ⚠️ cron 経路は品質ゲートを持たない (有効化の前に寄せること)
+
+この 2 実装は**対等ではない**。cron 側は機能変更の最終コミットが PR #116 で、以降に積んだ
+品質ゲートを 1 つも持っていない (2026-08-16 実測):
+
+| 処理 | service | cron |
+|---|---:|---:|
+| 会場網羅ゲート (#301) | 2 | **0** |
+| Vision ハルシネーション検出 | 8 | **0** |
+| テキスト / 画像プレースホルダー置換 | 19 | **0** |
+| mdx-assembly | 7 | **0** |
+| 未置換検査 / Inertia 展開 / void 要素正規化 (#315) | 6 | **0** |
+
+cron が使う `lib/mdx/template-generator.ts` は import が `path` / schema / types / date のみの
+純粋な整形関数で、ゲートを持たない。つまり #291 (多開催) / #292 (会場表現の決定表) /
+#301 / #315 の**すべてを欠いた経路**。
+
+**Sentry が可視化するのは例外であって、品質の劣化ではない。** 計装が入ったことを理由に
+Cloud Scheduler を有効化しないこと。有効化の前に cron 経路を service へ寄せる。
 
 ## 計装の判断基準 (3 分類)
 
@@ -123,7 +146,7 @@ Developer plan の priority 判定は **log level のみ**で決まり、Alert R
 > | 経路 | 方法 | なぜ |
 > |---|---|---|
 > | `cron/rss/route.ts` | `instanceof` で分岐し **captureException を呼ばない** | 同じ catch で 409 を返す分岐がすでにあり、そこに 1 行足すだけで済む。SDK まで往復させる必要がない |
-> | `article-generation-mdx.service.ts` の全体 catch | **常に captureException し `beforeSendFilter` で drop** | 18 step 全体を包む catch で、ここに来る例外の種類を列挙できない。個別に除外を書くと**除外リストの保守が必要になる**ため、選別は `beforeSendFilter` に一元化する |
+> | `article-generation-mdx.service.ts` の全体 catch | **常に captureException し `beforeSendFilter` で drop** | パイプライン全体を包む catch で、ここに来る例外の種類を列挙できない。個別に除外を書くと**除外リストの保守が必要になる**ため、選別は `beforeSendFilter` に一元化する |
 >
 > つまり **「例外の種類が特定できる箇所は呼ばない / 特定できない箇所は送って filter に任せる」** が方針。
 > 新しく計装を足すときもこの基準で選ぶ。結果はどちらも「送信されない」で同じ。
