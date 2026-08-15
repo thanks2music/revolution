@@ -1,7 +1,52 @@
 {
-  "generatedAt": "2026-07-19T09:35:31.101Z",
-  "totalArticles": 5,
+  "generatedAt": "2026-08-15T05:22:09.142Z",
+  "totalArticles": 6,
   "articles": [
+    {
+      "slug": "01m01xw86trj3471",
+      "title": "初音ミク コラボカフェ in Wa Modern cafe 1月1日より開催",
+      "date": "2026-08-15T05:21:15.426Z",
+      "excerpt": "初音ミクのコラボカフェ「Wa Modern CAFE」が2026年8月7日より東京・愛知・大阪で順次開催。和モダンな限定メニューやグッズ、事前予約情報を紹介します。",
+      "categories": [
+        "初音ミク",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/hatsune-miku/01m01xw86trj3471.mdx",
+      "post_id": "01m01xw86trj3471",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "初音ミク",
+      "work_titles": [
+        "初音ミク"
+      ],
+      "work_slug": "hatsune-miku",
+      "prefectures": [],
+      "prefecture_slugs": [],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m01xw86trj3471/c970e66c-793d-4962-a13c-18b563ae5caa.jpg",
+      "event_start_date": "2025-01-01",
+      "venue": "Wa Modern cafe",
+      "official_url": "https://miku-wa-modern-cafe.ltr-online.com/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "hatsune-miku"
+        ],
+        "event_name": "初音ミク Wa Modern cafe",
+        "event_slug": "hatsune-miku-wa-modern-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "Wa Modern cafe",
+            "starts_on": "2025-01-01",
+            "ends_on": null,
+            "official_url": "https://miku-wa-modern-cafe.ltr-online.com/"
+          }
+        ]
+      }
+    },
     {
       "slug": "dry-run-1783842264552",
       "title": "トイ・ストーリー5 カフェ in 5都市 7月3日より開催",
