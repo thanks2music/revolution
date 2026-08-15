@@ -1,3 +1,5 @@
+import { withSentryConfig } from '@sentry/nextjs';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -101,11 +103,30 @@ const nextConfig = {
         supabaseWsOrigin = '';
       }
     }
+    // CSP connect-src 用に Sentry の ingest オリジンを DSN から動的抽出。
+    // 上の Supabase と同じ方針（env が真実源 / 解析失敗は握りつぶして省略）。
+    //
+    // - `*.sentry.io` のワイルドカードは使わない。DSN から導出すればリージョン変更にも
+    //   追従し、許可範囲を最小に保てる。
+    // - URL.origin は userinfo（DSN の public key 部分）を含まないため、
+    //   CSP ヘッダに載せても鍵は漏れない。
+    // - ⚠️ headers() は **build 時に評価される**。NEXT_PUBLIC_SENTRY_DSN が
+    //   ビルド環境に無いとこのエントリが黙って抜け、クライアントのイベントが
+    //   全滅するのに何のエラーも出ない。Vercel の Production / Preview 両方に設定すること。
+    let sentryIngestOrigin = '';
+    if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+      try {
+        sentryIngestOrigin = new URL(process.env.NEXT_PUBLIC_SENTRY_DSN).origin;
+      } catch {
+        sentryIngestOrigin = '';
+      }
+    }
     const connectSrc = [
       "'self'",
       wpOrigin,
       supabaseOrigin,
       supabaseWsOrigin,
+      sentryIngestOrigin,
     ]
       .filter(Boolean)
       .join(' ');
@@ -164,4 +185,19 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: 'we-are-all-one',
+  project: 'revolution-frontend',
+
+  // 認証は env 経由のみ。未設定ならアップロードは skip され build は通る
+  // (CI の SKIP_ENV_VALIDATION build を落とさないため)。
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // アップロード済みの source map を成果物から削除する (公開ダウンロードの防止)。
+  // v10 時点の既定も true だが、将来の既定変更に備えて ai-writer と揃えて明示する。
+  sourcemaps: { deleteSourcemapsAfterUpload: true },
+
+  silent: !process.env.CI,
+
+  disableLogger: true,
+});

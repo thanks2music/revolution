@@ -113,6 +113,13 @@ export const env = createEnv({
       .transform((val) => parseInt(val, 10))
       .pipe(z.number().positive())
       .optional(),
+
+    // Sentry の DSN。
+    // ⚠️ ここに書くのは **env レジストリとしての記録** が目的で、SDK 初期化側は
+    // `process.env` を直読みする (instrumentation-client.ts / sentry.*.config.ts)。
+    // SKIP_ENV_VALIDATION 付きの CI build や client bootstrap を t3-env に結合させないため。
+    // 未設定でも SDK は無言で no-op になるだけなので optional とする。
+    NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
   },
 
   /*
@@ -137,6 +144,7 @@ export const env = createEnv({
     NEXT_PUBLIC_DEBUG: process.env.NEXT_PUBLIC_DEBUG,
     NEXT_PUBLIC_SWR_REFRESH_INTERVAL: process.env.NEXT_PUBLIC_SWR_REFRESH_INTERVAL,
     NEXT_PUBLIC_SWR_DEDUPING_INTERVAL: process.env.NEXT_PUBLIC_SWR_DEDUPING_INTERVAL,
+    NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   },
 
   /*
