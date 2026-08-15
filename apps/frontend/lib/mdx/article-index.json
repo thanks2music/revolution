@@ -1,7 +1,66 @@
 {
-  "generatedAt": "2026-08-15T09:02:31.082Z",
-  "totalArticles": 9,
+  "generatedAt": "2026-08-15T15:13:43.304Z",
+  "totalArticles": 10,
   "articles": [
+    {
+      "slug": "01m02zq83vk1w94t",
+      "title": "くまのプーさん カフェ in 東京/大阪 8月20日よりコラボ開催",
+      "date": "2026-08-15T15:12:21.936Z",
+      "excerpt": "「くまのプーさん」OH MY CAFEが開催決定。原作デビュー100周年を祝う世界観あふれるコラボカフェで、東京・大阪の2店舗にて限定メニューやグッズを楽しめます。",
+      "categories": [
+        "くまのプーさん",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/winnie-the-pooh/01m02zq83vk1w94t.mdx",
+      "post_id": "01m02zq83vk1w94t",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "くまのプーさん",
+      "work_titles": [
+        "くまのプーさん"
+      ],
+      "work_slug": "winnie-the-pooh",
+      "prefectures": [
+        "東京都",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-08-20",
+      "event_end_date": "2026-10-25",
+      "venue": "BOX cafe&space 東京ソラマチ店",
+      "official_url": "https://hunny2026-ohmycafe.ltr-online.com",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "winnie-the-pooh"
+        ],
+        "event_name": "「くまのプーさん」OH MY CAFE",
+        "event_slug": "kuma-no-pu-san-oh-my-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space 東京ソラマチ店",
+            "starts_on": "2026-08-20",
+            "ends_on": "2026-10-25",
+            "official_url": "https://hunny2026-ohmycafe.ltr-online.com"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space HEP FIVE店",
+            "starts_on": "2026-09-10",
+            "ends_on": "2026-10-18",
+            "official_url": "https://hunny2026-ohmycafe.ltr-online.com"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m01y4kvc06nvjh",
       "title": "名探偵コナン カフェ in 6都市 4月10日よりコラボ開催",
