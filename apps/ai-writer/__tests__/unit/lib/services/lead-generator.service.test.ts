@@ -800,3 +800,89 @@ describe('LeadGeneratorService - drift guard (01-lead.yaml ⇔ TS table 対応)'
     expect(tsKeys).toEqual(yamlConditionIds);
   });
 });
+
+// ============================================================================
+// describe: 未置換プレースホルダーの扱い (2026-08-15 追加)
+//
+// 背景: 実走 9 本中 7 本で、値が無い optional プレースホルダーがそのまま
+// 本文に残り「ノベルティー「」がランダムに1枚プレゼントされる。」という
+// 壊れた日本語が公開されていた。MDX では {{...}} が JSX 式として評価される
+// ため ReferenceError にならず「静かに消える」ので、描画では検知できない。
+//
+// 対策は 2 段:
+//   1. テンプレート側を {{#if ノベルティ名}} で囲む (01-lead.yaml)
+//   2. それをすり抜けた場合に備え、未置換 1 個で LLM Fallback へ回す
+// ============================================================================
+
+describe('LeadGeneratorService - 未置換プレースホルダー', () => {
+  it('ノベルティ名が無くても {{ノベルティ名}} を出力せず、fallback もしない', async () => {
+    const result = await service.generate(
+      makeInput({
+        メディアタイプ: 'manga',
+        原作タイプ: 'manga_based',
+        原作者有無: true,
+        原作者名: '芥見下々先生',
+        キャラクター名: ['五条悟', '虎杖悠仁'],
+        テーマ名: '呪術師の日常',
+        // ノベルティ名 を意図的に渡さない (実走で null だったケース)
+        グッズ名: ['アクリルスタンド', 'キーホルダー'],
+        works: [{ title: '呪術廻戦', is_primary: true }],
+        store: { name: 'BOX cafe&space' },
+      })
+    );
+
+    // テンプレートの {{#if ノベルティ名}} が効き、条件節ごと落ちる
+    expect(result.leadMdx).not.toContain('{{ノベルティ名}}');
+    expect(result.leadMdx).not.toContain('ノベルティー');
+    // 空の鉤括弧が残っていないこと (壊れた日本語の実害そのもの)
+    expect(result.leadMdx).not.toContain('「」');
+
+    // ガードが効いた結果、未置換ゼロなので fallback は不要
+    expect(result.usedTemplate).toBe('lead_author_with_theme_and_characters');
+    expect(result.fallbackReason).toBeUndefined();
+  });
+
+  it('ノベルティ名があるときは従来どおりノベルティ文を出す', async () => {
+    const result = await service.generate(
+      makeInput({
+        メディアタイプ: 'manga',
+        原作タイプ: 'manga_based',
+        原作者有無: true,
+        原作者名: '芥見下々先生',
+        キャラクター名: ['五条悟'],
+        テーマ名: '呪術師の日常',
+        ノベルティ名: 'クリアファイル',
+        グッズ名: ['アクリルスタンド'],
+        works: [{ title: '呪術廻戦', is_primary: true }],
+        store: { name: 'BOX cafe&space' },
+      })
+    );
+
+    expect(result.leadMdx).toContain('ノベルティー「クリアファイル」');
+    expect(result.fallbackReason).toBeUndefined();
+  });
+
+  // ★ 閾値 (>= 1) の固定。旧実装は >= 3 で、1〜2 個の未置換は
+  //   fallbackReason: "(none)" のまま採用されていた。
+  //   グッズ名 を落とすと {{グッズ名|join:'」「'}} が 1 個だけ未置換になる。
+  it('未置換が 1 個でも fallback する (旧閾値 3 では素通りしていた)', async () => {
+    const result = await service.generate(
+      makeInput({
+        メディアタイプ: 'manga',
+        原作タイプ: 'manga_based',
+        原作者有無: true,
+        原作者名: '芥見下々先生',
+        キャラクター名: ['五条悟', '虎杖悠仁'],
+        テーマ名: '呪術師の日常',
+        ノベルティ名: 'クリアファイル',
+        // グッズ名 を渡さない → {{グッズ名|join:'」「'}} が 1 個未置換になる
+        works: [{ title: '呪術廻戦', is_primary: true }],
+        store: { name: 'BOX cafe&space' },
+      })
+    );
+
+    expect(result.fallbackReason).toBe('too_many_unreplaced_placeholders');
+    expect(result.usedTemplate).toBe(LEAD_FALLBACK_TEMPLATE_ID);
+    expect(result.leadMdx).not.toContain('{{グッズ名');
+  });
+});

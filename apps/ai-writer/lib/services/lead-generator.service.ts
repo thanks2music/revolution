@@ -198,7 +198,14 @@ export class LeadGeneratorService {
     const slots = slotDef!(enriched);
 
     // Step 5: Fallback 条件チェック
-    if (replacement.unreplacedPlaceholders.length >= 3) {
+    //
+    // ★2026-08-15: 閾値を 3 → 1 へ引き下げた。
+    //   MDX では {{...}} が JSX 式として評価されるため、未置換が残っても
+    //   ReferenceError にならず「静かに消える」。結果として
+    //   「ノベルティー「」がランダムに1枚プレゼントされる。」のような
+    //   壊れた日本語がそのまま公開される (実測: 実走 9 本中 7 本)。
+    //   1 個でも残ったら LLM Fallback に回す方が、壊れた文を出すより良い。
+    if (replacement.unreplacedPlaceholders.length >= 1) {
       return this.fallback(enriched, 'too_many_unreplaced_placeholders');
     }
     if (!replacement.content.trim()) {
