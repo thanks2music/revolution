@@ -32,12 +32,21 @@
 const TEXT_PLACEHOLDER_PATTERN = /\{\{[^{}\n]+\}\}/g;
 
 /**
- * 画像プレースホルダー: `{ここに記事アイキャッチの画像を入れる}` など。
+ * 画像プレースホルダーの本体パターン (フラグなし)。
  *
  * Templates 側の規約 (`CLAUDE.md` の「HTML 構造の保持」) で
  * `{ここに〜を入れる}` の形に統一されている。
+ *
+ * ★ 行単位の判定にも使い回すため、正規表現リテラルを 2 箇所に書かない。
+ *   片方だけ直して食い違うのを防ぐ (claude[bot] レビュー指摘)。
  */
-const IMAGE_PLACEHOLDER_PATTERN = /\{ここに[^{}\n]*\}/g;
+const IMAGE_PLACEHOLDER_SOURCE = '\\{ここに[^{}\\n]*\\}';
+
+/** 画像プレースホルダー: `{ここに記事アイキャッチの画像を入れる}` など。 */
+const IMAGE_PLACEHOLDER_PATTERN = new RegExp(IMAGE_PLACEHOLDER_SOURCE, 'g');
+
+/** 行全体が画像プレースホルダーだけで構成されているか。 */
+const IMAGE_PLACEHOLDER_ONLY_LINE = new RegExp(`^\\s*${IMAGE_PLACEHOLDER_SOURCE}\\s*$`);
 
 /**
  * コードブロック・インラインコードを空白へ潰す。
@@ -84,7 +93,7 @@ export function findUnreplacedPlaceholders(content: string): string[] {
 export function removeImagePlaceholderLines(content: string): string {
   const withoutPlaceholderOnlyLines = content
     .split('\n')
-    .filter((line) => !/^\s*\{ここに[^{}\n]*\}\s*$/.test(line))
+    .filter((line) => !IMAGE_PLACEHOLDER_ONLY_LINE.test(line))
     .join('\n');
 
   // 行内に混在しているケースの取りこぼしを拾う (規約外だが防御的に)
