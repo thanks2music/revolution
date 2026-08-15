@@ -34,6 +34,10 @@ import { deriveStoreContext } from '../utils/store-derivation';
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
 import { stripUtmFromUrl } from '../utils/url';
+import {
+  findUnreplacedPlaceholders,
+  removeImagePlaceholderLines,
+} from '../utils/placeholder-residue';
 import { type EventData } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
 import { getStepDisplay, getStepContext } from './pipeline-steps';
@@ -1393,6 +1397,36 @@ export class ArticleGenerationMdxService {
       console.log(`\n${getStepDisplay('footer-placeholder-cleanup')} 記事末尾プレースホルダー削除（Frontend で表示）...`);
 
       finalContent = this.removeFooterPlaceholder(finalContent);
+
+      // ------------------------------------------------------------------
+      // 未置換プレースホルダーの最終検査 (2026-08-15 追加)
+      //
+      // MDX では {{...}} / {...} が JSX 式として評価されるため、未置換が
+      // 残っても ReferenceError にならず「静かに消える」。ページは 200 で
+      // 描画されコンソールエラーも 0 件のまま、読者にだけ壊れた文が見える:
+      //   「ノベルティー「」がランダムに1枚プレゼントされる。」
+      //
+      // 上流の text/image placeholder replacer は warn を出すが除去も停止も
+      // しない。テンプレート側の {{#if}} ガードと LeadGenerator の閾値
+      // 引き下げをすり抜けた場合の最終防壁として、ここで止める。
+      //
+      // 画像プレースホルダーは独立行の規約なので**除去**する (文が壊れない)。
+      // テキストプレースホルダーは文の途中に埋まっており機械的に消すと
+      // 係り受けが壊れるため、**除去せず記事ごと skip** する。
+      // ------------------------------------------------------------------
+      finalContent = removeImagePlaceholderLines(finalContent);
+
+      const residualPlaceholders = findUnreplacedPlaceholders(finalContent);
+      if (residualPlaceholders.length > 0) {
+        console.error(
+          `❌ 未置換プレースホルダーが残っているため記事生成を中止: ${residualPlaceholders.join(', ')}`
+        );
+        return {
+          success: false,
+          skipped: true,
+          skipReason: `未置換プレースホルダーが本文に残っています: ${residualPlaceholders.join(', ')}`,
+        };
+      }
 
       // mdx-assembly step: MDX記事を組み立て
       console.log(`\n${getStepDisplay('mdx-assembly')} MDX記事を組み立て...`);
