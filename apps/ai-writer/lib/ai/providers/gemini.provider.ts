@@ -22,7 +22,7 @@ import {
   DEFAULT_GEMINI_THINKING_LEVEL,
   resolveMaxOutputTokens,
 } from '@/lib/config/gemini-models';
-import { readGeminiText } from '@/lib/ai/gemini-response';
+import { isGeminiDeterministicError, readGeminiText } from '@/lib/ai/gemini-response';
 import type {
   AiProvider,
   ArticleGenerationRequest,
@@ -116,6 +116,7 @@ export class GeminiProvider implements AiProvider {
       return this.parseArticleResponse(this.readText(response), request);
     } catch (error) {
       console.error('Gemini API Error:', error);
+      if (isGeminiDeterministicError(error)) throw error;
       throw new Error(
         `Failed to generate article: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -170,6 +171,9 @@ Slug:`;
 
       return sanitizedSlug;
     } catch (error) {
+      // ⚠️ ここだけは `isGeminiDeterministicError` を素通しにしない (意図的)。
+      // slug は決定論的なローマ字変換でローカルに作れるため、切り詰め・ブロックで
+      // 失敗しても**記事生成を止める理由にならない**。他のメソッドは throw する。
       console.error('Failed to generate slug with Gemini:', error);
       return this.generateFallbackSlug(title);
     }
@@ -260,6 +264,7 @@ JSON以外の説明文は出力しないでください。`;
         error: error instanceof Error ? error.message : String(error),
       });
 
+      if (isGeminiDeterministicError(error)) throw error;
       throw new Error(
         `Failed to extract RSS information: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -286,6 +291,7 @@ ${content}
       return this.readText(response).trim();
     } catch (error) {
       console.error('Failed to generate excerpt with Gemini:', error);
+      if (isGeminiDeterministicError(error)) throw error;
       throw new Error(
         `Failed to generate excerpt: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -376,6 +382,7 @@ ${content}
         error: error instanceof Error ? error.message : String(error),
       });
 
+      if (isGeminiDeterministicError(error)) throw error;
       throw new Error(
         `Failed to send message to Gemini: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

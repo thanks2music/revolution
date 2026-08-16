@@ -18,6 +18,10 @@
  */
 
 import { ThinkingLevel } from '@google/genai';
+import {
+  GeminiBlockedResponseError,
+  GeminiTruncatedResponseError,
+} from '@/lib/ai/gemini-response';
 import { GeminiProvider } from '@/lib/ai/providers/gemini.provider';
 import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
 
@@ -335,5 +339,55 @@ describe('GeminiProvider', () => {
 
       expect(lastRequest().config.systemInstruction).toBe('You are a helper.');
     });
+  });
+});
+
+/**
+ * 🔴 **catch で汎用 `Error` にラップし直すと `instanceof` の情報が失われる。**
+ *
+ * Vision 側 (`gemini-vision.service.ts`) はこの型でリトライ可否を判断している。
+ * 生成側だけ型を潰すと、同じ「リトライしても無駄な失敗」に対して経路ごとに
+ * 判断が変わる状態になる。ここで型の保存を固定する。
+ */
+describe('決定論的エラーの型を潰さない', () => {
+  const CASES: Array<[string, string, () => unknown]> = [
+    ['MAX_TOKENS', 'GeminiTruncatedResponseError', () => GeminiTruncatedResponseError],
+    ['SAFETY', 'GeminiBlockedResponseError', () => GeminiBlockedResponseError],
+  ];
+
+  it.each(CASES)('sendMessage は finishReason=%s を %s のまま投げ直す', async (reason, _n, cls) => {
+    mockGenerateContent.mockResolvedValue(buildResponse('', { finishReason: reason }));
+    const provider = new GeminiProvider('key');
+
+    await expect(provider.sendMessage('hello')).rejects.toBeInstanceOf(cls() as never);
+  });
+
+  it.each(CASES)('generateArticle も finishReason=%s を %s のまま投げ直す', async (reason, _n, cls) => {
+    mockGenerateContent.mockResolvedValue(buildResponse('', { finishReason: reason }));
+    const provider = new GeminiProvider('key');
+
+    await expect(
+      provider.generateArticle({ title: 't', sourceContent: 'c' })
+    ).rejects.toBeInstanceOf(cls() as never);
+  });
+
+  it.each(CASES)('extractFromRss も finishReason=%s を %s のまま投げ直す', async (reason, _n, cls) => {
+    mockGenerateContent.mockResolvedValue(buildResponse('', { finishReason: reason }));
+    const provider = new GeminiProvider('key');
+
+    await expect(
+      provider.extractFromRss({ title: 't', content: 'c' })
+    ).rejects.toBeInstanceOf(cls() as never);
+  });
+
+  /**
+   * generateSlug だけは**意図的に**フォールバックさせる。slug は決定論的な
+   * ローマ字変換でローカルに作れるため、ここで止める理由がない。
+   */
+  it('generateSlug は切り詰めても throw せずフォールバック slug を返す', async () => {
+    mockGenerateContent.mockResolvedValue(buildResponse('', { finishReason: 'MAX_TOKENS' }));
+    const provider = new GeminiProvider('key');
+
+    await expect(provider.generateSlug('薬屋のひとりごと')).resolves.toEqual(expect.any(String));
   });
 });

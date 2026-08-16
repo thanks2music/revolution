@@ -42,6 +42,22 @@ export class GeminiBlockedResponseError extends Error {
   }
 }
 
+/**
+ * 「リトライしても無駄な決定論的失敗」かを判定する
+ *
+ * 切り詰めは `maxOutputTokens` / `thinkingLevel` という**固定設定**、
+ * ブロックは**入力そのもの**に起因するため、どちらも同じ条件で投げ直せば再現する。
+ *
+ * 🔴 **呼び出し側は catch でこの型を潰さないこと。** 汎用の `Error` にラップして
+ * 投げ直すと `instanceof` の情報が失われ、上流でリトライ可否を判断できなくなる
+ * (Vision 側 `gemini-vision.service.ts` はこの型でリトライを止めている)。
+ */
+export function isGeminiDeterministicError(error: unknown): boolean {
+  return (
+    error instanceof GeminiTruncatedResponseError || error instanceof GeminiBlockedResponseError
+  );
+}
+
 /** 正常終了とみなす `finishReason`。`undefined` は「未報告」なので許容する */
 const OK_FINISH_REASONS = new Set(['STOP', 'FINISH_REASON_STOP']);
 

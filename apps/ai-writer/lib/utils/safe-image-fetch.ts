@@ -216,6 +216,55 @@ async function assertPublicHost(url: URL): Promise<void> {
   }
 }
 
+/**
+ * レスポンス本文を上限付きで読む
+ *
+ * 🔴 **`Content-Length` を信用してはいけない。** ヘッダを返さないサーバーも、
+ * 過少申告するサーバーもある。`arrayBuffer()` は本文を**全部メモリに載せてから**返すため、
+ * 読み終えた後にサイズを判定しても手遅れになる (画像 URL はスクレイピング由来なので、
+ * 悪意あるホストが無限長の本文を返せる)。
+ *
+ * ストリームを chunk 単位で読み、**上限を超えた時点で読むのをやめて body を捨てる**。
+ */
+async function readBodyWithLimit(
+  response: Response,
+  maxBytes: number,
+  url: string
+): Promise<Buffer> {
+  if (!response.body) {
+    // body が無い実装 (テストの簡易 mock 等) では従来どおり読み切ってから判定する
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > maxBytes) {
+      throw new Error(`Image too large (${buffer.length} > ${maxBytes}): ${url}`);
+    }
+    return buffer;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      received += value.byteLength;
+      if (received > maxBytes) {
+        // 残りは読まずに接続ごと捨てる
+        await reader.cancel();
+        throw new Error(`Image too large (> ${maxBytes} bytes): ${url}`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return Buffer.concat(chunks);
+}
+
 export interface SafeImageFetchOptions {
   timeoutMs?: number;
   maxBytes?: number;
@@ -278,7 +327,7 @@ export async function fetchImageSafely(
       throw new Error(`Image fetch failed (HTTP ${response.status}): ${current.href}`);
     }
 
-    // Content-Length があれば読む前に弾く (読んでから気づくとメモリを食った後になる)
+    // Content-Length があれば読む前に弾く (早く落とせるなら早く落とす)
     const declared = Number(response.headers.get('content-length'));
     if (Number.isFinite(declared) && declared > maxBytes) {
       throw new Error(
@@ -286,13 +335,8 @@ export async function fetchImageSafely(
       );
     }
 
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length > maxBytes) {
-      throw new Error(`Image too large (${buffer.length} > ${maxBytes}): ${current.href}`);
-    }
-
     return {
-      buffer,
+      buffer: await readBodyWithLimit(response, maxBytes, current.href),
       contentType: response.headers.get('content-type'),
       finalUrl: current.href,
     };

@@ -14,6 +14,7 @@ import {
   isBlockedIpv4,
   isBlockedIpv6,
   parseIpv6Groups,
+  fetchImageSafely,
 } from '@/lib/utils/safe-image-fetch';
 
 describe('isBlockedIpv4', () => {
@@ -156,5 +157,101 @@ describe('実際の呼び出し経路 (new URL().hostname) での検証', () => 
     ['https://conan-cafe.jp/x.jpg', '通常の公開ホスト'],
   ])('%s は通す (%s)', (url) => {
     expect(isBlockedHost(new URL(url).hostname)).toBe(false);
+  });
+});
+
+/**
+ * 🔴 **`Content-Length` を信用しない。**
+ *
+ * ヘッダを返さないサーバーも、過少申告するサーバーもある。`arrayBuffer()` は
+ * 本文を全部メモリへ載せてから返すため、読み終えた後にサイズを判定しても手遅れになる。
+ * 画像 URL はスクレイピング由来なので、悪意あるホストが無限長の本文を返せる。
+ *
+ * **読んでいる途中で打ち切ること**をここで固定する。
+ */
+describe('サイズ上限の実効性', () => {
+  const ORIGINAL_FETCH = global.fetch;
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+  });
+
+  /** `Content-Length` を返さず、chunk を延々と流し続ける body */
+  function mockEndlessBody(chunkBytes: number) {
+    let delivered = 0;
+    const cancel = jest.fn(async () => {});
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      url: 'https://example.com/huge.jpg',
+      headers: { get: (k: string) => (k === 'content-type' ? 'image/jpeg' : null) },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            delivered += chunkBytes;
+            return { done: false, value: new Uint8Array(chunkBytes) };
+          },
+          cancel,
+          releaseLock: jest.fn(),
+        }),
+      },
+    })) as unknown as typeof fetch;
+    return { cancel, delivered: () => delivered };
+  }
+
+  it('Content-Length が無くても上限を超えた時点で打ち切る', async () => {
+    const { cancel } = mockEndlessBody(64 * 1024);
+
+    await expect(
+      fetchImageSafely('https://example.com/huge.jpg', { maxBytes: 256 * 1024 })
+    ).rejects.toThrow(/too large/i);
+
+    // 読むのをやめて接続ごと捨てている (無限に読み続けていない)
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it('上限内なら最後まで読んで返す', async () => {
+    global.fetch = jest.fn(async () => {
+      let sent = false;
+      return {
+        ok: true,
+        status: 200,
+        url: 'https://example.com/small.jpg',
+        headers: { get: (k: string) => (k === 'content-type' ? 'image/png' : null) },
+        body: {
+          getReader: () => ({
+            read: async () => {
+              if (sent) return { done: true, value: undefined };
+              sent = true;
+              return { done: false, value: new Uint8Array([1, 2, 3, 4]) };
+            },
+            cancel: jest.fn(),
+            releaseLock: jest.fn(),
+          }),
+        },
+      };
+    }) as unknown as typeof fetch;
+
+    const result = await fetchImageSafely('https://example.com/small.jpg', { maxBytes: 1024 });
+    expect(result.buffer.length).toBe(4);
+    expect(result.contentType).toBe('image/png');
+  });
+
+  it('Content-Length が上限を超えていれば読む前に弾く', async () => {
+    const getReader = jest.fn();
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      url: 'https://example.com/declared.jpg',
+      headers: {
+        get: (k: string) =>
+          k === 'content-length' ? String(20 * 1024 * 1024) : k === 'content-type' ? 'image/jpeg' : null,
+      },
+      body: { getReader },
+    })) as unknown as typeof fetch;
+
+    await expect(fetchImageSafely('https://example.com/declared.jpg')).rejects.toThrow(
+      /Content-Length/
+    );
+    expect(getReader).not.toHaveBeenCalled();
   });
 });
