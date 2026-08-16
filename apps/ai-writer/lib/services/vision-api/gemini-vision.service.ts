@@ -46,7 +46,13 @@ import {
   DEFAULT_GEMINI_MEDIA_RESOLUTION,
   DEFAULT_GEMINI_MODEL,
   DEFAULT_GEMINI_THINKING_LEVEL,
+  resolveMaxOutputTokens,
 } from '@/lib/config/gemini-models';
+import {
+  GeminiTruncatedResponseError,
+  readGeminiText,
+} from '@/lib/ai/gemini-response';
+import { fetchImageSafely } from '@/lib/utils/safe-image-fetch';
 
 /**
  * Raw Vision API Response (Internal Type)
@@ -126,21 +132,7 @@ const ESTIMATED_PROMPT_TOKENS = 2000;
 /** Vision の出力上限 (他 2 provider と揃える) */
 const MAX_OUTPUT_TOKENS = 4096;
 
-/**
- * thinking 用に `maxOutputTokens` へ上乗せする余裕枠
- *
- * 🔴 Gemini の `maxOutputTokens` は thinking トークンを含むため、上乗せしないと
- * 出力が黙って切り詰められる (`gemini.provider.ts` の同名定数と同じ理由)。
- */
-const THINKING_HEADROOM_TOKENS: Record<ThinkingLevel, number> = {
-  [ThinkingLevel.THINKING_LEVEL_UNSPECIFIED]: 1024,
-  [ThinkingLevel.MINIMAL]: 0,
-  [ThinkingLevel.LOW]: 1024,
-  [ThinkingLevel.MEDIUM]: 2048,
-  [ThinkingLevel.HIGH]: 4096,
-};
-
-/** 画像ダウンロードのタイムアウト (ms) */
+/** 画像ダウンロードのタイムアウト (ms、1 枚あたり) */
 const IMAGE_FETCH_TIMEOUT_MS = 15000;
 
 /**
@@ -309,7 +301,12 @@ export class GeminiVisionService implements IVisionApiService {
         // means the LLM output shape is wrong — a deterministic contract failure,
         // not a transient network issue. Retrying would waste tokens and delay
         // surfacing the real bug, so re-throw immediately (mirrors the other providers).
-        if (error instanceof ZodError) {
+        //
+        // 🔴 切り詰め (`MAX_TOKENS`) も同じ扱いにする。原因は `maxOutputTokens` と
+        //    `thinkingLevel` という**固定設定**であり、同じ config で投げ直しても再現する。
+        //    リトライすると 1s/2s/4s のバックオフを挟んで 3 倍のトークンを捨てるだけになる
+        //    (生成側 `gemini.provider.ts` にはリトライ機構が無く、ここだけ非対称だった)。
+        if (error instanceof ZodError || error instanceof GeminiTruncatedResponseError) {
           throw error;
         }
         lastError = error as Error;
@@ -394,7 +391,7 @@ export class GeminiVisionService implements IVisionApiService {
       model: this.modelName,
       contents: [{ role: 'user', parts }],
       config: {
-        maxOutputTokens: MAX_OUTPUT_TOKENS + THINKING_HEADROOM_TOKENS[this.thinkingLevel],
+        maxOutputTokens: resolveMaxOutputTokens(MAX_OUTPUT_TOKENS, this.thinkingLevel),
         temperature: 0.1,
         responseMimeType: 'application/json',
         mediaResolution: this.mediaResolution,
@@ -453,19 +450,10 @@ export class GeminiVisionService implements IVisionApiService {
     const results = await Promise.all(
       imageUrls.map(async (url): Promise<FetchedImage | null> => {
         try {
-          const response = await fetch(url, {
-            signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+          const { buffer, contentType } = await fetchImageSafely(url, {
+            timeoutMs: IMAGE_FETCH_TIMEOUT_MS,
           });
-
-          if (!response.ok) {
-            console.warn(
-              `[GeminiVisionService] ⚠️ Image fetch failed (HTTP ${response.status}): ${url}`
-            );
-            return null;
-          }
-
-          const buffer = Buffer.from(await response.arrayBuffer());
-          const mimeType = this.resolveMimeType(response.headers.get('content-type'), url);
+          const mimeType = this.resolveMimeType(contentType, url);
 
           return { url, data: buffer.toString('base64'), mimeType };
         } catch (error) {
@@ -517,23 +505,17 @@ export class GeminiVisionService implements IVisionApiService {
   }
 
   /**
-   * 応答本文を取り出す。**切り詰められた出力を正常な結果として返さない**
+   * 応答本文を取り出す。**異常終了した応答を正常な結果として返さない**
    *
-   * 🔴 Gemini は `maxOutputTokens` に達しても例外を投げず `finishReason: 'MAX_TOKENS'`
-   * と途中までの文字列を返す。JSON が途中で切れた状態で返すと `JSON.parse` が
-   * 原因から離れた場所で失敗するため、ここで loud に停める。
+   * 判定は {@link readGeminiText} に集約している (生成側と同じ実装を使うため)。
    */
   private readText(response: GenerateContentResponse): string {
-    if (response.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
-      const thoughts = response.usageMetadata?.thoughtsTokenCount ?? 0;
-      throw new Error(
-        `Gemini Vision response was truncated (finishReason=MAX_TOKENS). ` +
-          `model=${this.modelName} thinking=${this.thinkingLevel} thoughtsTokens=${thoughts}. ` +
-          `Gemini counts thinking tokens against maxOutputTokens — lower VISION_API_THINKING_LEVEL.`
-      );
-    }
-
-    return response.text ?? '';
+    return readGeminiText(response, {
+      label: 'GeminiVisionService',
+      modelName: this.modelName,
+      thinkingLevel: this.thinkingLevel,
+      thinkingEnvName: 'VISION_API_THINKING_LEVEL',
+    });
   }
 
   /**

@@ -20,7 +20,9 @@ import type { GenerateContentConfig, GenerateContentResponse } from '@google/gen
 import {
   DEFAULT_GEMINI_MODEL,
   DEFAULT_GEMINI_THINKING_LEVEL,
+  resolveMaxOutputTokens,
 } from '@/lib/config/gemini-models';
+import { readGeminiText } from '@/lib/ai/gemini-response';
 import type {
   AiProvider,
   ArticleGenerationRequest,
@@ -32,36 +34,6 @@ import type {
   TokenUsage,
 } from './ai-provider.interface';
 import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
-
-/**
- * thinking 用に `maxOutputTokens` へ上乗せする余裕枠 (tokens)
- *
- * 🔴 **これが無いと出力が黙って切り詰められる。** Gemini の `maxOutputTokens` は
- * thinking トークンも含む上限であり、呼び出し側が渡す `maxTokens` は「欲しい本文の長さ」
- * しか意味していない。両者をそのまま突き合わせると thinking が予算を食い潰す。
- *
- * 実測 (2026-08-16、`gemini-3.6-flash` / slug 生成相当のプロンプト / `maxTokens: 100`):
- *
- * | thinking | finishReason | thoughts | 返ってきた text |
- * |---|---|---|---|
- * | MINIMAL | STOP | 0 | `kusuriya-no-hitorigoto` (正常) |
- * | LOW | **MAX_TOKENS** | 92 | **`kusuriya-`** (切れている) |
- * | MEDIUM | **MAX_TOKENS** | 94 | **`kusuri`** (切れている) |
- *
- * **例外は投げられない**ため、そのままでは壊れた slug が記事 URL になる。
- *
- * ⚠️ **thinking の消費量は与えた予算に比例して増える** (同条件で `maxTokens: 512` に
- * すると thoughts は 92 → 273 へ)。したがって余裕枠を広げるほど thinking のコストも
- * 増えうる。**コストを絞る正しいレバーは `maxOutputTokens` ではなく `thinkingLevel`**
- * であり、余裕枠は「切り詰めを防ぐための安全側の値」として置く。
- */
-const THINKING_HEADROOM_TOKENS: Record<ThinkingLevel, number> = {
-  [ThinkingLevel.THINKING_LEVEL_UNSPECIFIED]: 1024,
-  [ThinkingLevel.MINIMAL]: 0,
-  [ThinkingLevel.LOW]: 1024,
-  [ThinkingLevel.MEDIUM]: 2048,
-  [ThinkingLevel.HIGH]: 4096,
-};
 
 /** `sendMessage` の `maxTokens` 既定値 (旧実装から据え置き) */
 const DEFAULT_MAX_OUTPUT_TOKENS = 2048;
@@ -444,7 +416,7 @@ ${content}
       options?.responseFormat === 'json' || options?.responseSchema !== undefined;
 
     return {
-      maxOutputTokens: requestedMaxTokens + THINKING_HEADROOM_TOKENS[this.thinkingLevel],
+      maxOutputTokens: resolveMaxOutputTokens(requestedMaxTokens, this.thinkingLevel),
       temperature: options?.temperature ?? 0,
       thinkingConfig: { thinkingLevel: this.thinkingLevel },
       ...(options?.systemPrompt ? { systemInstruction: options.systemPrompt } : {}),
@@ -458,29 +430,17 @@ ${content}
   }
 
   /**
-   * 応答本文を取り出す。**切り詰められた出力を正常な結果として返さない**
+   * 応答本文を取り出す。**異常終了した応答を正常な結果として返さない**
    *
-   * 🔴 Gemini は `maxOutputTokens` に達しても例外を投げず、`finishReason: 'MAX_TOKENS'`
-   * と**途中まで**の文字列を返す。これをそのまま通すと壊れた slug や不完全な JSON が
-   * 下流へ流れ、原因から離れた場所でエラーになる (あるいは黙って壊れた記事になる)。
-   * ここで loud に停める。
+   * 判定は {@link readGeminiText} に集約している (Vision 側と同じ実装を使うため)。
    */
   private readText(response: GenerateContentResponse): string {
-    const finishReason = response.candidates?.[0]?.finishReason;
-    const text = response.text ?? '';
-
-    if (finishReason === 'MAX_TOKENS') {
-      const thoughts = response.usageMetadata?.thoughtsTokenCount ?? 0;
-      throw new Error(
-        `Gemini response was truncated (finishReason=MAX_TOKENS). ` +
-          `model=${this.modelName} thinking=${this.thinkingLevel} ` +
-          `thoughtsTokens=${thoughts} outputTokens=${response.usageMetadata?.candidatesTokenCount ?? 0}. ` +
-          `Gemini counts thinking tokens against maxOutputTokens — lower the thinking level ` +
-          `(AI_THINKING_LEVEL / VISION_API_THINKING_LEVEL) or raise the caller's maxTokens.`
-      );
-    }
-
-    return text;
+    return readGeminiText(response, {
+      label: 'GeminiProvider',
+      modelName: this.modelName,
+      thinkingLevel: this.thinkingLevel,
+      thinkingEnvName: 'AI_THINKING_LEVEL',
+    });
   }
 
   /**

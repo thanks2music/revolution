@@ -172,3 +172,48 @@ export function normalizeMediaResolution(value?: string): MediaResolution {
   );
   return DEFAULT_GEMINI_MEDIA_RESOLUTION;
 }
+
+/**
+ * thinking 用に `maxOutputTokens` へ上乗せする余裕枠 (tokens)
+ *
+ * 🔴 **これが無いと出力が黙って切り詰められる。** Gemini の `maxOutputTokens` は
+ * thinking トークンも含む上限であり、呼び出し側が渡す `maxTokens` は「欲しい本文の長さ」
+ * しか意味していない。両者をそのまま突き合わせると thinking が予算を食い潰す。
+ *
+ * 実測 (2026-08-16、`gemini-3.6-flash` / slug 生成相当のプロンプト / `maxTokens: 100`):
+ *
+ * | thinking | finishReason | thoughts | 返ってきた text |
+ * |---|---|---|---|
+ * | MINIMAL | STOP | 0 | `kusuriya-no-hitorigoto` (正常) |
+ * | LOW | **MAX_TOKENS** | 92 | **`kusuriya-`** (切れている) |
+ * | MEDIUM | **MAX_TOKENS** | 94 | **`kusuri`** (切れている) |
+ *
+ * ⚠️ **thinking の消費量は与えた予算に比例して増える** (同条件で `maxTokens: 512` に
+ * すると thoughts は 92 → 273 へ)。したがって余裕枠を広げるほど thinking のコストも
+ * 増えうる。**コストを絞る正しいレバーは `maxOutputTokens` ではなく `thinkingLevel`**
+ * であり、余裕枠は「切り詰めを防ぐための安全側の値」として置く。
+ */
+const THINKING_HEADROOM_TOKENS: Record<ThinkingLevel, number> = {
+  [ThinkingLevel.THINKING_LEVEL_UNSPECIFIED]: 1024,
+  [ThinkingLevel.MINIMAL]: 0,
+  [ThinkingLevel.LOW]: 1024,
+  [ThinkingLevel.MEDIUM]: 2048,
+  [ThinkingLevel.HIGH]: 4096,
+};
+
+/**
+ * 呼び出し側の `maxTokens` に thinking の余裕枠を上乗せする (Layer 1: 純粋関数)
+ *
+ * 生成側 (`gemini.provider.ts`) と Vision 側 (`gemini-vision.service.ts`) の両方が使う。
+ * 片方だけ余裕枠の値を更新し忘れる事故を防ぐため、定数もろともここに集約する。
+ *
+ * @param requestedMaxTokens - 呼び出し側が欲しい本文の長さ
+ * @param thinkingLevel - 適用する thinking レベル
+ * @returns API へ渡す `maxOutputTokens`
+ */
+export function resolveMaxOutputTokens(
+  requestedMaxTokens: number,
+  thinkingLevel: ThinkingLevel
+): number {
+  return requestedMaxTokens + (THINKING_HEADROOM_TOKENS[thinkingLevel] ?? 1024);
+}

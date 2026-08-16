@@ -46,7 +46,12 @@ interface ResponseOverrides {
 
 function buildResponse(payload: unknown, overrides: ResponseOverrides = {}) {
   return {
-    text: typeof payload === 'string' ? payload : JSON.stringify(payload),
+    text:
+      payload === undefined
+        ? undefined
+        : typeof payload === 'string'
+          ? payload
+          : JSON.stringify(payload),
     usageMetadata: {
       promptTokenCount: 2200,
       candidatesTokenCount: overrides.candidatesTokenCount ?? 120,
@@ -311,6 +316,38 @@ describe('GeminiVisionService', () => {
         /truncated|MAX_TOKENS/
       );
     });
+
+    /**
+     * 🔴 切り詰めは `maxOutputTokens` と `thinkingLevel` という**固定設定**に起因する
+     * 決定論的な失敗。同じ config で投げ直しても再現するため、リトライは
+     * 1s/2s/4s のバックオフを挟んで 3 倍のトークンを捨てるだけになる。
+     * ZodError と同じ fast-fail にすることを固定する。
+     */
+    it('切り詰めはリトライせず 1 回で諦める', async () => {
+      mockGenerateContent.mockResolvedValue(
+        buildResponse('{"menuItems":[{"name":"コラボ', { finishReason: 'MAX_TOKENS' })
+      );
+      const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
+
+      await expect(service.extractFromImages(callOptions({ maxRetries: 3 }))).rejects.toThrow();
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * コンテンツブロック系は `text` が undefined になりうる。空文字を正常な結果として
+     * 返すと Vision の抽出が黙って空配列になる。
+     */
+    it.each(['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT'])(
+      'finishReason=%s も正常な結果として返さない',
+      async (reason) => {
+        mockGenerateContent.mockResolvedValue(buildResponse(undefined, { finishReason: reason }));
+        const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
+
+        await expect(service.extractFromImages(callOptions())).rejects.toThrow(
+          new RegExp(reason)
+        );
+      }
+    );
   });
 
   describe('スキーマ違反の扱い', () => {

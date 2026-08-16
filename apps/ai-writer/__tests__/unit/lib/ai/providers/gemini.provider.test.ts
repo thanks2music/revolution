@@ -271,6 +271,20 @@ describe('GeminiProvider', () => {
       await expect(provider.sendMessage('hello')).rejects.toThrow(/truncated|MAX_TOKENS/);
     });
 
+    /**
+     * コンテンツブロック系は `text` が undefined になりうる。空文字を「正常な結果」として
+     * 返すと、slug が空になったり要約が空になったりして原因から離れた場所で症状が出る。
+     */
+    it.each(['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT'])(
+      'finishReason=%s も正常な結果として返さない',
+      async (reason) => {
+        mockGenerateContent.mockResolvedValue(buildResponse('', { finishReason: reason }));
+        const provider = new GeminiProvider('key');
+
+        await expect(provider.sendMessage('hello')).rejects.toThrow(new RegExp(reason));
+      }
+    );
+
     it('切り詰めでも失敗として観測ログに残す', async () => {
       mockGenerateContent.mockResolvedValue(
         buildResponse('kusuriya-', { finishReason: 'MAX_TOKENS' })
