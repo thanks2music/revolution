@@ -13,6 +13,7 @@ import {
   isBlockedHost,
   isBlockedIpv4,
   isBlockedIpv6,
+  parseIpv6Groups,
 } from '@/lib/utils/safe-image-fetch';
 
 describe('isBlockedIpv4', () => {
@@ -94,5 +95,66 @@ describe('isBlockedHost', () => {
   it('通常の公開ホストは通す', () => {
     expect(isBlockedHost('conan-cafe.jp')).toBe(false);
     expect(isBlockedHost('images.anime-events.com')).toBe(false);
+  });
+});
+
+describe('parseIpv6Groups', () => {
+  it.each([
+    ['::1', [0, 0, 0, 0, 0, 0, 0, 1]],
+    ['::', [0, 0, 0, 0, 0, 0, 0, 0]],
+    ['fe80::1', [0xfe80, 0, 0, 0, 0, 0, 0, 1]],
+    ['2001:db8::1', [0x2001, 0xdb8, 0, 0, 0, 0, 0, 1]],
+    // ドット表記の IPv4 埋め込みは 16 進 2 グループへ畳む
+    ['::ffff:127.0.0.1', [0, 0, 0, 0, 0, 0xffff, 0x7f00, 1]],
+  ])('%s を 8 グループへ分解する', (input, expected) => {
+    expect(parseIpv6Groups(input)).toEqual(expected);
+  });
+
+  it.each([['::: :'], ['1::2::3'], ['gggg::1'], ['1:2:3:4:5:6:7'], ['1:2:3:4:5:6:7:8:9']])(
+    '不正な %s は null を返す',
+    (input) => {
+      expect(parseIpv6Groups(input)).toBeNull();
+    }
+  );
+});
+
+/**
+ * 🔴 **実際の呼び出し経路 (`new URL(...).hostname`) を通したテスト。**
+ *
+ * WHATWG URL の IPv6 シリアライザは、パース時にドット表記を受け付けても
+ * **出力は常に 16 進表記へ正規化する** (`::ffff:169.254.169.254` → `::ffff:a9fe:a9fe`)。
+ *
+ * 初版の実装はドット表記の正規表現で IPv4-mapped を拾おうとしていたため、
+ * **`http://[::ffff:169.254.169.254]/` がガードをすり抜けていた**。
+ * にもかかわらず、関数を直接ドット表記で叩くテストは green だった
+ * (= テストが守る経路と実際に通る経路がずれていた)。
+ *
+ * 同じズレを次から検出できるよう、**URL を経由した形でも必ず検証する**。
+ */
+describe('実際の呼び出し経路 (new URL().hostname) での検証', () => {
+  it.each([
+    ['http://[::ffff:169.254.169.254]/x.jpg', 'IPv4-mapped の GCP メタデータサーバー'],
+    ['http://[::ffff:127.0.0.1]/x.jpg', 'IPv4-mapped の loopback'],
+    ['http://[::ffff:10.0.0.1]/x.jpg', 'IPv4-mapped の RFC1918'],
+    ['http://[::ffff:192.168.0.1]/x.jpg', 'IPv4-mapped の RFC1918'],
+    ['http://[::1]/x.jpg', 'loopback'],
+    ['http://[fe80::1]/x.jpg', 'link-local'],
+    ['http://[fd00::1]/x.jpg', 'ULA'],
+    ['http://[64:ff9b::169.254.169.254]/x.jpg', 'NAT64 埋め込み'],
+    ['http://[2002:a9fe:a9fe::1]/x.jpg', '6to4 埋め込み'],
+    ['http://169.254.169.254/x.jpg', 'IPv4 リテラル'],
+    ['http://localhost/x.jpg', '内部ホスト名'],
+    ['http://metadata.google.internal/x.jpg', 'GCP メタデータのホスト名'],
+  ])('%s を弾く (%s)', (url) => {
+    expect(isBlockedHost(new URL(url).hostname)).toBe(true);
+  });
+
+  it.each([
+    ['http://[2001:4860:4860::8888]/x.jpg', '公開 IPv6 (Google DNS)'],
+    ['http://[::ffff:8.8.8.8]/x.jpg', 'IPv4-mapped の公開アドレス'],
+    ['https://images.anime-events.com/x.jpg', '通常の公開ホスト'],
+    ['https://conan-cafe.jp/x.jpg', '通常の公開ホスト'],
+  ])('%s は通す (%s)', (url) => {
+    expect(isBlockedHost(new URL(url).hostname)).toBe(false);
   });
 });

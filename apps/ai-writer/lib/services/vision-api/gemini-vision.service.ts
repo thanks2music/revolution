@@ -49,6 +49,7 @@ import {
   resolveMaxOutputTokens,
 } from '@/lib/config/gemini-models';
 import {
+  GeminiBlockedResponseError,
   GeminiTruncatedResponseError,
   readGeminiText,
 } from '@/lib/ai/gemini-response';
@@ -302,11 +303,19 @@ export class GeminiVisionService implements IVisionApiService {
         // not a transient network issue. Retrying would waste tokens and delay
         // surfacing the real bug, so re-throw immediately (mirrors the other providers).
         //
-        // 🔴 切り詰め (`MAX_TOKENS`) も同じ扱いにする。原因は `maxOutputTokens` と
-        //    `thinkingLevel` という**固定設定**であり、同じ config で投げ直しても再現する。
-        //    リトライすると 1s/2s/4s のバックオフを挟んで 3 倍のトークンを捨てるだけになる
-        //    (生成側 `gemini.provider.ts` にはリトライ機構が無く、ここだけ非対称だった)。
-        if (error instanceof ZodError || error instanceof GeminiTruncatedResponseError) {
+        // 🔴 Gemini の異常応答も同じ扱いにする。リトライすると 1s/2s/4s のバックオフを
+        //    挟んで 3 倍のトークンを捨てるだけになる (生成側 `gemini.provider.ts` には
+        //    リトライ機構が無く、ここだけ非対称だった)。
+        //
+        //    - 切り詰め (`MAX_TOKENS`): 原因は `maxOutputTokens` と `thinkingLevel` と
+        //      いう**固定設定**。同じ config で投げ直しても再現する
+        //    - ブロック (`SAFETY` / `RECITATION` 等): 原因は**入力そのもの**。
+        //      同じ画像・同じプロンプトなら大抵同じ判定になる
+        if (
+          error instanceof ZodError ||
+          error instanceof GeminiTruncatedResponseError ||
+          error instanceof GeminiBlockedResponseError
+        ) {
           throw error;
         }
         lastError = error as Error;

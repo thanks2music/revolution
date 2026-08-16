@@ -348,6 +348,18 @@ describe('GeminiVisionService', () => {
         );
       }
     );
+
+    /**
+     * ブロック系の原因は**入力そのもの** (同じ画像・同じプロンプトなら大抵同じ判定)。
+     * 切り詰めと同じく、リトライしてもトークンを捨てるだけになる。
+     */
+    it('ブロック系もリトライせず 1 回で諦める', async () => {
+      mockGenerateContent.mockResolvedValue(buildResponse(undefined, { finishReason: 'SAFETY' }));
+      const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
+
+      await expect(service.extractFromImages(callOptions({ maxRetries: 3 }))).rejects.toThrow();
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('スキーマ違反の扱い', () => {
