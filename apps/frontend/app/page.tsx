@@ -12,7 +12,7 @@ export const revalidate = 120; // ISR
 export const metadata: Metadata = {
   title: 'Revolution — アニメ × イベント × 街 をめぐる、AI 編集メディア',
   description:
-    'コラボカフェ、推し旅、ポップアップ。街と作品の交差点を、AI が編集する次世代イベントメディア。',
+    'コラボカフェ、ポップアップ、コラボイベント。好きな作品のイベントに行った思い出を、期間限定で終わらせずに共有できる場所です。',
 };
 
 export default async function Home() {
@@ -27,16 +27,12 @@ export default async function Home() {
           Vol. 01 — {yearMonth}
         </p>
         <SparkRule className="mt-2 mb-4 md:mb-5" width="3em" />
-        {/* タグライン扱いの h1: 「期間限定 / でも」の 2 行固定改行に意味があるため全ブレークポイント共通。
-            min-[360px] は 2 行目 15 文字が text-xl (20px) で収まる下限 (w-main = 90vw、300px 幅 ≤ 0.9×334px) に安全域を足した値 */}
-        <h1 className="font-display text-lg leading-snug text-ink-strong min-[360px]:text-xl md:text-2xl lg:text-[1.75rem]">
-          アニメイベントは期間限定
-          <br />
-          でも体験した思い出はタイムレス
+        {/* 見出しではなくタグライン扱いの h1 */}
+        <h1 className="font-display text-xl leading-snug text-ink-strong md:text-2xl lg:text-[1.75rem]">
+          体験×推し = タイムレス
         </h1>
         <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-body md:mt-4 md:text-base">
-          コラボカフェ、ポップアップ、コラボイベント。期間限定のアニメイベントを記録する
-          WEB メディアです。
+          好きな作品のイベントに行った思い出は、期間限定で終わらせず、ここで皆に共有しよう。
         </p>
       </section>
 
@@ -68,10 +64,8 @@ export default async function Home() {
         <SectionHeader eyebrow="No. 002 / About" title="Revolution とは" />
         <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
           Revolution
-          は、コラボカフェ・推し旅・ポップアップショップ・コラボグッズなど、
-          作品と街が交わる「イベント」を AI
-          が編集する次世代 Web メディアです。RSS から MDX
-          まで、記事の生成と公開をパイプライン化し、編集者の意思とテクノロジーを掛け合わせて、最短で「いつ・どこで」を届けます。
+          は、コラボカフェ・ポップアップ・コラボグッズなど、作品と街が交わる「イベント」を AI
+          が集めて編集する場所です。開催中のイベントを「いつ・どこで」の形で最短で届け、その上に、行った人の思い出が積み重なっていきます。
         </p>
       </section>
     </Layout>
