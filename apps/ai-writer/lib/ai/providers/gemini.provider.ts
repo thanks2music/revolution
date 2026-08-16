@@ -2,15 +2,25 @@
  * Google Gemini AI Provider Implementation
  *
  * Purpose:
- *   - Implement AiProvider interface using Google Gemini API
- *   - Cost-effective alternative to Anthropic Claude
- *   - Support for Gemini 2.5 Flash-Lite (cheapest model with free tier)
+ *   - Implement AiProvider interface using the Google GenAI SDK (`@google/genai`)
+ *   - Cost-effective alternative to Anthropic Claude / OpenAI
+ *
+ * ⚠️ 旧 SDK `@google/generative-ai` からの移行 (2026-08-16):
+ * 旧 SDK は公式が 2025-11-30 に deprecated とし、**`thinkingLevel` を渡す口を持たない**
+ * (型定義を実測してフィールド 11 個に該当なしを確認)。Gemini 3.x は推論モデルで
+ * thinking トークンが出力として課金されるため、制御できないままではコストが読めない。
+ * よって `@google/genai` へ移行した。
  *
  * @module lib/ai/providers/gemini.provider
  * @see https://ai.google.dev/gemini-api/docs
  */
 
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import type { GenerateContentConfig, GenerateContentResponse } from '@google/genai';
+import {
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_GEMINI_THINKING_LEVEL,
+} from '@/lib/config/gemini-models';
 import type {
   AiProvider,
   ArticleGenerationRequest,
@@ -19,40 +29,50 @@ import type {
   RssExtractionResult,
   SendMessageOptions,
   SendMessageResult,
+  TokenUsage,
 } from './ai-provider.interface';
 import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
 
 /**
- * Recommended Gemini models for different use cases
+ * thinking 用に `maxOutputTokens` へ上乗せする余裕枠 (tokens)
  *
- * Deprecation Schedule (as of 2025):
- * - gemini-2.0-flash: Earliest February 2026 (~3 months)
- * - gemini-2.5-flash-lite: Earliest July 2026 (~8 months) ⭐ Longest lifecycle
- * - gemini-2.5-flash: Earliest June 2026 (~7 months)
- * - gemini-2.5-pro: Earliest June 2026 (~7 months)
+ * 🔴 **これが無いと出力が黙って切り詰められる。** Gemini の `maxOutputTokens` は
+ * thinking トークンも含む上限であり、呼び出し側が渡す `maxTokens` は「欲しい本文の長さ」
+ * しか意味していない。両者をそのまま突き合わせると thinking が予算を食い潰す。
+ *
+ * 実測 (2026-08-16、`gemini-3.6-flash` / slug 生成相当のプロンプト / `maxTokens: 100`):
+ *
+ * | thinking | finishReason | thoughts | 返ってきた text |
+ * |---|---|---|---|
+ * | MINIMAL | STOP | 0 | `kusuriya-no-hitorigoto` (正常) |
+ * | LOW | **MAX_TOKENS** | 92 | **`kusuriya-`** (切れている) |
+ * | MEDIUM | **MAX_TOKENS** | 94 | **`kusuri`** (切れている) |
+ *
+ * **例外は投げられない**ため、そのままでは壊れた slug が記事 URL になる。
+ *
+ * ⚠️ **thinking の消費量は与えた予算に比例して増える** (同条件で `maxTokens: 512` に
+ * すると thoughts は 92 → 273 へ)。したがって余裕枠を広げるほど thinking のコストも
+ * 増えうる。**コストを絞る正しいレバーは `maxOutputTokens` ではなく `thinkingLevel`**
+ * であり、余裕枠は「切り詰めを防ぐための安全側の値」として置く。
  */
-const GEMINI_MODELS = {
-  // Stable and widely available model with free tier (Deprecation: Feb 2026)
-  FLASH_2_0: 'gemini-2.0-flash',
-  // Cheapest and longest-lived option - best for production (Deprecation: July 2026)
-  FLASH_LITE: 'gemini-2.5-flash-lite',
-  // Balanced option with free tier (Deprecation: June 2026)
-  FLASH: 'gemini-2.5-flash',
-  // High quality option with free tier (Deprecation: June 2026)
-  PRO: 'gemini-2.5-pro',
-} as const;
+const THINKING_HEADROOM_TOKENS: Record<ThinkingLevel, number> = {
+  [ThinkingLevel.THINKING_LEVEL_UNSPECIFIED]: 1024,
+  [ThinkingLevel.MINIMAL]: 0,
+  [ThinkingLevel.LOW]: 1024,
+  [ThinkingLevel.MEDIUM]: 2048,
+  [ThinkingLevel.HIGH]: 4096,
+};
+
+/** `sendMessage` の `maxTokens` 既定値 (旧実装から据え置き) */
+const DEFAULT_MAX_OUTPUT_TOKENS = 2048;
 
 /**
  * Google Gemini Provider
  *
  * @description
- * Implements the AiProvider interface using Google Gemini API.
- * Uses Gemini 2.5 Flash-Lite by default for cost efficiency and longevity.
- *
- * Pricing (as of 2025):
- * - Gemini 2.5 Flash-Lite: $0.10 input / $0.40 output per 1M tokens (Free tier available)
- * - ~30x cheaper than Claude Sonnet 4.5
- * - Longest lifecycle among Flash models (Deprecation: July 2026)
+ * Implements the AiProvider interface using the Google GenAI SDK.
+ * Uses {@link DEFAULT_GEMINI_MODEL} by default (see `lib/config/gemini-models.ts`
+ * for the selection rationale and the current pricing / shutdown status).
  *
  * @example
  * ```typescript
@@ -64,27 +84,34 @@ const GEMINI_MODELS = {
  * ```
  */
 export class GeminiProvider implements AiProvider {
-  private genAI: GoogleGenerativeAI;
-  private model: GenerativeModel;
-  private apiKey: string;
+  private readonly client: GoogleGenAI;
+  private readonly apiKey: string;
+
   /**
-   * `this.model` を組み立てたときのモデル名。
+   * このインスタンスが呼ぶモデル名。
    *
-   * ⚠️ 観測ログの `requestedModel` を実際に呼ぶモデルと一致させるためだけに保持する。
-   * `sendMessage` は `this.model` を使わず `GEMINI_MODELS.FLASH_LITE` で別のモデルを
-   * 組み立て直すため、本フィールドは `this.model` を使う経路 (`generateArticle` /
-   * `extractFromRss` 等) にのみ対応する。この不一致自体の是正は別タスク
-   * (Todoist「Gemini モデルを現行世代へ更新する」) で扱う。
+   * **全メソッドがこの 1 つの値を使う。** 旧実装は `sendMessage` だけが
+   * `GEMINI_MODELS.FLASH_LITE` で上書きしており、パイプラインの AI ステップの大半が
+   * `sendMessage` を通るため「コンストラクタのモデル指定が実質無効」だった
+   * (2026-08-16 に是正)。
    */
-  private readonly configuredModelName: string;
+  private readonly modelName: string;
+
+  /** このインスタンスが使う thinking の深さ。`AI_THINKING_LEVEL` 由来 */
+  private readonly thinkingLevel: ThinkingLevel;
 
   /**
    * Initialize Gemini Provider
    *
    * @param apiKey - Optional API key override (defaults to GEMINI_API_KEY env var)
-   * @param modelName - Optional model override (defaults to gemini-2.5-flash-lite)
+   * @param modelName - Optional model override (defaults to {@link DEFAULT_GEMINI_MODEL})
+   * @param thinkingLevel - Optional thinking depth (defaults to {@link DEFAULT_GEMINI_THINKING_LEVEL})
    */
-  constructor(apiKey?: string, modelName: string = GEMINI_MODELS.FLASH_LITE) {
+  constructor(
+    apiKey?: string,
+    modelName: string = DEFAULT_GEMINI_MODEL,
+    thinkingLevel: ThinkingLevel = DEFAULT_GEMINI_THINKING_LEVEL
+  ) {
     this.apiKey = apiKey || process.env.GEMINI_API_KEY || '';
 
     if (!this.apiKey) {
@@ -94,11 +121,13 @@ export class GeminiProvider implements AiProvider {
       );
     }
 
-    this.genAI = new GoogleGenerativeAI(this.apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: modelName });
-    this.configuredModelName = modelName;
+    this.client = new GoogleGenAI({ apiKey: this.apiKey });
+    this.modelName = modelName;
+    this.thinkingLevel = thinkingLevel;
 
-    console.log(`🤖 Gemini Provider initialized with model: ${modelName}`);
+    console.log(
+      `🤖 Gemini Provider initialized with model: ${modelName} (thinking: ${thinkingLevel})`
+    );
   }
 
   /**
@@ -111,11 +140,8 @@ export class GeminiProvider implements AiProvider {
     const prompt = this.buildArticlePrompt(request);
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      const text = response.text();
-
-      return this.parseArticleResponse(text, request);
+      const response = await this.generate(prompt, { maxTokens: 8192 });
+      return this.parseArticleResponse(this.readText(response), request);
     } catch (error) {
       console.error('Gemini API Error:', error);
       throw new Error(
@@ -155,9 +181,8 @@ Examples:
 Slug:`;
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      const rawSlug = response.text().trim().toLowerCase();
+      const response = await this.generate(prompt, { maxTokens: 100 });
+      const rawSlug = this.readText(response).trim().toLowerCase();
 
       // Sanitize slug
       const sanitizedSlug = rawSlug
@@ -185,7 +210,7 @@ Slug:`;
    * @returns Extracted information with confidence score
    */
   async extractFromRss(input: RssExtractionInput): Promise<RssExtractionResult> {
-    console.log(`🤖 Using AI Provider: Google Gemini (${this.configuredModelName})`);
+    console.log(`🤖 Using AI Provider: Google Gemini (${this.modelName})`);
 
     const prompt = `あなたはアニメコラボイベントの情報抽出エキスパートです。
 
@@ -231,56 +256,33 @@ JSON以外の説明文は出力しないでください。`;
     const startedAt = Date.now();
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      const text = response.text();
-
+      const response = await this.generate(prompt, { maxTokens: 2048 });
+      const text = this.readText(response);
       const parsedResult = this.parseRssExtractionResponse(text);
-
-      // Extract usage metadata if available
-      const usageMetadata = response.usageMetadata;
-      const rssUsage = usageMetadata
-        ? {
-            promptTokens: usageMetadata.promptTokenCount ?? 0,
-            completionTokens: usageMetadata.candidatesTokenCount ?? 0,
-            totalTokens: usageMetadata.totalTokenCount ?? 0,
-          }
-        : undefined;
+      const usage = this.toTokenUsage(response);
 
       await recordAiCall({
         stepId: 'rss-extraction',
         provider: 'google',
-        // `this.model` は constructor の modelName で組み立てられているため、
-        // FLASH_LITE 固定で書くと呼んでいないモデル名を記録することになる。
-        requestedModel: this.configuredModelName,
-        resolvedModel:
-          (response as { modelVersion?: string }).modelVersion ?? this.configuredModelName,
+        requestedModel: this.modelName,
+        resolvedModel: response.modelVersion ?? this.modelName,
         systemFingerprint: null,
         finishReason: response.candidates?.[0]?.finishReason,
         latencyMs: Date.now() - startedAt,
         prompt,
         responseText: text,
-        usage: rssUsage,
+        usage,
       });
 
       // usage をコスト追跡用に追加
-      return {
-        ...parsedResult,
-        usage: usageMetadata
-          ? {
-              promptTokens: usageMetadata.promptTokenCount ?? 0,
-              completionTokens: usageMetadata.candidatesTokenCount ?? 0,
-              totalTokens: usageMetadata.totalTokenCount ?? 0,
-            }
-          : undefined,
-      };
+      return { ...parsedResult, usage };
     } catch (error) {
       console.error('Gemini RSS extraction error:', error);
 
       await recordAiCall({
         stepId: 'rss-extraction',
         provider: 'google',
-        requestedModel: this.configuredModelName,
+        requestedModel: this.modelName,
         latencyMs: Date.now() - startedAt,
         prompt,
         error: error instanceof Error ? error.message : String(error),
@@ -308,9 +310,8 @@ ${content}
 要約:`;
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      return response.text().trim();
+      const response = await this.generate(prompt, { maxTokens: 1024 });
+      return this.readText(response).trim();
     } catch (error) {
       console.error('Failed to generate excerpt with Gemini:', error);
       throw new Error(
@@ -326,16 +327,183 @@ ${content}
    */
   async testConnection(): Promise<boolean> {
     try {
-      const result = await this.model.generateContent(
-        'Hello, please respond with "API connection successful"'
+      const response = await this.generate(
+        'Hello, please respond with "API connection successful"',
+        { maxTokens: 256 }
       );
-      const response = result.response;
-      const text = response.text();
-      return text.includes('API connection successful');
+      return this.readText(response).includes('API connection successful');
     } catch (error) {
       console.error('Gemini API connection test failed:', error);
       return false;
     }
+  }
+
+  /**
+   * Send a generic message to Gemini API
+   *
+   * @description
+   * Generic method for sending prompts to Gemini.
+   * Service layer handles prompt construction and response parsing.
+   *
+   * @param prompt - The prompt to send
+   * @param options - Optional configuration
+   * @returns Response with content and metadata
+   */
+  async sendMessage(prompt: string, options?: SendMessageOptions): Promise<SendMessageResult> {
+    console.log(`🤖 Using AI Provider: Google Gemini (${this.modelName})`);
+
+    const stepId = options?.stepId ?? 'unknown';
+    const temperature = options?.temperature ?? 0;
+    const startedAt = Date.now();
+
+    try {
+      const response = await this.generate(prompt, options);
+      const text = this.readText(response);
+
+      const usage = this.toTokenUsage(response);
+      const latencyMs = Date.now() - startedAt;
+      const finishReason = response.candidates?.[0]?.finishReason;
+      const resolvedModel = response.modelVersion ?? this.modelName;
+
+      await recordAiCall({
+        stepId,
+        context: options?.recordContext,
+        provider: 'google',
+        requestedModel: this.modelName,
+        resolvedModel,
+        // Gemini に `system_fingerprint` 相当の概念はない (null = 非対応)。
+        systemFingerprint: null,
+        finishReason,
+        latencyMs,
+        temperature,
+        prompt,
+        responseText: text,
+        usage,
+      });
+
+      return {
+        content: text,
+        model: this.modelName,
+        usage,
+        resolvedModel,
+        systemFingerprint: null,
+        finishReason,
+        latencyMs,
+      };
+    } catch (error) {
+      console.error('Gemini sendMessage error:', error);
+
+      await recordAiCall({
+        stepId,
+        context: options?.recordContext,
+        provider: 'google',
+        requestedModel: this.modelName,
+        latencyMs: Date.now() - startedAt,
+        temperature,
+        prompt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      throw new Error(
+        `Failed to send message to Gemini: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 内部ヘルパ
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Gemini API を 1 回呼ぶ (全メソッドの唯一の出口)
+   *
+   * モデル名・thinking・余裕枠の適用をここ 1 箇所に閉じることで、
+   * 「あるメソッドだけ別のモデルを呼ぶ」類の食い違いが再発しないようにする。
+   */
+  private async generate(
+    prompt: string,
+    options?: SendMessageOptions
+  ): Promise<GenerateContentResponse> {
+    return this.client.models.generateContent({
+      model: this.modelName,
+      contents: prompt,
+      config: this.buildRequestConfig(options),
+    });
+  }
+
+  /**
+   * `SendMessageOptions` を SDK の設定へ変換する
+   *
+   * - `maxTokens` には {@link THINKING_HEADROOM_TOKENS} を上乗せする (切り詰め防止)
+   * - `responseSchema` があれば `responseJsonSchema` として渡し、スキーマ準拠を強制する
+   *   (旧実装は JSON mode 止まりで、キー欠落が下流の誤診断を招いていた)
+   */
+  private buildRequestConfig(options?: SendMessageOptions): GenerateContentConfig {
+    const requestedMaxTokens = options?.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
+    const wantsJson =
+      options?.responseFormat === 'json' || options?.responseSchema !== undefined;
+
+    return {
+      maxOutputTokens: requestedMaxTokens + THINKING_HEADROOM_TOKENS[this.thinkingLevel],
+      temperature: options?.temperature ?? 0,
+      thinkingConfig: { thinkingLevel: this.thinkingLevel },
+      ...(options?.systemPrompt ? { systemInstruction: options.systemPrompt } : {}),
+      ...(wantsJson ? { responseMimeType: 'application/json' } : {}),
+      // `responseSchema` (interface 側の命名は OpenAI 由来) は JSON Schema なので
+      // SDK の `responseJsonSchema` に対応する。`name` は Gemini 側では使わない。
+      ...(options?.responseSchema
+        ? { responseJsonSchema: options.responseSchema.schema }
+        : {}),
+    };
+  }
+
+  /**
+   * 応答本文を取り出す。**切り詰められた出力を正常な結果として返さない**
+   *
+   * 🔴 Gemini は `maxOutputTokens` に達しても例外を投げず、`finishReason: 'MAX_TOKENS'`
+   * と**途中まで**の文字列を返す。これをそのまま通すと壊れた slug や不完全な JSON が
+   * 下流へ流れ、原因から離れた場所でエラーになる (あるいは黙って壊れた記事になる)。
+   * ここで loud に停める。
+   */
+  private readText(response: GenerateContentResponse): string {
+    const finishReason = response.candidates?.[0]?.finishReason;
+    const text = response.text ?? '';
+
+    if (finishReason === 'MAX_TOKENS') {
+      const thoughts = response.usageMetadata?.thoughtsTokenCount ?? 0;
+      throw new Error(
+        `Gemini response was truncated (finishReason=MAX_TOKENS). ` +
+          `model=${this.modelName} thinking=${this.thinkingLevel} ` +
+          `thoughtsTokens=${thoughts} outputTokens=${response.usageMetadata?.candidatesTokenCount ?? 0}. ` +
+          `Gemini counts thinking tokens against maxOutputTokens — lower the thinking level ` +
+          `(AI_THINKING_LEVEL / VISION_API_THINKING_LEVEL) or raise the caller's maxTokens.`
+      );
+    }
+
+    return text;
+  }
+
+  /**
+   * `usageMetadata` を共通の {@link TokenUsage} へ変換する
+   *
+   * 🔴 **thinking トークンは出力として課金される**ため `completionTokens` に合算する。
+   * 公式の `usageMetadata` は `candidatesTokenCount` と `thoughtsTokenCount` を
+   * 別建てで返し、`totalTokenCount` は両方を含む
+   * (実測検算: prompt 13 + candidates 3 + thoughts 68 = total 84)。
+   * 合算しないと cost-tracker が出力コストを過小計上する。
+   */
+  private toTokenUsage(response: GenerateContentResponse): TokenUsage | undefined {
+    const usageMetadata = response.usageMetadata;
+    if (!usageMetadata) {
+      return undefined;
+    }
+
+    return {
+      promptTokens: usageMetadata.promptTokenCount ?? 0,
+      completionTokens:
+        (usageMetadata.candidatesTokenCount ?? 0) + (usageMetadata.thoughtsTokenCount ?? 0),
+      totalTokens: usageMetadata.totalTokenCount ?? 0,
+    };
   }
 
   /**
@@ -490,7 +658,7 @@ Respond ONLY with JSON format. No other text should be included.
           sourceUrl: request.sourceUrl,
           generatedAt: new Date().toISOString(),
           wordCount,
-          model: 'gemini-2.5-flash-lite',
+          model: this.modelName,
         },
       };
     } catch (error) {
@@ -525,7 +693,7 @@ Respond ONLY with JSON format. No other text should be included.
         workTitle: parsed.workTitle.trim(),
         storeName: parsed.storeName.trim(),
         eventTypeName: parsed.eventTypeName.trim(),
-        model: 'gemini-2.5-flash-lite',
+        model: this.modelName,
         confidence,
       };
     } catch (error) {
@@ -555,105 +723,5 @@ Respond ONLY with JSON format. No other text should be included.
     const fallbackSlug = `article-${timestamp}`;
     console.warn(`⚠️ Generated timestamp-based fallback slug: ${title} → ${fallbackSlug}`);
     return fallbackSlug;
-  }
-
-  /**
-   * Send a generic message to Gemini API
-   *
-   * @description
-   * Generic method for sending prompts to Gemini.
-   * Service layer handles prompt construction and response parsing.
-   *
-   * @param prompt - The prompt to send
-   * @param options - Optional configuration
-   * @returns Response with content and metadata
-   */
-  async sendMessage(prompt: string, options?: SendMessageOptions): Promise<SendMessageResult> {
-    const modelName = GEMINI_MODELS.FLASH_LITE;
-    console.log(`🤖 Using AI Provider: Google Gemini (${modelName})`);
-
-    const stepId = options?.stepId ?? 'unknown';
-    const temperature = options?.temperature ?? 0;
-    const startedAt = Date.now();
-
-    try {
-      // Create model with generation config
-      const model = this.genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          maxOutputTokens: options?.maxTokens ?? 2048,
-          temperature,
-          // Enable JSON mode when responseFormat is 'json'
-          // This ensures the model outputs valid, parseable JSON
-          responseMimeType:
-            options?.responseFormat === 'json' ? 'application/json' : undefined,
-        },
-        systemInstruction: options?.systemPrompt,
-      });
-
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      const text = response.text();
-
-      // Extract usage metadata if available
-      const usageMetadata = response.usageMetadata;
-      const latencyMs = Date.now() - startedAt;
-
-      const usage = usageMetadata
-        ? {
-            promptTokens: usageMetadata.promptTokenCount ?? 0,
-            completionTokens: usageMetadata.candidatesTokenCount ?? 0,
-            totalTokens: usageMetadata.totalTokenCount ?? 0,
-          }
-        : undefined;
-      const finishReason = response.candidates?.[0]?.finishReason;
-      // `modelVersion` は API が返すが SDK の型に無い。要求名で握り潰さず、
-      // 返ってきた場合だけ実モデル版として記録する。
-      const resolvedModel =
-        (response as { modelVersion?: string }).modelVersion ?? modelName;
-
-      await recordAiCall({
-        stepId,
-        context: options?.recordContext,
-        provider: 'google',
-        requestedModel: modelName,
-        resolvedModel,
-        // Gemini に `system_fingerprint` 相当の概念はない (null = 非対応)。
-        systemFingerprint: null,
-        finishReason,
-        latencyMs,
-        temperature,
-        prompt,
-        responseText: text,
-        usage,
-      });
-
-      return {
-        content: text,
-        model: modelName,
-        usage,
-        resolvedModel,
-        systemFingerprint: null,
-        finishReason,
-        latencyMs,
-      };
-    } catch (error) {
-      console.error('Gemini sendMessage error:', error);
-
-      await recordAiCall({
-        stepId,
-        context: options?.recordContext,
-        provider: 'google',
-        requestedModel: modelName,
-        latencyMs: Date.now() - startedAt,
-        temperature,
-        prompt,
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      throw new Error(
-        `Failed to send message to Gemini: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
   }
 }
