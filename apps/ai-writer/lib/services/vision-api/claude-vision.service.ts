@@ -46,12 +46,15 @@ interface RawClaudeResponse {
   };
 }
 
+/** 既定モデル。`VISION_API_MODEL` / config で上書きできる */
+const DEFAULT_CLAUDE_VISION_MODEL = 'claude-sonnet-4-5-20250929';
+
 export class ClaudeVisionService implements IVisionApiService {
   private client: Anthropic;
-  private modelName: string = 'claude-sonnet-4-5-20250929';
+  private modelName: string;
   private logDir: string;
 
-  constructor(config?: { apiKey?: string }) {
+  constructor(config?: { apiKey?: string; model?: string }) {
     // Vision 専用 Anthropic API key (`ANTHROPIC_API_KEY_VISION`) を優先し、無ければ
     // 通常の `ANTHROPIC_API_KEY` にフォールバックする (Sprint C-α で追加)。
     // BOSS 意図: Vision 用と generation 用のキーを分けることで課金トラッキング + rate limit を
@@ -69,6 +72,7 @@ export class ClaudeVisionService implements IVisionApiService {
     }
 
     this.client = new Anthropic({ apiKey: key });
+    this.modelName = config?.model || DEFAULT_CLAUDE_VISION_MODEL;
 
     // Log directory for non-production debug logs only
     // (Cloud Run has ephemeral FS; production relies on console.log → Cloud Logging)

@@ -333,7 +333,7 @@ export interface HallucinationDetectionResult {
  * Identified by vendor name (not LLM product name), matching
  * `AiProviderType` in `lib/ai/providers/ai-provider.interface.ts`.
  */
-export type VisionProvider = 'openai' | 'anthropic';
+export type VisionProvider = 'openai' | 'anthropic' | 'google';
 
 /**
  * Vision API Configuration
@@ -343,7 +343,7 @@ export type VisionProvider = 'openai' | 'anthropic';
  * Used by VisionApiServiceFactory to create provider-specific implementations.
  */
 export interface VisionApiConfig {
-  /** Provider to use (openai or claude) */
+  /** Provider to use (openai / anthropic / google) */
   provider: VisionProvider;
 
   /** API key (optional, defaults to environment variable) */

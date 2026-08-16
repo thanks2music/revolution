@@ -6,10 +6,12 @@
  * - cache creation (5m TTL ephemeral): inputPer1M * 1.25 = $3.75/1M
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import {
   calculateCost,
   formatCost,
+  isKnownModel,
+  MODEL_PRICING,
   CACHE_WRITE_5M_MULTIPLIER,
   type TokenUsage,
 } from '@/lib/ai/cost/model-pricing';
@@ -183,5 +185,113 @@ describe('calculateCost — prompt cache pricing', () => {
       expect(cost.breakdown.outputCost).toBe(0);
       expect(cost.usd).toBeCloseTo(0.5, 5);
     });
+  });
+});
+
+/**
+ * Google Gemini 3.x の単価と、Gemini 特有の課金構造のテスト。
+ *
+ * ⚠️ **既定モデルが価格表に無いと `gpt-4o-mini` 単価へ黙ってフォールバックする。**
+ * 実際に旧既定の `gemini-2.5-flash-lite` はエントリが無く、Gemini 経路のコストは
+ * 誤った単価で集計され続けていた (2026-08-16 是正)。同じ穴を再発させないための固定。
+ */
+describe('calculateCost — Google Gemini 3.x', () => {
+  it.each([
+    ['gemini-3.6-flash', 0.75, 3.75],
+    ['gemini-3.5-flash', 1.5, 9.0],
+    ['gemini-3.5-flash-lite', 0.3, 2.5],
+    ['gemini-3.1-flash-lite', 0.25, 1.5],
+  ])('%s は公式単価どおりに計算する', (model, inputPerM, outputPerM) => {
+    const usage: TokenUsage = {
+      promptTokens: 1_000_000,
+      completionTokens: 1_000_000,
+      totalTokens: 2_000_000,
+    };
+
+    const cost = calculateCost(model, usage);
+
+    expect(cost.breakdown.inputCost).toBeCloseTo(inputPerM, 5);
+    expect(cost.breakdown.outputCost).toBeCloseTo(outputPerM, 5);
+  });
+
+  it('検証対象の 2 モデルは価格表に登録済み (フォールバックしない)', () => {
+    // ここが崩れると実走のコスト集計が丸ごと誤る。
+    expect(isKnownModel('gemini-3.6-flash')).toBe(true);
+    expect(isKnownModel('gemini-3.5-flash-lite')).toBe(true);
+  });
+
+  it('旧世代も retention として残す (過去 cost log の再集計用)', () => {
+    // PR #243 で旧エントリを即削除して過去ログが誤集計になった先例がある。
+    expect(isKnownModel('gemini-2.5-flash-lite')).toBe(true);
+    expect(isKnownModel('gemini-2.5-flash')).toBe(true);
+    expect(isKnownModel('gemini-2.5-pro')).toBe(true);
+  });
+
+  /**
+   * ⚠️ `gemini-3.7-flash` は実 API では応答するが公式に単価が公表されていない。
+   * 推測値を入れると「一見動くが金額が嘘」という最悪の状態になるため、
+   * **意図的に登録していない**ことを固定する。
+   */
+  it('単価未公表の gemini-3.7-flash は意図的に未登録', () => {
+    expect(isKnownModel('gemini-3.7-flash')).toBe(false);
+  });
+
+  it('未知の Gemini モデルは警告のうえフォールバックする', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const usage: TokenUsage = { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 };
+
+    const cost = calculateCost('gemini-9.9-imaginary', usage);
+
+    expect(warn).toHaveBeenCalled();
+    // gpt-4o-mini の $0.15/M へ倒れる
+    expect(cost.breakdown.inputCost).toBeCloseTo(0.15, 5);
+    warn.mockRestore();
+  });
+
+  it('Gemini 3.x は cached input 単価を持つ (旧エントリは未定義だった)', () => {
+    const usage: TokenUsage = {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cachedTokens: 1_000_000,
+    };
+
+    // gemini-3.6-flash: cachedInput $0.075/M
+    expect(calculateCost('gemini-3.6-flash', usage).breakdown.cachedCost).toBeCloseTo(0.075, 5);
+    // gemini-3.5-flash-lite: cachedInput $0.03/M
+    expect(calculateCost('gemini-3.5-flash-lite', usage).breakdown.cachedCost).toBeCloseTo(
+      0.03,
+      5
+    );
+  });
+
+  /**
+   * 🔴 thinking トークンは「出力」として課金される。provider / Vision service 側で
+   * `completionTokens = candidatesTokenCount + thoughtsTokenCount` として渡す契約に
+   * なっており、その前提で金額が合うことをここで確認する。
+   */
+  it('thinking 込みの completionTokens が出力単価で計上される', () => {
+    // 実測の検算値: prompt 13 / candidates 3 / thoughts 68 (gemini-3.6-flash, thinking=LOW)
+    const usage: TokenUsage = {
+      promptTokens: 13,
+      completionTokens: 3 + 68,
+      totalTokens: 84,
+    };
+
+    const cost = calculateCost('gemini-3.6-flash', usage);
+
+    expect(cost.breakdown.inputCost).toBeCloseTo((13 / 1_000_000) * 0.75, 10);
+    expect(cost.breakdown.outputCost).toBeCloseTo((71 / 1_000_000) * 3.75, 10);
+  });
+
+  it('Gemini エントリの provider は全て google', () => {
+    const geminiEntries = Object.entries(MODEL_PRICING).filter(([name]) =>
+      name.startsWith('gemini-')
+    );
+
+    expect(geminiEntries.length).toBeGreaterThan(0);
+    for (const [, pricing] of geminiEntries) {
+      expect(pricing.provider).toBe('google');
+    }
   });
 });

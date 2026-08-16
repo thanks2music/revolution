@@ -91,13 +91,17 @@ export const VisionExtractionMetadataSchema = z.object({
  * add HEAD preflight or empty-detection error-throwing without explicit design
  * review (such logic introduces false positives on legitimately empty pages).
  *
+ * Gemini (`google`) は画像 URL の直渡しができず service 側でダウンロードするが、
+ * 取得できなかった画像は除外して続行し、全滅時も 0 枚で呼んで空配列を返すことで
+ * 上記の契約を揃えている (`gemini-vision.service.ts` の `fetchImages`)。
+ *
  * Verified by `__tests__/e2e/vision-api-pipeline.e2e.test.ts`'s
  * "should return empty result when image URL is unreachable" (LIVE_API gated).
  */
 export const VisionExtractionResultSchema = z.object({
   visionExtraction: z.object({
     confidence: z.number().min(0).max(1),
-    provider: z.enum(['openai', 'anthropic']),
+    provider: z.enum(['openai', 'anthropic', 'google']),
     timestamp: z.string(),
     menuItems: z.array(MenuItemSchema),
     goodsItems: z.array(GoodsItemSchema),

@@ -14,14 +14,75 @@ declare namespace NodeJS {
     /** AI プロバイダー選択 (ベンダー名で指定: anthropic | google | openai) */
     AI_PROVIDER?: 'anthropic' | 'google' | 'openai';
 
+    /**
+     * 記事生成で使うモデル ID (API キーではない)
+     *
+     * `AI_PROVIDER` と対になる全プロバイダ共通の env。未設定なら各 provider の
+     * 既定モデルが使われる (anthropic = Claude Sonnet 4.5 / openai = gpt-5.4-mini /
+     * google = gemini-3.6-flash)。値は `AI_PROVIDER` に対応するものを入れること。
+     */
+    AI_MODEL?: string;
+
+    /**
+     * 記事生成の thinking の深さ (minimal | low | medium | high、既定 low)
+     *
+     * ⚠️ **Gemini でのみ効く。** Gemini 3.x は推論モデルで thinking トークンが
+     * 出力として課金されるため、既定の medium のままだと出力コストが読めない。
+     */
+    AI_THINKING_LEVEL?: string;
+
     /** Anthropic API Key */
     ANTHROPIC_API_KEY?: string;
+
+    /**
+     * Vision 専用の Anthropic API Key (未設定なら `ANTHROPIC_API_KEY` へフォールバック)
+     */
+    ANTHROPIC_API_KEY_VISION?: string;
 
     /** Google Gemini API Key */
     GEMINI_API_KEY?: string;
 
     /** OpenAI API Key */
     OPENAI_API_KEY?: string;
+
+    // ========================================
+    // Vision API
+    // ========================================
+
+    /** Vision API プロバイダー選択 (ベンダー名で指定、既定 openai) */
+    VISION_API_PROVIDER?: 'anthropic' | 'google' | 'openai';
+
+    /**
+     * Vision で使うモデル ID (API キーではない)
+     *
+     * 未設定なら各 Vision service の既定モデルが使われる
+     * (openai = gpt-4o-mini / anthropic = claude-sonnet-4-5 / google = gemini-3.6-flash)。
+     */
+    VISION_API_MODEL?: string;
+
+    /**
+     * Vision の解像度 (low | high、既定 low)
+     *
+     * ⚠️ **OpenAI でのみ効く。** Gemini は `VISION_API_MEDIA_RESOLUTION`、
+     * Claude には相当する概念がない。
+     */
+    VISION_API_DETAIL?: 'low' | 'high' | 'auto';
+
+    /**
+     * Vision の画像解像度 (low | medium | high、既定 low)
+     *
+     * ⚠️ **Gemini でのみ効く。** 未指定時の Gemini 側の既定は high 相当で、
+     * 画像 1 枚あたり 1,083 入力トークンかかる (low なら 252 / medium なら 520)。
+     * メニュー画像の文字読み取り精度が不足する場合のみ引き上げる。
+     */
+    VISION_API_MEDIA_RESOLUTION?: string;
+
+    /**
+     * Vision の thinking の深さ (minimal | low | medium | high、既定 low)
+     *
+     * ⚠️ **Gemini でのみ効く。** 生成側とは独立に指定できる。
+     */
+    VISION_API_THINKING_LEVEL?: string;
 
     // ========================================
     // GitHub

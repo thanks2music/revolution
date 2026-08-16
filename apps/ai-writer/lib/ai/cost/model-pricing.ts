@@ -9,7 +9,7 @@
  * @see https://www.anthropic.com/pricing
  * @see https://ai.google.dev/pricing
  *
- * Last updated: 2026-06-07
+ * Last updated: 2026-08-16
  */
 
 export interface ModelPricing {
@@ -58,7 +58,7 @@ export const USD_TO_JPY_RATE = 150;
 
 /**
  * Model pricing table (Standard tier, per 1M tokens)
- * Last updated: 2026-06-07
+ * Last updated: 2026-08-16
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   // OpenAI GPT-5.4 / 5.5 series (added 2026-06-07, sourced from https://developers.openai.com/api/docs/models)
@@ -150,15 +150,67 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     outputPer1M: 15.0,
     provider: 'anthropic',
   },
-  // Google Gemini series
-  'gemini-2.0-flash': {
-    inputPer1M: 0.1,
-    outputPer1M: 0.4,
+  // ── Google Gemini 3.x series (added 2026-08-16) ────────────────────────────
+  //
+  // 🔴 thinking トークンは「出力」として課金される。provider / Vision service 側で
+  //    `completionTokens = candidatesTokenCount + thoughtsTokenCount` として渡すこと
+  //    (合算しないと出力コストを過小計上する)。
+  //
+  // ⚠️ `gemini-3.7-flash` は実 API では応答するが**公式に単価が公表されていない**ため
+  //    意図的に登録していない (登録できないので使うとフォールバック単価で誤集計になる)。
+  'gemini-3.6-flash': {
+    // ⚠️ プロモーション価格。2027-01-01 から $1.50 / $7.50 / cached $0.15 へ倍増する。
+    //    本テーブルは静的なので自動追随しない — 期日が来たら手で更新すること。
+    inputPer1M: 0.75,
+    cachedInputPer1M: 0.075,
+    outputPer1M: 3.75,
+    provider: 'google',
+  },
+  'gemini-3.5-flash': {
+    inputPer1M: 1.5,
+    cachedInputPer1M: 0.15,
+    outputPer1M: 9.0,
+    provider: 'google',
+  },
+  'gemini-3.5-flash-lite': {
+    inputPer1M: 0.3,
+    cachedInputPer1M: 0.03,
+    outputPer1M: 2.5,
+    provider: 'google',
+  },
+  'gemini-3.1-flash-lite': {
+    // ⚠️ shutdown 2027-05-07。移行先は `gemini-3.5-flash-lite` (公式 deprecations)。
+    // 単価は text/image/video のもの (audio は入力 $0.50 / cached $0.05)。
+    inputPer1M: 0.25,
+    cachedInputPer1M: 0.025,
+    outputPer1M: 1.5,
+    provider: 'google',
+  },
+  // ── Google Gemini 旧世代 (retention) ───────────────────────────────────────
+  //
+  // すべて廃止済み or 廃止予定日を経過しており新規には使わないが、**過去の cost log を
+  // 再集計したときに silent に誤った単価へフォールバックさせないため残す**。
+  // PR #243 (OpenAI gpt-4.1-nano 廃止時) で旧エントリを即削除して同じ問題を踏んだ先例に倣う。
+  'gemini-2.5-pro': {
+    inputPer1M: 1.25,
+    outputPer1M: 10.0,
     provider: 'google',
   },
   'gemini-2.5-flash': {
     inputPer1M: 0.15,
     outputPer1M: 0.6,
+    provider: 'google',
+  },
+  'gemini-2.5-flash-lite': {
+    // 旧既定モデル。本エントリが無かったため Gemini 経路のコストは
+    // `gpt-4o-mini` 単価 ($0.15/$0.60) で誤集計され続けていた (2026-08-16 是正)。
+    inputPer1M: 0.1,
+    outputPer1M: 0.4,
+    provider: 'google',
+  },
+  'gemini-2.0-flash': {
+    inputPer1M: 0.1,
+    outputPer1M: 0.4,
     provider: 'google',
   },
   'gemini-1.5-flash': {
