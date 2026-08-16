@@ -297,6 +297,15 @@ yarn-error.log*
 debug-logs/
 **/debug-logs/
 
+# 実走検証の成果物 (apps/ai-writer/debug-output/{YYYY-MM-DD-topic}/{mdx,logs})
+#
+# ⚠️ `content/` の外に置くこと。`scripts/generate-article-index.ts` の `findMdxFiles`
+#    は `content/` を除外なしで再帰走査するため、`content/` 配下に置くと gitignore
+#    していても記事一覧と SSG ビルドに実験記事が載る (gitignore は git の話であって
+#    ファイルシステムのスキャンには効かない)。
+debug-output/
+**/debug-output/
+
 # 一時ファイル
 tmp/
 temp/
