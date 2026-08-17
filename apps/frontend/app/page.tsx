@@ -10,9 +10,9 @@ import { SignupBenefit } from '@/components/molecules/SignupBenefit';
 export const revalidate = 120; // ISR
 
 export const metadata: Metadata = {
-  title: 'Revolution — アニメ × イベント × 街 をめぐる、AI 編集メディア',
+  title: 'アニイベ | 推し作品の体験と思い出を記録するアニメイベント情報サイト',
   description:
-    'コラボカフェ、ポップアップ、コラボイベント。好きな作品のイベントに行った思い出を、期間限定で終わらせずに共有できる場所です。',
+    'アニイベ(anime-events.com)は、アニメ・漫画・映画・ドラマ・音楽などエンタメ作品との「体験×推し」に特化した思い出を記録・共有出来るイベント情報サービスです。',
 };
 
 export default async function Home() {
@@ -29,10 +29,10 @@ export default async function Home() {
         <SparkRule className="mt-2 mb-4 md:mb-5" width="3em" />
         {/* 見出しではなくタグライン扱いの h1 */}
         <h1 className="font-display text-xl leading-snug text-ink-strong md:text-2xl lg:text-[1.75rem]">
-          体験×推し = タイムレス
+        体験×推し=思い出
         </h1>
         <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-body md:mt-4 md:text-base">
-          好きな作品のイベントに行った思い出は、期間限定で終わらせず、ここで皆に共有しよう。
+        アニイベは、アニメ・漫画・音楽・映画など推し作品との体験した思い出を記録・共有するイベント情報サービスです。
         </p>
       </section>
 
