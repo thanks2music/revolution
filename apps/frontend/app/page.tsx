@@ -13,6 +13,10 @@ export const revalidate = 120; // ISR
 // トップは root layout と同一セグメントのため `title.template` が適用されない。
 // 他ページと違いサイト名を自分で持つ必要があるので、リテラルではなく
 // `siteConfig.name` から組み立てて供給元を 1 本に保つ。
+//
+// 語順が他ページと逆 (トップ = サイト名が先 / 他 = `%s | サイト名` で後) なのは
+// 意図的。トップはブランド名で検索された時の受け皿なので先頭に置き、
+// 下層はページ固有の内容を先頭に置いて一覧での識別性を優先する。
 export const metadata: Metadata = {
   title: `${siteConfig.name} | 推し作品の体験と思い出を記録・レビュー・口コミ`,
   description:

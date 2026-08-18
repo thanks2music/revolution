@@ -20,6 +20,18 @@ import { describe, expect, it, jest } from '@jest/globals';
  * 2. **ネストしたページはサイト名を自分で持たないこと** (二重付与の防止)
  */
 
+const mockGetEventDetail = jest.fn<() => Promise<unknown>>();
+const mockGetOccurrenceDetail = jest.fn<() => Promise<unknown>>();
+
+jest.mock('@/lib/event/queries', () => ({
+  getEventDetail: () => mockGetEventDetail(),
+  listEventParams: () => Promise.resolve([]),
+}));
+jest.mock('@/lib/occurrence/queries', () => ({
+  getOccurrenceDetail: () => mockGetOccurrenceDetail(),
+  listOccurrenceParams: () => Promise.resolve([]),
+}));
+
 jest.mock('@/lib/env', () => ({
   env: {
     NEXT_PUBLIC_SITE_NAME: 'テストサイト名',
@@ -38,12 +50,9 @@ describe('metadata の title 合成', () => {
     expect(title.default).toBe(siteConfig.name);
   });
 
-  it('ネストしたページの title はサイト名を含まない (テンプレートが付与するため)', async () => {
+  it('静的 metadata のページの title はサイト名を含まない (テンプレートが付与するため)', async () => {
     const { siteConfig } = await import('@/lib/metadata');
 
-    // 動的 metadata を持つページ (events 系) は generateMetadata 側で
-    // `generateContentMetadata` を経由するため、ここでは静的 metadata を持つ
-    // ページのみを対象にする。
     const pages = [
       '@/app/articles/page',
       '@/app/mypage/page',
@@ -58,5 +67,63 @@ describe('metadata の title 合成', () => {
       expect(typeof title).toBe('string');
       expect(title as string).not.toContain(siteConfig.name);
     }
+  });
+
+  /**
+   * 動的 metadata の 2 ページも本 PR で直した対象なので同じ不変条件を固定する。
+   * 静的 metadata と違い `generateMetadata()` を実行しないと title が得られない
+   * ため、データ取得だけを mock して呼び出す。
+   *
+   * **見つからない場合の早期 return も対象**にする。ここは
+   * `generateContentMetadata` を経由せず素の `Metadata` を返す唯一の経路で、
+   * 元のバグ (`'企画情報が見つかりません — Revolution'`) が実際に存在した箇所。
+   */
+  it('動的 metadata (events 系) の title もサイト名を含まない', async () => {
+    const { siteConfig } = await import('@/lib/metadata');
+
+    const eventPage = (await import('@/app/events/[id]/page')) as {
+      generateMetadata: (p: unknown) => Promise<{ title?: unknown }>;
+    };
+    const occurrencePage = (await import('@/app/events/[id]/[occurrence_slug]/page')) as {
+      generateMetadata: (p: unknown) => Promise<{ title?: unknown }>;
+    };
+
+    // (a) データが取れた場合
+    mockGetEventDetail.mockResolvedValue({
+      event: { id: 'evt_1', name: 'テスト企画', description: null, officialUrl: null },
+      titles: [],
+      occurrences: [],
+      relatedEvents: [],
+    });
+    mockGetOccurrenceDetail.mockResolvedValue({
+      event: { id: 'evt_1', name: 'テスト企画' },
+      occurrence: { slug: 'shibuya', venueName: 'テスト会場', startsOn: null, endsOn: null },
+      titles: [],
+      siblings: [],
+    });
+
+    const eventMeta = await eventPage.generateMetadata({
+      params: Promise.resolve({ id: 'evt_1' }),
+    });
+    const occurrenceMeta = await occurrencePage.generateMetadata({
+      params: Promise.resolve({ id: 'evt_1', occurrence_slug: 'shibuya' }),
+    });
+
+    expect(eventMeta.title as string).not.toContain(siteConfig.name);
+    expect(occurrenceMeta.title as string).not.toContain(siteConfig.name);
+
+    // (b) 見つからない場合の早期 return
+    mockGetEventDetail.mockResolvedValue(null);
+    mockGetOccurrenceDetail.mockResolvedValue(null);
+
+    const eventNotFound = await eventPage.generateMetadata({
+      params: Promise.resolve({ id: 'missing' }),
+    });
+    const occurrenceNotFound = await occurrencePage.generateMetadata({
+      params: Promise.resolve({ id: 'missing', occurrence_slug: 'missing' }),
+    });
+
+    expect(eventNotFound.title as string).not.toContain(siteConfig.name);
+    expect(occurrenceNotFound.title as string).not.toContain(siteConfig.name);
   });
 });
