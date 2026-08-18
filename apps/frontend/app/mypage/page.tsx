@@ -30,7 +30,7 @@ import { AccountManager } from './AccountManager';
 import { SignOutButton } from './SignOutButton';
 
 export const metadata: Metadata = {
-  title: 'マイページ — Revolution',
+  title: 'マイページ',
   robots: { index: false, follow: false },
 };
 

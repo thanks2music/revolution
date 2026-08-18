@@ -87,13 +87,15 @@ export const env = createEnv({
     }).optional(),
 
     // サイト名（メタデータで使用）
-    NEXT_PUBLIC_SITE_NAME: z.string().min(1).default("Revolution Platform"),
+    // 「Revolution」はリポジトリのコードネームであってサイト名ではない。
+    // ユーザーに見える名称は「アニイベ」で、本キーがその単一の真実源。
+    NEXT_PUBLIC_SITE_NAME: z.string().min(1).default("アニイベ"),
 
     // サイト説明（メタデータで使用）
     NEXT_PUBLIC_SITE_DESCRIPTION: z
       .string()
       .min(1)
-      .default("Next.js + WordPress Headless CMS"),
+      .default("推し活イベントに行った体験・思い出を記録・レビュー・口コミできるアニイベ。コラボカフェやポップアップなど、アニメ・漫画・映画・音楽のイベント情報も掲載！"),
 
     // デバッグモード
     NEXT_PUBLIC_DEBUG: z

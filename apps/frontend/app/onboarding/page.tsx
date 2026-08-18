@@ -18,7 +18,7 @@ import { createClient } from '@/lib/supabase/server';
 import { OnboardingForm } from './OnboardingForm';
 
 export const metadata: Metadata = {
-  title: 'プロフィール設定 — Revolution',
+  title: 'プロフィール設定',
   robots: { index: false, follow: false },
 };
 
