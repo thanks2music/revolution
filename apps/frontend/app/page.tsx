@@ -6,11 +6,15 @@ import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGri
 import { SectionHeader } from '@/components/molecules/SectionHeader';
 import { SparkRule } from '@/components/atoms/ornament/SparkRule';
 import { SignupBenefit } from '@/components/molecules/SignupBenefit';
+import { siteConfig } from '@/lib/metadata';
 
 export const revalidate = 120; // ISR
 
+// トップは root layout と同一セグメントのため `title.template` が適用されない。
+// 他ページと違いサイト名を自分で持つ必要があるので、リテラルではなく
+// `siteConfig.name` から組み立てて供給元を 1 本に保つ。
 export const metadata: Metadata = {
-  title: 'アニイベ | 推し作品の体験と思い出を記録・レビュー・口コミ',
+  title: `${siteConfig.name} | 推し作品の体験と思い出を記録・レビュー・口コミ`,
   description:
     '推し活イベントに行った体験・思い出を記録・レビュー・口コミできるアニイベ。コラボカフェやポップアップなど、アニメ・漫画・映画・音楽のイベント情報も掲載！',
 };
