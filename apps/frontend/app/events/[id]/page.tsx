@@ -45,7 +45,7 @@ export async function generateMetadata(props: EventPageProps): Promise<Metadata>
   const data = await getEventDetail(id);
 
   if (!data) {
-    return { title: '企画情報が見つかりません — Revolution' };
+    return { title: '企画情報が見つかりません' };
   }
 
   const venueCount = data.occurrences.length;
@@ -59,7 +59,7 @@ export async function generateMetadata(props: EventPageProps): Promise<Metadata>
   const description = trimmed ? trimmed : fallback;
 
   return generateContentMetadata({
-    title: `${data.event.name} — Revolution`,
+    title: data.event.name,
     description,
     path: getEventUrl(data.event.id),
   });

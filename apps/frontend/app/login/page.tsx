@@ -13,9 +13,9 @@ import Layout from '@/components/templates/Layout';
 import { LoginForm } from './LoginForm';
 
 export const metadata: Metadata = {
-  title: 'ログイン / 登録 — Revolution',
+  title: 'ログイン / 登録',
   description:
-    'パスワード不要。メールに届く 6 桁コード、または Google で Revolution にログインできます。',
+    'パスワード不要。メールに届く 6 桁コード、または Google でアニイベにログインできます。',
   robots: { index: false, follow: false },
 };
 

@@ -9,9 +9,9 @@ import { SparkRule } from '@/components/atoms/ornament/SparkRule';
 export const revalidate = 120; // ISR (home と同じ 2 分)
 
 export const metadata: Metadata = {
-  title: 'すべての記事 — Revolution',
+  title: 'すべての記事',
   description:
-    'Revolution の記事一覧。コラボカフェ・推し旅・ポップアップショップ等のイベント情報。',
+    'アニイベの記事一覧。コラボカフェ・推し旅・ポップアップショップ等のイベント情報。',
 };
 
 type SearchParams = { category?: string | string[] };

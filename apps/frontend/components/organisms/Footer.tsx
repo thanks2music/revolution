@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 
 import { AuthNav } from '@/components/molecules/AuthNav';
+import { siteConfig } from '@/lib/metadata';
 
 type FooterLink = { name: string; href: string; external?: boolean };
 type FooterColumn = { title: string; items: FooterLink[] };
@@ -16,7 +17,7 @@ const columns: FooterColumn[] = [
   {
     title: 'About',
     items: [
-      { name: 'Revolution について', href: '/#about' },
+      { name: `${siteConfig.name}について`, href: '/#about' },
       { name: 'Sitemap', href: '/sitemap.xml' },
     ],
   },
@@ -42,12 +43,12 @@ const Footer = () => {
                 height={120}
                 className="h-8 w-auto"
               />
-              <span className="font-display text-xl text-ink-strong">Revolution</span>
+              <span className="font-display text-xl text-ink-strong">{siteConfig.name}</span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-muted">
-              アニメ × イベント × 街 をめぐる、
+              推し活イベントで体験した思い出を、
               <br />
-              AI 編集メディア。
+              記録・レビューする。
             </p>
           </div>
 
@@ -95,7 +96,7 @@ const Footer = () => {
         </div>
 
         <div className="mt-12 flex flex-wrap items-baseline justify-between gap-3 border-t pt-6 text-xs text-ink-muted">
-          <p>© Revolution</p>
+          <p>© {siteConfig.name}</p>
           <p className="font-numeric tabular-nums tracking-wide">
             Powered by AI Writer × Next.js 16 / React 19
           </p>

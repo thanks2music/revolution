@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { env } from '@/lib/env';
+import { siteConfig } from '@/lib/metadata';
 import { MobileNavDisclosure } from '@/components/molecules/MobileNavDisclosure';
 import { AuthNav } from '@/components/molecules/AuthNav';
 
@@ -10,7 +10,7 @@ const navItems = [
 ];
 
 const Header = () => {
-  const siteTitle = env.NEXT_PUBLIC_SITE_NAME ?? 'Revolution';
+  const siteTitle = siteConfig.name;
 
   return (
     <header className="relative border-b bg-bg-primary">

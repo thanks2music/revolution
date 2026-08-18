@@ -53,14 +53,14 @@ export async function generateMetadata(props: OccurrencePageProps): Promise<Meta
   const data = await getOccurrenceDetail(id, occurrence_slug);
 
   if (!data) {
-    return { title: '開催情報が見つかりません — Revolution' };
+    return { title: '開催情報が見つかりません' };
   }
 
   const venueName = data.occurrence.venueName ?? VENUE_NAME_FALLBACK;
   const period = formatPeriod(data.occurrence.startsOn, data.occurrence.endsOn);
 
   return generateContentMetadata({
-    title: `${data.event.name} ${venueName} — Revolution`,
+    title: `${data.event.name} ${venueName}`,
     description: `${data.event.name} の ${venueName} 開催情報 (${period})`,
     path: getOccurrenceUrl(data.event.id, data.occurrence.slug),
   });

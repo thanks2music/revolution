@@ -6,13 +6,21 @@ import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGri
 import { SectionHeader } from '@/components/molecules/SectionHeader';
 import { SparkRule } from '@/components/atoms/ornament/SparkRule';
 import { SignupBenefit } from '@/components/molecules/SignupBenefit';
+import { siteConfig } from '@/lib/metadata';
 
 export const revalidate = 120; // ISR
 
+// トップは root layout と同一セグメントのため `title.template` が適用されない。
+// 他ページと違いサイト名を自分で持つ必要があるので、リテラルではなく
+// `siteConfig.name` から組み立てて供給元を 1 本に保つ。
+//
+// 語順が他ページと逆 (トップ = サイト名が先 / 他 = `%s | サイト名` で後) なのは
+// 意図的。トップはブランド名で検索された時の受け皿なので先頭に置き、
+// 下層はページ固有の内容を先頭に置いて一覧での識別性を優先する。
 export const metadata: Metadata = {
-  title: 'Revolution — アニメ × イベント × 街 をめぐる、AI 編集メディア',
+  title: `${siteConfig.name} | 推し作品の体験と思い出を記録・レビュー・口コミ`,
   description:
-    'コラボカフェ、推し旅、ポップアップ。街と作品の交差点を、AI が編集する次世代イベントメディア。',
+    '推し活イベントに行った体験・思い出を記録・レビュー・口コミできるアニイベ。コラボカフェやポップアップなど、アニメ・漫画・映画・音楽のイベント情報も掲載！',
 };
 
 export default async function Home() {
@@ -27,16 +35,12 @@ export default async function Home() {
           Vol. 01 — {yearMonth}
         </p>
         <SparkRule className="mt-2 mb-4 md:mb-5" width="3em" />
-        {/* タグライン扱いの h1: 「期間限定 / でも」の 2 行固定改行に意味があるため全ブレークポイント共通。
-            min-[360px] は 2 行目 15 文字が text-xl (20px) で収まる下限 (w-main = 90vw、300px 幅 ≤ 0.9×334px) に安全域を足した値 */}
-        <h1 className="font-display text-lg leading-snug text-ink-strong min-[360px]:text-xl md:text-2xl lg:text-[1.75rem]">
-          アニメイベントは期間限定
-          <br />
-          でも体験した思い出はタイムレス
+        {/* 見出しではなくタグライン扱いの h1 */}
+        <h1 className="font-display text-xl leading-snug text-ink-strong md:text-2xl lg:text-[1.75rem]">
+          体験×推し=思い出
         </h1>
         <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-body md:mt-4 md:text-base">
-          コラボカフェ、ポップアップ、コラボイベント。期間限定のアニメイベントを記録する
-          WEB メディアです。
+          アニイベは、アニメ・漫画・音楽・映画などの推し活イベントで体験した思い出を記録・レビュー・口コミできるイベント情報サービスです。
         </p>
       </section>
 
@@ -65,13 +69,10 @@ export default async function Home() {
       </section>
 
       <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">
-        <SectionHeader eyebrow="No. 002 / About" title="Revolution とは" />
+        <SectionHeader eyebrow="No. 002 / About" title="アニイベとは" />
         <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
-          Revolution
-          は、コラボカフェ・推し旅・ポップアップショップ・コラボグッズなど、
-          作品と街が交わる「イベント」を AI
-          が編集する次世代 Web メディアです。RSS から MDX
-          まで、記事の生成と公開をパイプライン化し、編集者の意思とテクノロジーを掛け合わせて、最短で「いつ・どこで」を届けます。
+          コラボカフェ・ポップアップ・コラボグッズなど、作品と街が交わるイベントを AI
+          が集め、「いつ・どこで」を最短で届けます。そして、行った人が残した体験とレビューが、そこに積み重なっていきます。
         </p>
       </section>
     </Layout>
