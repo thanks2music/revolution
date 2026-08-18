@@ -14,7 +14,9 @@ export const siteConfig = {
   description: env.NEXT_PUBLIC_SITE_DESCRIPTION,
   url: env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com',
   ogImage: '/og-image.png', // デフォルトのOG画像
-  twitterHandle: '@your_twitter', // Twitter handle（必要に応じて環境変数化）
+  twitterHandle: '@anime_events_X',
+  xUrl: 'https://x.com/anime_events_X',
+  instagramUrl: 'https://www.instagram.com/anime_events_com/',
 };
 
 /**
@@ -28,7 +30,7 @@ export function generateBasicMetadata(): Metadata {
       template: `%s | ${siteConfig.name}`,
     },
     description: siteConfig.description,
-    keywords: ['Next.js', 'WordPress', 'Blog', 'Headless CMS', 'Revolution'],
+    keywords: ['コラボカフェ', 'ポップアップストア', 'アニメイベント', '推し活', 'コラボイベント'],
     authors: [{ name: siteConfig.name }],
     creator: siteConfig.name,
     publisher: siteConfig.name,
@@ -253,14 +255,11 @@ export function generateWebSiteSchema() {
     name: siteConfig.name,
     description: siteConfig.description,
     url: siteConfig.url,
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: {
-        '@type': 'EntryPoint',
-        urlTemplate: `${siteConfig.url}/search?q={search_term_string}`,
-      },
-      'query-input': 'required name=search_term_string',
-    },
+    // SNS プロフィールとサイトのエンティティを紐付ける (schema.org 標準)
+    sameAs: [siteConfig.xUrl, siteConfig.instagramUrl],
+    // NOTE: SearchAction は意図的に持たない。/search ルートが存在しないため、
+    // 宣言すると構造化データが実在しないエンドポイントを主張することになる。
+    // 検索機能 (mvp-definition.md C-1-a) の実装時に追加する。
   };
 }
 
