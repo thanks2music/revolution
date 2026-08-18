@@ -70,6 +70,23 @@ describe('metadata の title 合成', () => {
   });
 
   /**
+   * トップだけは**逆向きの不変条件**を持つ。root layout と同一セグメントで
+   * `title.template` が適用されないため、サイト名を自分で組み立てる必要がある。
+   *
+   * 下層の「含まない」だけを固定すると、誰かが「他ページに揃えよう」として
+   * トップからサイト名を落としても検出できない。対で固定する。
+   */
+  it('トップの title はサイト名をちょうど 1 回、先頭に持つ', async () => {
+    const { siteConfig } = await import('@/lib/metadata');
+    const mod = (await import('@/app/page')) as { metadata: { title?: unknown } };
+    const title = mod.metadata.title as string;
+
+    expect(typeof title).toBe('string');
+    expect(title.startsWith(`${siteConfig.name} | `)).toBe(true);
+    expect(title.split(siteConfig.name).length - 1).toBe(1);
+  });
+
+  /**
    * 動的 metadata の 2 ページも本 PR で直した対象なので同じ不変条件を固定する。
    * 静的 metadata と違い `generateMetadata()` を実行しないと title が得られない
    * ため、データ取得だけを mock して呼び出す。
