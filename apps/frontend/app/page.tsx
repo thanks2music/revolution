@@ -32,7 +32,7 @@ export default async function Home() {
           体験×推し=思い出
         </h1>
         <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-body md:mt-4 md:text-base">
-          アニイベは、アニメ・漫画・音楽・映画など推し活イベントで体験した思い出を記録、口コミ、レビュー出来るイベント情報サービスです。
+          アニイベは、アニメ・漫画・音楽・映画などの推し活イベントで体験した思い出を記録・レビュー・口コミできるイベント情報サービスです。
         </p>
       </section>
 
@@ -61,11 +61,10 @@ export default async function Home() {
       </section>
 
       <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">
-        <SectionHeader eyebrow="No. 002 / About" title="Revolution とは" />
+        <SectionHeader eyebrow="No. 002 / About" title="アニイベとは" />
         <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
-          Revolution
-          は、コラボカフェ・ポップアップ・コラボグッズなど、作品と街が交わる「イベント」を AI
-          が集めて編集する場所です。開催中のイベントを「いつ・どこで」の形で最短で届け、その上に、行った人の思い出が積み重なっていきます。
+          コラボカフェ・ポップアップ・コラボグッズなど、作品と街が交わるイベントを AI
+          が集め、「いつ・どこで」を最短で届けます。そして、行った人が残した体験とレビューが、そこに積み重なっていきます。
         </p>
       </section>
     </Layout>

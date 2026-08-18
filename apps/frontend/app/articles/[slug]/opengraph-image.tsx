@@ -2,6 +2,7 @@ import { ImageResponse } from 'next/og';
 // Import article index directly for efficient data access
 import articleIndex from '@/lib/mdx/article-index.json';
 import type { ArticlePageParams } from '@/types/page-props';
+import { siteConfig } from '@/lib/metadata';
 
 // Image metadata
 export const alt = 'Article OG Image';
@@ -99,7 +100,7 @@ export default async function Image({
               fontFamily: 'sans-serif',
             }}
           >
-            Revolution Platform
+            {siteConfig.name}
           </div>
         </div>
 

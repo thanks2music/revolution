@@ -10,7 +10,7 @@ const navItems = [
 ];
 
 const Header = () => {
-  const siteTitle = env.NEXT_PUBLIC_SITE_NAME ?? 'Revolution';
+  const siteTitle = env.NEXT_PUBLIC_SITE_NAME ?? 'アニイベ';
 
   return (
     <header className="relative border-b bg-bg-primary">
