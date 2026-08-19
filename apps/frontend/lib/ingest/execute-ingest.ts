@@ -106,9 +106,12 @@ export async function executePlan(db: Db, plan: IngestPlan): Promise<ExecuteResu
           .onConflictDoUpdate({
             target: events.slug,
             set: {
+              // name / primaryCategoryId は「記事側が正」なので毎回同期する。
+              // officialUrl は occurrences 側の冪等規則と同じく null で既存の
+              // 確定値を消さない (記事再生成で URL が一時的に落ちても巻き戻さない)
               name: sql`excluded.name`,
               primaryCategoryId: sql`excluded.primary_category_id`,
-              officialUrl: sql`excluded.official_url`,
+              officialUrl: sql`coalesce(excluded.official_url, ${events.officialUrl})`,
             },
           })
           .returning({ id: events.id });
