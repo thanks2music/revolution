@@ -78,7 +78,8 @@ export type QueueReason =
   | 'unknown_venue' // G4
   | 'slug_conflict_unresolvable' // G7 の接尾辞まで衝突
   | 'unknown_supplementary_category' // 非ブロッキング (event_categories に張れないだけ)
-  | 'event_name_mismatch'; // 同一 event_slug で別 name (非ブロッキング、先勝ち)
+  | 'event_name_mismatch' // 同一 event_slug で別 name (非ブロッキング、先勝ち)
+  | 'primary_category_mismatch'; // 同一 event_slug で別 primary category (非ブロッキング、先勝ち)
 
 export interface QueueItem {
   articleSlug: string;
@@ -219,6 +220,16 @@ export function planIngest(
           eventSlug,
           reason: 'event_name_mismatch',
           detail: `"${existingEvent.name}" vs "${eventName}" (先勝ち)`,
+        });
+      }
+      // primary category は URL 正準を決めるため、分岐を黙って捨てず可視化する
+      // (name と同じく先勝ちで、キューは非ブロッキング)
+      if (existingEvent.primaryCategoryId !== primaryCategoryId) {
+        plan.queue.push({
+          articleSlug,
+          eventSlug,
+          reason: 'primary_category_mismatch',
+          detail: `categoryId ${existingEvent.primaryCategoryId} vs ${primaryCategoryId} ("${eventData.primary_category_slug}") (先勝ち)`,
         });
       }
     }

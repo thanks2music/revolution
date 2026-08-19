@@ -353,4 +353,34 @@ describe('planIngest', () => {
     // 2 記事目の同一 occurrence は本 run 内の計画行に対して update 判定になる
     expect(plan.occurrences.map((o) => o.action)).toEqual(['insert', 'update']);
   });
+
+  it('同一 event_slug で primary_category が食い違ったら先勝ち + キューで可視化する', () => {
+    const first = makeArticle();
+    const second: ArticleEventData = {
+      articleSlug: '01m9999999999999',
+      eventData: {
+        ...first.eventData,
+        primary_category_slug: 'pop-up-store',
+        occurrences: [],
+      },
+    };
+    const plan = planIngest(
+      [first, second],
+      makeSnapshot({
+        categoryIdBySlug: new Map([
+          ['collabo-cafe', 1],
+          ['pop-up-store', 2],
+        ]),
+      }),
+    );
+
+    expect(plan.events).toHaveLength(1);
+    expect(plan.events[0].primaryCategoryId).toBe(1); // 先勝ち
+    expect(plan.queue).toEqual([
+      expect.objectContaining({
+        reason: 'primary_category_mismatch',
+        articleSlug: '01m9999999999999',
+      }),
+    ]);
+  });
 });

@@ -37,6 +37,11 @@ cd apps/frontend
 INGEST_DATABASE_URL='<staging pooler URL>' pnpm ingest:occurrences --dry-run
 ```
 
+> ⚠️ **Actions の実行と重ねない**。insert / update の判定は run 開始時のスナップショットで決まるため、
+> Actions の run (concurrency で直列化されるのは Actions 同士のみ) とローカル実行が同時に走ると
+> `occurrences_event_slug_uniq` 違反でその event が失敗しうる。失敗しても event 単位で隔離され、
+> 冪等なので再実行すれば回復する。
+
 ## 3. 人手キューの捌き方
 
 キューは Job Summary の表 + artifact `ingest-queue-report` (ingest-queue.json)。
