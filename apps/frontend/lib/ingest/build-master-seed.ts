@@ -13,14 +13,14 @@
  * 2. `name` の正規化形も alias に入れる (正式名でも引けるように)
  * 3. 別エンティティ間で alias が衝突したら seed を止める (collisions として返す)
  */
+import { TITLE_KIND_VALUES, TITLE_SLUG_REGEX } from '@revolution/schemas/title';
+import { VENUE_SLUG_REGEX } from '@revolution/schemas/venue';
+
 import { normalizeAlias } from './normalize-alias';
 
-/** `titles.kind` の CHECK 制約と同じ許容値 (`shared/schemas/db/titles.ts`)。 */
-export const TITLE_KINDS = ['anime', 'manga', 'game', 'novel', 'other'] as const;
-export type TitleKind = (typeof TITLE_KINDS)[number];
-
-/** `venues.slug` / `titles.slug` の形式 (migration の CHECK と同一)。 */
-const SLUG_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+// kind / slug の許容値は shared/schemas/{title,venue}.ts の真実源を import する
+// (PR #328 レビュー指摘: 再定義すると DB CHECK / zod / 本ファイルの 3 箇所同期が必要になる)
+export type TitleKind = (typeof TITLE_KIND_VALUES)[number];
 
 export interface TitleEntryYaml {
   slug: string;
@@ -65,7 +65,7 @@ export interface SeedPlan {
 }
 
 function isTitleKind(value: string): value is TitleKind {
-  return (TITLE_KINDS as readonly string[]).includes(value);
+  return (TITLE_KIND_VALUES as readonly string[]).includes(value);
 }
 
 /**
@@ -119,11 +119,11 @@ export function buildMasterSeed(
 
     if (!isTitleKind(entry.kind)) {
       plan.errors.push(
-        `titles["${name}"]: kind "${entry.kind}" は許容値 (${TITLE_KINDS.join('/')}) 外`,
+        `titles["${name}"]: kind "${entry.kind}" は許容値 (${TITLE_KIND_VALUES.join('/')}) 外`,
       );
       continue;
     }
-    if (!SLUG_REGEX.test(entry.slug)) {
+    if (!TITLE_SLUG_REGEX.test(entry.slug)) {
       plan.errors.push(`titles["${name}"]: slug "${entry.slug}" が形式違反`);
       continue;
     }
@@ -144,7 +144,7 @@ export function buildMasterSeed(
   // --- venues: 全エントリが seed 対象 ---
   const venueAliasToSlug = new Map<string, string>();
   for (const [name, entry] of Object.entries(venueYaml.venues)) {
-    if (!SLUG_REGEX.test(entry.slug)) {
+    if (!VENUE_SLUG_REGEX.test(entry.slug)) {
       plan.errors.push(`venues["${name}"]: slug "${entry.slug}" が形式違反`);
       continue;
     }

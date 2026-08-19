@@ -23,7 +23,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { eq, inArray, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { load as yamlLoad } from 'js-yaml';
 import postgres from 'postgres';
@@ -90,6 +90,9 @@ async function main(): Promise<void> {
   }
 
   if (DRY_RUN) {
+    if (VERIFY) {
+      console.log('⚠️ --verify は DB 照合が必要なため --dry-run と併用できません (無視します)');
+    }
     console.log('\n(--dry-run のため DB へは接続しません)');
     return;
   }
@@ -108,31 +111,38 @@ async function main(): Promise<void> {
     }
 
     await db.transaction(async (tx) => {
-      // --- titles (自然キー: slug) ---
-      const titleRows = await tx
-        .insert(titles)
-        .values(plan.titles)
-        .onConflictDoUpdate({
-          target: titles.slug,
-          set: { name: sql`excluded.name`, kind: sql`excluded.kind` },
-        })
-        .returning({ id: titles.id, slug: titles.slug });
+      // --- titles (自然キー: slug)。drizzle は values([]) で throw するため空配列を避ける
+      // (kind 未付与の YAML で実行した場合など、0 件は正常系) ---
+      const titleRows =
+        plan.titles.length > 0
+          ? await tx
+              .insert(titles)
+              .values(plan.titles)
+              .onConflictDoUpdate({
+                target: titles.slug,
+                set: { name: sql`excluded.name`, kind: sql`excluded.kind` },
+              })
+              .returning({ id: titles.id, slug: titles.slug })
+          : [];
       const titleIdBySlug = new Map(titleRows.map((r) => [r.slug, r.id]));
 
       // --- venues (自然キー: slug) ---
-      const venueRows = await tx
-        .insert(venues)
-        .values(plan.venues)
-        .onConflictDoUpdate({
-          target: venues.slug,
-          set: {
-            name: sql`excluded.name`,
-            prefecture: sql`excluded.prefecture`,
-            city: sql`excluded.city`,
-            address: sql`excluded.address`,
-          },
-        })
-        .returning({ id: venues.id, slug: venues.slug });
+      const venueRows =
+        plan.venues.length > 0
+          ? await tx
+              .insert(venues)
+              .values(plan.venues)
+              .onConflictDoUpdate({
+                target: venues.slug,
+                set: {
+                  name: sql`excluded.name`,
+                  prefecture: sql`excluded.prefecture`,
+                  city: sql`excluded.city`,
+                  address: sql`excluded.address`,
+                },
+              })
+              .returning({ id: venues.id, slug: venues.slug })
+          : [];
       const venueIdBySlug = new Map(venueRows.map((r) => [r.slug, r.id]));
 
       // --- aliases: 既存行が別エンティティを指していたら停止 (黙って付け替えない) ---
