@@ -515,4 +515,39 @@ describe('planIngest', () => {
       }),
     ]);
   });
+
+  it('3 記事が同一行を指しても、マージ後の日付に対して再演判定される (照合インデックスの同期)', () => {
+    // A (最新, 日付未発表) → insert / B (続報, 日付確定) → A へマージ /
+    // C (月をまたぐ真の再演) → マージ後の 9/15 と比較され G7 で別行になる。
+    // 同期しないと C は A の古い null と比較され「続報 update」に誤判定 →
+    // C の日付が黙って消えていた (レビュー 7 巡目指摘)
+    const base = makeArticle().eventData;
+    const makeOne = (articleSlug: string, startsOn: string | null): ArticleEventData => ({
+      articleSlug,
+      eventData: {
+        ...base,
+        occurrences: [
+          { venue_slug: null, venue_label: 'BOX cafe&space GEMS渋谷店', starts_on: startsOn, ends_on: null, official_url: null },
+        ],
+      },
+    });
+
+    const plan = planIngest(
+      [makeOne('article-a', null), makeOne('article-b', '2026-09-15'), makeOne('article-c', '2026-10-20')],
+      makeSnapshot(),
+    );
+
+    expect(plan.occurrences).toEqual([
+      expect.objectContaining({
+        slug: 'box-cafe-and-space-gems-shibuya',
+        startsOn: '2026-09-15', // A に B の続報がマージされた状態
+        action: 'insert',
+      }),
+      expect.objectContaining({
+        slug: 'box-cafe-and-space-gems-shibuya-202610', // C は再演として別行
+        startsOn: '2026-10-20',
+        action: 'insert',
+      }),
+    ]);
+  });
 });

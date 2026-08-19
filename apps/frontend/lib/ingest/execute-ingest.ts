@@ -78,7 +78,10 @@ export interface ExecuteResult {
   occurrencesUpdated: number;
   eventTitlesUpserted: number;
   eventCategoriesUpserted: number;
-  /** event 単位の失敗 (他 event は続行済み) */
+  /**
+   * event 単位の失敗 (他 event は続行済み)。ここではリトライしない —
+   * 取り込みは冪等なので、回復は再実行 (workflow_dispatch / CLI) に委ねる (runbook §5.1)
+   */
   failures: Array<{ eventSlug: string; message: string }>;
 }
 

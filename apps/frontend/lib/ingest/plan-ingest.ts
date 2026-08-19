@@ -161,7 +161,12 @@ export function planIngest(
     Array<{ slug: string; startsOn: string | null; endsOn: string | null; verified: boolean }>
   >();
   for (const [eventSlug, rows] of snapshot.existingOccurrences) {
-    occurrenceIndex.set(eventSlug, [...rows]);
+    // deep copy: 照合インデックスはマージ結果を随時反映する (後続記事は
+    // マージ後の状態と比較する) ため、snapshot 側のオブジェクトを汚さない
+    occurrenceIndex.set(
+      eventSlug,
+      rows.map((row) => ({ ...row })),
+    );
   }
 
   for (const { articleSlug, eventData } of articles) {
@@ -223,6 +228,9 @@ export function planIngest(
       plan.events.push(planned);
     } else {
       existingEvent.articleSlugs.push(articleSlug);
+      // officialUrl だけは name / category の「先勝ち + 食い違いをキュー」と異なり
+      // 「null なら後発記事の値で埋める」— URL・表示の正準を決めない補助情報のため。
+      // DB 側 upsert の coalesce (execute-ingest.ts) と同じ非破壊マージ
       existingEvent.officialUrl ??= officialUrl;
       if (existingEvent.name !== eventName) {
         plan.queue.push({
@@ -372,6 +380,14 @@ export function planIngest(
         alreadyPlanned.verified ||= verified;
         alreadyPlanned.startsOn ??= startsOn;
         alreadyPlanned.endsOn ??= endsOn;
+        // 照合インデックス側にもマージ結果を反映する。しないと 3 記事目以降の
+        // resolveSlug が古い日付 (例: 第一報の null) と比較し、真の再演 (G7) を
+        // 「続報の update」と誤判定して日付情報を黙って落とす (レビュー 7 巡目指摘)
+        if (resolved.existing !== undefined) {
+          resolved.existing.startsOn = alreadyPlanned.startsOn;
+          resolved.existing.endsOn = alreadyPlanned.endsOn;
+          resolved.existing.verified = alreadyPlanned.verified;
+        }
         continue;
       }
 
@@ -391,6 +407,12 @@ export function planIngest(
 
       if (resolved.action === 'insert') {
         rows.push({ slug: resolved.slug, startsOn, endsOn, verified });
+      } else if (resolved.existing !== undefined) {
+        // update (既存 DB 行) も照合インデックスへ反映 (第一報 null → 続報で
+        // 日付確定した状態を、同一 run 内の後続記事に見せる)
+        resolved.existing.startsOn = startsOn;
+        resolved.existing.endsOn = endsOn;
+        resolved.existing.verified = verified;
       }
     }
   }
