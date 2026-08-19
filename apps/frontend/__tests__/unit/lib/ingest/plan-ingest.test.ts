@@ -383,4 +383,64 @@ describe('planIngest', () => {
       }),
     ]);
   });
+
+  it('同一 event_slug で event_name が食い違ったら先勝ち + キューで可視化する', () => {
+    const first = makeArticle();
+    const second: ArticleEventData = {
+      articleSlug: '01m9999999999999',
+      eventData: { ...first.eventData, event_name: '第2弾の別名', occurrences: [] },
+    };
+    const plan = planIngest([first, second], makeSnapshot());
+
+    expect(plan.events[0].name).toBe('ブルーロックカフェ -青い監獄-'); // 先勝ち
+    expect(plan.queue).toEqual([
+      expect.objectContaining({ reason: 'event_name_mismatch', articleSlug: '01m9999999999999' }),
+    ]);
+  });
+
+  it('supplementary category は既知なら event_categories、未知なら非ブロッキングのキュー', () => {
+    const plan = planIngest(
+      [makeArticle({ supplementary_category_slugs: ['pop-up-store', 'unknown-supp'] })],
+      makeSnapshot({
+        categoryIdBySlug: new Map([
+          ['collabo-cafe', 1],
+          ['pop-up-store', 2],
+        ]),
+      }),
+    );
+
+    expect(plan.eventCategories).toEqual([
+      { eventSlug: 'blue-lock-cafe-aoi-kangoku', categoryId: 2 },
+    ]);
+    expect(plan.queue).toEqual([
+      expect.objectContaining({ reason: 'unknown_supplementary_category', detail: 'unknown-supp' }),
+    ]);
+    // 非ブロッキング: occurrence は作られる
+    expect(plan.occurrences).toHaveLength(1);
+  });
+
+  it('G7 の接尾辞まで衝突したら slug_conflict_unresolvable でキューへ (3 段目の再演)', () => {
+    const plan = planIngest(
+      [makeArticle()], // starts_on: 2026-08-20 → 接尾辞は -202608
+      makeSnapshot({
+        existingOccurrences: new Map([
+          [
+            'blue-lock-cafe-aoi-kangoku',
+            [
+              { slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2025-04-01', endsOn: null },
+              { slug: 'box-cafe-and-space-gems-shibuya-202608', startsOn: '2026-08-01', endsOn: null },
+            ],
+          ],
+        ]),
+      }),
+    );
+
+    expect(plan.occurrences).toEqual([]);
+    expect(plan.queue).toEqual([
+      expect.objectContaining({
+        reason: 'slug_conflict_unresolvable',
+        detail: 'box-cafe-and-space-gems-shibuya-202608',
+      }),
+    ]);
+  });
 });

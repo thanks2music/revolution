@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import { categories } from '@revolution/schemas/db/categories';
+import { eventCategories } from '@revolution/schemas/db/event-categories';
 import { events } from '@revolution/schemas/db/events';
 import { occurrences } from '@revolution/schemas/db/occurrences';
 import { titleAliases } from '@revolution/schemas/db/title-aliases';
@@ -197,6 +198,21 @@ describe('executePlan', () => {
     const updates = calls.filter((c) => c.op === 'update');
     expect(updates).toHaveLength(1);
     expect(updates[0].values).toMatchObject({ venueLabel: '会場Y' });
+  });
+
+  it('eventCategories を event id 解決後に upsert する (supplementary category の経路)', async () => {
+    const { db, calls } = makeTxDb();
+    const plan = makePlan({
+      eventCategories: [{ eventSlug: 'event-a', categoryId: 7 }],
+      occurrences: [],
+    });
+
+    const result = await executePlan(db, plan);
+
+    expect(result.eventCategoriesUpserted).toBe(1);
+    const categoryInserts = calls.filter((c) => c.op === 'insert' && c.table === eventCategories);
+    expect(categoryInserts).toHaveLength(1);
+    expect(categoryInserts[0].values).toEqual([{ eventId: 1, categoryId: 7 }]);
   });
 
   it('1 event の失敗は failures に隔離され、他 event の取り込みは続行する', async () => {

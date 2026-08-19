@@ -199,7 +199,9 @@ export function planIngest(
     const officialUrl =
       eventData.occurrences?.find((o) => o.official_url !== null)?.official_url ?? null;
 
-    // --- events (同一 event_slug は先勝ちでマージ。第一報 → 続報の複数記事対応) ---
+    // --- events (同一 event_slug は先勝ちでマージ。第一報 → 続報の複数記事対応)。
+    // article-index.json は日付の新しい順でソートされる (generate-article-index.ts)
+    // ため、「先勝ち」は実質「最新記事の name / category が正」で決定論的 ---
     const existingEvent = eventBySlug.get(eventSlug);
     if (existingEvent === undefined) {
       const planned: PlannedEvent = {
