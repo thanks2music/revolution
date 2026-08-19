@@ -1,0 +1,97 @@
+# occurrence 取り込み (S3 = mvp-definition A-4、staging 限定)
+#
+# 記事マージ → update-mdx-article-index.yml が article-index.json を再生成・commit →
+# その main への push を本 workflow が拾い、event_data を staging Supabase へ upsert する。
+#
+# - 取り込み先は **staging のみ** (2026-08-15 BOSS 確定)。production の
+#   service role key / DB password は CI に置かない。規約が実測で固まってから広げる
+# - 接続は既存 secrets (SUPABASE_STG_PROJECT_ID / SUPABASE_STG_DB_PASSWORD) から
+#   Session Pooler URL を構築する (deploy-supabase-migrations.yml と同方式)。
+#   新規 secret の追加は不要
+# - 人手キューは Job Summary + artifact (ingest-queue.json) で BOSS が確認する。
+#   捌き方: docs/operations/occurrence-ingest-runbook.md
+name: Ingest Occurrences (staging)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/frontend/lib/mdx/article-index.json"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "dry-run (計画とキューの表示のみ、書き込みなし)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingest-staging
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STG_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build staging Session Pooler URL
+        # deploy-supabase-migrations.yml の構築 step を踏襲 (percent-encode + mask)
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_STG_DB_PASSWORD is empty or unset."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "::error title=Missing secret::SUPABASE_STG_PROJECT_ID is empty or unset."
+            exit 1
+          fi
+          PASSWORD_ENCODED=$(jq -rn --arg p "$SUPABASE_DB_PASSWORD" '$p|@uri')
+          echo "::add-mask::$PASSWORD_ENCODED"
+          INGEST_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD_ENCODED}@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+          echo "::add-mask::$INGEST_DATABASE_URL"
+          echo "INGEST_DATABASE_URL=$INGEST_DATABASE_URL" >> "$GITHUB_ENV"
+
+      - name: Ingest occurrences
+        working-directory: apps/frontend
+        # push トリガーは実書き込み、workflow_dispatch は dry_run 入力に従う
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            pnpm ingest:occurrences --dry-run
+          else
+            pnpm ingest:occurrences
+          fi
+
+      - name: Upload manual-review queue
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ingest-queue-report
+          path: apps/frontend/ingest-queue.json
+          if-no-files-found: ignore
+          retention-days: 30
