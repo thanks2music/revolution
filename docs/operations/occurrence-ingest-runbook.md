@@ -49,6 +49,7 @@ reason ごとに対処が違う:
 | `venue_label_missing` / `venue_label_equals_event_name` / `venue_label_concatenated` | 抽出が壊れている (YAML では直らない) | 記事側の再生成 or 抽出改善タスクへ。会場が実在するなら venue-master 追記だけでは解決しない点に注意 |
 | `unknown_primary_category` | categories (23 件) に無い分類 | 通常は起きない。起きたら抽出プロンプトの enum 逸脱なので AI Writer 側の調査 |
 | `missing_event_identity` | event_name / event_slug 欠落 | 記事の event_data が不完全。再生成が必要 |
+| `missing_title_slugs` | title_slugs が空配列 | 記事の event_data が不完全 (タイトル紐付けゼロの event は公開しない)。再生成が必要 |
 | `slug_conflict_unresolvable` | 年月接尾辞まで衝突 | 同一企画・同一会場・同一年月の 3 回目以降の再演。手動で occurrence を整理する (稀) |
 | `unknown_supplementary_category` / `event_name_mismatch` | 非ブロッキングの警告 | event_categories が張れない / 名は先勝ち。気になる場合のみ対応 |
 

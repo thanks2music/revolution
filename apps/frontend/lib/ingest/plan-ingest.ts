@@ -10,6 +10,10 @@
  *
  * ゲート一覧 (テストと 1:1 対応):
  * - G1: `event_name` / `event_slug` 欠落 → 記事ごと保留 → キュー
+ * - G1t: `title_slugs` が空配列 → 記事ごと保留 → キュー
+ *   (zod は `.min(1)` を課しておらず素通りする。空のまま進めると G3 の
+ *   `allTitlesResolved` が初期値 true のまま残り、タイトル紐付けゼロの
+ *   event が verified=true で公開されてしまう — PR #329 レビュー指摘で発覚)
  * - G1c: `primary_category_slug` が categories に不在 → 記事ごと保留 → キュー
  *   (`events.primary_category_id` が NOT NULL のため events 行を作れない)
  * - G2: 決定論ガード — `venue_label` が null / `event_name` と完全一致 /
@@ -65,6 +69,7 @@ export interface MasterSnapshot {
 
 export type QueueReason =
   | 'missing_event_identity' // G1
+  | 'missing_title_slugs' // G1t
   | 'unknown_primary_category' // G1c
   | 'venue_label_missing' // G2
   | 'venue_label_equals_event_name' // G2
@@ -160,6 +165,18 @@ export function planIngest(
         eventSlug: eventSlug ?? null,
         reason: 'missing_event_identity',
         detail: `event_slug=${eventSlug ?? 'null'} / event_name=${eventName ?? 'null'}`,
+      });
+      plan.stats.articlesSkipped += 1;
+      continue;
+    }
+
+    // --- G1t: title 紐付けゼロの event を verified=true で公開させない ---
+    if (eventData.title_slugs.length === 0) {
+      plan.queue.push({
+        articleSlug,
+        eventSlug,
+        reason: 'missing_title_slugs',
+        detail: 'title_slugs=[]',
       });
       plan.stats.articlesSkipped += 1;
       continue;

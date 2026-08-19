@@ -93,6 +93,17 @@ describe('planIngest', () => {
     expect(plan.stats.articlesSkipped).toBe(1);
   });
 
+  it('G1t: title_slugs が空配列の記事は保留する (verified=true の素通り防止)', () => {
+    const plan = planIngest([makeArticle({ title_slugs: [] })], makeSnapshot());
+
+    expect(plan.events).toEqual([]);
+    expect(plan.occurrences).toEqual([]);
+    expect(plan.queue).toEqual([
+      expect.objectContaining({ reason: 'missing_title_slugs', detail: 'title_slugs=[]' }),
+    ]);
+    expect(plan.stats.articlesSkipped).toBe(1);
+  });
+
   it('G1c: 未知の primary_category は記事ごと保留する (events.primary_category_id が NOT NULL)', () => {
     const plan = planIngest(
       [makeArticle({ primary_category_slug: 'unknown-category' })],
