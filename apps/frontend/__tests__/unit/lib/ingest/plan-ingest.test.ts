@@ -350,8 +350,29 @@ describe('planIngest', () => {
 
     expect(plan.events).toHaveLength(1);
     expect(plan.events[0].articleSlugs).toEqual(['01m02zah3mp8jwf7', '01m9999999999999']);
-    // 2 記事目の同一 occurrence は本 run 内の計画行に対して update 判定になる
-    expect(plan.occurrences.map((o) => o.action)).toEqual(['insert', 'update']);
+    // 2 記事目の同一 occurrence は計画済み行へマージされ、重複エントリを作らない
+    // (insert → update の二重書き込みで後勝ち上書きされるのを防ぐ)
+    expect(plan.occurrences.map((o) => o.action)).toEqual(['insert']);
+    expect(plan.stats.occurrencesPlanned).toBe(1);
+  });
+
+  it('同一行を指す複数記事の verified は単調増加でマージする (巻き戻り防止)', () => {
+    const resolved = makeArticle(); // title 全解決 → verified=true
+    const unresolvedOlder: ArticleEventData = {
+      articleSlug: '01m9999999999999',
+      eventData: {
+        ...resolved.eventData,
+        title_slugs: ['unknown-title'], // 未解決 → 単体なら verified=false
+      },
+    };
+
+    // 新しい記事 (解決済み) が先、古い記事 (未解決) が後 — index の日付降順を模す
+    const plan = planIngest([resolved, unresolvedOlder], makeSnapshot());
+    expect(plan.occurrences).toEqual([expect.objectContaining({ verified: true })]);
+
+    // 逆順 (未解決が先) でも、後の記事で全解決すれば true へ昇格する
+    const planReversed = planIngest([unresolvedOlder, resolved], makeSnapshot());
+    expect(planReversed.occurrences).toEqual([expect.objectContaining({ verified: true })]);
   });
 
   it('同一 event_slug で primary_category が食い違ったら先勝ち + キューで可視化する', () => {

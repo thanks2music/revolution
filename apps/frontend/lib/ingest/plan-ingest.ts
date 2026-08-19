@@ -147,6 +147,10 @@ export function planIngest(
   const eventBySlug = new Map<string, PlannedEvent>();
   const eventTitlePairs = new Set<string>();
   const eventCategoryPairs = new Set<string>();
+  // 同一 run 内で複数記事が同じ (eventSlug, slug) 行を指す場合の重複排除。
+  // 排除しないと後の記事 (index は新しい順なので古い記事) が verified を
+  // 巻き戻す (PR #329 レビュー 5 巡目指摘)。verified は単調増加でマージする
+  const plannedByKey = new Map<string, PlannedOccurrence>();
   // 冪等判定は「既存 DB 行 + 本 run で計画済みの行」の合算に対して行う
   const occurrenceIndex = new Map<
     string,
@@ -345,7 +349,19 @@ export function planIngest(
       const startsOn = occurrence.starts_on ?? resolved.existing?.startsOn ?? null;
       const endsOn = occurrence.ends_on ?? resolved.existing?.endsOn ?? null;
 
-      plan.occurrences.push({
+      // 本 run 内で既に同じ行を計画済みなら、新エントリを積まずマージする。
+      // index は日付の新しい順のため先勝ち = 最新記事が正。verified だけは
+      // 単調増加 (どれかの記事で全解決なら true。false へは戻さない)
+      const plannedKey = `${eventSlug} ${resolved.slug}`;
+      const alreadyPlanned = plannedByKey.get(plannedKey);
+      if (alreadyPlanned !== undefined) {
+        alreadyPlanned.verified ||= allTitlesResolved;
+        alreadyPlanned.startsOn ??= startsOn;
+        alreadyPlanned.endsOn ??= endsOn;
+        continue;
+      }
+
+      const planned: PlannedOccurrence = {
         eventSlug,
         slug: resolved.slug,
         venueId: venue.id,
@@ -354,7 +370,9 @@ export function planIngest(
         endsOn,
         verified: allTitlesResolved, // G5 / G3 (venue は解決済みでなければここに来ない)
         action: resolved.action,
-      });
+      };
+      plannedByKey.set(plannedKey, planned);
+      plan.occurrences.push(planned);
       plan.stats.occurrencesPlanned += 1;
 
       if (resolved.action === 'insert') {
