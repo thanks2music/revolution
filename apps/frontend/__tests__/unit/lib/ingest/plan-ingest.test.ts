@@ -215,7 +215,7 @@ describe('planIngest', () => {
         existingOccurrences: new Map([
           [
             'blue-lock-cafe-aoi-kangoku',
-            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-08-20', endsOn: '2026-09-20' }],
+            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-08-20', endsOn: '2026-09-20', verified: false }],
           ],
         ]),
       }),
@@ -233,7 +233,7 @@ describe('planIngest', () => {
         existingOccurrences: new Map([
           [
             'blue-lock-cafe-aoi-kangoku',
-            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: null, endsOn: null }],
+            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: null, endsOn: null, verified: false }],
           ],
         ]),
       }),
@@ -257,7 +257,7 @@ describe('planIngest', () => {
         existingOccurrences: new Map([
           [
             'blue-lock-cafe-aoi-kangoku',
-            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-08-20', endsOn: '2026-09-20' }],
+            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-08-20', endsOn: '2026-09-20', verified: false }],
           ],
         ]),
       }),
@@ -275,7 +275,7 @@ describe('planIngest', () => {
         existingOccurrences: new Map([
           [
             'blue-lock-cafe-aoi-kangoku',
-            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2025-04-01', endsOn: '2025-05-01' }],
+            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2025-04-01', endsOn: '2025-05-01', verified: false }],
           ],
         ]),
       }),
@@ -302,7 +302,7 @@ describe('planIngest', () => {
         existingOccurrences: new Map([
           [
             'blue-lock-cafe-aoi-kangoku',
-            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2025-04-01', endsOn: null }],
+            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2025-04-01', endsOn: null, verified: false }],
           ],
         ]),
       }),
@@ -448,8 +448,10 @@ describe('planIngest', () => {
           [
             'blue-lock-cafe-aoi-kangoku',
             [
-              { slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2025-04-01', endsOn: null },
-              { slug: 'box-cafe-and-space-gems-shibuya-202608', startsOn: '2026-08-01', endsOn: null },
+              { slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2025-04-01', endsOn: null, verified: false },
+              // 接尾辞行が別月の日付を持つ稀なケース (過去の手動整理の名残等) のみ
+              // unresolvable になる。同月なら訂正として update に倒れる (下のテスト)
+              { slug: 'box-cafe-and-space-gems-shibuya-202608', startsOn: '2026-07-01', endsOn: null, verified: false },
             ],
           ],
         ]),
@@ -461,6 +463,55 @@ describe('planIngest', () => {
       expect.objectContaining({
         reason: 'slug_conflict_unresolvable',
         detail: 'box-cafe-and-space-gems-shibuya-202608',
+      }),
+    ]);
+  });
+
+  it('既存 DB 行の verified=true は、記事再編集で title が未解決になっても巻き戻さない', () => {
+    // 例: 公開済み (or BOSS 人手承認済み) の行に対し、記事へ新規コラボ title が
+    // 追記されたがまだ titles/title_aliases に無い → allTitlesResolved=false
+    const plan = planIngest(
+      [makeArticle({ title_slugs: ['blue-lock', 'unknown-new-collab'] })],
+      makeSnapshot({
+        existingOccurrences: new Map([
+          [
+            'blue-lock-cafe-aoi-kangoku',
+            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-08-20', endsOn: '2026-09-20', verified: true }],
+          ],
+        ]),
+      }),
+    );
+
+    expect(plan.occurrences).toEqual([
+      expect.objectContaining({ action: 'update', verified: true }), // 単調増加
+    ]);
+    // 新規 title 自体はキューに上がる (承認後の再取り込みで event_titles が張られる)
+    expect(plan.queue).toEqual([
+      expect.objectContaining({ reason: 'unknown_title', detail: 'unknown-new-collab' }),
+    ]);
+  });
+
+  it('同一年月内の日付不一致は再演ではなく訂正として update する (重複行を作らない)', () => {
+    // 既存 8/1 開始 → 記事が 8/20 開始へ訂正。接尾辞は月単位 (-YYYYMM) のため
+    // 同月の「再演」と「訂正」は区別できず、別行にすると訂正のたびに重複が増える
+    const plan = planIngest(
+      [makeArticle()], // starts_on: 2026-08-20
+      makeSnapshot({
+        existingOccurrences: new Map([
+          [
+            'blue-lock-cafe-aoi-kangoku',
+            [{ slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-08-01', endsOn: '2026-09-01', verified: false }],
+          ],
+        ]),
+      }),
+    );
+
+    expect(plan.occurrences).toEqual([
+      expect.objectContaining({
+        slug: 'box-cafe-and-space-gems-shibuya', // 接尾辞なし = 同一行への update
+        action: 'update',
+        startsOn: '2026-08-20', // 訂正後の日付が正
+        endsOn: '2026-09-20',
       }),
     ]);
   });

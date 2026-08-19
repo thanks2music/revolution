@@ -38,6 +38,7 @@ export async function fetchSnapshot(db: Db): Promise<MasterSnapshot> {
           slug: occurrences.slug,
           startsOn: occurrences.startsOn,
           endsOn: occurrences.endsOn,
+          verified: occurrences.verified,
         })
         .from(occurrences),
     ]);
@@ -47,13 +48,13 @@ export async function fetchSnapshot(db: Db): Promise<MasterSnapshot> {
 
   const existingOccurrences = new Map<
     string,
-    Array<{ slug: string; startsOn: string | null; endsOn: string | null }>
+    Array<{ slug: string; startsOn: string | null; endsOn: string | null; verified: boolean }>
   >();
   for (const row of occurrenceRows) {
     const eventSlug = eventSlugById.get(row.eventId);
     if (eventSlug === undefined) continue;
     const rows = existingOccurrences.get(eventSlug) ?? [];
-    rows.push({ slug: row.slug, startsOn: row.startsOn, endsOn: row.endsOn });
+    rows.push({ slug: row.slug, startsOn: row.startsOn, endsOn: row.endsOn, verified: row.verified });
     existingOccurrences.set(eventSlug, rows);
   }
 

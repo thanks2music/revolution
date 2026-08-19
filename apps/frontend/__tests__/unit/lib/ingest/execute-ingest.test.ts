@@ -42,9 +42,9 @@ describe('fetchSnapshot', () => {
         [
           occurrences,
           [
-            { eventId: 500, slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-04-10', endsOn: '2026-06-28' },
+            { eventId: 500, slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-04-10', endsOn: '2026-06-28', verified: true },
             // events に存在しない eventId の行は黙って落とす (孤児行の防御)
-            { eventId: 999, slug: 'ghost', startsOn: null, endsOn: null },
+            { eventId: 999, slug: 'ghost', startsOn: null, endsOn: null, verified: false },
           ],
         ],
       ]),
@@ -61,7 +61,7 @@ describe('fetchSnapshot', () => {
       slug: 'box-cafe-and-space-gems-shibuya',
     });
     expect(snapshot.existingOccurrences.get('conan-cafe-2026')).toEqual([
-      { slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-04-10', endsOn: '2026-06-28' },
+      { slug: 'box-cafe-and-space-gems-shibuya', startsOn: '2026-04-10', endsOn: '2026-06-28', verified: true },
     ]);
     expect([...snapshot.existingOccurrences.keys()]).toEqual(['conan-cafe-2026']);
   });

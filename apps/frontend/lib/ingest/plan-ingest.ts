@@ -60,10 +60,14 @@ export interface MasterSnapshot {
   venueIdBySlug: ReadonlyMap<string, number>;
   /** venue_aliases.alias (正規化済み) → { id, slug } */
   venueByAlias: ReadonlyMap<string, { id: number; slug: string }>;
-  /** 既存 occurrences (events.slug でキー)。冪等判定と衝突判定に使う */
+  /**
+   * 既存 occurrences (events.slug でキー)。冪等判定と衝突判定に使う。
+   * verified は「一度 true になった行を再取り込みで false へ巻き戻さない」
+   * 単調増加マージのために持つ (BOSS の人手承認も保護対象)
+   */
   existingOccurrences: ReadonlyMap<
     string,
-    ReadonlyArray<{ slug: string; startsOn: string | null; endsOn: string | null }>
+    ReadonlyArray<{ slug: string; startsOn: string | null; endsOn: string | null; verified: boolean }>
   >;
 }
 
@@ -154,7 +158,7 @@ export function planIngest(
   // 冪等判定は「既存 DB 行 + 本 run で計画済みの行」の合算に対して行う
   const occurrenceIndex = new Map<
     string,
-    Array<{ slug: string; startsOn: string | null; endsOn: string | null }>
+    Array<{ slug: string; startsOn: string | null; endsOn: string | null; verified: boolean }>
   >();
   for (const [eventSlug, rows] of snapshot.existingOccurrences) {
     occurrenceIndex.set(eventSlug, [...rows]);
@@ -327,7 +331,14 @@ export function planIngest(
         if (occurrence.starts_on === null) {
           return { slug: baseSlug, action: 'update', existing }; // 日付は上書きしない (下で処理)
         }
-        return null; // 両方非 null で不一致 = 再演 (G7)
+        // 両方非 null で不一致でも、同一年月なら「日付の訂正」として同一開催に倒す。
+        // 接尾辞は月単位 (-YYYYMM) のため、同月の再演は訂正と区別できず、
+        // 別行にすると訂正のたびに重複行が増える (旧行は古い日付のまま残る)。
+        // 同一企画 × 同一会場 × 同月内の真の再演は実運用上ほぼ存在しない前提
+        if (yearMonthSuffix(existing.startsOn!) === yearMonthSuffix(occurrence.starts_on)) {
+          return { slug: baseSlug, action: 'update', existing };
+        }
+        return null; // 月をまたぐ不一致 = 再演 (G7)
       };
 
       let resolved = resolveSlug(venue.slug);
@@ -348,6 +359,9 @@ export function planIngest(
       // incoming null は既存の確定日付を消さない (同定規則)
       const startsOn = occurrence.starts_on ?? resolved.existing?.startsOn ?? null;
       const endsOn = occurrence.ends_on ?? resolved.existing?.endsOn ?? null;
+      // verified は既存 DB 行に対しても単調増加 (一度 true = 公開済み / 人手承認済みの
+      // 行を、記事の再編集で未解決 title が混ざった程度で非公開へ巻き戻さない)
+      const verified = allTitlesResolved || (resolved.existing?.verified ?? false);
 
       // 本 run 内で既に同じ行を計画済みなら、新エントリを積まずマージする。
       // index は日付の新しい順のため先勝ち = 最新記事が正。verified だけは
@@ -355,7 +369,7 @@ export function planIngest(
       const plannedKey = `${eventSlug} ${resolved.slug}`;
       const alreadyPlanned = plannedByKey.get(plannedKey);
       if (alreadyPlanned !== undefined) {
-        alreadyPlanned.verified ||= allTitlesResolved;
+        alreadyPlanned.verified ||= verified;
         alreadyPlanned.startsOn ??= startsOn;
         alreadyPlanned.endsOn ??= endsOn;
         continue;
@@ -368,7 +382,7 @@ export function planIngest(
         venueLabel: label,
         startsOn,
         endsOn,
-        verified: allTitlesResolved, // G5 / G3 (venue は解決済みでなければここに来ない)
+        verified, // G5 / G3 + 既存行との単調増加マージ (venue 未解決はここに来ない)
         action: resolved.action,
       };
       plannedByKey.set(plannedKey, planned);
@@ -376,7 +390,7 @@ export function planIngest(
       plan.stats.occurrencesPlanned += 1;
 
       if (resolved.action === 'insert') {
-        rows.push({ slug: resolved.slug, startsOn, endsOn });
+        rows.push({ slug: resolved.slug, startsOn, endsOn, verified });
       }
     }
   }
