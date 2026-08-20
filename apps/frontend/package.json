@@ -19,6 +19,7 @@
     "validate-env": "tsx scripts/validate-env.ts",
     "validate-env:test": "tsx scripts/validate-env.ts --test-connection",
     "seed:masters": "tsx scripts/seed-masters.ts",
+    "ingest:occurrences": "tsx scripts/ingest-occurrences.ts",
     "deploy:prod": "vercel --prod",
     "deploy:preview": "vercel"
   },
