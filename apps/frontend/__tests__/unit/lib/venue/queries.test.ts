@@ -186,6 +186,59 @@ describe('listVenueParams / listVenueDetails の集合一致', () => {
     // 対象を絞る述語を持たない (どちらも venues 全行)。
     expect(calls.some((c) => c.method === 'eq' || c.method === 'neq')).toBe(false);
   });
+
+  it('paginates past the 500-row boundary in both functions (Codex #333 指摘)', async () => {
+    // 静的生成対象 (`listVenueParams`) だけが 500 件で切れると、一覧との差分が
+    // 404 リンクを生む。どちらかが単発 select に戻される回帰をここで検出する。
+    mockHasCredentials.mockReturnValue(true);
+    const calls: { method: string; args: unknown[] }[] = [];
+    const fullPage = Array.from({ length: 500 }, (_, index) => ({
+      id: index + 1,
+      slug: `venue-${String(index + 1).padStart(3, '0')}`,
+      name: `会場 ${index + 1}`,
+      prefecture: null,
+      city: null,
+      address: null,
+    }));
+    const lastRow = {
+      id: 501,
+      slug: 'venue-501',
+      name: '会場 501',
+      prefecture: null,
+      city: null,
+      address: null,
+    };
+    // 呼び出し順: params (page1, page2) → details (page1, page2)。
+    mockCreatePublicClient.mockReturnValue(
+      makeClient(
+        {
+          venues: [
+            { data: fullPage, error: null },
+            { data: [lastRow], error: null },
+            { data: fullPage, error: null },
+            { data: [lastRow], error: null },
+          ],
+        },
+        calls,
+      ),
+    );
+
+    const { listVenueParams, listVenueDetails } = await importQueries();
+    const params = await listVenueParams();
+    const details = await listVenueDetails();
+
+    expect(params).toHaveLength(501);
+    expect(details).toHaveLength(501);
+    expect(params.map((p) => p.slug)).toEqual(details.map((d) => d.slug));
+
+    const ranges = calls.filter((c) => c.method === 'range').map((c) => c.args);
+    expect(ranges).toEqual([
+      [0, 499],
+      [500, 999],
+      [0, 499],
+      [500, 999],
+    ]);
+  });
 });
 
 describe('getVenueDetail', () => {
