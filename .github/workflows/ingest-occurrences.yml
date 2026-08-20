@@ -9,7 +9,7 @@
 #   Session Pooler URL を構築する (deploy-supabase-migrations.yml と同方式)。
 #   新規 secret の追加は不要
 # - 人手キューは Job Summary + artifact (ingest-queue.json) で BOSS が確認する。
-#   捌き方: docs/operations/occurrence-ingest-runbook.md
+#   捌き方: one-more-time/docs/operations/occurrence-ingest-runbook.md (private)
 name: Ingest Occurrences (staging)
 
 on:

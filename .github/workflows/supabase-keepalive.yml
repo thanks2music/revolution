@@ -5,7 +5,7 @@ name: Supabase Keep-Alive
 # 自動 pause を防ぐ (Revolution の production + staging 両 project)。
 #
 # 背景・方針の詳細: Todoist 6gw7Pgr5FJCgqPFg / SSoT task-priority-mapping.md 第 33 回エントリ /
-# 運用 SoP: docs/operations/supabase-secret-rotation-sop.md。
+# 運用 SoP: one-more-time/docs/operations/supabase-secret-rotation-sop.md (private)。
 # 実ユーザー獲得後は Pro プラン昇格 (org 単位で pause 無効) で本ワークフローは不要になる。
 #
 # === 2026-07-05 大幅改修: pooler SELECT 1 は activity として counted されない (Backlog D で判明) ===
