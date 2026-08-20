@@ -46,7 +46,35 @@ export default async function Home() {
 
       <section className="w-main mx-auto mt-section-sp md:mt-section-pc">
         <SectionHeader
-          eyebrow="No. 001 / Articles"
+          eyebrow="No. 001 / Explore"
+          title="探す"
+          subtitle="作品・企画ごとに、開催情報とレビューを集約しています。"
+        />
+        <div className="grid gap-4 md:grid-cols-2">
+          <Link
+            href="/titles"
+            className="block border border-[var(--line-soft)] bg-bg-elevated p-6 transition-colors hover:border-[var(--line-strong)]"
+          >
+            <span className="font-display text-lg font-bold text-ink-strong">作品から探す</span>
+            <p className="mt-2 text-sm leading-relaxed text-ink-body">
+              推し作品のイベント、いま何がやってる？ 作品ごとの開催・記事のまとめへ。
+            </p>
+          </Link>
+          <Link
+            href="/events"
+            className="block border border-[var(--line-soft)] bg-bg-elevated p-6 transition-colors hover:border-[var(--line-strong)]"
+          >
+            <span className="font-display text-lg font-bold text-ink-strong">企画から探す</span>
+            <p className="mt-2 text-sm leading-relaxed text-ink-body">
+              コラボカフェなどの企画ごとに、全会場の開催情報へ。
+            </p>
+          </Link>
+        </div>
+      </section>
+
+      <section className="w-main mx-auto mt-section-sp md:mt-section-pc">
+        <SectionHeader
+          eyebrow="No. 002 / Articles"
           title="最新の記事"
           subtitle={`公開中: ${articles.length} 本`}
           action={
@@ -69,7 +97,7 @@ export default async function Home() {
       </section>
 
       <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">
-        <SectionHeader eyebrow="No. 002 / About" title="アニイベとは" />
+        <SectionHeader eyebrow="No. 003 / About" title="アニイベとは" />
         <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
           コラボカフェ・ポップアップ・コラボグッズなど、作品と街が交わるイベントを AI
           が集め、「いつ・どこで」を最短で届けます。そして、行った人が残した体験とレビューが、そこに積み重なっていきます。

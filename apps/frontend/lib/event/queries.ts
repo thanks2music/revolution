@@ -75,6 +75,31 @@ export async function listEventParams(): Promise<{ id: string }[]> {
 }
 
 /**
+ * `/events` 一覧ページ用。公開済み開催を 1 件以上持つ企画を name 順で列挙する。
+ *
+ * 対象の定義は `listEventParams` (= 静的生成対象) と同じにして、
+ * **一覧に載る企画 = ページが生成される企画**を保つ (リンク先が 404 にならない)。
+ */
+export async function listEventSummaries(): Promise<EventSummary[]> {
+  const ids = (await listEventParams()).map((param) => Number(param.id));
+  if (ids.length === 0) return [];
+
+  const supabase = createPublicClient();
+  const { data, error } = await supabase
+    .from('events')
+    .select('id, name')
+    .in('id', ids)
+    // 表示順を DB 任せにしない。
+    .order('name', { ascending: true });
+
+  if (error) {
+    throw new Error(`failed to load event summaries: ${error.message}`);
+  }
+
+  return z.array(EventSummarySchema).parse(data ?? []);
+}
+
+/**
  * 企画詳細 1 件 + 表示に要る周辺データ。見つからなければ null。
  *
  * `React.cache()` でリクエスト内メモ化する (`generateMetadata` とページ本体の

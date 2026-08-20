@@ -68,9 +68,13 @@ async function importSentryMock() {
 const urls = (entries: { url: string }[]) => entries.map((e) => e.url);
 
 describe('sitemap', () => {
-  it('always includes the site root', async () => {
+  it('always includes the site root and the static index pages', async () => {
     const sitemap = await importSitemap();
-    expect(urls(await sitemap())).toContain('https://example.com');
+    const result = urls(await sitemap());
+    expect(result).toContain('https://example.com');
+    // 一覧ページは中身が 0 件でもページ自体は常に存在する (空状態を描く)。
+    expect(result).toContain('https://example.com/titles');
+    expect(result).toContain('https://example.com/events');
   });
 
   it('includes event pages from listEventParams', async () => {
@@ -129,8 +133,9 @@ describe('sitemap', () => {
     const sitemap = await importSitemap();
     const result = urls(await sitemap());
 
-    // root + article + event + occurrence + title (hub / articles / occurrences)
-    expect(result).toHaveLength(7);
+    // root + /titles + /events (static)
+    // + article + event + occurrence + title (hub / articles / occurrences)
+    expect(result).toHaveLength(9);
   });
 
   /**
@@ -214,7 +219,12 @@ describe('sitemap', () => {
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     const sitemap = await importSitemap();
-    expect(urls(await sitemap())).toEqual(['https://example.com']);
+    // 静的ページ (root + 一覧 2 本) だけが残る。
+    expect(urls(await sitemap())).toEqual([
+      'https://example.com',
+      'https://example.com/titles',
+      'https://example.com/events',
+    ]);
     error.mockRestore();
   });
 });
