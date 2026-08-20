@@ -9,7 +9,7 @@ name: Deploy Supabase Migrations
 # - GitHub Secrets は SUPABASE_ プレフィックス + PROD/STG で環境分離 (Vercel scope と異なり
 #   GitHub Secrets は scope 機能なし)
 # - Vercel-Supabase 順序保証は forward-only migration ルール + concurrency で担保
-#   (詳細は docs/operations/supabase-migration-workflow.md)
+#   (詳細は one-more-time/docs/operations/supabase-migration-workflow.md (private))
 #
 # 公式テンプレ準拠: https://supabase.com/docs/guides/deployment/managing-environments
 
@@ -101,7 +101,7 @@ jobs:
           # silently 構築される。pre-flight の generic annotation が原因を誤誘導
           # するため、早期 explicit fail に倒す。
           if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
-            echo "::error title=Missing secret::SUPABASE_DB_PASSWORD is empty or unset. Pre-flight cannot run. Check GitHub Secrets (SUPABASE_STG_DB_PASSWORD / SUPABASE_PROD_DB_PASSWORD) and the secret rotation SoP (docs/operations/supabase-secret-rotation-sop.md)."
+            echo "::error title=Missing secret::SUPABASE_DB_PASSWORD is empty or unset. Pre-flight cannot run. Check GitHub Secrets (SUPABASE_STG_DB_PASSWORD / SUPABASE_PROD_DB_PASSWORD) and the secret rotation SoP (one-more-time/docs/operations/supabase-secret-rotation-sop.md (private))."
             exit 1
           fi
           if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
@@ -124,7 +124,7 @@ jobs:
         # `--dry-run` で実際の push 前に同じ整合性チェックを走らせ、失敗時には
         # repair SoP への明示誘導を行う (人間が原因と対処を即座に理解できるように)。
         # 公式仕様: https://github.com/supabase/cli `supabase db push --dry-run`
-        # SoP: docs/operations/supabase-migration-workflow.md §10
+        # SoP: one-more-time/docs/operations/supabase-migration-workflow.md (private) §10
         run: |
           set -euo pipefail
 
@@ -159,7 +159,7 @@ jobs:
           if [ "$PREFLIGHT_OK" = "0" ]; then
             echo ""
             echo "::error title=Migration pre-flight failed::Could not verify migration history after 2 attempts (5s gap). Possible causes: (a) migration_history inconsistency, (b) persistent connectivity / auth / pooler issue, (c) CLI breaking change. Read the CLI output above first to determine which."
-            echo "::error::If (a) migration_history inconsistency: docs/operations/supabase-migration-workflow.md §10 (STAGING ONLY)."
+            echo "::error::If (a) migration_history inconsistency: one-more-time/docs/operations/supabase-migration-workflow.md (private) §10 (STAGING ONLY)."
             echo "::error::Hint: do NOT rename or delete a migration file that has already been deployed to a remote. Add a NEW migration to make further changes."
             echo "::error::If rollback is unavoidable: \`supabase migration repair --status reverted <version>\` after manually rolling back the DB objects (see SoP §10)."
             exit 1
@@ -379,7 +379,7 @@ jobs:
           # silently 構築される。pre-flight の generic annotation が原因を誤誘導
           # するため、早期 explicit fail に倒す。
           if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
-            echo "::error title=Missing secret::SUPABASE_DB_PASSWORD is empty or unset. Pre-flight cannot run. Check GitHub Secrets (SUPABASE_STG_DB_PASSWORD / SUPABASE_PROD_DB_PASSWORD) and the secret rotation SoP (docs/operations/supabase-secret-rotation-sop.md)."
+            echo "::error title=Missing secret::SUPABASE_DB_PASSWORD is empty or unset. Pre-flight cannot run. Check GitHub Secrets (SUPABASE_STG_DB_PASSWORD / SUPABASE_PROD_DB_PASSWORD) and the secret rotation SoP (one-more-time/docs/operations/supabase-secret-rotation-sop.md (private))."
             exit 1
           fi
           if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
