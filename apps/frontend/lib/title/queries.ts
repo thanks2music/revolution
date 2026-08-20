@@ -47,6 +47,38 @@ export type TitleHubData = {
 };
 
 /**
+ * 作品ハブの**対象集合の定義をここ 1 箇所に閉じる** (2026-08-21 Codex レビュー指摘)。
+ *
+ * `listTitleParams` (静的生成の対象) と `listTitleDetails` (`/titles` 一覧に
+ * 載せる対象) は**同じ集合でなければならない** — 一覧に載っているのにページが
+ * 生成されていなければ 404 リンクになり、逆なら到達不能ページになる。
+ *
+ * 別クエリとして 2 箇所に書くと、将来どちらかに「kind で絞る」「非公開フラグを
+ * 除く」等の条件が入ったときに**片方だけ変わって回帰する**。`listEventSummaries`
+ * が `listEventParams` を呼んで集合を一本化しているのと同じ形に揃えた。
+ *
+ * 取得する列だけを引数で変え、**絞り込み条件と並び順は共有する**。
+ * 並び順は `name` → `slug` の全順序 (range ページングの境界で行が重複・欠落
+ * しないように。slug は UNIQUE なのでこれで全順序になる)。
+ */
+async function queryTitleRows(args: { label: string; columns: string }): Promise<unknown[]> {
+  const supabase = createPublicClient();
+
+  // 全件列挙なので単発 select にしない (理由は `lib/supabase/paginate.ts`)。
+  return fetchAllRows({
+    label: args.label,
+    fetchPage: (from, to) =>
+      supabase
+        .from('titles')
+        .select(args.columns)
+        // 表示順を DB 任せにしない。slug は UNIQUE なのでタイブレークに使える。
+        .order('name', { ascending: true })
+        .order('slug', { ascending: true })
+        .range(from, to),
+  });
+}
+
+/**
  * `generateStaticParams` 用。titles マスタの全 slug を列挙する。
  *
  * 企画 0 件の作品も生成対象に含める (ハブは空状態を通常状態として描く。
@@ -63,44 +95,25 @@ export async function listTitleParams(): Promise<{ slug: string }[]> {
     return [];
   }
 
-  const supabase = createPublicClient();
-
-  // 全件列挙なので単発 select にしない (理由は `lib/supabase/paginate.ts`)。
-  const rows = await fetchAllRows({
-    label: 'title params',
-    fetchPage: (from, to) =>
-      supabase.from('titles').select('slug').order('slug', { ascending: true }).range(from, to),
-  });
-
+  const rows = await queryTitleRows({ label: 'title params', columns: 'slug' });
   return z.array(z.object({ slug: z.string() })).parse(rows);
 }
 
 /**
  * `/titles` 一覧ページ用。titles マスタの全行を name 順で列挙する。
  *
- * 企画 0 件の作品も含める (ハブは空状態を通常状態として描くため、
- * `listTitleParams` と同じ集合 = リンク先が 404 にならない)。
+ * 対象集合は `listTitleParams` と共有する (`queryTitleRows`)。
+ * = 一覧に載る作品は必ずページを持つ (404 リンクにならない)。
  */
 export async function listTitleDetails(): Promise<TitleDetail[]> {
   if (!hasPublicSupabaseCredentials()) {
     return [];
   }
 
-  const supabase = createPublicClient();
-
-  const rows = await fetchAllRows({
+  const rows = await queryTitleRows({
     label: 'title details',
-    fetchPage: (from, to) =>
-      supabase
-        .from('titles')
-        .select(TITLE_DETAIL_COLUMNS)
-        // 表示順を DB 任せにしない。同名は無い前提だが slug で全順序にする
-        // (ページング境界の重複・欠落防止)。
-        .order('name', { ascending: true })
-        .order('slug', { ascending: true })
-        .range(from, to),
+    columns: TITLE_DETAIL_COLUMNS,
   });
-
   return z.array(TitleDetailSchema).parse(rows);
 }
 
@@ -199,58 +212,77 @@ export const getTitleHubData = cache(async function getTitleHubData(
 
   const supabase = createPublicClient();
 
-  // ⚠️ builder を変数に置かず `Promise.all` の引数として直接構築する
-  //    (lazy な PromiseLike のため。理由は `getOccurrenceDetail` のコメント)。
-  const [titleResult, eventTitleResult] = await Promise.all([
-    supabase.from('titles').select(TITLE_DETAIL_COLUMNS).eq('slug', slugRaw).maybeSingle(),
-    supabase
-      .from('event_titles')
-      .select(TITLE_EVENT_COLUMNS)
-      .eq('titles.slug', slugRaw)
-      // 表示順を DB 任せにしない。後段の並び替え (状態 → 終了が新しい順) の
-      // 同順位タイブレークとして名前順が残る。
-      .order('name', { ascending: true, referencedTable: 'events' }),
-  ]);
+  const titleResult = await supabase
+    .from('titles')
+    .select(TITLE_DETAIL_COLUMNS)
+    .eq('slug', slugRaw)
+    .maybeSingle();
 
   // ⚠️ error を見ないと「クエリが落ちた」が「該当 0 件」と区別できない
   //    (`getEventDetail` と同じ防御)。
-  for (const [label, result] of [
-    ['title', titleResult],
-    ['events', eventTitleResult],
-  ] as const) {
-    if (result.error) {
-      throw new Error(`failed to load ${label}: ${result.error.message}`);
-    }
+  if (titleResult.error) {
+    throw new Error(`failed to load title: ${titleResult.error.message}`);
   }
-
   if (!titleResult.data) return null;
 
-  const events = parseEmbeddedTitleEvents(eventTitleResult.data);
+  // ⚠️ **1 作品ぶんの絞り込みでも全件ページングする** (単発 select にしない)。
+  //    `getEventDetail` は「1 企画の開催」= 会場数なので単発で足りるが、ここは
+  //    「1 作品の全企画」と「その全開催」であり桁が 1〜2 つ大きい (企画 100 件 ×
+  //    会場 10 で 1000 行に達する)。`db.max_rows` (Supabase 既定 1000) は
+  //    **エラーにせず黙って打ち切る**ため、単発 select だと作品ハブの企画・開催と
+  //    記事紐付け用の `eventSlugs` が静かに欠落する。
+  //
+  //    しかも `/titles/{slug}/articles/{category}` の `generateStaticParams` は
+  //    `listTitleEventSlugPairs()` で**全件**を読むので、打ち切りが起きると
+  //    「静的生成されたのにページ本体は該当 0 件で notFound」という実装内部の
+  //    不一致になる (2026-08-21 Codex レビュー指摘)。
+  const eventTitleRows = await fetchAllRows({
+    label: `title events (${slugRaw})`,
+    fetchPage: (from, to) =>
+      supabase
+        .from('event_titles')
+        .select(TITLE_EVENT_COLUMNS)
+        .eq('titles.slug', slugRaw)
+        // ⚠️ ページ境界の安定順序は**基底テーブルの列**で作る。埋め込み先
+        //    (`events.name`) の order は複合主キーの全順序を保証しないため、
+        //    range ページングでは行の重複・欠落を招き得る。
+        //    表示順は下の `sortedEvents` (name 順) で作り直す。
+        .order('event_id', { ascending: true })
+        .order('title_id', { ascending: true })
+        .range(from, to),
+  });
+
+  const events = parseEmbeddedTitleEvents(eventTitleRows);
+  // 表示順を DB 任せにしない (取得順は event_id なので名前順へ並べ直す)。
+  // 後段 `buildTitleEventGroups` の並び替え (状態 → 終了が新しい順) の
+  // 同順位タイブレークとして名前順が残る。
+  const sortedEvents = [...events].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
   // 開催は企画 ID が出揃ってからでないと引けない (2 段目)。企画 0 件なら
   // クエリ自体を省く。
   let occurrences: ReturnType<typeof toOccurrences> = [];
-  if (events.length > 0) {
-    const occurrenceResult = await supabase
-      .from('occurrence_view')
-      .select(OCCURRENCE_COLUMNS)
-      .in(
-        'event_id',
-        events.map((event) => event.id),
-      )
-      // 明示的に並べる。日程未発表 (starts_on is null) は末尾へ
-      // (`getOccurrenceDetail` と同じ)。
-      .order('starts_on', { ascending: true, nullsFirst: false });
-
-    if (occurrenceResult.error) {
-      throw new Error(`failed to load occurrences: ${occurrenceResult.error.message}`);
-    }
-    occurrences = toOccurrences(occurrenceResult.data);
+  if (sortedEvents.length > 0) {
+    const eventIds = sortedEvents.map((event) => event.id);
+    const occurrenceRows = await fetchAllRows({
+      label: `title occurrences (${slugRaw})`,
+      fetchPage: (from, to) =>
+        supabase
+          .from('occurrence_view')
+          .select(OCCURRENCE_COLUMNS)
+          .in('event_id', eventIds)
+          // 明示的に並べる。日程未発表 (starts_on is null) は末尾へ
+          // (`getOccurrenceDetail` と同じ)。`id` は range ページングの
+          // タイブレーク (starts_on だけでは同日が同順位になる)。
+          .order('starts_on', { ascending: true, nullsFirst: false })
+          .order('id', { ascending: true })
+          .range(from, to),
+    });
+    occurrences = toOccurrences(occurrenceRows);
   }
 
   return {
     title: TitleDetailSchema.parse(titleResult.data),
-    eventGroups: buildTitleEventGroups(events, occurrences),
-    eventSlugs: new Set(events.map((event) => event.slug)),
+    eventGroups: buildTitleEventGroups(sortedEvents, occurrences),
+    eventSlugs: new Set(sortedEvents.map((event) => event.slug)),
   };
 });

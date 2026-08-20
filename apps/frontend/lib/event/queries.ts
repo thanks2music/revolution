@@ -18,6 +18,7 @@ import {
   toOccurrences,
 } from '@/lib/occurrence/queries';
 import { parseCanonicalId } from '@/lib/route-params';
+import { fetchAllRows } from '@/lib/supabase/paginate';
 import { createPublicClient } from '@/lib/supabase/public';
 
 /**
@@ -85,18 +86,27 @@ export async function listEventSummaries(): Promise<EventSummary[]> {
   if (ids.length === 0) return [];
 
   const supabase = createPublicClient();
-  const { data, error } = await supabase
-    .from('events')
-    .select('id, name')
-    .in('id', ids)
-    // 表示順を DB 任せにしない。
-    .order('name', { ascending: true });
 
-  if (error) {
-    throw new Error(`failed to load event summaries: ${error.message}`);
-  }
+  // ⚠️ **全件ページングする** (単発 select にしない)。`db.max_rows`
+  //    (Supabase 既定 1000) は**エラーにせず黙って打ち切る**ため、企画が
+  //    1000 件を超えた瞬間から一覧が静かに欠ける。そうなると
+  //    「一覧に載る企画 = 静的生成される企画」という本関数の前提が崩れる
+  //    (2026-08-21 Codex レビュー指摘)。
+  const rows = await fetchAllRows({
+    label: 'event summaries',
+    fetchPage: (from, to) =>
+      supabase
+        .from('events')
+        .select('id, name')
+        .in('id', ids)
+        // 表示順を DB 任せにしない。`id` は range ページングのタイブレーク
+        // (同名の企画があると name だけでは全順序にならない)。
+        .order('name', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+  });
 
-  return z.array(EventSummarySchema).parse(data ?? []);
+  return z.array(EventSummarySchema).parse(rows);
 }
 
 /**

@@ -158,6 +158,38 @@ describe('listTitleDetails', () => {
   });
 });
 
+/**
+ * ★ 2026-08-21 Codex レビュー指摘の回帰テスト。
+ *
+ * `/titles` 一覧 (`listTitleDetails`) と静的生成 (`listTitleParams`) は
+ * **同じ集合**でなければならない。一覧に載っているのにページが無ければ
+ * 404 リンクになり、逆なら到達不能ページになる。別クエリとして 2 箇所に
+ * 書くと、片方だけ条件が変わったときに黙って回帰する。
+ */
+describe('listTitleParams / listTitleDetails の集合一致', () => {
+  it('returns the same slug set from the same filter and order', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    const calls: { method: string; args: unknown[] }[] = [];
+    const rows = [
+      TITLE_ROW,
+      { slug: 'pochacco', name: 'ポチャッコ', nameKana: null, kind: 'other' },
+    ];
+    mockCreatePublicClient.mockReturnValue(makeClient({ titles: { data: rows, error: null } }, calls));
+
+    const { listTitleParams, listTitleDetails } = await importQueries();
+    const params = await listTitleParams();
+    const details = await listTitleDetails();
+
+    expect(params.map((p) => p.slug)).toEqual(details.map((d) => d.slug));
+
+    // 絞り込み条件・並び順が共有されていること (order は name → slug の全順序)。
+    const orders = calls.filter((c) => c.method === 'order').map((c) => c.args[0]);
+    expect(orders).toEqual(['name', 'slug', 'name', 'slug']);
+    // 対象を絞る述語を持たない (どちらも titles 全行)。
+    expect(calls.some((c) => c.method === 'eq' || c.method === 'neq')).toBe(false);
+  });
+});
+
 describe('listTitleEventSlugPairs', () => {
   it('flattens event_titles into (titleSlug, titleName, eventSlug), dropping null embeds', async () => {
     mockHasCredentials.mockReturnValue(true);
@@ -360,6 +392,50 @@ describe('getTitleHubData', () => {
     expect(data?.eventSlugs).toEqual(new Set());
     // occurrence_view のエラーが throw されていない = クエリ自体を省いている。
     expect(calls.some((c) => c.method === 'in')).toBe(false);
+  });
+
+  /**
+   * ★ 2026-08-21 Codex レビュー指摘の回帰テスト。
+   *
+   * 1 作品ぶんの絞り込みでも `range()` でページングしなければならない。
+   * `db.max_rows` (既定 1000) は**エラーにせず黙って打ち切る**ため、単発
+   * select だと企画・開催・`eventSlugs` が静かに欠落する。とくに
+   * `/titles/{slug}/articles/{category}` の `generateStaticParams` は全件を
+   * 読むので、打ち切られると「静的生成されたのに本体は notFound」になる。
+   */
+  it('pages both the event and occurrence queries with a total order', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    const calls: { method: string; args: unknown[] }[] = [];
+    mockCreatePublicClient.mockReturnValue(
+      makeClient(
+        {
+          titles: { data: TITLE_ROW, error: null },
+          event_titles: { data: EVENT_TITLE_ROWS, error: null },
+          occurrence_view: { data: [OCCURRENCE_ROW], error: null },
+        },
+        calls,
+      ),
+    );
+
+    const { getTitleHubData } = await importQueries();
+    await getTitleHubData('detective-conan');
+
+    // 両クエリが range() を通っている = ページングしている。
+    expect(calls.filter((c) => c.method === 'range').length).toBe(2);
+
+    // ページ境界の安定順序が**基底テーブルの列**で作られていること。
+    // 埋め込み先 (events.name) の order は全順序を保証しないため使わない。
+    const orders = calls.filter((c) => c.method === 'order').map((c) => c.args[0]);
+    expect(orders).toEqual(['event_id', 'title_id', 'starts_on', 'id']);
+    expect(
+      calls.some(
+        (c) =>
+          c.method === 'order' &&
+          typeof c.args[1] === 'object' &&
+          c.args[1] !== null &&
+          'referencedTable' in (c.args[1] as object),
+      ),
+    ).toBe(false);
   });
 
   it.each([
