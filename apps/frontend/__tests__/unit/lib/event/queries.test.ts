@@ -126,6 +126,70 @@ describe('listEventParams', () => {
   });
 });
 
+describe('listEventSummaries', () => {
+  it('lists only events that are static-generated (no links to 404)', async () => {
+    // 一覧の対象は `listEventParams` (= 静的生成対象) と同じでなければならない。
+    // 開催を持たない企画を混ぜると、リンク先が空ページ / 未生成になる。
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        // listEventParams の導出元 (開催の列挙)
+        occurrence_view: {
+          data: [
+            { eventId: 2, slug: 'a' },
+            { eventId: 3, slug: 'b' },
+          ],
+          error: null,
+        },
+        events: {
+          data: [
+            { id: 2, name: 'シード企画' },
+            { id: 3, name: '別の企画' },
+          ],
+          error: null,
+        },
+      }),
+    );
+
+    const { listEventSummaries } = await importQueries();
+    await expect(listEventSummaries()).resolves.toEqual([
+      { id: 2, name: 'シード企画' },
+      { id: 3, name: '別の企画' },
+    ]);
+  });
+
+  it('returns [] without querying events when no occurrence exists', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    const calls: { method: string; args: unknown[] }[] = [];
+    mockCreatePublicClient.mockReturnValue(
+      makeClient(
+        {
+          occurrence_view: { data: [], error: null },
+          events: { data: null, error: { message: 'must not be called' } },
+        },
+        calls,
+      ),
+    );
+
+    const { listEventSummaries } = await importQueries();
+    await expect(listEventSummaries()).resolves.toEqual([]);
+    expect(calls.some((c) => c.method === 'in')).toBe(false);
+  });
+
+  it('throws when the events query fails', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        occurrence_view: { data: [{ eventId: 2, slug: 'a' }], error: null },
+        events: { data: null, error: { message: 'summaries boom' } },
+      }),
+    );
+
+    const { listEventSummaries } = await importQueries();
+    await expect(listEventSummaries()).rejects.toThrow(/summaries boom/);
+  });
+});
+
 describe('getEventDetail', () => {
   it.each(['abc', '', '0', '-1', '2.0', '0x2', '02'])(
     'returns null without querying for a non-canonical id %p',

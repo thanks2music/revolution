@@ -14,6 +14,9 @@ import { generateArticleMetadata } from '@/lib/metadata';
 import type { ArticlePageProps } from '@/types/page-props';
 import { LikeButton } from '@/components/molecules/LikeButton';
 import { buildArticleKey } from '@/lib/mdx/article-url';
+import { resolveArticleTitleLinks } from '@/lib/title/article-links';
+import { getTitleLinkSources } from '@/lib/title/queries';
+import { getTitleUrl } from '@/lib/title/title-url';
 
 // Generate static params for all articles
 export async function generateStaticParams() {
@@ -60,6 +63,18 @@ export default async function ArticlePage(props: ArticlePageProps) {
   const rawContent = readArticleContentFile(article.filePath);
   const { content } = parseFrontmatter(rawContent);
 
+  // 作品チップのリンク化 (S2 作品ハブ)。categories は日本語表示名の配列で、
+  // 表示名が正準作品の name と一致するチップだけをハブへのリンクにする。
+  // 一致しない表示名 (SW 記事の複合名など) は従来どおりテキストのまま出し、
+  // 解決済みなのに categories に現れない作品はチップとして追記する。
+  // 資格情報が無いビルドでは links が空になり、全チップがテキストに戻る。
+  const { titles, pairs } = await getTitleLinkSources();
+  const titleLinks = resolveArticleTitleLinks(article, titles, pairs);
+  const titleSlugByName = new Map(titleLinks.map((link) => [link.name, link.slug]));
+  const extraTitleLinks = titleLinks.filter((link) => !article.categories.includes(link.name));
+  const chipClassName =
+    'px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100 text-sm rounded-full';
+
   return (
     <Layout>
       <article className="w-main mx-auto">
@@ -82,16 +97,33 @@ export default async function ArticlePage(props: ArticlePageProps) {
             <span>{article.author}</span>
           </div>
 
-          {/* Categories */}
-          {article.categories.length > 0 && (
+          {/* Categories (作品名は作品ハブへのリンクにする) */}
+          {(article.categories.length > 0 || extraTitleLinks.length > 0) && (
             <div className="flex flex-wrap gap-2 mb-4">
-              {article.categories.map((category) => (
-                <span
-                  key={category}
-                  className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100 text-sm rounded-full"
+              {article.categories.map((category) => {
+                const titleSlug = titleSlugByName.get(category);
+                return titleSlug ? (
+                  <Link
+                    key={category}
+                    href={getTitleUrl(titleSlug)}
+                    className={`${chipClassName} hover:underline`}
+                  >
+                    {category}
+                  </Link>
+                ) : (
+                  <span key={category} className={chipClassName}>
+                    {category}
+                  </span>
+                );
+              })}
+              {extraTitleLinks.map((link) => (
+                <Link
+                  key={link.slug}
+                  href={getTitleUrl(link.slug)}
+                  className={`${chipClassName} hover:underline`}
                 >
-                  {category}
-                </span>
+                  {link.name}
+                </Link>
               ))}
             </div>
           )}

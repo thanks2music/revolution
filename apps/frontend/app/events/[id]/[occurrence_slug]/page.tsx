@@ -34,6 +34,7 @@ import { OccurrenceCard, VENUE_NAME_FALLBACK } from '@/components/molecules/Occu
 import Layout from '@/components/templates/Layout';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { generateContentMetadata } from '@/lib/metadata';
+import { getTitleUrl } from '@/lib/title/title-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail, listOccurrenceParams } from '@/lib/occurrence/queries';
 import { toBadgeStatus } from '@/lib/occurrence/status';
@@ -90,11 +91,9 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             {titles.map((title) => (
               <li key={title.slug} className="flex items-center gap-2">
                 <span aria-hidden="true">/</span>
-                {/*
-                  作品ハブ `/titles/{slug}` は同じ S2 の別タスクで実装する。
-                  未実装の間はリンクにせずテキストで出す (404 へ送らない)。
-                */}
-                <span>{title.name}</span>
+                <Link href={getTitleUrl(title.slug)} className="hover:underline">
+                  {title.name}
+                </Link>
               </li>
             ))}
             <li className="flex items-center gap-2">

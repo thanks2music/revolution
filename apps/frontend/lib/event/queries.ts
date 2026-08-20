@@ -18,6 +18,7 @@ import {
   toOccurrences,
 } from '@/lib/occurrence/queries';
 import { parseCanonicalId } from '@/lib/route-params';
+import { fetchAllRows } from '@/lib/supabase/paginate';
 import { createPublicClient } from '@/lib/supabase/public';
 
 /**
@@ -72,6 +73,40 @@ export async function listEventParams(): Promise<{ id: string }[]> {
   // Set は挿入順を保つので、列挙側の order がそのまま残る
   // (ビルドごとにパス順が変わらない)。
   return [...new Set(occurrences.map((row) => row.id))].map((id) => ({ id }));
+}
+
+/**
+ * `/events` 一覧ページ用。公開済み開催を 1 件以上持つ企画を name 順で列挙する。
+ *
+ * 対象の定義は `listEventParams` (= 静的生成対象) と同じにして、
+ * **一覧に載る企画 = ページが生成される企画**を保つ (リンク先が 404 にならない)。
+ */
+export async function listEventSummaries(): Promise<EventSummary[]> {
+  const ids = (await listEventParams()).map((param) => Number(param.id));
+  if (ids.length === 0) return [];
+
+  const supabase = createPublicClient();
+
+  // ⚠️ **全件ページングする** (単発 select にしない)。`db.max_rows`
+  //    (Supabase 既定 1000) は**エラーにせず黙って打ち切る**ため、企画が
+  //    1000 件を超えた瞬間から一覧が静かに欠ける。そうなると
+  //    「一覧に載る企画 = 静的生成される企画」という本関数の前提が崩れる
+  //    (2026-08-21 Codex レビュー指摘)。
+  const rows = await fetchAllRows({
+    label: 'event summaries',
+    fetchPage: (from, to) =>
+      supabase
+        .from('events')
+        .select('id, name')
+        .in('id', ids)
+        // 表示順を DB 任せにしない。`id` は range ページングのタイブレーク
+        // (同名の企画があると name だけでは全順序にならない)。
+        .order('name', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+  });
+
+  return z.array(EventSummarySchema).parse(rows);
 }
 
 /**
