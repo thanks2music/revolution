@@ -23,6 +23,7 @@ import { notFound } from 'next/navigation';
 import { OccurrenceCard } from '@/components/molecules/OccurrenceCard';
 import Layout from '@/components/templates/Layout';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
+import { getTitleUrl } from '@/lib/title/title-url';
 import { groupOccurrencesByStatus } from '@/lib/event/grouping';
 import { getEventDetail, listEventParams } from '@/lib/event/queries';
 import { generateContentMetadata } from '@/lib/metadata';
@@ -87,8 +88,9 @@ export default async function EventPage(props: EventPageProps) {
             {titles.map((title) => (
               <li key={title.slug} className="flex items-center gap-2">
                 <span aria-hidden="true">/</span>
-                {/* 作品ハブ `/titles/{slug}` は S2 の別タスク。未実装の間はリンクにしない。 */}
-                <span>{title.name}</span>
+                <Link href={getTitleUrl(title.slug)} className="hover:underline">
+                  {title.name}
+                </Link>
               </li>
             ))}
             <li className="flex items-center gap-2">

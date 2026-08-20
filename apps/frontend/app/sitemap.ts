@@ -32,6 +32,12 @@ import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { listEventParams } from '@/lib/event/queries';
 import { getAllArticles, getArticleUrl } from '@/lib/mdx/articles';
 import { listOccurrenceParams } from '@/lib/occurrence/queries';
+import { listTitleParams } from '@/lib/title/queries';
+import {
+  getTitleArticlesUrl,
+  getTitleOccurrencesUrl,
+  getTitleUrl,
+} from '@/lib/title/title-url';
 
 /**
  * 記事ページ (fs 由来)。
@@ -90,6 +96,48 @@ async function buildDatabasePages(baseUrl: string): Promise<MetadataRoute.Sitema
   }
 }
 
+/**
+ * 作品ハブ + 集約ビュー (DB 由来)。
+ *
+ * 生成対象は `generateStaticParams` (`listTitleParams`) と同じ「titles マスタの
+ * 全 slug」。カテゴリ絞り込み (`/titles/{slug}/articles/{category}`) は
+ * **意図的に載せない** — 記事一覧の絞り込みビューで、載っている記事の canonical
+ * は `/articles/{ULID}` にあるため、sitemap 上の発見経路としては記事一覧までで
+ * 足りる (チップ経由でクロール可能)。
+ */
+async function buildTitlePages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
+  try {
+    const titleParams = await listTitleParams();
+
+    return titleParams.flatMap((param) => [
+      {
+        url: `${baseUrl}${getTitleUrl(param.slug)}`,
+        lastModified: new Date(),
+        // 開催の状態 (開催中 / 終了) が日付で変わるハブなので daily。
+        changeFrequency: 'daily' as const,
+        // 企画と同じく回遊のハブなので記事より少し高く置く。
+        priority: 0.9,
+      },
+      {
+        url: `${baseUrl}${getTitleArticlesUrl(param.slug)}`,
+        lastModified: new Date(),
+        changeFrequency: 'weekly' as const,
+        priority: 0.6,
+      },
+      {
+        url: `${baseUrl}${getTitleOccurrencesUrl(param.slug)}`,
+        lastModified: new Date(),
+        changeFrequency: 'daily' as const,
+        priority: 0.6,
+      },
+    ]);
+  } catch (error) {
+    console.error('サイトマップ生成エラー (作品):', error);
+    Sentry.captureException(error, { tags: { sitemap: 'titles' } });
+    return [];
+  }
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com';
 
@@ -103,5 +151,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  return [...staticPages, ...buildArticlePages(baseUrl), ...(await buildDatabasePages(baseUrl))];
+  return [
+    ...staticPages,
+    ...buildArticlePages(baseUrl),
+    ...(await buildDatabasePages(baseUrl)),
+    ...(await buildTitlePages(baseUrl)),
+  ];
 }
