@@ -21,6 +21,7 @@ const mockListOccurrenceParams = jest.fn<
   () => Promise<{ id: string; occurrence_slug: string }[]>
 >();
 const mockListTitleParams = jest.fn<() => Promise<{ slug: string }[]>>();
+const mockListVenueParams = jest.fn<() => Promise<{ slug: string }[]>>();
 
 jest.mock('@/lib/env', () => ({
   env: { NEXT_PUBLIC_SITE_URL: 'https://example.com', NEXT_PUBLIC_WP_URL: undefined },
@@ -38,6 +39,9 @@ jest.mock('@/lib/occurrence/queries', () => ({
 jest.mock('@/lib/title/queries', () => ({
   listTitleParams: () => mockListTitleParams(),
 }));
+jest.mock('@/lib/venue/queries', () => ({
+  listVenueParams: () => mockListVenueParams(),
+}));
 
 async function importSitemap() {
   return (await import('@/app/sitemap')).default;
@@ -50,6 +54,7 @@ beforeEach(() => {
   mockListEventParams.mockReset().mockResolvedValue([]);
   mockListOccurrenceParams.mockReset().mockResolvedValue([]);
   mockListTitleParams.mockReset().mockResolvedValue([]);
+  mockListVenueParams.mockReset().mockResolvedValue([]);
 });
 
 /**
@@ -75,6 +80,7 @@ describe('sitemap', () => {
     // 一覧ページは中身が 0 件でもページ自体は常に存在する (空状態を描く)。
     expect(result).toContain('https://example.com/titles');
     expect(result).toContain('https://example.com/events');
+    expect(result).toContain('https://example.com/venues');
   });
 
   it('includes event pages from listEventParams', async () => {
@@ -124,18 +130,29 @@ describe('sitemap', () => {
     expect(result.some((u) => u.includes('/articles/collabo-cafe'))).toBe(false);
   });
 
+  it('includes venue pages from listVenueParams', async () => {
+    // ★ 「ページ種別を増やしたら sitemap にも足す」の回帰テスト (S2 会場ページ)。
+    mockListVenueParams.mockResolvedValue([{ slug: 'box-cafe-and-space-gems-shibuya' }]);
+
+    const sitemap = await importSitemap();
+    const result = urls(await sitemap());
+
+    expect(result).toContain('https://example.com/venues/box-cafe-and-space-gems-shibuya');
+  });
+
   it('lists all page types together', async () => {
     mockGetAllArticles.mockReturnValue([{ slug: 'abc', date: '2026-01-01' }]);
     mockListEventParams.mockResolvedValue([{ id: '2' }]);
     mockListOccurrenceParams.mockResolvedValue([{ id: '2', occurrence_slug: 'tokyo' }]);
     mockListTitleParams.mockResolvedValue([{ slug: 'jujutsu-kaisen' }]);
+    mockListVenueParams.mockResolvedValue([{ slug: 'box-cafe-and-space-gems-shibuya' }]);
 
     const sitemap = await importSitemap();
     const result = urls(await sitemap());
 
-    // root + /titles + /events (static)
-    // + article + event + occurrence + title (hub / articles / occurrences)
-    expect(result).toHaveLength(9);
+    // root + /titles + /events + /venues (static)
+    // + article + event + occurrence + title (hub / articles / occurrences) + venue
+    expect(result).toHaveLength(11);
   });
 
   /**
@@ -210,20 +227,42 @@ describe('sitemap', () => {
     error.mockRestore();
   });
 
+  it('keeps the other page types when the venue lookup throws', async () => {
+    // 会場ページの追加で既存種別が巻き込まれない (種別ごとの独立 try/catch)。
+    mockGetAllArticles.mockReturnValue([{ slug: 'abc', date: '2026-01-01' }]);
+    mockListEventParams.mockResolvedValue([{ id: '2' }]);
+    mockListVenueParams.mockRejectedValue(new Error('db down'));
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const sitemap = await importSitemap();
+    const result = urls(await sitemap());
+
+    expect(result).toContain('https://example.com/articles/abc');
+    expect(result).toContain('https://example.com/events/2');
+    expect(result.some((u) => u.includes('/venues/'))).toBe(false);
+    const sentry = await importSentryMock();
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.anything(), {
+      tags: { sitemap: 'venues' },
+    });
+    error.mockRestore();
+  });
+
   it('still returns the root when everything fails', async () => {
     mockGetAllArticles.mockImplementation(() => {
       throw new Error('fs down');
     });
     mockListEventParams.mockRejectedValue(new Error('db down'));
     mockListTitleParams.mockRejectedValue(new Error('db down'));
+    mockListVenueParams.mockRejectedValue(new Error('db down'));
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     const sitemap = await importSitemap();
-    // 静的ページ (root + 一覧 2 本) だけが残る。
+    // 静的ページ (root + 一覧 3 本) だけが残る。
     expect(urls(await sitemap())).toEqual([
       'https://example.com',
       'https://example.com/titles',
       'https://example.com/events',
+      'https://example.com/venues',
     ]);
     error.mockRestore();
   });

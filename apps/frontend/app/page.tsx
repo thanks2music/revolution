@@ -48,9 +48,9 @@ export default async function Home() {
         <SectionHeader
           eyebrow="No. 001 / Explore"
           title="探す"
-          subtitle="作品・企画ごとに、開催情報とレビューを集約しています。"
+          subtitle="作品・企画・会場ごとに、開催情報とレビューを集約しています。"
         />
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Link
             href="/titles"
             className="block border border-[var(--line-soft)] bg-bg-elevated p-6 transition-colors hover:border-[var(--line-strong)]"
@@ -67,6 +67,15 @@ export default async function Home() {
             <span className="font-display text-lg font-bold text-ink-strong">企画から探す</span>
             <p className="mt-2 text-sm leading-relaxed text-ink-body">
               コラボカフェなどの企画ごとに、全会場の開催情報へ。
+            </p>
+          </Link>
+          <Link
+            href="/venues"
+            className="block border border-[var(--line-soft)] bg-bg-elevated p-6 transition-colors hover:border-[var(--line-strong)]"
+          >
+            <span className="font-display text-lg font-bold text-ink-strong">会場から探す</span>
+            <p className="mt-2 text-sm leading-relaxed text-ink-body">
+              行きたい会場・近くの会場で、いま何がやってる？ 会場ごとの開催情報へ。
             </p>
           </Link>
         </div>
