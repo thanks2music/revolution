@@ -81,11 +81,58 @@ export function resolveCategoryLabel(
   return categorySlug;
 }
 
-/** `event_titles` を平らにした (作品 slug, 企画 slug) の対。 */
+/** `event_titles` を平らにした (作品, 企画 slug) の対。 */
 export type TitleEventSlugPair = {
   titleSlug: string;
+  /** 作品の表示名。記事ページの作品チップをリンク化するときに使う。 */
+  titleName: string;
   eventSlug: string;
 };
+
+/** 記事から作品ハブへ張るリンク。 */
+export type TitleLink = {
+  slug: string;
+  name: string;
+};
+
+/**
+ * 記事 1 本が属する正準作品を (slug, name) で解決する (Layer 1、純粋関数)。
+ *
+ * 解決順は `selectTitleArticles` と同じ 2 段:
+ * 1. `event_data.event_slug` → 取り込み済みの `event_titles` (AI ゆれも正準に届く)
+ * 2. 未取り込みの記事は `title_slugs` と正準 slug の直接一致のみ
+ *
+ * どちらでも解決できない記事は空配列 (リンクを出さない。ハブ側の
+ * 「ゆれは取り込まれるまで出ない」と同じ思想)。
+ */
+export function resolveArticleTitleLinks(
+  article: ArticleIndexItem,
+  titles: readonly TitleLink[],
+  pairs: readonly TitleEventSlugPair[],
+): TitleLink[] {
+  const eventData = article.event_data;
+  if (!eventData) return [];
+
+  const bySlug = new Map<string, TitleLink>();
+
+  if (eventData.event_slug) {
+    for (const pair of pairs) {
+      if (pair.eventSlug === eventData.event_slug) {
+        bySlug.set(pair.titleSlug, { slug: pair.titleSlug, name: pair.titleName });
+      }
+    }
+  }
+
+  const nameBySlug = new Map(titles.map((title) => [title.slug, title.name]));
+  for (const slug of eventData.title_slugs) {
+    const name = nameBySlug.get(slug);
+    if (name !== undefined && !bySlug.has(slug)) {
+      bySlug.set(slug, { slug, name });
+    }
+  }
+
+  return [...bySlug.values()];
+}
 
 /**
  * `/titles/{slug}/articles/{category}` の `generateStaticParams` 用に、

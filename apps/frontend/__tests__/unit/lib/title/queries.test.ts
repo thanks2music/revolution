@@ -128,14 +128,47 @@ describe('listTitleParams', () => {
   });
 });
 
+describe('listTitleDetails', () => {
+  it('lists every title row (including titles without events)', async () => {
+    // `/titles` 一覧の対象は `listTitleParams` と同じ集合でなければならない
+    // (載っているのにページが無い = 404 リンクになる)。
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        titles: {
+          data: [TITLE_ROW, { slug: 'pochacco', name: 'ポチャッコ', nameKana: null, kind: 'other' }],
+          error: null,
+        },
+      }),
+    );
+
+    const { listTitleDetails } = await importQueries();
+    await expect(listTitleDetails()).resolves.toEqual([
+      TITLE_ROW,
+      { slug: 'pochacco', name: 'ポチャッコ', nameKana: null, kind: 'other' },
+    ]);
+  });
+
+  it('returns [] without querying when credentials are absent', async () => {
+    mockHasCredentials.mockReturnValue(false);
+
+    const { listTitleDetails } = await importQueries();
+    await expect(listTitleDetails()).resolves.toEqual([]);
+    expect(mockCreatePublicClient).not.toHaveBeenCalled();
+  });
+});
+
 describe('listTitleEventSlugPairs', () => {
-  it('flattens event_titles into (titleSlug, eventSlug) pairs, dropping null embeds', async () => {
+  it('flattens event_titles into (titleSlug, titleName, eventSlug), dropping null embeds', async () => {
     mockHasCredentials.mockReturnValue(true);
     mockCreatePublicClient.mockReturnValue(
       makeClient({
         event_titles: {
           data: [
-            { titles: { slug: 'detective-conan' }, events: { slug: 'detective-conan-cafe-2026' } },
+            {
+              titles: { slug: 'detective-conan', name: '名探偵コナン' },
+              events: { slug: 'detective-conan-cafe-2026' },
+            },
             { titles: null, events: { slug: 'orphan' } },
           ],
           error: null,
@@ -145,7 +178,11 @@ describe('listTitleEventSlugPairs', () => {
 
     const { listTitleEventSlugPairs } = await importQueries();
     await expect(listTitleEventSlugPairs()).resolves.toEqual([
-      { titleSlug: 'detective-conan', eventSlug: 'detective-conan-cafe-2026' },
+      {
+        titleSlug: 'detective-conan',
+        titleName: '名探偵コナン',
+        eventSlug: 'detective-conan-cafe-2026',
+      },
     ]);
   });
 
@@ -155,6 +192,71 @@ describe('listTitleEventSlugPairs', () => {
     const { listTitleEventSlugPairs } = await importQueries();
     await expect(listTitleEventSlugPairs()).resolves.toEqual([]);
     expect(mockCreatePublicClient).not.toHaveBeenCalled();
+  });
+});
+
+describe('getTitleLinkSources', () => {
+  it('returns the master lookup for article title chips', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        titles: { data: [TITLE_ROW], error: null },
+        event_titles: {
+          data: [
+            {
+              titles: { slug: 'detective-conan', name: '名探偵コナン' },
+              events: { slug: 'detective-conan-cafe-2026' },
+            },
+          ],
+          error: null,
+        },
+      }),
+    );
+
+    const { getTitleLinkSources } = await importQueries();
+    await expect(getTitleLinkSources()).resolves.toEqual({
+      titles: [TITLE_ROW],
+      pairs: [
+        {
+          titleSlug: 'detective-conan',
+          titleName: '名探偵コナン',
+          eventSlug: 'detective-conan-cafe-2026',
+        },
+      ],
+    });
+  });
+
+  /**
+   * ★ 記事を DB 障害の人質にしないための回帰テスト。
+   *
+   * 記事本文は fs 由来なので、DB が落ちていてもページは出さなければならない。
+   * ここで throw すると Supabase の一時障害で**記事ページ全部がビルド不能**になる
+   * (`app/sitemap.ts` が「種別ごとに独立して劣化させる」で直したのと同じ結合)。
+   */
+  it('degrades to an empty lookup instead of throwing when the DB fails', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        titles: { data: null, error: { message: 'db down' } },
+        event_titles: { data: null, error: { message: 'db down' } },
+      }),
+    );
+
+    const { getTitleLinkSources } = await importQueries();
+    await expect(getTitleLinkSources()).resolves.toEqual({ titles: [], pairs: [] });
+
+    // 黙って空にしない。Sentry へ warning で届くことまで固定する。
+    const sentry = (await import('@sentry/nextjs')) as unknown as { captureMessage: jest.Mock };
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        level: 'warning',
+        fingerprint: ['article-title-links-unavailable'],
+      }),
+    );
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 

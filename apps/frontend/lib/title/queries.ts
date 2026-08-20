@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs';
 import { TITLE_SLUG_REGEX } from '@revolution/schemas/title';
 import { cache } from 'react';
 import { z } from 'zod';
@@ -75,8 +76,38 @@ export async function listTitleParams(): Promise<{ slug: string }[]> {
 }
 
 /**
- * `/titles/{slug}/articles/{category}` の `generateStaticParams` 用。
- * `event_titles` を (作品 slug, 企画 slug) の対に平らげて全件列挙する。
+ * `/titles` 一覧ページ用。titles マスタの全行を name 順で列挙する。
+ *
+ * 企画 0 件の作品も含める (ハブは空状態を通常状態として描くため、
+ * `listTitleParams` と同じ集合 = リンク先が 404 にならない)。
+ */
+export async function listTitleDetails(): Promise<TitleDetail[]> {
+  if (!hasPublicSupabaseCredentials()) {
+    return [];
+  }
+
+  const supabase = createPublicClient();
+
+  const rows = await fetchAllRows({
+    label: 'title details',
+    fetchPage: (from, to) =>
+      supabase
+        .from('titles')
+        .select(TITLE_DETAIL_COLUMNS)
+        // 表示順を DB 任せにしない。同名は無い前提だが slug で全順序にする
+        // (ページング境界の重複・欠落防止)。
+        .order('name', { ascending: true })
+        .order('slug', { ascending: true })
+        .range(from, to),
+  });
+
+  return z.array(TitleDetailSchema).parse(rows);
+}
+
+/**
+ * `/titles/{slug}/articles/{category}` の `generateStaticParams` と記事ページの
+ * 作品チップリンク化に使う。`event_titles` を (作品, 企画 slug) の対に平らげて
+ * 全件列挙する。
  */
 export async function listTitleEventSlugPairs(): Promise<TitleEventSlugPair[]> {
   if (!hasPublicSupabaseCredentials()) {
@@ -90,7 +121,7 @@ export async function listTitleEventSlugPairs(): Promise<TitleEventSlugPair[]> {
     fetchPage: (from, to) =>
       supabase
         .from('event_titles')
-        .select('titles!inner(slug), events!inner(slug)')
+        .select('titles!inner(slug, name), events!inner(slug)')
         // ページング (range) の境界で行が重複・欠落しないよう全順序で並べる
         // (event_id 単独は複数作品コラボで同値が並ぶ)。
         .order('event_id', { ascending: true })
@@ -101,15 +132,55 @@ export async function listTitleEventSlugPairs(): Promise<TitleEventSlugPair[]> {
   return z
     .array(
       z.object({
-        titles: z.object({ slug: z.string() }).nullable(),
+        titles: z.object({ slug: z.string(), name: z.string() }).nullable(),
         events: z.object({ slug: z.string() }).nullable(),
       }),
     )
     .parse(rows)
     .flatMap((row) =>
-      row.titles && row.events ? [{ titleSlug: row.titles.slug, eventSlug: row.events.slug }] : [],
+      row.titles && row.events
+        ? [{ titleSlug: row.titles.slug, titleName: row.titles.name, eventSlug: row.events.slug }]
+        : [],
     );
 }
+
+/**
+ * 記事ページの作品チップリンク化に使う入力 (titles 全件 + 対応表)。
+ *
+ * `React.cache()` でリクエスト内メモ化する (記事ページは 1 render で 1 回だけ
+ * 呼ぶが、`generateMetadata` から呼ぶようになったときに二重問い合わせしない)。
+ *
+ * ## 🔴 ここだけは throw しない (記事を DB 障害の人質にしない)
+ *
+ * 記事本文は `article-index.json` (fs) 由来で **DB とは独立**している。
+ * 作品チップのリンクは装飾であって記事の本体ではないので、DB が落ちている
+ * ときは**リンクを諦めて記事を出す**。throw すると Supabase の一時障害で
+ * **記事ページ全部がビルドできなくなる**。
+ *
+ * これは `app/sitemap.ts` が「種別ごとに独立して劣化させる」で直したのと
+ * 同じ結合 (記事の描画が DB の可用性に巻き込まれる) を作らないための判断。
+ * **一方 `/titles` / `/events` の一覧ページは throw させる** — そこでは
+ * DB の中身がページの本体であり、空リストを出すと「作品が 0 件」という
+ * 嘘の成功になるため (`listOccurrenceParams` の docstring と同じ立場)。
+ */
+export const getTitleLinkSources = cache(async function getTitleLinkSources(): Promise<{
+  titles: TitleDetail[];
+  pairs: TitleEventSlugPair[];
+}> {
+  try {
+    const [titles, pairs] = await Promise.all([listTitleDetails(), listTitleEventSlugPairs()]);
+    return { titles, pairs };
+  } catch (error) {
+    // 黙って空にしない。チップのリンクが消えたことに気づけるようにする。
+    // level は warning 止まり (記事は出ており「起きて対応すべき」ではない)。
+    console.warn('[title] 作品リンクの解決に失敗しました。チップはテキストで描画します。', error);
+    Sentry.captureMessage('作品チップのリンク解決に失敗した', {
+      level: 'warning',
+      fingerprint: ['article-title-links-unavailable'],
+    });
+    return { titles: [], pairs: [] };
+  }
+});
 
 /**
  * 作品ハブ 1 件分の DB 由来データ。見つからなければ null。

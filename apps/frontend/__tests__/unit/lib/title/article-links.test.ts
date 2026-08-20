@@ -4,6 +4,7 @@ import type { ArticleIndexItem } from '@/lib/mdx/article-types';
 import {
   collectArticleCategorySlugs,
   collectTitleCategoryParams,
+  resolveArticleTitleLinks,
   resolveCategoryLabel,
   selectTitleArticles,
 } from '@/lib/title/article-links';
@@ -157,7 +158,13 @@ describe('collectTitleCategoryParams', () => {
         categorySlug: 'collabo-cafe',
       }),
     ];
-    const pairs = [{ titleSlug: 'detective-conan', eventSlug: 'detective-conan-cafe-2026' }];
+    const pairs = [
+      {
+        titleSlug: 'detective-conan',
+        titleName: '名探偵コナン',
+        eventSlug: 'detective-conan-cafe-2026',
+      },
+    ];
 
     const params = collectTitleCategoryParams(
       articles,
@@ -173,5 +180,83 @@ describe('collectTitleCategoryParams', () => {
     );
     // 記事 0 件の作品 (pochacco) と、マスタに無い slug (meitantei-conan) の組は作らない。
     expect(params).toHaveLength(2);
+  });
+});
+
+describe('resolveArticleTitleLinks', () => {
+  const TITLES = [
+    { slug: 'detective-conan', name: '名探偵コナン' },
+    { slug: 'jujutsu-kaisen', name: '呪術廻戦' },
+  ];
+  const PAIRS = [
+    {
+      titleSlug: 'detective-conan',
+      titleName: '名探偵コナン',
+      eventSlug: 'detective-conan-cafe-2026',
+    },
+  ];
+
+  it('resolves a drifted article to the canonical title via event_slug', () => {
+    // 記事の title_slugs は「meitantei-conan」(ゆれ) だが、リンク先は正準
+    // detective-conan でなければならない (ゆれの slug はページが無く 404 になる)。
+    const conan = article({
+      slug: '01m02zcdrevxhcj4',
+      date: '2026-08-10',
+      eventSlug: 'detective-conan-cafe-2026',
+      titleSlugs: ['meitantei-conan'],
+    });
+
+    expect(resolveArticleTitleLinks(conan, TITLES, PAIRS)).toEqual([
+      { slug: 'detective-conan', name: '名探偵コナン' },
+    ]);
+  });
+
+  it('falls back to exact canonical slug match for un-ingested articles', () => {
+    const jjk = article({ slug: 'jjk', date: '2026-08-01', titleSlugs: ['jujutsu-kaisen'] });
+
+    expect(resolveArticleTitleLinks(jjk, TITLES, PAIRS)).toEqual([
+      { slug: 'jujutsu-kaisen', name: '呪術廻戦' },
+    ]);
+  });
+
+  it('drops slugs that are not in the titles master (no links to 404)', () => {
+    // ゆれた slug しか無く、企画も未取り込みならリンクを出さない。
+    const drifted = article({
+      slug: 'drifted',
+      date: '2026-08-01',
+      eventSlug: 'not-ingested',
+      titleSlugs: ['meitantei-conan'],
+    });
+
+    expect(resolveArticleTitleLinks(drifted, TITLES, PAIRS)).toEqual([]);
+  });
+
+  it('does not duplicate a title matched by both paths', () => {
+    const both = article({
+      slug: 'both',
+      date: '2026-08-01',
+      eventSlug: 'detective-conan-cafe-2026',
+      titleSlugs: ['detective-conan'],
+    });
+
+    expect(resolveArticleTitleLinks(both, TITLES, PAIRS)).toHaveLength(1);
+  });
+
+  it('returns [] for an article without event_data', () => {
+    const legacy = article({ slug: 'legacy', date: '2026-08-01', noEventData: true });
+    expect(resolveArticleTitleLinks(legacy, TITLES, PAIRS)).toEqual([]);
+  });
+
+  it('returns [] when the master lookup is empty (credential-less build)', () => {
+    // 資格情報が無いビルドでは titles / pairs が空になり、チップは
+    // リンク無しのテキストへ静かに戻る (graceful degradation)。
+    const conan = article({
+      slug: 'conan',
+      date: '2026-08-01',
+      eventSlug: 'detective-conan-cafe-2026',
+      titleSlugs: ['detective-conan'],
+    });
+
+    expect(resolveArticleTitleLinks(conan, [], [])).toEqual([]);
   });
 });
