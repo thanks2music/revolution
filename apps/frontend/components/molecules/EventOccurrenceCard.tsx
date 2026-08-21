@@ -63,12 +63,23 @@ const surfaceStyle: Record<OccurrenceStatus, string> = {
   cancelled: 'border-[var(--line-soft)] bg-bg-elevated',
 };
 
+/**
+ * カード本文 (会場名・期間) の文字色。
+ *
+ * 🔶 **中止を透明度で沈ませない。** 当初 `text-ink-muted/70` にしていたが、
+ *    白地での実効コントラストが **2.50:1** で WCAG AA を大きく割っていた
+ *    (Codex レビュー #334 指摘、実測で確認)。会場名と開催期間は装飾ではなく、
+ *    「どこで、いつの予定だったか」という実情報なので読めなければ意味がない。
+ *
+ *    中止であることは**赤いピルバッジ**と期間の「〜 の予定」が伝えているので、
+ *    本文まで沈ませる必要はない。他の状態と同じ可読性にする。
+ */
 const bodyStyle: Record<OccurrenceStatus, string> = {
   ongoing: 'text-ink-muted',
   scheduled: 'text-ink-muted',
   unscheduled: 'text-ink-muted',
   ended: 'text-archive-ink',
-  cancelled: 'text-ink-muted/70',
+  cancelled: 'text-ink-muted',
 };
 
 const titleStyle: Record<OccurrenceStatus, string> = {

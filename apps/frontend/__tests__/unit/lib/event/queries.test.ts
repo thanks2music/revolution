@@ -23,12 +23,24 @@ jest.mock('@/lib/supabase/public', () => ({
 
 type QueryResult = { data: unknown; error: unknown };
 
+/**
+ * 記録する呼び出し。**`table` を持つ**。`listEventListItems` は `events` と
+ * `occurrence_view` の 2 テーブルを引くため、`order` / `range` / `in` を全件
+ * まとめて数えると「events の並びが name → id であること」を検証しているつもりの
+ * アサーションが集計クエリの `order('id')` に汚染される。
+ */
+type RecordedCall = { table: string; method: string; args: unknown[] };
+
+/** 指定テーブルに対する呼び出しだけを抜き出す。 */
+const onTable = (calls: RecordedCall[], table: string, method: string) =>
+  calls.filter((c) => c.table === table && c.method === method);
+
 /** 呼ばれたフィルタを記録しつつ結果へ解決する、PostgREST 風のチェーン。 */
-function makeQuery(result: QueryResult, calls: { method: string; args: unknown[] }[]) {
+function makeQuery(table: string, result: QueryResult, calls: RecordedCall[]) {
   const chain: Record<string, unknown> = {};
   for (const method of ['select', 'eq', 'neq', 'in', 'order', 'range', 'limit']) {
     chain[method] = (...args: unknown[]) => {
-      calls.push({ method, args });
+      calls.push({ table, method, args });
       return chain;
     };
   }
@@ -39,7 +51,7 @@ function makeQuery(result: QueryResult, calls: { method: string; args: unknown[]
 
 function makeClient(
   byTable: Record<string, QueryResult | QueryResult[]>,
-  calls: { method: string; args: unknown[] }[] = [],
+  calls: RecordedCall[] = [],
 ) {
   const queues = new Map<string, QueryResult[]>();
   for (const [table, value] of Object.entries(byTable)) {
@@ -54,7 +66,7 @@ function makeClient(
             ? queue.shift()!
             : queue[0]
           : { data: null, error: null };
-      return makeQuery(result, calls);
+      return makeQuery(table, result, calls);
     },
   };
 }
@@ -267,11 +279,53 @@ describe('listEventListItems', () => {
     expect(item.titles.map((t) => t.name)).toEqual(['スター・ウォーズ', 'マンダロリアン']);
   });
 
-  it('orders by base-table columns only (no referencedTable order)', async () => {
-    // 埋め込み先 (categories.name / titles.name) の order は全順序を保証せず、
-    // range ページングで行の重複・欠落を招く (#333 Codex 指摘)。
+  /**
+   * ★ 集合一致の回帰テスト。
+   *
+   * ⚠️ **mock の `.in()` は結果を絞らない**ので、「fixture が返った」ことは
+   *    述語の存在を証明しない (Codex レビュー #334 指摘)。**実際に発行された
+   *    `.in('id', ids)` の引数を検証**して、`listEventParams` から導出した
+   *    ID 集合でしか events を引いていないことを固定する。
+   *    この述語を消すと一覧が静的生成対象を超え、404 リンクが生まれる。
+   */
+  it('filters events by exactly the ids derived from listEventParams', async () => {
     mockHasCredentials.mockReturnValue(true);
-    const calls: { method: string; args: unknown[] }[] = [];
+    const calls: RecordedCall[] = [];
+    mockCreatePublicClient.mockReturnValue(
+      makeClient(
+        {
+          occurrence_view: occurrenceViewReads(
+            // 同じ企画が開催数だけ出てくる → dedupe されて [2, 3] になる。
+            [
+              { eventId: 2, slug: 'a' },
+              { eventId: 3, slug: 'b' },
+              { eventId: 2, slug: 'c' },
+            ],
+            [{ eventId: 2, status: 'ongoing' }],
+          ),
+          events: {
+            data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+            error: null,
+          },
+        },
+        calls,
+      ),
+    );
+
+    const { listEventListItems } = await importQueries();
+    await listEventListItems();
+
+    expect(onTable(calls, 'events', 'in').map((c) => c.args)).toEqual([['id', [2, 3]]]);
+    // 集計クエリは絞らない (対象集合そのものが occurrence_view 由来なので不要)。
+    expect(onTable(calls, 'occurrence_view', 'in')).toEqual([]);
+  });
+
+  it('orders events by name → id on base-table columns only', async () => {
+    // `id` は range ページングのタイブレーク (同名の企画があると name だけでは
+    // 全順序にならない)。埋め込み先 (categories.name / titles.name) の order は
+    // 全順序を保証せず、行の重複・欠落を招く (#333 Codex 指摘)。
+    mockHasCredentials.mockReturnValue(true);
+    const calls: RecordedCall[] = [];
     mockCreatePublicClient.mockReturnValue(
       makeClient(
         {
@@ -291,18 +345,68 @@ describe('listEventListItems', () => {
     const { listEventListItems } = await importQueries();
     await listEventListItems();
 
-    const orders = calls.filter((c) => c.method === 'order');
-    expect(orders.length).toBeGreaterThan(0);
-    for (const order of orders) {
-      expect(order.args[1]).not.toHaveProperty('referencedTable');
+    // ★ 列名まで固定する ("referencedTable が無い" だけでは name/id の削除を通す)。
+    expect(onTable(calls, 'events', 'order').map((c) => c.args[0])).toEqual(['name', 'id']);
+    // `occurrence_view` は 2 回読まれる (対象集合の導出 + 状態別集計)。
+    expect(onTable(calls, 'occurrence_view', 'order').map((c) => c.args[0])).toEqual([
+      'id',
+      'id',
+    ]);
+    for (const order of calls.filter((c) => c.method === 'order')) {
+      expect(order.args[1] ?? {}).not.toHaveProperty('referencedTable');
     }
   });
 
-  it('selects the category through the explicit FK path (PGRST201 対策)', async () => {
-    // `categories(name)` と素朴に書くと events↔categories が 2 経路
-    // (primary_category_id / event_categories) で曖昧参照になり 300 で落ちる。
+  it('paginates the events query past the 500-row boundary', async () => {
+    // 企画が 1000 件を超えると `db.max_rows` が黙って打ち切り、一覧だけが
+    // 欠けて静的生成対象と食い違う。events 側の page 化を直接固定する
+    // (Codex レビュー #334 指摘: 従来は occurrence_view 側しか試していなかった)。
     mockHasCredentials.mockReturnValue(true);
-    const calls: { method: string; args: unknown[] }[] = [];
+    const calls: RecordedCall[] = [];
+    const eventPage = Array.from({ length: 500 }, (_, i) => ({
+      id: i + 1,
+      name: `企画 ${String(i + 1).padStart(4, '0')}`,
+      primaryCategory: null,
+      eventTitles: [],
+    }));
+    mockCreatePublicClient.mockReturnValue(
+      makeClient(
+        {
+          occurrence_view: occurrenceViewReads([{ eventId: 1, slug: 'a' }], []),
+          events: [
+            { data: eventPage, error: null },
+            {
+              data: [
+                { id: 501, name: '企画 0501', primaryCategory: null, eventTitles: [] },
+              ],
+              error: null,
+            },
+          ],
+        },
+        calls,
+      ),
+    );
+
+    const { listEventListItems } = await importQueries();
+    const items = await listEventListItems();
+
+    expect(items).toHaveLength(501);
+    expect(items[500]?.id).toBe(501);
+    expect(onTable(calls, 'events', 'range').map((c) => c.args)).toEqual([
+      [0, 499],
+      [500, 999],
+    ]);
+  });
+
+  it('selects the category and titles through the exact embed spec', async () => {
+    // `categories(name)` と素朴に書くと events↔categories が 2 経路
+    // (primary_category_id / event_categories) で曖昧参照になり 300 PGRST201。
+    //
+    // ⚠️ alias (`primaryCategory:` / `eventTitles:`) が消えると zod の parse が
+    //    落ちるため、**select 句を丸ごと固定**する (Codex レビュー #334 指摘:
+    //    部分一致では alias の typo/削除を検出できない)。
+    mockHasCredentials.mockReturnValue(true);
+    const calls: RecordedCall[] = [];
     mockCreatePublicClient.mockReturnValue(
       makeClient(
         {
@@ -322,8 +426,13 @@ describe('listEventListItems', () => {
     const { listEventListItems } = await importQueries();
     await listEventListItems();
 
-    const selects = calls.filter((c) => c.method === 'select').map((c) => String(c.args[0]));
-    expect(selects.some((s) => s.includes('categories!primary_category_id'))).toBe(true);
+    expect(onTable(calls, 'events', 'select').map((c) => c.args[0])).toEqual([
+      'id, name, primaryCategory:categories!primary_category_id(name), eventTitles:event_titles(titles(slug, name))',
+    ]);
+    expect(onTable(calls, 'occurrence_view', 'select').map((c) => c.args[0])).toEqual([
+      'eventId:event_id, slug',
+      'eventId:event_id, status',
+    ]);
   });
 
   it('paginates the status-count query past the 500-row boundary', async () => {
@@ -367,7 +476,7 @@ describe('listEventListItems', () => {
 
   it('returns [] without querying events when no occurrence exists', async () => {
     mockHasCredentials.mockReturnValue(true);
-    const calls: { method: string; args: unknown[] }[] = [];
+    const calls: RecordedCall[] = [];
     mockCreatePublicClient.mockReturnValue(
       makeClient(
         {
@@ -468,7 +577,7 @@ describe('findRelatedEvents (via getEventDetail)', () => {
    */
   it('excludes itself in the query, not by over-fetching', async () => {
     mockHasCredentials.mockReturnValue(true);
-    const calls: { method: string; args: unknown[] }[] = [];
+    const calls: RecordedCall[] = [];
     mockCreatePublicClient.mockReturnValue(
       makeClient(
         {
@@ -500,7 +609,9 @@ describe('findRelatedEvents (via getEventDetail)', () => {
     // 自己除外がクエリ側で行われていること。
     const neq = calls.filter((c) => c.method === 'neq');
     expect(neq).toEqual(
-      expect.arrayContaining([{ method: 'neq', args: ['events.id', 2] }]),
+      expect.arrayContaining([
+        { table: 'event_titles', method: 'neq', args: ['events.id', 2] },
+      ]),
     );
 
     // 候補ウィンドウが表示上限と同値でないこと (同値だと目減りで空に見える)。
