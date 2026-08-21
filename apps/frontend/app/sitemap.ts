@@ -38,6 +38,8 @@ import {
   getTitleOccurrencesUrl,
   getTitleUrl,
 } from '@/lib/title/title-url';
+import { listVenueParams } from '@/lib/venue/queries';
+import { getVenueUrl } from '@/lib/venue/venue-url';
 
 /**
  * 記事ページ (fs 由来)。
@@ -138,6 +140,31 @@ async function buildTitlePages(baseUrl: string): Promise<MetadataRoute.Sitemap> 
   }
 }
 
+/**
+ * 会場ページ (DB 由来)。
+ *
+ * 生成対象は `generateStaticParams` (`listVenueParams`) と同じ「venues マスタの
+ * 全 slug」。開催 0 件の会場も載せる (ページ自体は空状態で常に存在する)。
+ */
+async function buildVenuePages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
+  try {
+    const venueParams = await listVenueParams();
+
+    return venueParams.map((param) => ({
+      url: `${baseUrl}${getVenueUrl(param.slug)}`,
+      lastModified: new Date(),
+      // 開催の状態 (開催中 / 終了) が日付で変わるので daily。
+      changeFrequency: 'daily' as const,
+      // 回遊ハブだが開催 0 件のページも多いので、作品・企画 (0.9) より下に置く。
+      priority: 0.7,
+    }));
+  } catch (error) {
+    console.error('サイトマップ生成エラー (会場):', error);
+    Sentry.captureException(error, { tags: { sitemap: 'venues' } });
+    return [];
+  }
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com';
 
@@ -163,6 +190,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'daily',
       priority: 0.8,
     },
+    {
+      url: `${baseUrl}/venues`,
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.8,
+    },
   ];
 
   return [
@@ -170,5 +203,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...buildArticlePages(baseUrl),
     ...(await buildDatabasePages(baseUrl)),
     ...(await buildTitlePages(baseUrl)),
+    ...(await buildVenuePages(baseUrl)),
   ];
 }
