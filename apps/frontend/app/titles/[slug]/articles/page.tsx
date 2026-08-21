@@ -12,12 +12,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { CategoryChip } from '@/components/molecules/CategoryChip';
+import { EmptyState } from '@/components/molecules/EmptyState';
 import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGrid';
 import Layout from '@/components/templates/Layout';
 import { getAllArticles } from '@/lib/mdx/articles';
 import { generateContentMetadata } from '@/lib/metadata';
 import {
   collectArticleCategorySlugs,
+  countArticlesInCategory,
   resolveCategoryLabel,
   selectTitleArticles,
 } from '@/lib/title/article-links';
@@ -89,19 +91,26 @@ export default async function TitleArticlesPage(props: TitleArticlesPageProps) {
         <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
           {title.name} の記事
         </h1>
-        <p className="mb-8 text-sm text-ink-muted">
+        <p className="mb-6 text-sm text-ink-muted">
           <span className="font-numeric tabular-nums">{articles.length}</span> 本
         </p>
 
         {categorySlugs.length > 0 && (
           <div className="mb-8 flex flex-wrap gap-2">
-            <CategoryChip name="すべて" href={getTitleArticlesUrl(title.slug)} active size="md" />
+            <CategoryChip
+              name="すべて"
+              href={getTitleArticlesUrl(title.slug)}
+              active
+              size="md"
+              count={articles.length}
+            />
             {categorySlugs.map((categorySlug) => (
               <CategoryChip
                 key={categorySlug}
                 name={resolveCategoryLabel(articles, categorySlug)}
                 href={getTitleArticlesCategoryUrl(title.slug, categorySlug)}
                 size="md"
+                count={countArticlesInCategory(articles, categorySlug)}
               />
             ))}
           </div>
@@ -110,9 +119,7 @@ export default async function TitleArticlesPage(props: TitleArticlesPageProps) {
         {articles.length > 0 ? (
           <PaginatedArticleGrid key={title.slug} articles={articles} mode="infinite" />
         ) : (
-          <p className="py-12 text-center text-sm text-ink-muted">
-            この作品の記事はまだありません。
-          </p>
+          <EmptyState message="この作品の記事はまだありません。" />
         )}
       </div>
     </Layout>

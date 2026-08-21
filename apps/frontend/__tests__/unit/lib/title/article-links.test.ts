@@ -3,6 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import type { ArticleIndexItem } from '@/lib/mdx/article-types';
 import {
   collectArticleCategorySlugs,
+  countArticlesInCategory,
   collectTitleCategoryParams,
   resolveArticleTitleLinks,
   resolveCategoryLabel,
@@ -126,6 +127,44 @@ describe('collectArticleCategorySlugs', () => {
       article({ slug: 'd', date: '2026-08-04', noEventData: true }),
     ];
     expect(collectArticleCategorySlugs(articles)).toEqual(['collabo-cafe', 'popup-store']);
+  });
+});
+
+describe('countArticlesInCategory', () => {
+  it('counts only articles whose primary_category_slug matches', () => {
+    const articles = [
+      article({ slug: 'a', date: '2026-08-01', categorySlug: 'collabo-cafe' }),
+      article({ slug: 'b', date: '2026-08-02', categorySlug: 'popup-store' }),
+      article({ slug: 'c', date: '2026-08-03', categorySlug: 'collabo-cafe' }),
+      article({ slug: 'd', date: '2026-08-04', noEventData: true }),
+    ];
+    expect(countArticlesInCategory(articles, 'collabo-cafe')).toBe(2);
+    expect(countArticlesInCategory(articles, 'popup-store')).toBe(1);
+  });
+
+  it('returns 0 for a category with no articles', () => {
+    expect(countArticlesInCategory([], 'collabo-cafe')).toBe(0);
+  });
+
+  /**
+   * ★ チップの件数とカテゴリページ本体の絞り込みは**同じ述語**でなければ
+   * 「チップは 3 と言っているのに開いたら 1 本」になる。
+   * 本体 (`app/titles/[slug]/articles/[category]/page.tsx` の
+   * `loadCategoryArticles`) と同じ式で数えていることを固定する。
+   */
+  it('agrees with the category page filter for every collected slug', () => {
+    const articles = [
+      article({ slug: 'a', date: '2026-08-01', categorySlug: 'collabo-cafe' }),
+      article({ slug: 'b', date: '2026-08-02', categorySlug: 'popup-store' }),
+      article({ slug: 'c', date: '2026-08-03', categorySlug: 'collabo-cafe' }),
+      article({ slug: 'd', date: '2026-08-04', noEventData: true }),
+    ];
+    for (const slug of collectArticleCategorySlugs(articles)) {
+      const pageFilter = articles.filter(
+        (a) => a.event_data?.primary_category_slug === slug,
+      ).length;
+      expect(countArticlesInCategory(articles, slug)).toBe(pageFilter);
+    }
   });
 });
 

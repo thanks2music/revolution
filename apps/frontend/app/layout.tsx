@@ -1,5 +1,10 @@
 import '@/styles/globals.css';
-import { Noto_Sans_JP, Zen_Kaku_Gothic_New, Inter_Tight } from 'next/font/google';
+import {
+  Noto_Sans_JP,
+  Zen_Kaku_Gothic_New,
+  Zen_Old_Mincho,
+  Inter_Tight,
+} from 'next/font/google';
 import { generateBasicMetadata, generateWebSiteSchema } from '@/lib/metadata';
 
 export const metadata = generateBasicMetadata();
@@ -27,6 +32,16 @@ const zenKakuGothicNew = Zen_Kaku_Gothic_New({
   preload: false,
 });
 
+// 記事カードの見出し用 (Claude Design v6 #17/#18)。記事カードは fold より下に
+// 出るため preload は不要 — 他の CJK フォントと同じ扱いにする。
+const zenOldMincho = Zen_Old_Mincho({
+  weight: ['600'],
+  subsets: ['latin'],
+  variable: '--font-serif',
+  display: 'swap',
+  preload: false,
+});
+
 const interTight = Inter_Tight({
   weight: ['600', '700', '900'],
   subsets: ['latin'],
@@ -41,7 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="ja"
-      className={`${notoSansJP.variable} ${zenKakuGothicNew.variable} ${interTight.variable}`}
+      className={`${notoSansJP.variable} ${zenKakuGothicNew.variable} ${zenOldMincho.variable} ${interTight.variable}`}
     >
       <head>
         <script

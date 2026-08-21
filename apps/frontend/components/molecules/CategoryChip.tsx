@@ -5,6 +5,15 @@ type Props = {
   href?: string;
   active?: boolean;
   size?: 'sm' | 'md';
+  /**
+   * 該当件数 (Claude Design v6 #17/#18)。渡すとラベルの後ろに並ぶ。
+   *
+   * ⚠️ **0 は渡さない想定**。作品配下の記事一覧は「記事 0 件のカテゴリは
+   *    チップを出さない」(生成側と集合を共有) 方針なので、0 のチップは
+   *    そもそも描かれない。ここでは 0 も素直に表示する (隠すと呼び出し側の
+   *    バグが見えなくなる)。
+   */
+  count?: number;
 };
 
 const sizeStyles = {
@@ -21,17 +30,27 @@ const inactiveStyles =
 const activeStyles =
   'bg-primary-500 text-white border border-primary-500';
 
-export const CategoryChip = ({ name, href, active = false, size = 'sm' }: Props) => {
+export const CategoryChip = ({ name, href, active = false, size = 'sm', count }: Props) => {
   const className = `${baseStyles} ${sizeStyles[size]} ${active ? activeStyles : inactiveStyles}`;
+  const content =
+    count === undefined ? (
+      name
+    ) : (
+      <>
+        {name}
+        {/* 件数は数字用フォント + tabular-nums で桁を揃える (チップの幅が跳ねない)。 */}
+        <span className="ml-1 font-numeric tabular-nums">{count}</span>
+      </>
+    );
 
   if (href) {
     return (
       <Link href={href} className={className} aria-current={active ? 'page' : undefined}>
-        {name}
+        {content}
       </Link>
     );
   }
-  return <span className={className}>{name}</span>;
+  return <span className={className}>{content}</span>;
 };
 
 export default CategoryChip;

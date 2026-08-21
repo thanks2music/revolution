@@ -63,6 +63,23 @@ export function collectArticleCategorySlugs(articles: readonly ArticleIndexItem[
 }
 
 /**
+ * 1 カテゴリに属する記事の本数 (Claude Design v6 #17/#18 のチップの件数)。
+ *
+ * 絞り込みの述語は**カテゴリページ本体と同じ** `primary_category_slug` の一致。
+ * ⚠️ ここが本体と食い違うと「チップは 3 と言っているのに開いたら 1 本」に
+ *    なるため、判定は 1 つの式に揃える (`collectArticleCategorySlugs` が
+ *    同じフィールドを見ているのと対)。
+ */
+export function countArticlesInCategory(
+  articles: readonly ArticleIndexItem[],
+  categorySlug: string,
+): number {
+  return articles.filter(
+    (article) => article.event_data?.primary_category_slug === categorySlug,
+  ).length;
+}
+
+/**
  * カテゴリ slug の表示名を記事から解決する。
  *
  * カテゴリの日本語名は記事 index では `event_title` (例: `コラボカフェ`) が

@@ -3,6 +3,8 @@ import { OccurrenceViewSchema } from '@revolution/schemas/occurrence';
 import { VenueSchema as VenueRowSchema } from '@revolution/schemas/venue';
 import { z } from 'zod';
 
+import { EVENT_NAME_FALLBACK } from '@/lib/event/contracts';
+
 /**
  * 会場ページ (`/venues/{slug}`) が `venues` / `occurrence_view` を読むときの
  * 契約と select 句。方針は `lib/title/contracts.ts` と同じ:
@@ -77,10 +79,12 @@ export const VENUE_OCCURRENCE_COLUMNS =
 
 /**
  * 企画名が解決できないときの表示。
- * ⚠️ **slug で代用しない。** slug は URL 用の識別子であって人が読む名前ではない
- * (`OccurrenceCard.tsx` の `VENUE_NAME_FALLBACK` と同じ規則)。
+ *
+ * 定義は `lib/event/contracts.ts` へ移した (作品の開催一覧でも同じ fallback が
+ * 必要になり、企画の契約を持つモジュールが持つのが自然だったため)。
+ * 既存の import 経路を壊さないよう、ここからも re-export する。
  */
-export const EVENT_NAME_FALLBACK = '企画情報なし';
+export { EVENT_NAME_FALLBACK };
 
 /** 表示用の開催。企画名を解決済みで持つ。 */
 export type VenueOccurrence = z.infer<typeof VenueOccurrenceRowSchema> & {

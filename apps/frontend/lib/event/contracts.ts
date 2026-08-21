@@ -63,6 +63,18 @@ export function parseEmbeddedTitles(data: unknown): Title[] {
     .filter((title): title is Title => title !== null);
 }
 
+/**
+ * 企画名が解決できないときの表示。
+ *
+ * ⚠️ **slug で代用しない。** slug は URL 用の識別子であって人が読む名前ではない
+ * (`OccurrenceCard.tsx` の `VENUE_NAME_FALLBACK` と同じ規則)。
+ *
+ * 会場ページ (`lib/venue/contracts.ts` の埋め込み解決) と作品の開催一覧
+ * (企画名の逆引きが外れた場合) の**両方**が使うため、企画の契約を持つ
+ * 本モジュールに置く。
+ */
+export const EVENT_NAME_FALLBACK = '企画情報なし';
+
 /** 一覧・リンク用の最小の企画情報。 */
 export const EventSummarySchema = EventRowSchema.pick({ id: true, name: true });
 
