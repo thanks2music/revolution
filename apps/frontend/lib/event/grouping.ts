@@ -1,6 +1,7 @@
 import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 
 import type { Occurrence } from '@/lib/occurrence/queries';
+import { OCCURRENCE_STATUS_LABELS } from '@/lib/occurrence/status';
 
 /**
  * 企画ページの「会場を選ぶ」で開催を状態別にまとめる (Layer 1、純粋関数)。
@@ -45,7 +46,10 @@ export type OccurrenceGroup = {
 type WithinOrder = 'ends-asc' | 'starts-asc' | 'name';
 
 /**
- * 表示順 + 見出し + グループ内の並び。**配列の順序がそのまま画面の順序**。
+ * 表示順 + グループ内の並び。**配列の順序がそのまま画面の順序**。
+ *
+ * 見出しラベルは持たない — `OCCURRENCE_STATUS_LABELS` (`lib/occurrence/status.ts`)
+ * が状態の語彙の SSoT。ここに残すのは grouping 固有の `within` だけ。
  *
  * ## 網羅性を型で守る
  *
@@ -57,16 +61,15 @@ type WithinOrder = 'ends-asc' | 'starts-asc' | 'name';
  *
  * ⚠️ 配列なので**同じ key を 2 回書ける**(同じグループが 2 度描画される)。
  *    Record + 別配列の二重構造にすればキー重複も防げるが、その形は
- *    「状態を 1 つ足すときの編集点が 2 箇所」「label と表示順が離れる」という
- *    別のコストを生むため採らない。順序・見出し・並び順が 1 箇所に集まる形を優先した。
+ *    「状態を 1 つ足すときの編集点が 2 箇所」という別のコストを生むため採らない。
  */
 const GROUPS = [
-  { key: 'ongoing', label: '開催中', within: 'ends-asc' },
-  { key: 'scheduled', label: '開催予定', within: 'starts-asc' },
-  { key: 'unscheduled', label: '日程未発表', within: 'name' },
-  { key: 'ended', label: '終了', within: 'ends-asc' },
-  { key: 'cancelled', label: '中止', within: 'name' },
-] as const satisfies readonly { key: OccurrenceGroupKey; label: string; within: WithinOrder }[];
+  { key: 'ongoing', within: 'ends-asc' },
+  { key: 'scheduled', within: 'starts-asc' },
+  { key: 'unscheduled', within: 'name' },
+  { key: 'ended', within: 'ends-asc' },
+  { key: 'cancelled', within: 'name' },
+] as const satisfies readonly { key: OccurrenceGroupKey; within: WithinOrder }[];
 
 // 網羅漏れをコンパイル時に検出する。状態を足して GROUPS に書き忘れると型エラー。
 type MissingGroup = Exclude<OccurrenceGroupKey, (typeof GROUPS)[number]['key']>;
@@ -102,9 +105,9 @@ function compareWithin(within: WithinOrder) {
 
 /** 開催を状態別のグループへまとめる。空のグループは含まない。 */
 export function groupOccurrencesByStatus(items: Occurrence[]): OccurrenceGroup[] {
-  return GROUPS.map(({ key, label, within }) => ({
+  return GROUPS.map(({ key, within }) => ({
     key,
-    label,
+    label: OCCURRENCE_STATUS_LABELS[key],
     items: items.filter((item) => item.status === key).sort(compareWithin(within)),
   })).filter((group) => group.items.length > 0);
 }

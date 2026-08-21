@@ -12,7 +12,7 @@ import Link from 'next/link';
 
 import Layout from '@/components/templates/Layout';
 import { getEventUrl } from '@/lib/event/event-url';
-import { listEventSummaries } from '@/lib/event/queries';
+import { listEventListItems } from '@/lib/event/queries';
 import { generateContentMetadata } from '@/lib/metadata';
 
 export const revalidate = 120;
@@ -25,7 +25,7 @@ export const metadata: Metadata = generateContentMetadata({
 });
 
 export default async function EventsPage() {
-  const events = await listEventSummaries();
+  const events = await listEventListItems();
 
   return (
     <Layout>

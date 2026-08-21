@@ -126,35 +126,242 @@ describe('listEventParams', () => {
   });
 });
 
-describe('listEventSummaries', () => {
+describe('listEventListItems', () => {
+  /**
+   * `occurrence_view` は 1 回の `listEventListItems()` で **2 回**読まれる:
+   * 1 回目 = `listEventParams` (対象集合の導出、`{eventId, slug}`)、
+   * 2 回目 = `countOccurrencesByEvent` (状態別集計、`{eventId, status}`)。
+   * `makeClient` のキューは順に消費されるので、その順で 2 件積む。
+   */
+  const occurrenceViewReads = (
+    params: { eventId: number; slug: string }[],
+    counts: { eventId: number; status: string }[],
+  ) => [
+    { data: params, error: null },
+    { data: counts, error: null },
+  ];
+
   it('lists only events that are static-generated (no links to 404)', async () => {
     // 一覧の対象は `listEventParams` (= 静的生成対象) と同じでなければならない。
     // 開催を持たない企画を混ぜると、リンク先が空ページ / 未生成になる。
     mockHasCredentials.mockReturnValue(true);
     mockCreatePublicClient.mockReturnValue(
       makeClient({
-        // listEventParams の導出元 (開催の列挙)
-        occurrence_view: {
-          data: [
+        occurrence_view: occurrenceViewReads(
+          [
             { eventId: 2, slug: 'a' },
             { eventId: 3, slug: 'b' },
           ],
-          error: null,
-        },
+          [
+            { eventId: 2, status: 'ongoing' },
+            { eventId: 3, status: 'ended' },
+          ],
+        ),
         events: {
           data: [
-            { id: 2, name: 'シード企画' },
-            { id: 3, name: '別の企画' },
+            {
+              id: 2,
+              name: 'シード企画',
+              primaryCategory: { name: 'コラボカフェ' },
+              eventTitles: [{ titles: { slug: 'seed', name: 'シード怪獣の日常' } }],
+            },
+            {
+              id: 3,
+              name: '別の企画',
+              primaryCategory: { name: '原画展' },
+              eventTitles: [],
+            },
           ],
           error: null,
         },
       }),
     );
 
-    const { listEventSummaries } = await importQueries();
-    await expect(listEventSummaries()).resolves.toEqual([
-      { id: 2, name: 'シード企画' },
-      { id: 3, name: '別の企画' },
+    const { listEventListItems } = await importQueries();
+    await expect(listEventListItems()).resolves.toEqual([
+      {
+        id: 2,
+        name: 'シード企画',
+        categoryName: 'コラボカフェ',
+        titles: [{ slug: 'seed', name: 'シード怪獣の日常' }],
+        occurrenceCount: 1,
+        statusCounts: [{ status: 'ongoing', label: '開催中', count: 1 }],
+      },
+      {
+        id: 3,
+        name: '別の企画',
+        categoryName: '原画展',
+        titles: [],
+        occurrenceCount: 1,
+        statusCounts: [{ status: 'ended', label: '終了', count: 1 }],
+      },
+    ]);
+  });
+
+  it('counts occurrences per status in display order and drops empty statuses', async () => {
+    // v6 #14 の「全 N 会場 ・ 開催中 1 / 開催予定 2 / 終了 1」。
+    // 0 件の状態 (ここでは cancelled) は出さない = grouping と同じ規律。
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        occurrence_view: occurrenceViewReads(
+          [{ eventId: 2, slug: 'a' }],
+          [
+            // 意図的に表示順とは違う順で返す (並べ直しているのを確かめる)。
+            { eventId: 2, status: 'ended' },
+            { eventId: 2, status: 'scheduled' },
+            { eventId: 2, status: 'ongoing' },
+            { eventId: 2, status: 'scheduled' },
+            { eventId: 2, status: 'unscheduled' },
+          ],
+        ),
+        events: {
+          data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+          error: null,
+        },
+      }),
+    );
+
+    const { listEventListItems } = await importQueries();
+    const [item] = await listEventListItems();
+    expect(item.occurrenceCount).toBe(5);
+    expect(item.statusCounts).toEqual([
+      { status: 'ongoing', label: '開催中', count: 1 },
+      { status: 'scheduled', label: '開催予定', count: 2 },
+      { status: 'unscheduled', label: '日程未発表', count: 1 },
+      { status: 'ended', label: '終了', count: 1 },
+    ]);
+  });
+
+  it('tolerates null embeds and sorts title chips in ja order (not DB order)', async () => {
+    // 埋め込みは FK 先が消えていると `null` を返す。落として描画を壊さない。
+    // 作品チップの並びは DB 任せにしない (ビルドごとに順序が変わらないように)。
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        occurrence_view: occurrenceViewReads(
+          [{ eventId: 6, slug: 'a' }],
+          [{ eventId: 6, status: 'ongoing' }],
+        ),
+        events: {
+          data: [
+            {
+              id: 6,
+              name: 'STAR WARS CAFE',
+              primaryCategory: null,
+              eventTitles: [
+                { titles: { slug: 'mandalorian', name: 'マンダロリアン' } },
+                { titles: null },
+                { titles: { slug: 'star-wars', name: 'スター・ウォーズ' } },
+              ],
+            },
+          ],
+          error: null,
+        },
+      }),
+    );
+
+    const { listEventListItems } = await importQueries();
+    const [item] = await listEventListItems();
+    expect(item.categoryName).toBeNull();
+    expect(item.titles.map((t) => t.name)).toEqual(['スター・ウォーズ', 'マンダロリアン']);
+  });
+
+  it('orders by base-table columns only (no referencedTable order)', async () => {
+    // 埋め込み先 (categories.name / titles.name) の order は全順序を保証せず、
+    // range ページングで行の重複・欠落を招く (#333 Codex 指摘)。
+    mockHasCredentials.mockReturnValue(true);
+    const calls: { method: string; args: unknown[] }[] = [];
+    mockCreatePublicClient.mockReturnValue(
+      makeClient(
+        {
+          occurrence_view: occurrenceViewReads(
+            [{ eventId: 2, slug: 'a' }],
+            [{ eventId: 2, status: 'ongoing' }],
+          ),
+          events: {
+            data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+            error: null,
+          },
+        },
+        calls,
+      ),
+    );
+
+    const { listEventListItems } = await importQueries();
+    await listEventListItems();
+
+    const orders = calls.filter((c) => c.method === 'order');
+    expect(orders.length).toBeGreaterThan(0);
+    for (const order of orders) {
+      expect(order.args[1]).not.toHaveProperty('referencedTable');
+    }
+  });
+
+  it('selects the category through the explicit FK path (PGRST201 対策)', async () => {
+    // `categories(name)` と素朴に書くと events↔categories が 2 経路
+    // (primary_category_id / event_categories) で曖昧参照になり 300 で落ちる。
+    mockHasCredentials.mockReturnValue(true);
+    const calls: { method: string; args: unknown[] }[] = [];
+    mockCreatePublicClient.mockReturnValue(
+      makeClient(
+        {
+          occurrence_view: occurrenceViewReads(
+            [{ eventId: 2, slug: 'a' }],
+            [{ eventId: 2, status: 'ongoing' }],
+          ),
+          events: {
+            data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+            error: null,
+          },
+        },
+        calls,
+      ),
+    );
+
+    const { listEventListItems } = await importQueries();
+    await listEventListItems();
+
+    const selects = calls.filter((c) => c.method === 'select').map((c) => String(c.args[0]));
+    expect(selects.some((s) => s.includes('categories!primary_category_id'))).toBe(true);
+  });
+
+  it('paginates the status-count query past the 500-row boundary', async () => {
+    // 集計は `occurrence_view` の全件走査。`db.max_rows` は黙って打ち切るため
+    // page 化が必要 (#333 で会場ページに入れたのと同じ防御)。
+    mockHasCredentials.mockReturnValue(true);
+    const firstPage = Array.from({ length: 500 }, (_, i) => ({
+      eventId: 2,
+      slug: `occ-${i}`,
+    }));
+    const firstCountPage = Array.from({ length: 500 }, () => ({
+      eventId: 2,
+      status: 'ended',
+    }));
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        occurrence_view: [
+          // listOccurrenceParams: 500 → 1 件で終端
+          { data: firstPage, error: null },
+          { data: [{ eventId: 2, slug: 'occ-500' }], error: null },
+          // countOccurrencesByEvent: 500 → 1 件で終端
+          { data: firstCountPage, error: null },
+          { data: [{ eventId: 2, status: 'ongoing' }], error: null },
+        ],
+        events: {
+          data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+          error: null,
+        },
+      }),
+    );
+
+    const { listEventListItems } = await importQueries();
+    const [item] = await listEventListItems();
+    // 2 ページ目を読まなければ 500 で止まり、501 件目の ongoing が落ちる。
+    expect(item.occurrenceCount).toBe(501);
+    expect(item.statusCounts).toEqual([
+      { status: 'ongoing', label: '開催中', count: 1 },
+      { status: 'ended', label: '終了', count: 500 },
     ]);
   });
 
@@ -171,8 +378,8 @@ describe('listEventSummaries', () => {
       ),
     );
 
-    const { listEventSummaries } = await importQueries();
-    await expect(listEventSummaries()).resolves.toEqual([]);
+    const { listEventListItems } = await importQueries();
+    await expect(listEventListItems()).resolves.toEqual([]);
     expect(calls.some((c) => c.method === 'in')).toBe(false);
   });
 
@@ -180,13 +387,32 @@ describe('listEventSummaries', () => {
     mockHasCredentials.mockReturnValue(true);
     mockCreatePublicClient.mockReturnValue(
       makeClient({
-        occurrence_view: { data: [{ eventId: 2, slug: 'a' }], error: null },
+        occurrence_view: occurrenceViewReads([{ eventId: 2, slug: 'a' }], []),
         events: { data: null, error: { message: 'summaries boom' } },
       }),
     );
 
-    const { listEventSummaries } = await importQueries();
-    await expect(listEventSummaries()).rejects.toThrow(/summaries boom/);
+    const { listEventListItems } = await importQueries();
+    await expect(listEventListItems()).rejects.toThrow(/summaries boom/);
+  });
+
+  it('throws when the status-count query fails (0 件と混同しない)', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        occurrence_view: [
+          { data: [{ eventId: 2, slug: 'a' }], error: null },
+          { data: null, error: { message: 'counts boom' } },
+        ],
+        events: {
+          data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+          error: null,
+        },
+      }),
+    );
+
+    const { listEventListItems } = await importQueries();
+    await expect(listEventListItems()).rejects.toThrow(/counts boom/);
   });
 });
 

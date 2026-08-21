@@ -18,12 +18,22 @@ jest.mock('@/lib/supabase/public', () => ({
 
 type QueryResult = { data: unknown; error: unknown };
 
+/**
+ * 記録する呼び出し。**`table` を持つ**のが `title` / `event` 側の mock との差分。
+ *
+ * `listVenueDetails` は `venues` (一覧) と `occurrence_view` (開催数の集計) の
+ * 2 テーブルを引くため、`order` / `range` を全件まとめて数えると
+ * 「venues の並びが name → slug であること」を検証しているつもりのアサーションが
+ * 集計クエリの `order('id')` に汚染される。テーブル単位で絞れる形にしておく。
+ */
+type RecordedCall = { table: string; method: string; args: unknown[] };
+
 /** 呼ばれたフィルタを記録しつつ結果へ解決する、PostgREST 風のチェーン。 */
-function makeQuery(result: QueryResult, calls: { method: string; args: unknown[] }[]) {
+function makeQuery(table: string, result: QueryResult, calls: RecordedCall[]) {
   const chain: Record<string, unknown> = {};
   for (const method of ['select', 'eq', 'neq', 'in', 'order', 'range', 'limit']) {
     chain[method] = (...args: unknown[]) => {
-      calls.push({ method, args });
+      calls.push({ table, method, args });
       return chain;
     };
   }
@@ -34,7 +44,7 @@ function makeQuery(result: QueryResult, calls: { method: string; args: unknown[]
 
 function makeClient(
   byTable: Record<string, QueryResult | QueryResult[]>,
-  calls: { method: string; args: unknown[] }[] = [],
+  calls: RecordedCall[] = [],
 ) {
   const queues = new Map<string, QueryResult[]>();
   for (const [table, value] of Object.entries(byTable)) {
@@ -49,10 +59,14 @@ function makeClient(
             ? queue.shift()!
             : queue[0]
           : { data: null, error: null };
-      return makeQuery(result, calls);
+      return makeQuery(table, result, calls);
     },
   };
 }
+
+/** 指定テーブルに対する呼び出しだけを抜き出す。 */
+const onTable = (calls: RecordedCall[], table: string, method: string) =>
+  calls.filter((c) => c.table === table && c.method === method);
 
 // fixture は実データ由来 (staging の venues / events、2026-08-20 seed)。
 const VENUE_ROW = {
@@ -167,7 +181,7 @@ describe('listVenueDetails', () => {
 describe('listVenueParams / listVenueDetails の集合一致', () => {
   it('returns the same slug set from the same filter and order', async () => {
     mockHasCredentials.mockReturnValue(true);
-    const calls: { method: string; args: unknown[] }[] = [];
+    const calls: RecordedCall[] = [];
     const rows = [
       VENUE_ROW,
       { id: 8, slug: 'no-occurrence-venue', name: '開催なし会場', prefecture: null, city: null, address: null },
@@ -181,8 +195,13 @@ describe('listVenueParams / listVenueDetails の集合一致', () => {
     expect(params.map((p) => p.slug)).toEqual(details.map((d) => d.slug));
 
     // 絞り込み条件・並び順が共有されていること (order は name → slug の全順序)。
-    const orders = calls.filter((c) => c.method === 'order').map((c) => c.args[0]);
-    expect(orders).toEqual(['name', 'slug', 'name', 'slug']);
+    // ⚠️ `venues` に対する order だけを見る (集計クエリの order('id') と混ぜない)。
+    expect(onTable(calls, 'venues', 'order').map((c) => c.args[0])).toEqual([
+      'name',
+      'slug',
+      'name',
+      'slug',
+    ]);
     // 対象を絞る述語を持たない (どちらも venues 全行)。
     expect(calls.some((c) => c.method === 'eq' || c.method === 'neq')).toBe(false);
   });
@@ -191,7 +210,7 @@ describe('listVenueParams / listVenueDetails の集合一致', () => {
     // 静的生成対象 (`listVenueParams`) だけが 500 件で切れると、一覧との差分が
     // 404 リンクを生む。どちらかが単発 select に戻される回帰をここで検出する。
     mockHasCredentials.mockReturnValue(true);
-    const calls: { method: string; args: unknown[] }[] = [];
+    const calls: RecordedCall[] = [];
     const fullPage = Array.from({ length: 500 }, (_, index) => ({
       id: index + 1,
       slug: `venue-${String(index + 1).padStart(3, '0')}`,
@@ -231,13 +250,122 @@ describe('listVenueParams / listVenueDetails の集合一致', () => {
     expect(details).toHaveLength(501);
     expect(params.map((p) => p.slug)).toEqual(details.map((d) => d.slug));
 
-    const ranges = calls.filter((c) => c.method === 'range').map((c) => c.args);
-    expect(ranges).toEqual([
+    // ⚠️ `venues` に対する range だけを見る (集計クエリのページングと混ぜない)。
+    expect(onTable(calls, 'venues', 'range').map((c) => c.args)).toEqual([
       [0, 499],
       [500, 999],
       [0, 499],
       [500, 999],
     ]);
+  });
+});
+
+/**
+ * ★ 開催数の集計 (v6 #15 `▲ 要クエリ拡張`)。
+ *
+ * PR #333 の「MVP では開催数を置かない」判断を BOSS が意図的に上書きしたもの。
+ * **集計を足しても対象集合は変わらない**ことを併せて固定する。
+ */
+describe('listVenueDetails の開催数集計', () => {
+  const NO_OCCURRENCE_VENUE = {
+    id: 8,
+    slug: 'no-occurrence-venue',
+    name: '開催なし会場',
+    prefecture: null,
+    city: null,
+    address: null,
+  };
+
+  it('counts occurrences per venue and reports 0 for venues without any', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        venues: { data: [VENUE_ROW, NO_OCCURRENCE_VENUE], error: null },
+        occurrence_view: {
+          data: [{ venueId: 7 }, { venueId: 7 }, { venueId: 7 }],
+          error: null,
+        },
+      }),
+    );
+
+    const { listVenueDetails } = await importQueries();
+    const details = await listVenueDetails();
+    expect(details.map((d) => [d.slug, d.occurrenceCount])).toEqual([
+      [VENUE_ROW.slug, 3],
+      [NO_OCCURRENCE_VENUE.slug, 0],
+    ]);
+  });
+
+  it('ignores occurrences without a venue master (venue_id is null)', async () => {
+    // 会場マスタを持たない開催 (`venue_label` だけ) が実データに存在する
+    // (2026-08-22 実測 1 件)。どの会場の件数にも足さない。
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        venues: { data: [VENUE_ROW], error: null },
+        occurrence_view: {
+          data: [{ venueId: 7 }, { venueId: null }, { venueId: null }],
+          error: null,
+        },
+      }),
+    );
+
+    const { listVenueDetails } = await importQueries();
+    const [venue] = await listVenueDetails();
+    expect(venue.occurrenceCount).toBe(1);
+  });
+
+  it('paginates the count query past the 500-row boundary', async () => {
+    // 集計は `occurrence_view` の全件走査。`db.max_rows` は黙って打ち切るため
+    // page 化が必要 (会場ページ本体に入れたのと同じ防御)。
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        venues: { data: [VENUE_ROW], error: null },
+        occurrence_view: [
+          { data: Array.from({ length: 500 }, () => ({ venueId: 7 })), error: null },
+          { data: [{ venueId: 7 }], error: null },
+        ],
+      }),
+    );
+
+    const { listVenueDetails } = await importQueries();
+    const [venue] = await listVenueDetails();
+    expect(venue.occurrenceCount).toBe(501);
+  });
+
+  it('orders the count query by the base-table id (range ページングの全順序)', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    const calls: RecordedCall[] = [];
+    mockCreatePublicClient.mockReturnValue(
+      makeClient(
+        {
+          venues: { data: [VENUE_ROW], error: null },
+          occurrence_view: { data: [{ venueId: 7 }], error: null },
+        },
+        calls,
+      ),
+    );
+
+    const { listVenueDetails } = await importQueries();
+    await listVenueDetails();
+
+    const orders = onTable(calls, 'occurrence_view', 'order');
+    expect(orders.map((c) => c.args[0])).toEqual(['id']);
+    expect(orders[0].args[1]).not.toHaveProperty('referencedTable');
+  });
+
+  it('throws when the count query fails (0 件と混同しない)', async () => {
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        venues: { data: [VENUE_ROW], error: null },
+        occurrence_view: { data: null, error: { message: 'venue counts boom' } },
+      }),
+    );
+
+    const { listVenueDetails } = await importQueries();
+    await expect(listVenueDetails()).rejects.toThrow(/venue counts boom/);
   });
 });
 
@@ -292,7 +420,7 @@ describe('getVenueDetail', () => {
 
   it('filters by venue_id (not slug) and orders by base-table columns', async () => {
     mockHasCredentials.mockReturnValue(true);
-    const calls: { method: string; args: unknown[] }[] = [];
+    const calls: RecordedCall[] = [];
     mockCreatePublicClient.mockReturnValue(
       makeClient(
         {
@@ -309,12 +437,12 @@ describe('getVenueDetail', () => {
     expect(data?.groups).toHaveLength(1);
     expect(data?.groups[0]?.items[0]?.eventName).toBe('名探偵コナンカフェ');
 
-    // 開催の絞り込みは venue_id (occurrences.slug は企画内ハンドルなので使わない)。
-    const eqCalls = calls.filter((c) => c.method === 'eq');
-    expect(eqCalls).toEqual([
-      { method: 'eq', args: ['slug', 'box-cafe-and-space-gems-shibuya'] },
-      { method: 'eq', args: ['venue_id', 7] },
+    // 会場は slug で 1 件引き、開催の絞り込みは venue_id
+    // (occurrences.slug は企画内ハンドルなので使わない)。
+    expect(onTable(calls, 'venues', 'eq').map((c) => c.args)).toEqual([
+      ['slug', 'box-cafe-and-space-gems-shibuya'],
     ]);
+    expect(onTable(calls, 'occurrence_view', 'eq').map((c) => c.args)).toEqual([['venue_id', 7]]);
 
     // ページ境界の安定順序は基底テーブルの列 (starts_on → id)。
     // 埋め込み先 (`referencedTable`) の order を使わない。
@@ -327,7 +455,7 @@ describe('getVenueDetail', () => {
 
   it('paginates the occurrence query even for a single venue (db.max_rows 対策)', async () => {
     mockHasCredentials.mockReturnValue(true);
-    const calls: { method: string; args: unknown[] }[] = [];
+    const calls: RecordedCall[] = [];
     // 1 ページ目 = PAGE_SIZE (500) 行ちょうど → 2 ページ目まで読みに行く。
     const fullPage = Array.from({ length: 500 }, (_, index) => ({
       ...OCCURRENCE_ROW,
