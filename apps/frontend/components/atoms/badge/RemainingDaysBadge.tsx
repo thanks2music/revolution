@@ -71,7 +71,7 @@ export const RemainingDaysBadge = ({ endsOn, now, className = '' }: Props) => {
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-display text-xs tracking-wide ${tierStyle[tier]} ${className}`}
+      className={`inline-flex items-center gap-1 px-2.5 py-1 font-display text-xs tracking-wide ${tierStyle[tier]} ${className}`}
     >
       <span>あと</span>
       <span className="font-numeric tabular-nums text-base font-bold leading-none">{daysLeft}</span>

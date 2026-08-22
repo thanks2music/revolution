@@ -1,20 +1,13 @@
-import {
-  OccurrenceStatusSchema,
-  type OccurrenceStatus,
-} from '@revolution/schemas/occurrence';
 import * as Sentry from '@sentry/nextjs';
 import { cache } from 'react';
 import { z } from 'zod';
 
 import {
   EVENT_COLUMNS,
-  EVENT_LIST_COLUMNS,
   EVENT_TITLES_COLUMNS,
-  EventListRowSchema,
   EventSchema,
   EventSummarySchema,
   type EventSummary,
-  parseEmbeddedEventTitles,
   parseEmbeddedTitles,
   type Title,
 } from '@/lib/event/contracts';
@@ -24,10 +17,6 @@ import {
   type Occurrence,
   toOccurrences,
 } from '@/lib/occurrence/queries';
-import {
-  summarizeStatusCounts,
-  type StatusCount,
-} from '@/lib/occurrence/status';
 import { parseCanonicalId } from '@/lib/route-params';
 import { fetchAllRows } from '@/lib/supabase/paginate';
 import { createPublicClient } from '@/lib/supabase/public';
@@ -86,39 +75,13 @@ export async function listEventParams(): Promise<{ id: string }[]> {
   return [...new Set(occurrences.map((row) => row.id))].map((id) => ({ id }));
 }
 
-/** `/events` 一覧カード 1 枚ぶんの表示用データ (Claude Design v6 #14)。 */
-export type EventListItem = {
-  id: number;
-  name: string;
-  /** 主分類 (イベントタイプ) の表示名。埋め込みが解決できなければ null。 */
-  categoryName: string | null;
-  /** この企画に紐づく作品 (名前順)。複数作品コラボがあり得る。 */
-  titles: Title[];
-  /**
-   * この企画の公開済み開催の総数 (v6 の「全 N 会場」)。
-   * ⚠️ 数えているのは**開催**で、会場マスタを持たない開催 (`venue_id is null`)
-   *    も 1 件として含む。作品ハブの「全 N 会場」と同じ数え方に揃えている。
-   */
-  occurrenceCount: number;
-  /** 状態別の内訳。**0 件の状態は含まない**。並びは `OCCURRENCE_STATUS_ORDER`。 */
-  statusCounts: StatusCount[];
-};
-
 /**
- * `/events` 一覧ページ用。公開済み開催を 1 件以上持つ企画を name 順で列挙し、
- * カード表示に要る作品名・イベントタイプ・状態別開催数を添える。
+ * `/events` 一覧ページ用。公開済み開催を 1 件以上持つ企画を name 順で列挙する。
  *
  * 対象の定義は `listEventParams` (= 静的生成対象) と同じにして、
  * **一覧に載る企画 = ページが生成される企画**を保つ (リンク先が 404 にならない)。
- *
- * ## v6 で列が増えた経緯 (2026-08-22)
- *
- * PR #333 の時点では「MVP では開催数・状態サマリを置かない」判断で `events.name`
- * のみを読んでいた。Claude Design v6 #14 がカード化を要求し、**BOSS がその案を
- * 採用して当時の判断を意図的に上書きした**。集合の 1 箇所化・ページング・
- * 基底テーブル列での全順序は当時のまま維持している (拡張で崩さないこと)。
  */
-export async function listEventListItems(): Promise<EventListItem[]> {
+export async function listEventSummaries(): Promise<EventSummary[]> {
   const ids = (await listEventParams()).map((param) => Number(param.id));
   if (ids.length === 0) return [];
 
@@ -129,108 +92,21 @@ export async function listEventListItems(): Promise<EventListItem[]> {
   //    1000 件を超えた瞬間から一覧が静かに欠ける。そうなると
   //    「一覧に載る企画 = 静的生成される企画」という本関数の前提が崩れる
   //    (2026-08-21 Codex レビュー指摘)。
-  //
-  //    埋め込み (作品・イベントタイプ) を足しても**行数は企画数のまま**なので、
-  //    ページングの単位は変わらない。
-  const [rows, counts] = await Promise.all([
-    fetchAllRows({
-      label: 'event list items',
-      fetchPage: (from, to) =>
-        supabase
-          .from('events')
-          .select(EVENT_LIST_COLUMNS)
-          .in('id', ids)
-          // 表示順を DB 任せにしない。`id` は range ページングのタイブレーク
-          // (同名の企画があると name だけでは全順序にならない)。
-          //
-          // ⚠️ 埋め込み先 (`categories.name` / `titles.name`) の order は使わない。
-          //    `referencedTable` 付き order は全順序を保証せず、range ページングで
-          //    行の重複・欠落を招き得る (#333 Codex 指摘)。作品チップの並びは
-          //    `parseEmbeddedEventTitles` が JS 側で作る。
-          .order('name', { ascending: true })
-          .order('id', { ascending: true })
-          .range(from, to),
-    }),
-    countOccurrencesByEvent(),
-  ]);
-
-  return z
-    .array(EventListRowSchema)
-    .parse(rows)
-    .map((row) => {
-      const byStatus = counts.get(row.id) ?? {};
-      return {
-        id: row.id,
-        name: row.name,
-        categoryName: row.primaryCategory?.name ?? null,
-        titles: parseEmbeddedEventTitles(row.eventTitles),
-        occurrenceCount: Object.values(byStatus).reduce((sum, n) => sum + n, 0),
-        statusCounts: summarizeStatusCounts(byStatus),
-      };
-    });
-}
-
-/**
- * 企画ごとの状態別開催数。`occurrence_view` を 1 周して JS で数える。
- *
- * ## なぜ DB 集約を使わないのか (2026-08-22 実測)
- *
- * PostgREST の集約関数は**このプロジェクトの Supabase では無効**:
- * `occurrence_view?select=event_id,count:id.count()` は
- * `400 PGRST123 "Use of aggregate functions is not allowed"` を返す。
- * 集約を DB 側でやるには view か RPC を追加する migration が要るため、
- * MVP 規模 (開催 33 件) では JS 集計で足りると判断した。
- *
- * ## なぜ `.in('event_id', ids)` で絞らないのか
- *
- * **対象企画の集合そのものが `occurrence_view` から導出されている**
- * (`listEventParams` → `listOccurrenceParams`)。絞り込んでも走査する行は同じで、
- * ids が増えたときに URL 長のリスクだけが増える。
- *
- * ## ⚠️ `occurrence_view` を 2 周することを承知で残している
- *
- * `listEventListItems` は 1 リクエストで本 view を **2 回**走査する
- * (1 回目 = `listOccurrenceParams` が id/slug を、2 回目 = ここが状態を)。
- * `select('event_id, slug, status')` の 1 周にまとめれば往復は半分になる
- * (2026-08-22 claude[bot] レビュー指摘)。**それでも分けているのは、
- * まとめると「静的生成対象の企画」という定義がこの関数の中に 2 つ目として
- * 生まれるから** — #332/#333 で「集合の定義を 1 箇所に閉じる」ために
- * `listEventParams` へ寄せた不変条件を、性能都合で崩すことになる。
- *
- * 現在の規模 (開催 33 件) では計測上の問題が無く、行数が増えて実際に効いてきたら
- * **DB 側の view / RPC で集計する**のが本筋 (PostgREST の集約が無効な現状では
- * migration が要る)。「1 周にまとめる」は最後の手段として扱う。
- *
- * ⚠️ 全件走査なので `fetchAllRows` で page 化する。並びは基底テーブルの `id`
- *    (`occurrence_view.id` は開催 id で UNIQUE = 全順序、`listOccurrenceParams`
- *    と同じ選択)。
- */
-async function countOccurrencesByEvent(): Promise<
-  Map<number, Partial<Record<OccurrenceStatus, number>>>
-> {
-  const supabase = createPublicClient();
-
   const rows = await fetchAllRows({
-    label: 'occurrence counts by event',
+    label: 'event summaries',
     fetchPage: (from, to) =>
       supabase
-        .from('occurrence_view')
-        .select('eventId:event_id, status')
+        .from('events')
+        .select('id, name')
+        .in('id', ids)
+        // 表示順を DB 任せにしない。`id` は range ページングのタイブレーク
+        // (同名の企画があると name だけでは全順序にならない)。
+        .order('name', { ascending: true })
         .order('id', { ascending: true })
         .range(from, to),
   });
 
-  const parsed = z
-    .array(z.object({ eventId: z.number(), status: OccurrenceStatusSchema }))
-    .parse(rows);
-
-  const byEvent = new Map<number, Partial<Record<OccurrenceStatus, number>>>();
-  for (const row of parsed) {
-    const counts = byEvent.get(row.eventId) ?? {};
-    counts[row.status] = (counts[row.status] ?? 0) + 1;
-    byEvent.set(row.eventId, counts);
-  }
-  return byEvent;
+  return z.array(EventSummarySchema).parse(rows);
 }
 
 /**

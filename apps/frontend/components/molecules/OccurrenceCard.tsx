@@ -39,10 +39,7 @@ type Props = {
 export const OccurrenceCard = ({ eventId, occurrence }: Props) => (
   <Link
     href={getOccurrenceUrl(eventId, occurrence.slug)}
-    // 器 (角丸・影・hover) は `EventOccurrenceCard` と揃える。揃えないと
-    // 「同じ意味の UI が 2 つの見た目を持つ」状態が復活する (本ファイルの
-    // docstring が是正した不整合と同型)。違うのは**主表示が会場名か企画名か**だけ。
-    className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
+    className="flex flex-wrap items-center gap-3 border border-[var(--line-soft)] bg-bg-elevated p-4 hover:border-[var(--line-strong)]"
   >
     <StatusBadge status={toBadgeStatus(occurrence.status)} />
     {/*
@@ -52,7 +49,7 @@ export const OccurrenceCard = ({ eventId, occurrence }: Props) => (
       読み手は「開始まであと N 日」と読むため**意味が反転して伝わる**
       (実測: 開始まで 14 日の開催に「あと 45 日」と表示されていた)。
       開催前の煽りは状態バッジ側の "Coming Soon" が担う。
-      終了・中止・日程未発表は残り時間の概念そのものが無い。
+      終了・中止・日程未定は残り時間の概念そのものが無い。
     */}
     {occurrence.status === 'ongoing' && <RemainingDaysBadge endsOn={occurrence.endsOn} />}
     <span className="font-display text-ink-strong">

@@ -1,21 +1,7 @@
 /**
  * イベントステータスバッジ。
- *
- * ## 意匠 (Claude Design v6、2026-08-22 全面変更)
- *
- * **ピル型 (角丸 full) + 塗り分け**。開催中だけが濃色 + 白文字 + ライブドットで、
- * 残りは淡色 + 暗文字。「今行ける」ものが一目で立つ階層にしている。
- *
- * ⚠️ **v5 の「黄色塗り一点突破」は撤回された。** 旧実装は `--accent-yellow` の
- *    塗りを 'coming-soon' / 'now' に当て、それをサイト内で唯一の発生源として
- *    "事件性" シグナルにしていた (brief §4-1)。v6 では開催中が青 (濃) になり、
- *    黄色は**残日数バッジ (`RemainingDaysBadge`) と 'coming-soon' の「あと N 日」
- *    大数字**に残る。BOSS 承認済みの意図的な変更 (2026-08-22)。
- *
- * 🔶 v6 の開催中の指定色 `#0B93D5` は白文字とのコントラストが 3.42:1 で
- *    WCAG AA (4.5:1) を割るため、**色相を変えず既存の `--primary-strong`
- *    (#1a6fa3、5.46:1)** を使う。終了バッジの文字も同様に是正済み。
- *    経緯は `styles/globals.css` のトークン定義を参照。
+ * `--accent-yellow` の塗りはサイト内で本コンポーネントの 'coming-soon' / 'now'
+ * 状態だけが発生源 (brief §4-1 の "事件性" シグナル一点突破)。
  *
  * ---
  *
@@ -53,24 +39,20 @@ type Props = {
   className?: string;
 };
 
-const baseStyle =
-  'inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-display text-sm tracking-wide';
+const baseStyle = 'inline-flex items-center gap-1.5 px-3 py-1.5 font-display text-sm tracking-wide';
+
+const YELLOW = 'bg-accent-yellow text-ink-strong border-l-[3px] border-accent-yellow-deep';
 
 const variantStyle: Record<EventStatus, string> = {
-  // 開催予定。淡色 + 暗文字 (6.43:1)。「まだ行けない」ので開催中より沈ませる。
-  'coming-soon': 'bg-status-scheduled-surface text-status-scheduled-ink',
-  // 開催中。唯一の濃色 + 白文字 (5.46:1)。ライブドットは下の分岐で足す。
-  now: 'bg-status-ongoing text-white',
-  // 終了。アーカイブのトーンに合わせた地 + 暗文字 (5.03:1)。
-  ended: 'bg-status-ended-surface text-status-ended-ink',
+  'coming-soon': YELLOW,
+  now: YELLOW,
+  ended: 'bg-ink-muted text-white',
   unknown: 'bg-bg-tinted text-ink-muted border border-[var(--line-soft)]',
-  // 「発表待ち」を表すので、終了 (沈んだ地) とも開催中 (濃色) とも別に見えること。
-  // 塗らず破線のみにして「まだ確定していない」を視覚的に表す (v6 が唯一の
-  // 新規トークンと呼ぶ --status-unscheduled-line)。
-  unscheduled:
-    'bg-transparent text-status-scheduled-ink border border-dashed border-status-unscheduled-line',
-  // 中止。淡赤地 + 赤文字 (5.18:1)。白文字は載せない。
-  cancelled: 'bg-status-cancelled-surface text-status-cancelled',
+  // 「発表待ち」を表すので、終了 (沈んだ色) とも開催中 (黄色) とも別に見えること。
+  // 塗らず罫線のみにして「まだ確定していない」を視覚的に表す。
+  unscheduled: 'bg-transparent text-ink-body border border-[var(--line-strong)] border-dashed',
+  // 中止。白文字とのコントラスト 5.96:1 (AA PASS)。
+  cancelled: 'bg-status-cancelled text-white',
 };
 
 const labelByStatus: Record<EventStatus, string> = {
@@ -78,9 +60,7 @@ const labelByStatus: Record<EventStatus, string> = {
   now: '開催中',
   ended: '終了',
   unknown: '詳細を確認',
-  // grouping のセクション見出し (`OCCURRENCE_STATUS_LABELS`) と v6 の表記に揃えた
-  // (旧 '日程未定'。同じ状態を 2 つの言葉で呼んでいた)。
-  unscheduled: '日程未発表',
+  unscheduled: '日程未定',
   cancelled: '中止',
 };
 
@@ -95,23 +75,6 @@ export const StatusBadge = ({ status, daysLeft, className = '' }: Props) => {
           {daysLeft}
         </span>
         <span className="text-xs">日</span>
-      </span>
-    );
-  }
-
-  if (status === 'now') {
-    return (
-      <span className={cls}>
-        {/*
-          ライブドット。`motion-safe:` により prefers-reduced-motion: reduce では
-          点滅せず静的なドットになる (a11y)。「開催中」は色・文言・位置で既に
-          伝わっており、点滅は装飾なので止まっても情報は失われない。
-        */}
-        <span
-          aria-hidden="true"
-          className="size-1.5 rounded-full bg-white motion-safe:animate-[livePulse_1.6s_ease-in-out_infinite]"
-        />
-        {labelByStatus[status]}
       </span>
     );
   }

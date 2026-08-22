@@ -12,10 +12,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { EmptyState } from '@/components/molecules/EmptyState';
-import { EventOccurrenceCard } from '@/components/molecules/EventOccurrenceCard';
+import { OccurrenceCard } from '@/components/molecules/OccurrenceCard';
 import Layout from '@/components/templates/Layout';
-import { EVENT_NAME_FALLBACK } from '@/lib/event/contracts';
 import { groupOccurrencesByStatus } from '@/lib/event/grouping';
 import { generateContentMetadata } from '@/lib/metadata';
 import { getTitleHubData, listTitleParams } from '@/lib/title/queries';
@@ -90,50 +88,34 @@ export default async function TitleOccurrencesPage(props: TitleOccurrencesPagePr
         <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
           {title.name} の開催一覧
         </h1>
-
-        {occurrences.length > 0 ? (
-          <>
-            <p className="mb-6 text-sm text-ink-muted">
+        <p className="mb-8 text-sm text-ink-muted">
+          {occurrences.length > 0 ? (
+            <>
               <span className="font-numeric tabular-nums">{occurrences.length}</span> 会場
-            </p>
+            </>
+          ) : (
+            'この作品の開催情報はまだ登録されていません。'
+          )}
+        </p>
 
-            {groups.map((group) => (
-              <section key={group.key} className="mb-8">
-                <h2 className="mb-3 font-display text-base font-bold text-ink-strong">
-                  {group.label}
-                  <span className="ml-2 font-numeric text-xs font-normal tabular-nums text-ink-muted">
-                    {group.items.length}
-                  </span>
-                </h2>
-                <ul className="grid gap-2">
-                  {group.items.map((occurrence) => (
-                    <li key={occurrence.id}>
-                      {/*
-                        この画面は企画も会場も行ごとに変わるので、**企画名を主表示**に
-                        して会場名を従に置く (v6 #16、2026-08-22 BOSS 確定)。
-                        旧実装は共有 `OccurrenceCard` (会場名が主) を使い、企画名を
-                        カード外の小ラベルで補っていた。
-                      */}
-                      <EventOccurrenceCard
-                        eventId={occurrence.eventId}
-                        slug={occurrence.slug}
-                        eventName={
-                          eventNameById.get(occurrence.eventId) ?? EVENT_NAME_FALLBACK
-                        }
-                        status={occurrence.status}
-                        startsOn={occurrence.startsOn}
-                        endsOn={occurrence.endsOn}
-                        venueName={occurrence.venueName}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </>
-        ) : (
-          <EmptyState message="この作品の開催情報はまだ登録されていません。" />
-        )}
+        {groups.map((group) => (
+          <section key={group.key} className="mb-8">
+            <h2 className="mb-3 font-display text-sm font-bold tracking-wide text-ink-muted">
+              {group.label}
+              <span className="ml-2 font-numeric tabular-nums">{group.items.length}</span>
+            </h2>
+            <ul className="grid gap-3">
+              {group.items.map((occurrence) => (
+                <li key={occurrence.id}>
+                  <p className="mb-1 text-xs text-ink-muted">
+                    {eventNameById.get(occurrence.eventId)}
+                  </p>
+                  <OccurrenceCard eventId={occurrence.eventId} occurrence={occurrence} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </div>
     </Layout>
   );
