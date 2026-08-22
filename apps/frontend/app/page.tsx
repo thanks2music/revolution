@@ -57,7 +57,13 @@ export default async function Home() {
              `next/image` に差し替える。写真が無くても「コピーが読める帯」として
              成立する形にしてあるので、支給前でもレイアウトは崩れない。
         */}
-        <div className="relative mt-6 flex min-h-[12rem] items-end overflow-hidden rounded-2xl md:mt-8 md:min-h-[16rem]">
+        {/*
+          比率は写真 (2.02:1) に近づける。器を横長にしすぎると object-cover が
+          上下を切り落とし、**白文字が乗る唯一の暗い領域である腰壁が消える**
+          (実測: 腰壁ぞい 4.80:1 / クリーム壁 1.92:1)。
+          `object-bottom` で下端を優先して残すのも同じ理由。
+        */}
+        <div className="relative mt-6 flex aspect-[2/1] items-end overflow-hidden rounded-2xl md:mt-8 md:aspect-[5/2]">
           {/*
             ⚠️ **仮入れの写真** (2026-08-22)。BOSS が加工版を用意中で、
                差し替え時は `public/images/hero-provisional.jpg` を置き換える。
@@ -69,16 +75,28 @@ export default async function Home() {
             fill
             priority
             sizes="(min-width: 1050px) 1050px, 100vw"
-            className="object-cover"
+            className="object-cover object-bottom"
           />
           {/*
-            白文字を載せるためのオーバーレイ。写真が明るい版に差し替わっても
-            コピーが読めるよう、下ほど濃いグラデーションで固定する
-            (v5 #1 と同じ手法)。`aria-hidden` は装飾のため。
+            白文字を載せるためのオーバーレイ。`aria-hidden` は装飾のため。
+
+            ⚠️ **モバイルで効く形にしてある。** 器はモバイル 2:1 / PC 5:2 で、
+               PC は暗い腰壁が文字の下に来るが、**モバイルは明るい壁が
+               1 行目に掛かる**。実測でモバイルは 1.45:1 まで落ちていたため、
+               グラデーションの開始を上げて (30% 地点から) 中間色を挟んでいる。
+               写真を差し替えたら必ず両方の幅で再計測すること。
+
+            🔴 **色は `black` を使う。`ink-strong` ではない。** `--ink-strong` は
+               16 進値を持つ CSS 変数なので、Tailwind の透明度修飾子 (`/55`) が
+               `rgb(var(--ink-strong) / .55)` を生成しようとして**無効になり、
+               グラデーションが丸ごと透明に潰れる** (2026-08-22 実測。
+               computed が `linear-gradient(rgba(0,0,0,0) 30%, rgba(0,0,0,0))`
+               になっていた = オーバーレイが無効だった)。
+               スクリムは中立的な暗色でよいので `black` が正しい。
           */}
           <div
             aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-b from-ink-strong/20 to-ink-strong/80"
+            className="absolute inset-0 bg-gradient-to-b from-transparent from-10% via-black/55 via-55% to-black/85"
           />
           <p className="relative p-5 font-display text-xl font-black leading-snug text-white md:p-8 md:text-3xl">
             行ったイベントを、
