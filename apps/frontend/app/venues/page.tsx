@@ -12,6 +12,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { EmptyState } from '@/components/molecules/EmptyState';
 import Layout from '@/components/templates/Layout';
 import { generateContentMetadata } from '@/lib/metadata';
 import { listVenueDetails } from '@/lib/venue/queries';
@@ -48,33 +49,59 @@ export default async function VenuesPage() {
         <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
           会場から探す
         </h1>
-        <p className="mb-8 text-sm text-ink-muted">
-          {venues.length > 0 ? (
-            <>
-              <span className="font-numeric tabular-nums">{venues.length}</span> 件
-            </>
-          ) : (
-            '会場はまだ登録されていません。'
-          )}
-        </p>
 
-        <ul className="grid gap-3">
-          {venues.map((venue) => {
-            // 都道府県・市区は null を取り得る (データ源が無い項目は置かない)。
-            const region = [venue.prefecture, venue.city].filter(Boolean).join(' ');
-            return (
-              <li key={venue.id}>
-                <Link
-                  href={getVenueUrl(venue.slug)}
-                  className="block border border-[var(--line-soft)] bg-bg-elevated p-4 hover:border-[var(--line-strong)]"
-                >
-                  <span className="font-display text-ink-strong">{venue.name}</span>
-                  {region && <p className="mt-1 text-sm text-ink-muted">{region}</p>}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        {venues.length > 0 ? (
+          <>
+            <p className="mb-6 text-sm text-ink-muted">
+              <span className="font-numeric tabular-nums">{venues.length}</span> 件
+            </p>
+
+            <ul className="grid gap-2">
+              {venues.map((venue) => {
+                // 都道府県・市区は null を取り得る (データ源が無い項目は置かない)。
+                const region = [venue.prefecture, venue.city].filter(Boolean).join(' ');
+                return (
+                  <li key={venue.id}>
+                    <Link
+                      href={getVenueUrl(venue.slug)}
+                      className="flex items-center gap-2 rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-display font-bold text-ink-strong">{venue.name}</p>
+                        {/*
+                          エリアと開催数は**どちらも無ければ行ごと出さない**
+                          (「データ源が無い項目は置かない」の既存規律)。
+                          開催 0 件の会場も一覧には載る (ページは生成される) が、
+                          「開催 0 件」とは書かない。
+                        */}
+                        {(region || venue.occurrenceCount > 0) && (
+                          <p className="mt-0.5 text-xs text-ink-muted">
+                            {region}
+                            {region && venue.occurrenceCount > 0 && ' ・ '}
+                            {venue.occurrenceCount > 0 && (
+                              <>
+                                開催
+                                <span className="font-numeric tabular-nums">
+                                  {venue.occurrenceCount}
+                                </span>
+                                件
+                              </>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                      <span aria-hidden="true" className="ml-auto text-ink-muted">
+                        ›
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        ) : (
+          <EmptyState message="会場はまだ登録されていません。" />
+        )}
       </div>
     </Layout>
   );

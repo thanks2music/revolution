@@ -19,13 +19,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
-import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
+import { EventOccurrenceCard } from '@/components/molecules/EventOccurrenceCard';
 import Layout from '@/components/templates/Layout';
-import { getOccurrenceUrl } from '@/lib/event/event-url';
 import { generateContentMetadata } from '@/lib/metadata';
-import { formatPeriod } from '@/lib/occurrence/format';
-import { toBadgeStatus } from '@/lib/occurrence/status';
 import { getVenueDetail, listVenueParams } from '@/lib/venue/queries';
 import { getVenueUrl } from '@/lib/venue/venue-url';
 import type { PageProps } from '@/types/page-props';
@@ -133,32 +129,27 @@ export default async function VenuePage(props: VenuePageProps) {
 
           {groups.map((group) => (
             <section key={group.key} className="mb-8">
-              <h3 className="mb-3 font-display text-sm font-bold tracking-wide text-ink-muted">
+              <h3 className="mb-3 font-display text-base font-bold text-ink-strong">
                 {group.label}
-                <span className="ml-2 font-numeric tabular-nums">{group.items.length}</span>
+                <span className="ml-2 font-numeric text-xs font-normal tabular-nums text-ink-muted">
+                  {group.items.length}
+                </span>
               </h3>
-              <ul className="grid gap-3">
+              <ul className="grid gap-2">
                 {group.items.map((occurrence) => (
                   <li key={occurrence.id}>
                     {/*
-                      `OccurrenceCard` は流用しない — あちらの主表示は会場名で、
-                      会場ページでは全行が同じ名前になり無意味。ここでは企画名を
-                      主表示にした同型のカードを描く (バッジ・期間表記は共有)。
+                      `venueName` は渡さない — このページ自身が会場なので、全行に
+                      同じ名前が並んで無意味になる (作品の開催一覧では渡す)。
                     */}
-                    <Link
-                      href={getOccurrenceUrl(occurrence.eventId, occurrence.slug)}
-                      className="flex flex-wrap items-center gap-3 border border-[var(--line-soft)] bg-bg-elevated p-4 hover:border-[var(--line-strong)]"
-                    >
-                      <StatusBadge status={toBadgeStatus(occurrence.status)} />
-                      {/* 残日数は開催中のときだけ (`OccurrenceCard` と同じ理由)。 */}
-                      {occurrence.status === 'ongoing' && (
-                        <RemainingDaysBadge endsOn={occurrence.endsOn} />
-                      )}
-                      <span className="font-display text-ink-strong">{occurrence.eventName}</span>
-                      <span className="font-numeric tabular-nums text-sm text-ink-muted">
-                        {formatPeriod(occurrence.startsOn, occurrence.endsOn)}
-                      </span>
-                    </Link>
+                    <EventOccurrenceCard
+                      eventId={occurrence.eventId}
+                      slug={occurrence.slug}
+                      eventName={occurrence.eventName}
+                      status={occurrence.status}
+                      startsOn={occurrence.startsOn}
+                      endsOn={occurrence.endsOn}
+                    />
                   </li>
                 ))}
               </ul>

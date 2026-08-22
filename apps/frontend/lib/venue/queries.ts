@@ -90,22 +90,87 @@ export async function listVenueParams(): Promise<{ slug: string }[]> {
   return z.array(z.object({ slug: z.string() })).parse(rows);
 }
 
+/** `/venues` 一覧カード 1 枚ぶん。会場マスタの行 + 開催数 (Claude Design v6 #15)。 */
+export type VenueListItem = VenueDetail & {
+  /**
+   * この会場の公開済み開催の総数。**0 のときは表示側で行を出さない**
+   * (「データ源が無い項目は置かない」の既存規律に合わせる)。
+   */
+  occurrenceCount: number;
+};
+
 /**
- * `/venues` 一覧ページ用。venues マスタの全行を name 順で列挙する。
+ * `/venues` 一覧ページ用。venues マスタの全行を name 順で列挙し、開催数を添える。
  *
  * 対象集合は `listVenueParams` と共有する (`queryVenueRows`)。
  * = 一覧に載る会場は必ずページを持つ (404 リンクにならない)。
+ *
+ * ⚠️ **開催数は「対象集合」に影響させない。** 開催 0 件の会場も一覧に載せ、ページも
+ *    生成する (会場ページは空状態を通常状態として描く)。集計は表示上の装飾であり、
+ *    `queryVenueRows` の絞り込み条件には一切触らない — ここを混ぜると
+ *    「一覧・生成対象・詳細の 404 ゼロ」という #333 で作り込んだ不変条件が壊れる。
+ *
+ * ## v6 で開催数が付いた経緯 (2026-08-22)
+ *
+ * PR #333 の時点では「MVP では開催数を置かない」判断だった。v6 #15 が
+ * `▲ 要クエリ拡張` として要求し、**BOSS がその案を採用して当時の判断を意図的に
+ * 上書きした**。粒度は総数のみ (状態別内訳は出さない、2026-08-22 BOSS 確定)。
  */
-export async function listVenueDetails(): Promise<VenueDetail[]> {
+export async function listVenueDetails(): Promise<VenueListItem[]> {
   if (!hasPublicSupabaseCredentials()) {
     return [];
   }
 
-  const rows = await queryVenueRows({
-    label: 'venue details',
-    columns: VENUE_DETAIL_COLUMNS,
+  const [rows, counts] = await Promise.all([
+    queryVenueRows({ label: 'venue details', columns: VENUE_DETAIL_COLUMNS }),
+    countOccurrencesByVenue(),
+  ]);
+
+  return z
+    .array(VenueDetailSchema)
+    .parse(rows)
+    .map((venue) => ({ ...venue, occurrenceCount: counts.get(venue.id) ?? 0 }));
+}
+
+/**
+ * 会場ごとの開催数。`occurrence_view` を 1 周して JS で数える。
+ *
+ * ## DB 集約は使えない (2026-08-22 実測)
+ *
+ * PostgREST の集約関数はこのプロジェクトの Supabase では無効
+ * (`400 PGRST123 "Use of aggregate functions is not allowed"`)。DB 側で数えるには
+ * view / RPC を足す migration が要るため、MVP 規模では JS 集計とする
+ * (`countOccurrencesByEvent` と同じ判断)。
+ *
+ * ## `venue_id is null` の行は数えない
+ *
+ * 会場マスタを持たない開催 (`venue_label` だけの開催) が**実データに存在する**
+ * (2026-08-22 実測 1 件)。どの会場にも属さないので、どの会場の件数にも足さない。
+ *
+ * ⚠️ 全件走査なので `fetchAllRows` で page 化し、並びは基底テーブルの `id`
+ *    (`occurrence_view.id` は開催 id で UNIQUE = 全順序)。
+ */
+async function countOccurrencesByVenue(): Promise<Map<number, number>> {
+  const supabase = createPublicClient();
+
+  const rows = await fetchAllRows({
+    label: 'occurrence counts by venue',
+    fetchPage: (from, to) =>
+      supabase
+        .from('occurrence_view')
+        .select('venueId:venue_id')
+        .order('id', { ascending: true })
+        .range(from, to),
   });
-  return z.array(VenueDetailSchema).parse(rows);
+
+  const parsed = z.array(z.object({ venueId: z.number().nullable() })).parse(rows);
+
+  const byVenue = new Map<number, number>();
+  for (const row of parsed) {
+    if (row.venueId === null) continue;
+    byVenue.set(row.venueId, (byVenue.get(row.venueId) ?? 0) + 1);
+  }
+  return byVenue;
 }
 
 /**

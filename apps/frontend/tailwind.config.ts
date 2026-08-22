@@ -34,14 +34,38 @@ const config: Config = {
           yellow: 'var(--accent-yellow)',
           'yellow-deep': 'var(--accent-yellow-deep)',
         },
-        // 開催状態 / 残日数 (S2 の開催詳細ページで使用)。
-        // --days-* は淡色のため前景は常に ink-strong (globals.css のコメント参照)。
+        // 開催状態バッジ (Claude Design v6)。AA 是正の経緯は globals.css を参照。
+        // `cancelled` は塗りではなく**文字色**なので注意 (地は cancelled-surface)。
         status: {
+          ongoing: 'var(--status-ongoing)',
+          'scheduled-surface': 'var(--status-scheduled-surface)',
+          'scheduled-ink': 'var(--status-scheduled-ink)',
+          'ended-surface': 'var(--status-ended-surface)',
+          'ended-ink': 'var(--status-ended-ink)',
+          'cancelled-surface': 'var(--status-cancelled-surface)',
           cancelled: 'var(--status-cancelled)',
+          'unscheduled-line': 'var(--status-unscheduled-line)',
         },
+        // 残日数。--days-* は淡色のため前景は常に ink-strong。
         days: {
           soon: 'var(--days-soon)',
           urgent: 'var(--days-urgent)',
+        },
+        // 記事カード (クリーム地 + 明朝) と終了開催のアーカイブ地。
+        article: {
+          DEFAULT: 'var(--bg-article)',
+          line: 'var(--line-article)',
+          ink: 'var(--ink-article)',
+          muted: 'var(--ink-article-muted)',
+        },
+        archive: {
+          DEFAULT: 'var(--bg-archive)',
+          line: 'var(--line-archive)',
+          ink: 'var(--ink-archive)',
+        },
+        // 企画の主分類 (イベントタイプ) タグ。白文字を載せる。
+        tag: {
+          type: 'var(--tag-type-surface)',
         },
       },
       borderColor: {
@@ -52,6 +76,8 @@ const config: Config = {
         body: ['var(--font-body)', 'Noto Sans JP', 'sans-serif'],
         display: ['var(--font-display)', 'var(--font-body)', 'Noto Sans JP', 'sans-serif'],
         numeric: ['var(--font-numeric)', 'var(--font-body)', 'Noto Sans JP', 'sans-serif'],
+        // 記事カードの見出し (Claude Design v6 #17/#18)。読み物としての活字トーン。
+        serif: ['var(--font-serif)', 'Hiragino Mincho ProN', 'YuMincho', 'serif'],
       },
       width: {
         main: 'var(--container-main)',

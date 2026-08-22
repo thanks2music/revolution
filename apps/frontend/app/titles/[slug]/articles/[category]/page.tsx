@@ -22,6 +22,7 @@ import { generateContentMetadata } from '@/lib/metadata';
 import {
   collectArticleCategorySlugs,
   collectTitleCategoryParams,
+  countArticlesByCategory,
   resolveCategoryLabel,
   selectTitleArticles,
 } from '@/lib/title/article-links';
@@ -90,6 +91,8 @@ export default async function TitleArticleCategoryPage(props: TitleArticleCatego
 
   const { title, articles, filtered } = loaded;
   const categorySlugs = collectArticleCategorySlugs(articles);
+  // チップの件数は 1 周でまとめて数える (カテゴリごとに filter しない)。
+  const categoryCounts = countArticlesByCategory(articles);
   const label = resolveCategoryLabel(filtered, category);
 
   return (
@@ -124,13 +127,18 @@ export default async function TitleArticleCategoryPage(props: TitleArticleCatego
         <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
           {title.name} の{label}記事
         </h1>
-        <p className="mb-8 text-sm text-ink-muted">
+        <p className="mb-6 text-sm text-ink-muted">
           <span className="font-numeric tabular-nums">{filtered.length}</span> 本 / 全{' '}
           <span className="font-numeric tabular-nums">{articles.length}</span> 本中
         </p>
 
         <div className="mb-8 flex flex-wrap gap-2">
-          <CategoryChip name="すべて" href={getTitleArticlesUrl(title.slug)} size="md" />
+          <CategoryChip
+            name="すべて"
+            href={getTitleArticlesUrl(title.slug)}
+            size="md"
+            count={articles.length}
+          />
           {categorySlugs.map((categorySlug) => (
             <CategoryChip
               key={categorySlug}
@@ -138,6 +146,7 @@ export default async function TitleArticleCategoryPage(props: TitleArticleCatego
               href={getTitleArticlesCategoryUrl(title.slug, categorySlug)}
               active={categorySlug === category}
               size="md"
+              count={categoryCounts.get(categorySlug) ?? 0}
             />
           ))}
         </div>

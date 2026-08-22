@@ -10,9 +10,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { EmptyState } from '@/components/molecules/EmptyState';
+import { EventSummaryCard } from '@/components/molecules/EventSummaryCard';
 import Layout from '@/components/templates/Layout';
-import { getEventUrl } from '@/lib/event/event-url';
-import { listEventSummaries } from '@/lib/event/queries';
+import { listEventListItems } from '@/lib/event/queries';
 import { generateContentMetadata } from '@/lib/metadata';
 
 export const revalidate = 120;
@@ -25,7 +26,7 @@ export const metadata: Metadata = generateContentMetadata({
 });
 
 export default async function EventsPage() {
-  const events = await listEventSummaries();
+  const events = await listEventListItems();
 
   return (
     <Layout>
@@ -47,28 +48,24 @@ export default async function EventsPage() {
         <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
           企画から探す
         </h1>
-        <p className="mb-8 text-sm text-ink-muted">
-          {events.length > 0 ? (
-            <>
-              <span className="font-numeric tabular-nums">{events.length}</span> 件
-            </>
-          ) : (
-            '企画はまだ登録されていません。'
-          )}
-        </p>
 
-        <ul className="grid gap-3">
-          {events.map((event) => (
-            <li key={event.id}>
-              <Link
-                href={getEventUrl(event.id)}
-                className="block border border-[var(--line-soft)] bg-bg-elevated p-4 font-display text-ink-strong hover:border-[var(--line-strong)]"
-              >
-                {event.name}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {events.length > 0 ? (
+          <>
+            <p className="mb-6 text-sm text-ink-muted">
+              <span className="font-numeric tabular-nums">{events.length}</span> 件
+            </p>
+
+            <ul className="grid gap-2">
+              {events.map((event) => (
+                <li key={event.id}>
+                  <EventSummaryCard event={event} />
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <EmptyState message="企画はまだ登録されていません。" />
+        )}
       </div>
     </Layout>
   );

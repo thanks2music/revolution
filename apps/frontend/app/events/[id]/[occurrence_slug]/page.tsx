@@ -118,7 +118,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             開催前 (`scheduled`) に出すと、読み手は「開始まであと N 日」と読むため
             **意味が反転して伝わる** (実測: 開始まで 14 日の開催に「あと 45 日」と
             表示されていた)。開催前の煽りは状態バッジ側の "Coming Soon" が担う。
-            終了・中止・日程未定は残り時間の概念そのものが無い。
+            終了・中止・日程未発表は残り時間の概念そのものが無い。
           */}
           {occurrence.status === 'ongoing' && <RemainingDaysBadge endsOn={occurrence.endsOn} />}
         </div>

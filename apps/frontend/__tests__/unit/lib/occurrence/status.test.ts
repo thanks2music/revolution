@@ -1,7 +1,14 @@
 import { describe, expect, it } from '@jest/globals';
 import { OCCURRENCE_STATUS_VALUES } from '@revolution/schemas/occurrence';
 
-import { diffInDays, todayInJst, toBadgeStatus } from '@/lib/occurrence/status';
+import {
+  diffInDays,
+  OCCURRENCE_STATUS_LABELS,
+  OCCURRENCE_STATUS_ORDER,
+  summarizeStatusCounts,
+  toBadgeStatus,
+  todayInJst,
+} from '@/lib/occurrence/status';
 
 describe('toBadgeStatus', () => {
   it('maps every value occurrence_view can return', () => {
@@ -74,5 +81,63 @@ describe('diffInDays', () => {
 
   it('handles a leap day', () => {
     expect(diffInDays('2028-02-28', '2028-03-01')).toBe(2);
+  });
+});
+
+describe('OCCURRENCE_STATUS_ORDER / OCCURRENCE_STATUS_LABELS', () => {
+  it('covers every status the view can return', () => {
+    // view に状態が増えたら型エラーになるが、値の抜けは実行時にも押さえる
+    // (`toBadgeStatus` の網羅テストと同じ姿勢)。
+    expect([...OCCURRENCE_STATUS_ORDER].sort()).toEqual([...OCCURRENCE_STATUS_VALUES].sort());
+    for (const status of OCCURRENCE_STATUS_VALUES) {
+      expect(OCCURRENCE_STATUS_LABELS[status]).toBeTruthy();
+    }
+  });
+
+  it('puts reachable statuses before unreachable ones', () => {
+    // 「今行けるものを先に」= 開催中 → 開催予定 → 日程未発表 → 終了 → 中止。
+    // 日程未発表が終了より前なのは、まだ行ける可能性があるため。
+    expect([...OCCURRENCE_STATUS_ORDER]).toEqual([
+      'ongoing',
+      'scheduled',
+      'unscheduled',
+      'ended',
+      'cancelled',
+    ]);
+  });
+});
+
+describe('summarizeStatusCounts', () => {
+  it('orders entries by display order regardless of input order', () => {
+    expect(
+      summarizeStatusCounts({ ended: 2, ongoing: 1, cancelled: 3 }).map((e) => e.status),
+    ).toEqual(['ongoing', 'ended', 'cancelled']);
+  });
+
+  it('drops zero-count statuses (見出しだけのサマリを出さない)', () => {
+    expect(summarizeStatusCounts({ ongoing: 1, ended: 0 })).toEqual([
+      { status: 'ongoing', label: '開催中', count: 1 },
+    ]);
+  });
+
+  it('returns [] for an empty input', () => {
+    expect(summarizeStatusCounts({})).toEqual([]);
+  });
+
+  it('labels every status with the shared vocabulary', () => {
+    const all = summarizeStatusCounts({
+      ongoing: 1,
+      scheduled: 1,
+      unscheduled: 1,
+      ended: 1,
+      cancelled: 1,
+    });
+    expect(all.map((e) => e.label)).toEqual([
+      '開催中',
+      '開催予定',
+      '日程未発表',
+      '終了',
+      '中止',
+    ]);
   });
 });

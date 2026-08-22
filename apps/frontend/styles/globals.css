@@ -9,7 +9,22 @@
 
   --ink-strong: #0f1b2d;
   --ink-body: #2a3b52;
-  --ink-muted: #6f7e94;
+  /*
+   * 補助テキスト。
+   *
+   * 🔶 2026-08-22: `#6f7e94` から暗くした。旧値は白地 **4.13:1** /
+   *    ページ地 (`--bg-primary`) **3.91:1** で、WCAG AA の 4.5:1 を満たして
+   *    いなかった (Codex レビュー #334 指摘、実測で確認)。
+   *
+   *    このトークンは件数・エリア・開催期間といった**装飾ではない実情報**に
+   *    使われている (一覧カードで「どれを選ぶか」の判断材料)。
+   *    現値は 白地 5.51:1 / ページ地 5.22:1 / アーカイブ地 5.23:1 で、
+   *    サイト内のどの面に載せても AA を満たす。
+   *
+   *    ⚠️ `--ink-body` (11.38:1) との差は保っているので、
+   *       body → muted の視覚的な階層は失われていない。
+   */
+  --ink-muted: #5c6a7d;
 
   --primary-50: #e5f4fe;
   --primary-100: #c7e7fb;
@@ -34,19 +49,68 @@
   --accent-yellow-deep: #f5c400;
 
   /*
-   * 開催状態 / 残日数の色 (Claude Design のステータス色 7 種のうち、S2 の
-   * 開催詳細ページで必要になる 3 つ。出典: docs/plan/2026-08-02-mvp-design-status-and-remaining-tasks.md §67)。
+   * 開催状態バッジの色 (Claude Design v6、2026-08-22 適用)。
    *
-   * - --status-cancelled #b4382f : 中止。白文字とのコントラスト 5.96:1 (AA PASS)
-   * - --days-soon        #fff0bf : 残日数 中程度。暗文字 (--ink-strong) を載せる
-   * - --days-urgent      #ffe0cc : 残日数 逼迫。暗文字 (--ink-strong) を載せる
+   * v6 は状態バッジをピル型 + 塗り分けで表現する。開催中だけが濃色 + 白文字で、
+   * 残りは淡色 + 暗文字。**--accent-yellow は状態バッジから外れた** (v5 では
+   * 開催中/予定が黄色塗りだった)。黄色は残日数バッジ (--days-*) と
+   * EventFactCard の「あと N 日」に残る。
+   *
+   * 🔶 v6 の指定値のうち、11px の小さい文字で WCAG AA (4.5:1) を割る 3 件は
+   *    **色相を変えず明度だけ落として是正**した (2026-08-22 実測)。既存コードが
+   *    --primary-strong を導入したのと同じ姿勢:
+   *
+   * | 用途 | v6 指定 | 実測 | 採用値 | 是正後 |
+   * |---|---|---|---|---|
+   * | 開催中の地 (白文字) | #0B93D5 | 3.42:1 ❌ | --primary-strong #1a6fa3 | 5.46:1 |
+   * | 終了の文字 | #7A6E5C | 4.27:1 ❌ | #6f6350 | 5.03:1 |
+   * | 記事メタ行の文字 | #9C8756 | 3.38:1 ❌ | #806c3e | 4.92:1 |
+   *
+   * AA を満たす v6 色はそのまま採用: 開催予定 6.43:1 / 中止 5.18:1 /
+   * 日程未発表 7.34:1 / イベントタイプタグ 5.51:1 / 記事本文 11.73:1。
+   *
+   * ⚠️ --status-cancelled は **塗り → 文字色**へ役割が変わった (値は同じ)。
+   *    v6 の中止バッジは淡赤地 + 赤文字で、白文字を載せない。
+   */
+  --status-ongoing: #1a6fa3;
+  --status-scheduled-surface: #eaf1f5;
+  --status-scheduled-ink: #40596b;
+  --status-ended-surface: #f1ede6;
+  --status-ended-ink: #6f6350;
+  --status-cancelled-surface: #fdecec;
+  --status-cancelled: #b4382f;
+  /* 日程未発表の破線ボーダー。v6 が「唯一の新規トークン」と呼ぶもの。 */
+  --status-unscheduled-line: #a9becc;
+
+  /*
+   * 残日数の色。**v6 の指定と完全一致**していたため変更なし。
    *
    * ⚠️ --days-* は淡色のため**白文字を載せてはいけない**。残日数バッジは
    *    常に --ink-strong を前景に使う。
    */
-  --status-cancelled: #b4382f;
   --days-soon: #fff0bf;
   --days-urgent: #ffe0cc;
+
+  /*
+   * 記事カード / アーカイブのトーン (Claude Design v5 由来、v6 #17/#18 で適用)。
+   *
+   * ⚠️ v6 は「v5 のトークンを継承・新規追加なし」と書いているが、**実装側は
+   *    v5 のこのトーンを一度も採用していなかった** (記事カードは白地 +
+   *    サンセリフのまま)。実際には本ブロックが新規追加になる。
+   *
+   * 記事は「読み物」として本文と同じ活字トーンを持たせる = クリーム地 + 明朝。
+   * アーカイブ (終了した開催) は「もう行けない」を沈んだ地色で示す。
+   */
+  --bg-article: #fffbf2;
+  --line-article: #f0e4cc;
+  --ink-article: #3d3524;
+  --ink-article-muted: #806c3e;
+  --bg-archive: #fbf9f4;
+  --line-archive: #ede4d4;
+  --ink-archive: #6f6350;
+
+  /* イベントタイプタグ (企画の主分類)。白文字とのコントラスト 5.51:1。 */
+  --tag-type-surface: #5a6b78;
 
   --line-soft: rgba(15, 27, 45, 0.08);
   --line-strong: rgba(15, 27, 45, 0.18);
@@ -108,6 +172,26 @@
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+/*
+ * 「開催中」バッジのライブドット (Claude Design v6 #16)。
+ *
+ * ⚠️ 使う側は必ず `motion-safe:` を付ける。Tailwind の `motion-safe:` は
+ *    `prefers-reduced-motion: no-preference` のメディアクエリなので、reduce を
+ *    選んでいる利用者では**アニメーションが当たらず静的なドットになる**
+ *    (`PaginatedArticleGrid` の fade-in-up と同じ a11y 規律)。
+ *    ドットは「開催中」という情報を色と位置で既に伝えており、点滅は装飾なので
+ *    止まっても情報は失われない。
+ */
+@keyframes livePulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
   }
 }
 

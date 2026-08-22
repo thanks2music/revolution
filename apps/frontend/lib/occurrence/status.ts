@@ -37,6 +37,78 @@ export function toBadgeStatus(status: OccurrenceStatus): EventStatus {
 }
 
 /**
+ * 開催状態の**表示順**。「今行けるものを先に」出す。
+ *
+ * 終了・中止を上に置くと「もう行けない選択肢」を先に読ませることになる。
+ * 日程未発表を終了より前に置いているのは、**まだ行ける可能性がある**ため
+ * (`unscheduled` は欠損ではなく「主催者が日程を発表していない」正規の状態、
+ * 2026-08-09 確定)。
+ *
+ * ## なぜここに置くか
+ *
+ * この順序と下の見出しラベルは、元々 `lib/event/grouping.ts` と
+ * `lib/venue/grouping.ts` の `GROUPS` 配列に**同じ値で 2 重定義**されていた。
+ * `/events` 一覧の状態別サマリ (v6 #14) が 3 例目になるため、rule-of-3 を満たした
+ * 時点で状態の語彙を持つ本モジュール (`toBadgeStatus` の隣) へ引き上げた。
+ *
+ * ⚠️ 各 grouping モジュールが持つ `within` (グループ内の並び規則) は
+ *    grouping 固有なので**引き上げない**。ここに集めるのは「状態の語彙」だけ。
+ *
+ * `satisfies` で `OccurrenceStatus` の網羅を強制する。view に 6 つ目の状態が
+ * 増えたら型エラーになる (`BADGE_STATUS` の Record と同じ守り方)。
+ */
+export const OCCURRENCE_STATUS_ORDER = [
+  'ongoing',
+  'scheduled',
+  'unscheduled',
+  'ended',
+  'cancelled',
+] as const satisfies readonly OccurrenceStatus[];
+
+// 網羅漏れをコンパイル時に検出する。状態を足してここを忘れると型エラー。
+type MissingStatus = Exclude<OccurrenceStatus, (typeof OCCURRENCE_STATUS_ORDER)[number]>;
+const _assertAllStatusesOrdered: MissingStatus extends never ? true : never = true;
+void _assertAllStatusesOrdered;
+
+/**
+ * 見出し・サマリで読ませる状態名。
+ *
+ * ⚠️ **`StatusBadge` の文言 (`labelByStatus`) とは別物**。あちらはカード上の
+ * バッジとして短く出す呼び名 (`Coming Soon` 等)、こちらはセクション見出しや
+ * 件数サマリで読ませる日本語。同じ値に揃えたくなるが、用途が違うので統合しない。
+ */
+export const OCCURRENCE_STATUS_LABELS: Record<OccurrenceStatus, string> = {
+  ongoing: '開催中',
+  scheduled: '開催予定',
+  unscheduled: '日程未発表',
+  ended: '終了',
+  cancelled: '中止',
+};
+
+/** 状態別サマリの 1 項目 (`/events` 一覧カードの「開催中 1 / 終了 2」)。 */
+export type StatusCount = {
+  status: OccurrenceStatus;
+  label: string;
+  count: number;
+};
+
+/**
+ * 状態別の件数を**表示順に並べ、0 件の状態を落とす** (Layer 1、純粋関数)。
+ *
+ * 0 件を落とすのは grouping が「空のグループは返さない」のと同じ規律 —
+ * 「終了 0」のような無情報を並べない。すべて 0 なら空配列。
+ */
+export function summarizeStatusCounts(
+  counts: Partial<Record<OccurrenceStatus, number>>,
+): StatusCount[] {
+  return OCCURRENCE_STATUS_ORDER.map((status) => ({
+    status,
+    label: OCCURRENCE_STATUS_LABELS[status],
+    count: counts[status] ?? 0,
+  })).filter((entry) => entry.count > 0);
+}
+
+/**
  * JST の「今日」を `YYYY-MM-DD` で返す。
  *
  * ⚠️ **`occurrence_view` は JST 固定で状態を導出している** (`0016` の

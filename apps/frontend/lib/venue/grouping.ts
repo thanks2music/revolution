@@ -1,5 +1,6 @@
 import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 
+import { OCCURRENCE_STATUS_LABELS } from '@/lib/occurrence/status';
 import type { VenueOccurrence } from '@/lib/venue/contracts';
 
 /**
@@ -17,7 +18,7 @@ import type { VenueOccurrence } from '@/lib/venue/contracts';
  *
  * ## 並び順の意図 (`lib/event/grouping.ts` と同一)
  *
- * **今行けるものを先に**出す。開催中 → 開催予定 → 日程未定 → 終了 → 中止。
+ * **今行けるものを先に**出す。開催中 → 開催予定 → 日程未発表 → 終了 → 中止。
  * 空のグループは返さない (見出しだけのセクションを出さない)。
  */
 
@@ -37,17 +38,18 @@ export type VenueOccurrenceGroup = {
 type WithinOrder = 'ends-asc' | 'starts-asc' | 'name';
 
 /**
- * 表示順 + 見出し + グループ内の並び。**配列の順序がそのまま画面の順序**。
+ * 表示順 + グループ内の並び。**配列の順序がそのまま画面の順序**。
+ * 見出しラベルは `OCCURRENCE_STATUS_LABELS` (`lib/occurrence/status.ts`) が SSoT。
  * 網羅性は `MissingGroup` がコンパイル時に守る (状態を足してここを忘れると
  * 型エラー。`lib/event/grouping.ts` と同じ仕組み)。
  */
 const GROUPS = [
-  { key: 'ongoing', label: '開催中', within: 'ends-asc' },
-  { key: 'scheduled', label: '開催予定', within: 'starts-asc' },
-  { key: 'unscheduled', label: '日程未発表', within: 'name' },
-  { key: 'ended', label: '終了', within: 'ends-asc' },
-  { key: 'cancelled', label: '中止', within: 'name' },
-] as const satisfies readonly { key: OccurrenceStatus; label: string; within: WithinOrder }[];
+  { key: 'ongoing', within: 'ends-asc' },
+  { key: 'scheduled', within: 'starts-asc' },
+  { key: 'unscheduled', within: 'name' },
+  { key: 'ended', within: 'ends-asc' },
+  { key: 'cancelled', within: 'name' },
+] as const satisfies readonly { key: OccurrenceStatus; within: WithinOrder }[];
 
 // 網羅漏れをコンパイル時に検出する。状態を足して GROUPS に書き忘れると型エラー。
 type MissingGroup = Exclude<OccurrenceStatus, (typeof GROUPS)[number]['key']>;
@@ -80,9 +82,9 @@ function compareWithin(within: WithinOrder) {
 
 /** 開催を状態別のグループへまとめる。空のグループは含まない。 */
 export function groupVenueOccurrencesByStatus(items: VenueOccurrence[]): VenueOccurrenceGroup[] {
-  return GROUPS.map(({ key, label, within }) => ({
+  return GROUPS.map(({ key, within }) => ({
     key,
-    label,
+    label: OCCURRENCE_STATUS_LABELS[key],
     items: items.filter((item) => item.status === key).sort(compareWithin(within)),
   })).filter((group) => group.items.length > 0);
 }

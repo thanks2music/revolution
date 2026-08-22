@@ -70,8 +70,13 @@ export async function fetchAllRows(args: {
     const chunk = data ?? [];
     rows.push(...chunk);
 
-    // ページサイズ未満で終端。サーバ側 max_rows がページサイズより小さい場合も
-    // ここで止まるが、その場合は次ページが空になるので取りこぼさない。
+    // ページサイズ未満で終端。
+    //
+    // ⚠️ **`max_rows >= PAGE_SIZE` を前提にしている。** サーバ側 `max_rows` が
+    //    PAGE_SIZE より小さいと 1 ページ目で終端と誤判定し、**次ページを要求せずに
+    //    黙って打ち切る** (2026-08-22 訂正: 旧コメントは「その場合は次ページが空に
+    //    なるので取りこぼさない」と書いていたが、次ページは要求されないので誤り。
+    //    Codex レビュー #334 指摘)。前提そのものは上の docstring に記載。
     if (chunk.length < PAGE_SIZE) return rows;
   }
 

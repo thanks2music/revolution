@@ -1,3 +1,5 @@
+import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
+
 /**
  * 開催の期間表示 (Layer 1、純粋関数)。
  *
@@ -23,3 +25,25 @@ export function formatPeriod(startsOn: string | null, endsOn: string | null): st
   if (!endsOn) return `${start} 〜 (終了日未定)`;
   return `${start} 〜 ${endsOn.replace(/-/g, '.')}`;
 }
+
+/**
+ * 期間表示に添える時制の言葉 (Claude Design v6 #16)。
+ *
+ * 同じ `2026.02.10 〜 05.06` が「これから」なのか「もう終わった」のか
+ * 「中止になった予定」なのかは、**状態バッジを見ないと分からない**。
+ * カード内で日付の隣に置くことで、バッジと日付を往復せずに読めるようにする。
+ *
+ * ⚠️ **日程未発表には付けない。** `formatPeriod` が既に「日程未発表」という
+ *    完成した文を返しているため、後ろに何か足すと二重表現になる。
+ */
+export function formatPeriodTense(status: OccurrenceStatus): string {
+  return PERIOD_TENSE[status];
+}
+
+const PERIOD_TENSE: Record<OccurrenceStatus, string> = {
+  ongoing: '',
+  scheduled: '',
+  unscheduled: '',
+  ended: ' に開催',
+  cancelled: ' の予定',
+};
