@@ -38,73 +38,65 @@ export default async function Home() {
       {/*
         ヒーロー (Claude Design v5 #1 + 2026-08-22 BOSS 指示)。
 
-        ページ先頭は**写真とタグラインだけ**にする。旧構成にあった
-        「VOL. 01 — 2026.08」の号数表記と `SparkRule` は削除済み (BOSS 指示)。
+        ## フルブリード (画面幅いっぱい)
 
-        文言は写真の中に 2 つ置く:
-          - 左上 = タグライン (h1)
-          - 左下 = サービス説明文
-        どちらも左寄せなので、スクリムは**左側**と**下側**の 2 枚を重ねている
-        (下記のコメント参照)。
+        Filmarks の構造を参照した BOSS 指示。**背景写真はブラウザ幅いっぱいに敷き、
+        読ませる文言だけを `w-main` に収める**。`Layout` の `<main>` に幅制約が
+        無いので、このセクションだけ `w-main` を外せばフルブリードになる。
+
+        ## 背景は「テクスチャ」として扱う
+
+        文字の可読性のために全面を暗く落とすので、**元から暗い写真**でないと
+        濁ってしまう (2026-08-22 に 3 案を同条件で比較し、明るい会場写真は
+        暗色化すると濁ったベージュになることを確認)。現在の写真は暗い通路の
+        カットで、赤の温かみが残るものを選んでいる。
+
+        匿名化は**全面の一様なぼかし**で済ませてある (背景テクスチャなので
+        部分マスクが不要になり、人物も展示物も確実に判別不能になる)。
+
+        ⚠️ **写真を差し替えたら必ずコントラストを再計測する**
+           (`visibility: hidden` で文字を隠し、背景だけを測ること。白い太字を
+           含めたまま測ると文字自体を「背景の最も明るい点」として拾ってしまう)。
       */}
-      <section className="w-main mx-auto pt-8 md:pt-12 lg:pt-14">
-        <div className="relative aspect-[3/2] overflow-hidden rounded-2xl sm:aspect-[2/1] md:aspect-[5/2]">
-          {/*
-            ⚠️ **仮入れの写真** (2026-08-22)。BOSS が加工版を用意中で、
-               差し替え時は `public/images/hero-provisional.jpg` を置き換える
-               (`.next` の画像最適化キャッシュが効くので `rm -rf .next` も必要)。
-            `priority` を付けるのはファーストビューの LCP 候補だから。
-          */}
-          <Image
-            src="/images/hero-provisional.jpg"
-            alt=""
-            fill
-            priority
-            sizes="(min-width: 1050px) 1050px, 100vw"
-            className="object-cover object-bottom"
-          />
+      <section className="relative isolate flex min-h-[19rem] items-end overflow-hidden md:min-h-[26rem]">
+        {/*
+          ⚠️ **仮入れの写真** (2026-08-22)。BOSS が加工版を用意中で、
+             差し替え時は `public/images/hero-provisional.jpg` を置き換える
+             (`.next` の画像最適化キャッシュが効くので `rm -rf .next` も必要)。
+          フルブリードなので `sizes` は常に 100vw。`priority` は LCP 候補だから。
+        */}
+        <Image
+          src="/images/hero-provisional.jpg"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="-z-10 object-cover"
+        />
+        {/*
+          全面のスクリム。フルブリードでは文言が画像のどこに重なるか
+          (ビューポート幅次第で) 決まらないため、**左右や上下に振らず一様に落とす**。
 
-          {/*
-            白文字を載せるためのスクリム。`aria-hidden` は装飾のため。
+          🔴 **色は `black` を使う。`ink-strong` ではない。** `--ink-strong` は
+             16 進値を持つ CSS 変数なので、Tailwind の透明度修飾子が
+             `rgb(var(--ink-strong) / .55)` を生成しようとして**無効になり、
+             スクリムが丸ごと透明に潰れる** (2026-08-22 実測)。
+        */}
+        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-black/60" />
+        {/* 下端は次セクションへ繋ぐため、もう一段落とす。 */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 bg-gradient-to-t from-black/60 to-transparent to-55%"
+        />
 
-            **左と下の 2 枚に分けている。** 文言が左上と左下にあるので、
-            全体を暗くすると「明るいヒーロー」という狙い (2026-08-22 BOSS 指示)
-            が死ぬ。左側だけ落として**右側の写真の明るさは残す**。
-
-            🔴 **色は `black` を使う。`ink-strong` ではない。** `--ink-strong` は
-               16 進値を持つ CSS 変数なので、Tailwind の透明度修飾子 (`/55`) が
-               `rgb(var(--ink-strong) / .55)` を生成しようとして**無効になり、
-               グラデーションが丸ごと透明に潰れる** (2026-08-22 実測。
-               computed が `linear-gradient(rgba(0,0,0,0) 30%, rgba(0,0,0,0))`
-               になっていた = スクリムが効いていなかった)。
-
-            ⚠️ **写真を差し替えたら必ずコントラストを再計測する。** 左上は
-               明るい壁、左下は暗い腰壁に重なるため、必要な濃さが上下で違う。
-          */}
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/45 via-45% to-transparent"
-          />
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-t from-black/85 from-5% via-black/55 via-40% to-transparent to-75%"
-          />
-          {/* 左上の h1 用。左スクリムだけでは明るい壁に負ける (実測 2.04:1)。 */}
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-b from-black/60 to-transparent to-40%"
-          />
-
-          {/* 左上 = タグライン / 左下 = 説明文。間は写真を見せるため空ける。 */}
-          <div className="relative flex h-full flex-col justify-between p-5 md:p-8">
-            {/* 見出しではなくタグライン扱いの h1 (PR #275 の判断を継承)。 */}
-            <h1 className="max-w-[18ch] font-display text-lg font-black leading-snug text-white md:text-2xl lg:text-[1.75rem]">
-              体験×推し=思い出
-            </h1>
-            <p className="max-w-prose text-xs leading-relaxed text-white/95 md:text-sm">
-              アニイベは、アニメ・漫画・音楽・映画などの推し活イベントで体験した思い出を記録・レビュー・口コミできるイベント情報サービスです。
-            </p>
-          </div>
+        <div className="w-main mx-auto py-10 md:py-14">
+          {/* 見出しではなくタグライン扱いの h1 (PR #275 の判断を継承)。 */}
+          <h1 className="font-display text-xl font-black leading-snug text-white md:text-3xl lg:text-[2rem]">
+            体験×推し=思い出
+          </h1>
+          <p className="mt-3 max-w-prose text-sm leading-relaxed text-white/95 md:mt-4 md:text-base">
+            アニイベは、アニメ・漫画・音楽・映画などの推し活イベントで体験した思い出を記録・レビュー・口コミできるイベント情報サービスです。
+          </p>
         </div>
       </section>
 
