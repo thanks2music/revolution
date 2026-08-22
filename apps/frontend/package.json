@@ -2,7 +2,7 @@
   "name": "frontend-nextjs-headless-cms",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.11.0",
+  "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": "24.x",
     "pnpm": ">=10.0.0"
@@ -28,16 +28,16 @@
     "@heroicons/react": "v1",
     "@revolution/schemas": "workspace:*",
     "@sentry/nextjs": "^10.70.0",
-    "@supabase/ssr": "^0.10.3",
+    "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.106.1",
     "@t3-oss/env-nextjs": "^0.13.8",
-    "@vercel/og": "^0.8.5",
+    "@vercel/og": "^0.11.0",
     "drizzle-orm": "^0.45.2",
-    "next": "16.2.11",
+    "next": "16.3.1",
     "next-mdx-remote": "^6.0.0",
     "postgres": "^3.4.9",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "remark-gfm": "^4.0.1",
     "sanitize-html": "^2.17.4",
     "swr": "^2.2.5",
@@ -49,8 +49,8 @@
     "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20",
-    "@types/react": "19.2.7",
-    "@types/react-dom": "19.2.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
     "@types/sanitize-html": "^2.16.0",
     "autoprefixer": "^10.4.21",
     "axios": "^1.7.2",
@@ -70,8 +70,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@types/react": "19.2.7",
-      "@types/react-dom": "19.2.3"
+      "@types/react": "19.2.18",
+      "@types/react-dom": "19.2.4"
     }
   }
 }
