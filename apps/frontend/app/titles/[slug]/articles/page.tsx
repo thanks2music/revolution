@@ -19,7 +19,7 @@ import { getAllArticles } from '@/lib/mdx/articles';
 import { generateContentMetadata } from '@/lib/metadata';
 import {
   collectArticleCategorySlugs,
-  countArticlesInCategory,
+  countArticlesByCategory,
   resolveCategoryLabel,
   selectTitleArticles,
 } from '@/lib/title/article-links';
@@ -64,6 +64,8 @@ export default async function TitleArticlesPage(props: TitleArticlesPageProps) {
   const { title, eventSlugs } = data;
   const articles = selectTitleArticles(getAllArticles(), eventSlugs, title.slug);
   const categorySlugs = collectArticleCategorySlugs(articles);
+  // チップの件数は 1 周でまとめて数える (カテゴリごとに filter しない)。
+  const categoryCounts = countArticlesByCategory(articles);
 
   return (
     <Layout>
@@ -110,7 +112,7 @@ export default async function TitleArticlesPage(props: TitleArticlesPageProps) {
                 name={resolveCategoryLabel(articles, categorySlug)}
                 href={getTitleArticlesCategoryUrl(title.slug, categorySlug)}
                 size="md"
-                count={countArticlesInCategory(articles, categorySlug)}
+                count={categoryCounts.get(categorySlug) ?? 0}
               />
             ))}
           </div>

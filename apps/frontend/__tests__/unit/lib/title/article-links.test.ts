@@ -3,7 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import type { ArticleIndexItem } from '@/lib/mdx/article-types';
 import {
   collectArticleCategorySlugs,
-  countArticlesInCategory,
+  countArticlesByCategory,
   collectTitleCategoryParams,
   resolveArticleTitleLinks,
   resolveCategoryLabel,
@@ -130,20 +130,23 @@ describe('collectArticleCategorySlugs', () => {
   });
 });
 
-describe('countArticlesInCategory', () => {
-  it('counts only articles whose primary_category_slug matches', () => {
+describe('countArticlesByCategory', () => {
+  it('counts every category in a single pass', () => {
     const articles = [
       article({ slug: 'a', date: '2026-08-01', categorySlug: 'collabo-cafe' }),
       article({ slug: 'b', date: '2026-08-02', categorySlug: 'popup-store' }),
       article({ slug: 'c', date: '2026-08-03', categorySlug: 'collabo-cafe' }),
       article({ slug: 'd', date: '2026-08-04', noEventData: true }),
     ];
-    expect(countArticlesInCategory(articles, 'collabo-cafe')).toBe(2);
-    expect(countArticlesInCategory(articles, 'popup-store')).toBe(1);
+    expect([...countArticlesByCategory(articles).entries()]).toEqual([
+      ['collabo-cafe', 2],
+      ['popup-store', 1],
+    ]);
   });
 
-  it('returns 0 for a category with no articles', () => {
-    expect(countArticlesInCategory([], 'collabo-cafe')).toBe(0);
+  it('omits categories with no articles (呼び出し側は ?? 0 で拾う)', () => {
+    expect(countArticlesByCategory([]).size).toBe(0);
+    expect(countArticlesByCategory([]).get('collabo-cafe')).toBeUndefined();
   });
 
   /**
@@ -159,11 +162,12 @@ describe('countArticlesInCategory', () => {
       article({ slug: 'c', date: '2026-08-03', categorySlug: 'collabo-cafe' }),
       article({ slug: 'd', date: '2026-08-04', noEventData: true }),
     ];
+    const counts = countArticlesByCategory(articles);
     for (const slug of collectArticleCategorySlugs(articles)) {
       const pageFilter = articles.filter(
         (a) => a.event_data?.primary_category_slug === slug,
       ).length;
-      expect(countArticlesInCategory(articles, slug)).toBe(pageFilter);
+      expect(counts.get(slug)).toBe(pageFilter);
     }
   });
 });

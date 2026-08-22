@@ -187,6 +187,20 @@ export async function listEventListItems(): Promise<EventListItem[]> {
  * (`listEventParams` → `listOccurrenceParams`)。絞り込んでも走査する行は同じで、
  * ids が増えたときに URL 長のリスクだけが増える。
  *
+ * ## ⚠️ `occurrence_view` を 2 周することを承知で残している
+ *
+ * `listEventListItems` は 1 リクエストで本 view を **2 回**走査する
+ * (1 回目 = `listOccurrenceParams` が id/slug を、2 回目 = ここが状態を)。
+ * `select('event_id, slug, status')` の 1 周にまとめれば往復は半分になる
+ * (2026-08-22 claude[bot] レビュー指摘)。**それでも分けているのは、
+ * まとめると「静的生成対象の企画」という定義がこの関数の中に 2 つ目として
+ * 生まれるから** — #332/#333 で「集合の定義を 1 箇所に閉じる」ために
+ * `listEventParams` へ寄せた不変条件を、性能都合で崩すことになる。
+ *
+ * 現在の規模 (開催 33 件) では計測上の問題が無く、行数が増えて実際に効いてきたら
+ * **DB 側の view / RPC で集計する**のが本筋 (PostgREST の集約が無効な現状では
+ * migration が要る)。「1 周にまとめる」は最後の手段として扱う。
+ *
  * ⚠️ 全件走査なので `fetchAllRows` で page 化する。並びは基底テーブルの `id`
  *    (`occurrence_view.id` は開催 id で UNIQUE = 全順序、`listOccurrenceParams`
  *    と同じ選択)。

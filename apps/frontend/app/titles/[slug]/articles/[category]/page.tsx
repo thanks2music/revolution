@@ -22,7 +22,7 @@ import { generateContentMetadata } from '@/lib/metadata';
 import {
   collectArticleCategorySlugs,
   collectTitleCategoryParams,
-  countArticlesInCategory,
+  countArticlesByCategory,
   resolveCategoryLabel,
   selectTitleArticles,
 } from '@/lib/title/article-links';
@@ -91,6 +91,8 @@ export default async function TitleArticleCategoryPage(props: TitleArticleCatego
 
   const { title, articles, filtered } = loaded;
   const categorySlugs = collectArticleCategorySlugs(articles);
+  // チップの件数は 1 周でまとめて数える (カテゴリごとに filter しない)。
+  const categoryCounts = countArticlesByCategory(articles);
   const label = resolveCategoryLabel(filtered, category);
 
   return (
@@ -144,7 +146,7 @@ export default async function TitleArticleCategoryPage(props: TitleArticleCatego
               href={getTitleArticlesCategoryUrl(title.slug, categorySlug)}
               active={categorySlug === category}
               size="md"
-              count={countArticlesInCategory(articles, categorySlug)}
+              count={categoryCounts.get(categorySlug) ?? 0}
             />
           ))}
         </div>

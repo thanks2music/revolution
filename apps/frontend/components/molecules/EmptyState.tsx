@@ -12,19 +12,23 @@
  * エラー表現にしない — 枠線も文字色も通常のカードと同じトーンで置く。
  *
  * 文言は呼び出し側が持つ (画面ごとに主語が変わるため)。
+ *
+ * ⚠️ **補助アクション用の `children` は置かない。** v6 #18 の空状態には
+ *    「すべての記事を見る」ボタンがあるが、そのページは記事 0 件のカテゴリを
+ *    そもそも生成しない (`notFound()` に倒す) ため**到達しない**。
+ *    実際に必要になった呼び出し側が現れた時点で足す
+ *    (`development-principles.md` の YAGNI: 「将来使うかもしれないオプション
+ *    パラメータを追加」しない)。
  */
 
 type Props = {
   /** 「まだ登録されていません」等。画面ごとの主語を含めた完全な文で渡す。 */
   message: string;
-  /** 任意の補助アクション (例: 「すべての記事を見る」ボタン)。 */
-  children?: React.ReactNode;
 };
 
-export const EmptyState = ({ message, children }: Props) => (
+export const EmptyState = ({ message }: Props) => (
   <div className="rounded-xl border border-[var(--line-soft)] bg-bg-elevated p-6 text-center">
     <p className="text-sm text-ink-muted">{message}</p>
-    {children && <div className="mt-3">{children}</div>}
   </div>
 );
 

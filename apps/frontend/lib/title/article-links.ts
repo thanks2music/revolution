@@ -63,20 +63,30 @@ export function collectArticleCategorySlugs(articles: readonly ArticleIndexItem[
 }
 
 /**
- * 1 カテゴリに属する記事の本数 (Claude Design v6 #17/#18 のチップの件数)。
+ * カテゴリ slug → 記事本数 (Claude Design v6 #17/#18 のチップの件数)。
  *
  * 絞り込みの述語は**カテゴリページ本体と同じ** `primary_category_slug` の一致。
  * ⚠️ ここが本体と食い違うと「チップは 3 と言っているのに開いたら 1 本」に
  *    なるため、判定は 1 つの式に揃える (`collectArticleCategorySlugs` が
  *    同じフィールドを見ているのと対)。
+ *
+ * ## なぜ 1 件ずつ数える API にしないのか
+ *
+ * チップは カテゴリ数だけ描かれるので、「1 カテゴリ = 1 回の `filter`」にすると
+ * **O(記事数 × カテゴリ数)** の走査になる (2026-08-22 claude[bot] レビュー指摘)。
+ * 同じページが `collectArticleCategorySlugs` で既に O(記事数) の 1 周を
+ * しているのだから、件数もまとめて 1 周で作る。呼び出し側は Map を引くだけ。
  */
-export function countArticlesInCategory(
+export function countArticlesByCategory(
   articles: readonly ArticleIndexItem[],
-  categorySlug: string,
-): number {
-  return articles.filter(
-    (article) => article.event_data?.primary_category_slug === categorySlug,
-  ).length;
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const article of articles) {
+    const slug = article.event_data?.primary_category_slug;
+    if (!slug) continue;
+    counts.set(slug, (counts.get(slug) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /**
