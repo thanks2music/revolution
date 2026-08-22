@@ -186,45 +186,22 @@
   /*
    * 横スクロールの rail (トップの「開催中」/「いま開催中の作品」)。
    *
-   * 器 (`w-main` = 1050px) の中で切ると窮屈なので、**画面幅いっぱいにスクロール**
-   * させつつ、左右の余白だけを `w-main` の外側に合わせる。
+   * ⚠️ **器 (`w-main`) の中に収める。** 当初は画面幅いっぱいに伸ばしていたが、
+   *    PC でスクロールバーが画面全幅に走り、他セクションと揃わず浮いて見えた
+   *    (2026-08-22 BOSS 指摘)。左右の基準線を `w-main` に揃える方が読みやすい。
    *
-   * 🔴 **`padding-inline` と `scroll-padding-inline` は両方要る。**
-   *    `scroll-snap-align: start` はスクロールポートの端に吸着するが、
-   *    その端は `padding` ではなく **`scroll-padding`** で決まる。片方だけだと
-   *    スナップが padding を打ち消すようにスクロールし、**1 枚目が画面端で
-   *    見切れる** (2026-08-22 実測: padding-left 195px なのに 1 枚目の left が 0)。
+   * 🔴 **`scroll-padding` は消さないこと。** `scroll-snap-align: start` が吸着する
+   *    端は `padding` ではなく `scroll-padding` で決まるため、器の内側に
+   *    余白を持たせる場合は両方を合わせる必要がある (実測で 1 枚目が見切れた)。
+   *    現在は器の端 = カードの端なので 0 でよいが、余白を足すときは対で足す。
    */
   .rail {
-    --rail-inset: max(1rem, calc((100vw - var(--container-main)) / 2));
-
     display: flex;
     gap: 0.75rem;
     overflow-x: auto;
-    padding-inline: var(--rail-inset);
     padding-bottom: 0.5rem;
     scroll-snap-type: x mandatory;
-    scroll-padding-inline: var(--rail-inset);
-  }
-}
-
-/*
- * 「開催中」バッジのライブドット (Claude Design v6 #16)。
- *
- * ⚠️ 使う側は必ず `motion-safe:` を付ける。Tailwind の `motion-safe:` は
- *    `prefers-reduced-motion: no-preference` のメディアクエリなので、reduce を
- *    選んでいる利用者では**アニメーションが当たらず静的なドットになる**
- *    (`PaginatedArticleGrid` の fade-in-up と同じ a11y 規律)。
- *    ドットは「開催中」という情報を色と位置で既に伝えており、点滅は装飾なので
- *    止まっても情報は失われない。
- */
-@keyframes livePulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
+    scroll-padding-inline: 0;
   }
 }
 

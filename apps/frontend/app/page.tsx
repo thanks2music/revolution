@@ -1,5 +1,6 @@
 import Layout from '@/components/templates/Layout';
 import { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import { getAllArticles } from '@/lib/mdx/articles';
 import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGrid';
@@ -56,8 +57,30 @@ export default async function Home() {
              `next/image` に差し替える。写真が無くても「コピーが読める帯」として
              成立する形にしてあるので、支給前でもレイアウトは崩れない。
         */}
-        <div className="relative mt-6 flex min-h-[12rem] items-end overflow-hidden rounded-2xl bg-gradient-to-br from-primary-700 to-ink-strong p-5 md:mt-8 md:min-h-[16rem] md:p-8">
-          <p className="font-display text-xl font-black leading-snug text-white md:text-3xl">
+        <div className="relative mt-6 flex min-h-[12rem] items-end overflow-hidden rounded-2xl md:mt-8 md:min-h-[16rem]">
+          {/*
+            ⚠️ **仮入れの写真** (2026-08-22)。BOSS が加工版を用意中で、
+               差し替え時は `public/images/hero-provisional.jpg` を置き換える。
+            `priority` を付けるのはファーストビューの LCP 候補だから。
+          */}
+          <Image
+            src="/images/hero-provisional.jpg"
+            alt=""
+            fill
+            priority
+            sizes="(min-width: 1050px) 1050px, 100vw"
+            className="object-cover"
+          />
+          {/*
+            白文字を載せるためのオーバーレイ。写真が明るい版に差し替わっても
+            コピーが読めるよう、下ほど濃いグラデーションで固定する
+            (v5 #1 と同じ手法)。`aria-hidden` は装飾のため。
+          */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-b from-ink-strong/20 to-ink-strong/80"
+          />
+          <p className="relative p-5 font-display text-xl font-black leading-snug text-white md:p-8 md:text-3xl">
             行ったイベントを、
             <br />
             ずっと残そう。
@@ -65,34 +88,15 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* 開催中 rail (v5 #1)。開催が 0 件のときはセクションごと出さない。 */}
-      {ongoing.length > 0 && (
-        <section className="mt-section-sp md:mt-section-pc">
-          <div className="w-main mx-auto">
-            <SectionHeader
-              eyebrow="No. 001 / Now"
-              title="開催中"
-              subtitle={`いま行けるイベント ${ongoing.length} 件`}
-            />
-          </div>
-          {/*
-            横スクロールの rail。`w-main` の外へ出して**画面端まで**スクロールさせ、
-            左右に `w-main` と同じ余白を作る (器の中で切ると窮屈になるため)。
-            `snap-x` でカード単位に止まる。
-          */}
-          <ul className="rail">
-            {ongoing.map((occurrence) => (
-              <li key={occurrence.id} className="snap-start">
-                <OngoingOccurrenceCard occurrence={occurrence} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section className="w-main mx-auto mt-section-sp md:mt-section-pc">
+      {/*
+        ⚠️ ここだけ通常のセクション間隔 (`mt-section-*` = 3.5rem / 7rem) を使わない。
+        v5 #1 はヒーローの直下に探す導線を**密着**させて 1 つのブロックとして
+        見せており、間隔を空けるとファーストビューから探す導線が押し出される
+        (2026-08-22 BOSS 指摘「開催中はファーストビューから下げる / 探すを置く」)。
+      */}
+      <section className="w-main mx-auto mt-8 md:mt-10">
         <SectionHeader
-          eyebrow="No. 002 / Explore"
+          eyebrow="No. 001 / Explore"
           title="探す"
           subtitle="作品・企画・会場ごとに、開催情報とレビューを集約しています。"
         />
@@ -126,6 +130,31 @@ export default async function Home() {
           </Link>
         </div>
       </section>
+
+      {/* 開催中 rail (v5 #1)。開催が 0 件のときはセクションごと出さない。 */}
+      {ongoing.length > 0 && (
+        <section className="mt-section-sp md:mt-section-pc">
+          <div className="w-main mx-auto">
+            <SectionHeader
+              eyebrow="No. 002 / Now"
+              title="開催中"
+              subtitle={`いま行けるイベント ${ongoing.length} 件`}
+            />
+          </div>
+          {/*
+            横スクロールの rail。`w-main` の外へ出して**画面端まで**スクロールさせ、
+            左右に `w-main` と同じ余白を作る (器の中で切ると窮屈になるため)。
+            `snap-x` でカード単位に止まる。
+          */}
+          <ul className="rail w-main mx-auto">
+            {ongoing.map((occurrence) => (
+              <li key={occurrence.id} className="snap-start">
+                <OngoingOccurrenceCard occurrence={occurrence} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/*
         記事セクション (v5 #1)。**クリーム地の帯**で「読み物」であることを面ごと
@@ -177,7 +206,7 @@ export default async function Home() {
               }
             />
           </div>
-          <ul className="rail">
+          <ul className="rail w-main mx-auto">
             {titlePicks.map((pick) => (
               <li key={pick.slug} className="snap-start">
                 <Link
