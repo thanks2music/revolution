@@ -6,7 +6,6 @@ import { getAllArticles } from '@/lib/mdx/articles';
 import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGrid';
 import { OngoingOccurrenceCard } from '@/components/molecules/OngoingOccurrenceCard';
 import { SectionHeader } from '@/components/molecules/SectionHeader';
-import { SparkRule } from '@/components/atoms/ornament/SparkRule';
 import { SignupBenefit } from '@/components/molecules/SignupBenefit';
 import { listOngoingOccurrences, pickOngoingTitles } from '@/lib/home/queries';
 import { getTitleUrl } from '@/lib/title/title-url';
@@ -33,40 +32,27 @@ export default async function Home() {
   // (`pickOngoingTitles` は純粋関数で、同じ `occurrence_view` を 2 周しない)。
   const ongoing = await listOngoingOccurrences();
   const titlePicks = pickOngoingTitles(ongoing);
-  const now = new Date();
-  const yearMonth = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   return (
     <Layout hidePt>
-      <section className="w-main mx-auto pt-8 md:pt-12 lg:pt-14">
-        <p className="font-numeric tabular-nums text-xs tracking-[0.22em] text-ink-muted uppercase">
-          Vol. 01 — {yearMonth}
-        </p>
-        <SparkRule className="mt-2 mb-4 md:mb-5" width="3em" />
-        {/* 見出しではなくタグライン扱いの h1 */}
-        <h1 className="font-display text-xl leading-snug text-ink-strong md:text-2xl lg:text-[1.75rem]">
-          体験×推し=思い出
-        </h1>
-        <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-body md:mt-4 md:text-base">
-          アニイベは、アニメ・漫画・音楽・映画などの推し活イベントで体験した思い出を記録・レビュー・口コミできるイベント情報サービスです。
-        </p>
+      {/*
+        ヒーロー (Claude Design v5 #1 + 2026-08-22 BOSS 指示)。
 
-        {/*
-          ヒーロー (Claude Design v5 #1)。
-          ⚠️ **写真は BOSS 支給待ち** (2026-08-22)。届いたら下の grid 背景を
-             `next/image` に差し替える。写真が無くても「コピーが読める帯」として
-             成立する形にしてあるので、支給前でもレイアウトは崩れない。
-        */}
-        {/*
-          比率は写真 (2.02:1) に近づける。器を横長にしすぎると object-cover が
-          上下を切り落とし、**白文字が乗る唯一の暗い領域である腰壁が消える**
-          (実測: 腰壁ぞい 4.80:1 / クリーム壁 1.92:1)。
-          `object-bottom` で下端を優先して残すのも同じ理由。
-        */}
-        <div className="relative mt-6 flex aspect-[2/1] items-end overflow-hidden rounded-2xl md:mt-8 md:aspect-[5/2]">
+        ページ先頭は**写真とタグラインだけ**にする。旧構成にあった
+        「VOL. 01 — 2026.08」の号数表記と `SparkRule` は削除済み (BOSS 指示)。
+
+        文言は写真の中に 2 つ置く:
+          - 左上 = タグライン (h1)
+          - 左下 = サービス説明文
+        どちらも左寄せなので、スクリムは**左側**と**下側**の 2 枚を重ねている
+        (下記のコメント参照)。
+      */}
+      <section className="w-main mx-auto pt-8 md:pt-12 lg:pt-14">
+        <div className="relative aspect-[3/2] overflow-hidden rounded-2xl sm:aspect-[2/1] md:aspect-[5/2]">
           {/*
             ⚠️ **仮入れの写真** (2026-08-22)。BOSS が加工版を用意中で、
-               差し替え時は `public/images/hero-provisional.jpg` を置き換える。
+               差し替え時は `public/images/hero-provisional.jpg` を置き換える
+               (`.next` の画像最適化キャッシュが効くので `rm -rf .next` も必要)。
             `priority` を付けるのはファーストビューの LCP 候補だから。
           */}
           <Image
@@ -77,32 +63,48 @@ export default async function Home() {
             sizes="(min-width: 1050px) 1050px, 100vw"
             className="object-cover object-bottom"
           />
-          {/*
-            白文字を載せるためのオーバーレイ。`aria-hidden` は装飾のため。
 
-            ⚠️ **モバイルで効く形にしてある。** 器はモバイル 2:1 / PC 5:2 で、
-               PC は暗い腰壁が文字の下に来るが、**モバイルは明るい壁が
-               1 行目に掛かる**。実測でモバイルは 1.45:1 まで落ちていたため、
-               グラデーションの開始を上げて (30% 地点から) 中間色を挟んでいる。
-               写真を差し替えたら必ず両方の幅で再計測すること。
+          {/*
+            白文字を載せるためのスクリム。`aria-hidden` は装飾のため。
+
+            **左と下の 2 枚に分けている。** 文言が左上と左下にあるので、
+            全体を暗くすると「明るいヒーロー」という狙い (2026-08-22 BOSS 指示)
+            が死ぬ。左側だけ落として**右側の写真の明るさは残す**。
 
             🔴 **色は `black` を使う。`ink-strong` ではない。** `--ink-strong` は
                16 進値を持つ CSS 変数なので、Tailwind の透明度修飾子 (`/55`) が
                `rgb(var(--ink-strong) / .55)` を生成しようとして**無効になり、
                グラデーションが丸ごと透明に潰れる** (2026-08-22 実測。
                computed が `linear-gradient(rgba(0,0,0,0) 30%, rgba(0,0,0,0))`
-               になっていた = オーバーレイが無効だった)。
-               スクリムは中立的な暗色でよいので `black` が正しい。
+               になっていた = スクリムが効いていなかった)。
+
+            ⚠️ **写真を差し替えたら必ずコントラストを再計測する。** 左上は
+               明るい壁、左下は暗い腰壁に重なるため、必要な濃さが上下で違う。
           */}
           <div
             aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-b from-transparent from-10% via-black/55 via-55% to-black/85"
+            className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/45 via-45% to-transparent"
           />
-          <p className="relative p-5 font-display text-xl font-black leading-snug text-white md:p-8 md:text-3xl">
-            行ったイベントを、
-            <br />
-            ずっと残そう。
-          </p>
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-t from-black/85 from-5% via-black/55 via-40% to-transparent to-75%"
+          />
+          {/* 左上の h1 用。左スクリムだけでは明るい壁に負ける (実測 2.04:1)。 */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-b from-black/60 to-transparent to-40%"
+          />
+
+          {/* 左上 = タグライン / 左下 = 説明文。間は写真を見せるため空ける。 */}
+          <div className="relative flex h-full flex-col justify-between p-5 md:p-8">
+            {/* 見出しではなくタグライン扱いの h1 (PR #275 の判断を継承)。 */}
+            <h1 className="max-w-[18ch] font-display text-lg font-black leading-snug text-white md:text-2xl lg:text-[1.75rem]">
+              体験×推し=思い出
+            </h1>
+            <p className="max-w-prose text-xs leading-relaxed text-white/95 md:text-sm">
+              アニイベは、アニメ・漫画・音楽・映画などの推し活イベントで体験した思い出を記録・レビュー・口コミできるイベント情報サービスです。
+            </p>
+          </div>
         </div>
       </section>
 
