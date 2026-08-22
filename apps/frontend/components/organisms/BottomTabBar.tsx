@@ -29,9 +29,23 @@ import { usePathname } from 'next/navigation';
 type Tab = {
   href: string;
   label: string;
-  /** 現在地判定。省略時は `href` の前方一致。 */
-  match?: (pathname: string) => boolean;
+  /** 現在地とみなすパスの基点。省略時は `href` 自身。 */
+  bases?: string[];
 };
+
+/**
+ * タブが現在地かどうか (Layer 1、純粋関数)。
+ *
+ * ⚠️ **素の `startsWith` は使わない。** `/articles` が将来 `/articles-archive`
+ *    のような別ルートを点灯させてしまう (2026-08-22 claude[bot] 指摘)。
+ *    **完全一致、または `base + '/'` で始まる配下パス**だけを現在地とする。
+ *
+ * ロジックだけ切り出してあるのはテストのため。「トップで探すを点灯させる」
+ * という特殊対応は静かに壊れやすいので、コンポーネントを描かずに固定する。
+ */
+export function isTabActive(pathname: string, bases: string[]): boolean {
+  return bases.some((base) => pathname === base || pathname.startsWith(`${base}/`));
+}
 
 /**
  * `aria-current` の値を決める。
@@ -58,7 +72,7 @@ const TABS: Tab[] = [
     // ⚠️ **トップ (`/`) も含める**。v5 #1 のホームは「探す」が点灯した状態で
     //    描かれており、トップ自体が探す導線の入口だから (タブに「ホーム」は無い)。
     //    含めないと、トップにいる間どのタブも点灯しない宙ぶらりんな状態になる。
-    match: (p) => p === '/' || ['/titles', '/events', '/venues'].some((base) => p.startsWith(base)),
+    bases: ['/', '/titles', '/events', '/venues'],
   },
   { href: '/articles', label: '記事' },
   { href: '/mypage', label: 'マイページ' },
@@ -74,7 +88,7 @@ export const BottomTabBar = () => {
     >
       <ul className="flex">
         {TABS.map((tab) => {
-          const active = tab.match ? tab.match(pathname) : pathname.startsWith(tab.href);
+          const active = isTabActive(pathname, tab.bases ?? [tab.href]);
           return (
             <li key={tab.href} className="flex-1">
               <Link

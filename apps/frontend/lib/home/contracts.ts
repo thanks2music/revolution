@@ -30,7 +30,6 @@ import { z } from 'zod';
 
 /** 開催中 rail のカードに埋め込む会場。住所行 (`東京都 渋谷 / 渋谷パルコ`) に使う。 */
 const RailVenueSchema = VenueRowSchema.pick({
-  slug: true,
   name: true,
   prefecture: true,
   city: true,
@@ -71,7 +70,7 @@ export const OngoingOccurrenceRowSchema = OccurrenceViewSchema.pick({
  */
 export const ONGOING_OCCURRENCE_COLUMNS =
   'id, eventId:event_id, slug, startsOn:starts_on, endsOn:ends_on, ' +
-  'venues(slug, name, prefecture, city), ' +
+  'venues(name, prefecture, city), ' +
   'events(id, name, primaryCategory:categories!primary_category_id(name), eventTitles:event_titles(titles(slug, name)))';
 
 /** 作品チップ 1 個。`lib/event/contracts.ts` の `Title` と同じ形。 */
