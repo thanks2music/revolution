@@ -115,6 +115,13 @@
   --line-soft: rgba(15, 27, 45, 0.08);
   --line-strong: rgba(15, 27, 45, 0.18);
 
+  /*
+   * モバイル下部タブ (`BottomTabBar`) の高さぶんの余白。
+   * `fixed` なタブが最下部のコンテンツ (Footer 等) を隠さないように
+   * `Layout` が md 未満でこの値を下パディングとして使う。
+   */
+  --space-bottom-tab: 4rem;
+
   --container-main: clamp(0px, 1050px, 90vw);
   --space-section-pc: 7rem;
   --space-section-sp: 3.5rem;
@@ -172,6 +179,32 @@
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+@layer components {
+  /*
+   * 横スクロールの rail (トップの「開催中」/「いま開催中の作品」)。
+   *
+   * 器 (`w-main` = 1050px) の中で切ると窮屈なので、**画面幅いっぱいにスクロール**
+   * させつつ、左右の余白だけを `w-main` の外側に合わせる。
+   *
+   * 🔴 **`padding-inline` と `scroll-padding-inline` は両方要る。**
+   *    `scroll-snap-align: start` はスクロールポートの端に吸着するが、
+   *    その端は `padding` ではなく **`scroll-padding`** で決まる。片方だけだと
+   *    スナップが padding を打ち消すようにスクロールし、**1 枚目が画面端で
+   *    見切れる** (2026-08-22 実測: padding-left 195px なのに 1 枚目の left が 0)。
+   */
+  .rail {
+    --rail-inset: max(1rem, calc((100vw - var(--container-main)) / 2));
+
+    display: flex;
+    gap: 0.75rem;
+    overflow-x: auto;
+    padding-inline: var(--rail-inset);
+    padding-bottom: 0.5rem;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--rail-inset);
   }
 }
 
