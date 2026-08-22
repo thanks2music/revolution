@@ -14,8 +14,13 @@ export const SignupBenefit = () => {
   return (
     <aside className="bg-bg-tinted px-7 py-10 md:px-12 md:py-12">
       <SparkRule className="mb-5" width="2.5em" />
+      {/*
+        サービスタグライン (Claude Design v5 #1 のヒーローコピー)。
+        2026-08-22 BOSS 指示で、旧「記録は、ここに残す。」からここへ置き換えた。
+        ヒーローの h1 は「体験×推し=思い出」なので文言が重複しない。
+      */}
       <h2 className="font-display text-2xl text-ink-strong md:text-3xl">
-        記録は、ここに残す。
+        行ったイベントを、ずっと残そう。
       </h2>
       <p className="mt-4 max-w-prose text-base leading-relaxed text-ink-body">
         気になった体験を、いいねで記録。

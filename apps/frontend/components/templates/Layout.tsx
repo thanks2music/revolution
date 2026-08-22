@@ -1,3 +1,4 @@
+import BottomTabBar from '../organisms/BottomTabBar';
 import Header from '../organisms/Header';
 import Footer from '../organisms/Footer';
 import { ReactNode } from 'react';
@@ -17,7 +18,7 @@ const Layout = ({
     // children パターン)。これで Header/モバイル/Footer の全 AuthNav が同一 Provider 配下に
     // 入り、認証状態の取得 (getAuthNav) が 1 ページ 1 回に集約される (Vercel 監査)。
     <AuthNavProvider>
-      <div className="flex min-h-screen flex-col">
+      <div className="flex min-h-screen flex-col pb-[var(--space-bottom-tab)] md:pb-0">
         {/* スキップリンク: WCAG 2.1 Level A 準拠 */}
         <a
           href="#main-content"
@@ -37,6 +38,12 @@ const Layout = ({
         </main>
 
         <Footer />
+
+        {/*
+          モバイルの下部タブ (v5 #1 / v6 の全モック)。`fixed` なので、上の
+          コンテンツが隠れないよう `div` 側に下パディングを入れてある。
+        */}
+        <BottomTabBar />
       </div>
     </AuthNavProvider>
   );

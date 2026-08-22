@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from '@jest/globals';
@@ -118,6 +118,55 @@ describe('デザイントークンの WCAG AA (4.5:1)', () => {
     // テストで示しておく (将来 `text-white` を当てる変更への歯止め)。
     for (const token of ['--days-soon', '--days-urgent']) {
       expect(contrastRatio(WHITE, tokens[token])).toBeLessThan(AA_NORMAL);
+    }
+  });
+});
+
+/**
+ * `animate-[<name>_…]` で参照している keyframes が `globals.css` に実在するか。
+ *
+ * ★ 2026-08-22 の回帰を受けて追加。`.rail` ユーティリティを足す際に
+ * `@keyframes livePulse` を巻き込んで削除してしまい、**「開催中」バッジの
+ * ライブドットが全ページで静止**していた。
+ *
+ * Tailwind の arbitrary な `animate-[…]` は**存在しない keyframes を参照しても
+ * ビルドが通る**ため、tsc / eslint / 既存テストのどれも検出できなかった
+ * (claude[bot] 5 件と `/code-review` が揃って指摘)。
+ * クラス側から keyframes 名を集めて突き合わせることで、同じ消し漏れを塞ぐ。
+ */
+describe('animate-[…] が参照する @keyframes の存在', () => {
+  /*
+   * ⚠️ **コメントを剥がしてから照合する。** `globals.css` の解説コメント自身が
+   *    `@keyframes livePulse` という文字列を含むため、素のテキストを検索すると
+   *    **実際の規則を消してもコメントにマッチして通ってしまう**
+   *    (2026-08-22、このテストを mutation test にかけて発覚)。
+   */
+  const CSS = readFileSync(CSS_PATH, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const COMPONENTS = join(__dirname, '../../../components');
+
+  /** `components/` 配下の tsx を再帰的に読む。 */
+  function readAllTsx(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return readAllTsx(full);
+      return entry.name.endsWith('.tsx') ? [readFileSync(full, 'utf8')] : [];
+    });
+  }
+
+  it('defines every keyframes name referenced by an arbitrary animate utility', () => {
+    const referenced = new Set<string>();
+    for (const source of readAllTsx(COMPONENTS)) {
+      for (const [, name] of source.matchAll(/animate-\[([A-Za-z][\w-]*)[_\]]/g)) {
+        referenced.add(name);
+      }
+    }
+
+    // 参照が 1 つも拾えない = 正規表現が壊れている。テストが空振りしないよう固定する。
+    expect(referenced.size).toBeGreaterThan(0);
+    expect([...referenced]).toContain('livePulse');
+
+    for (const name of referenced) {
+      expect(CSS).toMatch(new RegExp(`@keyframes\\s+${name}\\b`));
     }
   });
 });

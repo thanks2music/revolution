@@ -32,25 +32,34 @@ describe('formatPeriodTense', () => {
   it('adds a past tense to ended and a cancelled-plan tense to cancelled', () => {
     // 同じ日付が「もう終わった」のか「中止になった予定」なのかを、
     // 状態バッジまで視線を往復せずに読めるようにする (v6 #16)。
-    expect(formatPeriodTense('ended')).toBe(' に開催');
-    expect(formatPeriodTense('cancelled')).toBe(' の予定');
+    expect(formatPeriodTense('ended', '2026-02-10')).toBe(' に開催');
+    expect(formatPeriodTense('cancelled', '2026-06-05')).toBe(' の予定');
   });
 
   it('adds nothing to the statuses whose dates read as-is', () => {
-    expect(formatPeriodTense('ongoing')).toBe('');
-    expect(formatPeriodTense('scheduled')).toBe('');
+    expect(formatPeriodTense('ongoing', '2026-07-03')).toBe('');
+    expect(formatPeriodTense('scheduled', '2026-08-28')).toBe('');
   });
 
-  it('adds nothing to unscheduled (formatPeriod が既に完成した文を返すため)', () => {
-    // '日程未発表' + ' に開催' のような二重表現を作らない。
-    expect(formatPeriodTense('unscheduled')).toBe('');
-    expect(`${formatPeriod(null, null)}${formatPeriodTense('unscheduled')}`).toBe('日程未発表');
+  /**
+   * ★ 二重表現の回帰テスト (2026-08-22 `/code-review` 指摘)。
+   *
+   * `occurrence_view` の CASE は **`cancelled` を `unscheduled` より先**に
+   * 評価するため、`cancelled_at` があって `starts_on` が null の開催は
+   * `'cancelled'` で返る。`status` だけで時制を決めると
+   * **「日程未発表 の予定」**という二重表現になる。
+   */
+  it('adds nothing when starts_on is null, whatever the status says', () => {
+    for (const status of OCCURRENCE_STATUS_VALUES) {
+      expect(formatPeriodTense(status, null)).toBe('');
+      // `formatPeriod` の戻り値と連結しても文が壊れないこと。
+      expect(`${formatPeriod(null, null)}${formatPeriodTense(status, null)}`).toBe('日程未発表');
+    }
   });
 
   it('covers every status the view can return', () => {
-    // view に状態が増えたら Record が型エラーになるが、実行時にも押さえる。
     for (const status of OCCURRENCE_STATUS_VALUES) {
-      expect(typeof formatPeriodTense(status)).toBe('string');
+      expect(typeof formatPeriodTense(status, '2026-01-01')).toBe('string');
     }
   });
 });

@@ -115,6 +115,13 @@
   --line-soft: rgba(15, 27, 45, 0.08);
   --line-strong: rgba(15, 27, 45, 0.18);
 
+  /*
+   * モバイル下部タブ (`BottomTabBar`) の高さぶんの余白。
+   * `fixed` なタブが最下部のコンテンツ (Footer 等) を隠さないように
+   * `Layout` が md 未満でこの値を下パディングとして使う。
+   */
+  --space-bottom-tab: 4rem;
+
   --container-main: clamp(0px, 1050px, 90vw);
   --space-section-pc: 7rem;
   --space-section-sp: 3.5rem;
@@ -176,14 +183,16 @@
 }
 
 /*
- * 「開催中」バッジのライブドット (Claude Design v6 #16)。
+ * 「開催中」バッジのライブドット (`StatusBadge` の `now`)。
  *
- * ⚠️ 使う側は必ず `motion-safe:` を付ける。Tailwind の `motion-safe:` は
- *    `prefers-reduced-motion: no-preference` のメディアクエリなので、reduce を
- *    選んでいる利用者では**アニメーションが当たらず静的なドットになる**
- *    (`PaginatedArticleGrid` の fade-in-up と同じ a11y 規律)。
- *    ドットは「開催中」という情報を色と位置で既に伝えており、点滅は装飾なので
- *    止まっても情報は失われない。
+ * ⚠️ **`.rail` などを書き換えるときにこのブロックごと消さないこと。**
+ *    2026-08-22 に実際に消滅させ、ドットが全ページで静止していた
+ *    (`/code-review` がビルド出力の CSS から検出。`animation: … livePulse` は
+ *    出ているのに `@keyframes livePulse` がバンドルに無い状態だった)。
+ *
+ * ⚠️ 使う側は必ず `motion-safe:` を付ける。`prefers-reduced-motion: reduce` を
+ *    選んでいる利用者では静的なドットになる (`PaginatedArticleGrid` と同じ規律)。
+ *    ドットは「開催中」を色と位置で既に伝えており、点滅は装飾なので止まってよい。
  */
 @keyframes livePulse {
   0%,
@@ -192,6 +201,29 @@
   }
   50% {
     opacity: 0.35;
+  }
+}
+
+@layer components {
+  /*
+   * 横スクロールの rail (トップの「開催中」/「いま開催中の作品」)。
+   *
+   * ⚠️ **器 (`w-main`) の中に収める。** 当初は画面幅いっぱいに伸ばしていたが、
+   *    PC でスクロールバーが画面全幅に走り、他セクションと揃わず浮いて見えた
+   *    (2026-08-22 BOSS 指摘)。左右の基準線を `w-main` に揃える方が読みやすい。
+   *
+   * 🔴 **`scroll-padding` は消さないこと。** `scroll-snap-align: start` が吸着する
+   *    端は `padding` ではなく `scroll-padding` で決まるため、器の内側に
+   *    余白を持たせる場合は両方を合わせる必要がある (実測で 1 枚目が見切れた)。
+   *    現在は器の端 = カードの端なので 0 でよいが、余白を足すときは対で足す。
+   */
+  .rail {
+    display: flex;
+    gap: 0.75rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 0;
   }
 }
 

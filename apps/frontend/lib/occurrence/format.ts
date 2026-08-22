@@ -33,10 +33,23 @@ export function formatPeriod(startsOn: string | null, endsOn: string | null): st
  * 「中止になった予定」なのかは、**状態バッジを見ないと分からない**。
  * カード内で日付の隣に置くことで、バッジと日付を往復せずに読めるようにする。
  *
- * ⚠️ **日程未発表には付けない。** `formatPeriod` が既に「日程未発表」という
+ * ⚠️ **日付が無いときは付けない。** `formatPeriod` が既に「日程未発表」という
  *    完成した文を返しているため、後ろに何か足すと二重表現になる。
+ *
+ * 🔴 **判定を `status` だけで行わないこと。** `occurrence_view` の CASE は
+ *    `cancelled` を `unscheduled` より**先**に評価する
+ *    (`0016_..._occurrences_starts_on_nullable.sql`)。つまり
+ *    **`cancelled_at` があって `starts_on` が null の開催は `'cancelled'`** として
+ *    返り、`status === 'unscheduled'` では捕まえられない。
+ *    `status` だけを見ると「日程未発表 の予定」という二重表現が出る
+ *    (2026-08-22 `/code-review` 指摘、view 定義で再現性を確認)。
+ *    **`startsOn` の有無で判定する**のが正しい。
  */
-export function formatPeriodTense(status: OccurrenceStatus): string {
+export function formatPeriodTense(
+  status: OccurrenceStatus,
+  startsOn: string | null,
+): string {
+  if (startsOn === null) return '';
   return PERIOD_TENSE[status];
 }
 
