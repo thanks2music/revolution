@@ -33,6 +33,23 @@ type Tab = {
   match?: (pathname: string) => boolean;
 };
 
+/**
+ * `aria-current` の値を決める。
+ *
+ * 🔴 **`aria-current="page"` は「そのリンク先が今いるページ」のときだけ。**
+ *    「探す」タブは `/titles` を指すが `/` `/events` `/venues` にいるときも
+ *    点灯させるため、一律 `page` にすると**踏むと別のページへ移動するリンクを
+ *    支援技術が「現在のページ」と読み上げる** (2026-08-22 `/code-review` 指摘)。
+ *
+ *    区画としては現在地なので、完全一致以外は汎用の `true` を使う
+ *    (WAI-ARIA の `aria-current` は `page` / `true` などを取り、`true` は
+ *    「集合の中の現在の項目」を表す)。
+ */
+function currentValue(active: boolean, pathname: string, href: string) {
+  if (!active) return undefined;
+  return pathname === href ? 'page' : true;
+}
+
 const TABS: Tab[] = [
   {
     href: '/titles',
@@ -62,7 +79,7 @@ export const BottomTabBar = () => {
             <li key={tab.href} className="flex-1">
               <Link
                 href={tab.href}
-                aria-current={active ? 'page' : undefined}
+                aria-current={currentValue(active, pathname, tab.href)}
                 // min-h-11 でタップ領域を 44px 以上に (WCAG 2.5.8 / iOS HIG)。
                 className={`flex min-h-11 flex-col items-center justify-center gap-0.5 py-2 font-display text-xs tracking-wide transition-colors ${
                   active ? 'text-primary-strong' : 'text-ink-muted'

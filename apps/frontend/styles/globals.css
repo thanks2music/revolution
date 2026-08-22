@@ -182,6 +182,28 @@
   }
 }
 
+/*
+ * 「開催中」バッジのライブドット (`StatusBadge` の `now`)。
+ *
+ * ⚠️ **`.rail` などを書き換えるときにこのブロックごと消さないこと。**
+ *    2026-08-22 に実際に消滅させ、ドットが全ページで静止していた
+ *    (`/code-review` がビルド出力の CSS から検出。`animation: … livePulse` は
+ *    出ているのに `@keyframes livePulse` がバンドルに無い状態だった)。
+ *
+ * ⚠️ 使う側は必ず `motion-safe:` を付ける。`prefers-reduced-motion: reduce` を
+ *    選んでいる利用者では静的なドットになる (`PaginatedArticleGrid` と同じ規律)。
+ *    ドットは「開催中」を色と位置で既に伝えており、点滅は装飾なので止まってよい。
+ */
+@keyframes livePulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 @layer components {
   /*
    * 横スクロールの rail (トップの「開催中」/「いま開催中の作品」)。

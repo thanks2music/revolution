@@ -7,7 +7,11 @@ import { PaginatedArticleGrid } from '@/components/organisms/PaginatedArticleGri
 import { OngoingOccurrenceCard } from '@/components/molecules/OngoingOccurrenceCard';
 import { SectionHeader } from '@/components/molecules/SectionHeader';
 import { SignupBenefit } from '@/components/molecules/SignupBenefit';
-import { listOngoingOccurrences, pickOngoingTitles } from '@/lib/home/queries';
+import {
+  listOngoingOccurrences,
+  ONGOING_RAIL_LIMIT,
+  pickOngoingTitles,
+} from '@/lib/home/queries';
 import { getTitleUrl } from '@/lib/title/title-url';
 import { siteConfig } from '@/lib/metadata';
 
@@ -31,7 +35,24 @@ export default async function Home() {
   // 開催中は rail とピックアップ作品の**両方**が使うので 1 回だけ引く
   // (`pickOngoingTitles` は純粋関数で、同じ `occurrence_view` を 2 周しない)。
   const ongoing = await listOngoingOccurrences();
+  // ピックアップ作品は**全件**から数える (rail の表示上限で集計が歪まないように)。
   const titlePicks = pickOngoingTitles(ongoing);
+  const railOccurrences = ongoing.slice(0, ONGOING_RAIL_LIMIT);
+
+  /*
+   * セクション番号は**実際に描くセクションから採番する**。
+   * 開催が 0 件のとき (資格情報の無いビルドを含む) は 002 / 004 が出ないので、
+   * ベタ書きだと 001 → 003 → 005 と歯抜けになる (2026-08-22 `/code-review` 指摘)。
+   */
+  const visibleSections = [
+    'explore',
+    ongoing.length > 0 && 'now',
+    'articles',
+    titlePicks.length > 0 && 'titles',
+    'about',
+  ].filter(Boolean) as string[];
+  const sectionNo = (key: string) =>
+    String(visibleSections.indexOf(key) + 1).padStart(3, '0');
 
   return (
     <Layout hidePt>
@@ -111,7 +132,7 @@ export default async function Home() {
       */}
       <section className="w-main mx-auto mt-8 md:mt-10">
         <SectionHeader
-          eyebrow="No. 001 / Explore"
+          eyebrow={`No. ${sectionNo('explore')} / Explore`}
           title="探す"
           subtitle="作品・企画・会場ごとに、開催情報とレビューを集約しています。"
         />
@@ -151,7 +172,7 @@ export default async function Home() {
         <section className="mt-section-sp md:mt-section-pc">
           <div className="w-main mx-auto">
             <SectionHeader
-              eyebrow="No. 002 / Now"
+              eyebrow={`No. ${sectionNo('now')} / Now`}
               title="開催中"
               subtitle={`いま行けるイベント ${ongoing.length} 件`}
             />
@@ -162,7 +183,7 @@ export default async function Home() {
             `snap-x` でカード単位に止まる。
           */}
           <ul className="rail w-main mx-auto">
-            {ongoing.map((occurrence) => (
+            {railOccurrences.map((occurrence) => (
               <li key={occurrence.id} className="snap-start">
                 <OngoingOccurrenceCard occurrence={occurrence} />
               </li>
@@ -179,7 +200,7 @@ export default async function Home() {
       <section className="mt-section-sp border-y border-article-line bg-article py-section-sp md:mt-section-pc md:py-section-pc">
         <div className="w-main mx-auto">
         <SectionHeader
-          eyebrow="No. 003 / Articles"
+          eyebrow={`No. ${sectionNo('articles')} / Articles`}
           title="AIライターの記事"
           subtitle={`公開中: ${articles.length} 本`}
           action={
@@ -207,7 +228,7 @@ export default async function Home() {
         <section className="mt-section-sp md:mt-section-pc">
           <div className="w-main mx-auto">
             <SectionHeader
-              eyebrow="No. 004 / Titles"
+              eyebrow={`No. ${sectionNo('titles')} / Titles`}
               title="いま開催中の作品"
               subtitle="開催中のイベントが多い作品から。"
               action={
@@ -247,7 +268,7 @@ export default async function Home() {
       </section>
 
       <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">
-        <SectionHeader eyebrow="No. 005 / About" title="アニイベとは" />
+        <SectionHeader eyebrow={`No. ${sectionNo('about')} / About`} title="アニイベとは" />
         <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
           コラボカフェ・ポップアップ・コラボグッズなど、作品と街が交わるイベントを AI
           が集め、「いつ・どこで」を最短で届けます。そして、行った人が残した体験とレビューが、そこに積み重なっていきます。

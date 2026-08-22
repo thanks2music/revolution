@@ -40,12 +40,16 @@ import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase
  *    order は全順序を保証せず、range ページングで行の重複・欠落を招く
  *    (#333 Codex 指摘)。
  *
- * ## 件数の上限を置かない
+ * ## 取得は全件、表示の上限は呼び出し側
  *
- * 「開催中」は日付で自然に絞られる集合 (同時開催しているものだけ) なので、
- * `db.max_rows` を跨ぐ規模になるとは考えにくい。それでも `fetchAllRows` を
- * 通すのは、**無言の打ち切りを構造的に不可能にする**ためで、
+ * ここでは上限を置かない。**ピックアップ作品 (`pickOngoingTitles`) が
+ * この結果を全件走査して集計する**ため、ここで切ると集計が歪むから。
+ * `fetchAllRows` を通すのは**無言の打ち切りを構造的に不可能にする**ためで、
  * ページング規律を他の一覧と揃える意味もある。
+ *
+ * ⚠️ **rail の表示は `ONGOING_RAIL_LIMIT` で切る**。トップは `priority` の
+ *    ヒーロー画像も積むページなので、開催が増えるほど HTML が線形に膨らむ
+ *    (2026-08-22 `/code-review` 指摘)。
  */
 export async function listOngoingOccurrences(): Promise<OngoingOccurrence[]> {
   if (!hasPublicSupabaseCredentials()) return [];
@@ -89,6 +93,16 @@ function parseRailTitles(rows: { titles: RailTitle | null }[]): RailTitle[] {
     .filter((title): title is RailTitle => title !== null)
     .sort((a, b) => a.name.localeCompare(b.name, 'ja') || a.slug.localeCompare(b.slug));
 }
+
+/**
+ * 開催中 rail の**表示上限**。
+ *
+ * `listOngoingOccurrences` 自体は上限を持たない (`fetchAllRows` は最大 10 万行まで
+ * 読む)。トップは `priority` のヒーロー画像も積むページなので、**開催が増えるほど
+ * HTML が線形に膨らむ**のを防ぐためここで切る (2026-08-22 `/code-review` 指摘)。
+ * 全件を見たい要求は企画・会場・作品の各一覧が受ける。
+ */
+export const ONGOING_RAIL_LIMIT = 20;
 
 /** 「いま行ける作品」1 枚ぶん。 */
 export type TitlePick = {

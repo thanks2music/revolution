@@ -123,7 +123,7 @@ export const EventOccurrenceCard = ({
         </>
       )}
       <span className="font-numeric tabular-nums">{formatPeriod(startsOn, endsOn)}</span>
-      {formatPeriodTense(status)}
+      {formatPeriodTense(status, startsOn)}
     </p>
   </Link>
 );
