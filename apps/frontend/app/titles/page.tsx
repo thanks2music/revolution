@@ -54,7 +54,7 @@ export default async function TitlesPage() {
               <span className="font-numeric tabular-nums">{titles.length}</span> 作品
             </p>
 
-            <ul className="grid gap-2">
+            <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3" data-grid-cols="3">
               {titles.map((title) => (
                 <li key={title.slug}>
                   <Link

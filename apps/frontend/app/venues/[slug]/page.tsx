@@ -135,7 +135,7 @@ export default async function VenuePage(props: VenuePageProps) {
                   {group.items.length}
                 </span>
               </h3>
-              <ul className="grid gap-2">
+              <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3" data-grid-cols="3">
                 {group.items.map((occurrence) => (
                   <li key={occurrence.id}>
                     {/*

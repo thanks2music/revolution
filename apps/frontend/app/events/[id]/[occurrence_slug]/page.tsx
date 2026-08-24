@@ -178,7 +178,8 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             <h2 className="mb-4 font-display text-xl font-bold text-ink-strong">
               この企画の他の開催
             </h2>
-            <ul className="grid gap-3">
+            {/* 横 1 行型のカードなので 2 列止まり (理由は `OccurrenceCard` の docstring)。 */}
+            <ul className="grid gap-3 md:grid-cols-2" data-grid-cols="2">
               {siblings.map((sibling) => (
                 <li key={sibling.id}>
                   <OccurrenceCard eventId={event.id} occurrence={sibling} />
