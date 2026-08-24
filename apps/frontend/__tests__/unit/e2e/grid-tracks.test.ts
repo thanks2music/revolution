@@ -42,6 +42,8 @@ describe('countTracks', () => {
       // 回数が数値でないため列数が静的に決まらない
       ['auto-fill', 'repeat(auto-fill, minmax(0px, 1fr))'],
       ['auto-fit', 'repeat(auto-fit, minmax(120px, 1fr))'],
+      // greedy な `.*` が先頭の repeat だけを見て 2 を返していた (正しくは 5)
+      ['repeat の連結', 'repeat(2, 1fr) repeat(3, 1fr)'],
       ['subgrid', 'subgrid'],
       ['fr 単位の解決済み一覧', '1fr 1fr'],
     ])('%s', (_label, template) => {
