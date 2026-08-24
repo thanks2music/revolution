@@ -144,7 +144,7 @@ export default async function TitlePage(props: TitlePageProps) {
             )}
           </p>
 
-          <ul className="grid gap-4" data-grid-cols="1">
+          <ul className="grid gap-4" data-grid-layout="single">
             {eventGroups.map(({ event, occurrences }) => (
               <li
                 key={event.id}
@@ -162,7 +162,7 @@ export default async function TitlePage(props: TitlePageProps) {
                   </span>
                 </div>
                 {/* 横 1 行型のカードなので 2 列止まり (理由は `OccurrenceCard` の docstring)。 */}
-                <ul className="grid gap-3 md:grid-cols-2" data-grid-cols="2">
+                <ul className="grid gap-3 md:grid-cols-2" data-grid-layout="row">
                   {occurrences.map((occurrence) => (
                     <li key={occurrence.id}>
                       <OccurrenceCard eventId={event.id} occurrence={occurrence} />
