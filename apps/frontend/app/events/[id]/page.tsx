@@ -134,7 +134,8 @@ export default async function EventPage(props: EventPageProps) {
                 {group.label}
                 <span className="ml-2 font-numeric tabular-nums">{group.items.length}</span>
               </h3>
-              <ul className="grid gap-3">
+              {/* 横 1 行型のカードなので 2 列止まり (理由は `OccurrenceCard` の docstring)。 */}
+              <ul className="grid gap-3 md:grid-cols-2" data-grid-layout="row">
                 {group.items.map((occurrence) => (
                   <li key={occurrence.id}>
                     <OccurrenceCard eventId={event.id} occurrence={occurrence} />
@@ -150,7 +151,7 @@ export default async function EventPage(props: EventPageProps) {
             <h2 className="mb-4 font-display text-xl font-bold text-ink-strong">
               同じ作品の他の企画
             </h2>
-            <ul className="grid gap-3">
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-grid-layout="block">
               {relatedEvents.map((related) => (
                 <li key={related.id}>
                   <Link

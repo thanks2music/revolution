@@ -334,6 +334,16 @@ test-results/
 playwright-report/
 test-artifacts/
 
+# Playwright のスクリーンショット基準画像 (BOSS 判断 2026-08-25: repo に含めない)
+#
+# ⚠️ **この除外により、スクリーンショット層の意味が変わる。**
+#    基準画像が共有されないため、clone をまたいだ回帰検知はできない。
+#    各作業コピーで `pnpm test:visual --update-snapshots` を一度回して
+#    **自分の基準**を作り、「自分の編集で描画が変わったか」を見るための
+#    ローカル専用ガードになる。恒久的な真実源は `e2e/layout.spec.ts` の
+#    列数アサーション (こちらは repo に載る)。
+**/e2e/**/*-snapshots/
+
 # カバレッジ
 coverage/
 .nyc_output/

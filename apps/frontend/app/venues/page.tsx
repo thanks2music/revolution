@@ -56,7 +56,7 @@ export default async function VenuesPage() {
               <span className="font-numeric tabular-nums">{venues.length}</span> 件
             </p>
 
-            <ul className="grid gap-2">
+            <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3" data-grid-layout="block">
               {venues.map((venue) => {
                 // 都道府県・市区は null を取り得る (データ源が無い項目は置かない)。
                 const region = [venue.prefecture, venue.city].filter(Boolean).join(' ');

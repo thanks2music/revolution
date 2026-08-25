@@ -71,6 +71,10 @@ export const RemainingDaysBadge = ({ endsOn, now, className = '' }: Props) => {
 
   return (
     <span
+      // 中身が **日付をまたぐだけで変わる**唯一の表示。Playwright の
+      // `toHaveScreenshot` はここを mask して撮る (でないとスナップショットが
+      // 毎日壊れる)。詳細は `e2e/layout.spec.ts` の VOLATILE_MASK を参照。
+      data-volatile="remaining-days"
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-display text-xs tracking-wide ${tierStyle[tier]} ${className}`}
     >
       <span>あと</span>

@@ -105,7 +105,7 @@ export default async function TitleOccurrencesPage(props: TitleOccurrencesPagePr
                     {group.items.length}
                   </span>
                 </h2>
-                <ul className="grid gap-2">
+                <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3" data-grid-layout="block">
                   {group.items.map((occurrence) => (
                     <li key={occurrence.id}>
                       {/*

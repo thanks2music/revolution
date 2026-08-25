@@ -55,7 +55,7 @@ export default async function EventsPage() {
               <span className="font-numeric tabular-nums">{events.length}</span> 件
             </p>
 
-            <ul className="grid gap-2">
+            <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3" data-grid-layout="block">
               {events.map((event) => (
                 <li key={event.id}>
                   <EventSummaryCard event={event} />
