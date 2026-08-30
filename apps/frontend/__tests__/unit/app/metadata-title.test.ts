@@ -191,6 +191,7 @@ describe('S2 ルート群の noindex', () => {
       title: '記事タイトル',
       description: 'テスト',
       publishedTime: '2026-01-01',
+      slug: 'test-article',
     });
 
     // index: false を持たない (未指定 = 既定の index, follow、または明示的な index: true)。
