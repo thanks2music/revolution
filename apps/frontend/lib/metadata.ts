@@ -179,6 +179,29 @@ export function generateContentMetadata({
     title,
     description,
     alternates: { canonical: url },
+    /*
+     * 🔴 **S2 ルート群は暫定的に noindex** (BOSS 確定 2026-08-25)。
+     *
+     * production Supabase へデータを投入するが、**A-1-b (記事品質ゲート) が未達**の
+     * まま公開すると、名寄せ修正で `occurrences.slug` が変わったときに
+     * **インデックス済み URL が死ぬ**。データは入れつつ、**公開 URL の確定だけ遅らせる**。
+     *
+     * - `follow: true` は残す — 回遊は辿らせたいため
+     * - `robots.txt` の disallow は**使わない**。クロール自体を止めると解除しても
+     *   再発見が遅れる。noindex メタタグならクロールは続き、解除が速く反映される
+     *
+     * ## 対象がここで過不足なく決まる理由
+     *
+     * 本関数の呼び出し元は **S2 の 10 ルートのみ** (`/titles` `/events` `/venues` と
+     * それぞれの配下)。記事詳細は `generateArticleMetadata` を使うため**影響しない**。
+     * よって 1 箇所で正しい範囲を覆える。
+     *
+     * ## 🔴 解除条件
+     *
+     * **A-1-b (記事品質ゲート) 合格** が公開のスイッチ。解除時は本ブロックを削除し、
+     * `app/sitemap.ts` の `INCLUDE_S2_ROUTES` も `true` へ戻すこと (セットで必要)。
+     */
+    robots: { index: false, follow: true },
     openGraph: {
       type: 'website',
       locale: 'ja_JP',
