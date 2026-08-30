@@ -165,6 +165,46 @@ async function buildVenuePages(baseUrl: string): Promise<MetadataRoute.Sitemap> 
   }
 }
 
+/**
+ * S2 ルート群 (`/titles` `/events` `/venues` とその配下) を sitemap に載せるか。
+ *
+ * 🔴 **現在 `false`** — 同ルート群は暫定的に noindex にしている (BOSS 確定 2026-08-25、
+ * 理由は `lib/metadata.ts` の `generateContentMetadata` を参照)。
+ *
+ * **noindex の URL を sitemap に載せるのは矛盾**で、Search Console が
+ * 「送信された URL に noindex タグが追加されています」と警告を出す。載せない。
+ *
+ * ⚠️ `/articles` 系は**対象外** (既に公開・インデックス済みのため現状維持)。
+ *
+ * ## 🔴 解除時
+ *
+ * A-1-b (記事品質ゲート) 合格で noindex を外す際に **`true` へ戻す**。
+ * `lib/metadata.ts` の `robots` ブロック削除とセットで行うこと。
+ *
+ * 併せて **`app/sitemap.ts` はビルド時固定** (`revalidate` 未指定 = 無期限キャッシュ、
+ * build manifest で `initialRevalidateSeconds=false` を実測) である点に注意。
+ * 解除後に新しい URL を載せ続けるには `export const revalidate` の追加が要る。
+ *
+ * 型注釈を付けているのは、リテラル型に絞られると分岐が dead code 扱いになるため。
+ */
+const INCLUDE_S2_ROUTES: boolean = false;
+
+/**
+ * S2 ルート群 (`/titles` `/events` `/venues` の配下) のエントリを列挙する。
+ *
+ * **`INCLUDE_S2_ROUTES` から切り離して export している**のは、noindex 期間中も
+ * **列挙ロジック自体の回帰テストを生かし続ける**ため。ここが壊れていることに
+ * 気づかないまま noindex を解除すると、PR #303 で直した「S2 ページが sitemap から
+ * 黙って漏れる」バグが**そのまま再発**する。テストは本関数を直接叩く。
+ */
+export async function buildS2Pages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
+  return [
+    ...(await buildDatabasePages(baseUrl)),
+    ...(await buildTitlePages(baseUrl)),
+    ...(await buildVenuePages(baseUrl)),
+  ];
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com';
 
@@ -178,31 +218,32 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'daily',
       priority: 1.0,
     },
-    {
-      url: `${baseUrl}/titles`,
-      lastModified: new Date(),
-      changeFrequency: 'daily',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/events`,
-      lastModified: new Date(),
-      changeFrequency: 'daily',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/venues`,
-      lastModified: new Date(),
-      changeFrequency: 'daily',
-      priority: 0.8,
-    },
+    ...(INCLUDE_S2_ROUTES
+      ? ([
+          {
+            url: `${baseUrl}/titles`,
+            lastModified: new Date(),
+            changeFrequency: 'daily',
+            priority: 0.8,
+          },
+          {
+            url: `${baseUrl}/events`,
+            lastModified: new Date(),
+            changeFrequency: 'daily',
+            priority: 0.8,
+          },
+          {
+            url: `${baseUrl}/venues`,
+            lastModified: new Date(),
+            changeFrequency: 'daily',
+            priority: 0.8,
+          },
+        ] satisfies MetadataRoute.Sitemap)
+      : []),
   ];
 
-  return [
-    ...staticPages,
-    ...buildArticlePages(baseUrl),
-    ...(await buildDatabasePages(baseUrl)),
-    ...(await buildTitlePages(baseUrl)),
-    ...(await buildVenuePages(baseUrl)),
-  ];
+  // 記事は常に載せる (noindex 対象外)。S2 ルート群はフラグで切り替える。
+  const s2Pages = INCLUDE_S2_ROUTES ? await buildS2Pages(baseUrl) : [];
+
+  return [...staticPages, ...buildArticlePages(baseUrl), ...s2Pages];
 }

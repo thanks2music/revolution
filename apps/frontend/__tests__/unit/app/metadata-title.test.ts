@@ -144,3 +144,57 @@ describe('metadata の title 合成', () => {
     expect(occurrenceNotFound.title as string).not.toContain(siteConfig.name);
   });
 });
+
+/**
+ * 🔴 S2 ルート群の noindex を固定する (2026-08-25、BOSS 確定)。
+ *
+ * ## なぜこのテストが要るか (mutation test で発覚)
+ *
+ * noindex 実装後に `robots` ブロックを削除する変異を入れたところ、**既存テストは
+ * 全て通ってしまった**。本 PR の中核である「S2 を noindex にする」が**無検査**で、
+ * 誰かが誤って消しても気づけない状態だった。
+ *
+ * これは `animate-[…]` が存在しない `@keyframes` を参照してもビルドが通り、
+ * 全ページでドットが静止していた 2026-08-22 の事故と同型の失敗モードで、
+ * tsc / eslint のいずれも捕まえられない。
+ *
+ * ## 何を守るか
+ *
+ * - S2 は `noindex, follow` — `follow` は回遊のため残す
+ * - **記事は巻き込まない** — 既に公開・インデックス済み
+ *
+ * ## 🔴 解除時
+ *
+ * A-1-b (記事品質ゲート) 合格で noindex を外す際、本 describe は**反転させる**
+ * (`index: false` を期待しない形へ)。`app/sitemap.ts` の `INCLUDE_S2_ROUTES` を
+ * `true` へ戻すのとセット。
+ */
+describe('S2 ルート群の noindex', () => {
+  it('generateContentMetadata は noindex, follow を返す', async () => {
+    const { generateContentMetadata } = await import('@/lib/metadata');
+
+    const meta = generateContentMetadata({
+      title: '作品から探す',
+      description: 'テスト',
+      path: '/titles',
+    });
+
+    expect(meta.robots).toEqual({ index: false, follow: true });
+  });
+
+  it('記事のメタデータは noindex にしない (巻き込み防止)', async () => {
+    // /articles は既に公開・インデックス済みのため現状維持。
+    // 別関数を使っているので影響しないことを固定する。
+    const { generateArticleMetadata } = await import('@/lib/metadata');
+
+    const meta = generateArticleMetadata({
+      title: '記事タイトル',
+      description: 'テスト',
+      publishedTime: '2026-01-01',
+    });
+
+    // index: false を持たない (未指定 = 既定の index, follow、または明示的な index: true)。
+    const robots = meta.robots as { index?: boolean } | undefined;
+    expect(robots?.index).not.toBe(false);
+  });
+});
