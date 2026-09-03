@@ -39,7 +39,7 @@
     "clean:utm": "tsx scripts/remove-utm-from-articles.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.63.0",
+    "@anthropic-ai/sdk": "^0.122.0",
     "@aws-sdk/client-s3": "^3.948.0",
     "@extractus/article-extractor": "^8.0.20",
     "@google-cloud/secret-manager": "^6.1.2",
@@ -59,12 +59,12 @@
     "form-data": "^4.0.4",
     "jose": "^6.1.0",
     "js-yaml": "^4.1.1",
-    "lucide-react": "^0.544.0",
-    "next": "16.2.11",
+    "lucide-react": "^0.577.0",
+    "next": "16.3.3",
     "openai": "^6.9.1",
     "pino": "^9.11.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "rss-parser": "^3.13.0",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.3.1",
@@ -85,8 +85,8 @@
     "@types/form-data": "^2.5.2",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.5.2",
-    "@types/react": "19.2.7",
-    "@types/react-dom": "19.2.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
     "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "^8.44.0",
     "@typescript-eslint/parser": "^8.44.0",
@@ -109,8 +109,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@types/react": "19.2.7",
-      "@types/react-dom": "19.2.3"
+      "@types/react": "19.2.18",
+      "@types/react-dom": "19.2.5"
     }
   }
 }
