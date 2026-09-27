@@ -14,6 +14,11 @@
 apps/frontend/.env.local
 apps/backend/.env
 
+# 1Password の secret reference (`op run --env-file` 用)。平文は含まないが、
+# 参照先が個人の保管庫で他の開発者にも CI (GitHub Secrets を使う) にも解決できず、
+# 共有する価値がない。public repo に保管庫・項目の構成を載せる理由もないため除外する
+**/.env.op
+
 # git worktree 並行作業用 (scripts/setup-worktree.sh が生成)
 .worktree.env
 **/.worktree.env
@@ -393,6 +398,10 @@ apps/backend/premium-plugins/*.zip
 
 # Next.js 本番環境設定
 apps/frontend/.env.production.local
+
+# ingest の人手キュー (scripts/ingest-occurrences.ts が実行ごとに cwd へ上書きする生成物)。
+# CI では ingest-occurrences.yml が artifact として保存するため、repo には置かない
+apps/frontend/ingest-queue.json
 
 # AI Writer環境変数
 apps/ai-writer/.env
