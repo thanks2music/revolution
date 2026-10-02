@@ -62,6 +62,8 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
+# ⚠️ seed/ に置いた .sql は **すべて** `supabase db reset` (と初回の `supabase start`) で
+#    ローカル DB に自動投入される。ローカルに流したくないもの (staging 専用など) は置かない。
 sql_paths = ["./seed/*.sql"]
 
 [db.network_restrictions]
