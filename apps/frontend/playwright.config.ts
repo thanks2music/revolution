@@ -21,12 +21,12 @@ import { defineConfig, devices } from '@playwright/test';
  * ## 事前に必要なもの
  *
  * **staging を向いた dev サーバが 4444 で起動していること。**
- * 起動手順は引き継ぎ書 `docs/handoff/2026-08-22-s2-v6-and-top-page-prs-ready.md`
- * §4.5「staging 向き dev サーバ」を参照 (`.env.local` の `*_STG` をプロセス内で
- * 実名へリマップして `next dev` を spawn する。**値は stdout に出さない**)。
+ * `pnpm dev:stg` で起動する (`op run --env-file=.env.stg` が staging の値を
+ * process.env に入れ、`.env.local` より優先させる。書式は `.env.sample` の冒頭)。
  *
- * ⚠️ `webServer` を設定していないのはこのため。素の `pnpm dev` では production の
- *    Supabase を向いてしまい、データが空で検証にならない。
+ * ⚠️ `webServer` を設定していないのはこのため。素の `pnpm dev` はローカル Supabase
+ *    (`supabase start`) を向く。ローカルのデータはフィクスチャだけなので、
+ *    staging と同じ基準画像にはならない。
  *
  * ⚠️ production build と dev が `.next` を共有すると 500 になる。build の後に
  *    dev を起動するときは間に `rm -rf .next` を挟むこと。

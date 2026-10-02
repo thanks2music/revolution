@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "next dev --port 4444",
+    "dev:stg": "op run --env-file=.env.stg -- next dev --port 4444",
     "build": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "eslint .",

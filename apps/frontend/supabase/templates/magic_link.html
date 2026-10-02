@@ -1,0 +1,12 @@
+<!--
+  ローカル (supabase start) 専用のログインメール。config.toml の
+  [auth.email.template.magic_link] から読み込まれる。hosted プロジェクトのメール本文は
+  Supabase Dashboard 側の設定で決まり、このファイルは影響しない。
+
+  アプリのログインは 6 桁コード方式 (actions/auth.ts の verifyOtp) なので、
+  CLI 既定のテンプレート (リンクのみ) ではコードが届かず、ローカルでログインできなかった。
+  送信されたメールは Mailpit (http://127.0.0.1:54324) で確認する。
+-->
+<h2>ログインコード</h2>
+<p>以下の 6 桁のコードをログイン画面に入力してください。</p>
+<p style="font-size: 24px; font-weight: bold; letter-spacing: 4px;">{{ .Token }}</p>

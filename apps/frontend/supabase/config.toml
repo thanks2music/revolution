@@ -62,7 +62,9 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# ⚠️ seed/ に置いた .sql は **すべて** `supabase db reset` (と初回の `supabase start`) で
+#    ローカル DB に自動投入される。ローカルに流したくないもの (staging 専用など) は置かない。
+sql_paths = ["./seed/*.sql"]
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -151,11 +153,11 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "http://localhost:4444"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["http://localhost:4444", "http://127.0.0.1:4444"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -237,6 +239,13 @@ otp_expiry = 3600
 # pass = "env(SENDGRID_API_KEY)"
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
+
+# ログインメール (signInWithOtp)。アプリは 6 桁コード方式のため、CLI 既定の
+# リンクのみのテンプレートではローカルでログインできない。{{ .Token }} を含む本文に差し替える。
+# ローカル専用 (hosted のメール本文は Dashboard 側)。変更後は supabase stop && supabase start
+[auth.email.template.magic_link]
+subject = "ログインコード"
+content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
