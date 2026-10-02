@@ -17,7 +17,12 @@ apps/backend/.env
 # 1Password の secret reference (`op run --env-file` 用)。平文は含まないが、
 # 参照先が個人の保管庫で他の開発者にも CI (GitHub Secrets を使う) にも解決できず、
 # 共有する価値がない。public repo に保管庫・項目の構成を載せる理由もないため除外する
+# `.env.op` は旧名 (2026-09-27 に `.env.prod` へ改名)。残っていても漏れないよう保護を残す
 **/.env.op
+# 環境別の env ファイル。`.env.local` = ローカル / `.env.stg` = staging / `.env.prod` = production
+# (production は 1Password 参照のみ。詳細は apps/frontend/.env.sample の冒頭)
+**/.env.stg
+**/.env.prod
 
 # git worktree 並行作業用 (scripts/setup-worktree.sh が生成)
 .worktree.env
