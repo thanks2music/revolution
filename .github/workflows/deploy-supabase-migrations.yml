@@ -49,11 +49,11 @@ jobs:
   deploy-staging:
     if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging')
     runs-on: ubuntu-latest
-    timeout-minutes: 12  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)。内訳は staging job の env の上のコメント
+    timeout-minutes: 13  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)。内訳は staging job の env の上のコメント
     environment:
       name: staging
-    # 時間の予算 (両 job 共通): preflight 3 分 + push 6 分 + advisor 1 分 + 前後の step 1 分前後 を
-    # job の 12 分に収める。job ごと打ち切られると、末尾の Slack 通知 step まで実行されず失敗に気づけない
+    # 時間の予算 (両 job 共通): preflight 3 分 + push 6 分 + advisor 2 分 + 前後の step 1〜2 分 を
+    # job の 13 分に収める。advisor が上限で切られた時は has_new が空になり、baseline は更新しない (通知は落とさない側)。job ごと打ち切られると、末尾の Slack 通知 step まで実行されず失敗に気づけない
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STG_DB_PASSWORD }}
@@ -201,7 +201,7 @@ jobs:
         # 下の Rename / Refresh で次回の baseline を更新する。
         # push step が失敗しても実行する (deploy 失敗起因の lint も検知したい)
         if: always()
-        timeout-minutes: 1
+        timeout-minutes: 2
         env:
           ENV_NAME: staging
           GH_REPO: ${{ github.repository }}
@@ -261,7 +261,7 @@ jobs:
   deploy-production:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
     runs-on: ubuntu-latest
-    timeout-minutes: 12  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)。内訳は staging job の env の上のコメント
+    timeout-minutes: 13  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)。内訳は staging job の env の上のコメント
     environment:
       name: production
     env:
@@ -387,7 +387,7 @@ jobs:
         # 下の Rename / Refresh で次回の baseline を更新する。
         # push step が失敗しても実行する (deploy 失敗起因の lint も検知したい)
         if: always()
-        timeout-minutes: 1
+        timeout-minutes: 2
         env:
           ENV_NAME: production
           GH_REPO: ${{ github.repository }}

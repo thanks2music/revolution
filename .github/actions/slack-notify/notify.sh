@@ -64,13 +64,15 @@ response_error() {
   echo "${code:-invalid_response_http_${1:-000}}"
 }
 
+run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}"
+
 if ! PAYLOAD_CHANNEL="${channel}" \
   PAYLOAD_TEXT="${NOTIFY_TEXT:-}" \
   PAYLOAD_PREFIX="${prefix}" \
   PAYLOAD_MENTION="${mention}" \
   PAYLOAD_BODY="${NOTIFY_BODY:-}" \
   PAYLOAD_BLOCKS_FILE="${NOTIFY_BLOCKS_FILE:-}" \
-  PAYLOAD_RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}" \
+  PAYLOAD_RUN_URL="${run_url}" \
   bash "$(dirname "$0")/build-payload.sh" > "${payload_file}"; then
   echo "::warning title=Slack notification failed::could not build the payload"
   exit 0
@@ -86,9 +88,11 @@ fi
 error_code="$(response_error "${http_code}")"
 
 # blocks が拒否された時 (invalid_blocks / msg_too_long) は何も投稿されていないので、
-# 要約 (text、メンションを含む) だけで 1 回だけ送り直す。二重投稿にはならず、要対応の知らせは届く
+# 要約 (text、メンションを含む) と実行ログへのリンクだけで 1 回だけ送り直す。二重投稿にはならず、要対応の知らせは届く
 if [[ "${error_code}" == "invalid_blocks" || "${error_code}" == "msg_too_long" ]]; then
-  jq '{channel, text, unfurl_links, unfurl_media}' "${payload_file}" > "${text_only_file}"
+  jq --arg run "${run_url}" \
+    '{channel, text: (.text + "\n<" + $run + "|実行ログ (GitHub Actions)>"), unfurl_links, unfurl_media}' \
+    "${payload_file}" > "${text_only_file}"
   http_code="$(post "${text_only_file}")" || true
   if response_ok; then
     ok=true

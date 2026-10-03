@@ -18,10 +18,12 @@ def trunc($n): if length > $n then (.[0:($n - 1)] | sub("&[a-z]{0,4}$"; "")) + "
 # リンク記法 <url|text> に入れる URL。`|` は区切りとして解釈されるため %7C にし、
 # http(s) でない値や極端に長い値は使わずに Advisor の一般的な案内ページへ差し替える
 # (section の上限 3000 字を超えると、Slack がメッセージごと invalid_blocks で拒否するため)
+# 長さはエスケープ後で見る (& が多い URL はエスケープで 5 倍に伸びる)
 def link_url:
-  if (type == "string") and test("^https?://") and (length <= 500)
-  then gsub("\\|"; "%7C") | esc
-  else "https://supabase.com/docs/guides/database/database-linter" end;
+  "https://supabase.com/docs/guides/database/database-linter" as $fallback
+  | if (type == "string") and test("^https?://")
+    then (gsub("\\|"; "%7C") | esc) as $u | (if ($u | length) <= 500 then $u else $fallback end)
+    else $fallback end;
 
 [
   .[0:$max][]

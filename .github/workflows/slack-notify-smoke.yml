@@ -90,10 +90,11 @@ jobs:
           jq -n --arg d "${details}" '[
             {name: "n", level: "WARN", detail: $d, remediation: "https://example.com/a|b"},
             {name: "m", level: "WARN", detail: "x", remediation: "javascript:alert(1)"},
-            {name: "l", level: "WARN", detail: "x", remediation: ("https://example.com/" + ("p" * 600))}
+            {name: "l", level: "WARN", detail: "x", remediation: ("https://example.com/" + ("p" * 600))},
+            {name: "a", level: "WARN", detail: "x", remediation: ("https://example.com/?" + ("&a" * 200))}
           ]' > lints2.json
           out=$(jq --arg label "🆕 New" --argjson max 5 --argjson remediation true -f "${SECTIONS}" lints2.json)
-          jq -e '(.[0].text.text | length <= 3000) and (.[0].text.text | contains("a%7Cb")) and (.[1].text.text | contains("database-linter")) and (.[1].text.text | contains("javascript") | not) and (.[2].text.text | contains("database-linter"))' <<<"${out}" >/dev/null
+          jq -e '(.[0].text.text | length <= 3000) and (.[0].text.text | contains("a%7Cb")) and (.[1].text.text | contains("database-linter")) and (.[1].text.text | contains("javascript") | not) and (.[2].text.text | contains("database-linter")) and (.[3].text.text | contains("database-linter"))' <<<"${out}" >/dev/null
 
           echo "payload rendering OK"
 
@@ -203,7 +204,10 @@ jobs:
           res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=PROD NOTIFY_TEXT=x NOTIFY_MENTION=U1 NOTIFY_BODY=b \
             FAKE_SLACK_REJECT_BLOCKS=1 FAKE_SLACK_RESPONSE='{"ok":true}')"
           grep -qx 'ok=true' <<<"${res}"
-          jq -e '(has("blocks") | not) and .text == "<@U1> x" and .channel == "PROD"' "${SHIM}/payload.json" > /dev/null
+          jq -e '(has("blocks") | not) and (.text | startswith("<@U1> x\n<")) and (.text | contains("actions/runs/1|")) and .channel == "PROD"' "${SHIM}/payload.json" > /dev/null
+          # テストモードで test-channel が無い時は、本番系に流さず skip する
+          res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=PROD NOTIFY_TEST=true NOTIFY_TEXT=x)"
+          grep -qx 'skipped=true' <<<"${res}"
 
           # post-deploy-advisor.sh: baseline 1 件 → 現在 7 件 = 新規 6 件 (5 件 + 「ほか 1 件」)
           mkdir -p "${SHIM}/base"

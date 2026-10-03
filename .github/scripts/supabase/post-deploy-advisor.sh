@@ -58,7 +58,7 @@ if [[ "${ENV_NAME}" == "production" ]]; then
 fi
 # per_page は上限の 100。少ないと、他ブランチの実行が置いた artifact に押し出されて条件に合うものが見つからない
 ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=100" \
-  --jq "[.artifacts[] | select(${filter})][0].id // empty" 2>/dev/null || true)
+  --jq "[.artifacts[] | select(${filter})] | sort_by(.created_at) | reverse | .[0].id // empty" 2>/dev/null || true)
 if [[ -z "${ARTIFACT_ID}" ]]; then
   echo "::notice title=Advisor baseline unavailable::No unexpired advisor-state-${ENV_NAME} artifact. Skipping the diff (this run's state becomes the next baseline)."
   exit 0
