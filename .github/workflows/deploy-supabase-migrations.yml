@@ -58,9 +58,11 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
     steps:
       - name: Checkout repository
-        # Revolution の ci.yml と整合させて v5 採用 (Node.js 24 ベース、track record 十分、
-        # claude[bot] PR #244 review #2 採用)
-        uses: actions/checkout@v5
+        # Revolution の ci.yml と整合させて v7.0.1 を commit SHA で固定 (Node.js 24 ベース。
+        # Node 20 は 2026-09-23 に runner から削除済み)。git push しないため credentials は残さない
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Supabase CLI
         # Action タグを specific pin (v2.1.1、2026-05-21 release) し、action level の
@@ -353,7 +355,9 @@ jobs:
     steps:
       - name: Checkout repository
         # staging job と整合 (claude[bot] PR #244 review 採用)
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Supabase CLI
         # staging job と整合 (action は v2.1.1 pin / CLI は latest 維持、上の staging job
