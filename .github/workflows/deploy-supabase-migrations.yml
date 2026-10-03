@@ -74,7 +74,7 @@ jobs:
         # 追加に CLI が追従しないと `Failed reading config: Invalid db.major_version: 17` で
         # deploy が壊れるため (本 PR で実証)。CLI は前進する schema 互換性のために latest を
         # 採る公式 example の判断を踏襲。
-        uses: supabase/setup-cli@v2.1.1
+        uses: supabase/setup-cli@v2.1.2
         with:
           version: latest
 
@@ -278,7 +278,7 @@ jobs:
       - name: Setup Supabase CLI
         # staging job と整合 (action は v2.1.1 pin / CLI は latest 維持、上の staging job
         # コメント参照)
-        uses: supabase/setup-cli@v2.1.1
+        uses: supabase/setup-cli@v2.1.2
         with:
           version: latest
 
