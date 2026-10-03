@@ -80,45 +80,38 @@ on:
           - production
           - staging
 
-# 本 job 群は Supabase の外部 REST API へ接続するのみで、リポジトリ内容への書き込み・読み取りは不要。
-# 最小権限の原則に従い GITHUB_TOKEN の権限を空にする。
-permissions: {}
+# 失敗時の Slack 通知 (.github/actions/slack-notify) を checkout するためだけに contents: read が要る。
+# それ以外の権限は不要 (Supabase の外部 REST API へ接続するのみ)。
+permissions:
+  contents: read
 
 jobs:
   ping-production:
     name: Ping Supabase PostgREST (production)
-    # workflow_dispatch 時は target で個別制御、schedule は cron で識別 (旧設計から継承)。
     if: >-
       (github.event_name == 'workflow_dispatch' && (inputs.target == 'both' || inputs.target == 'production'))
       || (github.event_name == 'schedule' && github.event.schedule == '37 15 * * *')
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     env:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_ID }}
       # 新体系 API key (client-safe Publishable key、Supabase 2024 migration)。
       # RLS 適用 anon role にマップされ、categories 表への SELECT policy を通過。
-      # 旧 anon key (Legacy) ではなく sb_publishable_ prefix の新形式を採用。
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PROD_PUBLISHABLE_KEY }}
-      # 2 巡目 review Finding #3 採用: keep-alive の失敗 (Publishable key rotation 忘れ /
-      # 503 pause) は GitHub default failed-workflow email に依存する passive 通知だった。
-      # Advisor 監視 (Backlog D α+β) と同 webhook で active push 通知に統一する。
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_SUPABASE_ADVISOR }}
-      # workflow-level context (Slack 通知の run link 用、run: 内直接展開を避ける)
-      GH_SERVER_URL: ${{ github.server_url }}
-      GH_REPO: ${{ github.repository }}
-      GH_RUN_ID: ${{ github.run_id }}
     steps:
       - name: HTTP ping to PostgREST to keep production active
+        id: ping
         run: |
           set -euo pipefail
 
-          # secret 未設定の早期 fail (deploy-supabase-migrations.yml と同 pattern、
-          # set -u は unset のみ検知し空文字は通してしまうため明示チェック)。
+          # secret 未設定の早期 fail (set -u は unset のみ検知し空文字は通してしまうため明示チェック)。
           if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "reason=missing_secret" >> "$GITHUB_OUTPUT"
             echo "::error title=Missing secret::SUPABASE_PROD_PROJECT_ID is empty or unset."
             exit 1
           fi
           if [ -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
+            echo "reason=missing_secret" >> "$GITHUB_OUTPUT"
             echo "::error title=Missing secret::SUPABASE_PROD_PUBLISHABLE_KEY is empty or unset. Add it via 'gh secret set SUPABASE_PROD_PUBLISHABLE_KEY' after copying from Supabase Dashboard > Settings > API Keys > Publishable key."
             exit 1
           fi
@@ -126,43 +119,14 @@ jobs:
           # PostgREST API endpoint. categories 表を `?select=id&limit=1` で最小 payload read.
           # RLS `categories_select_all` policy が anon role に SELECT を許可済 (PR #247 で導入)。
           # 200 = success (activity registered); 4xx/5xx = failure.
-          # `-w '%{http_code}'` で status のみ取得、-o /dev/null で body 破棄 (log noise 削減).
-          # `-sS` = silent + show error, `--max-time 30` = network hang guard.
+          # 接続できない / タイムアウトの場合、curl は 000 を出して非 0 で終わる。
+          # set -e で即終了すると理由が残らないため、`|| true` で受けて下の分岐へ流す
           HTTP_CODE=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
             -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
-            "https://${SUPABASE_PROJECT_REF}.supabase.co/rest/v1/categories?select=id&limit=1")
-
-          # 2 巡目 review Finding #3 採用: 失敗経路で Slack 通知を送る (非 blocking)。
-          # Slack 通知 curl 失敗が本 step の exit code に影響しないよう `|| echo` で吸収し、
-          # 「本来の失敗理由」(503 or その他 HTTP error) で exit 1 する。
-          # NL は ANSI-C quoting で real newline (0x0A)、Slack Block Kit mrkdwn の line break
-          # として render される (Finding #2 と同 pattern、literal `\n` はダメ)。
-          NL=$'\n'
-          notify_slack_failure() {
-            local title="$1"
-            local detail="$2"
-            if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-              return 0
-            fi
-            local run_url="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
-            jq -n \
-              --arg header "${title}" \
-              --arg detail "${detail}" \
-              --arg run_link "<${run_url}|Workflow run>" \
-              '{
-                blocks: [
-                  { type: "header", text: { type: "plain_text", text: $header, emoji: true } },
-                  { type: "section", text: { type: "mrkdwn", text: $detail } },
-                  { type: "divider" },
-                  { type: "context", elements: [{ type: "mrkdwn", text: $run_link }] }
-                ]
-              }' > slack-payload.json
-            curl -sS -X POST -o /dev/null \
-              -H 'Content-Type: application/json' \
-              --data-binary @slack-payload.json \
-              "${SLACK_WEBHOOK_URL}" || echo "::warning::Slack notification failed (non-blocking)"
-          }
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/rest/v1/categories?select=id&limit=1") || true
+          HTTP_CODE="${HTTP_CODE:-000}"
+          echo "http_code=${HTTP_CODE}" >> "$GITHUB_OUTPUT"
 
           if [ "${HTTP_CODE}" = "200" ]; then
             echo "Supabase keep-alive HTTP ping (production) succeeded: HTTP ${HTTP_CODE}"
@@ -170,17 +134,33 @@ jobs:
             # 503 = project already paused. HTTP request itself acts as a wake-up trigger,
             # but auto-restore requires dashboard resume for Free plan (公式仕様).
             echo "::warning title=Project paused::HTTP ${HTTP_CODE} - production project is already paused. Resume it manually from the Supabase Dashboard."
-            notify_slack_failure \
-              "🔴 Supabase Keep-Alive: production is PAUSED" \
-              "*HTTP 503* - production Supabase project (\`${SUPABASE_PROJECT_REF}\`) is already paused.${NL}Manual resume required from the Supabase Dashboard."
             exit 1
           else
             echo "::error title=Keep-alive HTTP ping failed::HTTP ${HTTP_CODE} on production. Check Publishable key rotation and categories RLS policy."
-            notify_slack_failure \
-              "🔴 Supabase Keep-Alive: production ping FAILED" \
-              "*HTTP ${HTTP_CODE}* on production (\`${SUPABASE_PROJECT_REF}\`).${NL}Check Publishable key rotation and \`categories\` RLS policy."
             exit 1
           fi
+
+      - name: Checkout notification action
+        # 失敗した時だけ、Slack 通知 (.github/actions/slack-notify) のために checkout する。
+        # ping を checkout の成否に左右させないため、ping の後ろに置く
+        if: failure()
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+
+      - name: Notify Slack on failure
+        # keep-alive の失敗は放置すると 7 日で pause する = 要対応。staging でも本番系へ送る。
+        # project ref は GitHub で secret 管理しているため Slack には載せない
+        if: failure()
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          mention: "${{ vars.SLACK_MENTION_USER_ID }}"
+          text: "🔴 Supabase Keep-Alive が失敗しました (production)"
+          body: "${{ steps.ping.outputs.http_code == '503' && '*HTTP 503*: プロジェクトが pause されています。Supabase Dashboard から手動で Resume してください。' || steps.ping.outputs.reason == 'missing_secret' && '*secret 未設定*: Actions の log の annotation を確認してください。' || format('*HTTP {0}*: Publishable key のローテーションと `categories` の RLS policy を確認してください (000 = 接続できない / タイムアウト)。', steps.ping.outputs.http_code) }}"
 
   ping-staging:
     name: Ping Supabase PostgREST (staging)
@@ -188,73 +168,72 @@ jobs:
       (github.event_name == 'workflow_dispatch' && (inputs.target == 'both' || inputs.target == 'staging'))
       || (github.event_name == 'schedule' && github.event.schedule == '42 15 * * *')
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     env:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
+      # 新体系 API key (client-safe Publishable key、Supabase 2024 migration)。
+      # RLS 適用 anon role にマップされ、categories 表への SELECT policy を通過。
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_STG_PUBLISHABLE_KEY }}
-      # 2 巡目 review Finding #3 採用 (staging 側も同修正)。詳細コメントは production job env を参照。
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_SUPABASE_ADVISOR }}
-      GH_SERVER_URL: ${{ github.server_url }}
-      GH_REPO: ${{ github.repository }}
-      GH_RUN_ID: ${{ github.run_id }}
     steps:
       - name: HTTP ping to PostgREST to keep staging active
+        id: ping
         run: |
           set -euo pipefail
 
+          # secret 未設定の早期 fail (set -u は unset のみ検知し空文字は通してしまうため明示チェック)。
           if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "reason=missing_secret" >> "$GITHUB_OUTPUT"
             echo "::error title=Missing secret::SUPABASE_STG_PROJECT_ID is empty or unset."
             exit 1
           fi
           if [ -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
+            echo "reason=missing_secret" >> "$GITHUB_OUTPUT"
             echo "::error title=Missing secret::SUPABASE_STG_PUBLISHABLE_KEY is empty or unset. Add it via 'gh secret set SUPABASE_STG_PUBLISHABLE_KEY' after copying from Supabase Dashboard > Settings > API Keys > Publishable key."
             exit 1
           fi
 
+          # PostgREST API endpoint. categories 表を `?select=id&limit=1` で最小 payload read.
+          # RLS `categories_select_all` policy が anon role に SELECT を許可済 (PR #247 で導入)。
+          # 200 = success (activity registered); 4xx/5xx = failure.
+          # 接続できない / タイムアウトの場合、curl は 000 を出して非 0 で終わる。
+          # set -e で即終了すると理由が残らないため、`|| true` で受けて下の分岐へ流す
           HTTP_CODE=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
             -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
-            "https://${SUPABASE_PROJECT_REF}.supabase.co/rest/v1/categories?select=id&limit=1")
-
-          # 2 巡目 review Finding #3 採用 (staging 側も同修正)。詳細コメントは production job を参照。
-          NL=$'\n'
-          notify_slack_failure() {
-            local title="$1"
-            local detail="$2"
-            if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-              return 0
-            fi
-            local run_url="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
-            jq -n \
-              --arg header "${title}" \
-              --arg detail "${detail}" \
-              --arg run_link "<${run_url}|Workflow run>" \
-              '{
-                blocks: [
-                  { type: "header", text: { type: "plain_text", text: $header, emoji: true } },
-                  { type: "section", text: { type: "mrkdwn", text: $detail } },
-                  { type: "divider" },
-                  { type: "context", elements: [{ type: "mrkdwn", text: $run_link }] }
-                ]
-              }' > slack-payload.json
-            curl -sS -X POST -o /dev/null \
-              -H 'Content-Type: application/json' \
-              --data-binary @slack-payload.json \
-              "${SLACK_WEBHOOK_URL}" || echo "::warning::Slack notification failed (non-blocking)"
-          }
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/rest/v1/categories?select=id&limit=1") || true
+          HTTP_CODE="${HTTP_CODE:-000}"
+          echo "http_code=${HTTP_CODE}" >> "$GITHUB_OUTPUT"
 
           if [ "${HTTP_CODE}" = "200" ]; then
             echo "Supabase keep-alive HTTP ping (staging) succeeded: HTTP ${HTTP_CODE}"
           elif [ "${HTTP_CODE}" = "503" ]; then
+            # 503 = project already paused. HTTP request itself acts as a wake-up trigger,
+            # but auto-restore requires dashboard resume for Free plan (公式仕様).
             echo "::warning title=Project paused::HTTP ${HTTP_CODE} - staging project is already paused. Resume it manually from the Supabase Dashboard."
-            notify_slack_failure \
-              "⚠️ Supabase Keep-Alive: staging is PAUSED" \
-              "*HTTP 503* - staging Supabase project (\`${SUPABASE_PROJECT_REF}\`) is already paused.${NL}Manual resume required from the Supabase Dashboard."
             exit 1
           else
             echo "::error title=Keep-alive HTTP ping failed::HTTP ${HTTP_CODE} on staging. Check Publishable key rotation and categories RLS policy."
-            notify_slack_failure \
-              "⚠️ Supabase Keep-Alive: staging ping FAILED" \
-              "*HTTP ${HTTP_CODE}* on staging (\`${SUPABASE_PROJECT_REF}\`).${NL}Check Publishable key rotation and \`categories\` RLS policy."
             exit 1
           fi
+
+      - name: Checkout notification action
+        # 失敗した時だけ、Slack 通知 (.github/actions/slack-notify) のために checkout する。
+        # ping を checkout の成否に左右させないため、ping の後ろに置く
+        if: failure()
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+
+      - name: Notify Slack on failure
+        # keep-alive の失敗は放置すると 7 日で pause する = 要対応。staging でも本番系へ送る。
+        # project ref は GitHub で secret 管理しているため Slack には載せない
+        if: failure()
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          mention: "${{ vars.SLACK_MENTION_USER_ID }}"
+          text: "🔴 Supabase Keep-Alive が失敗しました (staging)"
+          body: "${{ steps.ping.outputs.http_code == '503' && '*HTTP 503*: プロジェクトが pause されています。Supabase Dashboard から手動で Resume してください。' || steps.ping.outputs.reason == 'missing_secret' && '*secret 未設定*: Actions の log の annotation を確認してください。' || format('*HTTP {0}*: Publishable key のローテーションと `categories` の RLS policy を確認してください (000 = 接続できない / タイムアウト)。', steps.ping.outputs.http_code) }}"
