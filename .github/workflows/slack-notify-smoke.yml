@@ -124,6 +124,14 @@ jobs:
           # sha の形でない値はリンクにしない。切り詰めで entity の途中 (&am…) を残さない
           if grep -q '/commit/' <<<"$(vercel vercel.deployment.failed '.git.sha = "not-a-sha"')"; then echo "bad sha linked" >&2; exit 1; fi
           if grep -qE '&[a-z]{0,4}…' <<<"$(vercel vercel.deployment.failed '.error = ("a" * 296 + "&&&&&")')"; then echo "broken entity" >&2; exit 1; fi
+          # 境界値: ref のバッククォートと URL の | で記法を壊さない、environment / state.detail の欠落
+          res="$(vercel vercel.deployment.failed '.git.ref = "a`b" | .url = "https://x.vercel.app/a|b"')"
+          grep -qF "*Branch*: \`a'b\`" <<<"${res}"
+          grep -q 'x.vercel.app/a%7Cb' <<<"${res}"
+          res="$(vercel vercel.deployment.failed 'del(.environment) | del(.state.detail)')"
+          grep -qx 'production=false' <<<"${res}"
+          grep -qx 'notify=true' <<<"${res}"
+          grep -q '\*状態\*: failed ·' <<<"${res}"
           # 疑似イベントの test は真偽値でも文字列でもテストモードになる
           grep -qx 'test=true' <<<"$(vercel vercel.deployment.failed '.test = true')"
           grep -qx 'test=true' <<<"$(vercel vercel.deployment.failed '.test = "true"')"
@@ -158,18 +166,22 @@ jobs:
           grep -qx 'mention=true' <<<"${res}"
           grep -q '以前のリビジョンが稼働中' <<<"${res}"
           if grep -q 'ロールバック' <<<"${res}"; then echo "rollback shown before deploy" >&2; exit 1; fi
-          res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure HTTP_CODE=503)"
+          res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure HTTP_CODE=503 TRAFFIC_CHECKED=true)"
           grep -q 'ヘルスチェックに失敗しました (新リビジョンがトラフィック 100% で稼働中)' <<<"${res}"
           grep -q '\*HTTP\*: 503' <<<"${res}"
           grep -q -- '--to-latest' <<<"${res}"
           # 手順のプレースホルダは &lt; &gt; で書く (生の < > は Slack がリンクとして解釈する)
           grep -q '&lt;サービス名&gt;' <<<"${res}"
           if grep -q '<サービス名>' <<<"${res}"; then echo "raw placeholder" >&2; exit 1; fi
-          res="$(deploy_msg JOB_STATUS=cancelled DEPLOY_OUTCOME=success HEALTH_OUTCOME=cancelled)"
+          res="$(deploy_msg JOB_STATUS=cancelled DEPLOY_OUTCOME=success HEALTH_OUTCOME=cancelled TRAFFIC_CHECKED=true)"
           grep -q 'デプロイ後の確認が完了しませんでした (新リビジョンがトラフィック 100% で稼働中)' <<<"${res}"
-          res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure PINNED=true)"
+          res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure PINNED=true TRAFFIC_CHECKED=true)"
           grep -q '新しいリビジョンにトラフィックが流れていません' <<<"${res}"
           grep -qx 'mention=true' <<<"${res}"
+          # describe が失敗した (割り当てを確かめられない) 時は、どのリビジョンが動いているか断定しない
+          res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure)"
+          grep -q 'デプロイ後の状態を確かめられませんでした' <<<"${res}"
+          if grep -q 'トラフィック 100%' <<<"${res}"; then echo "claims 100% without checking" >&2; exit 1; fi
 
           echo "message scripts OK"
 

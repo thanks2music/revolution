@@ -94,7 +94,7 @@ jobs:
         # 先にトラフィックの割り当てを見る。以前のリビジョンに固定されていると (手動ロールバックの後など)、
         # 新しいリビジョンにトラフィックが流れず、サービスの URL への health check は以前のリビジョンの
         # 応答で通ってしまう (Cloud Run は固定された割り当てを以降のデプロイでも保つ)
-        timeout-minutes: 4
+        timeout-minutes: 5
         run: |
           SERVICE_JSON=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
             --platform managed \
@@ -102,6 +102,8 @@ jobs:
             --format json)
           SERVICE_URL=$(jq -r '.status.url' <<<"${SERVICE_JSON}")
           LATEST_PERCENT=$(jq '[.status.traffic[]? | select(.latestRevision == true) | (.percent // 0)] | add // 0' <<<"${SERVICE_JSON}")
+          # ここまで来れば、トラフィックの割り当てを確かめられている (describe の失敗と区別するため)
+          echo "traffic_checked=true" >> "$GITHUB_OUTPUT"
 
           echo "Service URL: $SERVICE_URL"
 
@@ -135,6 +137,7 @@ jobs:
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
           HTTP_CODE: ${{ steps.health.outputs.http_code }}
           PINNED: ${{ steps.health.outputs.pinned }}
+          TRAFFIC_CHECKED: ${{ steps.health.outputs.traffic_checked }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
           COMMIT_SHA: ${{ github.sha }}
         run: bash .github/scripts/notify/deploy-result-message.sh

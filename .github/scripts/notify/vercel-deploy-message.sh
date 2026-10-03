@@ -44,12 +44,15 @@ jq -r \
       # url はスキームなしで届くことがある
       (if (.url // "") != "" then
          ((.url | tostring) as $u | (if ($u | test("^https?://")) then $u else "https://" + $u end))
+         # リンク記法の区切りになる | は %7C にする
+         | gsub("\\|"; "%7C")
          as $href | "*URL*: <" + ($href | esc) + "|" + ($href | sub("^https?://"; "") | esc) + ">"
        else empty end),
       (if ($sha | test("^[0-9a-f]{7,40}$")) then
          "*Commit*: <" + $repo + "/commit/" + $sha + "|" + $sha[0:7] + ">"
        else empty end),
-      (if (.git.ref // "") != "" then "*Branch*: `" + (.git.ref | esc | trunc(100)) + "`" else empty end),
+      # バッククォートで囲むので、ref の中のバッククォートはシングルクォートにする
+      (if (.git.ref // "") != "" then "*Branch*: `" + (.git.ref | gsub("`"; "\u0027") | esc | trunc(100)) + "`" else empty end),
       (if $failed then
          "*状態*: " + ((.state.type // "unknown") | esc)
          + (if $detail != "" then " (" + ($detail | esc) + ")" else "" end)

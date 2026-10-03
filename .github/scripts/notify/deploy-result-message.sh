@@ -8,6 +8,7 @@
 #   HEALTH_OUTCOME  steps.health.outcome
 #   HTTP_CODE       health check の最後の HTTP ステータス (無ければ空)
 #   PINNED          true なら、新しいリビジョンにトラフィックが流れていない (以前のリビジョンに固定されている)
+#   TRAFFIC_CHECKED true なら、トラフィックの割り当てを確かめられた (describe が失敗すると空)
 #   COMMIT_URL      commit のページの URL
 #   COMMIT_SHA      commit の SHA (表示は先頭 7 文字)
 #
@@ -37,8 +38,12 @@ if [[ "${JOB_STATUS}" == "success" ]]; then
 elif [[ "${PINNED:-}" == "true" ]]; then
   text='⚠️ AI Writer: 新しいリビジョンにトラフィックが流れていません (以前のリビジョンに固定中)'
   body="${commit}"$'\n'"*解除*: 新しいリビジョンの動作を確かめてから ${unpin}"
+elif [[ "${DEPLOY_OUTCOME}" == "success" && "${TRAFFIC_CHECKED:-}" != "true" ]]; then
+  # deploy は終わったが、サービスの状態を取得できなかった。どのリビジョンが動いているか断定しない
+  text='⚠️ AI Writer: デプロイ後の状態を確かめられませんでした (トラフィックの割り当てとヘルスチェックを確認してください)'
+  body="${commit}"$'\n'"*確認*: \`gcloud run services describe ${svc} --region ${region}\` でトラフィックの割り当てを確かめる"
 elif [[ "${DEPLOY_OUTCOME}" == "success" ]]; then
-  # deploy は終わっているので、新しいリビジョンがトラフィック 100% で動いている
+  # deploy は終わり、割り当ても確かめた (固定なし) ので、新しいリビジョンがトラフィック 100% で動いている
   if [[ "${HEALTH_OUTCOME}" == "failure" ]]; then
     text='❌ AI Writer: 新しいリビジョンのヘルスチェックに失敗しました (新リビジョンがトラフィック 100% で稼働中)'
   else
