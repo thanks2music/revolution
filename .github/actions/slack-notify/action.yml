@@ -1,0 +1,78 @@
+name: Slack notify
+description: >-
+  chat.postMessage (bot token) で Slack へ 1 通送る。送信に失敗しても job を失敗させない
+  (warning を出して終了する)。運用ルールは one-more-time/docs/operations/slack-notification-sop.md。
+
+# 呼び出し側は事前に checkout が必要 (sparse-checkout: .github/actions で足りる)。
+#
+# テストモード: 次のどちらかで有効になり、test-channel (開発系) へ [TEST] 付き・メンションなしで送る。
+#   - inputs.test が 'true'
+#   - main 以外の ref で workflow_dispatch された (ブランチでの動作確認が本番系へ流れないようにする)
+#     ※ 本番への実デプロイなど「どの ref から dispatch されても本物」の通知は auto-test-mode: 'false' で無効にする
+
+inputs:
+  token:
+    description: Bot User OAuth Token (secrets.SLACK_BOT_TOKEN)。空なら通知せず終了する
+    required: false
+    default: ''
+  channel:
+    description: 投稿先のチャンネル ID (vars.SLACK_CHANNEL_PROD など)
+    required: false
+    default: ''
+  test-channel:
+    description: テストモードで使うチャンネル ID (vars.SLACK_CHANNEL_DEV)
+    required: false
+    default: ''
+  text:
+    description: 1 行の要約。通知のプレビューにも表示される。エスケープはこの action が行う
+    required: true
+  mention:
+    description: メンションするユーザー ID。失敗・要対応の時だけ渡す (成功では渡さない)
+    required: false
+    default: ''
+  body:
+    description: >-
+      補足 (mrkdwn)。呼び出し側が組み立てた文字列をそのまま載せる (リンク記法を使えるようにするため)。
+      外部由来の値 (エラー文・ブランチ名など) を埋め込む場合は呼び出し側で & < > をエスケープする
+    required: false
+    default: ''
+  blocks-file:
+    description: 追加する Block Kit blocks (JSON 配列) のファイルパス
+    required: false
+    default: ''
+  test:
+    description: "'true' ならテストモード"
+    required: false
+    default: 'false'
+  auto-test-mode:
+    description: "'false' にすると、main 以外の ref での workflow_dispatch でもテストモードにしない"
+    required: false
+    default: 'true'
+
+outputs:
+  ok:
+    description: 送信に成功したら 'true'
+    value: ${{ steps.post.outputs.ok }}
+  skipped:
+    description: token / channel が無く送らなかったら 'true'
+    value: ${{ steps.post.outputs.skipped }}
+
+runs:
+  using: composite
+  steps:
+    - id: post
+      shell: bash
+      # 値はすべて env 経由で渡す (run: 内で ${{ }} を展開しない = injection 対策)
+      env:
+        SLACK_TOKEN: ${{ inputs.token }}
+        SLACK_CHANNEL: ${{ inputs.channel }}
+        SLACK_TEST_CHANNEL: ${{ inputs.test-channel }}
+        NOTIFY_TEXT: ${{ inputs.text }}
+        NOTIFY_MENTION: ${{ inputs.mention }}
+        NOTIFY_BODY: ${{ inputs.body }}
+        NOTIFY_BLOCKS_FILE: ${{ inputs.blocks-file }}
+        NOTIFY_TEST: ${{ inputs.test }}
+        NOTIFY_AUTO_TEST: ${{ inputs.auto-test-mode }}
+        NOTIFY_EVENT_NAME: ${{ github.event_name }}
+        NOTIFY_REF: ${{ github.ref }}
+      run: bash "${GITHUB_ACTION_PATH}/notify.sh"

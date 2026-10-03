@@ -1,0 +1,171 @@
+name: Slack Notify Smoke
+
+# .github/actions/slack-notify と advisor の jq フィルタを、PR の変更そのもので確かめる。
+#
+# 1. payload の組み立てをネットワークなしで検証する (エスケープ・メンション・blocks の上限)
+# 2. notify.sh と post-deploy-advisor.sh の分岐を、偽の curl / gh で検証する (ネットワークなし)
+# 3. token がある時だけ、開発系チャンネルへ [TEST] を 1 通送り、ok: true を確認する
+#    (fork / Dependabot の PR では secret が渡らないため 3 は notice で skip される)
+#
+# 新規 workflow は default branch に無いと dispatch できない (GitHub 公式仕様) ため、
+# composite action の検証は pull_request で行う。
+
+on:
+  pull_request:
+    paths:
+      - '.github/actions/slack-notify/**'
+      - '.github/scripts/supabase/**'
+      - '.github/workflows/slack-notify-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout notification action and scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions
+            .github/scripts
+          persist-credentials: false
+
+      - name: Verify payload rendering (no network)
+        run: |
+          set -euo pipefail
+          BUILD=.github/actions/slack-notify/build-payload.sh
+          SECTIONS=.github/scripts/supabase/advisor-lint-sections.jq
+
+          # 要約の <!channel> は無害化され、エスケープ済みの形で残る
+          out=$(PAYLOAD_CHANNEL=C0 PAYLOAD_TEXT='boom <!channel> & <@U999>' bash "${BUILD}")
+          jq -e '(.text | contains("<!channel>") | not) and (.text | contains("&lt;!channel&gt;"))' <<<"${out}" >/dev/null
+
+          # メンションは指定した時だけ、要約の先頭に付く。block 0 と top-level text は同じ文字列
+          out=$(PAYLOAD_CHANNEL=C0 PAYLOAD_TEXT='x' PAYLOAD_MENTION='U123' bash "${BUILD}")
+          jq -e '(.text | startswith("<@U123> ")) and (.blocks[0].text.text == .text)' <<<"${out}" >/dev/null
+          out=$(PAYLOAD_CHANNEL=C0 PAYLOAD_TEXT='x' bash "${BUILD}")
+          jq -e '.text | contains("<@") | not' <<<"${out}" >/dev/null
+
+          # JSON 配列でない blocks-file は無視される
+          echo '{"not":"array"}' > bad-blocks.json
+          out=$(PAYLOAD_CHANNEL=C0 PAYLOAD_TEXT='x' PAYLOAD_BLOCKS_FILE=bad-blocks.json bash "${BUILD}")
+          jq -e '.blocks | length == 1' <<<"${out}" >/dev/null
+
+          # blocks は 50 個 (Block Kit の上限) に切り詰められる
+          jq -n '[range(0; 80) | { type: "divider" }]' > many-blocks.json
+          out=$(PAYLOAD_CHANNEL=C0 PAYLOAD_TEXT='x' PAYLOAD_BLOCKS_FILE=many-blocks.json PAYLOAD_RUN_URL=https://example.com bash "${BUILD}")
+          jq -e '.blocks | length == 50' <<<"${out}" >/dev/null
+
+          # advisor の lint section: Supabase API 由来の値もエスケープされる
+          echo '[{"name":"<!here>","level":"WARN","detail":"a <b> & c","remediation":"https://example.com/?a=1&b=2"}]' > lints.json
+          out=$(jq --arg label "🆕 New" --argjson max 5 --argjson remediation true -f "${SECTIONS}" lints.json)
+          jq -e '(.[0].text.text | contains("<!here>") | not) and (.[0].text.text | contains("&lt;b&gt;"))' <<<"${out}" >/dev/null
+
+          echo "payload rendering OK"
+
+      - name: Shellcheck
+        run: shellcheck .github/actions/slack-notify/*.sh .github/scripts/supabase/*.sh
+
+      - name: Verify notify.sh and post-deploy-advisor.sh with fakes (no network)
+        run: |
+          set -euo pipefail
+          SHIM="$(mktemp -d)"
+          mkdir -p "${SHIM}/bin"
+          # 偽 curl: Slack は $FAKE_SLACK_RESPONSE を返して payload を保存、Supabase は fixture を返す
+          cat > "${SHIM}/bin/curl" <<'EOF'
+          #!/usr/bin/env bash
+          out=""; data=""; url=""
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              -o) out="$2"; shift 2 ;;
+              --data-binary) data="$2"; shift 2 ;;
+              -w|-H|-X|--max-time) shift 2 ;;
+              -*) shift ;;
+              *) url="$1"; shift ;;
+            esac
+          done
+          case "${url}" in
+            *slack.com*) cp "${data#@}" "${SHIM_DIR}/payload.json"; printf '%s' "${FAKE_SLACK_RESPONSE}" > "${out}"; printf 200 ;;
+            *advisors/security*) cat "${SHIM_DIR}/advisor.json" > "${out}"; printf 200 ;;
+          esac
+          EOF
+          # 偽 gh: artifact 一覧 (jq 式を適用) と zip を返す
+          cat > "${SHIM}/bin/gh" <<'EOF'
+          #!/usr/bin/env bash
+          case "$2" in
+            *"/actions/artifacts?"*) jq -r "$4" "${SHIM_DIR}/artifacts.json" ;;
+            *"/artifacts/7/zip") cat "${SHIM_DIR}/baseline.zip" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod +x "${SHIM}/bin/curl" "${SHIM}/bin/gh"
+          NOTIFY="${GITHUB_WORKSPACE}/.github/actions/slack-notify/notify.sh"
+
+          notify() {
+            local out
+            out="$(mktemp)"
+            env -i PATH="${SHIM}/bin:${PATH}" SHIM_DIR="${SHIM}" GITHUB_OUTPUT="${out}" \
+              GITHUB_REPOSITORY=o/r GITHUB_RUN_ID=1 "$@" bash "${NOTIFY}" > /dev/null
+            cat "${out}"
+          }
+
+          # 未設定は skip (exit 0)
+          res="$(notify SLACK_CHANNEL=C1 NOTIFY_TEXT=x)"
+          grep -qx 'skipped=true' <<<"${res}"
+          # ok:false は失敗として残すが exit 0
+          res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=C1 NOTIFY_TEXT=x FAKE_SLACK_RESPONSE='{"ok":false,"error":"not_in_channel"}')"
+          grep -qx 'ok=false' <<<"${res}"
+          # 成功
+          res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=C1 NOTIFY_TEXT=x FAKE_SLACK_RESPONSE='{"ok":true}')"
+          grep -qx 'ok=true' <<<"${res}"
+          # main 以外の ref での dispatch はテストモード (test-channel / [TEST] / メンションなし)
+          notify SLACK_TOKEN=t SLACK_CHANNEL=PROD SLACK_TEST_CHANNEL=DEV NOTIFY_TEXT=x NOTIFY_MENTION=U1 \
+            NOTIFY_EVENT_NAME=workflow_dispatch NOTIFY_REF=refs/heads/feature/x FAKE_SLACK_RESPONSE='{"ok":true}' > /dev/null
+          jq -e '.channel == "DEV" and .text == "[TEST] x"' "${SHIM}/payload.json" > /dev/null
+          # auto-test-mode: false なら同じ条件でも本番系へメンション付きで送る
+          notify SLACK_TOKEN=t SLACK_CHANNEL=PROD SLACK_TEST_CHANNEL=DEV NOTIFY_TEXT=x NOTIFY_MENTION=U1 NOTIFY_AUTO_TEST=false \
+            NOTIFY_EVENT_NAME=workflow_dispatch NOTIFY_REF=refs/heads/feature/x FAKE_SLACK_RESPONSE='{"ok":true}' > /dev/null
+          jq -e '.channel == "PROD" and .text == "<@U1> x"' "${SHIM}/payload.json" > /dev/null
+
+          # post-deploy-advisor.sh: baseline 1 件 → 現在 7 件 = 新規 6 件 (5 件 + 「ほか 1 件」)
+          mkdir -p "${SHIM}/base" "${SHIM}/run"
+          jq -n '{lints_by_key: {k0: {key: "k0", level: "WARN", name: "old", detail: "d", remediation: null}}, count: 1}' > "${SHIM}/base/current-state.json"
+          (cd "${SHIM}/base" && zip -q ../baseline.zip current-state.json)
+          jq -n '{lints: ([range(0; 7)] | map({cache_key: ("k" + tostring), level: "WARN", name: ("lint<" + tostring + ">"), detail: "x", remediation: null}))}' > "${SHIM}/advisor.json"
+          # fork の PR が置いた artifact (head_repository_id が違う) は baseline に使わない
+          jq -n '{artifacts: [
+            {id: 9, expired: false, workflow_run: {repository_id: 1, head_repository_id: 2, head_branch: "x"}},
+            {id: 7, expired: false, workflow_run: {repository_id: 1, head_repository_id: 1, head_branch: "main"}}
+          ]}' > "${SHIM}/artifacts.json"
+          out="$(mktemp)"
+          (cd "${SHIM}/run" && env -i PATH="${SHIM}/bin:${PATH}" SHIM_DIR="${SHIM}" GITHUB_OUTPUT="${out}" \
+            SUPABASE_ACCESS_TOKEN=t SUPABASE_PROJECT_REF=r ENV_NAME=production GH_REPO=o/r GH_TOKEN=t \
+            bash "${GITHUB_WORKSPACE}/.github/scripts/supabase/post-deploy-advisor.sh" > /dev/null)
+          grep -qx 'new_count=6' "${out}"
+          jq -e 'length == 6 and (.[0].text.text | contains("<0>") | not)' "${SHIM}/run/advisor-blocks.json" > /dev/null
+
+          echo "notify / post-deploy advisor branches OK"
+
+      - name: Send a test message to the dev channel
+        id: notify
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          test: 'true'
+          text: "Slack notify smoke (PR #${{ github.event.pull_request.number }})"
+          body: 'composite action の動作確認です。この PR の変更で送っています。'
+
+      - name: Require a successful send when the token is available
+        if: steps.notify.outputs.skipped != 'true'
+        env:
+          SENT_OK: ${{ steps.notify.outputs.ok }}
+        run: |
+          if [ "${SENT_OK}" != "true" ]; then
+            echo "::error title=Slack smoke failed::chat.postMessage did not return ok: true (see the warning above)."
+            exit 1
+          fi
