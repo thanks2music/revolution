@@ -181,7 +181,6 @@ export function crossCheckVisionResult(
  * if (hallucinationResult.detected) {
  *   console.error(`[CRITICAL] Hallucination detected: ${hallucinationResult.type}`);
  *   console.error(`Reason: ${hallucinationResult.reason}`);
- *   await sendSlackNotification('critical', hallucinationResult.reason);
  *   // Abort article generation
  * }
  * ```

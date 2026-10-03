@@ -51,6 +51,9 @@ jest.mock('@/lib/config', () => ({
   resolveEventTypeSlug: jest.fn(),
 }));
 jest.mock('@/lib/utils/category-builder', () => ({ buildCategories: jest.fn() }));
+// 手元の env に Slack の token があっても実際に送信しないようにする
+// (Slack 通知の契約は rss-slack.test.ts で検証する)
+jest.mock('@/lib/slack', () => ({ notifyPipelineResult: jest.fn(async () => {}) }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { parseRssFeed } = require('@/lib/rss/parser') as { parseRssFeed: jest.Mock };

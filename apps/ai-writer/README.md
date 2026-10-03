@@ -114,7 +114,7 @@ pnpm test:coverage
 
 - Test Suites: 33 passed / Tests: 706 passed
 - 層別 TDD の Phase 1 即時施策の baseline スナップショット。Phase 2 で 50% threshold + CI ゲート導入を検討する際の根拠値 (設計方針を記す `llm-context/development-principles.md`「段階的カバレッジ目標」は **リポジトリ非追跡 / 開発者ローカル参照**)
-- 高カバレッジ領域: `lib/services/vision-api/` (83.86%) / `lib/mdx/` (92.7%) / `lib/config/` (80.15%) / `lib/services/pipeline-steps.ts` (100%)。未カバー領域: `app/` 配下 API routes / pages、`lib/github/` / `lib/slack/` / `lib/types/` は 0%
+- 高カバレッジ領域: `lib/services/vision-api/` (83.86%) / `lib/mdx/` (92.7%) / `lib/config/` (80.15%) / `lib/services/pipeline-steps.ts` (100%)。未カバー領域: `app/` 配下 API routes / pages、`lib/github/` / `lib/types/` は 0% (`lib/slack/` は 2026-10 の bot token 化でテストを追加)
 - ※ `collectCoverageFrom` は未実行ファイルも集計対象に含む (テストが無くても 0% として計上される)。`% Statements`/`% Lines` が低いのは、未実行の app routes・型定義ファイルが多数の未カバー行を母数に加えるため。一方 `% Branches` 74.7% が相対的に高いのは、それら未カバーファイル (API routes・型定義) が分岐文をほとんど持たず分岐の母数を押し下げず、網羅済みファイルが分岐母数の大半を占めるため
 
 ## デバッグ方法
@@ -137,7 +137,15 @@ pnpm debug:mdx --local <URL>
 
 # 画像アップロードモード（R2にアップロード + ローカル保存、Firestore/GitHub はスキップ）
 pnpm debug:mdx --upload-images <URL>
+
+# 1Password の参照を解決せずに実行（Slack 通知なし。1Password がロック中・オフラインの時）
+pnpm debug:mdx:raw <URL>
 ```
+
+**Slack 通知**: `pnpm debug:mdx` は実行結果（成功時は PR の URL、スキップ、失敗）を開発系チャンネルへ 1 通送る。
+token は `apps/ai-writer/.env.op.local` に書いた 1Password の参照を `op run` が解決する（`scripts/with-op-env.sh`）。
+`.env.op.local` か op CLI が無ければ通知なしで実行される。設定は `.env.sample` の「Slack 通知」節を参照。
+Claude などが非対話で実行する場合、1Password のロック解除を待って止まることがあるため `pnpm debug:mdx:raw` を使う。
 
 **コマンドライン引数**
 

@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { createHash, timingSafeEqual } from 'crypto';
 import { flushSentry } from '../../../../lib/observability/sentry';
+import { notifyPipelineResult } from '../../../../lib/slack';
 import { createMdxPr } from '../../../../lib/github/create-mdx-pr';
 import {
   DuplicateSlugError,
@@ -101,6 +102,12 @@ function isValidCronKey(expected: string, provided: string | null): boolean {
  * @returns Next.js Response
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // 認証と入力の検証を通過した時だけ設定する (= Slack 通知の対象)。
+  // getCronKey() (Secret Manager) は認証より前に動くため、その障害中は
+  // 未認証のリクエストでも 500 になる。そこでメンション付き通知を飛ばさない
+  // (障害自体は captureException で Sentry に残る)
+  let notifyFeedUrl: string | undefined;
+
   try {
     // 1. Cron認証 (Timing-safe comparison)
     const providedKey = request.headers.get('x-cron-key');
@@ -117,12 +124,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // 2. Request body 取得
-    const body = await request.json();
-    const { feedUrl } = body as { feedUrl?: string };
+    // 不正な JSON は送信側の誤り (400)。catch の 500 経路に落とすと、対応不要なのに
+    // メンション付きの失敗通知が飛ぶため、ここで返す
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      // 送信側の誤りなので Sentry には送らないが、Scheduler の設定ミスに気づけるようログは残す
+      console.warn('Invalid JSON body in cron request');
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    const { feedUrl } = (body ?? {}) as { feedUrl?: unknown };
 
-    if (!feedUrl) {
+    if (!feedUrl || typeof feedUrl !== 'string') {
       return NextResponse.json({ error: 'feedUrl is required' }, { status: 400 });
     }
+    notifyFeedUrl = feedUrl;
 
     // 3. MDX Pipeline 実行 (本番運用)
     console.log('Running pipeline: MDX', { feedUrl });
@@ -170,6 +187,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // 未知のエラーは「誰かが起きて対応すべき」もの。無人 cron 経路の主目的の計装。
     Sentry.captureException(error, { tags: { entrypoint: 'cron' } });
+
+    // Slack へも即時に知らせる (メンション付き)。409 (重複) とリトライ可能エラーは
+    // 対応不要なので送らない。
+    // ⚠️ finally の flushSentry と同じく、レスポンスを返す前に await する
+    //    (Cloud Run は応答後に CPU が throttle されるため)
+    if (notifyFeedUrl) {
+      await notifyPipelineResult({
+        outcome: 'failure',
+        entrypoint: 'cron',
+        sourceUrl: notifyFeedUrl,
+        error: error instanceof Error ? error.message : String(error),
+        revision: process.env.K_REVISION,
+      });
+    }
 
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   } finally {
