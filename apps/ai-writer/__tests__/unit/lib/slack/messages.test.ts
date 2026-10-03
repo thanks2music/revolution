@@ -13,6 +13,7 @@ import {
   buildPipelineMessage,
   escapeSlackText,
   pipelineNotificationFromResult,
+  redactSecrets,
   truncate,
   type PipelineNotification,
 } from '@/lib/slack/messages';
@@ -40,6 +41,25 @@ describe('escapeSlackText / truncate', () => {
   it('上限を超えたら末尾を … にして上限の長さに収める', () => {
     expect(truncate('abcdef', 4)).toBe('abc…');
     expect(truncate('abc', 4)).toBe('abc');
+  });
+});
+
+describe('redactSecrets', () => {
+  it.each([
+    ['Slack', 'token=xoxb-1234567890-abcdefghij'],
+    ['Anthropic', 'key sk-ant-api03-abcdefghijklmnopqrstuvwxyz'],
+    ['GitHub', 'ghp_abcdefghijklmnopqrstuvwxyz0123456789'],
+    ['GitHub fine-grained', 'github_pat_11ABCDEFG0123456789_abcdefghijklmnop'],
+    ['Google', 'AIzaSyA1234567890abcdefghijklmnopqrstu'],
+    ['Authorization', 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abcdefgh'],
+  ])('%s の token を伏せる', (_label, value) => {
+    const redacted = redactSecrets(value);
+    expect(redacted).toContain('[REDACTED]');
+    expect(redacted).not.toMatch(/xoxb-1|sk-ant|ghp_a|github_pat_1|AIzaSy|eyJhbGci/);
+  });
+
+  it('token を含まない文はそのまま', () => {
+    expect(redactSecrets('Bad credentials (HTTP 401)')).toBe('Bad credentials (HTTP 401)');
   });
 });
 
@@ -109,6 +129,24 @@ describe('buildPipelineMessage', () => {
 
     expect(detail.text.text).toContain(`${'x'.repeat(499)}…`);
     expect(detail.text.text).not.toContain('x'.repeat(500));
+  });
+
+  it('エラー文に含まれる token は Slack に載らない', () => {
+    const message = buildPipelineMessage(
+      { ...failure, error: 'GitHub API failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789' },
+      LOCAL
+    );
+
+    expect(JSON.stringify(message)).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz');
+    expect(JSON.stringify(message)).toContain('[REDACTED]');
+  });
+
+  // エスケープの後で切ると `&amp;` の途中で切れて `&am…` のように崩れる
+  it('切り詰めは entity の途中で切らない', () => {
+    const message = buildPipelineMessage({ ...failure, error: `${'x'.repeat(497)}&&&&&&` }, LOCAL);
+    const detail = (message.blocks[2] as { text: { text: string } }).text.text;
+
+    expect(detail).not.toMatch(/&[a-z]{0,3}…/);
   });
 
   it('エラー文の ``` でコードブロックが途中で閉じない', () => {

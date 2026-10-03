@@ -72,9 +72,33 @@ function hostOf(url: string): string {
   }
 }
 
-/** 値を安全に埋め込む (エスケープ + 切り詰め) */
+/**
+ * token らしき文字列を伏せる。
+ *
+ * エラー文 (SDK / API の message) や URL のクエリに秘密値が混ざっても、Slack
+ * (無料プランでも 1 年残る) に載せないための多層防御。誤検知で伏せすぎても
+ * 通知の意味は失われないため、広めに取る
+ */
+const SECRET_PATTERNS: RegExp[] = [
+  /xox[abeoprs]-[A-Za-z0-9-]{8,}/g, // Slack token
+  /\bsk-[A-Za-z0-9_-]{16,}/g, // OpenAI / Anthropic (sk-ant-…)
+  /\bgh[pousr]_[A-Za-z0-9]{20,}/g, // GitHub token
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/g, // GitHub fine-grained PAT
+  /\bAIza[0-9A-Za-z_-]{30,}/g, // Google API key
+  /\bsntrys_[A-Za-z0-9_=+/-]{16,}/g, // Sentry organization token
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, // Authorization ヘッダ
+];
+
+export function redactSecrets(value: string): string {
+  return SECRET_PATTERNS.reduce((text, pattern) => text.replace(pattern, '[REDACTED]'), value);
+}
+
+/**
+ * 値を安全に埋め込む (伏せ字 → 切り詰め → エスケープ)。
+ * エスケープの後で切ると `&amp;` の途中で切れて表示が崩れるため、切ってからエスケープする
+ */
 function safe(value: string, max: number): string {
-  return truncate(escapeSlackText(value), max);
+  return escapeSlackText(truncate(redactSecrets(value), max));
 }
 
 /**

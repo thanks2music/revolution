@@ -127,8 +127,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     authenticated = true;
 
     // 2. Request body 取得
-    const body = await request.json();
-    ({ feedUrl } = body as { feedUrl?: unknown });
+    // 不正な JSON は送信側の誤り (400)。catch の 500 経路に落とすと、対応不要なのに
+    // メンション付きの失敗通知が飛ぶため、ここで返す
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    ({ feedUrl } = (body ?? {}) as { feedUrl?: unknown });
 
     if (!feedUrl || typeof feedUrl !== 'string') {
       return NextResponse.json({ error: 'feedUrl is required' }, { status: 400 });

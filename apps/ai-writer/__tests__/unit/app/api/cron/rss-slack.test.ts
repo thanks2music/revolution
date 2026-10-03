@@ -156,6 +156,20 @@ describe('cron/rss route の Slack 通知', () => {
     expect(isolatedNotify).not.toHaveBeenCalled();
   });
 
+  // 認証済みでも、本文が JSON として読めないのは送信側の誤り。500 + メンションにしない
+  it('本文が不正な JSON なら 400 を返し、通知しない', async () => {
+    const res = await POST({
+      headers: { get: (name: string) => (name === 'x-cron-key' ? CRON_KEY : null) },
+      json: async () => {
+        throw new SyntaxError('Unexpected token');
+      },
+    });
+
+    expect(res.status).toBe(400);
+    expect(notifyPipelineResult).not.toHaveBeenCalled();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+
   it('feedUrl 未指定 (400) は通知しない', async () => {
     const res = await POST(makeRequest({}));
 

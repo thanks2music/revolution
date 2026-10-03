@@ -137,7 +137,14 @@ pnpm debug:mdx --local <URL>
 
 # 画像アップロードモード（R2にアップロード + ローカル保存、Firestore/GitHub はスキップ）
 pnpm debug:mdx --upload-images <URL>
+
+# 1Password の参照を解決せずに実行（Slack 通知なし。1Password がロック中・オフラインの時）
+pnpm debug:mdx:raw <URL>
 ```
+
+**Slack 通知**: `pnpm debug:mdx` は実行結果（成功時は PR の URL、スキップ、失敗）を開発系チャンネルへ 1 通送る。
+token は `apps/ai-writer/.env.op.local` に書いた 1Password の参照を `op run` が解決する（`scripts/with-op-env.sh`）。
+`.env.op.local` か op CLI が無ければ通知なしで実行される。設定は `.env.sample` の「Slack 通知」節を参照。
 
 **コマンドライン引数**
 
