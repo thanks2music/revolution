@@ -26,9 +26,14 @@ jobs:
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          # checkout v6 以降は token を `includeIf.gitdir:…path` で取り込むが、
+          # claude-code-action v1 は `include.path` しか消せないため、残った GITHUB_TOKEN
+          # (contents: read) が git の認証に使われ、@claude の push が失敗する。
+          # claude-code-action は自前の token で認証するので、checkout の token は残さない
+          persist-credentials: false
 
       - name: Run Claude Code
         id: claude
