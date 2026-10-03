@@ -62,8 +62,7 @@ jobs:
       NOTIFY_LINK: "${{ github.event.pull_request.number && format('*PR*: <{0}/{1}/pull/{2}|#{2}>', github.server_url, github.repository, github.event.pull_request.number) || format('*Commit*: <{0}/{1}/commit/{2}|{2}>', github.server_url, github.repository, github.sha) }}"
     steps:
       - name: Checkout repository
-        # Revolution の ci.yml と整合させて v7.0.1 を commit SHA で固定 (Node.js 24 ベース。
-        # Node 20 は 2026-09-23 に runner から削除済み)。git push しないため credentials は残さない
+        # git push しないため credentials は残さない
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

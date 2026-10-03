@@ -101,7 +101,6 @@ jobs:
 
       - name: Checkout repository
         if: env.SKIP != 'true'
-        # actions/checkout v7.0.1 を commit SHA で固定 (deploy-supabase-migrations.yml と整合)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # 使うのは composite action と jq のフィルタだけ

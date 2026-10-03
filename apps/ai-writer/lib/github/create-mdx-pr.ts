@@ -5,7 +5,9 @@
  *   - AI Writer生成のMDX記事をGitHub PRとして自動投稿
  *   - Firestore重複チェック + GitHub Open PR重複チェック
  *   - Service Account Committer設定
- *   - Slack通知統合
+ *
+ * Slack 通知はここでは送らない。入口 (scripts/debug-mdx-url.ts / cron route) が
+ * 1 実行につき 1 通だけ送る (lib/slack/index.ts)。
  *
  * @module lib/github/create-mdx-pr
  * @see {@link /notes/archive/super-mvp-scope.md} Task 6
@@ -13,7 +15,6 @@
 
 import { createGitHubClient, REPO_CONFIG, wrapNetworkError } from './client';
 import { checkEventDuplication, updateEventStatus } from '../firestore';
-import { sendSlackNotification } from '../slack';
 import {
   GitHubAuthError,
   GitHubNetworkError,
@@ -150,8 +151,8 @@ async function checkDuplicateOpenPr(branchName: string): Promise<boolean> {
  * 7. Firestore status更新
  *
  * エラーハンドリング:
- * - PR作成失敗 → Firestore status='failed' + Slack通知
- * - 重複PR → Error + Slack通知
+ * - PR作成失敗 → Firestore status='failed' + 再スロー
+ * - 重複PR → DuplicateSlugError をスロー
  *
  * @param {CreateMdxPrParams} params - PR作成パラメータ
  * @returns {Promise<CreateMdxPrResult>} PR作成結果
@@ -211,19 +212,6 @@ export async function createMdxPr(params: CreateMdxPrParams): Promise<CreateMdxP
         duplicationResult.canonicalKey,
         `Firestore event_canonical_keys/${duplicationResult.canonicalKey}`
       );
-
-      // Slack通知
-      await sendSlackNotification({
-        type: 'duplicate_pr',
-        error,
-        context: {
-          postId: context.postId,
-          workSlug: context.workSlug,
-          title,
-          canonicalKey: context.canonicalKey,
-          branchName,
-        },
-      });
 
       throw error;
     }
@@ -290,19 +278,6 @@ export async function createMdxPr(params: CreateMdxPrParams): Promise<CreateMdxP
         context.canonicalKey,
         `GitHub branch: ${branchName}`
       );
-
-      // Slack通知
-      await sendSlackNotification({
-        type: 'duplicate_pr',
-        error,
-        context: {
-          postId: context.postId,
-          workSlug: context.workSlug,
-          title,
-          canonicalKey: context.canonicalKey,
-          branchName,
-        },
-      });
 
       throw error;
     }
@@ -426,22 +401,6 @@ Canonical Key: ${context.canonicalKey}`,
       );
     } catch (firestoreError) {
       console.error('[Create MDX PR] Failed to update Firestore status:', firestoreError);
-    }
-
-    // Slack通知 (重複エラー以外)
-    if (!(error instanceof DuplicateSlugError)) {
-      await sendSlackNotification({
-        type: 'pr_failed',
-        error: error instanceof Error ? error : new Error('Unknown error'),
-        context: {
-          postId: context.postId,
-          workSlug: context.workSlug,
-          title,
-          canonicalKey: context.canonicalKey,
-          branchName,
-          filePath,
-        },
-      });
     }
 
     // エラーを再スロー

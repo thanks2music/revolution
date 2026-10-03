@@ -148,6 +148,35 @@ declare namespace NodeJS {
     R2_DEBUG?: string;
 
     // ========================================
+    // Slack (bot token + chat.postMessage)
+    // ========================================
+
+    /**
+     * Slack App の Bot User OAuth Token (xoxb-…)。**秘密値**。
+     *
+     * ローカルでは `.env.op.local` に 1Password の参照 (`op://…`) を書き、
+     * `pnpm debug:mdx` が `op run` 経由で解決する。`op://` のまま渡った場合は
+     * 未設定として扱う (lib/slack/config.ts)。
+     */
+    SLACK_BOT_TOKEN?: string;
+
+    /** 投稿先チャンネル ID (ローカル = 開発系 / Cloud Run = 本番系) */
+    SLACK_CHANNEL_ID?: string;
+
+    /** 失敗時にメンションするユーザー ID。Cloud Run (`K_SERVICE` あり) でのみ使われる */
+    SLACK_MENTION_USER_ID?: string;
+
+    // ========================================
+    // Cloud Run (実行環境が自動で設定する)
+    // ========================================
+
+    /** Cloud Run のサービス名。存在すれば Cloud Run 上で動いている */
+    K_SERVICE?: string;
+
+    /** Cloud Run のリビジョン名 */
+    K_REVISION?: string;
+
+    // ========================================
     // Development / Debug
     // ========================================
 
