@@ -119,6 +119,8 @@ jobs:
 
       - name: Pre-flight migration history consistency check
         working-directory: apps/frontend
+        # preflight (2 回まで) + push (6 分) が job の 10 分を超えないように切る
+        timeout-minutes: 3
         # PR #249 (titles master) 事故 (2026-06-21) の再発防止 (案 3 = CI 事前チェック)。
         # 同一 PR 内で migration ファイル名 (timestamp) を変更 + 旧 file 削除すると、
         # remote の migration_history と local files が乖離し `supabase db push` が
@@ -173,150 +175,54 @@ jobs:
           echo "::endgroup::"
 
       - name: Push migrations to staging
+        id: push
         working-directory: apps/frontend
+        # job の timeout-minutes (10) より先に切る。job ごと打ち切られると、末尾の
+        # Slack 通知 step まで実行されず失敗に気づけないため
+        timeout-minutes: 5
         # 事前ビルド済の $SESSION_POOLER_URL を env から参照 (重複削減、claude[bot]
         # PR #250 review #4 (R2) 採用)。
+        # 適用対象が無い時、CLI は "Remote database is up to date." を出す (CLI の版によって
+        # 文言が変わり得るため部分一致で見る)。通知の文面を「変更なし」にするために使う
         run: |
           set -euo pipefail
-          supabase db push --db-url "$SESSION_POOLER_URL"
+          supabase db push --db-url "$SESSION_POOLER_URL" 2>&1 | tee push.log
+          if grep -q 'database is up to date' push.log; then
+            echo "applied=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "applied=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Post-deploy advisor check (Backlog D β, non-blocking)
-        # Backlog D β: deploy 直後に Supabase Advisor を再取得し、α workflow の最新 artifact
-        # (advisor-state-staging) を baseline として diff。新規 lint 発生 = 本 deploy が
-        # 引き起こした regression → Slack Block Kit + `::warning::` annotation で即時通知。
-        # non-blocking: advisor check 自体の失敗は deploy 成功を打ち消さない (`set +e` パターン)。
-        # 詳細設計: Plan file §8.4、姉妹 workflow `supabase-advisor-check.yml` (α = 週次 cron)。
-        # WEBHOOK 未登録環境 or baseline 未確立時は notice のみで skip (既存 deploy を止めない)。
-        if: always()  # push step が fail しても実行 (deploy fail 起因の lint も検知したい)
+      - name: Post-deploy advisor check (non-blocking)
+        id: advisor
+        # deploy 直後に Supabase Advisor (security) を取得し、直近の baseline と比べて新しく
+        # 増えた lint を数える。staging / production 共通のスクリプト。どの失敗も exit 0
+        # (advisor の失敗で deploy の成否を変えない)。Slack が未設定でも必ず走り、
+        # 下の Rename / Refresh で次回の baseline を更新する。
+        # push step が失敗しても実行する (deploy 失敗起因の lint も検知したい)
+        if: always()
         env:
-          # workflow-level context を env: 経由に統一 (公式 security best practice: run: 内の
-          # ${{ github.* }} 直接展開を避け injection 攻撃面を最小化。deploy-supabase-migrations.yml
-          # の他 step とも整合)。
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_SUPABASE_ADVISOR }}
           ENV_NAME: staging
           GH_REPO: ${{ github.repository }}
-          GH_SERVER_URL: ${{ github.server_url }}
-          GH_RUN_ID: ${{ github.run_id }}
-          GH_SHA: ${{ github.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -uo pipefail  # -e は外す (advisor check 失敗を deploy 結果に影響させない)
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/supabase/post-deploy-advisor.sh
 
-          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-            echo "::notice title=Advisor check skipped::SLACK_WEBHOOK_SUPABASE_ADVISOR is not configured. Skipping post-deploy advisor check."
-            exit 0
-          fi
-
-          # Supabase Management API 経由で advisors/security を取得
-          HTTP_CODE=$(curl -sS -o post-deploy-advisor.json -w '%{http_code}' \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H "Accept: application/json" \
-            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/advisors/security" || echo "curl-failed")
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::warning title=Post-deploy advisor fetch failed::HTTP ${HTTP_CODE} for ${ENV_NAME}. Deploy succeeded but advisor snapshot could not be captured."
-            exit 0
-          fi
-
-          # 現在 lint を key 化 + count (α workflow と同じ形式)
-          jq '{ lints_by_key: (.lints // [] | map({key: .cache_key, level, name, detail, remediation}) | INDEX(.key)), count: (.lints // [] | length) }' \
-            post-deploy-advisor.json > post-deploy-state.json
-          POST_COUNT=$(jq -r '.count' post-deploy-state.json)
-          echo "Post-deploy advisor lint count on ${ENV_NAME}: ${POST_COUNT}"
-
-          # α workflow の最新 artifact (advisor-state-${ENV_NAME}) を baseline として取得
-          ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=1" \
-            --jq '.artifacts[0].id // empty' 2>/dev/null || echo "")
-
-          if [ -z "${ARTIFACT_ID}" ]; then
-            echo "::notice title=Advisor baseline unavailable::No prior α artifact for ${ENV_NAME}. Skipping diff (baseline will be established after α workflow runs)."
-            exit 0
-          fi
-
-          if ! gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > baseline.zip 2>/dev/null; then
-            echo "::warning title=Advisor baseline download failed::Could not fetch artifact ${ARTIFACT_ID} on ${ENV_NAME}. Skipping diff."
-            exit 0
-          fi
-
-          if ! unzip -q -o baseline.zip -d baseline/; then
-            echo "::warning::baseline artifact unzip failed"
-            exit 0
-          fi
-
-          if [ ! -f baseline/current-state.json ]; then
-            echo "::notice::baseline artifact does not contain expected file. Skipping diff."
-            exit 0
-          fi
-
-          jq -r '.lints_by_key | keys[]' baseline/current-state.json | sort > baseline-keys.txt
-          jq -r '.lints_by_key | keys[]' post-deploy-state.json | sort > post-keys.txt
-          comm -23 post-keys.txt baseline-keys.txt > new-post-keys.txt
-          NEW_POST_COUNT=$(wc -l < new-post-keys.txt | tr -d ' ')
-          echo "New lints introduced by this deploy: ${NEW_POST_COUNT}"
-
-          if [ "${NEW_POST_COUNT}" = "0" ]; then
-            echo "::notice title=No advisor regression::Deploy did not introduce new advisor lints on ${ENV_NAME}."
-            exit 0
-          fi
-
-          # 新規 lint あり → warning annotation + Slack 通知
-          jq --slurpfile keys <(jq -R -s 'split("\n") | map(select(length > 0))' new-post-keys.txt) \
-            '.lints_by_key | to_entries | map(select(.key as $k | $keys[0] | index($k))) | map(.value)' \
-            post-deploy-state.json > new-post-lints.json
-
-          echo "::warning title=Post-deploy advisor regression::Deploy introduced ${NEW_POST_COUNT} new lint(s) on ${ENV_NAME}. Check Slack for details."
-
-          # Slack Block Kit (α と同 format、header は "Post-deploy regression" に差別化)
-          NEW_SECTIONS=$(jq '[
-            .[0:5] | .[] |
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: ("*🆕 New (post-deploy): `\(.name)` (" + .level + ")*\n" + (.detail // "(no detail)") + "\n<" + (.remediation // "https://supabase.com/docs/guides/database/database-linter") + "|Remediation>")
-              }
-            }
-          ]' new-post-lints.json)
-
-          RUN_URL="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
-          COMMIT_URL="${GH_SERVER_URL}/${GH_REPO}/commit/${GH_SHA}"
-          # claude[bot] PR #256 review Finding #2 採用: bash double-quoted string 内の `\n` は
-          # literal 2 文字。ANSI-C quoting `$'\n'` で実 newline (0x0A) を挿入し、Slack Block Kit
-          # mrkdwn の line break として render させる。
-          NL=$'\n'
-          PR_LINK=""
-          if [ -n "${PR_NUMBER:-}" ]; then
-            PR_LINK="${NL}*PR*: <${GH_SERVER_URL}/${GH_REPO}/pull/${PR_NUMBER}|#${PR_NUMBER}>"
-          fi
-
-          SUMMARY="*This deploy introduced ${NEW_POST_COUNT} new advisor lint(s) on ${ENV_NAME}.*${NL}*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)${NL}*Baseline*: α artifact (advisor-state-${ENV_NAME})${PR_LINK}"
-
-          jq -n \
-            --arg header "⚠️ Supabase Advisor Regression (post-deploy ${ENV_NAME})" \
-            --arg summary "${SUMMARY}" \
-            --arg run_link "<${RUN_URL}|Workflow run> · <${COMMIT_URL}|Commit>" \
-            --argjson new_sections "${NEW_SECTIONS}" \
-            '{
-              blocks: (
-                [
-                  { type: "header", text: { type: "plain_text", text: $header, emoji: true } },
-                  { type: "section", text: { type: "mrkdwn", text: $summary } },
-                  { type: "divider" }
-                ]
-                + $new_sections
-                + [
-                  { type: "divider" },
-                  { type: "context", elements: [{ type: "mrkdwn", text: $run_link }] }
-                ]
-              )
-            }' > slack-payload.json
-
-          curl -sS -X POST -o /dev/null \
-            -H 'Content-Type: application/json' \
-            --data-binary @slack-payload.json \
-            "${SLACK_WEBHOOK_URL}" || echo "::warning::Slack notification failed (non-blocking)"
+      - name: Notify Slack of advisor regression
+        # 新しい lint = 要対応なので、staging でも本番系チャンネルへメンション付きで送る
+        if: always() && steps.advisor.outputs.new_count != '' && steps.advisor.outputs.new_count != '0'
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          mention: "${{ vars.SLACK_MENTION_USER_ID }}"
+          text: "⚠️ Supabase Advisor: デプロイで警告が ${{ steps.advisor.outputs.new_count }} 件増えました (staging)"
+          body: "${{ github.event.pull_request.number && format('*PR*: <{0}/{1}/pull/{2}|#{2}>', github.server_url, github.repository, github.event.pull_request.number) || format('*Commit*: <{0}/{1}/commit/{2}|{3}>', github.server_url, github.repository, github.sha, github.sha) }}"
+          blocks-file: advisor-blocks.json
 
       - name: Rename post-deploy state to α-compatible filename (Backlog D β, mid-week noise 回避)
+        # baseline の更新は付随処理。失敗しても job (= migration の結果通知) を失敗扱いにしない
+        continue-on-error: true
         # α artifact (advisor-state-{env}) の中身は `current-state.json` という名前で
         # zip 化されている。β が同 artifact 名で上書きするなら、中身のファイル名も
         # `current-state.json` に統一しないと、次回 β の download 時に
@@ -327,6 +233,8 @@ jobs:
           cp post-deploy-state.json current-state.json
 
       - name: Refresh advisor baseline artifact (Backlog D β, mid-week noise 回避)
+        # baseline の更新は付随処理。失敗しても job (= migration の結果通知) を失敗扱いにしない
+        continue-on-error: true
         # 2 巡目 review Finding #2 採用: β は α artifact を baseline として読むが、α は週次
         # cron でしか artifact を更新しない → 中週で複数 deploy があると同じ regression を
         # 反復通知する問題。deploy 直後の state を α と共通 artifact 名 (`advisor-state-${env}`)
@@ -341,6 +249,17 @@ jobs:
           path: current-state.json
           retention-days: 30
           overwrite: true
+
+      - name: Notify Slack of staging migration failure
+        # staging (PR) の失敗は開発系へ。メンションはしない (PR の checks でも見える)
+        if: failure()
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          text: "❌ Supabase migration が完了しませんでした (staging)"
+          body: "${{ github.event.pull_request.number && format('*PR*: <{0}/{1}/pull/{2}|#{2}>', github.server_url, github.repository, github.event.pull_request.number) || format('*Commit*: <{0}/{1}/commit/{2}|{3}>', github.server_url, github.repository, github.sha, github.sha) }}"
 
   deploy-production:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
@@ -399,6 +318,8 @@ jobs:
 
       - name: Pre-flight migration history consistency check
         working-directory: apps/frontend
+        # preflight (2 回まで) + push (6 分) が job の 10 分を超えないように切る
+        timeout-minutes: 3
         # staging job と同一の事前チェック。詳細コメントは staging job の同名 step を参照。
         # production 環境では fail = 即 critical (本番 deploy が想定外状態) のため
         # 確実な可視性が特に重要。
@@ -446,143 +367,64 @@ jobs:
           echo "::endgroup::"
 
       - name: Push migrations to production
+        id: push
         working-directory: apps/frontend
+        # job の timeout-minutes (10) より先に切る。job ごと打ち切られると、末尾の
+        # Slack 通知 step まで実行されず失敗に気づけないため
+        timeout-minutes: 5
         # 事前ビルド済の $SESSION_POOLER_URL を env から参照 (重複削減、claude[bot]
-        # PR #250 review #4 (R2) 採用)。詳細は staging job の同名 step コメントを参照。
+        # PR #250 review #4 (R2) 採用)。
+        # 適用対象が無い時、CLI は "Remote database is up to date." を出す (CLI の版によって
+        # 文言が変わり得るため部分一致で見る)。通知の文面を「変更なし」にするために使う
         run: |
           set -euo pipefail
-          supabase db push --db-url "$SESSION_POOLER_URL"
+          supabase db push --db-url "$SESSION_POOLER_URL" 2>&1 | tee push.log
+          if grep -q 'database is up to date' push.log; then
+            echo "applied=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "applied=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Post-deploy advisor check (Backlog D β, non-blocking)
-        # Backlog D β の production 版。staging と同ロジック (baseline は α の
-        # advisor-state-production artifact)、詳細コメントは staging job の同名 step を参照。
-        # production 環境でも non-blocking (deploy 成功後の情報通知)。
+      - name: Post-deploy advisor check (non-blocking)
+        id: advisor
+        # deploy 直後に Supabase Advisor (security) を取得し、直近の baseline と比べて新しく
+        # 増えた lint を数える。staging / production 共通のスクリプト。どの失敗も exit 0
+        # (advisor の失敗で deploy の成否を変えない)。Slack が未設定でも必ず走り、
+        # 下の Rename / Refresh で次回の baseline を更新する。
+        # push step が失敗しても実行する (deploy 失敗起因の lint も検知したい)
         if: always()
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_SUPABASE_ADVISOR }}
           ENV_NAME: production
           GH_REPO: ${{ github.repository }}
-          GH_SERVER_URL: ${{ github.server_url }}
-          GH_RUN_ID: ${{ github.run_id }}
-          GH_SHA: ${{ github.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -uo pipefail
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/supabase/post-deploy-advisor.sh
 
-          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-            echo "::notice title=Advisor check skipped::SLACK_WEBHOOK_SUPABASE_ADVISOR is not configured. Skipping post-deploy advisor check."
-            exit 0
-          fi
-
-          HTTP_CODE=$(curl -sS -o post-deploy-advisor.json -w '%{http_code}' \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H "Accept: application/json" \
-            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/advisors/security" || echo "curl-failed")
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::warning title=Post-deploy advisor fetch failed::HTTP ${HTTP_CODE} for ${ENV_NAME}. Deploy succeeded but advisor snapshot could not be captured."
-            exit 0
-          fi
-
-          jq '{ lints_by_key: (.lints // [] | map({key: .cache_key, level, name, detail, remediation}) | INDEX(.key)), count: (.lints // [] | length) }' \
-            post-deploy-advisor.json > post-deploy-state.json
-          POST_COUNT=$(jq -r '.count' post-deploy-state.json)
-          echo "Post-deploy advisor lint count on ${ENV_NAME}: ${POST_COUNT}"
-
-          ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=1" \
-            --jq '.artifacts[0].id // empty' 2>/dev/null || echo "")
-
-          if [ -z "${ARTIFACT_ID}" ]; then
-            echo "::notice title=Advisor baseline unavailable::No prior α artifact for ${ENV_NAME}. Skipping diff (baseline will be established after α workflow runs)."
-            exit 0
-          fi
-
-          if ! gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > baseline.zip 2>/dev/null; then
-            echo "::warning title=Advisor baseline download failed::Could not fetch artifact ${ARTIFACT_ID} on ${ENV_NAME}. Skipping diff."
-            exit 0
-          fi
-
-          if ! unzip -q -o baseline.zip -d baseline/; then
-            echo "::warning::baseline artifact unzip failed"
-            exit 0
-          fi
-
-          if [ ! -f baseline/current-state.json ]; then
-            echo "::notice::baseline artifact does not contain expected file. Skipping diff."
-            exit 0
-          fi
-
-          jq -r '.lints_by_key | keys[]' baseline/current-state.json | sort > baseline-keys.txt
-          jq -r '.lints_by_key | keys[]' post-deploy-state.json | sort > post-keys.txt
-          comm -23 post-keys.txt baseline-keys.txt > new-post-keys.txt
-          NEW_POST_COUNT=$(wc -l < new-post-keys.txt | tr -d ' ')
-          echo "New lints introduced by this deploy: ${NEW_POST_COUNT}"
-
-          if [ "${NEW_POST_COUNT}" = "0" ]; then
-            echo "::notice title=No advisor regression::Deploy did not introduce new advisor lints on ${ENV_NAME}."
-            exit 0
-          fi
-
-          jq --slurpfile keys <(jq -R -s 'split("\n") | map(select(length > 0))' new-post-keys.txt) \
-            '.lints_by_key | to_entries | map(select(.key as $k | $keys[0] | index($k))) | map(.value)' \
-            post-deploy-state.json > new-post-lints.json
-
-          echo "::warning title=Post-deploy advisor regression (PRODUCTION)::Deploy introduced ${NEW_POST_COUNT} new lint(s) on ${ENV_NAME}. Check Slack for details."
-
-          NEW_SECTIONS=$(jq '[
-            .[0:5] | .[] |
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: ("*🆕 New (post-deploy): `\(.name)` (" + .level + ")*\n" + (.detail // "(no detail)") + "\n<" + (.remediation // "https://supabase.com/docs/guides/database/database-linter") + "|Remediation>")
-              }
-            }
-          ]' new-post-lints.json)
-
-          RUN_URL="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
-          COMMIT_URL="${GH_SERVER_URL}/${GH_REPO}/commit/${GH_SHA}"
-          # claude[bot] PR #256 review Finding #2 採用 (production 側も同修正)。
-          NL=$'\n'
-          PR_LINK=""
-          if [ -n "${PR_NUMBER:-}" ]; then
-            PR_LINK="${NL}*PR*: <${GH_SERVER_URL}/${GH_REPO}/pull/${PR_NUMBER}|#${PR_NUMBER}>"
-          fi
-
-          SUMMARY="*This deploy introduced ${NEW_POST_COUNT} new advisor lint(s) on PRODUCTION.*${NL}*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)${NL}*Baseline*: α artifact (advisor-state-${ENV_NAME})${PR_LINK}"
-
-          jq -n \
-            --arg header "🔴 Supabase Advisor Regression (post-deploy PRODUCTION)" \
-            --arg summary "${SUMMARY}" \
-            --arg run_link "<${RUN_URL}|Workflow run> · <${COMMIT_URL}|Commit>" \
-            --argjson new_sections "${NEW_SECTIONS}" \
-            '{
-              blocks: (
-                [
-                  { type: "header", text: { type: "plain_text", text: $header, emoji: true } },
-                  { type: "section", text: { type: "mrkdwn", text: $summary } },
-                  { type: "divider" }
-                ]
-                + $new_sections
-                + [
-                  { type: "divider" },
-                  { type: "context", elements: [{ type: "mrkdwn", text: $run_link }] }
-                ]
-              )
-            }' > slack-payload.json
-
-          curl -sS -X POST -o /dev/null \
-            -H 'Content-Type: application/json' \
-            --data-binary @slack-payload.json \
-            "${SLACK_WEBHOOK_URL}" || echo "::warning::Slack notification failed (non-blocking)"
+      - name: Notify Slack of advisor regression
+        # 新しい lint = 要対応なので、staging でも本番系チャンネルへメンション付きで送る
+        if: always() && steps.advisor.outputs.new_count != '' && steps.advisor.outputs.new_count != '0'
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          # 本番への実デプロイの結果なので、ブランチから dispatch されてもテストモードにしない
+          auto-test-mode: 'false'
+          mention: "${{ vars.SLACK_MENTION_USER_ID }}"
+          text: "⚠️ Supabase Advisor: デプロイで警告が ${{ steps.advisor.outputs.new_count }} 件増えました (production)"
+          body: "${{ github.event.pull_request.number && format('*PR*: <{0}/{1}/pull/{2}|#{2}>', github.server_url, github.repository, github.event.pull_request.number) || format('*Commit*: <{0}/{1}/commit/{2}|{3}>', github.server_url, github.repository, github.sha, github.sha) }}"
+          blocks-file: advisor-blocks.json
 
       - name: Rename post-deploy state to α-compatible filename (Backlog D β, mid-week noise 回避)
+        # baseline の更新は付随処理。失敗しても job (= migration の結果通知) を失敗扱いにしない
+        continue-on-error: true
         # staging 側と同ロジック。詳細コメントは staging job の同名 step を参照。
         if: always() && hashFiles('post-deploy-state.json') != ''
         run: |
           cp post-deploy-state.json current-state.json
 
       - name: Refresh advisor baseline artifact (Backlog D β, mid-week noise 回避)
+        # baseline の更新は付随処理。失敗しても job (= migration の結果通知) を失敗扱いにしない
+        continue-on-error: true
         # staging 側と同ロジック (production 版、artifact name = advisor-state-production)。
         # 詳細コメントは staging job の同名 step を参照。
         if: always() && hashFiles('current-state.json') != ''
@@ -592,3 +434,18 @@ jobs:
           path: current-state.json
           retention-days: 30
           overwrite: true
+
+      - name: Notify Slack of production migration result
+        # 成功はメンションなし、失敗・中断はメンション付きで本番系へ。
+        # 適用対象が無かった時 (push の applied=false) はその旨を書く
+        if: always()
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          # 本番への実デプロイの結果なので、ブランチから dispatch されてもテストモードにしない
+          auto-test-mode: 'false'
+          mention: "${{ job.status != 'success' && vars.SLACK_MENTION_USER_ID || '' }}"
+          text: "${{ job.status == 'success' && (steps.push.outputs.applied == 'false' && '✅ Supabase migration の反映が完了しました (production、適用対象なし)' || '✅ Supabase migration の反映が完了しました (production)') || '❌ Supabase migration が完了しませんでした (production)' }}"
+          body: "${{ format('*Commit*: <{0}/{1}/commit/{2}|{3}>', github.server_url, github.repository, github.sha, github.sha) }}"

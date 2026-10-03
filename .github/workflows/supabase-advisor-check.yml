@@ -17,7 +17,7 @@ name: Supabase Advisor Check
 # 参考:
 # - Plan file §8.3 (α 実装設計、`/Users/yoshi/.claude/plans/task-start-...-functional-planet.md`)
 # - Supabase Management API: https://api.supabase.com/api/v1 (advisors/security endpoint)
-# - Slack Incoming Webhook + Block Kit: https://api.slack.com/messaging/webhooks
+# - Slack 送信: .github/actions/slack-notify (bot token + chat.postMessage、2026-10 に Incoming Webhook から移行)
 # - β (deploy-time check) は deploy-supabase-migrations.yml の Post-deploy advisor check step
 #
 # 姉妹 workflow: supabase-keepalive.yml (Free plan auto-pause 対策、独立系統)
@@ -65,7 +65,6 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets[matrix.env.project_id_secret] }}
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_SUPABASE_ADVISOR }}
       ENV_NAME: ${{ matrix.env.name }}
       # workflow_dispatch inputs は env: 経由で受け取り、run: 内で直接展開しない
       # (公式 security best practice: https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/)。
@@ -87,6 +86,8 @@ jobs:
         if: env.SKIP != 'true'
         # deploy-supabase-migrations.yml と整合する早期 fail guard (空文字 secret 検知)。
         # set -u は unset のみ検知し空文字は通してしまうため明示チェック。
+        # Slack の token はここでは検査しない (未設定でも advisor のチェックと baseline の
+        # 更新は走らせる。送信側の composite action が未設定なら notice で skip する)。
         run: |
           set -euo pipefail
           if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
@@ -95,10 +96,6 @@ jobs:
           fi
           if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
             echo "::error title=Missing secret::SUPABASE_PROJECT_REF (from ${{ matrix.env.project_id_secret }}) is empty or unset."
-            exit 1
-          fi
-          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-            echo "::error title=Missing secret::SLACK_WEBHOOK_SUPABASE_ADVISOR is empty or unset."
             exit 1
           fi
 
@@ -129,10 +126,11 @@ jobs:
           # lints 配列を cache_key で ID 化した簡潔形式に整形 (diff 比較用)。
           # claude[bot] PR #256 review Finding #6 採用: shell 変数の埋め込みは --arg
           # に統一 (公式 jq Manual 推奨、同ファイル他所と一貫)。
-          jq --arg env "${ENV_NAME}" --arg project_ref "${SUPABASE_PROJECT_REF}" '{
+          # project ref は GitHub で secret 管理している値。public repo の artifact はログインした
+          # 誰でもダウンロードできるため state には入れない (diff は lints_by_key しか使わない)
+          jq --arg env "${ENV_NAME}" '{
             fetched_at: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
             env: $env,
-            project_ref: $project_ref,
             lints_by_key: (.lints // [] | map({key: .cache_key, level, name, title, detail, remediation, categories}) | sort_by(.key) | INDEX(.key)),
             count: (.lints // [] | length)
           }' advisor-response.json > current-state.json
@@ -187,8 +185,11 @@ jobs:
           RESOLVED_COUNT=$(wc -l < resolved-keys.txt | tr -d ' ')
           echo "Diff: +${NEW_COUNT} new, -${RESOLVED_COUNT} resolved"
 
-          echo "NEW_COUNT=${NEW_COUNT}" >> "$GITHUB_ENV"
-          echo "RESOLVED_COUNT=${RESOLVED_COUNT}" >> "$GITHUB_ENV"
+          {
+            echo "NEW_COUNT=${NEW_COUNT}"
+            echo "RESOLVED_COUNT=${RESOLVED_COUNT}"
+            echo "BASELINE_FOUND=${BASELINE_FOUND}"
+          } >> "$GITHUB_ENV"
 
           # 新規発生 lint の詳細を JSON 化 (Slack payload 用)
           jq --slurpfile keys <(jq -R -s 'split("\n") | map(select(length > 0))' new-keys.txt) \
@@ -217,115 +218,66 @@ jobs:
             echo "SKIP_NOTIFY=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Build and send Slack Block Kit payload
+      - name: Build Slack blocks
+        id: blocks
         if: env.SKIP != 'true' && env.SKIP_NOTIFY != 'true'
-        # Block Kit で header + section + fields 構成。Slack payload 40KB 上限のため最大 10 lints を表示、
-        # 超過分は "…and N more" で丸め。level 別絵文字 (🔴 ERROR / ⚠️ WARN / ℹ️ INFO)。
-        # 2 巡目 review Finding #4 採用: `${{ github.* }}` の run: 内直接展開を env: 経由に統一
-        # (workflow hardening pattern の一貫性、β 側 + workflow 冒頭 env: と整合)。
-        env:
-          GH_SERVER_URL: ${{ github.server_url }}
-          GH_REPO: ${{ github.repository }}
-          GH_RUN_ID: ${{ github.run_id }}
-          GH_SHA: ${{ github.sha }}
-          GH_EVENT_NAME: ${{ github.event_name }}
+        # lint の section 組み立て (Supabase API 由来の値のエスケープ込み) は
+        # post-deploy チェックと共通の jq フィルタを使う。最大 5 件ずつ表示し、超過分は件数だけ出す。
         run: |
           set -euo pipefail
 
           CURRENT_COUNT=$(jq -r '.count' current-state.json)
           HAS_ERROR=$(jq -r '[.lints_by_key[] | select(.level == "ERROR")] | length > 0' current-state.json)
           if [ "${HAS_ERROR}" = "true" ]; then
-            HEADER_EMOJI="🔴"
-            HEADER_TEXT="Supabase Advisor: Active issues on ${ENV_NAME}"
+            EMOJI="🔴"
           elif [ "${CURRENT_COUNT}" -gt 0 ]; then
-            HEADER_EMOJI="⚠️"
-            HEADER_TEXT="Supabase Advisor: Warnings on ${ENV_NAME}"
+            EMOJI="⚠️"
           else
-            HEADER_EMOJI="✅"
-            HEADER_TEXT="Supabase Advisor: All clear on ${ENV_NAME}"
+            EMOJI="✅"
           fi
+          {
+            echo "emoji=${EMOJI}"
+            echo "current_count=${CURRENT_COUNT}"
+          } >> "$GITHUB_OUTPUT"
 
-          # 新規発生 lint を Block Kit section に整形 (最大 5 件)。
-          # claude[bot] PR #256 review Finding #3 採用: .detail / .remediation が null の場合、
-          # jq は `null + "..."` で error を投げ、`set -euo pipefail` により Slack 通知が
-          # 完全 skip される。fallback を追加して defensive に (Resolved section と同 pattern)。
-          NEW_SECTIONS=$(jq '[
-            .[0:5] | .[] |
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: ("*🆕 New: `\(.name)` (" + .level + ")*\n" + (.detail // "(no detail)") + "\n<" + (.remediation // "https://supabase.com/docs/guides/database/database-linter") + "|Remediation>")
-              }
-            }
-          ]' new-lints.json)
+          SECTIONS_JQ=.github/scripts/supabase/advisor-lint-sections.jq
+          jq --arg label "🆕 新規" --argjson max 5 --argjson remediation true \
+            -f "${SECTIONS_JQ}" new-lints.json > new-sections.json
+          jq --arg label "✅ 解消" --argjson max 5 --argjson remediation false \
+            -f "${SECTIONS_JQ}" resolved-lints.json > resolved-sections.json
 
-          # 解消 lint を section に整形 (最大 5 件)
-          RESOLVED_SECTIONS=$(jq '[
-            .[0:5] | .[] |
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: ("*✅ Resolved: `\(.name)` (" + .level + ")*\n" + (.detail // "(no detail)"))
-              }
-            }
-          ]' resolved-lints.json)
-
-          # 追加情報 (件数 overflow 通知)。
-          # claude[bot] PR #256 review Finding #2 採用: bash double-quoted string 内の `\n` は
-          # literal 2 文字 (GNU Bash Manual §3.1.2.3)。jq --arg 経由で Slack に渡ると
-          # backslash-n がそのまま表示される。ANSI-C quoting `$'\n'` で実 newline 文字 (0x0A)
-          # を挿入する。Slack Block Kit mrkdwn は 0x0A を line break として render する。
-          NL=$'\n'
-          OVERFLOW_TEXT=""
+          OVERFLOW=""
           if [ "${NEW_COUNT}" -gt 5 ]; then
-            OVERFLOW_TEXT="${OVERFLOW_TEXT}${NL}_…and $((NEW_COUNT - 5)) more new lint(s)_"
+            OVERFLOW="_…新規ほか $((NEW_COUNT - 5)) 件_ "
           fi
           if [ "${RESOLVED_COUNT}" -gt 5 ]; then
-            OVERFLOW_TEXT="${OVERFLOW_TEXT}${NL}_…and $((RESOLVED_COUNT - 5)) more resolved lint(s)_"
+            OVERFLOW="${OVERFLOW}_…解消ほか $((RESOLVED_COUNT - 5)) 件_"
           fi
-
-          RUN_URL="${GH_SERVER_URL}/${GH_REPO}/actions/runs/${GH_RUN_ID}"
-          COMMIT_URL="${GH_SERVER_URL}/${GH_REPO}/commit/${GH_SHA}"
-
-          # Finding #2 採用: summary の \n も実 newline に置換。
-          SUMMARY="*Diff*: +${NEW_COUNT} new · −${RESOLVED_COUNT} resolved · Total now: ${CURRENT_COUNT}${NL}*Env*: \`${ENV_NAME}\` (\`${SUPABASE_PROJECT_REF}\`)${NL}*Trigger*: ${GH_EVENT_NAME}${OVERFLOW_TEXT}"
 
           jq -n \
-            --arg header "${HEADER_EMOJI} ${HEADER_TEXT}" \
-            --arg summary "${SUMMARY}" \
-            --arg run_link "<${RUN_URL}|Workflow run> · <${COMMIT_URL}|Commit>" \
-            --argjson new_sections "${NEW_SECTIONS}" \
-            --argjson resolved_sections "${RESOLVED_SECTIONS}" \
-            '{
-              blocks: (
-                [
-                  { type: "header", text: { type: "plain_text", text: $header, emoji: true } },
-                  { type: "section", text: { type: "mrkdwn", text: $summary } },
-                  { type: "divider" }
-                ]
-                + $new_sections
-                + (if ($new_sections | length > 0) and ($resolved_sections | length > 0) then [{ type: "divider" }] else [] end)
-                + $resolved_sections
-                + [
-                  { type: "divider" },
-                  { type: "context", elements: [{ type: "mrkdwn", text: $run_link }] }
-                ]
-              )
-            }' > slack-payload.json
+            --slurpfile new new-sections.json \
+            --slurpfile resolved resolved-sections.json \
+            --arg overflow "${OVERFLOW}" '
+            $new[0]
+            + (if ($new[0] | length > 0) and ($resolved[0] | length > 0) then [{ type: "divider" }] else [] end)
+            + $resolved[0]
+            + (if $overflow != "" then [{ type: "context", elements: [{ type: "mrkdwn", text: $overflow }] }] else [] end)
+            ' > advisor-blocks.json
 
-          # Slack Incoming Webhook に POST。Webhook URL は Actions log で自動 masking される。
-          HTTP_CODE=$(curl -sS -X POST -o slack-response.txt -w '%{http_code}' \
-            -H 'Content-Type: application/json' \
-            --data-binary @slack-payload.json \
-            "${SLACK_WEBHOOK_URL}")
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error title=Slack webhook failed::HTTP ${HTTP_CODE}"
-            cat slack-response.txt
-            exit 1
-          fi
-          echo "::notice::Slack notification sent for ${ENV_NAME} (+${NEW_COUNT} / −${RESOLVED_COUNT})"
+      - name: Notify Slack
+        if: env.SKIP != 'true' && env.SKIP_NOTIFY != 'true'
+        # staging の警告も「要対応」として本番系へ送る。メンションは新規 lint がある時だけ
+        # (解消だけの時、baseline が無い時 = force_notify の初回で全件が「新規」に見える時は鳴らさない)。
+        # project ref は GitHub で secret 管理しているため Slack には載せない
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          mention: "${{ env.NEW_COUNT != '0' && env.BASELINE_FOUND == 'true' && vars.SLACK_MENTION_USER_ID || '' }}"
+          text: "${{ steps.blocks.outputs.emoji }} Supabase Advisor (${{ matrix.env.name }}): 新規 ${{ env.NEW_COUNT }} 件 / 解消 ${{ env.RESOLVED_COUNT }} 件 (現在 ${{ steps.blocks.outputs.current_count }} 件)"
+          body: "${{ format('*Trigger*: {0} · *Commit*: <{1}/{2}/commit/{3}|{4}>', github.event_name, github.server_url, github.repository, github.sha, github.sha) }}"
+          blocks-file: advisor-blocks.json
 
       - name: Upload current state as artifact (for next run diff)
         if: env.SKIP != 'true'
