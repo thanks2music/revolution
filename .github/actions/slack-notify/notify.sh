@@ -15,7 +15,8 @@ set -uo pipefail
 ok=false
 skipped=false
 # trap (EXIT) から呼ぶ。shellcheck は trap 経由の呼び出しを追えないため info を抑止する
-# shellcheck disable=SC2329
+# (0.11 以降は SC2329、runner に入っている 0.10 以前は SC2317 として報告される)
+# shellcheck disable=SC2317,SC2329
 write_outputs() {
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     {
