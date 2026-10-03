@@ -1,0 +1,66 @@
+name: Vercel Deploy Notify
+
+# Vercel が送る repository_dispatch (デプロイの状態の変化) を Slack へ知らせる。
+# https://vercel.com/docs/git/vercel-for-github#repository-dispatch-events
+#
+# | 環境       | 成功                       | 失敗 (error / failed)           |
+# |------------|----------------------------|---------------------------------|
+# | production | 本番系へ (メンションなし)  | 本番系へ (メンション付き)       |
+# | preview    | 送らない                   | 開発系へ (メンションなし)       |
+#
+# - 例外 (削除・権限起因の失敗など) を含む振り分けの詳細は .github/scripts/notify/vercel-deploy-message.sh
+# - 購読しない: canceled / ignored / skipped (対応不要) / pending / promoted (success と重なる)。
+#   deployment_status イベントは使わない (Vercel は repository_dispatch への移行を推奨している)
+# - repository_dispatch は default branch の workflow しか動かない。確認は main へ入った後に
+#   `gh api repos/<repo>/dispatches` で疑似イベントを送る。client_payload.test を true にすると
+#   テストモード (開発系・[TEST]・メンションなし) で送る (`-F` で真偽値、`-f` で文字列のどちらでもよい)
+
+on:
+  repository_dispatch:
+    types:
+      - vercel.deployment.success
+      - vercel.deployment.error
+      - vercel.deployment.failed
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    # Preview の成功は送らないので、runner を起動しない
+    if: github.event.action != 'vercel.deployment.success' || github.event.client_payload.environment == 'production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout notification action and scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions
+            .github/scripts
+          persist-credentials: false
+
+      - name: Build the message from the Vercel payload
+        id: msg
+        # payload はイベントのファイルから読む。env で渡すと public なログのヘッダーに出るため。
+        # run: 内で ${{ }} を展開しない (injection 対策)
+        env:
+          EVENT_ACTION: ${{ github.event.action }}
+          PROJECT_NAME: revolution-phoenix-frontend
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          jq '.client_payload' "${GITHUB_EVENT_PATH}" > payload.json
+          PAYLOAD_FILE=payload.json bash .github/scripts/notify/vercel-deploy-message.sh
+
+      - name: Notify Slack
+        if: steps.msg.outputs.notify == 'true'
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: "${{ steps.msg.outputs.production == 'true' && vars.SLACK_CHANNEL_PROD || vars.SLACK_CHANNEL_DEV }}"
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          test: ${{ steps.msg.outputs.test }}
+          mention: "${{ steps.msg.outputs.mention == 'true' && vars.SLACK_MENTION_USER_ID || '' }}"
+          text: ${{ steps.msg.outputs.text }}
+          body: ${{ steps.msg.outputs.body }}
