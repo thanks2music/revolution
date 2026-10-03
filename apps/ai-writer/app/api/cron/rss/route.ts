@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { createHash, timingSafeEqual } from 'crypto';
 import { flushSentry } from '../../../../lib/observability/sentry';
+import { notifyPipelineResult } from '../../../../lib/slack';
 import { createMdxPr } from '../../../../lib/github/create-mdx-pr';
 import {
   DuplicateSlugError,
@@ -101,6 +102,14 @@ function isValidCronKey(expected: string, provided: string | null): boolean {
  * @returns Next.js Response
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // 失敗通知に載せるため try の外で保持する
+  let feedUrl: unknown;
+  // 認証を通過したリクエストだけを Slack 通知の対象にする。
+  // getCronKey() (Secret Manager) は認証より前に動くため、その障害中は
+  // 未認証のリクエストでも 500 になる。そこでメンション付き通知を飛ばさない
+  // (障害自体は captureException で Sentry に残る)
+  let authenticated = false;
+
   try {
     // 1. Cron認証 (Timing-safe comparison)
     const providedKey = request.headers.get('x-cron-key');
@@ -115,12 +124,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    authenticated = true;
 
     // 2. Request body 取得
     const body = await request.json();
-    const { feedUrl } = body as { feedUrl?: string };
+    ({ feedUrl } = body as { feedUrl?: unknown });
 
-    if (!feedUrl) {
+    if (!feedUrl || typeof feedUrl !== 'string') {
       return NextResponse.json({ error: 'feedUrl is required' }, { status: 400 });
     }
 
@@ -170,6 +180,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // 未知のエラーは「誰かが起きて対応すべき」もの。無人 cron 経路の主目的の計装。
     Sentry.captureException(error, { tags: { entrypoint: 'cron' } });
+
+    // Slack へも即時に知らせる (メンション付き)。409 (重複) とリトライ可能エラーは
+    // 対応不要なので送らない。Cloud Run へ token を注入するまで (S5) は
+    // notifyPipelineResult が warn ログを 1 行出して skip する。
+    // ⚠️ finally の flushSentry と同じく、レスポンスを返す前に await する
+    //    (Cloud Run は応答後に CPU が throttle されるため)
+    if (authenticated) {
+      await notifyPipelineResult({
+        outcome: 'failure',
+        entrypoint: 'cron',
+        sourceUrl: typeof feedUrl === 'string' ? feedUrl : '(feedUrl 不明)',
+        error: error instanceof Error ? error.message : String(error),
+        revision: process.env.K_REVISION,
+      });
+    }
 
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   } finally {

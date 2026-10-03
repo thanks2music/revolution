@@ -32,7 +32,7 @@
 
 import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import { dirname, relative, resolve } from 'path';
 import { mkdir, writeFile, readdir } from 'fs/promises';
 import { existsSync, createWriteStream, type WriteStream } from 'fs';
 
@@ -59,6 +59,13 @@ import {
 // MDX生成サービス
 import { ArticleGenerationMdxService } from '../lib/services/article-generation-mdx.service';
 import type { MdxGenerationRequest } from '../lib/services/article-generation-mdx.service';
+
+// Slack 通知 (SLACK_BOT_TOKEN / SLACK_CHANNEL_ID が無ければ何もしない)
+import {
+  notifyPipelineResult,
+  pipelineNotificationFromResult,
+  type PipelineNotification,
+} from '../lib/slack';
 
 /**
  * コマンドライン引数をパース
@@ -251,6 +258,22 @@ async function main() {
   let logCleanup: (() => void) | undefined;
   let logFilePath: string | undefined;
 
+  // Slack 通知に載せる実行モード (PR を作るのは 'pr' のときだけ)
+  const mode = uploadImages ? 'upload-images' : local ? 'local' : dryRun ? 'dry-run' : 'pr';
+  // ⚠️ 重複 PR (DuplicateSlugError) は service が `{ success: false, error }` にまとめて返すため、
+  //    CLI では「失敗」として開発系チャンネルに届く (メンションなし)。人が実行結果を見ている
+  //    経路なので許容している。cron 経路では 409 として通知対象から外している
+  const notifyContext = (): Pick<
+    PipelineNotification,
+    'entrypoint' | 'sourceUrl' | 'mode' | 'logPath'
+  > => ({
+    entrypoint: 'cli',
+    sourceUrl: url,
+    mode,
+    // 絶対パスだとホームディレクトリ名が Slack に載るため、apps/ai-writer からの相対にする
+    logPath: logFilePath ? relative(resolve(__dirname, '..'), logFilePath) : undefined,
+  });
+
   if (log) {
     logFilePath = await generateLogFilePath(url);
     const logging = setupConsoleLogging(logFilePath);
@@ -347,6 +370,7 @@ async function main() {
     };
 
     const result = await service.generateMdxFromRSS(request);
+    const notification = pipelineNotificationFromResult(result, notifyContext());
 
     // ========================================
     // STEP 3: 結果表示
@@ -366,6 +390,8 @@ async function main() {
       console.log('  - YAML テンプレートの条件を確認してください');
       console.log('  - DEBUG_HTML_EXTRACTION=true で抽出HTMLを確認できます');
       console.log('='.repeat(80));
+      // process.exit は保留中の Promise を待たないため、通知は必ず await してから抜ける
+      await notifyPipelineResult(notification);
       process.exit(0);
     }
 
@@ -373,6 +399,7 @@ async function main() {
       console.error('\n❌ MDX記事の生成に失敗しました');
       console.error(`エラー: ${result.error}`);
       console.log();
+      await notifyPipelineResult(notification);
       process.exit(1);
     }
 
@@ -522,6 +549,10 @@ async function main() {
       console.log('='.repeat(80));
     }
 
+    // 成功の通知は最後に送る (途中のローカル保存などで例外になった場合に
+    // 「成功」と「失敗」の 2 通が届かないようにするため)
+    await notifyPipelineResult(notification);
+
     // ログのクリーンアップ
     if (logCleanup) {
       logCleanup();
@@ -550,6 +581,12 @@ async function main() {
     if (logFilePath) {
       console.log(`📝 ログファイル保存完了: ${logFilePath}`);
     }
+
+    await notifyPipelineResult({
+      ...notifyContext(),
+      outcome: 'failure',
+      error: error instanceof Error ? error.message : String(error),
+    });
 
     // ログのクリーンアップ
     if (logCleanup) {
