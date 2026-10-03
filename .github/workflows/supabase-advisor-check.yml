@@ -139,15 +139,42 @@ jobs:
 
       - name: Download previous advisor state artifact
         if: env.SKIP != 'true'
-        # 前回実行時の状態を取得。初回 or artifact 期限切れの場合は not found = 空 state で継続。
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: advisor-state-${{ matrix.env.name }}
-          path: ./previous
-          # artifact 不在時は step が error になるため continue-on-error で継続する。
-          # ⚠️ run-id を渡していないので「同じ実行内」しか探さない (= 週次実行では毎回不在)。
-          # 別の実行の artifact を引く方式への置き換えは通知基盤の PR で行う
-        continue-on-error: true
+        # 直近の**別の実行**が保存した advisor-state-<env> を baseline として取得する。
+        #
+        # ⚠️ 以前は actions/download-artifact を run-id 無しで使っていた。その場合は
+        #    「同じ実行内」の artifact しか探さないため、週次実行では baseline が毎回見つからず、
+        #    差分通知が一度も発火していなかった (2026-09-28 の run log で確認)。
+        #    deploy-supabase-migrations.yml の post-deploy チェックと同じく gh api で
+        #    名前から最新の artifact を引く (期限切れは除外)。permissions: actions: read が必要。
+        # 初回 (artifact が 1 つも無い) / 取得失敗時は previous/ を空のまま次へ進む
+        # (Diff step が「baseline 不在」として通知を skip し、今回の state が次の baseline になる)。
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          mkdir -p previous
+          # fork からの PR は PR 側の workflow 定義で動くため、同じ名前の artifact を置けてしまう。
+          # 同じリポジトリの実行が保存したものに限り、production は main の実行に限る
+          FILTER='.expired == false and .workflow_run.head_repository_id == .workflow_run.repository_id'
+          if [ "${ENV_NAME}" = "production" ]; then
+            FILTER="${FILTER} and .workflow_run.head_branch == \"main\""
+          fi
+          ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=20" \
+            --jq "[.artifacts[] | select(${FILTER})][0].id // empty" 2>/dev/null || true)
+          if [ -z "${ARTIFACT_ID}" ]; then
+            echo "::notice::No unexpired advisor-state-${ENV_NAME} artifact found."
+            exit 0
+          fi
+          if gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > previous.zip 2>/dev/null \
+            && unzip -q -o previous.zip -d previous/ \
+            && jq -e '.lints_by_key | type == "object"' previous/current-state.json >/dev/null 2>&1; then
+            echo "Baseline: artifact ${ARTIFACT_ID}"
+          else
+            # 形式が不正な baseline と比べると、既存の lint が全件「新規」扱いになるため使わない
+            echo "::warning::Could not use advisor-state-${ENV_NAME} (artifact ${ARTIFACT_ID}). Treating the baseline as missing."
+            rm -rf previous && mkdir -p previous
+          fi
 
       - name: Diff current vs previous state
         if: env.SKIP != 'true'
