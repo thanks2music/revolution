@@ -318,7 +318,7 @@ jobs:
         with:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           channel: "${{ env.ACTIONABLE == 'true' && vars.SLACK_CHANNEL_PROD || vars.SLACK_CHANNEL_DEV }}"
-          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          test-channel: C00000000  # 捨てブランチ: 存在しないチャンネルで ok:false を確かめる
           mention: "${{ env.ACTIONABLE == 'true' && vars.SLACK_MENTION_USER_ID || '' }}"
           text: "${{ steps.blocks.outputs.emoji }} Supabase Advisor (${{ matrix.env.name }}): 新規 ${{ env.NEW_COUNT }} 件 / 解消 ${{ env.RESOLVED_COUNT }} 件 (現在 ${{ steps.blocks.outputs.current_count }} 件)"
           body: "${{ format('*Trigger*: {0} · *Commit*: <{1}/{2}/commit/{3}|{4}>', github.event_name, github.server_url, github.repository, github.sha, github.sha) }}"

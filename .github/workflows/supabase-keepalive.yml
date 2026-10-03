@@ -200,7 +200,7 @@ jobs:
           HTTP_CODE=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
             -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
-            "https://${SUPABASE_PROJECT_REF}.supabase.co/rest/v1/categories?select=id&limit=1") || true
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/rest/v1/__slack_failtest__?select=id&limit=1") || true
           HTTP_CODE="${HTTP_CODE:-000}"
           echo "http_code=${HTTP_CODE}" >> "$GITHUB_OUTPUT"
 
