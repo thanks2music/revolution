@@ -335,7 +335,7 @@ jobs:
         # (実運用上は最新 deploy 後の状態を反映するほうが有意義、意図的な変更)。
         # baseline 未確立時 (current-state.json 不在 = advisor fetch が fail した場合等) は skip。
         if: always() && hashFiles('current-state.json') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: advisor-state-staging
           path: current-state.json
@@ -586,7 +586,7 @@ jobs:
         # staging 側と同ロジック (production 版、artifact name = advisor-state-production)。
         # 詳細コメントは staging job の同名 step を参照。
         if: always() && hashFiles('current-state.json') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: advisor-state-production
           path: current-state.json
