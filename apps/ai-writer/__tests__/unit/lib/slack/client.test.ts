@@ -134,6 +134,24 @@ describe('postSlackMessage', () => {
     expect(options.fingerprint).toEqual(['slack-notification-failed', 'timeout']);
   });
 
+  // AbortSignal.timeout は本文の読み込み中にも発火する。JSON でない本文と取り違えない
+  it('本文の読み込み中のタイムアウトも timeout として扱う', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      },
+    })) as unknown as typeof global.fetch;
+
+    await expect(postSlackMessage(CONFIG, MESSAGE, { timeoutMs: 1 })).resolves.toBe(false);
+    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
+      string,
+      { fingerprint: string[] },
+    ];
+    expect(options.fingerprint).toEqual(['slack-notification-failed', 'timeout']);
+  });
+
   it('失敗時のログに token と本文を出さない', async () => {
     mockFetch({ body: { ok: false, error: 'invalid_auth' } });
 

@@ -251,7 +251,8 @@ async function main() {
     console.log('  pnpm debug:mdx --dry-run --log https://animeanime.jp/article/2025/11/24/94010.html');
     console.log('  pnpm debug:mdx --local https://animeanime.jp/article/2025/11/24/94010.html');
     console.log('  pnpm debug:mdx --upload-images https://animeanime.jp/article/2025/11/24/94010.html\n');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   // ログファイル出力のセットアップ
@@ -390,9 +391,12 @@ async function main() {
       console.log('  - YAML テンプレートの条件を確認してください');
       console.log('  - DEBUG_HTML_EXTRACTION=true で抽出HTMLを確認できます');
       console.log('='.repeat(80));
-      // process.exit は保留中の Promise を待たないため、通知は必ず await してから抜ける
       await notifyPipelineResult(notification);
-      process.exit(0);
+      logCleanup?.();
+      // process.exit() は使わない。op run 経由では stdout が pipe になり、POSIX では pipe への
+      // 書き込みが非同期のため、末尾の出力が捨てられる (https://nodejs.org/api/process.html)
+      process.exitCode = 0;
+      return;
     }
 
     if (!result.success) {
@@ -400,7 +404,9 @@ async function main() {
       console.error(`エラー: ${result.error}`);
       console.log();
       await notifyPipelineResult(notification);
-      process.exit(1);
+      logCleanup?.();
+      process.exitCode = 1;
+      return;
     }
 
     console.log('\n✅ MDX記事生成成功！');
@@ -593,7 +599,7 @@ async function main() {
       logCleanup();
     }
 
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 

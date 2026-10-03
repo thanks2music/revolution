@@ -42,6 +42,14 @@ describe('escapeSlackText / truncate', () => {
     expect(truncate('abcdef', 4)).toBe('abc…');
     expect(truncate('abc', 4)).toBe('abc');
   });
+
+  // UTF-16 単位で切ると絵文字のサロゲートペアが割れ、Slack で文字化けする
+  it('絵文字のサロゲートペアを割らない', () => {
+    const result = truncate('😀'.repeat(5), 3);
+
+    expect(result).toBe('😀😀…');
+    expect(result).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
 });
 
 describe('redactSecrets', () => {
@@ -56,6 +64,27 @@ describe('redactSecrets', () => {
     const redacted = redactSecrets(value);
     expect(redacted).toContain('[REDACTED]');
     expect(redacted).not.toMatch(/xoxb-1|sk-ant|ghp_a|github_pat_1|AIzaSy|eyJhbGci/);
+  });
+
+  // 値はわざと短くしている (gitleaks の検出パターンに当たらないようにするため)
+  it.each([
+    [
+      'PEM 秘密鍵',
+      '-----BEGIN PRIVATE KEY-----\nMIIBfakeKeyBody\n-----END PRIVATE KEY-----',
+      'MIIBfakeKeyBody',
+    ],
+    [
+      'Slack Incoming Webhook',
+      'post to https://hooks.slack.com/services/T0/B0/abcdef failed',
+      'hooks.slack.com',
+    ],
+    ['Slack app-level token', 'xapp-1-A0000000-abcdefgh', 'A0000000'],
+    ['JWT', 'apikey eyJhbGciOiJ.eyJyb2xlIjoi.abcdefgh', 'eyJyb2xlIjoi'],
+  ])('%s を伏せる', (_label, value, leaked) => {
+    const redacted = redactSecrets(value);
+
+    expect(redacted).toContain('[REDACTED]');
+    expect(redacted).not.toContain(leaked);
   });
 
   it('token を含まない文はそのまま', () => {
@@ -171,6 +200,17 @@ describe('buildPipelineMessage', () => {
     expect(blocksText(message)).toContain('https://github.com/thanks2music/revolution/pull/1');
   });
 
+  // PR を作るモードで URL が無いのは想定外。「作成していません」と出すと気づけない
+  it('PR を作るモードで URL が無い成功は、確認を促す', () => {
+    const message = buildPipelineMessage(
+      { ...failure, outcome: 'success', entrypoint: 'cli', mode: 'pr' },
+      LOCAL
+    );
+
+    expect(blocksText(message)).toContain('PR の URL を取得できませんでした');
+    expect(blocksText(message)).not.toContain('作成していません');
+  });
+
   it('PR を作らないモードの成功はその旨を載せる', () => {
     const message = buildPipelineMessage(
       { ...failure, outcome: 'success', entrypoint: 'cli', mode: 'dry-run' },
@@ -208,6 +248,36 @@ describe('buildPipelineMessage', () => {
 
     expect(message.blocks.length).toBeLessThanOrEqual(50);
     expect(fields.length).toBeLessThanOrEqual(10);
+  });
+
+  // 切り詰めはエスケープ前なので、`&` だけの値はエスケープで 5 倍に伸びる。それでも上限に収まること
+  it('エスケープで伸びても Block Kit の文字数上限 (fields 2000 / section 3000) を超えない', () => {
+    const huge = '&'.repeat(5000);
+    const message = buildPipelineMessage(
+      {
+        outcome: 'failure',
+        entrypoint: 'cli',
+        sourceUrl: huge,
+        mode: huge,
+        workSlug: huge,
+        postId: huge,
+        logPath: huge,
+        revision: huge,
+        error: huge,
+      },
+      CLOUD_RUN
+    );
+
+    for (const block of message.blocks as Array<{
+      text?: { text: string };
+      fields?: Array<{ text: string }>;
+      elements?: Array<{ text: string }>;
+    }>) {
+      if (block.text) expect(block.text.text.length).toBeLessThanOrEqual(3000);
+      for (const field of block.fields ?? []) expect(field.text.length).toBeLessThanOrEqual(2000);
+      for (const element of block.elements ?? [])
+        expect(element.text.length).toBeLessThanOrEqual(3000);
+    }
   });
 });
 

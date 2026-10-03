@@ -156,6 +156,7 @@ echo "[2/6] symlink env files..."
 ENV_FILES=(
   ".env.local"
   "apps/ai-writer/.env.local"
+  "apps/ai-writer/.env.op.local"
   "apps/ai-writer/.env.deploy"
   "apps/frontend/.env.local"
   "apps/frontend/.env.production.local"

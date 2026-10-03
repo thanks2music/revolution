@@ -168,6 +168,8 @@ describe('cron/rss route の Slack 通知', () => {
     expect(res.status).toBe(400);
     expect(notifyPipelineResult).not.toHaveBeenCalled();
     expect(Sentry.captureException).not.toHaveBeenCalled();
+    // Scheduler の設定ミスに気づけるよう、ログには残す
+    expect(console.warn).toHaveBeenCalledWith('Invalid JSON body in cron request');
   });
 
   it('feedUrl 未指定 (400) は通知しない', async () => {

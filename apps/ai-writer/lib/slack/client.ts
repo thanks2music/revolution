@@ -20,6 +20,11 @@ import type { SlackMessage } from './messages';
 const POST_MESSAGE_URL = 'https://slack.com/api/chat.postMessage';
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+/** `AbortSignal.timeout` による中断か (fetch 本体と本文の読み込みのどちらでも起きる) */
+function isTimeout(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+}
+
 /**
  * メッセージを送信する。成功なら true、失敗なら false (例外は投げない)。
  *
@@ -27,7 +32,8 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * 再送すると二重投稿になるため。rate limit (HTTP 429 + `Retry-After`) も
  * 意図して再送しない。上限は 1 チャンネルあたり約 1 通/秒で
  * (https://docs.slack.dev/apis/web-api/rate-limits)、1 実行 1 通の本通知では
- * 到達しない想定のため、到達した場合は `http_429` として可視化するに留める。
+ * 到達しない想定のため、到達した場合は失敗コード (本文に `error` があればその値、
+ * 無ければ `http_429`) として可視化するに留める。
  */
 export async function postSlackMessage(
   config: Pick<SlackConfig, 'token' | 'channel'>,
@@ -53,10 +59,14 @@ export async function postSlackMessage(
       signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     });
 
-    const body = (await response.json().catch(() => null)) as {
-      ok?: boolean;
-      error?: string;
-    } | null;
+    let body: { ok?: boolean; error?: string } | null = null;
+    try {
+      body = (await response.json()) as { ok?: boolean; error?: string };
+    } catch (error) {
+      // 本文の読み込み中のタイムアウトは、下の catch で timeout として扱う
+      if (isTimeout(error)) throw error;
+      body = null; // JSON でない本文
+    }
 
     if (response.ok && body?.ok === true) {
       return true;
@@ -67,10 +77,7 @@ export async function postSlackMessage(
       ? (body.error ?? `http_${response.status}`)
       : `invalid_response_http_${response.status}`;
   } catch (error) {
-    failureCode =
-      error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
-        ? 'timeout'
-        : 'network_error';
+    failureCode = isTimeout(error) ? 'timeout' : 'network_error';
   }
 
   // 送信内容 (本文・token) はログに出さない。エラーコードだけを残す

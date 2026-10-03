@@ -17,24 +17,8 @@ import { isCloudRun, missingSlackConfigKeys, readSlackConfig } from './config';
 import { postSlackMessage } from './client';
 import { buildPipelineMessage, type PipelineNotification } from './messages';
 
-export {
-  isCloudRun,
-  missingSlackConfigKeys,
-  readSlackConfig,
-  type SlackConfig,
-  type SlackRuntime,
-} from './config';
-export { postSlackMessage } from './client';
-export {
-  buildPipelineMessage,
-  escapeSlackText,
-  pipelineNotificationFromResult,
-  type PipelineEntrypoint,
-  type PipelineNotification,
-  type PipelineOutcome,
-  type PipelineResultLike,
-  type SlackMessage,
-} from './messages';
+// 入口 (CLI / cron route) が使うものだけを公開する。部品は各モジュールから直接 import する
+export { pipelineNotificationFromResult, type PipelineNotification } from './messages';
 
 /**
  * パイプラインの結果を Slack へ通知する。**例外を投げない。**

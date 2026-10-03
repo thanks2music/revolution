@@ -39,18 +39,23 @@ export interface SlackMessage {
   blocks: Array<Record<string, unknown>>;
 }
 
+// 切り詰めはエスケープ前に行う。エスケープで最大 5 倍 (`&` → `&amp;`) に伸びても
+// Block Kit の上限 (fields 各 2000 字 / section 3000 字) に収まる長さにしてある
 const ERROR_MAX_CHARS = 500;
-const URL_MAX_CHARS = 500;
-const FIELD_MAX_CHARS = 2000;
+const URL_MAX_CHARS = 380;
 
 /** Slack の制御文字 (`&` `<` `>`) をエスケープする */
 export function escapeSlackText(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** max 文字を超えたら末尾を `…` にして切り詰める */
+/**
+ * max 文字を超えたら末尾を `…` にして切り詰める。
+ * コードポイント単位で数える (UTF-16 単位で切ると絵文字のサロゲートペアが割れて文字化けする)
+ */
 export function truncate(value: string, max: number): string {
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+  const chars = Array.from(value);
+  return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : value;
 }
 
 const OUTCOME_LABEL: Record<PipelineOutcome, string> = {
@@ -80,13 +85,16 @@ function hostOf(url: string): string {
  * 通知の意味は失われないため、広めに取る
  */
 const SECRET_PATTERNS: RegExp[] = [
-  /xox[abeoprs]-[A-Za-z0-9-]{8,}/g, // Slack token
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, // PEM 秘密鍵
+  /https:\/\/hooks\.slack\.com\/[^\s"'<>]+/g, // Slack Incoming Webhook URL
+  /\b(?:xox[abeoprs]|xapp)-[A-Za-z0-9-]{8,}/g, // Slack token / app-level token
   /\bsk-[A-Za-z0-9_-]{16,}/g, // OpenAI / Anthropic (sk-ant-…)
   /\bgh[pousr]_[A-Za-z0-9]{20,}/g, // GitHub token
   /\bgithub_pat_[A-Za-z0-9_]{20,}/g, // GitHub fine-grained PAT
   /\bAIza[0-9A-Za-z_-]{30,}/g, // Google API key
   /\bsntrys_[A-Za-z0-9_=+/-]{16,}/g, // Sentry organization token
   /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, // Authorization ヘッダ
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, // JWT (Supabase の key など)
 ];
 
 export function redactSecrets(value: string): string {
@@ -135,10 +143,7 @@ export function buildPipelineMessage(
 
   const blocks: Array<Record<string, unknown>> = [
     { type: 'section', text: { type: 'mrkdwn', text: summary } },
-    {
-      type: 'section',
-      fields: fields.map(f => ({ ...f, text: truncate(f.text, FIELD_MAX_CHARS) })),
-    },
+    { type: 'section', fields },
   ];
 
   const detail = buildDetailText(notification);
@@ -162,8 +167,10 @@ export function buildPipelineMessage(
 function buildDetailText(notification: PipelineNotification): string | undefined {
   switch (notification.outcome) {
     case 'success':
-      return notification.prUrl
-        ? `*PR*\n${safe(notification.prUrl, URL_MAX_CHARS)}`
+      if (notification.prUrl) return `*PR*\n${safe(notification.prUrl, URL_MAX_CHARS)}`;
+      // PR を作るモード (mode = pr) なのに URL が無いのは想定外。成功扱いのまま気づけるようにする
+      return notification.mode === 'pr'
+        ? '*PR*\n⚠️ PR の URL を取得できませんでした (GitHub を確認してください)'
         : '*PR*\n作成していません (PR を作らないモード)';
     case 'skipped':
       return notification.skipReason

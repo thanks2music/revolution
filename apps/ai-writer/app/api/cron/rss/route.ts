@@ -133,6 +133,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       body = await request.json();
     } catch {
+      // 送信側の誤りなので Sentry には送らないが、Scheduler の設定ミスに気づけるようログは残す
+      console.warn('Invalid JSON body in cron request');
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
     ({ feedUrl } = (body ?? {}) as { feedUrl?: unknown });

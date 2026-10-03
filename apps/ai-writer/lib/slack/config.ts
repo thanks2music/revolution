@@ -49,7 +49,7 @@ export function readSlackConfig(env: NodeJS.ProcessEnv = process.env): SlackConf
   const channel = presentValue(env.SLACK_CHANNEL_ID);
   if (!token || !channel) return null;
 
-  const runtime: SlackRuntime = presentValue(env.K_SERVICE) ? 'cloud-run' : 'local';
+  const runtime: SlackRuntime = isCloudRun(env) ? 'cloud-run' : 'local';
   const mentionUserId =
     runtime === 'cloud-run' ? presentValue(env.SLACK_MENTION_USER_ID) : undefined;
 
