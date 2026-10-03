@@ -18,13 +18,12 @@
 # top-level の text は block 0 と同じ文字列 (blocks 使用時に通知へ表示されるのは text のため)。
 set -euo pipefail
 
-# 追加 blocks はファイルのまま --slurpfile で渡す (引数で渡すと Linux の 1 引数 128KB 上限に当たる)
-extra_file="$(mktemp)"
-trap 'rm -f "${extra_file}"' EXIT
-echo '[]' > "${extra_file}"
+# 追加 blocks はファイルのまま --slurpfile で渡す (引数で渡すと Linux の 1 引数 128KB 上限に当たる)。
+# 無い時は /dev/null を渡す (--slurpfile は空の配列になり、$extra[0] は null)
+extra_file=/dev/null
 if [[ -n "${PAYLOAD_BLOCKS_FILE:-}" ]]; then
   if jq -e 'type == "array"' "${PAYLOAD_BLOCKS_FILE}" >/dev/null 2>&1; then
-    cp "${PAYLOAD_BLOCKS_FILE}" "${extra_file}"
+    extra_file="${PAYLOAD_BLOCKS_FILE}"
   else
     echo "::warning title=Slack notify::blocks-file is not a JSON array. Ignoring it." >&2
   fi
@@ -39,8 +38,9 @@ jq -n \
   --arg run_url "${PAYLOAD_RUN_URL:-}" \
   --slurpfile extra "${extra_file}" '
   def esc: gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;");
-  # 切った位置が &amp; などの途中だと表示が崩れるので、末尾の欠けた entity を落とす
-  def trunc($n): if length > $n then (.[0:($n - 1)] | sub("&[a-z]{0,4}$"; "")) + "…" else . end;
+  # 切った位置が &amp; などの途中だと表示が崩れるので、末尾の欠けた entity を落とす。
+  # body は生の mrkdwn なので、閉じていないリンク記法 (<url|text の途中) も落とす
+  def trunc($n): if length > $n then (.[0:($n - 1)] | sub("&[a-z]{0,4}$"; "") | sub("<[^>]*$"; "")) + "…" else . end;
 
   ((if $mention != "" then "<@" + ($mention | esc) + "> " else "" end)
     + ($prefix | esc) + ($text | esc) | trunc(2900)) as $summary
@@ -54,7 +54,7 @@ jq -n \
         (
           [{ type: "section", text: { type: "mrkdwn", text: $summary } }]
           + (if $body != "" then [{ type: "section", text: { type: "mrkdwn", text: ($body | trunc(3000)) } }] else [] end)
-          + $extra[0]
+          + ($extra[0] // [])
           | .[0:49]
         )
         + (if $run_url != "" then [{ type: "context", elements: [{ type: "mrkdwn", text: ("<" + $run_url + "|実行ログ (GitHub Actions)>") }] }] else [] end)

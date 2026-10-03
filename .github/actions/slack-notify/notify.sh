@@ -14,18 +14,9 @@ set -uo pipefail
 
 ok=false
 skipped=false
-# trap (EXIT) から呼ぶ。shellcheck は trap 経由の呼び出しを追えないため info を抑止する
-# (0.11 以降は SC2329、runner に入っている 0.10 以前は SC2317 として報告される)
-# shellcheck disable=SC2317,SC2329
-write_outputs() {
-  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-    {
-      echo "ok=${ok}"
-      echo "skipped=${skipped}"
-    } >> "${GITHUB_OUTPUT}"
-  fi
-}
-trap write_outputs EXIT
+tmp="$(mktemp -d)"
+# どの経路で終わっても一時ファイルを消し、結果 (ok / skipped) を step の outputs に残す
+trap 'rm -rf "${tmp}"; if [[ -n "${GITHUB_OUTPUT:-}" ]]; then printf "ok=%s\nskipped=%s\n" "${ok}" "${skipped}" >> "${GITHUB_OUTPUT}"; fi' EXIT
 
 channel="${SLACK_CHANNEL:-}"
 mention="${NOTIFY_MENTION:-}"
@@ -49,9 +40,29 @@ if [[ -z "${SLACK_TOKEN:-}" || -z "${channel}" ]]; then
   exit 0
 fi
 
-payload_file="$(mktemp)"
-response_file="$(mktemp)"
-trap 'rm -f "${payload_file}" "${response_file}"; write_outputs' EXIT
+payload_file="${tmp}/payload.json"
+response_file="${tmp}/response.json"
+text_only_file="${tmp}/text-only.json"
+
+post() {
+  curl -sS --max-time 15 -o "${response_file}" -w '%{http_code}' \
+    -X POST \
+    -H "Authorization: Bearer ${SLACK_TOKEN}" \
+    -H 'Content-Type: application/json; charset=utf-8' \
+    --data-binary "@$1" \
+    https://slack.com/api/chat.postMessage
+}
+
+response_ok() {
+  [[ "$(jq -r '.ok // false' "${response_file}" 2>/dev/null)" == "true" ]]
+}
+
+# ::warning:: の行に出すため、英数字と _ 以外は落とす (改行 + :: 記法によるコマンド注入を防ぐ)
+response_error() {
+  local code
+  code="$(jq -r '.error // empty' "${response_file}" 2>/dev/null | tr -cd 'a-zA-Z0-9_' || true)"
+  echo "${code:-invalid_response_http_${1:-000}}"
+}
 
 if ! PAYLOAD_CHANNEL="${channel}" \
   PAYLOAD_TEXT="${NOTIFY_TEXT:-}" \
@@ -65,23 +76,27 @@ if ! PAYLOAD_CHANNEL="${channel}" \
   exit 0
 fi
 
-http_code="$(curl -sS --max-time 15 -o "${response_file}" -w '%{http_code}' \
-  -X POST \
-  -H "Authorization: Bearer ${SLACK_TOKEN}" \
-  -H 'Content-Type: application/json; charset=utf-8' \
-  --data-binary "@${payload_file}" \
-  https://slack.com/api/chat.postMessage)" || true
-
-if [[ "$(jq -r '.ok // false' "${response_file}" 2>/dev/null)" == "true" ]]; then
+http_code="$(post "${payload_file}")" || true
+if response_ok; then
   ok=true
   echo "Slack notification sent"
   exit 0
 fi
-
 # 本文が JSON でない (プロキシのエラーページ等) / 接続できなかった場合も区別して残す
-error_code="$(jq -r '.error // empty' "${response_file}" 2>/dev/null || true)"
-if [[ -z "${error_code}" ]]; then
-  error_code="invalid_response_http_${http_code:-000}"
+error_code="$(response_error "${http_code}")"
+
+# blocks が拒否された時 (invalid_blocks / msg_too_long) は何も投稿されていないので、
+# 要約 (text、メンションを含む) だけで 1 回だけ送り直す。二重投稿にはならず、要対応の知らせは届く
+if [[ "${error_code}" == "invalid_blocks" || "${error_code}" == "msg_too_long" ]]; then
+  jq '{channel, text, unfurl_links, unfurl_media}' "${payload_file}" > "${text_only_file}"
+  http_code="$(post "${text_only_file}")" || true
+  if response_ok; then
+    ok=true
+    echo "::warning title=Slack notification degraded::${error_code}. Sent the summary only."
+    exit 0
+  fi
+  error_code="$(response_error "${http_code}")"
 fi
+
 echo "::warning title=Slack notification failed::${error_code}"
 exit 0

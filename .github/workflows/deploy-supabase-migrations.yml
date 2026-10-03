@@ -49,13 +49,17 @@ jobs:
   deploy-staging:
     if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging')
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)
+    timeout-minutes: 12  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)。内訳は staging job の env の上のコメント
     environment:
       name: staging
+    # 時間の予算 (両 job 共通): preflight 3 分 + push 6 分 + advisor 1 分 + 前後の step 1 分前後 を
+    # job の 12 分に収める。job ごと打ち切られると、末尾の Slack 通知 step まで実行されず失敗に気づけない
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STG_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
+      # Slack 通知の補足 (PR があれば PR、無ければ commit へのリンク)
+      NOTIFY_LINK: "${{ github.event.pull_request.number && format('*PR*: <{0}/{1}/pull/{2}|#{2}>', github.server_url, github.repository, github.event.pull_request.number) || format('*Commit*: <{0}/{1}/commit/{2}|{2}>', github.server_url, github.repository, github.sha) }}"
     steps:
       - name: Checkout repository
         # Revolution の ci.yml と整合させて v7.0.1 を commit SHA で固定 (Node.js 24 ベース。
@@ -119,7 +123,6 @@ jobs:
 
       - name: Pre-flight migration history consistency check
         working-directory: apps/frontend
-        # preflight (2 回まで) + push (6 分) が job の 10 分を超えないように切る
         timeout-minutes: 3
         # PR #249 (titles master) 事故 (2026-06-21) の再発防止 (案 3 = CI 事前チェック)。
         # 同一 PR 内で migration ファイル名 (timestamp) を変更 + 旧 file 削除すると、
@@ -177,9 +180,7 @@ jobs:
       - name: Push migrations to staging
         id: push
         working-directory: apps/frontend
-        # job の timeout-minutes (10) より先に切る。job ごと打ち切られると、末尾の
-        # Slack 通知 step まで実行されず失敗に気づけないため
-        timeout-minutes: 5
+        timeout-minutes: 6
         # 事前ビルド済の $SESSION_POOLER_URL を env から参照 (重複削減、claude[bot]
         # PR #250 review #4 (R2) 採用)。
         # 適用対象が無い時、CLI は "Remote database is up to date." を出す (CLI の版によって
@@ -201,6 +202,7 @@ jobs:
         # 下の Rename / Refresh で次回の baseline を更新する。
         # push step が失敗しても実行する (deploy 失敗起因の lint も検知したい)
         if: always()
+        timeout-minutes: 1
         env:
           ENV_NAME: staging
           GH_REPO: ${{ github.repository }}
@@ -208,8 +210,9 @@ jobs:
         run: bash .github/scripts/supabase/post-deploy-advisor.sh
 
       - name: Notify Slack of advisor regression
+        id: advisor_notify
         # 新しい lint = 要対応なので、staging でも本番系チャンネルへメンション付きで送る
-        if: always() && steps.advisor.outputs.new_count != '' && steps.advisor.outputs.new_count != '0'
+        if: always() && steps.advisor.outputs.has_new == 'true'
         uses: ./.github/actions/slack-notify
         with:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -217,20 +220,8 @@ jobs:
           test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
           mention: "${{ vars.SLACK_MENTION_USER_ID }}"
           text: "⚠️ Supabase Advisor: デプロイで警告が ${{ steps.advisor.outputs.new_count }} 件増えました (staging)"
-          body: "${{ github.event.pull_request.number && format('*PR*: <{0}/{1}/pull/{2}|#{2}>', github.server_url, github.repository, github.event.pull_request.number) || format('*Commit*: <{0}/{1}/commit/{2}|{3}>', github.server_url, github.repository, github.sha, github.sha) }}"
+          body: ${{ env.NOTIFY_LINK }}
           blocks-file: advisor-blocks.json
-
-      - name: Rename post-deploy state to α-compatible filename (Backlog D β, mid-week noise 回避)
-        # baseline の更新は付随処理。失敗しても job (= migration の結果通知) を失敗扱いにしない
-        continue-on-error: true
-        # α artifact (advisor-state-{env}) の中身は `current-state.json` という名前で
-        # zip 化されている。β が同 artifact 名で上書きするなら、中身のファイル名も
-        # `current-state.json` に統一しないと、次回 β の download 時に
-        # baseline/current-state.json が見つからず skip 分岐に入ってしまう。
-        # β step 内で作成した `post-deploy-state.json` を rename して整合させる。
-        if: always() && hashFiles('post-deploy-state.json') != ''
-        run: |
-          cp post-deploy-state.json current-state.json
 
       - name: Refresh advisor baseline artifact (Backlog D β, mid-week noise 回避)
         # baseline の更新は付随処理。失敗しても job (= migration の結果通知) を失敗扱いにしない
@@ -242,7 +233,14 @@ jobs:
         # 副作用: α の週次 diff の baseline が「先週月曜」ではなく「最新 deploy 直後」になる
         # (実運用上は最新 deploy 後の状態を反映するほうが有意義、意図的な変更)。
         # baseline 未確立時 (current-state.json 不在 = advisor fetch が fail した場合等) は skip。
-        if: always() && hashFiles('current-state.json') != ''
+        # ⚠️ 新規 lint があったのに通知が届かなかった時 (失敗・token 未設定) は更新しない。
+        #    更新すると次回はその lint が baseline に入り、二度と通知されなくなるため。
+        #    main 以外の ref からの dispatch (テストモード = 開発系に送る) でも更新しない。
+        #    本番系に届くはずの通知が、テストで baseline に吸収されてしまうため
+        if: >-
+          always() && hashFiles('current-state.json') != ''
+          && (steps.advisor.outputs.has_new == 'false' || steps.advisor_notify.outputs.ok == 'true')
+          && !(github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: advisor-state-staging
@@ -259,12 +257,12 @@ jobs:
           channel: ${{ vars.SLACK_CHANNEL_DEV }}
           test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
           text: "❌ Supabase migration が完了しませんでした (staging)"
-          body: "${{ github.event.pull_request.number && format('*PR*: <{0}/{1}/pull/{2}|#{2}>', github.server_url, github.repository, github.event.pull_request.number) || format('*Commit*: <{0}/{1}/commit/{2}|{3}>', github.server_url, github.repository, github.sha, github.sha) }}"
+          body: ${{ env.NOTIFY_LINK }}
 
   deploy-production:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)
+    timeout-minutes: 12  # supabase db push が hung した場合の concurrency lock 永久ホールド防止 (claude[bot] PR #244 review 採用)。内訳は staging job の env の上のコメント
     environment:
       name: production
     env:
@@ -318,7 +316,6 @@ jobs:
 
       - name: Pre-flight migration history consistency check
         working-directory: apps/frontend
-        # preflight (2 回まで) + push (6 分) が job の 10 分を超えないように切る
         timeout-minutes: 3
         # staging job と同一の事前チェック。詳細コメントは staging job の同名 step を参照。
         # production 環境では fail = 即 critical (本番 deploy が想定外状態) のため
@@ -369,9 +366,7 @@ jobs:
       - name: Push migrations to production
         id: push
         working-directory: apps/frontend
-        # job の timeout-minutes (10) より先に切る。job ごと打ち切られると、末尾の
-        # Slack 通知 step まで実行されず失敗に気づけないため
-        timeout-minutes: 5
+        timeout-minutes: 6
         # 事前ビルド済の $SESSION_POOLER_URL を env から参照 (重複削減、claude[bot]
         # PR #250 review #4 (R2) 採用)。
         # 適用対象が無い時、CLI は "Remote database is up to date." を出す (CLI の版によって
@@ -393,50 +388,17 @@ jobs:
         # 下の Rename / Refresh で次回の baseline を更新する。
         # push step が失敗しても実行する (deploy 失敗起因の lint も検知したい)
         if: always()
+        timeout-minutes: 1
         env:
           ENV_NAME: production
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/supabase/post-deploy-advisor.sh
 
-      - name: Notify Slack of advisor regression
-        # 新しい lint = 要対応なので、staging でも本番系チャンネルへメンション付きで送る
-        if: always() && steps.advisor.outputs.new_count != '' && steps.advisor.outputs.new_count != '0'
-        uses: ./.github/actions/slack-notify
-        with:
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          channel: ${{ vars.SLACK_CHANNEL_PROD }}
-          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
-          # 本番への実デプロイの結果なので、ブランチから dispatch されてもテストモードにしない
-          auto-test-mode: 'false'
-          mention: "${{ vars.SLACK_MENTION_USER_ID }}"
-          text: "⚠️ Supabase Advisor: デプロイで警告が ${{ steps.advisor.outputs.new_count }} 件増えました (production)"
-          body: "${{ github.event.pull_request.number && format('*PR*: <{0}/{1}/pull/{2}|#{2}>', github.server_url, github.repository, github.event.pull_request.number) || format('*Commit*: <{0}/{1}/commit/{2}|{3}>', github.server_url, github.repository, github.sha, github.sha) }}"
-          blocks-file: advisor-blocks.json
-
-      - name: Rename post-deploy state to α-compatible filename (Backlog D β, mid-week noise 回避)
-        # baseline の更新は付随処理。失敗しても job (= migration の結果通知) を失敗扱いにしない
-        continue-on-error: true
-        # staging 側と同ロジック。詳細コメントは staging job の同名 step を参照。
-        if: always() && hashFiles('post-deploy-state.json') != ''
-        run: |
-          cp post-deploy-state.json current-state.json
-
-      - name: Refresh advisor baseline artifact (Backlog D β, mid-week noise 回避)
-        # baseline の更新は付随処理。失敗しても job (= migration の結果通知) を失敗扱いにしない
-        continue-on-error: true
-        # staging 側と同ロジック (production 版、artifact name = advisor-state-production)。
-        # 詳細コメントは staging job の同名 step を参照。
-        if: always() && hashFiles('current-state.json') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: advisor-state-production
-          path: current-state.json
-          retention-days: 30
-          overwrite: true
-
       - name: Notify Slack of production migration result
-        # 成功はメンションなし、失敗・中断はメンション付きで本番系へ。
+        id: result_notify
+        # 1 実行 1 通: migration の結果と advisor の新規 lint を、本番系への 1 通にまとめる。
+        # メンションは失敗・中断の時と、advisor の警告が増えた時。
         # 適用対象が無かった時 (push の applied=false) はその旨を書く
         if: always()
         uses: ./.github/actions/slack-notify
@@ -446,6 +408,23 @@ jobs:
           test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
           # 本番への実デプロイの結果なので、ブランチから dispatch されてもテストモードにしない
           auto-test-mode: 'false'
-          mention: "${{ job.status != 'success' && vars.SLACK_MENTION_USER_ID || '' }}"
-          text: "${{ job.status == 'success' && (steps.push.outputs.applied == 'false' && '✅ Supabase migration の反映が完了しました (production、適用対象なし)' || '✅ Supabase migration の反映が完了しました (production)') || '❌ Supabase migration が完了しませんでした (production)' }}"
-          body: "${{ format('*Commit*: <{0}/{1}/commit/{2}|{3}>', github.server_url, github.repository, github.sha, github.sha) }}"
+          mention: "${{ (job.status != 'success' || steps.advisor.outputs.has_new == 'true') && vars.SLACK_MENTION_USER_ID || '' }}"
+          text: "${{ format('{0} (production{1}){2}', job.status == 'success' && '✅ Supabase migration の反映が完了しました' || '❌ Supabase migration が完了しませんでした', (job.status == 'success' && steps.push.outputs.applied == 'false') && '、適用対象なし' || '', steps.advisor.outputs.has_new == 'true' && format(' / ⚠️ Advisor の警告が {0} 件増えました', steps.advisor.outputs.new_count) || '') }}"
+          body: "${{ format('*Commit*: <{0}/{1}/commit/{2}|{2}>', github.server_url, github.repository, github.sha) }}"
+          blocks-file: "${{ steps.advisor.outputs.has_new == 'true' && 'advisor-blocks.json' || '' }}"
+
+      - name: Refresh advisor baseline artifact (Backlog D β, mid-week noise 回避)
+        # baseline の更新は付随処理。失敗しても job (= migration の結果通知) を失敗扱いにしない
+        continue-on-error: true
+        # staging 側と同ロジック (production 版、artifact name = advisor-state-production)。
+        # 詳細コメントは staging job の同名 step を参照。新規 lint があったのに結果の通知が
+        # 届かなかった時は更新しない (production は auto-test-mode: 'false' なのでテストモードは無い)
+        if: >-
+          always() && hashFiles('current-state.json') != ''
+          && (steps.advisor.outputs.has_new == 'false' || steps.result_notify.outputs.ok == 'true')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: advisor-state-production
+          path: current-state.json
+          retention-days: 30
+          overwrite: true

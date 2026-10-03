@@ -11,13 +11,15 @@
 #   GH_TOKEN / GH_REPO     baseline artifact の取得に使う (permissions: actions: read)
 #
 # 出力:
-#   $GITHUB_OUTPUT  new_count=<新しく増えた lint 数>
-#   post-deploy-state.json  今回の状態 (呼び出し側が current-state.json として upload し、次回の baseline にする)
-#   advisor-blocks.json     新しい lint の Block Kit section 配列 (new_count > 0 の時だけ)
+#   $GITHUB_OUTPUT  new_count=<新しく増えた lint 数> / has_new=true|false
+#   current-state.json   今回の状態 (呼び出し側がそのまま upload し、次回の baseline にする)
+#   advisor-blocks.json  新しい lint の Block Kit section 配列 (has_new=true の時だけ)
 set -uo pipefail
 
 NEW_POST_COUNT=0
-trap 'if [[ -n "${GITHUB_OUTPUT:-}" ]]; then echo "new_count=${NEW_POST_COUNT}" >> "${GITHUB_OUTPUT}"; fi' EXIT
+trap 'if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  printf "new_count=%s\nhas_new=%s\n" "${NEW_POST_COUNT}" "$([[ "${NEW_POST_COUNT}" != 0 ]] && echo true || echo false)" >> "${GITHUB_OUTPUT}"
+fi' EXIT
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 
@@ -30,24 +32,32 @@ if [[ "${HTTP_CODE}" != "200" ]]; then
   exit 0
 fi
 
-# 週次チェック (supabase-advisor-check.yml) と同じ key 化形式
-if ! jq '{ lints_by_key: (.lints // [] | map({key: .cache_key, level, name, detail, remediation}) | INDEX(.key)), count: (.lints // [] | length) }' \
-  post-deploy-advisor.json > post-deploy-state.json; then
-  echo "::warning title=Post-deploy advisor parse failed::Unexpected response shape for ${ENV_NAME}."
-  rm -f post-deploy-state.json
+# lints が配列でない 200 応答を空の state として保存すると、次回に既存の lint が全件「新規」になる
+if ! jq -e '.lints | type == "array"' post-deploy-advisor.json >/dev/null 2>&1; then
+  echo "::warning title=Post-deploy advisor unexpected shape::lints is not an array for ${ENV_NAME}. The baseline is left unchanged."
   exit 0
 fi
-echo "Post-deploy advisor lint count on ${ENV_NAME}: $(jq -r '.count' post-deploy-state.json)"
+
+# 週次チェック (supabase-advisor-check.yml) と同じ key 化形式 (差分の比較に使うのは lints_by_key のキーだけ)
+if ! jq '{ lints_by_key: (.lints | map({key: .cache_key, level, name, detail, remediation}) | INDEX(.key)), count: (.lints | length) }' \
+  post-deploy-advisor.json > current-state.json; then
+  echo "::warning title=Post-deploy advisor parse failed::Unexpected response shape for ${ENV_NAME}."
+  rm -f current-state.json
+  exit 0
+fi
+echo "Post-deploy advisor lint count on ${ENV_NAME}: $(jq -r '.count' current-state.json)"
 
 # baseline = 直近の別実行が保存した advisor-state-<env> (期限切れは除外)。
 # ⚠️ fork からの PR は PR 側の workflow 定義で動くため、同じ名前の artifact を置けてしまう。
 #    同じリポジトリの実行が保存したものに限り、production は main の実行に限る
 #    (偽の baseline で新規 lint の通知を握りつぶされないようにするため)
+#    staging は同じリポジトリのどのブランチの実行でもよい (PR ごとの staging deploy が state を残す。意図した割り切り)
 filter='.expired == false and .workflow_run.head_repository_id == .workflow_run.repository_id'
 if [[ "${ENV_NAME}" == "production" ]]; then
   filter="${filter} and .workflow_run.head_branch == \"main\""
 fi
-ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=20" \
+# per_page は上限の 100。少ないと、他ブランチの実行が置いた artifact に押し出されて条件に合うものが見つからない
+ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=100" \
   --jq "[.artifacts[] | select(${filter})][0].id // empty" 2>/dev/null || true)
 if [[ -z "${ARTIFACT_ID}" ]]; then
   echo "::notice title=Advisor baseline unavailable::No unexpired advisor-state-${ENV_NAME} artifact. Skipping the diff (this run's state becomes the next baseline)."
@@ -63,20 +73,17 @@ if ! gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > baseline.
   exit 0
 fi
 
-jq -r '.lints_by_key | keys[]' baseline/current-state.json | sort > baseline-keys.txt
-jq -r '.lints_by_key | keys[]' post-deploy-state.json | sort > post-keys.txt
-comm -23 post-keys.txt baseline-keys.txt > new-post-keys.txt
-count=$(wc -l < new-post-keys.txt | tr -d ' ')
+# baseline に無いキーの lint = 今回のデプロイで増えた lint
+jq --slurpfile b baseline/current-state.json \
+  '[.lints_by_key | to_entries[] | select(.key as $k | $b[0].lints_by_key | has($k) | not) | .value]' \
+  current-state.json > new-post-lints.json
+count=$(jq length new-post-lints.json)
 echo "New lints introduced by this deploy on ${ENV_NAME}: ${count}"
 
 if [[ "${count}" == "0" ]]; then
   echo "::notice title=No advisor regression::Deploy did not introduce new advisor lints on ${ENV_NAME}."
   exit 0
 fi
-
-jq --slurpfile keys <(jq -R -s 'split("\n") | map(select(length > 0))' new-post-keys.txt) \
-  '.lints_by_key | to_entries | map(select(.key as $k | $keys[0] | index($k))) | map(.value)' \
-  post-deploy-state.json > new-post-lints.json
 
 if ! jq --arg label "🆕 新規 (デプロイ後)" --argjson max 5 --argjson remediation true \
   -f "${script_dir}/advisor-lint-sections.jq" new-post-lints.json > advisor-blocks.json; then

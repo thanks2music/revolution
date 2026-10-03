@@ -15,6 +15,13 @@
 
 def esc: tostring | gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;");
 def trunc($n): if length > $n then (.[0:($n - 1)] | sub("&[a-z]{0,4}$"; "")) + "…" else . end;
+# リンク記法 <url|text> に入れる URL。`|` は区切りとして解釈されるため %7C にし、
+# http(s) でない値や極端に長い値は使わずに Advisor の一般的な案内ページへ差し替える
+# (section の上限 3000 字を超えると、Slack がメッセージごと invalid_blocks で拒否するため)
+def link_url:
+  if (type == "string") and test("^https?://") and (length <= 500)
+  then gsub("\\|"; "%7C") | esc
+  else "https://supabase.com/docs/guides/database/database-linter" end;
 
 [
   .[0:$max][]
@@ -23,10 +30,10 @@ def trunc($n): if length > $n then (.[0:($n - 1)] | sub("&[a-z]{0,4}$"; "")) + "
       text: {
         type: "mrkdwn",
         text: (
-          "*" + $label + ": `" + ((.name // "unknown") | esc) + "` (" + ((.level // "?") | esc) + ")*\n"
+          "*" + $label + ": `" + ((.name // "unknown") | esc | trunc(200)) + "` (" + ((.level // "?") | esc | trunc(20)) + ")*\n"
           + ((.detail // "(詳細なし)") | esc | trunc(2000))
           + (if $remediation
-             then "\n<" + ((.remediation // "https://supabase.com/docs/guides/database/database-linter") | esc) + "|対処方法>"
+             then "\n<" + (.remediation | link_url) + "|対処方法>"
              else "" end)
         )
       }
