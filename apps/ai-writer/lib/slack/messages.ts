@@ -11,18 +11,22 @@
  * @module lib/slack/messages
  */
 
+import type { CreateMdxPrResult } from '../github/create-mdx-pr';
+import type { MdxGenerationResult } from '../services/article-generation-mdx.service';
 import type { SlackConfig } from './config';
 
 export type PipelineOutcome = 'success' | 'skipped' | 'failure';
 export type PipelineEntrypoint = 'cli' | 'cron';
+/** CLI の実行モード。PR を作るのは `pr` だけ */
+export type PipelineMode = 'pr' | 'dry-run' | 'local' | 'upload-images';
 
 export interface PipelineNotification {
   outcome: PipelineOutcome;
   entrypoint: PipelineEntrypoint;
   /** 記事 URL (CLI) または RSS フィード URL (cron) */
   sourceUrl: string;
-  /** 実行モード (例: pr / dry-run / local / upload-images) */
-  mode?: string;
+  /** 実行モード (CLI のみ) */
+  mode?: PipelineMode;
   prUrl?: string;
   skipReason?: string;
   error?: string;
@@ -69,11 +73,12 @@ const ENTRYPOINT_LABEL: Record<PipelineEntrypoint, string> = {
   cron: 'Cloud Run (cron)',
 };
 
+/** URL のホスト。URL として読めなければそのまま返す (伏せ字と切り詰めは呼び出し側の safe で行う) */
 function hostOf(url: string): string {
   try {
     return new URL(url).host;
   } catch {
-    return truncate(url, 80);
+    return url;
   }
 }
 
@@ -184,15 +189,17 @@ function buildDetailText(notification: PipelineNotification): string | undefined
   }
 }
 
-/** `ArticleGenerationMdxService.generateMdxFromRSS` の戻り値のうち通知に使う部分 */
-export interface PipelineResultLike {
-  success: boolean;
-  skipped?: boolean;
-  skipReason?: string;
-  error?: string;
-  prResult?: { prUrl?: string };
-  details?: { workSlug?: string; postId?: string };
-}
+/**
+ * `ArticleGenerationMdxService.generateMdxFromRSS` の戻り値のうち通知に使う部分。
+ * service 側の型から派生させ、フィールド名の変更を型エラーで検知できるようにする
+ */
+export type PipelineResultLike = Pick<
+  MdxGenerationResult,
+  'success' | 'skipped' | 'skipReason' | 'error'
+> & {
+  prResult?: Pick<CreateMdxPrResult, 'prUrl'>;
+  details?: Pick<NonNullable<MdxGenerationResult['details']>, 'workSlug' | 'postId'>;
+};
 
 /**
  * パイプラインの戻り値を通知内容へ写す。

@@ -64,6 +64,7 @@ import type { MdxGenerationRequest } from '../lib/services/article-generation-md
 import {
   notifyPipelineResult,
   pipelineNotificationFromResult,
+  type PipelineMode,
   type PipelineNotification,
 } from '../lib/slack';
 
@@ -260,20 +261,7 @@ async function main() {
   let logFilePath: string | undefined;
 
   // Slack 通知に載せる実行モード (PR を作るのは 'pr' のときだけ)
-  const mode = uploadImages ? 'upload-images' : local ? 'local' : dryRun ? 'dry-run' : 'pr';
-  // ⚠️ 重複 PR (DuplicateSlugError) は service が `{ success: false, error }` にまとめて返すため、
-  //    CLI では「失敗」として開発系チャンネルに届く (メンションなし)。人が実行結果を見ている
-  //    経路なので許容している。cron 経路では 409 として通知対象から外している
-  const notifyContext = (): Pick<
-    PipelineNotification,
-    'entrypoint' | 'sourceUrl' | 'mode' | 'logPath'
-  > => ({
-    entrypoint: 'cli',
-    sourceUrl: url,
-    mode,
-    // 絶対パスだとホームディレクトリ名が Slack に載るため、apps/ai-writer からの相対にする
-    logPath: logFilePath ? relative(resolve(__dirname, '..'), logFilePath) : undefined,
-  });
+  const mode: PipelineMode = uploadImages ? 'upload-images' : local ? 'local' : dryRun ? 'dry-run' : 'pr';
 
   if (log) {
     logFilePath = await generateLogFilePath(url);
@@ -291,6 +279,20 @@ async function main() {
     initAiCallRecorder(logFilePath);
     console.log(`📊 観測ログ (JSONL): ${getAiCallJsonlPath()}`);
   }
+
+  // ⚠️ 重複 PR (DuplicateSlugError) は service が `{ success: false, error }` にまとめて返すため、
+  //    CLI では「失敗」として開発系チャンネルに届く (メンションなし)。人が実行結果を見ている
+  //    経路なので許容している。cron 経路では 409 として通知対象から外している
+  const notifyContext = {
+    entrypoint: 'cli' as const,
+    sourceUrl: url,
+    mode,
+    // 読みやすさのため apps/ai-writer からの相対パスにする
+    logPath: logFilePath ? relative(resolve(__dirname, '..'), logFilePath) : undefined,
+  };
+  // 通知は 1 実行につき 1 通。finally でまとめて送る
+  // (成功の表示中に例外になった場合は catch で失敗に差し替わるので、成功と失敗の 2 通にならない)
+  let notification: PipelineNotification | undefined;
 
   console.log('🔍 URLからMDX記事生成デバッグ開始\n');
   console.log('='.repeat(80));
@@ -371,7 +373,7 @@ async function main() {
     };
 
     const result = await service.generateMdxFromRSS(request);
-    const notification = pipelineNotificationFromResult(result, notifyContext());
+    notification = pipelineNotificationFromResult(result, notifyContext);
 
     // ========================================
     // STEP 3: 結果表示
@@ -391,11 +393,6 @@ async function main() {
       console.log('  - YAML テンプレートの条件を確認してください');
       console.log('  - DEBUG_HTML_EXTRACTION=true で抽出HTMLを確認できます');
       console.log('='.repeat(80));
-      await notifyPipelineResult(notification);
-      logCleanup?.();
-      // process.exit() は使わない。op run 経由では stdout が pipe になり、POSIX では pipe への
-      // 書き込みが非同期のため、末尾の出力が捨てられる (https://nodejs.org/api/process.html)
-      process.exitCode = 0;
       return;
     }
 
@@ -403,8 +400,8 @@ async function main() {
       console.error('\n❌ MDX記事の生成に失敗しました');
       console.error(`エラー: ${result.error}`);
       console.log();
-      await notifyPipelineResult(notification);
-      logCleanup?.();
+      // process.exit() は使わない。op run 経由では stdout が pipe になり、POSIX では pipe への
+      // 書き込みが非同期のため、末尾の出力が捨てられる (https://nodejs.org/api/process.html)
       process.exitCode = 1;
       return;
     }
@@ -554,16 +551,6 @@ async function main() {
       console.log('   → 同一 URL の再実行との比較: pnpm debug:compare <*.jsonl>');
       console.log('='.repeat(80));
     }
-
-    // 成功の通知は最後に送る (途中のローカル保存などで例外になった場合に
-    // 「成功」と「失敗」の 2 通が届かないようにするため)
-    await notifyPipelineResult(notification);
-
-    // ログのクリーンアップ
-    if (logCleanup) {
-      logCleanup();
-    }
-
   } catch (error) {
     console.error('\n❌ エラー発生:', error);
     if (error instanceof Error) {
@@ -588,18 +575,16 @@ async function main() {
       console.log(`📝 ログファイル保存完了: ${logFilePath}`);
     }
 
-    await notifyPipelineResult({
-      ...notifyContext(),
+    notification = {
+      ...notifyContext,
       outcome: 'failure',
       error: error instanceof Error ? error.message : String(error),
-    });
-
-    // ログのクリーンアップ
-    if (logCleanup) {
-      logCleanup();
-    }
-
+    };
     process.exitCode = 1;
+  } finally {
+    if (notification) await notifyPipelineResult(notification);
+    // ログのクリーンアップ
+    logCleanup?.();
   }
 }
 

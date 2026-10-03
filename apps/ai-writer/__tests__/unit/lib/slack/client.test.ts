@@ -48,6 +48,18 @@ function mockFetch(init: { status?: number; body?: unknown }): jest.Mock {
   return fn as unknown as jest.Mock;
 }
 
+/** Sentry へ warning が 1 回、失敗コードを fingerprint にして送られたこと */
+function expectFailureCode(code: string): void {
+  expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+  expect(Sentry.captureMessage).toHaveBeenCalledWith(
+    'Slack notification failed',
+    expect.objectContaining({
+      level: 'warning',
+      fingerprint: ['slack-notification-failed', code],
+    })
+  );
+}
+
 describe('postSlackMessage', () => {
   it('chat.postMessage へ Bearer token と JSON で送り、true を返す', async () => {
     const fetchMock = mockFetch({ body: { ok: true, ts: '1.0' } });
@@ -75,25 +87,14 @@ describe('postSlackMessage', () => {
     mockFetch({ body: { ok: false, error: 'not_in_channel' } });
 
     await expect(postSlackMessage(CONFIG, MESSAGE)).resolves.toBe(false);
-
-    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
-    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
-      string,
-      { level: string; fingerprint: string[] },
-    ];
-    expect(options.level).toBe('warning');
-    expect(options.fingerprint).toEqual(['slack-notification-failed', 'not_in_channel']);
+    expectFailureCode('not_in_channel');
   });
 
   it('HTTP エラーで本文が JSON でなくても throw せず false を返す', async () => {
     mockFetch({ status: 500 });
 
     await expect(postSlackMessage(CONFIG, MESSAGE)).resolves.toBe(false);
-    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
-      string,
-      { fingerprint: string[] },
-    ];
-    expect(options.fingerprint).toEqual(['slack-notification-failed', 'invalid_response_http_500']);
+    expectFailureCode('invalid_response_http_500');
   });
 
   // プロキシのエラーページなどは HTTP 200 で JSON 以外を返す。`http_200` だと成功と紛らわしい
@@ -101,11 +102,7 @@ describe('postSlackMessage', () => {
     mockFetch({ status: 200 });
 
     await expect(postSlackMessage(CONFIG, MESSAGE)).resolves.toBe(false);
-    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
-      string,
-      { fingerprint: string[] },
-    ];
-    expect(options.fingerprint).toEqual(['slack-notification-failed', 'invalid_response_http_200']);
+    expectFailureCode('invalid_response_http_200');
   });
 
   it('ネットワーク断でも throw せず false を返す', async () => {
@@ -114,11 +111,7 @@ describe('postSlackMessage', () => {
     }) as unknown as typeof global.fetch;
 
     await expect(postSlackMessage(CONFIG, MESSAGE)).resolves.toBe(false);
-    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
-      string,
-      { fingerprint: string[] },
-    ];
-    expect(options.fingerprint).toEqual(['slack-notification-failed', 'network_error']);
+    expectFailureCode('network_error');
   });
 
   it('タイムアウトでも throw せず false を返す', async () => {
@@ -126,12 +119,8 @@ describe('postSlackMessage', () => {
       throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
     }) as unknown as typeof global.fetch;
 
-    await expect(postSlackMessage(CONFIG, MESSAGE, { timeoutMs: 1 })).resolves.toBe(false);
-    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
-      string,
-      { fingerprint: string[] },
-    ];
-    expect(options.fingerprint).toEqual(['slack-notification-failed', 'timeout']);
+    await expect(postSlackMessage(CONFIG, MESSAGE)).resolves.toBe(false);
+    expectFailureCode('timeout');
   });
 
   // AbortSignal.timeout は本文の読み込み中にも発火する。JSON でない本文と取り違えない
@@ -144,12 +133,8 @@ describe('postSlackMessage', () => {
       },
     })) as unknown as typeof global.fetch;
 
-    await expect(postSlackMessage(CONFIG, MESSAGE, { timeoutMs: 1 })).resolves.toBe(false);
-    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
-      string,
-      { fingerprint: string[] },
-    ];
-    expect(options.fingerprint).toEqual(['slack-notification-failed', 'timeout']);
+    await expect(postSlackMessage(CONFIG, MESSAGE)).resolves.toBe(false);
+    expectFailureCode('timeout');
   });
 
   it('失敗時のログに token と本文を出さない', async () => {

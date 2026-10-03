@@ -18,7 +18,7 @@ import type { SlackConfig } from './config';
 import type { SlackMessage } from './messages';
 
 const POST_MESSAGE_URL = 'https://slack.com/api/chat.postMessage';
-const DEFAULT_TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 10_000;
 
 /** `AbortSignal.timeout` による中断か (fetch 本体と本文の読み込みのどちらでも起きる) */
 function isTimeout(error: unknown): boolean {
@@ -37,8 +37,7 @@ function isTimeout(error: unknown): boolean {
  */
 export async function postSlackMessage(
   config: Pick<SlackConfig, 'token' | 'channel'>,
-  message: SlackMessage,
-  options: { timeoutMs?: number } = {}
+  message: SlackMessage
 ): Promise<boolean> {
   let failureCode: string;
 
@@ -56,17 +55,14 @@ export async function postSlackMessage(
         unfurl_links: false,
         unfurl_media: false,
       }),
-      signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
-    let body: { ok?: boolean; error?: string } | null = null;
-    try {
-      body = (await response.json()) as { ok?: boolean; error?: string };
-    } catch (error) {
+    const body = (await response.json().catch((error: unknown) => {
       // 本文の読み込み中のタイムアウトは、下の catch で timeout として扱う
       if (isTimeout(error)) throw error;
-      body = null; // JSON でない本文
-    }
+      return null; // JSON でない本文
+    })) as { ok?: boolean; error?: string } | null;
 
     if (response.ok && body?.ok === true) {
       return true;

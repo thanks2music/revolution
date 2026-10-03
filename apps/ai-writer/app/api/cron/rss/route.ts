@@ -102,13 +102,11 @@ function isValidCronKey(expected: string, provided: string | null): boolean {
  * @returns Next.js Response
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // 失敗通知に載せるため try の外で保持する
-  let feedUrl: unknown;
-  // 認証を通過したリクエストだけを Slack 通知の対象にする。
+  // 認証と入力の検証を通過した時だけ設定する (= Slack 通知の対象)。
   // getCronKey() (Secret Manager) は認証より前に動くため、その障害中は
   // 未認証のリクエストでも 500 になる。そこでメンション付き通知を飛ばさない
   // (障害自体は captureException で Sentry に残る)
-  let authenticated = false;
+  let notifyFeedUrl: string | undefined;
 
   try {
     // 1. Cron認証 (Timing-safe comparison)
@@ -124,7 +122,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    authenticated = true;
 
     // 2. Request body 取得
     // 不正な JSON は送信側の誤り (400)。catch の 500 経路に落とすと、対応不要なのに
@@ -137,11 +134,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       console.warn('Invalid JSON body in cron request');
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    ({ feedUrl } = (body ?? {}) as { feedUrl?: unknown });
+    const { feedUrl } = (body ?? {}) as { feedUrl?: unknown };
 
     if (!feedUrl || typeof feedUrl !== 'string') {
       return NextResponse.json({ error: 'feedUrl is required' }, { status: 400 });
     }
+    notifyFeedUrl = feedUrl;
 
     // 3. MDX Pipeline 実行 (本番運用)
     console.log('Running pipeline: MDX', { feedUrl });
@@ -191,15 +189,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     Sentry.captureException(error, { tags: { entrypoint: 'cron' } });
 
     // Slack へも即時に知らせる (メンション付き)。409 (重複) とリトライ可能エラーは
-    // 対応不要なので送らない。Cloud Run へ token を注入するまで (S5) は
-    // notifyPipelineResult が warn ログを 1 行出して skip する。
+    // 対応不要なので送らない。
     // ⚠️ finally の flushSentry と同じく、レスポンスを返す前に await する
     //    (Cloud Run は応答後に CPU が throttle されるため)
-    if (authenticated) {
+    if (notifyFeedUrl) {
       await notifyPipelineResult({
         outcome: 'failure',
         entrypoint: 'cron',
-        sourceUrl: typeof feedUrl === 'string' ? feedUrl : '(feedUrl 不明)',
+        sourceUrl: notifyFeedUrl,
         error: error instanceof Error ? error.message : String(error),
         revision: process.env.K_REVISION,
       });

@@ -14,15 +14,15 @@ set -euo pipefail
 
 ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/.env.op.local"
 
-if [[ -f "$ENV_FILE" ]] && command -v op >/dev/null 2>&1; then
+if [[ ! -f "$ENV_FILE" ]]; then
+  reason=".env.op.local が無い"
+elif ! command -v op >/dev/null 2>&1; then
+  reason="op CLI が見つからない"
+else
   # exec の後には何も出せないので、失敗した時の逃げ道を先に案内しておく
   echo "ℹ️  1Password の参照を解決して実行します (ロック中などで失敗する時は :raw のスクリプトで通知なしに実行できます)" >&2
   exec op run --env-file="$ENV_FILE" -- "$@"
 fi
 
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "ℹ️  .env.op.local が無いため 1Password の参照を解決せずに実行します (Slack 通知なし)" >&2
-else
-  echo "ℹ️  op CLI が見つからないため 1Password の参照を解決せずに実行します (Slack 通知なし)" >&2
-fi
+echo "ℹ️  ${reason}ため 1Password の参照を解決せずに実行します (Slack 通知なし)" >&2
 exec "$@"

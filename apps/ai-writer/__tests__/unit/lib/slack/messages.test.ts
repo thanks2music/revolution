@@ -15,6 +15,7 @@ import {
   pipelineNotificationFromResult,
   redactSecrets,
   truncate,
+  type PipelineMode,
   type PipelineNotification,
 } from '@/lib/slack/messages';
 
@@ -139,7 +140,8 @@ describe('buildPipelineMessage', () => {
     ['sourceUrl (URL でない値)', { sourceUrl: '<!channel>' }],
     ['prUrl', { outcome: 'success' as const, prUrl: 'https://example.com/<!channel>' }],
     ['skipReason', { outcome: 'skipped' as const, skipReason: '<!channel>' }],
-    ['mode', { mode: '<!channel>' }],
+    // 型の上では起きないが、実行時の値も必ずエスケープを通ることを固定する
+    ['mode', { mode: '<!channel>' as PipelineMode }],
     ['workSlug', { workSlug: '<!channel>' }],
     ['postId', { postId: '<!channel>' }],
     ['logPath', { logPath: 'logs/<!channel>.log' }],
@@ -258,7 +260,7 @@ describe('buildPipelineMessage', () => {
         outcome: 'failure',
         entrypoint: 'cli',
         sourceUrl: huge,
-        mode: huge,
+        mode: huge as PipelineMode,
         workSlug: huge,
         postId: huge,
         logPath: huge,
@@ -282,7 +284,11 @@ describe('buildPipelineMessage', () => {
 });
 
 describe('pipelineNotificationFromResult', () => {
-  const context = { entrypoint: 'cli' as const, sourceUrl: 'https://example.com/a', mode: 'pr' };
+  const context = {
+    entrypoint: 'cli' as const,
+    sourceUrl: 'https://example.com/a',
+    mode: 'pr' as const,
+  };
 
   // ★ スキップは success: false で返る。先に skipped を見ないと「失敗」と通知される
   it('skipped: true は success: false でもスキップとして扱う', () => {
