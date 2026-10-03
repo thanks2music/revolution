@@ -93,7 +93,19 @@ describe('postSlackMessage', () => {
       string,
       { fingerprint: string[] },
     ];
-    expect(options.fingerprint).toEqual(['slack-notification-failed', 'http_500']);
+    expect(options.fingerprint).toEqual(['slack-notification-failed', 'invalid_response_http_500']);
+  });
+
+  // プロキシのエラーページなどは HTTP 200 で JSON 以外を返す。`http_200` だと成功と紛らわしい
+  it('HTTP 200 でも本文が JSON でなければ失敗として区別する', async () => {
+    mockFetch({ status: 200 });
+
+    await expect(postSlackMessage(CONFIG, MESSAGE)).resolves.toBe(false);
+    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
+      string,
+      { fingerprint: string[] },
+    ];
+    expect(options.fingerprint).toEqual(['slack-notification-failed', 'invalid_response_http_200']);
   });
 
   it('ネットワーク断でも throw せず false を返す', async () => {

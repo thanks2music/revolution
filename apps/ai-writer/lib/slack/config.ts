@@ -55,3 +55,19 @@ export function readSlackConfig(env: NodeJS.ProcessEnv = process.env): SlackConf
 
   return { token, channel, runtime, mentionUserId };
 }
+
+/** 送信に必須のキー */
+const REQUIRED_KEYS = ['SLACK_BOT_TOKEN', 'SLACK_CHANNEL_ID'] as const;
+
+/**
+ * 欠けている必須キーの名前を返す (`op://` の参照のままの値も欠けている扱い)。
+ * 片方だけ設定されている状態はほぼ確実に設定ミスなので、ログで名指しする
+ */
+export function missingSlackConfigKeys(env: NodeJS.ProcessEnv = process.env): string[] {
+  return REQUIRED_KEYS.filter(key => !presentValue(env[key]));
+}
+
+/** Cloud Run 上で動いているか (`K_SERVICE` は Cloud Run が自動で設定する) */
+export function isCloudRun(env: NodeJS.ProcessEnv = process.env): boolean {
+  return presentValue(env.K_SERVICE) !== undefined;
+}

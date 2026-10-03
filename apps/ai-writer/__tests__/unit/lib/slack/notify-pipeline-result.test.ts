@@ -63,6 +63,36 @@ describe('notifyPipelineResult', () => {
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
+  // Cloud Run で未設定 = 注入漏れ。失敗通知が届かないこと自体に気づけるよう Sentry へ出す
+  it('Cloud Run で未設定なら、欠けているキー名を error ログに出し Sentry へ warning を送る', async () => {
+    const fetchMock = mockFetchOk();
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    await notifyPipelineResult(notification, {
+      K_SERVICE: 'revo-ai-writer',
+      SLACK_CHANNEL_ID: 'C0000000001',
+    } as NodeJS.ProcessEnv);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().join('\n')).toContain('SLACK_BOT_TOKEN');
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    const [, options] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
+      string,
+      { level: string; fingerprint: string[] },
+    ];
+    expect(options.level).toBe('warning');
+    expect(options.fingerprint).toEqual(['slack-config-missing']);
+  });
+
+  it('ローカルで未設定なら、欠けているキー名を warn ログに出すだけ', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await notifyPipelineResult(notification, { SLACK_BOT_TOKEN: 'xoxb-test' } as NodeJS.ProcessEnv);
+
+    expect(warnSpy.mock.calls.flat().join('\n')).toContain('SLACK_CHANNEL_ID');
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
   it('token が op:// の参照のままなら送らない', async () => {
     const fetchMock = mockFetchOk();
 

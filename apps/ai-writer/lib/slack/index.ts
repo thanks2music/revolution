@@ -11,11 +11,19 @@
  * @module lib/slack
  */
 
-import { readSlackConfig } from './config';
+import * as Sentry from '@sentry/nextjs';
+
+import { isCloudRun, missingSlackConfigKeys, readSlackConfig } from './config';
 import { postSlackMessage } from './client';
 import { buildPipelineMessage, type PipelineNotification } from './messages';
 
-export { readSlackConfig, type SlackConfig, type SlackRuntime } from './config';
+export {
+  isCloudRun,
+  missingSlackConfigKeys,
+  readSlackConfig,
+  type SlackConfig,
+  type SlackRuntime,
+} from './config';
 export { postSlackMessage } from './client';
 export {
   buildPipelineMessage,
@@ -31,9 +39,12 @@ export {
 /**
  * パイプラインの結果を Slack へ通知する。**例外を投げない。**
  *
- * `SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` が無ければ何もしない (失敗扱いにしない)。
- * Cloud Run へは S5 (Scheduler 稼働) まで token を注入しないため、
- * cron 経路は現時点では warn ログを 1 行出して skip する。
+ * `SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` が無ければ送らない (パイプラインの失敗扱いにはしない)。
+ * - ローカル: warn ログを 1 行出して skip する (op run を通さない実行は正常な使い方)
+ * - Cloud Run: 注入漏れなので Sentry へ warning を出す。失敗通知が届かないこと自体に
+ *   気づけるようにするため (warning はメール通知の対象外。Sentry の定期まとめで拾われる)。
+ *   なお S5 (Scheduler 稼働) までは Cloud Run へ token を注入しないので、その間に
+ *   cron 経路が失敗した場合もこの warning が出る
  */
 export async function notifyPipelineResult(
   notification: PipelineNotification,
@@ -42,7 +53,17 @@ export async function notifyPipelineResult(
   try {
     const config = readSlackConfig(env);
     if (!config) {
-      console.warn('[Slack] SLACK_BOT_TOKEN / SLACK_CHANNEL_ID が未設定のため通知をスキップします');
+      const missing = missingSlackConfigKeys(env).join(' / ');
+      if (isCloudRun(env)) {
+        console.error(`[Slack] ${missing} が未設定のため、失敗通知を送れません`);
+        Sentry.captureMessage('Slack notification is not configured on Cloud Run', {
+          level: 'warning',
+          fingerprint: ['slack-config-missing'],
+          extra: { missing },
+        });
+      } else {
+        console.warn(`[Slack] ${missing} が未設定 (op:// のままを含む) のため通知をスキップします`);
+      }
       return;
     }
     await postSlackMessage(config, buildPipelineMessage(notification, config));

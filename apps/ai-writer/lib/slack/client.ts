@@ -24,7 +24,10 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * メッセージを送信する。成功なら true、失敗なら false (例外は投げない)。
  *
  * リトライはしない。タイムアウト後に Slack 側では受理されていた場合、
- * 再送すると二重投稿になるため。
+ * 再送すると二重投稿になるため。rate limit (HTTP 429 + `Retry-After`) も
+ * 意図して再送しない。上限は 1 チャンネルあたり約 1 通/秒で
+ * (https://docs.slack.dev/apis/web-api/rate-limits)、1 実行 1 通の本通知では
+ * 到達しない想定のため、到達した場合は `http_429` として可視化するに留める。
  */
 export async function postSlackMessage(
   config: Pick<SlackConfig, 'token' | 'channel'>,
@@ -58,7 +61,11 @@ export async function postSlackMessage(
     if (response.ok && body?.ok === true) {
       return true;
     }
-    failureCode = body?.error ?? `http_${response.status}`;
+    // 本文が JSON でない (プロキシのエラーページ等) 場合は HTTP 200 でも失敗。
+    // `http_200` だと成功と紛らわしいので区別する
+    failureCode = body
+      ? (body.error ?? `http_${response.status}`)
+      : `invalid_response_http_${response.status}`;
   } catch (error) {
     failureCode =
       error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')

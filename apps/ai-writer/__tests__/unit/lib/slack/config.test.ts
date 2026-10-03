@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from '@jest/globals';
 
-import { readSlackConfig } from '@/lib/slack/config';
+import { isCloudRun, missingSlackConfigKeys, readSlackConfig } from '@/lib/slack/config';
 
 const BASE = {
   SLACK_BOT_TOKEN: 'xoxb-test-token',
@@ -67,5 +67,29 @@ describe('readSlackConfig', () => {
 
     expect(config?.token).toBe('xoxb-test-token');
     expect(config?.channel).toBe('C0000000001');
+  });
+});
+
+describe('missingSlackConfigKeys', () => {
+  it.each([
+    ['両方そろっている', BASE, []],
+    ['token だけ欠けている', { ...BASE, SLACK_BOT_TOKEN: undefined }, ['SLACK_BOT_TOKEN']],
+    ['channel だけ欠けている', { ...BASE, SLACK_CHANNEL_ID: '' }, ['SLACK_CHANNEL_ID']],
+    [
+      'token が op:// のまま',
+      { ...BASE, SLACK_BOT_TOKEN: 'op://Personal/slack/token' },
+      ['SLACK_BOT_TOKEN'],
+    ],
+    ['両方欠けている', {}, ['SLACK_BOT_TOKEN', 'SLACK_CHANNEL_ID']],
+  ])('%s', (_label, env, expected) => {
+    expect(missingSlackConfigKeys(env as NodeJS.ProcessEnv)).toEqual(expected);
+  });
+});
+
+describe('isCloudRun', () => {
+  it('K_SERVICE があれば true、無ければ false', () => {
+    expect(isCloudRun({ K_SERVICE: 'revo-ai-writer' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(isCloudRun({} as NodeJS.ProcessEnv)).toBe(false);
+    expect(isCloudRun({ K_SERVICE: '  ' } as NodeJS.ProcessEnv)).toBe(false);
   });
 });
