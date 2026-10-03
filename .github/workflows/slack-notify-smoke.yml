@@ -20,6 +20,11 @@ on:
     paths:
       - '.github/actions/slack-notify/**'
       - '.github/scripts/supabase/**'
+      - '.github/scripts/notify/**'
+      # notify-main-failures の対象 (名前と cancel-in-progress を確かめる)
+      - '.github/workflows/notify-main-failures.yml'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/update-mdx-article-index.yml'
       - '.github/workflows/slack-notify-smoke.yml'
 
 permissions:
@@ -41,7 +46,144 @@ jobs:
           sparse-checkout: |
             .github/actions
             .github/scripts
+            .github/workflows
           persist-credentials: false
+
+      - name: Verify workflow_run targets of notify-main-failures
+        # workflow_run は workflow の name で一致させるため、改名すると通知が黙って止まる。
+        # また cancelled も通知するのは、対象に cancel-in-progress が無い前提 (あると、main への push のたびに
+        # 打ち切られた古い run がメンション付きで届く)
+        run: |
+          set -euo pipefail
+          names="$(for f in .github/workflows/*.yml; do yq -r '.name // ""' "$f"; done)"
+          yq -r '.on.workflow_run.workflows[]' .github/workflows/notify-main-failures.yml | while read -r target; do
+            if ! grep -qxF "${target}" <<<"${names}"; then
+              echo "::error title=Unknown workflow_run target::'${target}' does not match any workflow name"
+              exit 1
+            fi
+            file="$(grep -lE "^name: ['\"]?${target}['\"]?$" .github/workflows/*.yml)"
+            if grep -q 'cancel-in-progress: *true' "${file}"; then
+              echo "::error title=cancel-in-progress in a workflow_run target::${file} cancels runs; notify-main-failures would page for each superseded run"
+              exit 1
+            fi
+          done
+          echo "workflow_run targets OK"
+
+      - name: Verify the deploy / main-failure message scripts (no network)
+        run: |
+          set -euo pipefail
+          # スクリプトを GITHUB_OUTPUT を一時ファイルにして実行し、出力を表示する。
+          # $(...) の中では set -e が効かないので、終了コードは明示的に見る
+          run_script() {  # $1 = スクリプト、以降は追加の env
+            local script="$1" out
+            shift
+            out="$(mktemp)"
+            env GITHUB_OUTPUT="${out}" "$@" bash "${script}" || { echo "${script} exited non-zero" >&2; return 1; }
+            cat "${out}"
+          }
+          sha=0123456789abcdef0123456789abcdef01234567
+
+          # --- Vercel: 本番の失敗を基準に、jq の式で 1 か所だけ変えたケースを確かめる ---
+          jq -n --arg sha "${sha}" '{project: {name: "revolution-phoenix-frontend", id: "p"}, environment: "production",
+            git: {ref: "main", sha: $sha, shortSha: "0123456"}, url: "revo.vercel.app", id: "d",
+            state: {type: "failed", detail: "deployment_failed"}, error: "x <!channel> & y\nz"}' > vercel-base.json
+          vercel() {  # $1 = action、$2 = 基準の payload に当てる jq の式
+            local payload
+            payload="$(mktemp)"
+            jq "${2:-.}" vercel-base.json > "${payload}"
+            run_script .github/scripts/notify/vercel-deploy-message.sh EVENT_ACTION="$1" PAYLOAD_FILE="${payload}" \
+              PROJECT_NAME=revolution-phoenix-frontend REPO_URL=https://github.com/o/r
+          }
+          # 本番の失敗: 本番系へメンション付き。payload 由来の値はエスケープされ、改行は消える。
+          # スキームの無い url には https:// を付ける
+          res="$(vercel vercel.deployment.failed)"
+          grep -qx 'notify=true' <<<"${res}"
+          grep -qx 'production=true' <<<"${res}"
+          grep -qx 'mention=true' <<<"${res}"
+          grep -qx 'test=false' <<<"${res}"
+          grep -qx 'text=❌ フロントエンドの本番デプロイが失敗しました (Vercel)' <<<"${res}"
+          grep -q '^body=.*&lt;!channel&gt; &amp; y z' <<<"${res}"
+          if grep -q '<!channel>' <<<"${res}"; then echo "unescaped mention" >&2; exit 1; fi
+          grep -q '<https://revo.vercel.app|revo.vercel.app>' <<<"${res}"
+          # 本番の成功: 送るがメンションしない
+          res="$(vercel vercel.deployment.success '.state = {type: "success"} | del(.error)')"
+          grep -qx 'notify=true' <<<"${res}"
+          grep -qx 'mention=false' <<<"${res}"
+          grep -qx 'text=✅ フロントエンドを本番にデプロイしました (Vercel)' <<<"${res}"
+          # Preview: 成功は送らない、失敗は開発系へ (メンションなし)、権限起因の失敗は送らない (本番なら送る)
+          grep -qx 'notify=false' <<<"$(vercel vercel.deployment.success '.environment = "preview" | .state = {type: "success"}')"
+          res="$(vercel vercel.deployment.error '.environment = "preview" | .state = {type: "error"}')"
+          grep -qx 'notify=true' <<<"${res}"
+          grep -qx 'production=false' <<<"${res}"
+          grep -qx 'mention=false' <<<"${res}"
+          grep -qx 'notify=false' <<<"$(vercel vercel.deployment.failed '.environment = "preview" | .state.detail = "authorization_required"')"
+          grep -qx 'notify=true' <<<"$(vercel vercel.deployment.failed '.state.detail = "authorization_required"')"
+          # error / deployment_deleted はデプロイの削除なので送らない。別プロジェクトも送らない
+          grep -qx 'notify=false' <<<"$(vercel vercel.deployment.error '.state = {type: "error", detail: "deployment_deleted"}')"
+          grep -qx 'notify=false' <<<"$(vercel vercel.deployment.failed '.project.name = "other"')"
+          # sha の形でない値はリンクにしない。切り詰めで entity の途中 (&am…) を残さない
+          if grep -q '/commit/' <<<"$(vercel vercel.deployment.failed '.git.sha = "not-a-sha"')"; then echo "bad sha linked" >&2; exit 1; fi
+          if grep -qE '&[a-z]{0,4}…' <<<"$(vercel vercel.deployment.failed '.error = ("a" * 296 + "&&&&&")')"; then echo "broken entity" >&2; exit 1; fi
+          # 境界値: ref のバッククォートと URL の | で記法を壊さない、environment / state.detail の欠落
+          res="$(vercel vercel.deployment.failed '.git.ref = "a`b" | .url = "https://x.vercel.app/a|b"')"
+          grep -qF "*Branch*: \`a'b\`" <<<"${res}"
+          grep -q 'x.vercel.app/a%7Cb' <<<"${res}"
+          res="$(vercel vercel.deployment.failed 'del(.environment) | del(.state.detail)')"
+          grep -qx 'production=false' <<<"${res}"
+          grep -qx 'notify=true' <<<"${res}"
+          grep -q '\*状態\*: failed ·' <<<"${res}"
+          # 疑似イベントの test は真偽値でも文字列でもテストモードになる
+          grep -qx 'test=true' <<<"$(vercel vercel.deployment.failed '.test = true')"
+          grep -qx 'test=true' <<<"$(vercel vercel.deployment.failed '.test = "true"')"
+
+          # --- main の失敗 ---
+          mainfail() {  # $1 = run の JSON、$2 = jobs の JSON
+            printf '%s' "$1" > run.json
+            printf '%s' "$2" > jobs.json
+            run_script .github/scripts/notify/main-failure-message.sh RUN_FILE=run.json JOBS_FILE=jobs.json REPO_URL=https://github.com/o/r
+          }
+          run_json="$(jq -nc --arg sha "${sha}" '{name: "CI", conclusion: "failure", head_sha: $sha, html_url: "https://github.com/o/r/actions/runs/1"}')"
+          # job 名の & もエスケープし、失敗した job は 5 件まで (成功した job は挙げない)
+          res="$(mainfail "${run_json}" "$(jq -nc '{jobs: ([range(0; 7)] | map({name: ("Job & " + tostring), conclusion: "failure"}) + [{name: "OK", conclusion: "success"}])}')")"
+          grep -qx 'text=❌ main で「CI」が失敗しました (failure)' <<<"${res}"
+          grep -q 'Job &amp; 0, Job &amp; 1, Job &amp; 2, Job &amp; 3, Job &amp; 4 ほか 2 件' <<<"${res}"
+          if grep -q 'OK' <<<"${res}"; then echo "successful job listed" >&2; exit 1; fi
+          # text はエスケープしない (action がエスケープする)。cancelled の job も挙げる
+          res="$(mainfail "$(jq -c '.name = "Build & Deploy" | .conclusion = "cancelled"' <<<"${run_json}")" '{"jobs": [{"name": "build", "conclusion": "cancelled"}]}')"
+          grep -qx 'text=❌ main で「Build & Deploy」が失敗しました (cancelled)' <<<"${res}"
+          grep -q '\*失敗した job\*: build' <<<"${res}"
+
+          # --- Cloud Run のデプロイ結果: 状況ごとの文面・メンション・ロールバック手順 ---
+          deploy_msg() {  # 既定は「deploy の前で失敗」。追加の env で上書きする
+            run_script .github/scripts/notify/deploy-result-message.sh JOB_STATUS=failure DEPLOY_OUTCOME=failure \
+              HEALTH_OUTCOME=skipped HTTP_CODE= PINNED= COMMIT_URL=https://github.com/o/r/commit/abc COMMIT_SHA=0123456789abcdef "$@"
+          }
+          res="$(deploy_msg JOB_STATUS=success DEPLOY_OUTCOME=success HEALTH_OUTCOME=success)"
+          grep -qx 'mention=false' <<<"${res}"
+          grep -q '^text=✅ AI Writer を Cloud Run にデプロイしました$' <<<"${res}"
+          grep -q '<https://github.com/o/r/commit/abc|0123456>' <<<"${res}"
+          res="$(deploy_msg)"
+          grep -qx 'mention=true' <<<"${res}"
+          grep -q '以前のリビジョンが稼働中' <<<"${res}"
+          if grep -q 'ロールバック' <<<"${res}"; then echo "rollback shown before deploy" >&2; exit 1; fi
+          res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure HTTP_CODE=503 TRAFFIC_CHECKED=true)"
+          grep -q 'ヘルスチェックに失敗しました (新リビジョンがトラフィック 100% で稼働中)' <<<"${res}"
+          grep -q '\*HTTP\*: 503' <<<"${res}"
+          grep -q -- '--to-latest' <<<"${res}"
+          # 手順のプレースホルダは &lt; &gt; で書く (生の < > は Slack がリンクとして解釈する)
+          grep -q '&lt;サービス名&gt;' <<<"${res}"
+          if grep -q '<サービス名>' <<<"${res}"; then echo "raw placeholder" >&2; exit 1; fi
+          res="$(deploy_msg JOB_STATUS=cancelled DEPLOY_OUTCOME=success HEALTH_OUTCOME=cancelled TRAFFIC_CHECKED=true)"
+          grep -q 'デプロイ後の確認が完了しませんでした (新リビジョンがトラフィック 100% で稼働中)' <<<"${res}"
+          res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure PINNED=true TRAFFIC_CHECKED=true)"
+          grep -q '新しいリビジョンにトラフィックが流れていません' <<<"${res}"
+          grep -qx 'mention=true' <<<"${res}"
+          # describe が失敗した (割り当てを確かめられない) 時は、どのリビジョンが動いているか断定しない
+          res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure)"
+          grep -q 'デプロイ後の状態を確かめられませんでした' <<<"${res}"
+          if grep -q 'トラフィック 100%' <<<"${res}"; then echo "claims 100% without checking" >&2; exit 1; fi
+
+          echo "message scripts OK"
 
       - name: Verify payload rendering (no network)
         run: |
@@ -99,7 +241,7 @@ jobs:
           echo "payload rendering OK"
 
       - name: Shellcheck
-        run: shellcheck .github/actions/slack-notify/*.sh .github/scripts/supabase/*.sh
+        run: shellcheck .github/actions/slack-notify/*.sh .github/scripts/supabase/*.sh .github/scripts/notify/*.sh
 
       - name: Verify notify.sh and post-deploy-advisor.sh with fakes (no network)
         run: |

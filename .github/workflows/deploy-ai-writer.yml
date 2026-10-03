@@ -70,6 +70,7 @@ jobs:
           docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest
 
       - name: Deploy to Cloud Run
+        id: deploy
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
@@ -87,26 +88,72 @@ jobs:
             --set-secrets "ALLOWED_EMAILS=revo-allowed-emails:latest,GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest"
 
       - name: Health check
+        id: health
+        # cold start で最初の数十秒は応答が遅れることがある。1 回の失敗でメンション付きの通知を
+        # 飛ばさないよう、15 秒おきに 8 回まで (最悪で約 3 分) 確かめる。
+        # 先にトラフィックの割り当てを見る。以前のリビジョンに固定されていると (手動ロールバックの後など)、
+        # 新しいリビジョンにトラフィックが流れず、サービスの URL への health check は以前のリビジョンの
+        # 応答で通ってしまう (Cloud Run は固定された割り当てを以降のデプロイでも保つ)
+        timeout-minutes: 5
         run: |
-          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          SERVICE_JSON=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
             --platform managed \
             --region ${{ env.REGION }} \
-            --format 'value(status.url)')
+            --format json)
+          SERVICE_URL=$(jq -r '.status.url' <<<"${SERVICE_JSON}")
+          LATEST_PERCENT=$(jq '[.status.traffic[]? | select(.latestRevision == true) | (.percent // 0)] | add // 0' <<<"${SERVICE_JSON}")
+          # ここまで来れば、トラフィックの割り当てを確かめられている (describe の失敗と区別するため)
+          echo "traffic_checked=true" >> "$GITHUB_OUTPUT"
 
           echo "Service URL: $SERVICE_URL"
 
-          # Wait for service to be ready
-          sleep 30
-
-          # Check health endpoint
-          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/api/health")
-
-          if [ "$HEALTH_STATUS" = "200" ]; then
-            echo "✅ Health check passed"
-          else
-            echo "❌ Health check failed with status: $HEALTH_STATUS"
+          if [ "${LATEST_PERCENT}" != "100" ]; then
+            echo "pinned=true" >> "$GITHUB_OUTPUT"
+            echo "::error title=Traffic is pinned::The latest revision receives ${LATEST_PERCENT}% of traffic. Run update-traffic --to-latest after checking the new revision."
             exit 1
           fi
+
+          # 接続できない / タイムアウトでも curl は 000 を出す
+          tries=8
+          for attempt in $(seq "${tries}"); do
+            HEALTH_STATUS=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" "$SERVICE_URL/api/health") || true
+            if [ "$HEALTH_STATUS" = "200" ]; then
+              echo "✅ Health check passed (attempt ${attempt})"
+              exit 0
+            fi
+            echo "Health check attempt ${attempt}: HTTP ${HEALTH_STATUS}"
+            if [ "${attempt}" -lt "${tries}" ]; then sleep 15; fi
+          done
+          echo "http_code=${HEALTH_STATUS}" >> "$GITHUB_OUTPUT"
+          echo "❌ Health check failed with status: ${HEALTH_STATUS}"
+          exit 1
+
+      - name: Build the Slack message
+        id: msg
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          HTTP_CODE: ${{ steps.health.outputs.http_code }}
+          PINNED: ${{ steps.health.outputs.pinned }}
+          TRAFFIC_CHECKED: ${{ steps.health.outputs.traffic_checked }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: bash .github/scripts/notify/deploy-result-message.sh
+
+      - name: Notify Slack of the deployment result
+        # 結果を本番系へ 1 通。文面・メンション・ロールバック手順は .github/scripts/notify/deploy-result-message.sh
+        if: always()
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          # 本番への実デプロイの結果なので、ブランチから dispatch されてもテストモードにしない
+          auto-test-mode: 'false'
+          mention: "${{ steps.msg.outputs.mention == 'true' && vars.SLACK_MENTION_USER_ID || '' }}"
+          text: ${{ steps.msg.outputs.text }}
+          body: ${{ steps.msg.outputs.body }}
 
       - name: Output deployment info
         run: |

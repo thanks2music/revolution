@@ -1,0 +1,91 @@
+name: Notify Main Failures
+
+# main で CI / Update MDX Article Index が失敗した時に、本番系へメンション付きで知らせる。
+#
+# ⚠️ workflow_run は workflow の name で一致させる。対象の workflow の `name:` を変えると、
+#    通知が黙って止まる (運用手順書にも記載)。main での失敗を知らせたい workflow はここに名前を足す。
+# - 送るのは main への push で動いた run が失敗した時だけ (条件は job の if:)。cancelled も送るのは、
+#   対象の workflow に concurrency が無く、job のタイムアウトが cancelled として届くことがあるため。
+#   対象に cancel-in-progress が無いこと、対象の名前が実在することは smoke で確かめている
+# - workflow_run は default branch の workflow しか動かない。確認は main へ入った後に、過去の失敗 run の ID を
+#   渡して workflow_dispatch する。dispatch は常にテストモード (開発系・[TEST]・メンションなし) で送る
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+      - Update MDX Article Index
+    types:
+      - completed
+    # PR の run では workflow の実行自体を作らない (Actions の一覧が埋まらないように)
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: '確認用: 通知の内容を組み立てる元の run ID (過去の失敗 run)。常にテストモードで送る'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  notify:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (contains(fromJSON('["failure", "timed_out", "startup_failure", "cancelled"]'), github.event.workflow_run.conclusion)
+          && github.event.workflow_run.event == 'push'
+          && github.event.workflow_run.head_branch == 'main'
+          && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout notification action and scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions
+            .github/scripts
+          persist-credentials: false
+
+      - name: Build the message from the failed run
+        id: msg
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # dispatch の入力を API の path に使うため、数字だけを受け付ける
+          if [[ ! "${RUN_ID}" =~ ^[0-9]+$ ]]; then
+            echo "::error title=Invalid run_id::run_id must be numeric"
+            exit 1
+          fi
+          # workflow_run では run の情報がイベントに入っているので API を呼ばない
+          # (API の一時的な失敗で、main の失敗が知らされないまま終わらないようにする)。
+          # env 経由で渡すと public なログのヘッダーに出るため、イベントのファイルから読む
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            jq '.workflow_run' "${GITHUB_EVENT_PATH}" > run.json
+          else
+            gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}" > run.json
+          fi
+          # job の一覧は補足なので、取れなくても通知は送る
+          if ! gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" > jobs.json 2>/dev/null; then
+            echo "::warning title=Could not list jobs::Sending the notification without the failed job names."
+            echo '{"jobs": []}' > jobs.json
+          fi
+          RUN_FILE=run.json JOBS_FILE=jobs.json bash .github/scripts/notify/main-failure-message.sh
+
+      - name: Notify Slack
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          test: "${{ github.event_name == 'workflow_dispatch' }}"
+          mention: ${{ vars.SLACK_MENTION_USER_ID }}
+          text: ${{ steps.msg.outputs.text }}
+          body: ${{ steps.msg.outputs.body }}
