@@ -12,6 +12,11 @@
 #   op run が渡した値が優先される
 set -euo pipefail
 
+if [[ $# -eq 0 ]]; then
+  echo "usage: bash scripts/with-op-env.sh <command> [args...]" >&2
+  exit 2
+fi
+
 ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/.env.op.local"
 
 if [[ ! -f "$ENV_FILE" ]]; then
