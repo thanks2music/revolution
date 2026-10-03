@@ -142,12 +142,13 @@ jobs:
       - name: Download previous advisor state artifact
         if: env.SKIP != 'true'
         # 前回実行時の状態を取得。初回 or artifact 期限切れの場合は not found = 空 state で継続。
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: advisor-state-${{ matrix.env.name }}
           path: ./previous
-          # 初回実行時は artifact 不在で warn (fail しない)
-          # actions/download-artifact@v5 の default 挙動: 不在時は warn + 空 dir
+          # artifact 不在時は step が error になるため continue-on-error で継続する。
+          # ⚠️ run-id を渡していないので「同じ実行内」しか探さない (= 週次実行では毎回不在)。
+          # 別の実行の artifact を引く方式への置き換えは通知基盤の PR で行う
         continue-on-error: true
 
       - name: Diff current vs previous state
