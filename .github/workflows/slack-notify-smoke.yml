@@ -649,6 +649,11 @@ jobs:
           notify SLACK_TOKEN=t SLACK_CHANNEL=C1 NOTIFY_TEXT=x NOTIFY_BODY=inline NOTIFY_BODY_FILE="${SHIM}/body.txt" \
             FAKE_SLACK_RESPONSE='{"ok":true}' > /dev/null
           jq -e '.blocks[1].text.text == "from <file>"' "${SHIM}/payload.json" > /dev/null
+          # body-file が読めない時は warning を出し、body なしで送る (送信は止めない)
+          res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=C1 NOTIFY_TEXT=x NOTIFY_BODY_FILE="${SHIM}/missing.txt" FAKE_SLACK_RESPONSE='{"ok":true}')"
+          grep -qx 'ok=true' <<<"${res}"
+          grep -q '^::warning title=Slack notify::body-file is not readable' "${SHIM}/log"
+          jq -e '.blocks | length == 2' "${SHIM}/payload.json" > /dev/null
           # msg_too_long でも同じく要約だけで送り直す
           res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=PROD NOTIFY_TEXT=x NOTIFY_BODY=b \
             FAKE_SLACK_REJECT_BLOCKS=1 FAKE_SLACK_REJECT_ERROR=msg_too_long FAKE_SLACK_RESPONSE='{"ok":true}')"
