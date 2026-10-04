@@ -24,7 +24,7 @@
 #   - new: 毎回直近の期間を見直すので、知らせた issue を除く。期間の始まりより前に記録したものは捨てる
 #     (その issue の firstSeen は記録した時刻より前なので、もう検索に当たらない)
 #   - reg: 回帰中のあいだ検索に当たり続けるので、一度知らせたら回帰が終わるまで知らせない。
-#     いま回帰中でない issue の記録は捨てる (解決して再び回帰したら、また知らせる)
+#     いま回帰中でない issue の記録は捨てる (解決して再び回帰したら、また知らせる)。取得が上限に達した時は捨てない
 #
 # issue のタイトルは blocks のファイルにだけ書く。composite action の text / body に入れると、
 # 入力として public なログに出るため。
@@ -81,7 +81,8 @@ jq -n -r \
   ([$prod_reg[0][], $other_reg[0][]] | map(.id)) as $regressed_now
   | ($notified[0] | with_entries(select(
       if (.key | startswith("new:")) then (.value | tostring) >= $start
-      elif (.key | startswith("reg:")) then (.key | split(":")[2] | IN($regressed_now[]))
+      # 取得が上限に達した時は、回帰中なのに一覧から漏れた issue があり得るので消さない
+      elif (.key | startswith("reg:")) then $truncated == "true" or (.key | split(":")[2] | IN($regressed_now[]))
       else false end))) as $seen
   | ([$prod_new[0][], $prod_reg[0][]] | map(select(high) | .id)) as $high_ids
   | def unseen($kind; $key): map(select("\($kind):\($key):\(.id)" as $k | $seen | has($k) | not));
@@ -109,8 +110,8 @@ jq -n -r \
   # テストモードでは開発系へ 1 通にまとめる (同じ送り先に 1 実行で 2 通送らない)
   | .all = {notify: (.prod.notify or .dev.notify),
             text: "🐞 Sentry: \(.prod.label) \(.prod.count) 件 · \(.dev.label) \(.dev.count) 件",
-            blocks: ([.prod, .dev] | map(select(.notify) | [{type: "section", text: {type: "mrkdwn", text: "*\(.label)*"}}] + .sections)
-                     | if length == 2 then .[0] + [{type: "divider"}] + .[1] else add // [] end) + $context}
+            blocks: (([.prod, .dev] | map(select(.notify) | [{type: "section", text: {type: "mrkdwn", text: "*\(.label)*"}}] + .sections)
+                      | if length == 2 then .[0] + [{type: "divider"}] + .[1] else add // [] end) + $context)}
 ' > digest.json
 
 for target in prod dev all; do

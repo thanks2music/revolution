@@ -78,7 +78,8 @@ jobs:
           # 前の実行を調べられなかった時は送る (黙るより重複の方がよい)。dispatch (確認用) は常に送る
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" && "$(jq -r '.event' run.json)" == "schedule" ]]; then
             PREVIOUS=$(gh api "/repos/${GH_REPO}/actions/workflows/$(jq -r '.workflow_id' run.json)/runs?branch=main&status=completed&per_page=5" \
-              --jq "[.workflow_runs[] | select(.id != ${RUN_ID})][0].conclusion // \"none\"" 2>/dev/null) || PREVIOUS=unknown
+              --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and .created_at < \"$(jq -r '.created_at' run.json)\")][0].conclusion // \"none\"" 2>/dev/null) \
+              || PREVIOUS=unknown
             if [[ "${PREVIOUS}" =~ ^(failure|timed_out|startup_failure|cancelled)$ ]]; then
               echo "::notice::The previous scheduled run also ended with ${PREVIOUS}. Not notifying again until it succeeds."
               echo "skip=true" >> "$GITHUB_OUTPUT"

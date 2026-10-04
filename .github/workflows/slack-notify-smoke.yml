@@ -294,6 +294,9 @@ jobs:
           res="$(digest)"
           grep -qx 'prod_text=🐞 Sentry (本番): 新規 1 件' <<<"${res}"
           jq -e 'keys == ["reg:prod:3"]' notified-base.json > /dev/null
+          # 取得が上限に達した時は、回帰中なのに一覧から漏れた issue があり得るので、回帰の記録を消さない
+          digest TRUNCATED=true > /dev/null
+          jq -e 'keys == ["reg:prod:3", "reg:prod:9"]' notified-base.json > /dev/null
           # 開発系で知らせた回帰でも、本番の High なら本番系へ届ける。本番と本番以外の両方で回帰していても 1 件と数える
           echo '{"reg:dev:3": "2026-10-04T00:00:00Z"}' > notified-in.json
           set_lists '[]' "$(jq -s . <(issue 3 high))" '[]' "$(jq -s . <(issue 3 high))"
