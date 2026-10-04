@@ -158,6 +158,7 @@ jobs:
         # (Diff step が「baseline 不在」として通知を skip し、今回の state が次の baseline になる)。
         # 一覧や zip の取得に失敗した時も previous/ は空のままだが、BASELINE_FAILED=true にして
         # 今回の state を保存しない (保存すると、比べられなかった新規の lint が二度と知らされない)。
+        # 取得できた zip が壊れている時は「無い」と同じに扱い、今回の state で置き換える (自動で復旧する)。
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -182,15 +183,18 @@ jobs:
             echo "::notice::No unexpired advisor-state-${ENV_NAME} artifact found."
             exit 0
           fi
-          if gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > previous.zip 2>/dev/null \
-            && unzip -q -o previous.zip -d previous/ \
+          if ! gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > previous.zip 2>/dev/null; then
+            # 取得の失敗 (一時的) は、baseline を更新しない
+            echo "::warning::Could not download advisor-state-${ENV_NAME} (artifact ${ARTIFACT_ID}). Skipping the diff and keeping the current baseline."
+            echo "BASELINE_FAILED=true" >> "$GITHUB_ENV"
+          elif unzip -q -o previous.zip -d previous/ \
             && jq -e '.lints_by_key | type == "object"' previous/current-state.json >/dev/null 2>&1; then
             echo "Baseline: artifact ${ARTIFACT_ID}"
           else
-            # 形式が不正な baseline と比べると、既存の lint が全件「新規」扱いになるため使わない
-            echo "::warning::Could not use advisor-state-${ENV_NAME} (artifact ${ARTIFACT_ID}). Skipping the diff and keeping the current baseline."
+            # 取得できたが壊れている (恒久的) 時は「baseline が無い」として扱い、今回の state で置き換える。
+            # 壊れた baseline と比べると、既存の lint が全件「新規」扱いになるため比べない
+            echo "::warning::advisor-state-${ENV_NAME} (artifact ${ARTIFACT_ID}) is corrupt. Treating the baseline as missing; this run's state replaces it."
             rm -rf previous && mkdir -p previous
-            echo "BASELINE_FAILED=true" >> "$GITHUB_ENV"
           fi
 
       - name: Diff current vs previous state

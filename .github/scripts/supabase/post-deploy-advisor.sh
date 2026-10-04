@@ -73,11 +73,18 @@ if [[ -z "${ARTIFACT_ID}" ]]; then
 fi
 
 rm -rf baseline baseline.zip
-if ! gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > baseline.zip 2>/dev/null \
-  || ! unzip -q -o baseline.zip -d baseline/ \
+# 取得の失敗 (一時的) は、baseline を更新しない
+if ! gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > baseline.zip 2>/dev/null; then
+  echo "::warning title=Advisor baseline download failed::Could not download artifact ${ARTIFACT_ID} on ${ENV_NAME}. Skipping the diff and keeping the current baseline."
+  exit 0
+fi
+# 取得できたが壊れている (恒久的) 時は「baseline が無い」として扱い、今回の state で置き換える
+# (置き換えないと、期限が切れるまで毎回同じ失敗になり差分の通知が止まる)。
+# 壊れた baseline と比べると、既存の lint が全件「新規」扱いになりメンションが飛ぶので比べない
+if ! unzip -q -o baseline.zip -d baseline/ \
   || ! jq -e '.lints_by_key | type == "object"' baseline/current-state.json >/dev/null 2>&1; then
-  # 形式が不正な baseline と比べると、既存の lint が全件「新規」扱いになりメンションが飛ぶ
-  echo "::warning title=Advisor baseline download failed::Could not use artifact ${ARTIFACT_ID} on ${ENV_NAME}. Skipping the diff and keeping the current baseline."
+  echo "::warning title=Advisor baseline unusable::Artifact ${ARTIFACT_ID} on ${ENV_NAME} is corrupt. Skipping the diff; this run's state replaces it."
+  COMPARED=true
   exit 0
 fi
 
@@ -86,6 +93,8 @@ jq --slurpfile b baseline/current-state.json \
   '[.lints_by_key | to_entries[] | select(.key as $k | $b[0].lints_by_key | has($k) | not) | .value]' \
   current-state.json > new-post-lints.json
 count=$(jq length new-post-lints.json)
+# ここから先 (blocks の生成) で止まっても has_new は書かれる。has_new=true なら、通知が届かない限り
+# 呼び出し側は baseline を保存しないので、新規の lint は失われない
 NEW_POST_COUNT="${count}"
 COMPARED=true
 echo "New lints introduced by this deploy on ${ENV_NAME}: ${count}"

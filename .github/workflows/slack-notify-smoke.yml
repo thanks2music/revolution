@@ -694,6 +694,12 @@ jobs:
           jq -n '{artifacts: [{id: 8, expired: false, workflow_run: {repository_id: 1, head_repository_id: 1, head_branch: "main"}}]}' > "${SHIM}/artifacts.json"
           res="$(run_advisor run5 ENV_NAME=production)"
           [ -z "${res}" ] || { echo "advisor wrote outputs after a failed baseline download: ${res}" >&2; exit 1; }
+          # 取得できた zip が壊れている時は「baseline が無い」として扱う (比べずに has_new=false、今回の state で置き換わる)
+          printf 'not a zip' > "${SHIM}/baseline.zip"
+          jq -n '{artifacts: [{id: 7, expired: false, workflow_run: {repository_id: 1, head_repository_id: 1, head_branch: "main"}}]}' > "${SHIM}/artifacts.json"
+          res="$(run_advisor run6 ENV_NAME=production)"
+          grep -qx 'has_new=false' <<<"${res}"
+          [ -f "${SHIM}/run6/current-state.json" ]
 
           # lints が配列でない 200 応答では state を作らない (空の baseline を保存すると次回に全件が「新規」になる)。
           # null だと後段の jq も失敗するので、jq が通ってしまうオブジェクトで確かめる

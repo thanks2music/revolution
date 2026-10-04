@@ -22,6 +22,7 @@
 #   $BODY_FILE             補足の mrkdwn。payload 由来の値は & < > をエスケープ済み、改行なし。
 #                          composite action の with: の値は public なログに出るため、body-file で渡す
 set -euo pipefail
+: "${BODY_FILE:?BODY_FILE is required (the body is not written to the step outputs)}"
 
 out="$(mktemp)"
 jq -r \
