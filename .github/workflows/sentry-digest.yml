@@ -1,0 +1,138 @@
+name: Sentry Digest
+
+# Sentry に新しく出た issue と回帰した issue を、30 分ごとにまとめて Slack へ知らせる。
+#
+# | 対象                                         | 送り先 | メンション |
+# |----------------------------------------------|--------|------------|
+# | 本番 (environment=production) の priority High | 本番系 | あり       |
+# | 本番の Medium / Low、本番以外の環境          | 開発系 | なし       |
+#
+# - 取得は .github/scripts/sentry/fetch-issues.sh、振り分けと文面は .github/scripts/notify/sentry-digest-message.sh
+# - token は Internal Integration (Issue & Event: Read のみ) の SENTRY_API_TOKEN。既存の SENTRY_AUTH_TOKEN は
+#   organization token (source map のアップロード用) で、issue を読めない
+# - 毎回、直近 24 時間に初めて起きた issue と、いま回帰中の issue を見直す。届いたかどうかは artifact
+#   sentry-digest-state の「知らせ済み」で判断する (届いた送り先の分だけ記録するので、届かなかった分は次回に送り直す)。
+#   24 時間を超えて止まると、それより前に起きた issue は見直さない
+# - この workflow 自体の失敗は notify-main-failures.yml が知らせる (成功から失敗に変わった最初の 1 回だけ)
+# - 確認: workflow_dispatch の dry_run (既定 true) と、main 以外の ref からの dispatch はテストモード
+#   (開発系へ [TEST] 付き・メンションなしで 1 通にまとめ、state を保存しない)
+# - public repo の schedule は、60 日間リポジトリに動きが無いと止まる
+
+on:
+  schedule:
+    # 毎時 0 分は GitHub の実行が混むため避ける
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'テストモードで送り、state を保存しない'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read  # 前回の state (artifact) を読むため
+
+concurrency:
+  group: sentry-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # schedule では 'false' になる。dispatch の dry_run は boolean の入力
+      TEST_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) || github.ref != 'refs/heads/main' }}
+      SENTRY_ORG: we-are-all-one
+    steps:
+      - name: Checkout notification action and scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions
+            .github/scripts
+          persist-credentials: false
+
+      - name: Load the previous state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/state/fetch-latest-artifact.sh sentry-digest-state previous
+
+      - name: Fetch new and regressed issues from Sentry
+        id: fetch
+        env:
+          SENTRY_API_TOKEN: ${{ secrets.SENTRY_API_TOKEN }}
+        run: bash .github/scripts/sentry/fetch-issues.sh
+
+      - name: Build the Slack messages
+        id: msg
+        env:
+          PROD_NEW: prod-new.json
+          PROD_REGRESSED: prod-regressed.json
+          OTHER_NEW: other-new.json
+          OTHER_REGRESSED: other-regressed.json
+          NOTIFIED_FILE: previous/notified.json
+          WINDOW_START: ${{ steps.fetch.outputs.window_start }}
+          TRUNCATED: ${{ steps.fetch.outputs.truncated }}
+          SENTRY_WEB: https://${{ env.SENTRY_ORG }}.sentry.io
+        run: bash .github/scripts/notify/sentry-digest-message.sh
+
+      # issue の一覧は blocks-file で渡す (text / body は入力として public なログに出る)
+      - name: Notify (test mode, one message)
+        if: env.TEST_MODE == 'true' && steps.msg.outputs.all_notify == 'true'
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          test: 'true'
+          text: ${{ steps.msg.outputs.all_text }}
+          blocks-file: all-blocks.json
+
+      - name: Notify production issues
+        id: notify_prod
+        if: env.TEST_MODE != 'true' && steps.msg.outputs.prod_notify == 'true'
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          mention: ${{ vars.SLACK_MENTION_USER_ID }}
+          text: ${{ steps.msg.outputs.prod_text }}
+          blocks-file: prod-blocks.json
+
+      - name: Notify other issues
+        id: notify_dev
+        if: env.TEST_MODE != 'true' && steps.msg.outputs.dev_notify == 'true'
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          text: ${{ steps.msg.outputs.dev_text }}
+          blocks-file: dev-blocks.json
+
+      - name: Record what was delivered
+        id: next
+        if: env.TEST_MODE != 'true'
+        # 届いた送り先の分だけ「知らせ済み」に足す (届かなかった分は次回に送り直す)
+        env:
+          PROD_OK: ${{ steps.notify_prod.outputs.ok }}
+          DEV_OK: ${{ steps.notify_dev.outputs.ok }}
+        run: |
+          set -euo pipefail
+          files=(notified-base.json)
+          if [ "${PROD_OK}" = "true" ]; then files+=(prod-delivered.json); fi
+          if [ "${DEV_OK}" = "true" ]; then files+=(dev-delivered.json); fi
+          mkdir -p next
+          jq -s 'add' "${files[@]}" > next/notified.json
+
+      - name: Save the state
+        if: steps.next.outcome == 'success'
+        # 「知らせ済み」が意味を持つのは直近 24 時間 (と回帰中の issue) だけなので、2 日あれば足りる
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sentry-digest-state
+          path: next/notified.json
+          retention-days: 2

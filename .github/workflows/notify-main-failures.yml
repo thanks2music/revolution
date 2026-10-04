@@ -1,12 +1,13 @@
 name: Notify Main Failures
 
-# main で CI / Update MDX Article Index が失敗した時に、本番系へメンション付きで知らせる。
+# main で CI / Update MDX Article Index / Sentry Digest が失敗した時に、本番系へメンション付きで知らせる。
 #
 # ⚠️ workflow_run は workflow の name で一致させる。対象の workflow の `name:` を変えると、
 #    通知が黙って止まる (運用手順書にも記載)。main での失敗を知らせたい workflow はここに名前を足す。
-# - 送るのは main への push で動いた run が失敗した時だけ (条件は job の if:)。cancelled も送るのは、
-#   対象の workflow に concurrency が無く、job のタイムアウトが cancelled として届くことがあるため。
+# - 送るのは main への push と、定期実行 (schedule) で動いた run が失敗した時だけ (条件は job の if:)。
+#   cancelled も送るのは、対象の workflow が進行中の実行を打ち切らず、job のタイムアウトが cancelled として届くことがあるため。
 #   対象に cancel-in-progress が無いこと、対象の名前が実在することは smoke で確かめている
+# - 定期実行は 30 分ごとに動くものがあるため、1 つ前の実行が成功していた時 (成功から失敗に変わった最初の 1 回) だけ送る
 # - workflow_run は default branch の workflow しか動かない。確認は main へ入った後に、過去の失敗 run の ID を
 #   渡して workflow_dispatch する。dispatch は常にテストモード (開発系・[TEST]・メンションなし) で送る
 
@@ -15,6 +16,7 @@ on:
     workflows:
       - CI
       - Update MDX Article Index
+      - Sentry Digest
     types:
       - completed
     # PR の run では workflow の実行自体を作らない (Actions の一覧が埋まらないように)
@@ -36,7 +38,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || (contains(fromJSON('["failure", "timed_out", "startup_failure", "cancelled"]'), github.event.workflow_run.conclusion)
-          && github.event.workflow_run.event == 'push'
+          && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'schedule')
           && github.event.workflow_run.head_branch == 'main'
           && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
@@ -72,6 +74,17 @@ jobs:
           else
             gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}" > run.json
           fi
+          # 定期実行は、1 つ前の実行も失敗していたら送らない (復旧するまで 30 分ごとに鳴らさない)。
+          # 前の実行を調べられなかった時は送る (黙るより重複の方がよい)。dispatch (確認用) は常に送る
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" && "$(jq -r '.event' run.json)" == "schedule" ]]; then
+            PREVIOUS=$(gh api "/repos/${GH_REPO}/actions/workflows/$(jq -r '.workflow_id' run.json)/runs?branch=main&status=completed&per_page=5" \
+              --jq "[.workflow_runs[] | select(.id != ${RUN_ID})][0].conclusion // \"none\"" 2>/dev/null) || PREVIOUS=unknown
+            if [[ "${PREVIOUS}" =~ ^(failure|timed_out|startup_failure|cancelled)$ ]]; then
+              echo "::notice::The previous scheduled run also ended with ${PREVIOUS}. Not notifying again until it succeeds."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           # job の一覧は補足なので、取れなくても通知は送る
           if ! gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" > jobs.json 2>/dev/null; then
             echo "::warning title=Could not list jobs::Sending the notification without the failed job names."
@@ -80,6 +93,7 @@ jobs:
           RUN_FILE=run.json JOBS_FILE=jobs.json bash .github/scripts/notify/main-failure-message.sh
 
       - name: Notify Slack
+        if: steps.msg.outputs.skip != 'true'
         uses: ./.github/actions/slack-notify
         with:
           token: ${{ secrets.SLACK_BOT_TOKEN }}

@@ -21,10 +21,13 @@ on:
       - '.github/actions/slack-notify/**'
       - '.github/scripts/supabase/**'
       - '.github/scripts/notify/**'
+      - '.github/scripts/sentry/**'
+      - '.github/scripts/state/**'
       # notify-main-failures の対象 (名前と cancel-in-progress を確かめる)
       - '.github/workflows/notify-main-failures.yml'
       - '.github/workflows/ci.yml'
       - '.github/workflows/update-mdx-article-index.yml'
+      - '.github/workflows/sentry-digest.yml'
       - '.github/workflows/slack-notify-smoke.yml'
 
 permissions:
@@ -152,6 +155,9 @@ jobs:
           res="$(mainfail "$(jq -c '.name = "Build & Deploy" | .conclusion = "cancelled"' <<<"${run_json}")" '{"jobs": [{"name": "build", "conclusion": "cancelled"}]}')"
           grep -qx 'text=❌ main で「Build & Deploy」が失敗しました (cancelled)' <<<"${res}"
           grep -q '\*失敗した job\*: build' <<<"${res}"
+          # 定期実行は、続く失敗を知らせないことを書く (push の失敗には書かない)
+          grep -q '\*定期実行\*: 次に成功するまで' <<<"$(mainfail "$(jq -c '.event = "schedule"' <<<"${run_json}")" '{"jobs": []}')"
+          if grep -q '定期実行' <<<"$(mainfail "$(jq -c '.event = "push"' <<<"${run_json}")" '{"jobs": []}')"; then echo "schedule note on push" >&2; exit 1; fi
 
           # --- Cloud Run のデプロイ結果: 状況ごとの文面・メンション・ロールバック手順 ---
           deploy_msg() {  # 既定は「deploy の前で失敗」。追加の env で上書きする
@@ -218,6 +224,205 @@ jobs:
 
           echo "message scripts OK"
 
+      - name: Verify the Sentry digest scripts (no network)
+        run: |
+          set -euo pipefail
+          ROOT="${PWD}"
+          run_script() {  # $1 = スクリプト、以降は追加の env。終了コードは明示的に見る
+            local script="$1" out
+            shift
+            out="$(mktemp)"
+            env GITHUB_OUTPUT="${out}" "$@" bash "${script}" || { echo "${script} exited non-zero" >&2; return 1; }
+            cat "${out}"
+          }
+
+          # --- 文面: 本番の priority High だけを本番系へ。「知らせ済み」は送り先ごと ---
+          WORK="$(mktemp -d)"
+          cd "${WORK}"
+          issue() {  # $1 = id、$2 = priority、$3 = 追加の jq の式
+            jq -nc --arg id "$1" --arg p "$2" '{id: $id, shortId: ("REV-" + $id), title: "Boom <!channel> & x",
+              level: "error", priority: $p, count: "3", project: "revolution-frontend"}' | jq -c "${3:-.}"
+          }
+          set_lists() {  # $1..$4 = prod-new / prod-reg / other-new / other-reg の JSON
+            echo "$1" > prod-new.json; echo "$2" > prod-reg.json; echo "$3" > other-new.json; echo "$4" > other-reg.json
+          }
+          digest() {  # 既定の入力を、追加の env で上書きする
+            run_script "${ROOT}/.github/scripts/notify/sentry-digest-message.sh" PROD_NEW=prod-new.json \
+              PROD_REGRESSED=prod-reg.json OTHER_NEW=other-new.json OTHER_REGRESSED=other-reg.json \
+              NOTIFIED_FILE=notified-in.json WINDOW_START=2026-10-03T00:30:00Z TRUNCATED=false \
+              SENTRY_WEB=https://o.sentry.io "$@"
+          }
+          sections() { jq -r '[.[] | select(.type == "section") | .text.text] | join("\n")' "$1"; }
+          # 1 は本番以外でも起きている (本番系にだけ載せる)。2 は本番の Medium で、本番以外でも起きている (1 件と数える)。
+          # 4 は本番以外だけ
+          set_lists "$(jq -s . <(issue 1 high) <(issue 2 medium))" "$(jq -s . <(issue 3 high))" \
+            "$(jq -s . <(issue 1 high) <(issue 2 medium) <(issue 4 low))" '[]'
+          echo '{}' > notified-in.json
+          res="$(digest)"
+          grep -qx 'prod_text=🐞 Sentry (本番): 新規 1 件 · 再発 1 件' <<<"${res}"
+          grep -qx 'dev_text=🐞 Sentry (本番以外・優先度の低いもの): 新規 2 件' <<<"${res}"
+          grep -qx 'all_text=🐞 Sentry: 本番 2 件 · 本番以外・優先度の低いもの 2 件' <<<"${res}"
+          # タイトルは text に入れず blocks にだけ書き、エスケープする。リンクは SENTRY_WEB と id から組み立てる
+          if grep -q 'Boom' <<<"${res}"; then echo "title in text" >&2; exit 1; fi
+          p="$(sections prod-blocks.json)"
+          grep -qF '<https://o.sentry.io/issues/1/|REV-1>' <<<"${p}"
+          grep -qF 'REV-3' <<<"${p}"
+          grep -qF '&lt;!channel&gt; &amp; x' <<<"${p}"
+          if grep -qE 'REV-2|<!channel>' <<<"${p}"; then echo "medium or raw mention in prod" >&2; exit 1; fi
+          d="$(sections dev-blocks.json)"
+          grep -qF '[本番] <https://o.sentry.io/issues/2/|REV-2>' <<<"${d}"
+          grep -qF 'REV-4' <<<"${d}"
+          if grep -qF 'REV-1' <<<"${d}"; then echo "prod High listed in dev" >&2; exit 1; fi
+          jq -e 'keys == ["new:prod:1", "reg:prod:3"]' prod-delivered.json > /dev/null
+          jq -e 'keys == ["new:dev:2", "new:dev:4"]' dev-delivered.json > /dev/null
+          jq -e 'any(.[]; .type == "divider")' all-blocks.json > /dev/null
+          if grep -q '重複することがある' prod-blocks.json; then echo "state-missing note with state" >&2; exit 1; fi
+          # 届いた分を記録すると (workflow と同じく足し合わせる)、次の実行では何も送らない
+          cp notified-base.json base1.json; cp prod-delivered.json prod1.json; cp dev-delivered.json dev1.json
+          jq -s 'add' base1.json prod1.json dev1.json > notified-in.json
+          res="$(digest)"
+          grep -qx 'prod_notify=false' <<<"${res}"
+          grep -qx 'dev_notify=false' <<<"${res}"
+          grep -qx 'all_notify=false' <<<"${res}"
+          # 開発系にだけ届いた時は、本番系の分を次回に送り直す
+          jq -s 'add' base1.json dev1.json > notified-in.json
+          res="$(digest)"
+          grep -qx 'prod_notify=true' <<<"${res}"
+          grep -qx 'dev_notify=false' <<<"${res}"
+          # 期間の始まりより前に記録した new は捨てる。回帰が終わった issue の reg も捨てる
+          echo '{"new:prod:1": "2026-10-02T22:00:00Z", "reg:prod:9": "2026-10-03T22:00:00Z", "reg:prod:3": "2026-10-03T22:00:00Z"}' > notified-in.json
+          res="$(digest)"
+          grep -qx 'prod_text=🐞 Sentry (本番): 新規 1 件' <<<"${res}"
+          jq -e 'keys == ["reg:prod:3"]' notified-base.json > /dev/null
+          # 開発系で知らせた回帰でも、本番の High なら本番系へ届ける。本番と本番以外の両方で回帰していても 1 件と数える
+          echo '{"reg:dev:3": "2026-10-04T00:00:00Z"}' > notified-in.json
+          set_lists '[]' "$(jq -s . <(issue 3 high))" '[]' "$(jq -s . <(issue 3 high))"
+          grep -qx 'prod_text=🐞 Sentry (本番): 再発 1 件' <<<"$(digest)"
+          # 新しい順を保つ。短い行なら 10 件まで載せ、11 件目以降を件数で知らせる
+          set_lists "$(jq -n '[range(12; 0; -1) | {id: tostring, shortId: ("R" + tostring), title: "t", level: "error", priority: "high"}]')" '[]' '[]' '[]'
+          echo '{}' > notified-in.json
+          digest > /dev/null
+          p="$(sections prod-blocks.json)"
+          [ "$(sed -n 2p <<<"${p}" | grep -o '|R[0-9]*>')" = '|R12>' ]
+          grep -qF '…ほか 2 件' <<<"${p}"
+          # 長い行は section の上限 (3000 字) に収まる分だけ載せ、残りは件数で知らせる (行の途中で切らない)。
+          # 各項目は切り詰めるが、すべて最大だと 10 行で上限を超える
+          set_lists "$(jq -n '[range(12; 0; -1) | {id: tostring, shortId: ("R" + tostring + ("s" * 400)), title: ("&" * 200),
+            level: ("l" * 400), priority: "high", project: ("p" * 400), count: ("9" * 50)}]')" '[]' '[]' '[]'
+          digest > /dev/null
+          p="$(sections prod-blocks.json)"
+          shown="$(grep -c '^• ' <<<"${p}")"
+          rest="$(sed -n 's/^…ほか \([0-9]*\) 件.*/\1/p' <<<"${p}")"
+          [ "${shown}" -lt 10 ]
+          [ "$((shown + rest))" -eq 12 ]
+          jq -e '[.[] | select(.type == "section") | .text.text | (length <= 3000) and (test("&[a-z]{0,4}…") | not)] | all' prod-blocks.json > /dev/null
+          # priority が無い時は level で判断する。id が数字でなければリンクにしない
+          set_lists "$(jq -s . <(issue 5 x 'del(.priority) | .level = "warning"') <(issue 6 x 'del(.priority) | .id = "6x"'))" '[]' '[]' '[]'
+          res="$(digest TRUNCATED=true NOTIFIED_FILE=no-such-file.json)"
+          grep -qx 'prod_text=🐞 Sentry (本番): 新規 1 件' <<<"${res}"
+          grep -qx 'dev_text=🐞 Sentry (本番以外・優先度の低いもの): 新規 1 件' <<<"${res}"
+          grep -qF '• REV-6 ' <<<"$(sections prod-blocks.json)"
+          # 前回の状態が無いこと (重複しうること) と、取得の上限に達したことを書く
+          jq -e '.[-1].elements[0].text | contains("重複することがある") and contains("上限に達した")' prod-blocks.json > /dev/null
+          # 何も無ければ送らない。「知らせ済み」のファイルが壊れていても止まらない
+          set_lists '[]' '[]' '[]' '[]'
+          echo 'not json' > notified-in.json
+          res="$(digest)"
+          grep -qx 'prod_notify=false' <<<"${res}"
+          grep -qx 'dev_notify=false' <<<"${res}"
+          cd "${ROOT}"
+
+          # --- 取得: 期間と検索条件、API の失敗で止まること (偽の curl。ネットワークには出ない) ---
+          FAKE="$(mktemp -d)"
+          cat > "${FAKE}/curl" <<'EOF'
+          #!/usr/bin/env bash
+          out=""; url=""
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              -o) out="$2"; shift 2 ;;
+              -w|-H|--max-time) shift 2 ;;
+              -*) shift ;;
+              *) url="$1"; shift ;;
+            esac
+          done
+          echo "${url}" >> "${FAKE_LOG}"
+          printf '%s' "${FAKE_BODY:-[]}" > "${out}"
+          printf '%s' "${FAKE_CODE:-200}"
+          EOF
+          chmod +x "${FAKE}/curl"
+          sentry_fetch() {  # 追加の env を渡す。一時ディレクトリで動かす
+            (cd "$(mktemp -d)" && : > "${FAKE}/log" \
+              && run_script "${ROOT}/.github/scripts/sentry/fetch-issues.sh" PATH="${FAKE}:${PATH}" \
+                FAKE_LOG="${FAKE}/log" SENTRY_API_TOKEN=t SENTRY_ORG=o "$@" \
+              && echo "files: $(jq -c . prod-new.json)")
+          }
+          # 直近 24 時間を見る。4 本の検索を送り、本番と本番以外で分ける。回帰は期間で絞らない
+          res="$(sentry_fetch)"
+          start="$(sed -n 's/^window_start=//p' <<<"${res}")"
+          jq -en --arg s "${start}" '(now - ($s | fromdateiso8601) - 86400) | fabs < 60' > /dev/null
+          [ "$(wc -l < "${FAKE}/log")" -eq 4 ]
+          grep -q 'environment=production' "${FAKE}/log"
+          grep -q 'query=%21environment%3Aproduction' "${FAKE}/log"
+          grep -q 'firstSeen%3A%3E' "${FAKE}/log"
+          grep -qE 'query=is%3Aregressed&' "${FAKE}/log"
+          # 使わない集計を省く (count が消える collapse=stats は付けない)
+          grep -q 'groupStatsPeriod=&collapse=lifetime&collapse=filtered&collapse=unhandled' "${FAKE}/log"
+          if grep -q 'collapse=stats' "${FAKE}/log"; then echo "collapse=stats drops count" >&2; exit 1; fi
+          grep -qx 'truncated=false' <<<"${res}"
+          # 要るフィールドだけに絞り、id は文字列にする。上限 (100 件) に達したら truncated
+          res="$(sentry_fetch FAKE_BODY='[{"id": 9, "shortId": "R-9", "title": "t", "permalink": "x", "metadata": {"secret": 1}, "project": {"slug": "p"}}]')"
+          grep -qF 'files: [{"id":"9","shortId":"R-9","title":"t","level":null,"priority":null,"count":null,"project":"p"}]' <<<"${res}"
+          grep -qx 'truncated=true' <<<"$(sentry_fetch FAKE_BODY="$(jq -nc '[range(0; 100) | {id: .}]')")"
+          # API が 200 以外・配列でない応答なら失敗する (workflow は state を保存しない)
+          if sentry_fetch FAKE_CODE=500 > /dev/null 2>&1; then echo "HTTP 500 accepted" >&2; exit 1; fi
+          if sentry_fetch FAKE_BODY='{"detail": "x"}' > /dev/null 2>&1; then echo "non-array accepted" >&2; exit 1; fi
+
+          # --- 前回の state の読み込み: main の実行が置いた最新だけを使う (偽の gh) ---
+          GHF="$(mktemp -d)"
+          cat > "${GHF}/gh" <<'EOF'
+          #!/usr/bin/env bash
+          jq_expr='.'; path=''
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --jq) jq_expr="$2"; shift 2 ;;
+              api) shift ;;
+              *) path="$1"; shift ;;
+            esac
+          done
+          if [ -n "${FAKE_GH_FAIL:-}" ]; then exit 1; fi
+          case "${path}" in
+            *"/actions/artifacts?"*) jq -r "${jq_expr}" "${GH_DIR}/artifacts.json" ;;
+            *"/artifacts/"*"/zip") echo "${path}" > "${GH_DIR}/downloaded"; cat "${GH_DIR}/state.zip" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod +x "${GHF}/gh"
+          (cd "${GHF}" && echo '{"x": 1}' > notified.json && zip -q state.zip notified.json && rm notified.json)
+          load() {  # 追加の env を渡す。一時ディレクトリで動かす (run_script はスクリプトの引数を渡せないので直接呼ぶ)
+            (cd "$(mktemp -d)" && out="$(mktemp)" \
+              && env GITHUB_OUTPUT="${out}" PATH="${GHF}:${PATH}" GH_DIR="${GHF}" GH_REPO=o/r GH_TOKEN=t "$@" \
+                bash "${ROOT}/.github/scripts/state/fetch-latest-artifact.sh" sentry-digest-state prev \
+              && cat "${out}" && echo "content: $(cat prev/notified.json 2>/dev/null)")
+          }
+          # fork の PR (head_repository_id が違う)・main 以外・期限切れは除き、残りの最新を取る
+          jq -n '{artifacts: [
+            {id: 1, expired: false, created_at: "2026-10-04T00:00:00Z", workflow_run: {repository_id: 1, head_repository_id: 1, head_branch: "main"}},
+            {id: 2, expired: false, created_at: "2026-10-04T01:00:00Z", workflow_run: {repository_id: 1, head_repository_id: 1, head_branch: "main"}},
+            {id: 3, expired: false, created_at: "2026-10-04T02:00:00Z", workflow_run: {repository_id: 1, head_repository_id: 2, head_branch: "main"}},
+            {id: 4, expired: false, created_at: "2026-10-04T03:00:00Z", workflow_run: {repository_id: 1, head_repository_id: 1, head_branch: "feature/x"}},
+            {id: 5, expired: true,  created_at: "2026-10-04T04:00:00Z", workflow_run: {repository_id: 1, head_repository_id: 1, head_branch: "main"}}
+          ]}' > "${GHF}/artifacts.json"
+          res="$(load)"
+          grep -qx 'found=true' <<<"${res}"
+          grep -qx 'content: {"x": 1}' <<<"${res}"
+          grep -q '/artifacts/2/zip' "${GHF}/downloaded"
+          # 該当が無ければ found=false。一覧の取得に失敗したら止める (「無い」と同じに扱わない)
+          jq '.artifacts |= map(select(.id >= 3))' "${GHF}/artifacts.json" > "${GHF}/a.json" && mv "${GHF}/a.json" "${GHF}/artifacts.json"
+          grep -qx 'found=false' <<<"$(load)"
+          if load FAKE_GH_FAIL=1 > /dev/null 2>&1; then echo "list failure accepted" >&2; exit 1; fi
+
+          echo "Sentry digest scripts OK"
+
       - name: Verify payload rendering (no network)
         run: |
           set -euo pipefail
@@ -274,7 +479,7 @@ jobs:
           echo "payload rendering OK"
 
       - name: Shellcheck
-        run: shellcheck .github/actions/slack-notify/*.sh .github/scripts/supabase/*.sh .github/scripts/notify/*.sh
+        run: shellcheck .github/actions/slack-notify/*.sh .github/scripts/supabase/*.sh .github/scripts/notify/*.sh .github/scripts/sentry/*.sh .github/scripts/state/*.sh
 
       - name: Verify notify.sh and post-deploy-advisor.sh with fakes (no network)
         run: |

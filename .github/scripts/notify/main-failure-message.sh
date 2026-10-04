@@ -33,7 +33,8 @@ jq -r -n \
          "*失敗した job*: " + ($failed_jobs[0:5] | join(", "))
          + (if ($failed_jobs | length) > 5 then " ほか \(($failed_jobs | length) - 5) 件" else "" end)
        else empty end),
-      (if ($r.html_url // "") != "" then "*ログ*: <" + ($r.html_url | esc) + "|失敗した実行を開く>" else empty end)
+      (if ($r.html_url // "") != "" then "*ログ*: <" + ($r.html_url | esc) + "|失敗した実行を開く>" else empty end),
+      (if $r.event == "schedule" then "*定期実行*: 次に成功するまで、続く失敗は知らせない" else empty end)
     ] as $parts
   | "text=❌ main で「" + ($r.name // "unknown" | oneline) + "」が失敗しました (" + ($r.conclusion // "unknown" | oneline) + ")",
     "body=" + ($parts | join(" · "))
