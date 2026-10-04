@@ -182,7 +182,8 @@ jobs:
           for c in failure timed_out startup_failure cancelled; do
             grep -qx 'skip=true' <<<"$(previous schedule FAKE_RUNS="$(runs success "${c}")")"
           done
-          grep -q 'workflows/7/runs?branch=main&status=completed' "${GHP}/log"
+          # 定期実行だけを見る (失敗しても知らせない手での dispatch で、抑えないように)
+          grep -q 'workflows/7/runs?branch=main&event=schedule&status=completed' "${GHP}/log"
           # 成功系・該当なし・調べられない時は送る (黙るより重複の方がよい)
           grep -qx 'skip=false' <<<"$(previous schedule FAKE_RUNS="$(runs failure success)")"
           grep -qx 'skip=false' <<<"$(previous schedule FAKE_RUNS="$(runs failure skipped)")"

@@ -18,8 +18,9 @@ if [[ "$(jq -r '.event // ""' "${RUN_FILE}")" == "schedule" ]]; then
   created="$(jq -r '.created_at // ""' "${RUN_FILE}")"
   previous=unknown
   if [[ "${workflow_id}" =~ ^[0-9]+$ ]]; then
-    # 今回より前に作られたものだけを見る (今回自身と、今回より新しい実行を除く)
-    previous="$(gh api "/repos/${GH_REPO}/actions/workflows/${workflow_id}/runs?branch=main&status=completed&per_page=5" 2>/dev/null \
+    # 定期実行だけを見る (手での dispatch は notify-main-failures の対象外なので、その失敗で抑えると黙ってしまう)。
+    # 今回より前に作られたものだけを見る (今回自身と、今回より新しい実行を除く)。5 件で足りなければ "none" になり、送る側に倒れる
+    previous="$(gh api "/repos/${GH_REPO}/actions/workflows/${workflow_id}/runs?branch=main&event=schedule&status=completed&per_page=5" 2>/dev/null \
       | jq -r --arg created "${created}" '[.workflow_runs[] | select(.created_at < $created)][0].conclusion // "none"')" \
       || previous=unknown
   fi
