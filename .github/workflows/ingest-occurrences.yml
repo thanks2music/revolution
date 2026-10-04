@@ -10,6 +10,9 @@
 #   新規 secret の追加は不要
 # - 人手キューは Job Summary + artifact (ingest-queue.json) で BOSS が確認する。
 #   捌き方: one-more-time/docs/operations/occurrence-ingest-runbook.md (private)
+# - Slack: 取り込みが失敗した時と、対応が要る人手キューがある時に、本番系へメンション付きで 1 通送る。
+#   dry-run は送らない。main 以外の ref からの dispatch はテストモード (開発系・[TEST]・メンションなし)。
+#   振り分けの詳細は .github/scripts/notify/ingest-result-message.sh
 name: Ingest Occurrences (staging)
 
 on:
@@ -39,6 +42,10 @@ jobs:
     env:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STG_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
+      # push は実書き込み (この式は 'false' になる)、workflow_dispatch は dry_run 入力
+      # (boolean の入力。env では 'true' / 'false' の文字列になる) に従う。
+      # 取り込みと Slack 通知の両方が読む
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
     steps:
       - name: Checkout repository
@@ -79,11 +86,14 @@ jobs:
           echo "INGEST_DATABASE_URL=$INGEST_DATABASE_URL" >> "$GITHUB_ENV"
 
       - name: Ingest occurrences
+        id: ingest
         working-directory: apps/frontend
-        # push トリガーは実書き込み、workflow_dispatch は dry_run 入力に従う
+        # 通常は 20 秒程度。止まった時に、後の通知 step の時間を job の上限 (10 分) に残す
+        # (タイムアウトした step の outcome は failure)
+        timeout-minutes: 5
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "${DRY_RUN}" = "true" ]; then
             pnpm ingest:occurrences --dry-run
           else
             pnpm ingest:occurrences
@@ -97,3 +107,26 @@ jobs:
           path: apps/frontend/ingest-queue.json
           if-no-files-found: ignore
           retention-days: 30
+
+      - name: Build the Slack message
+        id: msg
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          INGEST_OUTCOME: ${{ steps.ingest.outcome }}
+          QUEUE_ACTIONABLE: ${{ steps.ingest.outputs.queue_actionable }}
+          QUEUE_WARNINGS: ${{ steps.ingest.outputs.queue_warnings }}
+          QUEUE_BREAKDOWN: ${{ steps.ingest.outputs.queue_breakdown }}
+          TARGET: staging
+        run: bash .github/scripts/notify/ingest-result-message.sh
+
+      - name: Notify Slack
+        if: always() && steps.msg.outputs.notify == 'true'
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
+          mention: ${{ vars.SLACK_MENTION_USER_ID }}
+          text: ${{ steps.msg.outputs.text }}
+          body: ${{ steps.msg.outputs.body }}

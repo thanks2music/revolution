@@ -81,9 +81,9 @@ export type QueueReason =
   | 'unknown_title' // G3
   | 'unknown_venue' // G4
   | 'slug_conflict_unresolvable' // G7 の接尾辞まで衝突
-  | 'unknown_supplementary_category' // 非ブロッキング (event_categories に張れないだけ)
-  | 'event_name_mismatch' // 同一 event_slug で別 name (非ブロッキング、先勝ち)
-  | 'primary_category_mismatch'; // 同一 event_slug で別 primary category (非ブロッキング、先勝ち)
+  | 'unknown_supplementary_category' // event_categories に張れないだけ
+  | 'event_name_mismatch' // 同一 event_slug で別 name (先勝ち)
+  | 'primary_category_mismatch'; // 同一 event_slug で別 primary category (先勝ち)
 
 export interface QueueItem {
   articleSlug: string;
@@ -91,6 +91,70 @@ export interface QueueItem {
   reason: QueueReason;
   /** 人が読んで判断するための対象値 (venue_label / title_slug 等) */
   detail: string;
+}
+
+/**
+ * reason ごとの扱い。reason を足した時に決め忘れるとコンパイルが通らない
+ * - blocking: 対応が要るか。false (非ブロッキング) は取り込みを止めず、気になる時だけ対応する
+ * - perTarget: 同じ detail を 1 件と数えるか。マスタへの追記 1 回で、それに触れた全記事が解消するもの。
+ *   それ以外は記事ごとに直すため、記事・event・detail の組ごとに 1 件と数える
+ *   (detail が定数の reason もあるので、detail だけでは数えない)
+ */
+const QUEUE_REASON_POLICY = {
+  missing_event_identity: { blocking: true, perTarget: false },
+  missing_title_slugs: { blocking: true, perTarget: false },
+  unknown_primary_category: { blocking: true, perTarget: true },
+  venue_label_missing: { blocking: true, perTarget: false },
+  venue_label_equals_event_name: { blocking: true, perTarget: false },
+  venue_label_concatenated: { blocking: true, perTarget: false },
+  unknown_title: { blocking: true, perTarget: true },
+  unknown_venue: { blocking: true, perTarget: true },
+  slug_conflict_unresolvable: { blocking: true, perTarget: false },
+  unknown_supplementary_category: { blocking: false, perTarget: true },
+  event_name_mismatch: { blocking: false, perTarget: false },
+  primary_category_mismatch: { blocking: false, perTarget: false },
+} as const satisfies Record<QueueReason, { blocking: boolean; perTarget: boolean }>;
+
+export interface QueueSummary {
+  /** 対応が要る対象の数 */
+  actionable: number;
+  /** 非ブロッキングの対象の数 */
+  warnings: number;
+  /** 対応が要る対象の reason ごとの数 (reason の昇順) */
+  actionableByReason: Array<{ reason: QueueReason; count: number }>;
+}
+
+/**
+ * 人手キューを「直す対象」の数にまとめる。Job Summary・ログ・Slack 通知
+ * (GitHub Actions の step output 経由) が同じ数字を使う
+ */
+export function summarizeQueue(queue: readonly QueueItem[]): QueueSummary {
+  const targets = new Map<string, QueueReason>();
+  for (const item of queue) {
+    const key = QUEUE_REASON_POLICY[item.reason].perTarget
+      ? [item.reason, item.detail]
+      : [item.reason, item.articleSlug, item.eventSlug, item.detail];
+    targets.set(JSON.stringify(key), item.reason);
+  }
+
+  const byReason = new Map<QueueReason, number>();
+  let warnings = 0;
+  for (const reason of targets.values()) {
+    if (QUEUE_REASON_POLICY[reason].blocking) {
+      byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
+    } else {
+      warnings += 1;
+    }
+  }
+  const actionableByReason = [...byReason]
+    .map(([reason, count]) => ({ reason, count }))
+    // localeCompare は実行環境のロケールに依存するため、コード単位で比べる
+    .sort((a, b) => (a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0));
+  return {
+    actionable: targets.size - warnings,
+    warnings,
+    actionableByReason,
+  };
 }
 
 export interface PlannedEvent {
