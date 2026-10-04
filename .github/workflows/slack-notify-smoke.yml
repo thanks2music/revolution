@@ -427,6 +427,10 @@ jobs:
           grep -qx 'content: {"x": 1}' <<<"${res}"
           grep -q '/artifacts/2/zip' "${GHF}/downloaded"
           # 該当が無ければ found=false。一覧の取得に失敗したら止める (「無い」と同じに扱わない)
+          # zip が壊れている時だけは「無い」として扱う (止めない)
+          cp "${GHF}/state.zip" "${GHF}/good.zip" && echo 'not a zip' > "${GHF}/state.zip"
+          grep -qx 'found=false' <<<"$(load)"
+          mv "${GHF}/good.zip" "${GHF}/state.zip"
           jq '.artifacts |= map(select(.id >= 3))' "${GHF}/artifacts.json" > "${GHF}/a.json" && mv "${GHF}/a.json" "${GHF}/artifacts.json"
           grep -qx 'found=false' <<<"$(load)"
           if load FAKE_GH_FAIL=1 > /dev/null 2>&1; then echo "list failure accepted" >&2; exit 1; fi

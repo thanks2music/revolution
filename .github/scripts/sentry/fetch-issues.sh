@@ -46,8 +46,11 @@ fetch() {  # $1 = 書き出すファイル、$2 = 検索条件、$3 = 追加の�
     echo "::error title=Sentry API failed::HTTP ${code} while fetching $1"
     exit 1
   fi
-  # 次のページは読まない。上限に達したら文面で知らせる
-  if [[ "$(jq length raw.json)" -ge "${LIMIT}" ]]; then truncated=true; fi
+  # 次のページは読まない。上限に達したら文面とログで知らせる (新しい順なので、漏れるのは古い側)
+  if [[ "$(jq length raw.json)" -ge "${LIMIT}" ]]; then
+    truncated=true
+    echo "::warning title=Sentry digest truncated::$1 reached the limit of ${LIMIT}. Older issues were not checked."
+  fi
   jq '[.[] | {id: (.id | tostring), shortId, title, level, priority, count, project: .project.slug}]' raw.json > "$1"
   rm -f raw.json
 }

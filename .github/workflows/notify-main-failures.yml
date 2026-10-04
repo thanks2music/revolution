@@ -75,6 +75,7 @@ jobs:
             gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}" > run.json
           fi
           # 定期実行は、1 つ前の実行も失敗していたら送らない (復旧するまで 30 分ごとに鳴らさない)。
+          # 失敗系 (failure / timed_out / startup_failure / cancelled) 以外 (success・skipped など) は成功として扱う。
           # 前の実行を調べられなかった時は送る (黙るより重複の方がよい)。dispatch (確認用) は常に送る
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" && "$(jq -r '.event' run.json)" == "schedule" ]]; then
             PREVIOUS=$(gh api "/repos/${GH_REPO}/actions/workflows/$(jq -r '.workflow_id' run.json)/runs?branch=main&status=completed&per_page=5" \
