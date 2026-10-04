@@ -42,7 +42,8 @@ jobs:
     env:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STG_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
-      # push は実書き込み (この式は 'false' になる)、workflow_dispatch は dry_run 入力に従う。
+      # push は実書き込み (この式は 'false' になる)、workflow_dispatch は dry_run 入力
+      # (boolean の入力。env では 'true' / 'false' の文字列になる) に従う。
       # 取り込みと Slack 通知の両方が読む
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 

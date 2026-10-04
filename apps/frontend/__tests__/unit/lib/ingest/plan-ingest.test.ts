@@ -591,6 +591,32 @@ describe('summarizeQueue', () => {
     ]);
   });
 
+  it('記事ごとに直すものも、同じ記事・event・detail の重複は 1 件と数える', () => {
+    const summary = summarizeQueue([
+      item('venue_label_missing', 'venue_label=null', 'a1'),
+      item('venue_label_missing', 'venue_label=null', 'a1'),
+    ]);
+    expect(summary.actionable).toBe(1);
+  });
+
+  it('対応が要るものと非ブロッキングが混ざっても、それぞれ別に数える', () => {
+    const summary = summarizeQueue([
+      item('unknown_venue', 'OH MY CAFE', 'a1'),
+      item('unknown_venue', 'OH MY CAFE', 'a2'),
+      item('missing_title_slugs', 'title_slugs=[]', 'a3'),
+      item('event_name_mismatch', '"A" vs "B" (先勝ち)', 'a1'),
+      item('unknown_supplementary_category', 'pop-up', 'a2'),
+    ]);
+    expect(summary).toEqual({
+      actionable: 2,
+      warnings: 2,
+      actionableByReason: [
+        { reason: 'missing_title_slugs', count: 1 },
+        { reason: 'unknown_venue', count: 1 },
+      ],
+    });
+  });
+
   it('非ブロッキングの reason は対応が要る数に入れず、warnings に数える', () => {
     const summary = summarizeQueue([
       item('event_name_mismatch', '"A" vs "B" (先勝ち)'),

@@ -27,6 +27,9 @@ fi
 runbook='運用手順書 occurrence-ingest-runbook'
 actionable="${QUEUE_ACTIONABLE:-0}"
 warnings="${QUEUE_WARNINGS:-0}"
+# 数字でない値で (( )) が落ちると、この step が失敗して job も失敗扱いになり、通知も送られない
+[[ "${actionable}" =~ ^[0-9]+$ ]] || actionable=0
+[[ "${warnings}" =~ ^[0-9]+$ ]] || warnings=0
 queue_line=''
 if (( actionable > 0 )); then
   queue_line="*人手キュー*: 対応が要る ${actionable} 件 (${QUEUE_BREAKDOWN:-})"

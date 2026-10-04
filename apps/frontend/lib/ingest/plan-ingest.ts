@@ -97,7 +97,8 @@ export interface QueueItem {
  * reason ごとの扱い。reason を足した時に決め忘れるとコンパイルが通らない
  * - blocking: 対応が要るか。false (非ブロッキング) は取り込みを止めず、気になる時だけ対応する
  * - perTarget: 同じ detail を 1 件と数えるか。マスタへの追記 1 回で、それに触れた全記事が解消するもの。
- *   それ以外は記事ごとに直すため項目ごとに数える (detail が定数の reason もある)
+ *   それ以外は記事ごとに直すため、記事・event・detail の組ごとに 1 件と数える
+ *   (detail が定数の reason もあるので、detail だけでは数えない)
  */
 const QUEUE_REASON_POLICY = {
   missing_event_identity: { blocking: true, perTarget: false },
@@ -147,7 +148,8 @@ export function summarizeQueue(queue: readonly QueueItem[]): QueueSummary {
   }
   const actionableByReason = [...byReason]
     .map(([reason, count]) => ({ reason, count }))
-    .sort((a, b) => a.reason.localeCompare(b.reason));
+    // localeCompare は実行環境のロケールに依存するため、コード単位で比べる
+    .sort((a, b) => (a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0));
   return {
     actionable: targets.size - warnings,
     warnings,

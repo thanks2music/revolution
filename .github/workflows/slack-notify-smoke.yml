@@ -213,6 +213,8 @@ jobs:
           grep -q '開始できませんでした' <<<"$(ingest_msg JOB_STATUS=failure INGEST_OUTCOME=)"
           grep -q '開始する前に中断されました' <<<"$(ingest_msg JOB_STATUS=cancelled INGEST_OUTCOME=skipped)"
           grep -q '取り込みが中断されました' <<<"$(ingest_msg JOB_STATUS=cancelled INGEST_OUTCOME=cancelled)"
+          # 件数が数字でなくても step を落とさない (0 として扱う)
+          grep -qx 'notify=false' <<<"$(ingest_msg QUEUE_ACTIONABLE=1a QUEUE_WARNINGS=x)"
 
           echo "message scripts OK"
 
