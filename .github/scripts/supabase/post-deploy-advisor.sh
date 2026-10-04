@@ -12,12 +12,16 @@
 #
 # 出力:
 #   $GITHUB_OUTPUT  new_count=<新しく増えた lint 数> / has_new=true|false
+#                   比較を終えた時 (baseline が 1 つも無い時を含む) だけ書く。advisor や baseline の取得に
+#                   失敗した時・step のタイムアウトで止まった時は書かない (has_new が空になり、呼び出し側は
+#                   baseline を更新しない。更新すると、比べられなかった新規の lint が二度と知らされない)
 #   current-state.json   今回の状態 (呼び出し側がそのまま upload し、次回の baseline にする)
 #   advisor-blocks.json  新しい lint の Block Kit section 配列 (has_new=true の時だけ)
 set -uo pipefail
 
 NEW_POST_COUNT=0
-trap 'if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+COMPARED=false
+trap 'if [[ "${COMPARED}" == true && -n "${GITHUB_OUTPUT:-}" ]]; then
   printf "new_count=%s\nhas_new=%s\n" "${NEW_POST_COUNT}" "$([[ "${NEW_POST_COUNT}" != 0 ]] && echo true || echo false)" >> "${GITHUB_OUTPUT}"
 fi' EXIT
 
@@ -57,10 +61,14 @@ if [[ "${ENV_NAME}" == "production" ]]; then
   filter="${filter} and .workflow_run.head_branch == \"main\""
 fi
 # per_page は上限の 100。少ないと、他ブランチの実行が置いた artifact に押し出されて条件に合うものが見つからない
-ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=100" \
-  --jq "[.artifacts[] | select(${filter})] | sort_by(.created_at) | reverse | .[0].id // empty" 2>/dev/null || true)
+if ! ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=100" \
+  --jq "[.artifacts[] | select(${filter})] | sort_by(.created_at) | reverse | .[0].id // empty" 2>/dev/null); then
+  echo "::warning title=Advisor baseline lookup failed::Could not list advisor-state-${ENV_NAME} artifacts. Skipping the diff and keeping the current baseline."
+  exit 0
+fi
 if [[ -z "${ARTIFACT_ID}" ]]; then
   echo "::notice title=Advisor baseline unavailable::No unexpired advisor-state-${ENV_NAME} artifact. Skipping the diff (this run's state becomes the next baseline)."
+  COMPARED=true
   exit 0
 fi
 
@@ -69,7 +77,7 @@ if ! gh api "/repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > baseline.
   || ! unzip -q -o baseline.zip -d baseline/ \
   || ! jq -e '.lints_by_key | type == "object"' baseline/current-state.json >/dev/null 2>&1; then
   # 形式が不正な baseline と比べると、既存の lint が全件「新規」扱いになりメンションが飛ぶ
-  echo "::warning title=Advisor baseline download failed::Could not use artifact ${ARTIFACT_ID} on ${ENV_NAME}. Skipping the diff."
+  echo "::warning title=Advisor baseline download failed::Could not use artifact ${ARTIFACT_ID} on ${ENV_NAME}. Skipping the diff and keeping the current baseline."
   exit 0
 fi
 
@@ -78,6 +86,7 @@ jq --slurpfile b baseline/current-state.json \
   '[.lints_by_key | to_entries[] | select(.key as $k | $b[0].lints_by_key | has($k) | not) | .value]' \
   current-state.json > new-post-lints.json
 count=$(jq length new-post-lints.json)
+COMPARED=true
 echo "New lints introduced by this deploy on ${ENV_NAME}: ${count}"
 
 if [[ "${count}" == "0" ]]; then

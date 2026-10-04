@@ -154,8 +154,10 @@ jobs:
         #    差分通知が一度も発火していなかった (2026-09-28 の run log で確認)。
         #    deploy-supabase-migrations.yml の post-deploy チェックと同じく gh api で
         #    名前から最新の artifact を引く (期限切れは除外)。permissions: actions: read が必要。
-        # 初回 (artifact が 1 つも無い) / 取得失敗時は previous/ を空のまま次へ進む
+        # 初回 (artifact が 1 つも無い) は previous/ を空のまま次へ進む
         # (Diff step が「baseline 不在」として通知を skip し、今回の state が次の baseline になる)。
+        # 一覧や zip の取得に失敗した時も previous/ は空のままだが、BASELINE_FAILED=true にして
+        # 今回の state を保存しない (保存すると、比べられなかった新規の lint が二度と知らされない)。
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -170,8 +172,12 @@ jobs:
             FILTER="${FILTER} and .workflow_run.head_branch == \"main\""
           fi
           # per_page は上限の 100。少ないと、他ブランチの実行が置いた artifact に押し出されて見つからない
-          ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=100" \
-            --jq "[.artifacts[] | select(${FILTER})] | sort_by(.created_at) | reverse | .[0].id // empty" 2>/dev/null || true)
+          if ! ARTIFACT_ID=$(gh api "/repos/${GH_REPO}/actions/artifacts?name=advisor-state-${ENV_NAME}&per_page=100" \
+            --jq "[.artifacts[] | select(${FILTER})] | sort_by(.created_at) | reverse | .[0].id // empty" 2>/dev/null); then
+            echo "::warning::Could not list advisor-state-${ENV_NAME} artifacts. Skipping the diff and keeping the current baseline."
+            echo "BASELINE_FAILED=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
           if [ -z "${ARTIFACT_ID}" ]; then
             echo "::notice::No unexpired advisor-state-${ENV_NAME} artifact found."
             exit 0
@@ -182,8 +188,9 @@ jobs:
             echo "Baseline: artifact ${ARTIFACT_ID}"
           else
             # 形式が不正な baseline と比べると、既存の lint が全件「新規」扱いになるため使わない
-            echo "::warning::Could not use advisor-state-${ENV_NAME} (artifact ${ARTIFACT_ID}). Treating the baseline as missing."
+            echo "::warning::Could not use advisor-state-${ENV_NAME} (artifact ${ARTIFACT_ID}). Skipping the diff and keeping the current baseline."
             rm -rf previous && mkdir -p previous
+            echo "BASELINE_FAILED=true" >> "$GITHUB_ENV"
           fi
 
       - name: Diff current vs previous state
@@ -328,8 +335,10 @@ jobs:
         # ⚠️ 新規 lint があったのに通知が届かなかった時 (失敗・token 未設定) は保存しない。
         #    保存すると次回はその lint が baseline に入り、二度と通知されなくなるため。
         #    main 以外の ref からの dispatch (テストモード) でも保存しない (テストで baseline を動かさない)
+        #    baseline の取得に失敗した時も保存しない (Download step の BASELINE_FAILED)
         if: >-
           env.SKIP != 'true'
+          && env.BASELINE_FAILED != 'true'
           && !(github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main')
           && (env.ACTIONABLE != 'true' || steps.notify.outputs.ok == 'true')
         # 次回実行時に previous として download するため保存。overwrite=true で同名 artifact を更新。

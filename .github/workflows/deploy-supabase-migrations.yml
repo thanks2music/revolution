@@ -232,6 +232,8 @@ jobs:
         # 副作用: α の週次 diff の baseline が「先週月曜」ではなく「最新 deploy 直後」になる
         # (実運用上は最新 deploy 後の状態を反映するほうが有意義、意図的な変更)。
         # baseline 未確立時 (current-state.json 不在 = advisor fetch が fail した場合等) は skip。
+        # baseline の取得に失敗した時・advisor の step がタイムアウトした時は has_new が空になり、更新しない
+        # (比べられなかった新規の lint を baseline に吸収しないため)。
         # ⚠️ 新規 lint があったのに通知が届かなかった時 (失敗・token 未設定) は更新しない。
         #    更新すると次回はその lint が baseline に入り、二度と通知されなくなるため。
         #    main 以外の ref からの dispatch (テストモード = 開発系に送る) でも更新しない。
@@ -417,10 +419,13 @@ jobs:
         continue-on-error: true
         # staging 側と同ロジック (production 版、artifact name = advisor-state-production)。
         # 詳細コメントは staging job の同名 step を参照。新規 lint があったのに結果の通知が
-        # 届かなかった時は更新しない (production は auto-test-mode: 'false' なのでテストモードは無い)
+        # 届かなかった時は更新しない (production は auto-test-mode: 'false' なのでテストモードは無い)。
+        # 結果の通知は has_new に関係なく送るので、ok だけでなく has_new == 'true' も条件にする
+        # (has_new が空 = baseline と比べられなかった時に更新しないため)
         if: >-
           always() && hashFiles('current-state.json') != ''
-          && (steps.advisor.outputs.has_new == 'false' || steps.result_notify.outputs.ok == 'true')
+          && (steps.advisor.outputs.has_new == 'false'
+              || (steps.advisor.outputs.has_new == 'true' && steps.result_notify.outputs.ok == 'true'))
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: advisor-state-production
