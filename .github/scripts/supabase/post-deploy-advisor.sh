@@ -86,6 +86,7 @@ jq --slurpfile b baseline/current-state.json \
   '[.lints_by_key | to_entries[] | select(.key as $k | $b[0].lints_by_key | has($k) | not) | .value]' \
   current-state.json > new-post-lints.json
 count=$(jq length new-post-lints.json)
+NEW_POST_COUNT="${count}"
 COMPARED=true
 echo "New lints introduced by this deploy on ${ENV_NAME}: ${count}"
 
@@ -106,5 +107,4 @@ if [[ "${count}" -gt 5 && -f advisor-blocks.json ]]; then
 fi
 
 echo "::warning title=Post-deploy advisor regression::Deploy introduced ${count} new lint(s) on ${ENV_NAME}."
-NEW_POST_COUNT="${count}"
 exit 0

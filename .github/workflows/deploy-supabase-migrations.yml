@@ -177,28 +177,21 @@ jobs:
           echo "::endgroup::"
 
       - name: Push migrations to staging
-        id: push
         working-directory: apps/frontend
         timeout-minutes: 6
         # 事前ビルド済の $SESSION_POOLER_URL を env から参照 (重複削減、claude[bot]
-        # PR #250 review #4 (R2) 採用)。
-        # 適用対象が無い時、CLI は "Remote database is up to date." を出す (CLI の版によって
-        # 文言が変わり得るため部分一致で見る)。通知の文面を「変更なし」にするために使う
+        # PR #250 review #4 (R2) 採用)。staging は失敗だけを通知するので、
+        # production のような「適用対象なし」の判定 (applied) は持たない
         run: |
           set -euo pipefail
-          supabase db push --db-url "$SESSION_POOLER_URL" 2>&1 | tee push.log
-          if grep -q 'database is up to date' push.log; then
-            echo "applied=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "applied=true" >> "$GITHUB_OUTPUT"
-          fi
+          supabase db push --db-url "$SESSION_POOLER_URL"
 
       - name: Post-deploy advisor check (non-blocking)
         id: advisor
         # deploy 直後に Supabase Advisor (security) を取得し、直近の baseline と比べて新しく
         # 増えた lint を数える。staging / production 共通のスクリプト。どの失敗も exit 0
         # (advisor の失敗で deploy の成否を変えない)。Slack が未設定でも必ず走り、
-        # 下の Rename / Refresh で次回の baseline を更新する。
+        # 下の Refresh で次回の baseline を更新する。
         # push step が失敗しても実行する (deploy 失敗起因の lint も検知したい)
         if: always()
         timeout-minutes: 2
@@ -386,7 +379,7 @@ jobs:
         # deploy 直後に Supabase Advisor (security) を取得し、直近の baseline と比べて新しく
         # 増えた lint を数える。staging / production 共通のスクリプト。どの失敗も exit 0
         # (advisor の失敗で deploy の成否を変えない)。Slack が未設定でも必ず走り、
-        # 下の Rename / Refresh で次回の baseline を更新する。
+        # 下の Refresh で次回の baseline を更新する。
         # push step が失敗しても実行する (deploy 失敗起因の lint も検知したい)
         if: always()
         timeout-minutes: 2
