@@ -88,7 +88,8 @@ SDK v10 の `flushIfServerless` は `K_SERVICE` で Cloud Run を検出し App R
 | 経路 | カバーする計装 |
 |---|---|
 | cron (Cloud Scheduler) | route の catch (`tags: entrypoint=cron`) |
-| SSE (管理 UI) / CLI | service の catch (`tags: pipeline=mdx`) |
+| SSE (管理 UI) | service の catch (`tags: pipeline=mdx`) |
+| CLI (`pnpm debug:mdx`) | ⚠️ **実質なし**。tsx で動かすと `@sentry/nextjs` の `captureException` などが `undefined` になり、service の catch で TypeError が起きて本当のエラーが隠れる (2026-10-03 確認、未修正)。Jest は手動 mock に解決されるので、テストでは検出できない |
 
 **片方にだけ入れると、もう片方が観測ゼロになる。** 計装を足すときは必ず両方を確認すること。
 
@@ -133,6 +134,41 @@ Developer plan の priority 判定は **log level のみ**で決まり、Alert R
 | `captureMessage(..., 'warning')` | `warning` | Medium | ❌ 飛ばない |
 
 **3 分類がそのまま通知要否になる**ので、追加設定なしで「対応すべきものだけが飛ぶ」。
+
+### Slack へのまとめ通知 (`sentry-digest.yml`)
+
+メールとは別に、GitHub Actions が 30 分ごと (毎時 7 分・37 分) に Sentry の API を読み、
+新しく出た issue と回帰した issue を Slack へまとめて送る。線引きはメールと同じく priority で決める。
+
+| 対象 | 送り先 | メンション |
+|---|---|---|
+| 本番 (`environment=production`) の priority High | 本番系 | あり |
+| 本番の Medium / Low、本番以外の環境 | 開発系 | なし |
+
+- token は **Internal Integration** (`Revolution Slack Digest`、権限は Issue & Event: Read だけ) の
+  `SENTRY_API_TOKEN`。source map 用の `SENTRY_AUTH_TOKEN` (organization token) は権限を変えられず、issue を読めない
+- 新規の判定は検索条件の `firstSeen:` で行う。**レスポンスの `firstSeen` は「問い合わせた期間の中で最初に起きた日時」**で、
+  本当の初回とは限らない (2026-10-04 実測)。`environment` を付けた検索の `firstSeen:` は環境ごとの初回
+  (`GroupEnvironment.first_seen`) なので、本番の新規は「本番で初めて起きた issue」になる
+- issue のタイトルは Slack の blocks にだけ載せ、**Actions のログには出さない** (エラー文に何が入るか分からないため)。
+  issue へのリンクは API の応答の URL ではなく、org の URL と数字の issue id から組み立てる
+- 毎回、直近 24 時間に初めて起きた issue と、いま回帰中の issue を見直す。送ったかどうかは artifact
+  `sentry-digest-state` の「知らせ済み」(キーは `<new|reg>:<prod|dev>:<issue id>`) で判断する
+  - 「知らせ済み」は送り先ごとに持つ (開発系で知らせた issue が後で本番の High になったら、本番系へ届く)
+  - 届いた送り先の分だけ記録するので、届かなかった分は次回に送り直す
+  - 回帰は、知らせた issue が回帰中のあいだ知らせない。回帰が終わったら記録を消すので、再び回帰したらまた知らせる
+  - priority が High から下がった issue は、24 時間以内なら開発系にも 1 度届く (記録が本番系の分しか無いため)
+  - state が無い時 (初回・2 日を超える停止) は、前に届いたものと重複することがある旨を文面に書く
+  - **24 時間を超えて止まると、それより前に起きた issue は見直さない** (本番の High はメールでも届く)。
+    追いつく時は `workflow_dispatch` で `dry_run` を外し、`window_hours` (最大 720) を広げる
+- 1 回の取得は 100 件まで。上限に達した時は、一部しか確かめていないことを文面に書く
+- digest 自体の失敗 (token の失効・API の障害など) は `notify-main-failures.yml` が知らせる。定期実行なので、
+  成功から失敗に変わった最初の 1 回だけ本番系へ送る。**Sentry の token の失効 (取得が 401 / 403) もこれで気づく**
+  (以降は復旧まで知らせないので、最初の 1 通を見落とさないこと)
+- ⚠️ public repo の schedule は、60 日間リポジトリに動き (commit など) が無いと GitHub に止められる。止まっても
+  失敗にはならないので、どこにも知らせが来ない
+- 確認は `workflow_dispatch` (`dry_run` の既定は true = テストモードで開発系へ 1 通にまとめて送り、state を保存しない)。
+  直近 24 時間に issue が無い時は `window_hours` を広げる
 
 ### `beforeSend` による選別
 
