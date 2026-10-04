@@ -59,6 +59,7 @@
 ## composite action の使い方
 
 ```yaml
+# uses: の SHA は例。実際の値は既存の workflow (例: notify-main-failures.yml) に合わせる
 - name: Checkout notification action
   uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
   with:
@@ -82,7 +83,7 @@
 - **`with:` の値は、入力として public な Actions のログに出る**。外部由来の中身 (Sentry の issue のタイトルなど) は `blocks-file` で渡し、`text` には件数などだけを書く
 - **送信に失敗しても job を落とさない**。`ok:false` の時は warning `Slack notification failed` を残し、output `ok` が `false` になる。token か channel が空なら notice を出して送らない (`skipped`)
 - **リトライしない** (二重投稿になるため)。blocks が `invalid_blocks` / `msg_too_long` で拒否された時だけ、要約 (`text`) だけで 1 回送り直す
-- **テストモード**: `test: 'true'`、または main 以外の ref からの `workflow_dispatch` で、`test-channel` へ `[TEST]` 付き・メンションなしで送る。どの ref から動かしても本物になる通知 (本番デプロイ・本番 migration) は `auto-test-mode: 'false'` を付ける
+- **テストモード**: `test: 'true'`、または main 以外の ref からの `workflow_dispatch` で、`test-channel` へ `[TEST]` 付き・メンションなしで送る (例: `[TEST] ❌ main で「CI」が失敗しました (failure)`)。どの ref から動かしても本物になる通知 (本番デプロイ・本番 migration) は `auto-test-mode: 'false'` を付ける
 
 ## 通知を足す・変える時の決まり
 
