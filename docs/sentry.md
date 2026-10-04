@@ -159,11 +159,13 @@ Developer plan の priority 判定は **log level のみ**で決まり、Alert R
   - 回帰は、知らせた issue が回帰中のあいだ知らせない。回帰が終わったら記録を消すので、再び回帰したらまた知らせる
   - priority が High から下がった issue は、24 時間以内なら開発系にも 1 度届く (記録が本番系の分しか無いため)
   - state が無い時 (初回・2 日を超える停止) は、前に届いたものと重複することがある旨を文面に書く
-  - **24 時間を超えて止まると、それより前に起きた issue は見直さない** (本番の High はメールでも届く)
+  - **24 時間を超えて止まると、それより前に起きた issue は見直さない** (本番の High はメールでも届く)。
+    追いつく時は `workflow_dispatch` で `dry_run` を外し、`window_hours` (最大 720) を広げる
 - 1 回の取得は 100 件まで。上限に達した時は、一部しか確かめていないことを文面に書く
 - digest 自体の失敗 (token の失効・API の障害など) は `notify-main-failures.yml` が知らせる。定期実行なので、
   成功から失敗に変わった最初の 1 回だけ本番系へ送る
-- 確認は `workflow_dispatch` (`dry_run` の既定は true = テストモードで開発系へ 1 通にまとめて送り、state を保存しない)
+- 確認は `workflow_dispatch` (`dry_run` の既定は true = テストモードで開発系へ 1 通にまとめて送り、state を保存しない)。
+  直近 24 時間に issue が無い時は `window_hours` を広げる
 
 ### `beforeSend` による選別
 

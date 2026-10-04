@@ -12,7 +12,7 @@ name: Sentry Digest
 #   organization token (source map のアップロード用) で、issue を読めない
 # - 毎回、直近 24 時間に初めて起きた issue と、いま回帰中の issue を見直す。届いたかどうかは artifact
 #   sentry-digest-state の「知らせ済み」で判断する (届いた送り先の分だけ記録するので、届かなかった分は次回に送り直す)。
-#   24 時間を超えて止まると、それより前に起きた issue は見直さない
+#   24 時間を超えて止まると、それより前に起きた issue は見直さない (dispatch の window_hours を広げれば追いつける)
 # - この workflow 自体の失敗は notify-main-failures.yml が知らせる (成功から失敗に変わった最初の 1 回だけ)
 # - 確認: workflow_dispatch の dry_run (既定 true) と、main 以外の ref からの dispatch はテストモード
 #   (開発系へ [TEST] 付き・メンションなしで 1 通にまとめ、state を保存しない)
@@ -28,6 +28,10 @@ on:
         description: 'テストモードで送り、state を保存しない'
         type: boolean
         default: true
+      window_hours:
+        description: '見直す時間 (1〜720)。確認の時や、24 時間を超えて止まった後に追いつく時に広げる'
+        type: number
+        default: 24
 
 permissions:
   contents: read
@@ -64,6 +68,8 @@ jobs:
         id: fetch
         env:
           SENTRY_API_TOKEN: ${{ secrets.SENTRY_API_TOKEN }}
+          # schedule では入力が無いので既定の 24
+          WINDOW_HOURS: ${{ inputs.window_hours || 24 }}
         run: bash .github/scripts/sentry/fetch-issues.sh
 
       - name: Build the Slack messages

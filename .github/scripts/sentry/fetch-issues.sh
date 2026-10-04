@@ -6,7 +6,7 @@
 # 入力 (env):
 #   SENTRY_API_TOKEN  Internal Integration の token (Issue & Event: Read だけで足りる)
 #   SENTRY_ORG        organization の slug
-#   WINDOW_HOURS      既定 24。毎回この期間を見直す (届いたかどうかは sentry-digest-message.sh が
+#   WINDOW_HOURS      既定 24 (1〜720)。毎回この期間を見直す (届いたかどうかは sentry-digest-message.sh が
 #                     「知らせ済み」の記録で判断するので、重なった分は送らない)
 #
 # 出力:
@@ -23,6 +23,10 @@ set -euo pipefail
 : "${SENTRY_API_TOKEN:?SENTRY_API_TOKEN is not set}"
 : "${SENTRY_ORG:?SENTRY_ORG is not set}"
 WINDOW_HOURS="${WINDOW_HOURS:-24}"
+if [[ ! "${WINDOW_HOURS}" =~ ^[0-9]+$ ]] || (( WINDOW_HOURS < 1 || WINDOW_HOURS > 720 )); then
+  echo "::error title=Invalid window::WINDOW_HOURS must be an integer from 1 to 720"
+  exit 1
+fi
 LIMIT=100
 # 使わない集計 (時系列・全期間と絞り込み後の発生数・unhandled の判定) を省く。count は残る
 # (collapse=stats は count まで消えるので付けない)

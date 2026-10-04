@@ -376,6 +376,13 @@ jobs:
           res="$(sentry_fetch FAKE_BODY='[{"id": 9, "shortId": "R-9", "title": "t", "permalink": "x", "metadata": {"secret": 1}, "project": {"slug": "p"}}]')"
           grep -qF 'files: [{"id":"9","shortId":"R-9","title":"t","level":null,"priority":null,"count":null,"project":"p"}]' <<<"${res}"
           grep -qx 'truncated=true' <<<"$(sentry_fetch FAKE_BODY="$(jq -nc '[range(0; 100) | {id: .}]')")"
+          # 見直す時間は 1〜720 の整数だけを受け付ける (dispatch の入力から来る)
+          res="$(sentry_fetch WINDOW_HOURS=72)"
+          start="$(sed -n 's/^window_start=//p' <<<"${res}")"
+          jq -en --arg s "${start}" '(now - ($s | fromdateiso8601) - 72 * 3600) | fabs < 60' > /dev/null
+          for bad in 0 721 1.5 x; do
+            if sentry_fetch WINDOW_HOURS="${bad}" > /dev/null 2>&1; then echo "window ${bad} accepted" >&2; exit 1; fi
+          done
           # API が 200 以外・配列でない応答なら失敗する (workflow は state を保存しない)
           if sentry_fetch FAKE_CODE=500 > /dev/null 2>&1; then echo "HTTP 500 accepted" >&2; exit 1; fi
           if sentry_fetch FAKE_BODY='{"detail": "x"}' > /dev/null 2>&1; then echo "non-array accepted" >&2; exit 1; fi
