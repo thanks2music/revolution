@@ -163,7 +163,8 @@ Developer plan の priority 判定は **log level のみ**で決まり、Alert R
     追いつく時は `workflow_dispatch` で `dry_run` を外し、`window_hours` (最大 720) を広げる
 - 1 回の取得は 100 件まで。上限に達した時は、一部しか確かめていないことを文面に書く
 - digest 自体の失敗 (token の失効・API の障害など) は `notify-main-failures.yml` が知らせる。定期実行なので、
-  成功から失敗に変わった最初の 1 回だけ本番系へ送る
+  成功から失敗に変わった最初の 1 回だけ本番系へ送る。**Sentry の token の失効 (取得が 401 / 403) もこれで気づく**
+  (以降は復旧まで知らせないので、最初の 1 通を見落とさないこと)
 - ⚠️ public repo の schedule は、60 日間リポジトリに動き (commit など) が無いと GitHub に止められる。止まっても
   失敗にはならないので、どこにも知らせが来ない
 - 確認は `workflow_dispatch` (`dry_run` の既定は true = テストモードで開発系へ 1 通にまとめて送り、state を保存しない)。

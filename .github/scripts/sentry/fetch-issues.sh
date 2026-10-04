@@ -35,24 +35,24 @@ EXTRA='&groupStatsPeriod=&collapse=lifetime&collapse=filtered&collapse=unhandled
 start="$(jq -rn --argjson h "${WINDOW_HOURS}" '(now - $h * 3600) | floor | strftime("%Y-%m-%dT%H:%M:%SZ")')"
 
 truncated=false
+raw="$(mktemp)"
 fetch() {  # $1 = 書き出すファイル、$2 = 検索条件、$3 = 追加のクエリパラメータ
   local query code
   query="$(jq -rn --arg q "$2" '$q | @uri')"
-  code="$(curl -sS --max-time 20 -o raw.json -w '%{http_code}' \
+  code="$(curl -sS --max-time 20 -o "${raw}" -w '%{http_code}' \
     -H @<(printf 'Authorization: Bearer %s\n' "${SENTRY_API_TOKEN}") \
     "https://sentry.io/api/0/organizations/${SENTRY_ORG}/issues/?limit=${LIMIT}&sort=new&query=${query}${3:-}${EXTRA}")" \
     || code=000
-  if [[ "${code}" != "200" ]] || ! jq -e 'type == "array"' raw.json > /dev/null 2>&1; then
+  if [[ "${code}" != "200" ]] || ! jq -e 'type == "array"' "${raw}" > /dev/null 2>&1; then
     echo "::error title=Sentry API failed::HTTP ${code} while fetching $1"
     exit 1
   fi
   # 次のページは読まない。上限に達したら文面とログで知らせる (新しい順なので、漏れるのは古い側)
-  if [[ "$(jq length raw.json)" -ge "${LIMIT}" ]]; then
+  if [[ "$(jq length "${raw}")" -ge "${LIMIT}" ]]; then
     truncated=true
     echo "::warning title=Sentry digest truncated::$1 reached the limit of ${LIMIT}. Older issues were not checked."
   fi
-  jq '[.[] | {id: (.id | tostring), shortId, title, level, priority, count, project: .project.slug}]' raw.json > "$1"
-  rm -f raw.json
+  jq '[.[] | {id: (.id | tostring), shortId, title, level, priority, count, project: .project.slug}]' "${raw}" > "$1"
 }
 
 fetch prod-new.json "firstSeen:>${start}" '&environment=production'

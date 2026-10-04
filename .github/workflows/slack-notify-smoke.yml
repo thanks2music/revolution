@@ -155,6 +155,42 @@ jobs:
           res="$(mainfail "$(jq -c '.name = "Build & Deploy" | .conclusion = "cancelled"' <<<"${run_json}")" '{"jobs": [{"name": "build", "conclusion": "cancelled"}]}')"
           grep -qx 'text=❌ main で「Build & Deploy」が失敗しました (cancelled)' <<<"${res}"
           grep -q '\*失敗した job\*: build' <<<"${res}"
+          # --- 定期実行の失敗: 1 つ前も失敗していたら知らせない (偽の gh で前回の実行を返す) ---
+          GHP="$(mktemp -d)"
+          cat > "${GHP}/gh" <<'EOF'
+          #!/usr/bin/env bash
+          [ -n "${FAKE_GH_FAIL:-}" ] && exit 1
+          echo "$*" >> "${GHP_LOG}"
+          printf '%s' "${FAKE_RUNS}"
+          EOF
+          chmod +x "${GHP}/gh"
+          previous() {  # $1 = 失敗した run の event、以降は追加の env
+            local event="$1"
+            shift
+            jq -n --arg e "${event}" '{id: 20, workflow_id: 7, event: $e, created_at: "2026-10-04T01:00:00Z"}' > prev-run.json
+            : > "${GHP}/log"
+            run_script .github/scripts/notify/previous-run-failed.sh PATH="${GHP}:${PATH}" GHP_LOG="${GHP}/log" \
+              GH_REPO=o/r GH_TOKEN=t RUN_FILE=prev-run.json "$@"
+          }
+          runs() {  # 前回の実行の一覧 (新しい順)。$1 = 今回より新しい実行の結果、$2 = 1 つ前の結果
+            jq -nc --arg newer "$1" --arg prev "$2" '{workflow_runs: [
+              {id: 21, conclusion: $newer, created_at: "2026-10-04T01:30:00Z"},
+              {id: 20, conclusion: "failure", created_at: "2026-10-04T01:00:00Z"},
+              {id: 19, conclusion: $prev, created_at: "2026-10-04T00:30:00Z"}]}'
+          }
+          # 1 つ前 (今回より前に作られた実行) が失敗系なら送らない。今回より新しい実行と今回自身は見ない
+          for c in failure timed_out startup_failure cancelled; do
+            grep -qx 'skip=true' <<<"$(previous schedule FAKE_RUNS="$(runs success "${c}")")"
+          done
+          grep -q 'workflows/7/runs?branch=main&status=completed' "${GHP}/log"
+          # 成功系・該当なし・調べられない時は送る (黙るより重複の方がよい)
+          grep -qx 'skip=false' <<<"$(previous schedule FAKE_RUNS="$(runs failure success)")"
+          grep -qx 'skip=false' <<<"$(previous schedule FAKE_RUNS="$(runs failure skipped)")"
+          grep -qx 'skip=false' <<<"$(previous schedule FAKE_RUNS='{"workflow_runs": []}')"
+          grep -qx 'skip=false' <<<"$(previous schedule FAKE_GH_FAIL=1)"
+          # push の失敗は毎回送る (前回を調べない)
+          grep -qx 'skip=false' <<<"$(previous push FAKE_RUNS="$(runs success failure)")"
+          [ ! -s "${GHP}/log" ]
           # 定期実行は、続く失敗を知らせないことを書く (push の失敗には書かない)
           grep -q '\*定期実行\*: 次に成功するまで' <<<"$(mainfail "$(jq -c '.event = "schedule"' <<<"${run_json}")" '{"jobs": []}')"
           if grep -q '定期実行' <<<"$(mainfail "$(jq -c '.event = "push"' <<<"${run_json}")" '{"jobs": []}')"; then echo "schedule note on push" >&2; exit 1; fi
