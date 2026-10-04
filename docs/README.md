@@ -14,6 +14,7 @@ Revolution プロジェクトの **公開ドキュメント** ハブ。フラッ
 | [nextjs-page-props.md](./nextjs-page-props.md) | Next.js Page Props 型定義パターン |
 | [ai-writer-cloud-run.md](./ai-writer-cloud-run.md) | AI Writer の Cloud Run デプロイ (GitHub Actions OIDC) |
 | [sentry.md](./sentry.md) | Sentry エラー監視 (2 project 構成 / Cloud Run の flush / 計装の 3 分類) |
+| [slack-notifications.md](./slack-notifications.md) | Slack 通知 (送り先の振り分け / composite action / 通知を足す時の決まり) |
 
 ## archive/
 
