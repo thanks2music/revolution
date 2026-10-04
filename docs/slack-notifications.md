@@ -114,6 +114,7 @@
 - **`workflow_run` は workflow の名前で一致させる**。`notify-main-failures.yml` の対象の `name:` を変えると、通知が黙って止まる (smoke が名前の実在を確かめる)
 - **public repo の schedule は、60 日間リポジトリに動きが無いと GitHub に止められる**。止まっても失敗にならない。
   止まったかは `gh workflow list --all` の状態 (`disabled_inactivity`) で分かり、`gh workflow enable <workflow>` で再開する
+- **schedule は遅れるし、抜けることもある** (GitHub の公式の説明: 負荷が高い時は遅れ、十分に高ければキューに入ったジョブが落とされることがある)。2026-10-04 の実測で、keepalive (毎日 15:37 UTC) は 3〜5 時間遅れ、Sentry のまとめ (30 分ごと) はマージ後の 8 時間で 1 回しか動かなかった。Sentry のまとめは毎回直近 24 時間を見直し、知らせ済みの記録で重複を除くので、24 時間に 1 回動けば取りこぼさない。届くまでの遅れは、この遅延のぶん長くなる
 - checkout より前で job が失敗すると、その job の中からは通知できない (`notify-main-failures` の対象なら、そちらが拾う)
 - Vercel の `repository_dispatch` は、repo に write 権限のある token なら送れる。プロジェクトは名前で照合しているので、Vercel でプロジェクトを改名すると通知が止まる
 - PR の smoke は `SLACK_BOT_TOKEN` を使う。同じリポジトリのブランチの PR は secret を読めるため、送り先は開発系に固定している
