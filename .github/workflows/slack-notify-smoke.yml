@@ -90,15 +90,14 @@ jobs:
           jq -n --arg sha "${sha}" '{project: {name: "revolution-phoenix-frontend", id: "p"}, environment: "production",
             git: {ref: "main", sha: $sha, shortSha: "0123456"}, url: "revo.vercel.app", id: "d",
             state: {type: "failed", detail: "deployment_failed"}, error: "x <!channel> & y\nz"}' > vercel-base.json
-          vercel() {  # $1 = action、$2 = 基準の payload に当てる jq の式。補足は blocks のファイルから body= として並べる
-            local payload blocks
+          vercel() {  # $1 = action、$2 = 基準の payload に当てる jq の式。補足はファイルから body= として並べる
+            local payload body
             payload="$(mktemp)"
-            blocks="$(mktemp)"
+            body="$(mktemp)"
             jq "${2:-.}" vercel-base.json > "${payload}"
             run_script .github/scripts/notify/vercel-deploy-message.sh EVENT_ACTION="$1" PAYLOAD_FILE="${payload}" \
-              PROJECT_NAME=revolution-phoenix-frontend REPO_URL=https://github.com/o/r BLOCKS_FILE="${blocks}" || return 1
-            jq -e 'type == "array" and length <= 1' "${blocks}" > /dev/null || { echo "bad blocks" >&2; return 1; }
-            jq -r '"body=" + (.[0].text.text // "")' "${blocks}"
+              PROJECT_NAME=revolution-phoenix-frontend REPO_URL=https://github.com/o/r BODY_FILE="${body}" || return 1
+            printf 'body=%s\n' "$(cat "${body}")"
           }
           # 本番の失敗: 本番系へメンション付き。payload 由来の値はエスケープされ、改行は消える。
           # スキームの無い url には https:// を付ける
@@ -645,6 +644,11 @@ jobs:
             FAKE_SLACK_REJECT_BLOCKS=1 FAKE_SLACK_RESPONSE='{"ok":true}')"
           grep -qx 'ok=true' <<<"${res}"
           jq -e '(has("blocks") | not) and (.text | startswith("<@U1> x\n<")) and (.text | contains("actions/runs/1|")) and .channel == "PROD"' "${SHIM}/payload.json" > /dev/null
+          # body-file は body と同じ section に載り、body より優先する
+          printf 'from <file>' > "${SHIM}/body.txt"
+          notify SLACK_TOKEN=t SLACK_CHANNEL=C1 NOTIFY_TEXT=x NOTIFY_BODY=inline NOTIFY_BODY_FILE="${SHIM}/body.txt" \
+            FAKE_SLACK_RESPONSE='{"ok":true}' > /dev/null
+          jq -e '.blocks[1].text.text == "from <file>"' "${SHIM}/payload.json" > /dev/null
           # msg_too_long でも同じく要約だけで送り直す
           res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=PROD NOTIFY_TEXT=x NOTIFY_BODY=b \
             FAKE_SLACK_REJECT_BLOCKS=1 FAKE_SLACK_REJECT_ERROR=msg_too_long FAKE_SLACK_RESPONSE='{"ok":true}')"

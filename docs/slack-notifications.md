@@ -77,11 +77,12 @@
     mention: ${{ steps.result.outputs.failed == 'true' && vars.SLACK_MENTION_USER_ID || '' }}
     text: ❌ 何が起きたかの 1 行
     body: 補足 (生の mrkdwn)                     # 任意
+    body-file: body.txt                            # 任意 (body と同じ扱い。ログに出したくない値を含む時)
     blocks-file: blocks.json                       # 任意 (Block Kit の配列)
 ```
 
 - **`text` はこの action がエスケープする**。`body` は生の mrkdwn として載るので、外部由来の値 (エラー文・ブランチ名など) は呼び出し側で `&` `<` `>` をエスケープする (`<!channel>` が混ざると全員に通知が飛ぶ)
-- **`with:` の値は、入力として public な Actions のログに出る**。外部由来の中身 (Sentry の issue のタイトルなど) は `blocks-file` で渡し、`text` には件数などだけを書く
+- **`with:` の値は、入力として public な Actions のログに出る**。外部由来の中身 (Sentry の issue のタイトル、Vercel の失敗の理由など) は `body-file` か `blocks-file` で渡し、`text` には件数などだけを書く
 - **送信に失敗しても job を落とさない**。`ok:false` の時は warning `Slack notification failed` を残し、output `ok` が `false` になる。token か channel が空なら notice を出して送らない (`skipped`)
 - **リトライしない** (二重投稿になるため)。blocks が `invalid_blocks` / `msg_too_long` で拒否された時だけ、要約 (`text`) だけで 1 回送り直す
 - **テストモード**: `test: 'true'`、または main 以外の ref からの `workflow_dispatch` で、`test-channel` へ `[TEST]` 付き・メンションなしで送る (例: `[TEST] ❌ main で「CI」が失敗しました (failure)`)。どの ref から動かしても本物になる通知 (本番デプロイ・本番 migration) は `auto-test-mode: 'false'` を付ける

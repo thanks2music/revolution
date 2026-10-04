@@ -8,7 +8,7 @@
 #                  (形式: https://github.com/vercel/repository-dispatch の src/data/*.ts)
 #   PROJECT_NAME   通知の対象にする Vercel プロジェクト名
 #   REPO_URL       https://github.com/<owner>/<repo> (commit へのリンクに使う)
-#   BLOCKS_FILE    補足 (URL / commit / branch / 失敗の理由) を書き出す Block Kit のファイル
+#   BODY_FILE      補足 (URL / commit / branch / 失敗の理由) を書き出すファイル
 #
 # 出力 ($GITHUB_OUTPUT):
 #   notify=true|false      送るかどうか。送らないもの: 対象外のプロジェクト、Preview の成功、
@@ -19,8 +19,8 @@
 #   test=true|false        テストモードで送るか (疑似イベントの client_payload.test。真偽値でも文字列でもよい)
 #   text                   要約 (payload 由来の値を含まない)
 # 出力 (ファイル):
-#   $BLOCKS_FILE           補足の section 1 つ (空なら [])。payload 由来の値は & < > をエスケープ済み、改行なし。
-#                          composite action の with: の値は public なログに出るため、body ではなくファイルで渡す
+#   $BODY_FILE             補足の mrkdwn。payload 由来の値は & < > をエスケープ済み、改行なし。
+#                          composite action の with: の値は public なログに出るため、body-file で渡す
 set -euo pipefail
 
 out="$(mktemp)"
@@ -74,8 +74,7 @@ jq -r \
     "body=" + ($parts | join(" · "))
 ' "${PAYLOAD_FILE}" > "${out}"
 
+# body だけをファイルへ、残りを step の outputs へ (jq は 1 行 1 項目で出す。body は改行を含まない)
 grep -v '^body=' "${out}" >> "${GITHUB_OUTPUT}"
-grep '^body=' "${out}" | sed 's/^body=//' \
-  | jq -Rs 'rtrimstr("\n") | if . == "" then [] else [{type: "section", text: {type: "mrkdwn", text: .}}] end' \
-  > "${BLOCKS_FILE}"
+sed -n 's/^body=//p' "${out}" > "${BODY_FILE}"
 rm -f "${out}"
