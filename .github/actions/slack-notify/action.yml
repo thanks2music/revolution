@@ -33,7 +33,14 @@ inputs:
   body:
     description: >-
       補足 (mrkdwn)。呼び出し側が組み立てた文字列をそのまま載せる (リンク記法を使えるようにするため)。
-      外部由来の値 (エラー文・ブランチ名など) を埋め込む場合は呼び出し側で & < > をエスケープする
+      外部由来の値 (エラー文・ブランチ名など) を埋め込む場合は呼び出し側で & < > をエスケープする。
+      ⚠️ with: の値は public な Actions のログに出る。外部由来の値を含む時は body-file を使う
+    required: false
+    default: ''
+  body-file:
+    description: >-
+      body と同じ扱いの mrkdwn を書いたファイルのパス (ログに出したくない値を含む時に使う)。
+      指定した時は body より優先する
     required: false
     default: ''
   blocks-file:
@@ -70,6 +77,7 @@ runs:
         NOTIFY_TEXT: ${{ inputs.text }}
         NOTIFY_MENTION: ${{ inputs.mention }}
         NOTIFY_BODY: ${{ inputs.body }}
+        NOTIFY_BODY_FILE: ${{ inputs.body-file }}
         NOTIFY_BLOCKS_FILE: ${{ inputs.blocks-file }}
         NOTIFY_TEST: ${{ inputs.test }}
         NOTIFY_AUTO_TEST: ${{ inputs.auto-test-mode }}

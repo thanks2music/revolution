@@ -77,11 +77,12 @@
     mention: ${{ steps.result.outputs.failed == 'true' && vars.SLACK_MENTION_USER_ID || '' }}
     text: ❌ 何が起きたかの 1 行
     body: 補足 (生の mrkdwn)                     # 任意
+    body-file: body.txt                            # 任意 (body と同じ扱い。ログに出したくない値を含む時)
     blocks-file: blocks.json                       # 任意 (Block Kit の配列)
 ```
 
 - **`text` はこの action がエスケープする**。`body` は生の mrkdwn として載るので、外部由来の値 (エラー文・ブランチ名など) は呼び出し側で `&` `<` `>` をエスケープする (`<!channel>` が混ざると全員に通知が飛ぶ)
-- **`with:` の値は、入力として public な Actions のログに出る**。外部由来の中身 (Sentry の issue のタイトルなど) は `blocks-file` で渡し、`text` には件数などだけを書く
+- **`with:` の値は、入力として public な Actions のログに出る**。外部由来の中身 (Sentry の issue のタイトル、Vercel の失敗の理由など) は `body-file` か `blocks-file` で渡し、`text` には件数などだけを書く
 - **送信に失敗しても job を落とさない**。`ok:false` の時は warning `Slack notification failed` を残し、output `ok` が `false` になる。token か channel が空なら notice を出して送らない (`skipped`)
 - **リトライしない** (二重投稿になるため)。blocks が `invalid_blocks` / `msg_too_long` で拒否された時だけ、要約 (`text`) だけで 1 回送り直す
 - **テストモード**: `test: 'true'`、または main 以外の ref からの `workflow_dispatch` で、`test-channel` へ `[TEST]` 付き・メンションなしで送る (例: `[TEST] ❌ main で「CI」が失敗しました (failure)`)。どの ref から動かしても本物になる通知 (本番デプロイ・本番 migration) は `auto-test-mode: 'false'` を付ける
@@ -89,13 +90,14 @@
 ## 通知を足す・変える時の決まり
 
 1. 振り分けは「運用で人の対応が要るか」。要るものだけ本番系にメンション付き
-2. **1 実行で同じ送り先に 1 通**。入口 (workflow / CLI / cron route) から送り、ライブラリの中からは送らない (入口でも送ると同じ失敗が 2 通届く)
+2. **1 実行で同じ送り先に 1 通** (1 つの環境について)。入口 (workflow / CLI / cron route) から送り、ライブラリの中からは送らない (入口でも送ると同じ失敗が 2 通届く)。
+   staging と production を 1 回の実行で見る workflow (advisor の週次チェック、keepalive の `target=both`) は、環境ごとに 1 通ずつ送る (中身が別の事象なので、まとめない)
 3. 外部由来の値は必ず `& < >` をエスケープする。切り詰めで entity (`&amp;`) やリンク記法 (`<url|text>`) を壊さない
 4. 成否は Slack の応答の本文の `ok` で判断する (Web API はエラーでも HTTP 200 を返す)
 5. 通知の失敗で本処理を落とさない
 6. ログに token・payload・応答を出さない。残すのはエラーコードだけ
 7. `uses:` は commit SHA + バージョンのコメントで固定する
-8. 「前回との差分」で知らせるもの (advisor の baseline、Sentry の知らせ済みなど) は、**届かなかった時に比較の基準を更新しない** (更新すると、その差分が二度と知らされない)
+8. 「前回との差分」で知らせるもの (advisor の baseline、Sentry の知らせ済みなど) は、**届かなかった時に比較の基準を更新しない** (更新すると、その差分が二度と知らされない)。前回の基準を読めなかった時 (artifact の取得の失敗・タイムアウト) も更新しない。取得できたが壊れている時は「無い」と同じに扱い、今回の状態で置き換える (置き換えないと期限切れまで比べられない)
 9. 文面の組み立てはネットワークに出ないスクリプトに分け、smoke (Actions) か Jest (AI Writer) で確かめる。jq は runner の版 (1.7) でも動くことを確かめる (1.8 でしか通らない構文がある)
 
 ## 確かめ方
@@ -112,6 +114,7 @@
 - **`workflow_run` は workflow の名前で一致させる**。`notify-main-failures.yml` の対象の `name:` を変えると、通知が黙って止まる (smoke が名前の実在を確かめる)
 - **public repo の schedule は、60 日間リポジトリに動きが無いと GitHub に止められる**。止まっても失敗にならない。
   止まったかは `gh workflow list --all` の状態 (`disabled_inactivity`) で分かり、`gh workflow enable <workflow>` で再開する
+- **schedule は遅れるし、抜けることもある** (GitHub の公式の説明: 負荷が高い時は遅れ、十分に高ければキューに入ったジョブが落とされることがある)。2026-10-04 の実測で、keepalive (毎日 15:37 UTC) は 3〜5 時間遅れ、Sentry のまとめ (30 分ごと) はマージ後の 8 時間で 1 回しか動かなかった。Sentry のまとめは毎回直近 24 時間を見直し、知らせ済みの記録で重複を除くので、24 時間に 1 回動けば取りこぼさない。届くまでの遅れは、この遅延のぶん長くなる
 - checkout より前で job が失敗すると、その job の中からは通知できない (`notify-main-failures` の対象なら、そちらが拾う)
 - Vercel の `repository_dispatch` は、repo に write 権限のある token なら送れる。プロジェクトは名前で照合しているので、Vercel でプロジェクトを改名すると通知が止まる
 - PR の smoke は `SLACK_BOT_TOKEN` を使う。同じリポジトリのブランチの PR は secret を読めるため、送り先は開発系に固定している

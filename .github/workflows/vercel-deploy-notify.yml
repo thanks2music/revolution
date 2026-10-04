@@ -48,6 +48,8 @@ jobs:
           EVENT_ACTION: ${{ github.event.action }}
           PROJECT_NAME: revolution-phoenix-frontend
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          # 補足 (URL・branch・失敗の理由) はファイルで渡す。with: の値は public なログに出るため
+          BODY_FILE: vercel-body.txt
         run: |
           set -euo pipefail
           jq '.client_payload' "${GITHUB_EVENT_PATH}" > payload.json
@@ -63,4 +65,4 @@ jobs:
           test: ${{ steps.msg.outputs.test }}
           mention: "${{ steps.msg.outputs.mention == 'true' && vars.SLACK_MENTION_USER_ID || '' }}"
           text: ${{ steps.msg.outputs.text }}
-          body: ${{ steps.msg.outputs.body }}
+          body-file: vercel-body.txt

@@ -8,6 +8,7 @@
 #                  (形式: https://github.com/vercel/repository-dispatch の src/data/*.ts)
 #   PROJECT_NAME   通知の対象にする Vercel プロジェクト名
 #   REPO_URL       https://github.com/<owner>/<repo> (commit へのリンクに使う)
+#   BODY_FILE      補足 (URL / commit / branch / 失敗の理由) を書き出すファイル
 #
 # 出力 ($GITHUB_OUTPUT):
 #   notify=true|false      送るかどうか。送らないもの: 対象外のプロジェクト、Preview の成功、
@@ -16,9 +17,14 @@
 #   production=true|false  本番環境のデプロイか (true なら本番系、false なら開発系へ送る)
 #   mention=true|false     メンションするか (本番環境の失敗だけ)
 #   test=true|false        テストモードで送るか (疑似イベントの client_payload.test。真偽値でも文字列でもよい)
-#   text / body            要約と補足。payload 由来の値は & < > をエスケープ済み、改行なし
+#   text                   要約 (payload 由来の値を含まない)
+# 出力 (ファイル):
+#   $BODY_FILE             補足の mrkdwn。payload 由来の値は & < > をエスケープ済み、改行なし。
+#                          composite action の with: の値は public なログに出るため、body-file で渡す
 set -euo pipefail
+: "${BODY_FILE:?BODY_FILE is required (the body is not written to the step outputs)}"
 
+out="$(mktemp)"
 jq -r \
   --arg action "${EVENT_ACTION}" \
   --arg project "${PROJECT_NAME}" \
@@ -67,4 +73,9 @@ jq -r \
                then "❌ フロントエンドの\($env_label)デプロイが失敗しました (Vercel)"
                else "✅ フロントエンドを本番にデプロイしました (Vercel)" end),
     "body=" + ($parts | join(" · "))
-' "${PAYLOAD_FILE}" >> "${GITHUB_OUTPUT}"
+' "${PAYLOAD_FILE}" > "${out}"
+
+# body だけをファイルへ、残りを step の outputs へ (jq は 1 行 1 項目で出す。body は改行を含まない)
+grep -v '^body=' "${out}" >> "${GITHUB_OUTPUT}"
+sed -n 's/^body=//p' "${out}" > "${BODY_FILE}"
+rm -f "${out}"

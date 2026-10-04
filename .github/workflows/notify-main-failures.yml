@@ -69,14 +69,12 @@ jobs:
           # workflow_run では run の情報がイベントに入っているので API を呼ばない
           # (API の一時的な失敗で、main の失敗が知らされないまま終わらないようにする)。
           # env 経由で渡すと public なログのヘッダーに出るため、イベントのファイルから読む
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
-            jq '.workflow_run' "${GITHUB_EVENT_PATH}" > run.json
-          else
-            gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}" > run.json
-          fi
           # 定期実行は、1 つ前の実行も失敗していたら送らない (判定は previous-run-failed.sh)。dispatch (確認用) は常に送る
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            jq '.workflow_run' "${GITHUB_EVENT_PATH}" > run.json
             RUN_FILE=run.json bash .github/scripts/notify/previous-run-failed.sh
+          else
+            gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}" > run.json
           fi
           # job の一覧は補足なので、取れなくても通知は送る
           if ! gh api "/repos/${GH_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" > jobs.json 2>/dev/null; then

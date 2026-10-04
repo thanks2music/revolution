@@ -64,13 +64,23 @@ response_error() {
   echo "${code:-invalid_response_http_${1:-000}}"
 }
 
+body="${NOTIFY_BODY:-}"
+if [[ -n "${NOTIFY_BODY_FILE:-}" ]]; then
+  if [[ -r "${NOTIFY_BODY_FILE}" ]]; then
+    body="$(cat "${NOTIFY_BODY_FILE}")"
+  else
+    echo "::warning title=Slack notify::body-file is not readable. Sending without the body."
+    body=''
+  fi
+fi
+
 run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}"
 
 if ! PAYLOAD_CHANNEL="${channel}" \
   PAYLOAD_TEXT="${NOTIFY_TEXT:-}" \
   PAYLOAD_PREFIX="${prefix}" \
   PAYLOAD_MENTION="${mention}" \
-  PAYLOAD_BODY="${NOTIFY_BODY:-}" \
+  PAYLOAD_BODY="${body}" \
   PAYLOAD_BLOCKS_FILE="${NOTIFY_BLOCKS_FILE:-}" \
   PAYLOAD_RUN_URL="${run_url}" \
   bash "$(dirname "$0")/build-payload.sh" > "${payload_file}"; then

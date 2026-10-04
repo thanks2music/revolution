@@ -90,12 +90,14 @@ jobs:
           jq -n --arg sha "${sha}" '{project: {name: "revolution-phoenix-frontend", id: "p"}, environment: "production",
             git: {ref: "main", sha: $sha, shortSha: "0123456"}, url: "revo.vercel.app", id: "d",
             state: {type: "failed", detail: "deployment_failed"}, error: "x <!channel> & y\nz"}' > vercel-base.json
-          vercel() {  # $1 = action、$2 = 基準の payload に当てる jq の式
-            local payload
+          vercel() {  # $1 = action、$2 = 基準の payload に当てる jq の式。補足はファイルから body= として並べる
+            local payload body
             payload="$(mktemp)"
+            body="$(mktemp)"
             jq "${2:-.}" vercel-base.json > "${payload}"
             run_script .github/scripts/notify/vercel-deploy-message.sh EVENT_ACTION="$1" PAYLOAD_FILE="${payload}" \
-              PROJECT_NAME=revolution-phoenix-frontend REPO_URL=https://github.com/o/r
+              PROJECT_NAME=revolution-phoenix-frontend REPO_URL=https://github.com/o/r BODY_FILE="${body}" || return 1
+            printf 'body=%s\n' "$(cat "${body}")"
           }
           # 本番の失敗: 本番系へメンション付き。payload 由来の値はエスケープされ、改行は消える。
           # スキームの無い url には https:// を付ける
@@ -539,7 +541,7 @@ jobs:
           mkdir -p "${SHIM}/bin"
           # 偽 curl: Slack は $FAKE_SLACK_RESPONSE を返して payload を保存、Supabase は fixture を返す。
           # $FAKE_SLACK_NO_RESPONSE があれば接続失敗 (本文なし、HTTP 000、exit 7) をまねる。
-          # $FAKE_SLACK_REJECT_BLOCKS があれば、blocks 付きの payload を invalid_blocks で拒否する。
+          # $FAKE_SLACK_REJECT_BLOCKS があれば、blocks 付きの payload を $FAKE_SLACK_REJECT_ERROR (既定 invalid_blocks) で拒否する。
           # ⚠️ notify.sh / post-deploy-advisor.sh の curl のオプションを変えたら、ここの解析も合わせる
           cat > "${SHIM}/bin/curl" <<'EOF'
           #!/usr/bin/env bash
@@ -558,15 +560,17 @@ jobs:
               cp "${data#@}" "${SHIM_DIR}/payload.json"
               if [ -n "${FAKE_SLACK_NO_RESPONSE:-}" ]; then printf 000; exit 7; fi
               if [ -n "${FAKE_SLACK_REJECT_BLOCKS:-}" ] && jq -e 'has("blocks")' "${data#@}" > /dev/null; then
-                printf '%s' '{"ok":false,"error":"invalid_blocks"}' > "${out}"; printf 200; exit 0
+                printf '{"ok":false,"error":"%s"}' "${FAKE_SLACK_REJECT_ERROR:-invalid_blocks}" > "${out}"; printf 200; exit 0
               fi
               printf '%s' "${FAKE_SLACK_RESPONSE}" > "${out}"; printf 200 ;;
             *advisors/security*) cat "${SHIM_DIR}/advisor.json" > "${out}"; printf 200 ;;
           esac
           EOF
-          # 偽 gh: artifact 一覧 (--jq の式を適用) と zip を返す。引数の順番には依存しない
+          # 偽 gh: artifact 一覧 (--jq の式を適用) と zip を返す。引数の順番には依存しない。
+          # $FAKE_GH_FAIL があれば一覧の取得を失敗させる。zip は id 7 だけ返す (それ以外は失敗)
           cat > "${SHIM}/bin/gh" <<'EOF'
           #!/usr/bin/env bash
+          if [ -n "${FAKE_GH_FAIL:-}" ]; then exit 1; fi
           jq_expr='.'; rest=''
           while [ $# -gt 0 ]; do
             case "$1" in
@@ -619,6 +623,10 @@ jobs:
           notify SLACK_TOKEN=t SLACK_CHANNEL=PROD SLACK_TEST_CHANNEL=DEV NOTIFY_TEXT=x NOTIFY_MENTION=U1 \
             NOTIFY_EVENT_NAME=workflow_dispatch NOTIFY_REF=refs/heads/feature/x FAKE_SLACK_RESPONSE='{"ok":true}' > /dev/null
           jq -e '.channel == "DEV" and .text == "[TEST] x"' "${SHIM}/payload.json" > /dev/null
+          # main からの dispatch はテストモードにしない
+          notify SLACK_TOKEN=t SLACK_CHANNEL=PROD SLACK_TEST_CHANNEL=DEV NOTIFY_TEXT=x NOTIFY_MENTION=U1 \
+            NOTIFY_EVENT_NAME=workflow_dispatch NOTIFY_REF=refs/heads/main FAKE_SLACK_RESPONSE='{"ok":true}' > /dev/null
+          jq -e '.channel == "PROD" and .text == "<@U1> x"' "${SHIM}/payload.json" > /dev/null
           # auto-test-mode: false なら同じ条件でも本番系へメンション付きで送る
           notify SLACK_TOKEN=t SLACK_CHANNEL=PROD SLACK_TEST_CHANNEL=DEV NOTIFY_TEXT=x NOTIFY_MENTION=U1 NOTIFY_AUTO_TEST=false \
             NOTIFY_EVENT_NAME=workflow_dispatch NOTIFY_REF=refs/heads/feature/x FAKE_SLACK_RESPONSE='{"ok":true}' > /dev/null
@@ -636,6 +644,21 @@ jobs:
             FAKE_SLACK_REJECT_BLOCKS=1 FAKE_SLACK_RESPONSE='{"ok":true}')"
           grep -qx 'ok=true' <<<"${res}"
           jq -e '(has("blocks") | not) and (.text | startswith("<@U1> x\n<")) and (.text | contains("actions/runs/1|")) and .channel == "PROD"' "${SHIM}/payload.json" > /dev/null
+          # body-file は body と同じ section に載り、body より優先する
+          printf 'from <file>' > "${SHIM}/body.txt"
+          notify SLACK_TOKEN=t SLACK_CHANNEL=C1 NOTIFY_TEXT=x NOTIFY_BODY=inline NOTIFY_BODY_FILE="${SHIM}/body.txt" \
+            FAKE_SLACK_RESPONSE='{"ok":true}' > /dev/null
+          jq -e '.blocks[1].text.text == "from <file>"' "${SHIM}/payload.json" > /dev/null
+          # body-file が読めない時は warning を出し、body なしで送る (送信は止めない)
+          res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=C1 NOTIFY_TEXT=x NOTIFY_BODY_FILE="${SHIM}/missing.txt" FAKE_SLACK_RESPONSE='{"ok":true}')"
+          grep -qx 'ok=true' <<<"${res}"
+          grep -q '^::warning title=Slack notify::body-file is not readable' "${SHIM}/log"
+          jq -e '.blocks | length == 2' "${SHIM}/payload.json" > /dev/null
+          # msg_too_long でも同じく要約だけで送り直す
+          res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=PROD NOTIFY_TEXT=x NOTIFY_BODY=b \
+            FAKE_SLACK_REJECT_BLOCKS=1 FAKE_SLACK_REJECT_ERROR=msg_too_long FAKE_SLACK_RESPONSE='{"ok":true}')"
+          grep -qx 'ok=true' <<<"${res}"
+          jq -e 'has("blocks") | not' "${SHIM}/payload.json" > /dev/null
           # テストモードで test-channel が無い時は、本番系に流さず skip する
           res="$(notify SLACK_TOKEN=t SLACK_CHANNEL=PROD NOTIFY_TEST=true NOTIFY_TEXT=x)"
           grep -qx 'skipped=true' <<<"${res}"
@@ -663,11 +686,26 @@ jobs:
           grep -qx 'has_new=false' <<<"${res}"
           [ ! -f "${SHIM}/run2/advisor-blocks.json" ]
 
+          # baseline と比べられなかった時 (一覧の取得の失敗・zip の取得の失敗) は出力を書かない。
+          # has_new が空になり、呼び出し側は今回の state を baseline として保存しない
+          res="$(run_advisor run4 ENV_NAME=production FAKE_GH_FAIL=1)"
+          [ -z "${res}" ] || { echo "advisor wrote outputs after a failed baseline lookup: ${res}" >&2; exit 1; }
+          [ -f "${SHIM}/run4/current-state.json" ]
+          jq -n '{artifacts: [{id: 8, expired: false, workflow_run: {repository_id: 1, head_repository_id: 1, head_branch: "main"}}]}' > "${SHIM}/artifacts.json"
+          res="$(run_advisor run5 ENV_NAME=production)"
+          [ -z "${res}" ] || { echo "advisor wrote outputs after a failed baseline download: ${res}" >&2; exit 1; }
+          # 取得できた zip が壊れている時は「baseline が無い」として扱う (比べずに has_new=false、今回の state で置き換わる)
+          printf 'not a zip' > "${SHIM}/baseline.zip"
+          jq -n '{artifacts: [{id: 7, expired: false, workflow_run: {repository_id: 1, head_repository_id: 1, head_branch: "main"}}]}' > "${SHIM}/artifacts.json"
+          res="$(run_advisor run6 ENV_NAME=production)"
+          grep -qx 'has_new=false' <<<"${res}"
+          [ -f "${SHIM}/run6/current-state.json" ]
+
           # lints が配列でない 200 応答では state を作らない (空の baseline を保存すると次回に全件が「新規」になる)。
           # null だと後段の jq も失敗するので、jq が通ってしまうオブジェクトで確かめる
           jq -n '{lints: {}}' > "${SHIM}/advisor.json"
           res="$(run_advisor run3 ENV_NAME=staging)"
-          grep -qx 'new_count=0' <<<"${res}"
+          [ -z "${res}" ] || { echo "advisor wrote outputs for an unexpected shape: ${res}" >&2; exit 1; }
           [ ! -f "${SHIM}/run3/current-state.json" ]
 
           echo "notify / post-deploy advisor branches OK"
