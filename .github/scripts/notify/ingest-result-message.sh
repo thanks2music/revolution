@@ -47,10 +47,11 @@ if [[ "${INGEST_OUTCOME}" == "success" ]]; then
   fi
 elif [[ "${INGEST_OUTCOME}" == "failure" ]]; then
   text="❌ occurrence の取り込みが失敗しました (${TARGET})"
-  action="*対応*: ログと Job Summary で原因を確かめ、直してから再実行する。取り込みは冪等で、event 単位の失敗なら他の event は取り込み済み (${runbook} の「失敗時の対応」)"
+  # step の timeout-minutes に当たった時も failure になる (cancelled ではない。2026-10-04 実測)
+  action="*対応*: ログと Job Summary で原因 (タイムアウトを含む) を確かめ、直してから再実行する。取り込みは冪等で、event 単位の失敗なら他の event は取り込み済み (${runbook} の「失敗時の対応」)"
 elif [[ "${INGEST_OUTCOME}" == "cancelled" ]]; then
   text="⏹️ occurrence の取り込みが中断されました (${TARGET})"
-  action='*対応*: 途中までの書き込みが残っている可能性がある。取り込みは冪等なので、手動のキャンセルなら再実行すれば揃う。タイムアウトなら、ログで止まった箇所を確かめてから再実行する'
+  action='*対応*: 途中までの書き込みが残っている可能性がある。取り込みは冪等なので、再実行すれば揃う'
 elif [[ "${JOB_STATUS}" == "cancelled" ]]; then
   text="⏹️ occurrence の取り込みが、開始する前に中断されました (${TARGET})"
   action='*対応*: 書き込みは行っていない。必要なら再実行する'

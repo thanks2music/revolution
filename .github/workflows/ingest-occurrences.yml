@@ -42,7 +42,8 @@ jobs:
     env:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STG_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_STG_PROJECT_ID }}
-      # push は実書き込み、workflow_dispatch は dry_run 入力に従う (取り込みと Slack 通知の両方が読む)
+      # push は実書き込み (この式は 'false' になる)、workflow_dispatch は dry_run 入力に従う。
+      # 取り込みと Slack 通知の両方が読む
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
     steps:
@@ -87,6 +88,7 @@ jobs:
         id: ingest
         working-directory: apps/frontend
         # 通常は 20 秒程度。止まった時に、後の通知 step の時間を job の上限 (10 分) に残す
+        # (タイムアウトした step の outcome は failure)
         timeout-minutes: 5
         run: |
           set -euo pipefail
