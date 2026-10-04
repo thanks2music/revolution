@@ -15,7 +15,7 @@
 | 本番系 (`vars.SLACK_CHANNEL_PROD`) | 本番の失敗・要対応 (と本番デプロイの成功) | 失敗・要対応の時だけ |
 | 開発系 (`vars.SLACK_CHANNEL_DEV`) | それ以外 (Preview の失敗・ローカルの記事生成・テストモード) | なし |
 
-成功を送るのは、本番のデプロイとローカルの記事生成だけ。
+成功を送るのは、本番のデプロイ (Vercel・Cloud Run・Supabase の migration) とローカルの記事生成だけ。
 
 ### 部品
 
@@ -73,7 +73,8 @@
     token: ${{ secrets.SLACK_BOT_TOKEN }}
     channel: ${{ vars.SLACK_CHANNEL_PROD }}
     test-channel: ${{ vars.SLACK_CHANNEL_DEV }}
-    mention: ${{ vars.SLACK_MENTION_USER_ID }}   # 失敗・要対応の時だけ
+    # メンションは失敗・要対応の時だけ渡す (成功では空にする)
+    mention: ${{ steps.result.outputs.failed == 'true' && vars.SLACK_MENTION_USER_ID || '' }}
     text: ❌ 何が起きたかの 1 行
     body: 補足 (生の mrkdwn)                     # 任意
     blocks-file: blocks.json                       # 任意 (Block Kit の配列)
@@ -109,12 +110,14 @@
 ## 既知の制限
 
 - **`workflow_run` は workflow の名前で一致させる**。`notify-main-failures.yml` の対象の `name:` を変えると、通知が黙って止まる (smoke が名前の実在を確かめる)
-- **public repo の schedule は、60 日間リポジトリに動きが無いと GitHub に止められる**。止まっても失敗にならない
+- **public repo の schedule は、60 日間リポジトリに動きが無いと GitHub に止められる**。止まっても失敗にならない。
+  止まったかは `gh workflow list --all` の状態 (`disabled_inactivity`) で分かり、`gh workflow enable <workflow>` で再開する
 - checkout より前で job が失敗すると、その job の中からは通知できない (`notify-main-failures` の対象なら、そちらが拾う)
 - Vercel の `repository_dispatch` は、repo に write 権限のある token なら送れる。プロジェクトは名前で照合しているので、Vercel でプロジェクトを改名すると通知が止まる
 - PR の smoke は `SLACK_BOT_TOKEN` を使う。同じリポジトリのブランチの PR は secret を読めるため、送り先は開発系に固定している
 - occurrence 取り込みは毎回全件を対象にするので、未解決の人手キューは記事のマージのたびに再び届く
-- ShellCheck も runner と手元で版が違い、ルールの番号が違うことがある (`disable` は両方の番号を書く)
+- ShellCheck も runner と手元で版が違い、ルールの番号が違うことがある (2026-10 時点で runner の `ubuntu-latest` は 0.9、
+  手元の Homebrew は 0.11。`disable` は両方の番号を書く)。`ubuntu-latest` の版が上がると変わる
 
 ## 関連
 
