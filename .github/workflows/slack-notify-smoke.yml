@@ -69,7 +69,7 @@ jobs:
           done
           echo "workflow_run targets OK"
 
-      - name: Verify the deploy / main-failure message scripts (no network)
+      - name: Verify the notification message scripts (no network)
         run: |
           set -euo pipefail
           # スクリプトを GITHUB_OUTPUT を一時ファイルにして実行し、出力を表示する。
@@ -182,6 +182,37 @@ jobs:
           res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure)"
           grep -q 'デプロイ後の状態を確かめられませんでした' <<<"${res}"
           if grep -q 'トラフィック 100%' <<<"${res}"; then echo "claims 100% without checking" >&2; exit 1; fi
+
+          # --- occurrence の取り込み: 送るのは失敗・中断と、対応が要る人手キューがある時だけ (dry-run は送らない)。
+          # キューの数え方は plan-ingest.ts の summarizeQueue (Jest) で確かめている ---
+          ingest_msg() {  # 既定は「取り込み成功・キューなし」。追加の env で上書きする
+            run_script .github/scripts/notify/ingest-result-message.sh JOB_STATUS=success INGEST_OUTCOME=success \
+              DRY_RUN=false QUEUE_ACTIONABLE=0 QUEUE_WARNINGS=0 QUEUE_BREAKDOWN= TARGET=staging "$@"
+          }
+          queue=(QUEUE_ACTIONABLE=3 QUEUE_WARNINGS=1 'QUEUE_BREAKDOWN=unknown_title 1, unknown_venue 2')
+          grep -qx 'notify=false' <<<"$(ingest_msg)"
+          res="$(ingest_msg "${queue[@]}")"
+          grep -qx 'notify=true' <<<"${res}"
+          grep -qx 'text=⚠️ occurrence の取り込みで、対応が要る人手キューが 3 件あります (staging)' <<<"${res}"
+          grep -qxF '*人手キュー*: 対応が要る 3 件 (unknown_title 1, unknown_venue 2) · 非ブロッキング 1 件' <<<"${res}"
+          # 非ブロッキングだけなら送らない。dry-run は失敗・キューがあっても送らない
+          grep -qx 'notify=false' <<<"$(ingest_msg QUEUE_WARNINGS=2)"
+          grep -qx 'notify=false' <<<"$(ingest_msg DRY_RUN=true JOB_STATUS=failure INGEST_OUTCOME=failure "${queue[@]}")"
+          # 取り込みが終わった後の step の失敗・中断: キューが無ければ送らない、あれば注意を添える
+          grep -qx 'notify=false' <<<"$(ingest_msg JOB_STATUS=failure)"
+          grep -qx 'notify=false' <<<"$(ingest_msg JOB_STATUS=cancelled)"
+          grep -q '取り込みの後の step が失敗または中断した' <<<"$(ingest_msg JOB_STATUS=failure "${queue[@]}")"
+          # 取り込みの失敗: 非ブロッキングだけのキューも件数を添える。計画の前で落ちた (output が空) 時はキューの行を出さない
+          res="$(ingest_msg JOB_STATUS=failure INGEST_OUTCOME=failure QUEUE_WARNINGS=2)"
+          grep -qx 'text=❌ occurrence の取り込みが失敗しました (staging)' <<<"${res}"
+          grep -qxF '*人手キュー*: 非ブロッキング 2 件' <<<"${res}"
+          res="$(ingest_msg JOB_STATUS=failure INGEST_OUTCOME=failure QUEUE_ACTIONABLE= QUEUE_WARNINGS=)"
+          grep -qx 'notify=true' <<<"${res}"
+          if grep -q '人手キュー' <<<"${res}"; then echo "queue line without counts" >&2; exit 1; fi
+          # 取り込みの前で失敗 / 中断と、取り込みの途中の中断を区別する
+          grep -q '開始できませんでした' <<<"$(ingest_msg JOB_STATUS=failure INGEST_OUTCOME=)"
+          grep -q '開始する前に中断されました' <<<"$(ingest_msg JOB_STATUS=cancelled INGEST_OUTCOME=skipped)"
+          grep -q '取り込みが中断されました' <<<"$(ingest_msg JOB_STATUS=cancelled INGEST_OUTCOME=cancelled)"
 
           echo "message scripts OK"
 
