@@ -14,7 +14,9 @@
  * - `--dry-run`: DB からスナップショットを読み、実行計画とキューを表示するだけ
  *   (書き込みなし)
  * - 出力: 実行サマリを stdout へ。`GITHUB_STEP_SUMMARY` があれば Markdown 表を
- *   追記し、人手キューを `ingest-queue.json` (cwd) へ書く (Actions が artifact 化)
+ *   追記し、人手キューを `ingest-queue.json` (cwd) へ書く (Actions が artifact 化)。
+ *   `GITHUB_OUTPUT` があれば人手キューの件数 (queue_actionable / queue_warnings /
+ *   queue_breakdown) を書く (Slack 通知が読む。取り込みが失敗しても計画の時点で書く)
  * - exit code: 人手キューのみなら 0 (`::warning::` を出す)。入力の zod 違反や
  *   DB 接続失敗など、取り込み自体が成立しない場合は 1
  */
@@ -27,7 +29,13 @@ import postgres from 'postgres';
 import { EventDataSchema } from '@revolution/schemas/mdx-frontmatter';
 
 import { executePlan, fetchSnapshot } from '../lib/ingest/execute-ingest';
-import { planIngest, type ArticleEventData, type IngestPlan } from '../lib/ingest/plan-ingest';
+import {
+  planIngest,
+  summarizeQueue,
+  type ArticleEventData,
+  type IngestPlan,
+  type QueueSummary,
+} from '../lib/ingest/plan-ingest';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const indexFlag = process.argv.indexOf('--index');
@@ -76,7 +84,12 @@ function loadArticles(): ArticleEventData[] {
   return articles;
 }
 
-function printPlan(plan: IngestPlan): void {
+/** 人手キューの件数の表記。ログ・Job Summary・::warning:: で揃える */
+function describeQueue(plan: IngestPlan, summary: QueueSummary): string {
+  return `${plan.queue.length} 項目 (対応が要る対象 ${summary.actionable} / 非ブロッキング ${summary.warnings})`;
+}
+
+function printPlan(plan: IngestPlan, summary: QueueSummary): void {
   console.log('--- 取り込み計画 ---');
   console.log(`記事:            ${plan.stats.articles} 件 (うちスキップ ${plan.stats.articlesSkipped})`);
   console.log(`events:          ${plan.events.length} 件`);
@@ -86,13 +99,13 @@ function printPlan(plan: IngestPlan): void {
     `occurrences:     ${plan.stats.occurrencesPlanned} 件 (insert ${plan.occurrences.filter((o) => o.action === 'insert').length} / update ${plan.occurrences.filter((o) => o.action === 'update').length})`,
   );
   console.log(`verified=true:   ${plan.occurrences.filter((o) => o.verified).length} 件`);
-  console.log(`人手キュー:      ${plan.queue.length} 件`);
+  console.log(`人手キュー:      ${describeQueue(plan, summary)}`);
   for (const item of plan.queue) {
     console.log(`  - [${item.reason}] ${item.detail} (記事 ${item.articleSlug})`);
   }
 }
 
-function writeGithubSummary(plan: IngestPlan, resultLine: string): void {
+function writeGithubSummary(plan: IngestPlan, summary: QueueSummary, resultLine: string): void {
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (!summaryPath) return;
 
@@ -106,7 +119,7 @@ function writeGithubSummary(plan: IngestPlan, resultLine: string): void {
     `| events | ${plan.events.length} |`,
     `| occurrences (計画) | ${plan.stats.occurrencesPlanned} |`,
     `| verified=true | ${plan.occurrences.filter((o) => o.verified).length} |`,
-    `| 人手キュー | ${plan.queue.length} |`,
+    `| 人手キュー | ${describeQueue(plan, summary)} |`,
     '',
   ];
   if (plan.queue.length > 0) {
@@ -118,6 +131,16 @@ function writeGithubSummary(plan: IngestPlan, resultLine: string): void {
     lines.push('');
   }
   appendFileSync(summaryPath, lines.join('\n'));
+}
+
+function writeGithubOutput(summary: QueueSummary): void {
+  const outputPath = process.env.GITHUB_OUTPUT;
+  if (!outputPath) return;
+  const breakdown = summary.actionableByReason.map(({ reason, count }) => `${reason} ${count}`).join(', ');
+  appendFileSync(
+    outputPath,
+    `queue_actionable=${summary.actionable}\nqueue_warnings=${summary.warnings}\nqueue_breakdown=${breakdown}\n`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -135,15 +158,17 @@ async function main(): Promise<void> {
   try {
     const snapshot = await fetchSnapshot(db);
     const plan = planIngest(articles, snapshot);
-    printPlan(plan);
+    const summary = summarizeQueue(plan.queue);
+    printPlan(plan, summary);
+    writeGithubOutput(summary);
 
     if (plan.queue.length > 0) {
       writeFileSync('ingest-queue.json', `${JSON.stringify(plan.queue, null, 2)}\n`);
-      console.log(`::warning::人手キュー ${plan.queue.length} 件 (ingest-queue.json / Job Summary を確認)`);
+      console.log(`::warning::人手キュー ${describeQueue(plan, summary)} (ingest-queue.json / Job Summary を確認)`);
     }
 
     if (DRY_RUN) {
-      writeGithubSummary(plan, '**dry-run のため書き込みは行っていません。**');
+      writeGithubSummary(plan, summary, '**dry-run のため書き込みは行っていません。**');
       console.log('\n(--dry-run のため書き込みは行いません)');
       return;
     }
@@ -163,6 +188,7 @@ async function main(): Promise<void> {
       }
       writeGithubSummary(
         plan,
+        summary,
         `⚠️ **event 単位の失敗 ${result.failures.length} 件** (他 event は取り込み済み)。ログを確認してください。`,
       );
       fail(`event 単位の失敗 ${result.failures.length} 件`);
@@ -170,6 +196,7 @@ async function main(): Promise<void> {
 
     writeGithubSummary(
       plan,
+      summary,
       `✅ 取り込み完了: events ${result.eventsUpserted} / occurrences insert ${result.occurrencesInserted} + update ${result.occurrencesUpdated}`,
     );
     console.log('\n✅ 取り込み完了 (冪等 upsert)。');
