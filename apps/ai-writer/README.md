@@ -6,47 +6,45 @@
 
 **MDX パイプライン** が本番運用モードです。
 
-### 📐 アーキテクチャ詳細
+### 📐 パイプラインの構成
 
-パイプライン全体像、18 step + 3 sub-step の責務 / 依存関係 / Layer 別 TDD 戦略との対応は
-**[`docs/pipeline.md`](../../docs/pipeline.md)** を参照してください。
+記事 (公式サイト) の URL を入力に、複数の step を順に実行して MDX 記事と GitHub PR を作ります。本体は `lib/services/article-generation-mdx.service.ts` の `generateMdxFromRSS()` です。
 
-ステップ ID 定義の真実源は [`lib/services/pipeline-steps.ts`](./lib/services/pipeline-steps.ts) (`PIPELINE_STEPS` 配列) です。
+- **step の ID と順序の真実源**は [`lib/services/pipeline-steps.ts`](./lib/services/pipeline-steps.ts) の `PIPELINE_STEPS` です。step の数はこの文書に書きません (足すと古びるため)
+- ログは `[N/M id] label` の形で出ます。N は配列の位置なので step を足すと変わります。ログを突き合わせるときは id を使ってください
+- 新しい処理を top-level の step にするか、既存の step の中の処理にするかの基準は `pipeline-steps.ts` の冒頭のコメントにあります
+- 各 step の入出力やデータの流れの詳細は、メンテナー向けの非公開の文書で管理しています
 
-### MDX Pipeline フロー (簡略版)
-
-主要な情報の流れだけを抜粋した簡略版です。実態は 18 step + 3 sub-step (上記詳細 doc 参照)。
+### 情報の流れ (概要)
 
 ```text
-RSS Feed
-  ↓
-[1] article-selection / [2] rss-extraction / [3] detail-extraction
-  ↓
-[4-6] subpage-detection / category-image-extraction / vision-api (条件付)
-  ↓
-[7] slug-generation → [8] duplication-check (Firestore)
-  ↓
-[9] metadata-generation / [10] title-generation / [11] content-generation
-  ↓
-[12-15] image-upload-r2 / placeholder 置換 (画像/テキスト/末尾)
-  ↓
-[16] mdx-assembly → [17] github-pr-creation → [18] firestore-status-update
+記事 (公式サイト) の URL
+  ↓ 記事の選別 → 作品・店舗・種別の抽出 → 公式サイトの HTML からの詳細抽出
+  ↓ 下層ページ (メニュー/ノベルティ/グッズ) と画像の収集 → Vision (条件付き)
+  ↓ slug の解決 → 重複チェックと採番 (Firestore)
+  ↓ 抜粋・タイトル・リード文・本文の生成
+  ↓ 画像の R2 アップロード → プレースホルダーの置換と検査
+  ↓ MDX の組み立て → GitHub PR (1 記事 = 1 PR) → Firestore の状態更新
 ```
+
+`app/api/cron/rss/route.ts` (Cloud Run の cron) は別の実装で、上の流れの多くを通りません。現在は休眠中です。
 
 ## 主要コンポーネント
 
 ### MDX Pipeline Functions
 
 - **`registerNewEvent`**: Firestore 重複チェック + ULID 生成
-- **`generateArticleMetadata`**: Claude API でカテゴリ/抜粋生成
+- **`generateArticleMetadata`**: 抜粋を生成 (カテゴリは `buildCategories` で決定的に作る)
 - **`generateMdxArticle`**: MDX frontmatter + 本文生成
 - **`createMdxPr`**: GitHub PR 作成
 
 ### YAML Slug Mapping
 
-- `data/title-romaji-mapping.yaml`: 作品名 → work_slug
-- `data/brand-slugs.yaml`: 店舗名 → store_slug
-- `data/event-type-slugs.yaml`: イベントタイプマッピング
+private repo (`revolution-templates`) のものを、repo ルートで実行する `pnpm sync:templates` が `apps/ai-writer/templates/config/` に写します。下のパスはこのディレクトリ (`apps/ai-writer/`) からの相対です。
+
+- `templates/config/title-romaji-mapping.yaml`: 作品名 → work_slug
+- `templates/config/brand-slugs.yaml`: 店舗名 → store_slug
+- `templates/config/event-type-slugs.yaml`: イベントタイプマッピング
 
 ### Firestore Canonical Keys
 
