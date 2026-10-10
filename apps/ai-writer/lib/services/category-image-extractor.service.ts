@@ -232,16 +232,16 @@ export class CategoryImageExtractorService {
 
       if (!src) return;
 
-      // 除外パターンチェック
-      if (excludeRegex.test(src)) {
-        return;
-      }
-
       // 絶対URLに変換
       let absoluteUrl: string;
       try {
         absoluteUrl = src.startsWith('http') ? src : new URL(src, baseUrl.origin).href;
       } catch {
+        return;
+      }
+
+      // 除外パターンチェック (ホスト名は見ない。`line` が images.ltr-online.com に当たり全画像が落ちていた)
+      if (excludeRegex.test(new URL(absoluteUrl).pathname)) {
         return;
       }
 

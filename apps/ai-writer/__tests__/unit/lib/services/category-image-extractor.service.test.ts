@@ -13,7 +13,8 @@ import type { ConfigLoaderService } from '@/lib/services/config-loader.service';
 const IMAGE_CONFIG = {
   max_images_per_category: 5,
   min_image_size: { width: 200, height: 200 },
-  exclude_patterns: ['logo', 'icon'],
+  // store-url-patterns.yaml の実際の値の一部。`line` はホスト名の ltr-online に部分一致する
+  exclude_patterns: ['logo', 'icon', 'line'],
 };
 
 const configLoader = {
@@ -78,5 +79,18 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     });
 
     expect(result.menu).toEqual(['https://example.com/images/menu-1.jpg']);
+  });
+
+  it('除外パターンはパスだけに当て、ホスト名 (images.ltr-online.com) では落とさない', async () => {
+    mockFetchHtml(
+      '<html><body><img src="https://images.ltr-online.com/heroaca-cafe/menu.jpg"><img src="/sns/line.png"></body></html>',
+    );
+    const service = new CategoryImageExtractorService(configLoader);
+
+    const result = await service.extractCategoryImages('https://heroaca-cafe.ltr-online.com/', null, {
+      menu: ['https://heroaca-cafe.ltr-online.com/lp/cafe-menu'],
+    });
+
+    expect(result.menu).toEqual(['https://images.ltr-online.com/heroaca-cafe/menu.jpg']);
   });
 });
