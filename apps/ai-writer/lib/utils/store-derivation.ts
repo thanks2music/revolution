@@ -81,7 +81,7 @@ const VENUE_JOIN = '、';
  *   として既に許容されている。タイトル側は文字数制限のため `/` を使うが、本文に
  *   その制約はないため用途に応じて分ける (BOSS 確定 2026-08-09)。
  */
-const CITY_JOIN = '・';
+export const CITY_JOIN = '・';
 
 /**
  * 都市名を列挙せず「N都市」に丸める閾値。
@@ -109,7 +109,7 @@ const CITY_LIST_MAX_TITLE = 3;
  *   本文にその制約はないため**用途の違いによる意図的な不統一** (BOSS 確定 2026-08-09)。
  *   本番記事のタイトルにも `D.Gray-man カフェ in 東京/大阪` が実在する。
  */
-const CITY_JOIN_TITLE = '/';
+export const CITY_JOIN_TITLE = '/';
 
 /**
  * ドメイン照合に使うトークンの最小長。
@@ -305,8 +305,19 @@ function toUniqueCities(prefectures: string[]): string[] {
  */
 function buildCityLabel(cities: string[], separator: string, max: number): string {
   if (cities.length === 0) return '';
-  if (cities.length > max) return `${cities.length}都市`;
+  if (cities.length > max) return formatRoundedCityLabel(cities.length);
   return cities.join(separator);
+}
+
+/** 都市の数を丸めた表記 (`4都市`)。 */
+export function formatRoundedCityLabel(count: number): string {
+  return `${count}都市`;
+}
+
+/** 丸めた表記 (`4都市`) なら都市の数を返す。そうでなければ null。 */
+export function parseRoundedCityLabel(label: string): number | null {
+  const match = /^(\d+)都市$/.exec(label);
+  return match ? Number(match[1]) : null;
 }
 
 /**

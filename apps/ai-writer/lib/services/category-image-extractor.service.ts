@@ -9,6 +9,7 @@
 
 import * as cheerio from 'cheerio';
 import type { CategoryUrls } from '@/lib/types/subpage-detection';
+import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
 
 /**
@@ -40,6 +41,19 @@ export interface CategoryImages {
 interface PageImagesResult {
   images: string[];
   ogpImage: string | null;
+}
+
+/**
+ * 除外パターンを当てる文字列。ホスト名は含めず (`line` が images.ltr-online.com に当たり
+ * 全画像が落ちていた)、パスとクエリを使う。画像プロキシ (`/_next/image?url=%2Fimages%2Flogo.png`)
+ * のファイル名も見えるよう、クエリはデコードする。
+ */
+function toExcludeTarget(url: URL): string {
+  try {
+    return `${url.pathname}${decodeURIComponent(url.search)}`;
+  } catch {
+    return `${url.pathname}${url.search}`;
+  }
 }
 
 /**
@@ -109,7 +123,8 @@ export class CategoryImageExtractorService {
         try {
           console.log(`[CategoryImageExtractor] ${category}: ${targetUrl} から画像抽出`);
 
-          const html = await this.fetchPage(targetUrl);
+          // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する
+          const html = expandInertiaPayload(await this.fetchPage(targetUrl));
           const pageResult = this.extractImagesFromHtml(html, targetUrl, imageConfig);
 
           // 最大枚数まで取得
@@ -229,16 +244,18 @@ export class CategoryImageExtractorService {
 
       if (!src) return;
 
-      // 除外パターンチェック
-      if (excludeRegex.test(src)) {
+      // 絶対URLに変換
+      let absoluteUrl: string;
+      let pathAndQuery: string;
+      try {
+        absoluteUrl = new URL(src, baseUrl.origin).href;
+        pathAndQuery = toExcludeTarget(new URL(absoluteUrl));
+      } catch {
         return;
       }
 
-      // 絶対URLに変換
-      let absoluteUrl: string;
-      try {
-        absoluteUrl = src.startsWith('http') ? src : new URL(src, baseUrl.origin).href;
-      } catch {
+      // 除外パターンチェック
+      if (excludeRegex.test(pathAndQuery)) {
         return;
       }
 

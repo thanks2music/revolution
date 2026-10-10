@@ -16,6 +16,11 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
+import { enforceTitleCityLabel } from '@/lib/utils/enforce-title-city-label';
+
+/** タイトルの文字数の下限と上限 (上限の根拠は generateTitle 内の ★ を参照) */
+const TITLE_MIN_LENGTH = 28;
+const TITLE_MAX_LENGTH = 40;
 
 /**
  * タイトル生成サービス
@@ -73,7 +78,13 @@ export class TitleGenerationService {
       });
 
       // レスポンスからタイトルとreasoningを抽出
-      const { title, _reasoning } = this.parseResponse(response.content);
+      const { title: rawTitle, _reasoning } = this.parseResponse(response.content);
+
+      // 開催地は確定値を強制する (プロンプトは確率的にしか守られないための安全網)
+      const title = enforceTitleCityLabel(rawTitle, request.extractedCityLabel, TITLE_MAX_LENGTH);
+      if (title !== rawTitle) {
+        console.warn(`[TitleGeneration] 開催地を確定値へ置き換えました: ${rawTitle} → ${title}`);
+      }
 
       // タイトルの文字数を検証
       const length = this.countCharacters(title);
@@ -83,7 +94,7 @@ export class TitleGenerationService {
       //   - CI (generate-article-index.test.ts): 40 超で **fail**
       //   41-42 文字は service では valid なのに CI で落ちる状態だった。
       //   実害の出る CI 側 (SEO 由来の 40) に合わせる。
-      const is_valid = length >= 28 && length <= 40;
+      const is_valid = length >= TITLE_MIN_LENGTH && length <= TITLE_MAX_LENGTH;
 
       console.log('[TitleGeneration] タイトル生成完了:', {
         title,
@@ -110,7 +121,7 @@ export class TitleGenerationService {
 
       if (!is_valid) {
         console.warn(
-          `[TitleGeneration] タイトルが文字数制約（28〜40文字）を満たしていません: ${length}文字`
+          `[TitleGeneration] タイトルが文字数制約（${TITLE_MIN_LENGTH}〜${TITLE_MAX_LENGTH}文字）を満たしていません: ${length}文字`
         );
       }
 
@@ -141,7 +152,7 @@ export class TitleGenerationService {
     request: TitleGenerationRequest
   ): string {
     // YAMLテンプレートのルール定義をプロンプトに含める
-    const rulesSection = this.buildRulesSection(template);
+    const rulesSection = this.buildRulesSection(template, !!request.extractedCityLabel);
 
     // 抽出済みデータセクション（detail-extraction step で抽出済みの情報がある場合）
     const extractedDataSection = this.buildExtractedDataSection(request);
@@ -266,9 +277,10 @@ ${extractedDataSection}
   /**
    * モジュール化YAMLテンプレートからルール定義セクションを構築
    * @param template モジュール化YAMLテンプレート
+   * @param hasConfirmedCityLabel 開催都市の確定値を渡すか
    * @returns ルール定義のテキスト
    */
-  private buildRulesSection(template: MergedModularTemplate): string {
+  private buildRulesSection(template: MergedModularTemplate, hasConfirmedCityLabel: boolean): string {
     const sections: string[] = [];
 
     // 文字数制約（モジュール化テンプレート: constraints.title.length）
@@ -295,7 +307,10 @@ ${template.logic.work_name_normalization}`);
     }
 
     // 複数店舗のロケーション抽出ロジック
-    if (template.logic?.multi_location_extraction) {
+    // ★ 開催都市の確定値を渡すときは送らない。この節は「本文から都市を抜き出し、
+    //   AICHI → 名古屋 のように言い換えて / で並べる」と教えるため、確定値 (`4都市` など)
+    //   より優先されて入力に無い都市を作っていた (2026-10-10 heroaca-cafe の「宮城」)。
+    if (template.logic?.multi_location_extraction && !hasConfirmedCityLabel) {
       sections.push(`## 複数店舗時のロケーション抽出ルール
 ${template.logic.multi_location_extraction}`);
     }
