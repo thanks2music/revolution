@@ -13,6 +13,7 @@
 - **step の ID と順序の真実源**は [`lib/services/pipeline-steps.ts`](./lib/services/pipeline-steps.ts) の `PIPELINE_STEPS` です。step の数はこの文書に書きません (足すと古びるため)
 - ログは `[N/M id] label` の形で出ます。N は配列の位置なので step を足すと変わります。ログを突き合わせるときは id を使ってください
 - 新しい処理を top-level の step にするか、既存の step の中の処理にするかの基準は `pipeline-steps.ts` の冒頭のコメントにあります
+- 各 step の入出力やデータの流れの詳細は、メンテナー向けの非公開の文書で管理しています
 
 ### 情報の流れ (概要)
 
@@ -39,7 +40,7 @@
 
 ### YAML Slug Mapping
 
-private repo (`revolution-templates`) から `pnpm sync:templates` で `templates/config/` に写したものを読みます。
+private repo (`revolution-templates`) のものを、repo ルートで実行する `pnpm sync:templates` が `apps/ai-writer/templates/config/` に写します。下のパスはこのディレクトリ (`apps/ai-writer/`) からの相対です。
 
 - `templates/config/title-romaji-mapping.yaml`: 作品名 → work_slug
 - `templates/config/brand-slugs.yaml`: 店舗名 → store_slug
