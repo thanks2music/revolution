@@ -9,6 +9,7 @@
 
 import * as cheerio from 'cheerio';
 import type { CategoryUrls } from '@/lib/types/subpage-detection';
+import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
 
 /**
@@ -109,7 +110,9 @@ export class CategoryImageExtractorService {
         try {
           console.log(`[CategoryImageExtractor] ${category}: ${targetUrl} から画像抽出`);
 
-          const html = await this.fetchPage(targetUrl);
+          // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する
+          // (トップページは detail-extraction 側で展開済みの HTML が渡ってくる)
+          const html = expandInertiaPayload(await this.fetchPage(targetUrl));
           const pageResult = this.extractImagesFromHtml(html, targetUrl, imageConfig);
 
           // 最大枚数まで取得
