@@ -18,6 +18,9 @@ import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
 import { enforceTitleCityLabel } from '@/lib/utils/enforce-title-city-label';
 
+/** タイトルの上限の文字数 (CI の generate-article-index.test.ts も 40 を超えると落ちる) */
+const TITLE_MAX_LENGTH = 40;
+
 /**
  * タイトル生成サービス
  */
@@ -78,7 +81,7 @@ export class TitleGenerationService {
       const { _reasoning } = parsed;
 
       // 開催地は確定値を強制する (丸めた `N都市` を LLM が推測で展開することがあるため)
-      const title = enforceTitleCityLabel(parsed.title, request.extractedCityLabel);
+      const title = enforceTitleCityLabel(parsed.title, request.extractedCityLabel, TITLE_MAX_LENGTH);
       if (title !== parsed.title) {
         console.warn(`[TitleGeneration] 開催地を確定値へ置き換えました: ${parsed.title} → ${title}`);
       }
@@ -91,7 +94,7 @@ export class TitleGenerationService {
       //   - CI (generate-article-index.test.ts): 40 超で **fail**
       //   41-42 文字は service では valid なのに CI で落ちる状態だった。
       //   実害の出る CI 側 (SEO 由来の 40) に合わせる。
-      const is_valid = length >= 28 && length <= 40;
+      const is_valid = length >= 28 && length <= TITLE_MAX_LENGTH;
 
       console.log('[TitleGeneration] タイトル生成完了:', {
         title,
