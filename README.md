@@ -27,7 +27,7 @@ LLM を活用した AI 記事生成パイプラインを備えた、Jamstack 構
 | 全ドキュメント一覧 + ナビゲーション | [`docs/README.md`](./docs/README.md) |
 | プロジェクト概要・ビジョン | [`docs/overview.md`](./docs/overview.md) |
 | 現行版 技術スタック | [`docs/current-stack.md`](./docs/current-stack.md) |
-| MDX パイプライン詳細 (18 step + Mermaid + drawio) | [`docs/pipeline.md`](./docs/pipeline.md) |
+| AI Writer の MDX パイプライン (概要) | [`apps/ai-writer/README.md`](./apps/ai-writer/README.md) |
 | モノレポ運用 (pnpm + Turborepo) | [`docs/monorepo.md`](./docs/monorepo.md) |
 | 開発・ビルドコマンド | [`docs/build.md`](./docs/build.md) |
 | AI Writer Cloud Run デプロイ | [`docs/ai-writer-cloud-run.md`](./docs/ai-writer-cloud-run.md) |
