@@ -611,11 +611,7 @@ export class GeminiVisionService implements IVisionApiService {
    * coerced to `undefined` (or the `0.5` confidence default) instead of
    * propagating to `VisionExtractionResultSchema.parse` and triggering a
    * deterministic ZodError. Mirrors the other Vision services.
-   *
-   * Optional string fields go through `optionalString` for the same reason:
-   * Gemini returns `null` for a missing `description` (the prompt teaches
-   * "null when absent" for prices), and one null item used to drop the whole
-   * menu category (2026-10-10, heroaca-cafe: 20+ items → 0).
+   * Optional string fields go through `optionalString` for the same reason.
    */
   private convertToMenuItem(item: NonNullable<RawVisionResponse['menuItems']>[number]): MenuItem {
     return {
