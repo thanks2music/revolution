@@ -34,6 +34,17 @@ describe('enforceTitleCityLabel', () => {
     expect(enforce(title, '東京/大阪')).toBe(title);
   });
 
+  it('in が 2 回あるときは最初の in だけを見る (店舗名の型なら後ろの in にも触れない)', () => {
+    const title = 'トイ・ストーリー5 カフェ in OH MY CAFE in 東京/宮城 7月3日より開催';
+    expect(enforce(title, '東京/大阪')).toBe(title);
+  });
+
+  it('in が 2 回あり最初の in が都市の一覧なら、そこだけを置き換える', () => {
+    expect(enforce('ヒロアカ カフェ in 東京/宮城 in 2026 10月16日より開催', '東京/大阪')).toBe(
+      'ヒロアカ カフェ in 東京/大阪 in 2026 10月16日より開催'
+    );
+  });
+
   it('in を使わないタイトルには触れない', () => {
     const title = '名探偵コナン 6都市 4月10日よりコラボ開催';
     expect(enforce(title, '6都市')).toBe(title);

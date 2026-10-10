@@ -110,8 +110,19 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     expect(result.menu).toEqual(['https://example.com/_next/image?url=%2Fimages%2Fmenu_01.jpg&w=640']);
   });
 
+  it('http で始まる相対パスも、ページの origin からの相対として解決する', async () => {
+    mockFetchHtml('<html><body><img src="httpdocs/menu.jpg"></body></html>');
+    const service = new CategoryImageExtractorService(configLoader);
+
+    const result = await service.extractCategoryImages('https://example.com/', null, {
+      menu: ['https://example.com/menu/'],
+    });
+
+    expect(result.menu).toEqual(['https://example.com/httpdocs/menu.jpg']);
+  });
+
   it('URL として解釈できない src は飛ばし、他の画像の抽出を止めない', async () => {
-    mockFetchHtml('<html><body><img src="http//cdn.example.com/a.jpg"><img src="/img/menu.jpg"></body></html>');
+    mockFetchHtml('<html><body><img src="https://[cdn.example.com/a.jpg"><img src="/img/menu.jpg"></body></html>');
     const service = new CategoryImageExtractorService(configLoader);
 
     const result = await service.extractCategoryImages('https://example.com/', null, {

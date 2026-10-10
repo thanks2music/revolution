@@ -248,7 +248,7 @@ export class CategoryImageExtractorService {
       let absoluteUrl: string;
       let pathAndQuery: string;
       try {
-        absoluteUrl = src.startsWith('http') ? src : new URL(src, baseUrl.origin).href;
+        absoluteUrl = new URL(src, baseUrl.origin).href;
         pathAndQuery = toExcludeTarget(new URL(absoluteUrl));
       } catch {
         return;
