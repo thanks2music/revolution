@@ -109,7 +109,7 @@ const CITY_LIST_MAX_TITLE = 3;
  *   本文にその制約はないため**用途の違いによる意図的な不統一** (BOSS 確定 2026-08-09)。
  *   本番記事のタイトルにも `D.Gray-man カフェ in 東京/大阪` が実在する。
  */
-const CITY_JOIN_TITLE = '/';
+export const CITY_JOIN_TITLE = '/';
 
 /**
  * ドメイン照合に使うトークンの最小長。

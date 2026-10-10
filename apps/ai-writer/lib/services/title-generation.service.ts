@@ -16,6 +16,7 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
+import { enforceTitleCityLabel } from '@/lib/utils/enforce-title-city-label';
 
 /**
  * タイトル生成サービス
@@ -73,7 +74,14 @@ export class TitleGenerationService {
       });
 
       // レスポンスからタイトルとreasoningを抽出
-      const { title, _reasoning } = this.parseResponse(response.content);
+      const parsed = this.parseResponse(response.content);
+      const { _reasoning } = parsed;
+
+      // 開催地は確定値を強制する (丸めた `N都市` を LLM が推測で展開することがあるため)
+      const title = enforceTitleCityLabel(parsed.title, request.extractedCityLabel);
+      if (title !== parsed.title) {
+        console.warn(`[TitleGeneration] 開催地を確定値へ置き換えました: ${parsed.title} → ${title}`);
+      }
 
       // タイトルの文字数を検証
       const length = this.countCharacters(title);
