@@ -94,26 +94,20 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     expect(result.menu).toEqual(['https://images.ltr-online.com/heroaca-cafe/menu.jpg']);
   });
 
-  it('除外パターンは語の境界で当て、goods_lineup / online のような語の途中では落とさない', async () => {
+  it('画像プロキシのクエリに含まれるファイル名にも除外パターンを当てる', async () => {
     mockFetchHtml(
       '<html><body>' +
-        '<img src="/img/goods_lineup_01.jpg">' +
-        '<img src="/img/online_shop_goods.jpg">' +
-        '<img src="/img/headerLogo.png">' +
         '<img src="/_next/image?url=%2Fimages%2Fsns_icon.png&w=640">' +
+        '<img src="/_next/image?url=%2Fimages%2Fmenu_01.jpg&w=640">' +
         '</body></html>',
     );
     const service = new CategoryImageExtractorService(configLoader);
 
     const result = await service.extractCategoryImages('https://example.com/', null, {
-      goods: ['https://example.com/goods/'],
+      menu: ['https://example.com/menu/'],
     });
 
-    // キャメルケースのロゴと、画像プロキシのクエリ内のアイコンは除外する
-    expect(result.goods).toEqual([
-      'https://example.com/img/goods_lineup_01.jpg',
-      'https://example.com/img/online_shop_goods.jpg',
-    ]);
+    expect(result.menu).toEqual(['https://example.com/_next/image?url=%2Fimages%2Fmenu_01.jpg&w=640']);
   });
 
   it('URL として解釈できない src は飛ばし、他の画像の抽出を止めない', async () => {

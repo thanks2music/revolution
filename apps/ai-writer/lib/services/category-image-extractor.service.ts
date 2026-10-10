@@ -44,29 +44,16 @@ interface PageImagesResult {
 }
 
 /**
- * 除外パターンを語の境界で照合する正規表現を作る。
- *
- * 部分一致だと `line` が `goods_lineup` や `online` に当たり、メニューやグッズの画像まで落ちる。
- * 英字以外 (`/` `_` `-` `.` など) と文字列の端を境界とみなす。
- */
-function buildExcludeRegex(patterns: string[]): RegExp {
-  return new RegExp(`(?:^|[^a-z])(?:${patterns.join('|')})(?:[^a-z]|$)`, 'i');
-}
-
-/**
- * 除外パターンを当てる文字列。ホスト名は含めず、パスとクエリを使う。
- *
- * - キャメルケース (`headerLogo.png`) も境界で区切れるよう、小文字→大文字の切れ目に `-` を挟む
- * - 画像プロキシ (`/_next/image?url=%2Fimages%2Flogo.png`) のファイル名も見えるよう、クエリはデコードする
+ * 除外パターンを当てる文字列。ホスト名は含めず (`line` が images.ltr-online.com に当たり
+ * 全画像が落ちていた)、パスとクエリを使う。画像プロキシ (`/_next/image?url=%2Fimages%2Flogo.png`)
+ * のファイル名も見えるよう、クエリはデコードする。
  */
 function toExcludeTarget(url: URL): string {
-  let query = url.search;
   try {
-    query = decodeURIComponent(query);
+    return `${url.pathname}${decodeURIComponent(url.search)}`;
   } catch {
-    // 不正なエスケープはそのまま使う
+    return `${url.pathname}${url.search}`;
   }
-  return `${url.pathname}${query}`.replace(/([a-z])([A-Z])/g, '$1-$2');
 }
 
 /**
@@ -136,9 +123,7 @@ export class CategoryImageExtractorService {
         try {
           console.log(`[CategoryImageExtractor] ${category}: ${targetUrl} から画像抽出`);
 
-          // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する。
-          // (トップページは呼び出し元から detail-extraction の圧縮後の HTML が渡るため、
-          //  Inertia は展開済みだが <img> が残っていない。その扱いはここでは変えない)
+          // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する
           const html = expandInertiaPayload(await this.fetchPage(targetUrl));
           const pageResult = this.extractImagesFromHtml(html, targetUrl, imageConfig);
 
@@ -249,7 +234,7 @@ export class CategoryImageExtractorService {
 
     // 記事内の画像を全て取得
     const images: string[] = [];
-    const excludeRegex = buildExcludeRegex(config.exclude_patterns);
+    const excludeRegex = new RegExp(config.exclude_patterns.join('|'), 'i');
 
     $('img').each((_, element) => {
       const src =
@@ -269,7 +254,7 @@ export class CategoryImageExtractorService {
         return;
       }
 
-      // 除外パターンチェック (ホスト名は見ない。`line` が images.ltr-online.com に当たり全画像が落ちていた)
+      // 除外パターンチェック
       if (excludeRegex.test(pathAndQuery)) {
         return;
       }
