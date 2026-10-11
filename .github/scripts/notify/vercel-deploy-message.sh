@@ -6,7 +6,8 @@
 #   EVENT_ACTION   github.event.action (vercel.deployment.success / error / failed)
 #   PAYLOAD_FILE   github.event.client_payload を書き出した JSON ファイル
 #                  (形式: https://github.com/vercel/repository-dispatch の src/data/*.ts)
-#   PROJECT_NAME   通知の対象にする Vercel プロジェクト名
+#   PROJECT_LABELS 通知の対象にする Vercel プロジェクト名と、文面に出す名前の JSON
+#                  (例: {"revolution-phoenix-frontend":"フロントエンド"})。載っていないプロジェクトは送らない
 #   REPO_URL       https://github.com/<owner>/<repo> (commit へのリンクに使う)
 #   BODY_FILE      補足 (URL / commit / branch / 失敗の理由) を書き出すファイル
 #
@@ -17,17 +18,18 @@
 #   production=true|false  本番環境のデプロイか (true なら本番系、false なら開発系へ送る)
 #   mention=true|false     メンションするか (本番環境の失敗だけ)
 #   test=true|false        テストモードで送るか (疑似イベントの client_payload.test。真偽値でも文字列でもよい)
-#   text                   要約 (payload 由来の値を含まない)
+#   text                   要約 (payload 由来の値を含まない。名前は PROJECT_LABELS の値)
 # 出力 (ファイル):
 #   $BODY_FILE             補足の mrkdwn。payload 由来の値は & < > をエスケープ済み、改行なし。
 #                          composite action の with: の値は public なログに出るため、body-file で渡す
 set -euo pipefail
 : "${BODY_FILE:?BODY_FILE is required (the body is not written to the step outputs)}"
+: "${PROJECT_LABELS:?PROJECT_LABELS is required (JSON: Vercel project name -> label)}"
 
 out="$(mktemp)"
 jq -r \
   --arg action "${EVENT_ACTION}" \
-  --arg project "${PROJECT_NAME}" \
+  --argjson labels "${PROJECT_LABELS}" \
   --arg repo "${REPO_URL}" '
   def oneline: tostring | gsub("[\r\n]+"; " ");
   def esc: oneline | gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;");
@@ -35,13 +37,15 @@ jq -r \
   def trunc($n): if length > $n then (.[0:($n - 1)] | sub("&[a-z]{0,4}$"; "")) + "…" else . end;
 
   ((.environment // "") == "production") as $production
+  # 名前は payload ではなく PROJECT_LABELS から取る (text に payload 由来の値を入れない)
+  | ($labels[(.project.name // "") | tostring] // null) as $label
   | (.state.type // "") as $state
   | (.state.detail // "") as $detail
   # error / deployment_deleted はデプロイの削除で、失敗ではない
   | ($state == "error" and $detail == "deployment_deleted") as $deleted
   | ($action != "vercel.deployment.success" and ($deleted | not)) as $failed
   | ($detail | IN("authorization_required", "missing_vercel_access", "no_vercel_account")) as $access
-  | (((.project.name // "") == $project)
+  | (($label != null)
      and (if $production then ($action == "vercel.deployment.success" or $failed)
           else ($failed and ($access | not)) end)) as $notify
   | (if $production then "本番" else "Preview" end) as $env_label
@@ -70,8 +74,8 @@ jq -r \
     "mention=\($production and $failed)",
     "test=\((.test // false) | tostring == "true")",
     "text=" + (if $failed
-               then "❌ フロントエンドの\($env_label)デプロイが失敗しました (Vercel)"
-               else "✅ フロントエンドを本番にデプロイしました (Vercel)" end),
+               then "❌ \($label // "")の\($env_label)デプロイが失敗しました (Vercel)"
+               else "✅ \($label // "")を本番にデプロイしました (Vercel)" end),
     "body=" + ($parts | join(" · "))
 ' "${PAYLOAD_FILE}" > "${out}"
 
