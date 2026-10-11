@@ -13,12 +13,14 @@
 import { ClaudeIncompleteResponseError } from '@/lib/ai/claude-response';
 import { AnthropicProvider } from '@/lib/ai/providers/anthropic.provider';
 import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
+import { ClaudeAPIService } from '@/lib/services/claude-api.service';
 
 /** SDK の `messages.create` を差し替える。テストごとに実装を入れ替える。 */
 const mockCreate = jest.fn();
 
-jest.mock('@anthropic-ai/sdk', () => ({
-  Anthropic: jest.fn(() => ({ messages: { create: mockCreate } })),
+// 認証 (ID フェデレーション / プロファイル) は anthropic-client.test.ts で固定する。ここでは差し替える
+jest.mock('@/lib/ai/anthropic-client', () => ({
+  createAnthropicClient: jest.fn(() => ({ messages: { create: mockCreate } })),
 }));
 
 jest.mock('@/lib/ai/observability/ai-call-recorder', () => ({
@@ -45,18 +47,22 @@ function buildResponse(text: string) {
 }
 
 describe('AnthropicProvider — 観測ログの記録契約', () => {
-  const ORIGINAL_API_KEY = process.env.ANTHROPIC_API_KEY;
-
   beforeEach(() => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
     mockCreate.mockReset();
     mockCreate.mockResolvedValue(buildResponse('{"ok":1}'));
   });
 
   afterEach(() => {
     jest.clearAllMocks();
-    if (ORIGINAL_API_KEY === undefined) delete process.env.ANTHROPIC_API_KEY;
-    else process.env.ANTHROPIC_API_KEY = ORIGINAL_API_KEY;
+  });
+
+  it('slug や抜粋を任せる ClaudeAPIService に、同じクライアントとモデルを渡す (AI_MODEL の上書きを揃える)', () => {
+    const provider = new AnthropicProvider('claude-opus-5-5');
+
+    expect(ClaudeAPIService).toHaveBeenLastCalledWith(
+      (provider as unknown as { client: unknown }).client,
+      'claude-opus-5-5'
+    );
   });
 
   it('sendMessage の成功時に provider = anthropic で記録する', async () => {

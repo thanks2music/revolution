@@ -86,10 +86,8 @@ export class VisionApiServiceFactory {
       }
 
       case 'anthropic':
-        return new ClaudeVisionService({
-          apiKey: config?.apiKey,
-          model: modelName,
-        });
+        // Anthropic は API キーを受け取らない (createAnthropicClient が認証を決める)
+        return new ClaudeVisionService({ model: modelName });
 
       case 'google':
         // ⚠️ `VISION_API_MEDIA_RESOLUTION` / `VISION_API_THINKING_LEVEL` は Gemini 専用。

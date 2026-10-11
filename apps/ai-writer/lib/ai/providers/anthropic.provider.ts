@@ -12,6 +12,7 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { ClaudeAPIService } from '../../services/claude-api.service';
 import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../../config/claude-models';
+import { createAnthropicClient } from '../anthropic-client';
 import { ClaudeIncompleteResponseError, readClaudeText } from '../claude-response';
 import type {
   AiProvider,
@@ -45,27 +46,21 @@ export class AnthropicProvider implements AiProvider {
   private claudeService: ClaudeAPIService;
   private client: Anthropic;
   private modelName: string;
-  private apiKey: string;
 
   /**
    * Initialize Anthropic Provider
    *
-   * @param apiKey - Optional API key override (defaults to ANTHROPIC_API_KEY env var)
+   * 認証は `createAnthropicClient` が決める (Cloud Run は ID フェデレーション、ローカルは
+   * `ant auth login` のプロファイル)。静的な API キーは受け取らない。
+   *
    * @param modelName - Optional model override (defaults to DEFAULT_CLAUDE_MODEL)
+   * @param client - テスト用の差し替え。既定は `createAnthropicClient()`
    */
-  constructor(apiKey?: string, modelName: string = DEFAULT_CLAUDE_MODEL) {
-    this.apiKey = apiKey || process.env.ANTHROPIC_API_KEY || '';
-
-    if (!this.apiKey) {
-      throw new Error(
-        'Anthropic API key is required. ' +
-          'Set ANTHROPIC_API_KEY environment variable or pass it as parameter to the constructor.'
-      );
-    }
-
-    this.client = new Anthropic({ apiKey: this.apiKey });
+  constructor(modelName: string = DEFAULT_CLAUDE_MODEL, client: Anthropic = createAnthropicClient()) {
+    this.client = client;
     this.modelName = modelName;
-    this.claudeService = new ClaudeAPIService(this.apiKey);
+    // slug / 抜粋なども同じクライアントとモデルで呼ぶ (AI_MODEL の上書きを揃える)
+    this.claudeService = new ClaudeAPIService(this.client, modelName);
 
     console.log(`🤖 Anthropic Provider initialized with model: ${modelName}`);
   }

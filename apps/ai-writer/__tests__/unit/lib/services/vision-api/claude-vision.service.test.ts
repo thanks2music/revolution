@@ -7,12 +7,15 @@
  * `isRandom`, `confidence`) added in Sprint 3 PR-A1.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+
+import { createAnthropicClient } from '@/lib/ai/anthropic-client';
 import { ClaudeVisionService } from '@/lib/services/vision-api/claude-vision.service';
 
-jest.mock('@anthropic-ai/sdk');
+// 認証 (ID フェデレーション / プロファイル) は anthropic-client.test.ts で固定する。ここでは差し替える
+jest.mock('@/lib/ai/anthropic-client', () => ({ createAnthropicClient: jest.fn() }));
 
-const MockedAnthropic = Anthropic as unknown as jest.MockedClass<typeof Anthropic>;
+const mockedCreateAnthropicClient = createAnthropicClient as unknown as jest.Mock;
 
 interface MockClaudeRawResponse {
   confidence?: number;
@@ -42,22 +45,15 @@ function buildClaudeMessage(raw: MockClaudeRawResponse) {
 
 describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () => {
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
-  const ORIGINAL_API_KEY = process.env.ANTHROPIC_API_KEY;
   let service: ClaudeVisionService;
   let mockMessagesCreate: jest.Mock;
 
   beforeEach(() => {
     // Skip filesystem log writes by pretending production (per service implementation).
     process.env.NODE_ENV = 'production';
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
 
     mockMessagesCreate = jest.fn();
-    MockedAnthropic.mockImplementation(
-      () =>
-        ({
-          messages: { create: mockMessagesCreate },
-        }) as unknown as Anthropic,
-    );
+    mockedCreateAnthropicClient.mockReturnValue({ messages: { create: mockMessagesCreate } });
 
     service = new ClaudeVisionService();
   });
@@ -65,11 +61,6 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
   afterEach(() => {
     jest.clearAllMocks();
     process.env.NODE_ENV = ORIGINAL_NODE_ENV;
-    if (ORIGINAL_API_KEY === undefined) {
-      delete process.env.ANTHROPIC_API_KEY;
-    } else {
-      process.env.ANTHROPIC_API_KEY = ORIGINAL_API_KEY;
-    }
   });
 
   describe('menu category', () => {
@@ -606,71 +597,32 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
     });
   });
 
-  describe('API key resolution priority (Sprint C-α)', () => {
-    // Sprint C-α で追加: BOSS が Vision 用と generation 用の Anthropic API key を
-    // 分けたい (課金トラッキング + rate limit 分離) 意図で `.env.local` に
-    // `ANTHROPIC_API_KEY_VISION` を設定していたが、旧実装は `ANTHROPIC_API_KEY` 単一を
-    // 読んでいたため animatecafe 型 URL の生成が全滅していた (2026-07-12 実測)。
-    // 新実装は `config.apiKey` → `ANTHROPIC_API_KEY_VISION` → `ANTHROPIC_API_KEY` の
-    // 優先順位で解決する。
-
-    const ORIGINAL_VISION_KEY = process.env.ANTHROPIC_API_KEY_VISION;
-
-    beforeEach(() => {
-      delete process.env.ANTHROPIC_API_KEY_VISION;
-    });
-
-    afterEach(() => {
-      if (ORIGINAL_VISION_KEY === undefined) {
-        delete process.env.ANTHROPIC_API_KEY_VISION;
-      } else {
-        process.env.ANTHROPIC_API_KEY_VISION = ORIGINAL_VISION_KEY;
-      }
-    });
-
-    it('prefers ANTHROPIC_API_KEY_VISION over ANTHROPIC_API_KEY when both are set', () => {
-      process.env.ANTHROPIC_API_KEY_VISION = 'sk-ant-vision-preferred';
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-generation-fallback';
-      MockedAnthropic.mockClear();
+  // 2026-10-11 に API キー (Vision 専用キーを含む) を廃止し、認証は createAnthropicClient に一本化した
+  describe('クライアントの作り方', () => {
+    it('API キーを読まず、createAnthropicClient のクライアントを使う', () => {
+      mockedCreateAnthropicClient.mockClear();
 
       new ClaudeVisionService();
 
-      expect(MockedAnthropic).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'sk-ant-vision-preferred' }),
-      );
+      expect(mockedCreateAnthropicClient).toHaveBeenCalledTimes(1);
     });
 
-    it('falls back to ANTHROPIC_API_KEY when ANTHROPIC_API_KEY_VISION is not set (backward compatibility)', () => {
-      // beforeEach で ANTHROPIC_API_KEY_VISION は削除済
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-generation-fallback';
-      MockedAnthropic.mockClear();
+    it('config.client を渡したら、それを使う (createAnthropicClient を呼ばない)', async () => {
+      mockedCreateAnthropicClient.mockClear();
+      const create = jest.fn().mockResolvedValue(buildClaudeMessage({ menuItems: [] }));
 
-      new ClaudeVisionService();
+      const injected = new ClaudeVisionService({
+        client: { messages: { create } } as unknown as Anthropic,
+      });
+      await injected.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
 
-      expect(MockedAnthropic).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'sk-ant-generation-fallback' }),
-      );
-    });
-
-    it('config.apiKey has highest priority over both env variables', () => {
-      process.env.ANTHROPIC_API_KEY_VISION = 'sk-ant-vision-env';
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-generation-env';
-      MockedAnthropic.mockClear();
-
-      new ClaudeVisionService({ apiKey: 'sk-ant-explicit-config' });
-
-      expect(MockedAnthropic).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'sk-ant-explicit-config' }),
-      );
-    });
-
-    it('throws with helpful message when neither env variable nor config.apiKey is set', () => {
-      // beforeEach で ANTHROPIC_API_KEY_VISION は削除済
-      delete process.env.ANTHROPIC_API_KEY;
-
-      expect(() => new ClaudeVisionService()).toThrow(
-        /ANTHROPIC_API_KEY_VISION.*ANTHROPIC_API_KEY/,
-      );
+      expect(mockedCreateAnthropicClient).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -2,8 +2,8 @@
 import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { Anthropic } from '@anthropic-ai/sdk';
 import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../lib/config/claude-models.js';
+import { createAnthropicClient } from '../lib/ai/anthropic-client.js';
 import { readClaudeText } from '../lib/ai/claude-response.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -11,7 +11,7 @@ const __dirname = dirname(__filename);
 config({ path: resolve(__dirname, '../.env.local') });
 
 async function testDirect() {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = createAnthropicClient();
 
   const title = '作品名';
 

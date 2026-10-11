@@ -6,13 +6,14 @@
  */
 
 import { ClaudeIncompleteResponseError } from '@/lib/ai/claude-response';
+import type Anthropic from '@anthropic-ai/sdk';
+
 import { ClaudeAPIService } from '@/lib/services/claude-api.service';
 
 const mockCreate = jest.fn();
+/** 認証は createAnthropicClient の責務。ここではクライアントを直接渡す */
+const fakeClient = { messages: { create: mockCreate } } as unknown as Anthropic;
 
-jest.mock('@anthropic-ai/sdk', () => ({
-  Anthropic: jest.fn(() => ({ messages: { create: mockCreate } })),
-}));
 
 jest.mock('@extractus/article-extractor', () => ({ extract: jest.fn() }));
 
@@ -45,7 +46,7 @@ describe('ClaudeAPIService — Sonnet 5.5', () => {
 
   it('generateSlug は temperature を送らず、思考の設定と max_tokens の下限を送る', async () => {
     mockCreate.mockResolvedValue(buildResponse('jujutsu-kaisen'));
-    const service = new ClaudeAPIService('sk-ant-test');
+    const service = new ClaudeAPIService(fakeClient);
 
     await expect(service.generateSlug('呪術廻戦')).resolves.toBe('jujutsu-kaisen');
 
@@ -64,14 +65,14 @@ describe('ClaudeAPIService — Sonnet 5.5', () => {
         content: [],
       })
     );
-    const service = new ClaudeAPIService('sk-ant-test');
+    const service = new ClaudeAPIService(fakeClient);
 
     await expect(service.generateSlug('Spy Family')).resolves.toBe('spy-family');
   });
 
   it('generateExcerpt は max_tokens で切れた応答を失敗にする', async () => {
     mockCreate.mockResolvedValue(buildResponse('途中まで', { stop_reason: 'max_tokens' }));
-    const service = new ClaudeAPIService('sk-ant-test');
+    const service = new ClaudeAPIService(fakeClient);
 
     await expect(service.generateExcerpt('本文')).rejects.toThrow(/truncated/);
   });

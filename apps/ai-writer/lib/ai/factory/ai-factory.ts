@@ -101,7 +101,8 @@ export function createAiProvider(): AiProvider {
   switch (providerType) {
     case 'anthropic':
       console.log('🤖 Using Anthropic Claude provider');
-      return new AnthropicProvider(undefined, modelName);
+      // 認証は API キーではなく createAnthropicClient (ID フェデレーション / プロファイル)
+      return new AnthropicProvider(modelName);
 
     case 'google':
       console.log('🤖 Using Google Gemini provider');
@@ -127,7 +128,7 @@ export function createAiProvider(): AiProvider {
  *
  * @example
  * ```typescript
- * const claudeProvider = createSpecificProvider('anthropic', 'sk-ant-...');
+ * const geminiProvider = createSpecificProvider('google', 'AIza...');
  * ```
  */
 export function createSpecificProvider(
@@ -136,7 +137,8 @@ export function createSpecificProvider(
 ): AiProvider {
   switch (providerType) {
     case 'anthropic':
-      return new AnthropicProvider(apiKey);
+      // Anthropic は静的な API キーを受け取らない (createAnthropicClient が認証を決める)
+      return new AnthropicProvider();
 
     case 'google':
       return new GeminiProvider(apiKey);
