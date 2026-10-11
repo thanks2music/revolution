@@ -4,12 +4,12 @@
     "README",
     "overview",
     "current-stack",
-    "pipeline",
     "monorepo",
     "build",
     "nextjs-page-props",
     "ai-writer-cloud-run",
     "sentry",
-    "slack-notifications"
+    "slack-notifications",
+    "..."
   ]
 }
