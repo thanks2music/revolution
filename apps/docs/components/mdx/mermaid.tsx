@@ -30,7 +30,9 @@ function renderSvg(chart: string): string | undefined {
       interactive: true,
       transparent: true,
     });
-  } catch {
+  } catch (error) {
+    // ビルドのログに残す (画面ではコードブロックになるだけで気づけないため)
+    console.warn('[docs] Mermaid の図を描けなかったので、コードブロックのまま出します:', error);
     return undefined;
   }
 }
