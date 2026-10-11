@@ -28,8 +28,6 @@ on:
       - '.github/workflows/ci.yml'
       - '.github/workflows/update-mdx-article-index.yml'
       - '.github/workflows/sentry-digest.yml'
-      # PROJECT_LABELS (JSON) を本物のまま使って確かめる
-      - '.github/workflows/vercel-deploy-notify.yml'
       - '.github/workflows/slack-notify-smoke.yml'
 
 permissions:
@@ -92,18 +90,17 @@ jobs:
           jq -n --arg sha "${sha}" '{project: {name: "revolution-phoenix-frontend", id: "p"}, environment: "production",
             git: {ref: "main", sha: $sha, shortSha: "0123456"}, url: "revo.vercel.app", id: "d",
             state: {type: "failed", detail: "deployment_failed"}, error: "x <!channel> & y\nz"}' > vercel-base.json
-          # PROJECT_LABELS は vercel-deploy-notify.yml の値をそのまま使う (写しを持つと、本物の JSON が
-          # 壊れても気づけない。壊れていると jq --argjson が落ち、フロントエンドの通知も止まる)
-          labels="$(sed -n "s/^ *PROJECT_LABELS: '\(.*\)'$/\1/p" .github/workflows/vercel-deploy-notify.yml)"
-          jq -e 'type == "object" and has("revolution-phoenix-frontend") and has("revolution-phoenix-docs")' <<<"${labels}" >/dev/null \
-            || { echo "PROJECT_LABELS in vercel-deploy-notify.yml is missing or invalid" >&2; exit 1; }
+          # 対象のプロジェクトは本物の vercel-projects.json で確かめる (壊れているとスクリプトの jq が落ち、
+          # フロントエンドの通知も止まる)
+          jq -e 'has("revolution-phoenix-frontend") and has("revolution-phoenix-docs")' .github/scripts/notify/vercel-projects.json >/dev/null \
+            || { echo "vercel-projects.json is invalid or lacks a project" >&2; exit 1; }
           vercel() {  # $1 = action、$2 = 基準の payload に当てる jq の式。補足はファイルから body= として並べる
             local payload body
             payload="$(mktemp)"
             body="$(mktemp)"
             jq "${2:-.}" vercel-base.json > "${payload}"
             run_script .github/scripts/notify/vercel-deploy-message.sh EVENT_ACTION="$1" PAYLOAD_FILE="${payload}" \
-              PROJECT_LABELS="${labels}" REPO_URL=https://github.com/o/r BODY_FILE="${body}" || return 1
+              REPO_URL=https://github.com/o/r BODY_FILE="${body}" || return 1
             printf 'body=%s\n' "$(cat "${body}")"
           }
           # 本番の失敗: 本番系へメンション付き。payload 由来の値はエスケープされ、改行は消える。
