@@ -36,6 +36,8 @@ Built on the experience of manually creating over 10,000 articles, Revolution di
 
 For release notes, see [GitHub Releases](https://github.com/thanks2music/revolution/releases).
 
+The documents directly under `docs/` are also published as pages at [docs.anime-events.com](https://docs.anime-events.com) (`apps/docs`, not indexed by search engines).
+
 ## Quick Start
 
 ```bash
@@ -56,9 +58,10 @@ pnpm dev                      # Frontend (http://localhost:4444) + AI Writer (ht
 # Or start them individually
 pnpm dev:frontend             # Public frontend only
 pnpm dev:ai-writer            # AI Writer only
+pnpm dev:docs                 # Documentation site only (http://localhost:3333)
 ```
 
-> 💡 If you run multiple worktrees in parallel, use `bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` to avoid port collisions. `pnpm dev` always uses the default ports (4444 / 7777).
+> 💡 If you run multiple worktrees in parallel, use `bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` / `bash scripts/worktree-dev.sh docs` to avoid port collisions. `pnpm dev` always uses the default ports (4444 / 7777).
 
 See [`docs/build.md`](./docs/build.md) for the full command reference.
 
@@ -77,6 +80,7 @@ For the detailed table see [`docs/current-stack.md`](./docs/current-stack.md).
 revolution/
 ├── apps/
 │   ├── ai-writer/   # AI article generation admin app (Next.js 16 / React 19)
+│   ├── docs/        # Documentation site docs.anime-events.com (Next.js 16 / Fumadocs)
 │   ├── frontend/    # Public web site (Next.js 16 / React 19)
 │   └── mcp-gcp-server/  # Model Context Protocol server
 ├── docs/            # Public documentation

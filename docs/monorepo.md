@@ -10,7 +10,8 @@ Revolution は **pnpm workspaces + Turborepo** で構成される TypeScript モ
 revolution/
 ├── apps/
 │   ├── frontend/          (Next.js 16、公開 Web サイト)
-│   └── ai-writer/         (AI 記事生成パイプライン、Cloud Run デプロイ対象)
+│   ├── ai-writer/         (AI 記事生成パイプライン、Cloud Run デプロイ対象)
+│   └── docs/              (Next.js 16 + Fumadocs、本ディレクトリを docs.anime-events.com で配信)
 ├── shared/
 │   ├── schemas/           (Zod スキーマ集約、Schema-SDD の真実源)
 │   └── types/             (共通 TypeScript 型)
