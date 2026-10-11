@@ -361,16 +361,7 @@ pnpm tsx scripts/test-slug-generation.ts
 
 ## デプロイ
 
-```bash
-# Cloud Run へデプロイ
-pnpm deploy
-
-# もしくは
-gcloud run deploy ai-writer \
-  --source . \
-  --region asia-northeast1 \
-  --platform managed
-```
+Cloud Run へのデプロイは GitHub Actions (`.github/workflows/deploy-ai-writer.yml`) が `main` へのマージで行います。手元からのデプロイの手段は置いていません (旧 `scripts/deploy.sh` は 2026-10-11 に削除)。
 
 ## API Endpoints
 
