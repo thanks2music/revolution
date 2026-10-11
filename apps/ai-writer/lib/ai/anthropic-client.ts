@@ -117,7 +117,31 @@ export function createAnthropicClient(env: Env = process.env): Anthropic {
   const auth = resolveAnthropicAuth(env);
 
   if (auth.mode === 'federation') {
-    return new Anthropic({
+    return new Anthropic({ credentials: federationCredentials(auth) });
+  }
+
+  // 空文字も未設定として扱う (SDK も空文字なら既定の ~/.config/anthropic を読むため)
+  if (!env.ANTHROPIC_CONFIG_DIR) {
+    env.ANTHROPIC_CONFIG_DIR = auth.configDir;
+  }
+  return new Anthropic({ profile: auth.profile });
+}
+
+type FederationAuth = Extract<AnthropicAuth, { mode: 'federation' }>;
+type FederationCredentials = ReturnType<typeof oidcFederationProvider>;
+
+let cachedFederation: { key: string; credentials: FederationCredentials } | undefined;
+
+/**
+ * フェデレーションの資格情報をプロセスで 1 つにする。
+ * 1 回のパイプラインで Claude のクライアントを 10 近く作るため、クライアントごとに
+ * 作るとトークンの交換も同じ回数だけ起きる。交換したトークンは資格情報が期限まで持つ。
+ */
+function federationCredentials(auth: FederationAuth): FederationCredentials {
+  const key = [auth.federationRuleId, auth.organizationId, auth.serviceAccountId, auth.workspaceId].join('|');
+  if (cachedFederation?.key !== key) {
+    cachedFederation = {
+      key,
       credentials: oidcFederationProvider({
         identityTokenProvider: () => fetchGoogleIdentityToken(),
         federationRuleId: auth.federationRuleId,
@@ -127,9 +151,7 @@ export function createAnthropicClient(env: Env = process.env): Anthropic {
         baseURL: ANTHROPIC_AUDIENCE,
         fetch,
       }),
-    });
+    };
   }
-
-  env.ANTHROPIC_CONFIG_DIR ??= auth.configDir;
-  return new Anthropic({ profile: auth.profile });
+  return cachedFederation.credentials;
 }

@@ -114,6 +114,14 @@ describe('createAnthropicClient', () => {
     expect(mockedOidcFederationProvider).not.toHaveBeenCalled();
   });
 
+  it('ローカルで設定ディレクトリが空文字なら既定値で上書きする (SDK は空文字を未設定として扱うため)', () => {
+    const env: Record<string, string | undefined> = { ANTHROPIC_CONFIG_DIR: '' };
+
+    createAnthropicClient(env);
+
+    expect(env.ANTHROPIC_CONFIG_DIR).toBe(defaultLocalConfigDir());
+  });
+
   it('ローカルで設定ディレクトリが設定済みなら上書きしない', () => {
     const env: Record<string, string | undefined> = { ANTHROPIC_CONFIG_DIR: '/tmp/cfg' };
 
@@ -122,12 +130,15 @@ describe('createAnthropicClient', () => {
     expect(env.ANTHROPIC_CONFIG_DIR).toBe('/tmp/cfg');
   });
 
-  it('Cloud Run ではフェデレーションの資格情報でクライアントを作る (API キーを渡さない)', async () => {
-    createAnthropicClient({ ...FEDERATION_ENV });
+  // 資格情報はプロセスで共有される (ID が同じなら作り直さない)。テストごとにルール ID を変えて独立させる
+  const federationEnv = (federationRuleId: string) => ({ ...FEDERATION_ENV, ANTHROPIC_FEDERATION_RULE_ID: federationRuleId });
+
+  it('Cloud Run ではフェデレーションの資格情報でクライアントを作る (API キーを渡さない)', () => {
+    createAnthropicClient(federationEnv('fdrl_create'));
 
     expect(mockedOidcFederationProvider).toHaveBeenCalledWith(
       expect.objectContaining({
-        federationRuleId: 'fdrl_test',
+        federationRuleId: 'fdrl_create',
         organizationId: '00000000-0000-0000-0000-000000000000',
         serviceAccountId: 'svac_test',
         workspaceId: 'wrkspc_test',
@@ -142,7 +153,7 @@ describe('createAnthropicClient', () => {
     const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => 'jwt' });
     global.fetch = fetchMock as unknown as typeof fetch;
     try {
-      createAnthropicClient({ ...FEDERATION_ENV });
+      createAnthropicClient(federationEnv('fdrl_fetch'));
       const { identityTokenProvider } = mockedOidcFederationProvider.mock.calls[0][0];
 
       await identityTokenProvider();
@@ -152,5 +163,20 @@ describe('createAnthropicClient', () => {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+
+  it('Cloud Run では資格情報を使い回し、トークンの交換をクライアントごとに起こさない', () => {
+    createAnthropicClient(federationEnv('fdrl_shared'));
+    createAnthropicClient(federationEnv('fdrl_shared'));
+
+    expect(mockedOidcFederationProvider).toHaveBeenCalledTimes(1);
+    expect(MockedAnthropic).toHaveBeenCalledTimes(2);
+  });
+
+  it('フェデレーションの ID が変われば資格情報を作り直す', () => {
+    createAnthropicClient(federationEnv('fdrl_first'));
+    createAnthropicClient(federationEnv('fdrl_second'));
+
+    expect(mockedOidcFederationProvider).toHaveBeenCalledTimes(2);
   });
 });
