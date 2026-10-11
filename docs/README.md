@@ -8,7 +8,6 @@ Revolution プロジェクトの **公開ドキュメント** ハブ。フラッ
 |---|---|
 | [overview.md](./overview.md) | プロジェクト概要・ビジョン・利用者像 |
 | [current-stack.md](./current-stack.md) | 現行版の技術スタック (Next.js 16 / MDX / LLM 各 SDK 等) |
-| [pipeline.md](./pipeline.md) | AI Writer パイプライン詳細 (18 step + Mermaid + drawio + PNG co-located) |
 | [monorepo.md](./monorepo.md) | pnpm workspaces + Turborepo 構成 |
 | [build.md](./build.md) | ビルド & 開発コマンド (pnpm / turbo) |
 | [nextjs-page-props.md](./nextjs-page-props.md) | Next.js Page Props 型定義パターン |

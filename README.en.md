@@ -29,7 +29,7 @@ Built on the experience of manually creating over 10,000 articles, Revolution di
 | Full document index + navigation | [`docs/README.md`](./docs/README.md) |
 | Project overview & vision | [`docs/overview.md`](./docs/overview.md) |
 | Current tech stack | [`docs/current-stack.md`](./docs/current-stack.md) |
-| MDX pipeline (18 steps + Mermaid + drawio) | [`docs/pipeline.md`](./docs/pipeline.md) |
+| AI Writer MDX pipeline (overview) | [`apps/ai-writer/README.md`](./apps/ai-writer/README.md) |
 | Monorepo (pnpm + Turborepo) | [`docs/monorepo.md`](./docs/monorepo.md) |
 | Development & build commands | [`docs/build.md`](./docs/build.md) |
 | AI Writer Cloud Run deploy | [`docs/ai-writer-cloud-run.md`](./docs/ai-writer-cloud-run.md) |
