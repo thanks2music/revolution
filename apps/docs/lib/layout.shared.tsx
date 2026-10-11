@@ -3,13 +3,14 @@ import { uiTranslations } from 'fumadocs-ui/i18n';
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 
 import { siteName } from '@/lib/metadata';
+import { REPO_URL } from '@/lib/urls';
 
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
       title: siteName,
     },
-    githubUrl: 'https://github.com/thanks2music/revolution',
+    githubUrl: REPO_URL,
   };
 }
 

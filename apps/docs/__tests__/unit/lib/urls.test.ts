@@ -5,7 +5,10 @@ import {
   githubUrl,
   markdownSegments,
   markdownUrl,
+  pickDocsHref,
+  rewriteRelativeLinks,
   slugsFromMarkdownUrl,
+  stripFrontmatter,
   toRepoBlobUrl,
 } from '@/lib/urls';
 
@@ -65,7 +68,69 @@ describe('toRepoBlobUrl', () => {
     expect(toRepoBlobUrl('README.md', '/overview')).toBeUndefined();
   });
 
-  it('repo の外を指すものは対象外', () => {
+  it('repo の外を指すものは対象外 (正規化してちょうど .. になるものも)', () => {
     expect(toRepoBlobUrl('README.md', '../../outside.md')).toBeUndefined();
+    expect(toRepoBlobUrl('README.md', '../..')).toBeUndefined();
+  });
+
+  it('repo のルートを指すものは repo のトップにする', () => {
+    expect(toRepoBlobUrl('README.md', '../')).toBe('https://github.com/thanks2music/revolution');
+  });
+});
+
+describe('pickDocsHref', () => {
+  it('Fumadocs がサイトのページに解決したらその URL', () => {
+    expect(pickDocsHref('./sentry.md#x', 'README.md', '/sentry#x')).toBe('/sentry#x');
+  });
+
+  it('サイトのページに当たらない相対リンクは GitHub の URL', () => {
+    expect(pickDocsHref('./archive/x.md', 'README.md', './archive/x.md')).toBe(
+      `${BLOB}/docs/archive/x.md`
+    );
+  });
+
+  it('相対リンクでなければそのまま', () => {
+    expect(pickDocsHref('https://example.com', 'README.md', 'https://example.com')).toBe(
+      'https://example.com'
+    );
+  });
+});
+
+describe('stripFrontmatter', () => {
+  it('先頭の frontmatter だけを外す', () => {
+    expect(stripFrontmatter('---\ntitle: x\n---\n\n本文\n---\n')).toBe('\n本文\n---\n');
+  });
+
+  it('frontmatter が無ければそのまま', () => {
+    expect(stripFrontmatter('本文')).toBe('本文');
+  });
+});
+
+describe('rewriteRelativeLinks', () => {
+  const rewrite = (href: string) => `<${href}>`;
+
+  it('リンクと画像の相対パスだけを書き換える', () => {
+    expect(rewriteRelativeLinks('[a](./a.md) ![b](../b.png) [c](https://c) [d](#d)', rewrite)).toBe(
+      '[a](<./a.md>) ![b](<../b.png>) [c](https://c) [d](#d)'
+    );
+  });
+
+  it('フェンスの中は書き換えない (閉じた後は書き換える)', () => {
+    const md = ['```md', '[a](./a.md)', '```', '[b](./b.md)'].join('\n');
+    expect(rewriteRelativeLinks(md, rewrite)).toBe(
+      ['```md', '[a](./a.md)', '```', '[b](<./b.md>)'].join('\n')
+    );
+  });
+
+  it('開いた時より短いフェンスや別の文字では閉じない', () => {
+    const md = ['````', '```', '[a](./a.md)', '~~~', '````', '[b](./b.md)'].join('\n');
+    expect(rewriteRelativeLinks(md, rewrite).split('\n')).toEqual([
+      '````',
+      '```',
+      '[a](./a.md)',
+      '~~~',
+      '````',
+      '[b](<./b.md>)',
+    ]);
   });
 });
