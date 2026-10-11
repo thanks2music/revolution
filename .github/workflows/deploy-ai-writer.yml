@@ -31,6 +31,23 @@ jobs:
         with:
           persist-credentials: false
 
+      # Claude の認証 (ID フェデレーション) に要る変数。欠けたままデプロイすると Claude を一切呼べないのに、
+      # /api/health は 1 件の失敗を degraded (200) として返すため、ここで止める
+      - name: Check Anthropic federation variables
+        env:
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+        run: |
+          missing=""
+          for key in ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID ANTHROPIC_SERVICE_ACCOUNT_ID; do
+            if [ -z "${!key}" ]; then missing="$missing $key"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::GitHub Variables are missing:$missing"
+            exit 1
+          fi
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
