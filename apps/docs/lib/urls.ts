@@ -61,12 +61,14 @@ export function pickDocsHref(href: string, pagePath: string, siteHref: string): 
   return toRepoBlobUrl(pagePath, href) ?? href;
 }
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const INLINE_LINK = /(\]\()(\.{1,2}\/[^)\s]*)/g;
 
 /**
  * Markdown のインラインのリンク・画像 `[..](./x)` / `![..](../x)` の相対パスを rewrite で書き換える。
  * フェンスで囲んだコードブロックの中は書き換えない。
+ * 参照形式の定義 (`[id]: ../x`)、`<../x>` の形、パスに `)` を含むリンクは対象外
+ * (2026-10 時点の docs/ には無い。使うならここを広げる)。
  */
 export function rewriteRelativeLinks(markdown: string, rewrite: (href: string) => string): string {
   let fence: string | undefined;
@@ -74,14 +76,18 @@ export function rewriteRelativeLinks(markdown: string, rewrite: (href: string) =
   return markdown
     .split('\n')
     .map(line => {
-      const marker = FENCE.exec(line)?.[1];
-      if (marker) {
-        // 閉じるのは、開いた時と同じ文字で同じ数以上並んだ行 (CommonMark)
-        if (fence === undefined) fence = marker;
-        else if (marker.startsWith(fence)) fence = undefined;
+      const [, marker, rest = ''] = FENCE.exec(line) ?? [];
+      if (fence === undefined) {
+        if (marker) {
+          fence = marker;
+          return line;
+        }
+      } else {
+        // 閉じるのは、開いた時と同じ文字で同じ数以上並び、後ろに何も無い行 (CommonMark)。
+        // フェンスの中の ```js のような行は中身として扱う
+        if (marker?.startsWith(fence) && rest.trim() === '') fence = undefined;
         return line;
       }
-      if (fence !== undefined) return line;
       return line.replace(INLINE_LINK, (_, open: string, href: string) => `${open}${rewrite(href)}`);
     })
     .join('\n');

@@ -122,4 +122,15 @@ describe('rewriteRelativeLinks', () => {
       '[b](<./b.md>)',
     ]);
   });
+
+  it('後ろに info string がある行ではフェンスを閉じない', () => {
+    const md = ['```md', '```js', '[a](./a.md)', '```', '[b](./b.md)'].join('\n');
+    expect(rewriteRelativeLinks(md, rewrite).split('\n')).toEqual([
+      '```md',
+      '```js',
+      '[a](./a.md)',
+      '```',
+      '[b](<./b.md>)',
+    ]);
+  });
 });
