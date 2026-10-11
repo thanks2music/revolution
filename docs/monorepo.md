@@ -1,4 +1,6 @@
-# モノレポ構成
+---
+title: モノレポ構成
+---
 
 Revolution は **pnpm workspaces + Turborepo** で構成される TypeScript モノレポ。
 

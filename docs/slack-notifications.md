@@ -1,4 +1,6 @@
-# Slack 通知
+---
+title: Slack 通知
+---
 
 デプロイ・migration・main の失敗・occurrence の取り込み・Sentry の issue・記事生成の結果を Slack へ知らせる。
 本ドキュメントは**構成の正本**であり、通知を足す・変える人が最初に読むもの。

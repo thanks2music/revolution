@@ -1,4 +1,6 @@
-# AI Writer Cloud Run 自動デプロイ
+---
+title: AI Writer Cloud Run 自動デプロイ
+---
 
 > Revolution 現行版の **AI Writer** を GitHub Actions から Google Cloud Run へ自動デプロイするためのドキュメント。WordPress 時代の Cloud Run デプロイ手順は PR #117 で運用終了済 (Git 履歴で参照可能)。
 

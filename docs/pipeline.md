@@ -1,4 +1,6 @@
-# Revolution MDX Pipeline
+---
+title: Revolution MDX Pipeline
+---
 
 > Revolution の AI Writer (Discovery) が RSS / URL から MDX 記事を生成するマルチステップパイプラインの全体像と各ステップの責務を定義するドキュメント。
 >

@@ -1,4 +1,6 @@
-# ビルド & 開発コマンド
+---
+title: ビルド & 開発コマンド
+---
 
 Revolution は pnpm workspaces + Turborepo を採用しており、ルートから `pnpm <command>` で workspace 全体を統括できます。
 

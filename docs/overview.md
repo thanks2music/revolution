@@ -1,4 +1,6 @@
-# プロジェクト概要
+---
+title: プロジェクト概要
+---
 
 Revolution は、LLM (Claude / OpenAI / Gemini) を活用した **AI 記事生成パイプライン** と、生成された記事を **MDX ファイル** として GitHub に PR で投入し、Next.js の SSG で配信する Jamstack 構成の Web メディアシステムです。
 
