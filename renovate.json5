@@ -131,10 +131,21 @@
       description: "Managed via pnpm.overrides for security pinning; do not auto-update the override entries themselves (direct dependency updates elsewhere are still allowed).",
     },
 
+    // Fumadocs は 3 パッケージを一緒に上げる。fumadocs-ui は fumadocs-core を
+    // 完全一致の版で peerDependency に持つため、片方だけ上げると install が壊れる
+    {
+      matchPackageNames: ["fumadocs-core", "fumadocs-ui", "fumadocs-mdx"],
+      groupName: "fumadocs",
+    },
+
     // App 別 label 付与 (Dependabot labels 継承)
     {
       matchFileNames: ["apps/frontend/**"],
       addLabels: ["frontend"],
+    },
+    {
+      matchFileNames: ["apps/docs/**"],
+      addLabels: ["docs-site"],
     },
     {
       matchFileNames: ["apps/ai-writer/**"],

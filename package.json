@@ -10,6 +10,8 @@
     "build": "turbo run build --filter=frontend-nextjs-headless-cms --filter=@revolution/ai-writer",
     "build:frontend": "turbo run build --filter=frontend-nextjs-headless-cms",
     "build:ai-writer": "turbo run build --filter=@revolution/ai-writer",
+    "dev:docs": "turbo run dev --filter=@revolution/docs",
+    "build:docs": "turbo run build --filter=@revolution/docs",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
     "test": "turbo run test",

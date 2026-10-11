@@ -5,6 +5,7 @@
 #
 # - HUSKY=0 git push to bypass in an emergency.
 # - apps/frontend is excluded (jest not configured there yet).
+# - apps/docs is excluded (its own jest runs in CI; this hook only runs ai-writer's).
 # - __tests__/e2e is excluded — live-API E2E belongs in CI, not a local
 #   pre-push gate (it needs OPENAI_API_KEY / ANTHROPIC_API_KEY and is slow).
 #
@@ -37,6 +38,7 @@ done <<EOF_FILES
 $(git diff --name-only --diff-filter=ACMR "$BASE_REF"..HEAD 2>/dev/null \
     | grep -E '\.(ts|tsx|js|jsx)$' \
     | grep -v '^apps/frontend/' \
+    | grep -v '^apps/docs/' \
     || true)
 EOF_FILES
 

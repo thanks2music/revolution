@@ -81,6 +81,11 @@ jobs:
         env:
           SKIP_ENV_VALIDATION: 'true'
 
+      # docs.anime-events.com (apps/docs)。repo 直下の docs/ をビルド時に読むので、
+      # docs/*.md の frontmatter の抜けもここで落ちる。
+      - name: Build Docs
+        run: pnpm build:docs
+
       - name: Build AI Writer
         run: cd apps/ai-writer && pnpm build
         env:
@@ -200,4 +205,8 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Run docs tests
+        # 上と同じく turbo を通さない (^build の重複を避ける)。
+        run: cd apps/docs && pnpm test
 
