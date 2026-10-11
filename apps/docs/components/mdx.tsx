@@ -13,8 +13,6 @@ export function getMDXComponents(components?: MDXComponents) {
   } satisfies MDXComponents;
 }
 
-export const useMDXComponents = getMDXComponents;
-
 /**
  * 本文の <a>。公式の createRelativeLink と同じくページへの相対リンクを解決し、
  * 加えてサイトに載らないファイルへのリンクを GitHub 上の URL にする (Server Component 専用)。
