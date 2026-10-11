@@ -62,6 +62,8 @@ export type AnthropicAuth =
  *
  * Cloud Run (`K_SERVICE` がある) ではフェデレーションの変数が揃っていなければ失敗にする。
  * API キーへ黙って戻ると、キーを外した切り替えの漏れに気づけないため。
+ * `K_SERVICE` は Cloud Run の Service だけが持つ。Cloud Run Jobs で動かすときは
+ * (`CLOUD_RUN_JOB` になる) ここの判定を足すこと。
  *
  * @throws {Error} Cloud Run でフェデレーションの環境変数が欠けているとき
  */
@@ -89,18 +91,28 @@ export function resolveAnthropicAuth(env: Env): AnthropicAuth {
   };
 }
 
+/** メタデータサーバーを待つ上限。応答が詰まったとき、Claude の呼び出しが無期限に待たないようにする */
+const METADATA_TIMEOUT_MS = 5_000;
+
 /**
  * Cloud Run のメタデータサーバーから Google の ID トークンを取る。
  * ID トークンは毎回新しく取る (Anthropic は jti の再利用を拒否するため、キャッシュしない)。
+ *
+ * @throws {Error} HTTP エラー、時間切れ、空の応答のとき
  */
 export async function fetchGoogleIdentityToken(fetchImpl: typeof fetch = fetch): Promise<string> {
   const response = await fetchImpl(GOOGLE_IDENTITY_TOKEN_URL, {
     headers: { 'Metadata-Flavor': 'Google' },
+    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`[anthropic-client] Failed to fetch a Google identity token: HTTP ${response.status}`);
   }
-  return (await response.text()).trim();
+  const token = (await response.text()).trim();
+  if (!token) {
+    throw new Error('[anthropic-client] The metadata server returned an empty identity token');
+  }
+  return token;
 }
 
 let cachedClient: { key: string; client: Anthropic } | undefined;

@@ -90,7 +90,10 @@ describe('fetchGoogleIdentityToken', () => {
 
     await expect(fetchGoogleIdentityToken(fetchImpl as unknown as typeof fetch)).resolves.toBe('header.payload.sig');
 
-    expect(fetchImpl).toHaveBeenCalledWith(GOOGLE_IDENTITY_TOKEN_URL, { headers: { 'Metadata-Flavor': 'Google' } });
+    expect(fetchImpl).toHaveBeenCalledWith(GOOGLE_IDENTITY_TOKEN_URL, {
+      headers: { 'Metadata-Flavor': 'Google' },
+      signal: expect.any(AbortSignal),
+    });
     expect(GOOGLE_IDENTITY_TOKEN_URL).toContain('audience=https%3A%2F%2Fapi.anthropic.com');
     expect(GOOGLE_IDENTITY_TOKEN_URL).toContain('format=full');
   });
@@ -99,6 +102,32 @@ describe('fetchGoogleIdentityToken', () => {
     const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status: 404, text: async () => '' });
 
     await expect(fetchGoogleIdentityToken(fetchImpl as unknown as typeof fetch)).rejects.toThrow('HTTP 404');
+  });
+
+  it('空の応答なら、空のトークンで交換に進まず失敗にする', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '\n' });
+
+    await expect(fetchGoogleIdentityToken(fetchImpl as unknown as typeof fetch)).rejects.toThrow('empty identity token');
+  });
+
+  it('メタデータサーバーが応答しなければ、時間切れで失敗にする', async () => {
+    jest.useFakeTimers();
+    try {
+      // signal が abort されるまで応答しない fetch
+      const fetchImpl = jest.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+          })
+      );
+      const pending = fetchGoogleIdentityToken(fetchImpl as unknown as typeof fetch);
+      const assertion = expect(pending).rejects.toThrow();
+
+      await jest.advanceTimersByTimeAsync(5_000);
+      await assertion;
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
