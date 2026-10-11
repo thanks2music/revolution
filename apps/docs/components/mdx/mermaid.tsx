@@ -18,7 +18,8 @@ export function Mermaid({ chart }: { chart: string }) {
 
   // 図の文字列は beautiful-mermaid がエスケープしてから SVG に入れる (< > & " ')。
   // 元は repo の docs/ で、外部の入力は入らない。
-  return <div dangerouslySetInnerHTML={{ __html: svg }} />;
+  // SVG は図の大きさの幅を持つので、本文より広い図は横にスクロールさせる (縮めると文字が読めなくなる)。
+  return <div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 function renderSvg(chart: string): string | undefined {
