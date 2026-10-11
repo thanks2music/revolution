@@ -33,7 +33,7 @@ flowchart LR
 | **AI Writer** (`apps/ai-writer/`) | パイプライン本体。LLM 呼び出し / テンプレート展開 / Schema 検証 / MDX 生成 | [`apps/ai-writer/README.md`](../apps/ai-writer/README.md) |
 | **Frontend** (`apps/frontend/`) | 公開 Web サイト (Next.js 16 SSG) | [`current-stack.md`](./current-stack.md) |
 | **Templates** (別リポジトリ `revolution-templates`) | YAML テンプレート集。プロンプト + 出力スキーマ | (private) |
-| **Cloud Run** | AI Writer のサーバーレス実行環境 + Cloud Scheduler 定期起動 | [`ai-writer-cloud-run.md`](./ai-writer-cloud-run.md) |
+| **Cloud Run** | AI Writer のサーバーレス実行環境 (Cloud Scheduler による定期起動は未設定。[`sentry.md`](./sentry.md)) | [`ai-writer-cloud-run.md`](./ai-writer-cloud-run.md) |
 | **GitHub** | MDX ソース管理 + PR ベース公開ワークフロー | — |
 
 ## 設計原則
