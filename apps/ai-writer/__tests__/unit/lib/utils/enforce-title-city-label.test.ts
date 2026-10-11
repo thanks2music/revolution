@@ -45,6 +45,13 @@ describe('enforceTitleCityLabel', () => {
     );
   });
 
+  it('区切りを含んでも、都市名ではない語 (店舗名・日付) の一覧には触れない', () => {
+    const storeTitle = 'ヒロアカ カフェ in Cafe/Dining 10月16日より開催';
+    const dateTitle = 'ヒロアカ カフェ in 2026/10/16 から開催';
+    expect(enforce(storeTitle, '東京/大阪')).toBe(storeTitle);
+    expect(enforce(dateTitle, '東京/大阪')).toBe(dateTitle);
+  });
+
   it('in を使わないタイトルには触れない', () => {
     const title = '名探偵コナン 6都市 4月10日よりコラボ開催';
     expect(enforce(title, '6都市')).toBe(title);
