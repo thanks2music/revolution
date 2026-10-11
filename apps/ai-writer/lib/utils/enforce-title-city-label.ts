@@ -40,7 +40,7 @@ function countCities(cityLabel: string): number {
  * - 置き換えるのは都市の部分が確定値と同じ形の時だけ。`in` の後ろが店舗名になる型の
  *   タイトル (`カフェ in OH MY CAFE ...`) や、`in` を使わないタイトルには触れない
  * - 都市の数が合っている `N都市` は、LLM が文字数のために丸めた正しい表記なので残す
- * - 置き換えると `maxLength` を超える場合は `N都市` にする
+ * - 置き換えると `maxLength` を超える場合は `N都市` にする (確定値が 1 都市のときは丸めない)
  *
  * @param title - LLM が生成したタイトル
  * @param cityLabel - 確定値 (`東京/大阪` / `4都市`)。無ければ何もしない
@@ -57,11 +57,15 @@ export function enforceTitleCityLabel(
   const location = LOCATION_PATTERN.exec(title)?.[1];
   if (!location || location === cityLabel || !isCityLabelShape(location)) return title;
 
-  const roundedLabel = formatRoundedCityLabel(countCities(cityLabel));
+  const cityCount = countCities(cityLabel);
+  const roundedLabel = formatRoundedCityLabel(cityCount);
   if (location === roundedLabel) return title;
 
   // 置換文字列の `$` を特別扱いさせないよう、関数で返す
   const swap = (label: string) => title.replace(` in ${location}`, () => ` in ${label}`);
   const withLabel = swap(cityLabel);
-  return withLabel.length <= maxLength ? withLabel : swap(roundedLabel);
+  // 1 都市は「1都市」にすると不自然なので丸めない。丸めても上限を超える場合は、そのまま返して
+  // 呼び出し側の文字数の検証 (警告) に任せる
+  if (withLabel.length <= maxLength || cityCount === 1) return withLabel;
+  return swap(roundedLabel);
 }
