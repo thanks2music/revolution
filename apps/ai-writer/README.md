@@ -27,7 +27,7 @@
   ↓ MDX の組み立て → GitHub PR (1 記事 = 1 PR) → Firestore の状態更新
 ```
 
-`app/api/cron/rss/route.ts` (Cloud Run の cron) は別の実装で、上の流れの多くを通りません。現在は休眠中です。
+`app/api/cron/rss/route.ts` (Cloud Run の cron) は別の実装で、上の流れの多くを通りません。2026-10 時点では定期実行していません (休眠中)。
 
 ## 主要コンポーネント
 
@@ -40,7 +40,7 @@
 
 ### YAML Slug Mapping
 
-private repo (`revolution-templates`) のものを、repo ルートで実行する `pnpm sync:templates` が `apps/ai-writer/templates/config/` に写します。下のパスはこのディレクトリ (`apps/ai-writer/`) からの相対です。
+private repo (`revolution-templates`) のものを、repo ルートで実行する `pnpm sync:templates` が `apps/ai-writer/templates/config/` に写します (gitignored のため、チェックアウト直後には無く、同期で作られます)。下のパスはこのディレクトリ (`apps/ai-writer/`) からの相対です。
 
 - `templates/config/title-romaji-mapping.yaml`: 作品名 → work_slug
 - `templates/config/brand-slugs.yaml`: 店舗名 → store_slug

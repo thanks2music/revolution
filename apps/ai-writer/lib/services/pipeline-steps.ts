@@ -9,9 +9,10 @@
  *   new step in the middle changes `[3/18]` to `[4/19]`. Cross-cutting analyses
  *   should align logs by `id`, not by display number.
  *
- * Adding a new step: append (or insert) one entry to `PIPELINE_STEPS`. Do not
- * extend the schema with future-only fields like `requiresAi` until a concrete
- * caller exists (YAGNI).
+ * Adding a new step: first decide top-level vs sub-context with the criteria
+ * under "Sub-step convention" below, then append (or insert) one entry to
+ * `PIPELINE_STEPS`. Do not extend the schema with future-only fields like
+ * `requiresAi` until a concrete caller exists (YAGNI).
  *
  * Sub-step convention: a parent step that contains short sub-tasks emits
  * follow-up log lines via `getStepContext(parent-id)` (returns `[parent-id]`)
