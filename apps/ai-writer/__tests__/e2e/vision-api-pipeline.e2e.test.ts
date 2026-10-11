@@ -52,11 +52,13 @@ type Category = (typeof CATEGORIES_TO_TEST)[number];
  * E2E tests hit real APIs and require credentials. Without them (e.g. CI), the
  * provider's tests are skipped.
  * - openai: OPENAI_API_KEY
- * - anthropic: キーは使わない。`ant auth login` のプロファイルの設定ファイルがあるか
- *   (2026-10-11 に API キーから移行)
+ * - anthropic: キーは使わない (2026-10-11 に API キーから移行)。`.env.test.local` で
+ *   `ANTHROPIC_PROFILE` を設定し、そのプロファイルの設定ファイルがあるときだけ走る。
+ *   普段の開発でもプロファイルはあるため、明示的な指定が無ければ課金される呼び出しをしない
  */
 function credentialSource(provider: VisionProvider): string | null {
   if (provider === 'openai') return process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY' : null;
+  if (!process.env.ANTHROPIC_PROFILE) return null;
   const auth = resolveAnthropicAuth(process.env);
   if (auth.mode !== 'profile') return 'federation';
   const configFile = path.join(auth.configDir, 'configs', `${auth.profile}.json`);
