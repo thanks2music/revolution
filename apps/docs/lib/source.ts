@@ -7,11 +7,10 @@ import { docsSlugs, pickDocsHref } from '@/lib/urls';
 // archive/ と gitignored の plan/ report/ research/ はここで外れる。直下に置かれる
 // gitignored のファイル (.gitignore の docs/*secret*.md / docs/TOC.*.md) は明示的に外す
 // (ローカルの dev / build で検索や llms-full.txt に混ざらないように)。
-// pipeline.md は private repo へ移設中 (revolution #358) で、公開側に step 数を出さないため載せない。
 export const docs = defineDocs({
   dir: '../../docs',
   docs: {
-    files: ['*.md', '!*secret*.md', '!TOC.*.md', '!pipeline.md'],
+    files: ['*.md', '!*secret*.md', '!TOC.*.md'],
   },
   meta: {
     files: ['meta.json'],
