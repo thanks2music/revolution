@@ -91,4 +91,4 @@ pnpm deploy:frontend
 
 - [Google Cloud Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation)
 - [現行版 技術スタック](./current-stack.md)
-- [MDX パイプライン詳細](./pipeline.md)
+- [MDX パイプライン (概要)](../apps/ai-writer/README.md)
