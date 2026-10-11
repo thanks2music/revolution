@@ -431,7 +431,7 @@ export interface IVisionApiService {
    * model names per provider to avoid silent drift when the service
    * upgrades its default model.
    *
-   * @returns Model identifier (e.g. 'gpt-4o-mini', 'claude-sonnet-4-5-20250929')
+   * @returns Model identifier (e.g. 'gpt-5.4-mini', 'claude-sonnet-5-5')
    */
   getModelName(): string;
 
