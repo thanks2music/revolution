@@ -31,13 +31,26 @@ declare namespace NodeJS {
      */
     AI_THINKING_LEVEL?: string;
 
-    /** Anthropic API Key */
-    ANTHROPIC_API_KEY?: string;
-
     /**
-     * Vision 専用の Anthropic API Key (未設定なら `ANTHROPIC_API_KEY` へフォールバック)
+     * Anthropic の `ant auth login` の設定ディレクトリ (ローカル)。
+     * 未設定なら `~/.config/anthropic-revolution` (`lib/ai/anthropic-client.ts`)
      */
-    ANTHROPIC_API_KEY_VISION?: string;
+    ANTHROPIC_CONFIG_DIR?: string;
+
+    /** Anthropic のプロファイル名 (ローカル)。未設定なら `revolution` */
+    ANTHROPIC_PROFILE?: string;
+
+    /** Cloud Run の Workload Identity Federation のルール (`fdrl_...`) */
+    ANTHROPIC_FEDERATION_RULE_ID?: string;
+
+    /** Anthropic の組織 ID (UUID) */
+    ANTHROPIC_ORGANIZATION_ID?: string;
+
+    /** Anthropic のサービスアカウント (`svac_...`) */
+    ANTHROPIC_SERVICE_ACCOUNT_ID?: string;
+
+    /** Anthropic のワークスペース (`wrkspc_...`)。ルールが 1 つのワークスペースに限られるので任意 */
+    ANTHROPIC_WORKSPACE_ID?: string;
 
     /** Google Gemini API Key */
     GEMINI_API_KEY?: string;

@@ -31,6 +31,23 @@ jobs:
         with:
           persist-credentials: false
 
+      # Claude の認証 (ID フェデレーション) に要る変数。欠けたままデプロイすると Claude を一切呼べないのに、
+      # /api/health は 1 件の失敗を degraded (200) として返すため、ここで止める
+      - name: Check Anthropic federation variables
+        env:
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+        run: |
+          missing=0
+          for key in ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID ANTHROPIC_SERVICE_ACCOUNT_ID; do
+            if [ -z "${!key}" ]; then
+              echo "::error title=Missing variable::$key is empty or unset."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
@@ -84,8 +101,9 @@ jobs:
             --concurrency 80 \
             --max-instances 10 \
             --min-instances 0 \
-            --set-env-vars "NODE_ENV=production,GITHUB_OWNER=${{ github.repository_owner }},GITHUB_REPO=${{ github.event.repository.name }},GITHUB_BASE_BRANCH=main,SENTRY_DSN=${{ vars.SENTRY_DSN_AI_WRITER }},SENTRY_ENVIRONMENT=production" \
-            --set-secrets "ALLOWED_EMAILS=revo-allowed-emails:latest,GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest"
+            --service-account "revo-ai-writer-runtime@${{ env.PROJECT_ID }}.iam.gserviceaccount.com" \
+            --set-env-vars "NODE_ENV=production,GITHUB_OWNER=${{ github.repository_owner }},GITHUB_REPO=${{ github.event.repository.name }},GITHUB_BASE_BRANCH=main,SENTRY_DSN=${{ vars.SENTRY_DSN_AI_WRITER }},SENTRY_ENVIRONMENT=production,ANTHROPIC_FEDERATION_RULE_ID=${{ vars.ANTHROPIC_FEDERATION_RULE_ID }},ANTHROPIC_ORGANIZATION_ID=${{ vars.ANTHROPIC_ORGANIZATION_ID }},ANTHROPIC_SERVICE_ACCOUNT_ID=${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }},ANTHROPIC_WORKSPACE_ID=${{ vars.ANTHROPIC_WORKSPACE_ID }}" \
+            --set-secrets "ALLOWED_EMAILS=revo-allowed-emails:latest,GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest"
 
       - name: Health check
         id: health

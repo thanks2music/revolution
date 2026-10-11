@@ -346,7 +346,7 @@ export interface VisionApiConfig {
   /** Provider to use (openai / anthropic / google) */
   provider: VisionProvider;
 
-  /** API key (optional, defaults to environment variable) */
+  /** API key for openai / google (optional, defaults to environment variable). Anthropic ignores it: see lib/ai/anthropic-client.ts */
   apiKey?: string;
 
   /** Model name override (optional, defaults to provider-specific default) */

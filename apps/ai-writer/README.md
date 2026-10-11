@@ -68,8 +68,8 @@ GITHUB_BASE_BRANCH=main
 
 # Secrets (managed via Secret Manager)
 # - GITHUB_PAT
-# - ANTHROPIC_API_KEY
 # - CRON_KEY
+# Claude は API キーを使わない (下の「Claude の認証」)
 ```
 
 詳細は `.env.example` を参照してください。
@@ -199,9 +199,27 @@ AI_PROVIDER=openai pnpm debug:mdx <URL>     # ChatGPT
 
 | 値 | 説明 | 必要な API キー |
 |----|------|---------------|
-| `anthropic` | Anthropic Claude（デフォルト） | `ANTHROPIC_API_KEY` |
+| `anthropic` | Anthropic Claude（デフォルト） | 不要（下の「Claude の認証」） |
 | `google` | Google Gemini | `GEMINI_API_KEY` |
 | `openai` | OpenAI ChatGPT | `OPENAI_API_KEY` |
+
+#### Claude の認証
+
+Claude は静的な API キーを使いません（2026-10-11 に移行。実装は `lib/ai/anthropic-client.ts`）。
+
+- **ローカル**: `ant` CLI でログインしたプロファイル `revolution` を使います。Claude Code が既定の
+  `~/.config/anthropic` を使うため、専用のディレクトリ `~/.config/anthropic-revolution` に分けています
+
+  ```bash
+  brew install --cask anthropics/tap/ant
+  ANTHROPIC_CONFIG_DIR="$HOME/.config/anthropic-revolution" \
+    ant auth login --profile revolution --workspace-id <Revolution のワークスペース ID>
+  ```
+
+  `ANTHROPIC_PROFILE` / `ANTHROPIC_CONFIG_DIR` を設定すれば別のプロファイルやディレクトリも使えます。
+  `.env.local` に `ANTHROPIC_API_KEY` は書かないでください
+- **Cloud Run**: Workload Identity Federation。Google の ID トークンを Anthropic の短命のトークンに交換します。
+  ルールなどの ID は `deploy-ai-writer.yml` が GitHub の Variables から渡します
 
 #### AI ステップの観測ログ（推奨。まずこれを使う）
 
@@ -359,16 +377,7 @@ pnpm tsx scripts/test-slug-generation.ts
 
 ## デプロイ
 
-```bash
-# Cloud Run へデプロイ
-pnpm deploy
-
-# もしくは
-gcloud run deploy ai-writer \
-  --source . \
-  --region asia-northeast1 \
-  --platform managed
-```
+Cloud Run へのデプロイは GitHub Actions (`.github/workflows/deploy-ai-writer.yml`) が `main` へのマージで行います。手元からのデプロイの手段は置いていません (旧 `scripts/deploy.sh` は 2026-10-11 に削除)。
 
 ## API Endpoints
 

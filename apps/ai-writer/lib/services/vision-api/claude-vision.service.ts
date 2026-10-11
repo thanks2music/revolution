@@ -15,7 +15,7 @@
  * @package revolution
  * @module services/vision-api/claude
  */
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ZodError } from 'zod';
@@ -30,6 +30,7 @@ import type {
   NoveltyItem,
 } from '@/lib/types/vision-api';
 import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
+import { createAnthropicClient } from '@/lib/ai/anthropic-client';
 import { ClaudeIncompleteResponseError, readClaudeText } from '@/lib/ai/claude-response';
 import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
 import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '@/lib/config/claude-models';
@@ -52,24 +53,15 @@ export class ClaudeVisionService implements IVisionApiService {
   private modelName: string;
   private logDir: string;
 
-  constructor(config?: { apiKey?: string; model?: string }) {
-    // Vision 専用 Anthropic API key (`ANTHROPIC_API_KEY_VISION`) を優先し、無ければ
-    // 通常の `ANTHROPIC_API_KEY` にフォールバックする (Sprint C-α で追加)。
-    // BOSS 意図: Vision 用と generation 用のキーを分けることで課金トラッキング + rate limit を
-    // 分離する。旧実装は `ANTHROPIC_API_KEY` 単一のみを読んでいたため、Vision 専用キーを設定
-    // していても認識されず animatecafe 型 URL の生成が全滅していた (2026-07-12 実測)。
-    const key =
-      config?.apiKey ||
-      process.env.ANTHROPIC_API_KEY_VISION ||
-      process.env.ANTHROPIC_API_KEY;
-
-    if (!key) {
-      throw new Error(
-        'Claude API key is required. Set ANTHROPIC_API_KEY_VISION (preferred) or ANTHROPIC_API_KEY environment variable, or pass it to the constructor.'
-      );
-    }
-
-    this.client = new Anthropic({ apiKey: key });
+  /**
+   * 認証は `createAnthropicClient` が決める (Cloud Run は ID フェデレーション、ローカルは
+   * `ant auth login` のプロファイル)。2026-10-11 に Vision 専用のキー (`ANTHROPIC_API_KEY_VISION`)
+   * を廃止し、本文の生成と同じ ID で呼ぶ。費用は step ごとのコストの記録で分けて追える。
+   *
+   * @param config.client - テスト用の差し替え。既定は `createAnthropicClient()`
+   */
+  constructor(config?: { model?: string; client?: Anthropic }) {
+    this.client = config?.client ?? createAnthropicClient();
     // 既定モデル。`VISION_API_MODEL` / config で上書きできる
     this.modelName = config?.model || DEFAULT_CLAUDE_MODEL;
 

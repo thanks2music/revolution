@@ -1,6 +1,7 @@
-import { Anthropic } from '@anthropic-ai/sdk';
+import type { Anthropic } from '@anthropic-ai/sdk';
 import { extract } from '@extractus/article-extractor';
 import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../config/claude-models';
+import { createAnthropicClient } from '../ai/anthropic-client';
 import { ClaudeIncompleteResponseError, readClaudeText } from '../ai/claude-response';
 
 // Types for article generation
@@ -31,38 +32,25 @@ export interface GeneratedArticle {
 
 export class ClaudeAPIService {
   private client: Anthropic;
-  private model: string = DEFAULT_CLAUDE_MODEL;
-  private apiKey?: string;
-
-  constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.ANTHROPIC_API_KEY;
-
-    // Defer client initialization until first use
-    // This allows the class to be instantiated during build without environment variables
-    this.client = new Anthropic({
-      apiKey: this.apiKey || 'placeholder-will-validate-on-use',
-    });
-  }
+  private model: string;
 
   /**
-   * Ensure API key is configured before making requests
-   * @throws Error if API key is not available
+   * 認証は `createAnthropicClient` が決める (Cloud Run は ID フェデレーション、ローカルは
+   * `ant auth login` のプロファイル)。資格情報の解決は最初のリクエストの時なので、
+   * 環境変数の無いビルドの最中に作っても失敗しない。
+   *
+   * @param client - 既定は `createAnthropicClient()`。AnthropicProvider は自分のクライアントを渡す
+   * @param model - 既定は `DEFAULT_CLAUDE_MODEL`。AnthropicProvider は AI_MODEL の上書きを渡す
    */
-  private ensureApiKey(): void {
-    if (!this.apiKey) {
-      throw new Error(
-        'Anthropic API key is required. ' +
-          'Set ANTHROPIC_API_KEY environment variable or pass it as parameter to the constructor.'
-      );
-    }
+  constructor(client: Anthropic = createAnthropicClient(), model: string = DEFAULT_CLAUDE_MODEL) {
+    this.client = client;
+    this.model = model;
   }
 
   /**
    * Generate an article based on source content or topic
    */
   async generateArticle(request: ArticleGenerationRequest): Promise<GeneratedArticle> {
-    this.ensureApiKey();
-
     const prompt = this.buildArticlePrompt(request);
 
     try {
@@ -91,8 +79,6 @@ export class ClaudeAPIService {
    * Test connection to Claude API
    */
   async testConnection(): Promise<boolean> {
-    this.ensureApiKey();
-
     try {
       const response = await this.client.messages.create({
         model: this.model,
@@ -144,8 +130,6 @@ export class ClaudeAPIService {
     url: string,
     request: Partial<ArticleGenerationRequest>
   ): Promise<GeneratedArticle> {
-    this.ensureApiKey();
-
     try {
       console.log(`Extracting content from URL: ${url}`);
 
@@ -228,8 +212,6 @@ export class ClaudeAPIService {
    * Generate article summary/excerpt
    */
   async generateExcerpt(content: string, maxLength: number = 150): Promise<string> {
-    this.ensureApiKey();
-
     const prompt = `以下の記事内容から、${maxLength}文字以内で魅力的な要約を作成してください。SEOを意識した要約にしてください。
 
 記事内容:
@@ -264,8 +246,6 @@ ${content}
    * 日本語タイトルからWordPress用のURLスラッグを生成
    */
   async generateSlug(title: string): Promise<string> {
-    this.ensureApiKey();
-
     console.log(`>>> generateSlug called with: "${title}" <<<`);
     const prompt = `Convert the following Japanese title to a URL-friendly slug (lowercase alphanumeric characters and hyphens only).
 

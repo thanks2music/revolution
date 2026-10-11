@@ -25,7 +25,7 @@
  *
  * 前提条件:
  *   - .env.local に GITHUB_PAT を設定（--dry-run/--local/--upload-images時は不要）
- *   - .env.local に ANTHROPIC_API_KEY を設定
+ *   - .env.local に AI_PROVIDER に応じたキーを設定 (Claude は ant auth login のプロファイルでキー不要)
  *   - .env.local に R2_* 環境変数を設定（--upload-images時に必要）
  *   - Firebase Admin SDK の認証情報を設定（--dry-run/--local/--upload-images時は不要）
  */
@@ -562,7 +562,7 @@ async function main() {
     console.log('💡 トラブルシューティング:');
     console.log('  1. URLが正しいか確認');
     console.log('  2. .env.local に必要な環境変数が設定されているか確認');
-    console.log('     - ANTHROPIC_API_KEY');
+    console.log('     - AI_PROVIDER に応じたキー (GEMINI_API_KEY / OPENAI_API_KEY。Claude は ant auth login のプロファイル)');
     console.log('     - GITHUB_PAT');
     console.log('     - FIREBASE_PROJECT_ID (オプション)');
     console.log('  3. ネットワーク接続を確認');

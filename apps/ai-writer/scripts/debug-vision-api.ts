@@ -12,7 +12,7 @@
  *   VISION_API_PROVIDER=openai pnpm debug:vision <IMAGE_URL>
  *
  * 前提条件:
- *   - .env.local に ANTHROPIC_API_KEY を設定（デフォルト、推奨）
+ *   - Claude (デフォルト) は ant auth login のプロファイルで認証する (キー不要)
  *   - または OPENAI_API_KEY を設定（非推奨: 日本語精度低）
  *   - Next.js 起動不要
  *
@@ -136,11 +136,12 @@ function validateInputs(args: DebugVisionArgs): void {
     }
   }
 
-  // API キーチェック
+  // API キーチェック (Anthropic はキーを使わない。ant auth login のプロファイルで認証する)
   const provider = (process.env.VISION_API_PROVIDER as VisionProvider) ?? 'anthropic';
-  const apiKeyEnvVar = provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
+  const apiKeyEnvVar =
+    provider === 'openai' ? 'OPENAI_API_KEY' : provider === 'google' ? 'GEMINI_API_KEY' : undefined;
 
-  if (!process.env[apiKeyEnvVar]) {
+  if (apiKeyEnvVar && !process.env[apiKeyEnvVar]) {
     throw new Error(
       `${apiKeyEnvVar} が設定されていません。\n` +
       `💡 .env.local に以下を追加してください:\n` +
@@ -186,7 +187,9 @@ Vision API デバッグツール
 
 前提条件:
   .env.local に以下を設定:
-    - ANTHROPIC_API_KEY=sk-ant-... (Claude使用時、デフォルト、推奨)
+    - Claude 使用時 (デフォルト): キーは不要。ant auth login のプロファイルを使う
+      (ANTHROPIC_CONFIG_DIR=~/.config/anthropic-revolution の revolution。apps/ai-writer/README.md 参照)
+    - GEMINI_API_KEY=...           (Gemini使用時)
     - OPENAI_API_KEY=sk-...        (OpenAI使用時、非推奨: 日本語精度低)
 
 注意:
