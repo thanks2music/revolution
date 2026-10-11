@@ -16,11 +16,7 @@ import type {
   FallbackLevelType,
   CrossCheckResult,
   HallucinationDetectionResult,
-  VisionProvider,
-  TokenCalculationResult,
 } from '@/lib/types/vision-api';
-import { getModelPricing } from '@/lib/ai/cost';
-import { DEFAULT_CLAUDE_MODEL } from '@/lib/config/claude-models';
 
 /**
  * Validate that all image URLs use http(s) scheme.
@@ -401,93 +397,4 @@ export function validateBusinessRules(visionResult: VisionExtractionResult): {
     adjustedConfidence,
     issues,
   };
-}
-
-/**
- * Calculate tokens for Vision API request (provider-specific)
- *
- * @description
- * Calculates token consumption based on provider and image specifications.
- *
- * OpenAI calculation:
- * - detail=low: 85 tokens per image (fixed)
- * - detail=high: ~1,105 tokens per image (estimated based on Princess Cafe test)
- *
- * Claude calculation:
- * - tokens = (width × height) / 750
- * - Conservative estimate: 2,560 tokens per image (typical collaboration cafe menu)
- *
- * @param provider - Vision API provider ('openai' or 'anthropic')
- * @param imageUrls - Image URLs to analyze
- * @param detail - Detail level for OpenAI (default: 'high')
- * @returns Token calculation result with cost estimation
- *
- * @example
- * ```typescript
- * const openaiTokens = await calculateVisionTokens('openai', imageUrls, 'high');
- * console.log(`Estimated cost: $${openaiTokens.estimatedCost}`);
- *
- * const claudeTokens = await calculateVisionTokens('anthropic', imageUrls);
- * console.log(`Estimated cost: $${claudeTokens.estimatedCost}`);
- * ```
- */
-export async function calculateVisionTokens(
-  provider: VisionProvider,
-  imageUrls: string[],
-  detail: 'low' | 'high' | 'auto' = 'high'
-): Promise<TokenCalculationResult> {
-  if (provider === 'openai') {
-    // OpenAI token calculation
-    if (detail === 'low') {
-      const imageTokens = imageUrls.length * 85;
-      const promptTokens = 100; // Estimated
-      const totalTokens = imageTokens + promptTokens;
-      const estimatedCost = (totalTokens / 1_000_000) * 0.15; // $0.15/1M tokens
-
-      return {
-        provider: 'openai',
-        totalTokens,
-        breakdown: {
-          imageTokens,
-          promptTokens,
-        },
-        estimatedCost,
-      };
-    }
-
-    // detail=high or auto: conservative estimate
-    const imageTokens = imageUrls.length * 1105; // Based on Princess Cafe test
-    const promptTokens = 100; // Estimated
-    const totalTokens = imageTokens + promptTokens;
-    const estimatedCost = (totalTokens / 1_000_000) * 0.15; // $0.15/1M tokens
-
-    return {
-      provider: 'openai',
-      totalTokens,
-      breakdown: {
-        imageTokens,
-        promptTokens,
-      },
-      estimatedCost,
-    };
-  } else if (provider === 'anthropic') {
-    // Claude token calculation
-    // Conservative estimate: 2,560 tokens per image (typical collaboration cafe menu)
-    const imageTokens = imageUrls.length * 2560;
-    const promptTokens = 100; // Estimated
-    const totalTokens = imageTokens + promptTokens;
-    const estimatedCost = (totalTokens / 1_000_000) * (getModelPricing(DEFAULT_CLAUDE_MODEL)?.inputPer1M ?? 0);
-
-    return {
-      provider: 'anthropic',
-      totalTokens,
-      breakdown: {
-        imageTokens,
-        promptTokens,
-      },
-      estimatedCost,
-    };
-  }
-
-  throw new Error(`Unknown provider: ${provider}`);
 }
