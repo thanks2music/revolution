@@ -41,6 +41,8 @@ export interface CategoryImages {
 interface PageImagesResult {
   images: string[];
   ogpImage: string | null;
+  /** 除外パターンに当たって捨てた画像の、パスとクエリ (原因を追えるようにログへ出す) */
+  excluded: string[];
 }
 
 /**
@@ -126,6 +128,11 @@ export class CategoryImageExtractorService {
           // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する
           const html = expandInertiaPayload(await this.fetchPage(targetUrl));
           const pageResult = this.extractImagesFromHtml(html, targetUrl, imageConfig);
+          if (pageResult.excluded.length > 0) {
+            console.log(
+              `[CategoryImageExtractor] ${category}: 除外パターンで ${pageResult.excluded.length}枚を除外 (例: ${pageResult.excluded.slice(0, 3).join(', ')})`
+            );
+          }
 
           // 最大枚数まで取得
           const limitedImages = pageResult.images.slice(
@@ -234,6 +241,7 @@ export class CategoryImageExtractorService {
 
     // 記事内の画像を全て取得
     const images: string[] = [];
+    const excluded: string[] = [];
     const excludeRegex = new RegExp(config.exclude_patterns.join('|'), 'i');
 
     $('img').each((_, element) => {
@@ -256,6 +264,7 @@ export class CategoryImageExtractorService {
 
       // 除外パターンチェック
       if (excludeRegex.test(pathAndQuery)) {
+        excluded.push(pathAndQuery);
         return;
       }
 
@@ -278,7 +287,7 @@ export class CategoryImageExtractorService {
       }
     });
 
-    return { images, ogpImage };
+    return { images, ogpImage, excluded };
   }
 
   /**

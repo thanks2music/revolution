@@ -413,6 +413,19 @@ describe('GeminiVisionService', () => {
       expect(visionExtraction.noveltyItems[0].condition).toBeUndefined();
     });
 
+    it('文字列フィールドに文字列以外が来たら値なしとして扱い、品目は残す', async () => {
+      mockGenerateContent.mockResolvedValue(
+        buildResponse({
+          menuItems: [{ name: 'デクのオムライス', price: 1890, characterName: [], description: 123 }],
+        })
+      );
+      const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
+      const { visionExtraction } = await service.extractFromImages(callOptions());
+
+      expect(visionExtraction.menuItems).toHaveLength(1);
+      expect(visionExtraction.menuItems[0].description).toBeUndefined();
+    });
+
     it('JSON mode を有効にして呼ぶ', async () => {
       const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
       await service.extractFromImages(callOptions());

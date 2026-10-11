@@ -110,6 +110,24 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     expect(result.menu).toEqual(['https://example.com/_next/image?url=%2Fimages%2Fmenu_01.jpg&w=640']);
   });
 
+  it('クエリのデコードに失敗したら、デコードせずに除外パターンを当てる', async () => {
+    // %E0%A4%A は途中で切れた UTF-8 で decodeURIComponent が throw する。エンコードされたままの
+    // `%2Fimages%2Flogo.png` には `logo` が部分一致するので除外され、`menu` の方は残る
+    mockFetchHtml(
+      '<html><body>' +
+        '<img src="/_next/image?url=%2Fimages%2Flogo.png&bad=%E0%A4%A">' +
+        '<img src="/_next/image?url=%2Fimages%2Fmenu_01.jpg&bad=%E0%A4%A">' +
+        '</body></html>',
+    );
+    const service = new CategoryImageExtractorService(configLoader);
+
+    const result = await service.extractCategoryImages('https://example.com/', null, {
+      menu: ['https://example.com/menu/'],
+    });
+
+    expect(result.menu).toEqual(['https://example.com/_next/image?url=%2Fimages%2Fmenu_01.jpg&bad=%E0%A4%A']);
+  });
+
   it('http で始まる相対パスも、ページの origin からの相対として解決する', async () => {
     mockFetchHtml('<html><body><img src="httpdocs/menu.jpg"></body></html>');
     const service = new CategoryImageExtractorService(configLoader);
