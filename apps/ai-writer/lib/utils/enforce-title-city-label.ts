@@ -19,9 +19,14 @@ const LOCATION_PATTERN = / in (\S+)(?= |$)/;
 /** 都市の一覧とみなす区切り。タイトルの `/` に加え、本文の `・` や `、` で書かれることもある。 */
 const CITY_LIST_SEPARATOR = new RegExp(`[${CITY_JOIN_TITLE}${CITY_JOIN}、]`);
 
+/** 都市名とみなす語。漢字・かな・長音だけで書かれたもの (店舗名の `Cafe` や日付の `2026` を除く)。 */
+const CITY_NAME_PATTERN = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u;
+
 /** `in` の後ろが、確定値と同じ形 (都市の一覧か `N都市`) か。 */
 function isCityLabelShape(location: string): boolean {
-  return CITY_LIST_SEPARATOR.test(location) || parseRoundedCityLabel(location) !== null;
+  if (parseRoundedCityLabel(location) !== null) return true;
+  const parts = location.split(CITY_LIST_SEPARATOR);
+  return parts.length > 1 && parts.every((part) => CITY_NAME_PATTERN.test(part));
 }
 
 /** 確定値が表す都市の数。 */
@@ -55,7 +60,8 @@ export function enforceTitleCityLabel(
   const roundedLabel = formatRoundedCityLabel(countCities(cityLabel));
   if (location === roundedLabel) return title;
 
-  const swap = (label: string) => title.replace(` in ${location}`, ` in ${label}`);
+  // 置換文字列の `$` を特別扱いさせないよう、関数で返す
+  const swap = (label: string) => title.replace(` in ${location}`, () => ` in ${label}`);
   const withLabel = swap(cityLabel);
   return withLabel.length <= maxLength ? withLabel : swap(roundedLabel);
 }
