@@ -11,6 +11,8 @@ import {
   ValidationError,
 } from "@/lib/types/template";
 import { ClaudeAPIService } from "./claude-api.service";
+import { CLAUDE_THINKING_SETTINGS, claudeMaxTokens } from "../config/claude-models";
+import { readClaudeText } from "../ai/claude-response";
 
 /**
  * プレースホルダー抽出サービス
@@ -37,8 +39,8 @@ export class PlaceholderExtractorService {
       // Claude APIを呼び出し
       const response = await this.claudeAPI["client"].messages.create({
         model: this.claudeAPI["model"],
-        max_tokens: 4000,
-        temperature: 0.2, // 情報抽出は正確性を重視
+        max_tokens: claudeMaxTokens(4000),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: "user",
@@ -47,13 +49,8 @@ export class PlaceholderExtractorService {
         ],
       });
 
-      const content = response.content[0];
-      if (content.type !== "text") {
-        throw new Error("Unexpected response type from Claude API");
-      }
-
       // レスポンスをパース
-      const extractedData = this.parseExtractionResponse(content.text);
+      const extractedData = this.parseExtractionResponse(readClaudeText(response, "PlaceholderExtractor"));
 
       console.log("Extracted data:", JSON.stringify(extractedData, null, 2));
 

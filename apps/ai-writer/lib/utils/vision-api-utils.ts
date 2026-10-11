@@ -19,6 +19,8 @@ import type {
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
+import { getModelPricing } from '@/lib/ai/cost';
+import { DEFAULT_CLAUDE_MODEL } from '@/lib/config/claude-models';
 
 /**
  * Validate that all image URLs use http(s) scheme.
@@ -474,7 +476,7 @@ export async function calculateVisionTokens(
     const imageTokens = imageUrls.length * 2560;
     const promptTokens = 100; // Estimated
     const totalTokens = imageTokens + promptTokens;
-    const estimatedCost = (totalTokens / 1_000_000) * 3.0; // $3.00/1M tokens
+    const estimatedCost = (totalTokens / 1_000_000) * (getModelPricing(DEFAULT_CLAUDE_MODEL)?.inputPer1M ?? 0);
 
     return {
       provider: 'anthropic',

@@ -10,6 +10,8 @@ import {
   RenderingRequest,
 } from "@/lib/types/template";
 import { ClaudeAPIService } from "./claude-api.service";
+import { CLAUDE_THINKING_SETTINGS, claudeMaxTokens } from "../config/claude-models";
+import { readClaudeText } from "../ai/claude-response";
 
 /**
  * テンプレートレンダリングサービス
@@ -34,8 +36,8 @@ export class TemplateRendererService {
       // Claude APIを呼び出し
       const response = await this.claudeAPI["client"].messages.create({
         model: this.claudeAPI["model"],
-        max_tokens: 8000,
-        temperature: 0.3, // レンダリングは適度な創造性
+        max_tokens: claudeMaxTokens(8000),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: "user",
@@ -44,13 +46,8 @@ export class TemplateRendererService {
         ],
       });
 
-      const content = response.content[0];
-      if (content.type !== "text") {
-        throw new Error("Unexpected response type from Claude API");
-      }
-
       // レスポンスをパース
-      const renderedContent = this.parseRenderingResponse(content.text);
+      const renderedContent = this.parseRenderingResponse(readClaudeText(response, "TemplateRenderer"));
 
       console.log("Rendered content:", {
         meta_description_length: renderedContent.meta_description.length,

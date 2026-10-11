@@ -27,7 +27,7 @@ function buildClaudeMessage(raw: MockClaudeRawResponse) {
     id: 'msg_test',
     type: 'message',
     role: 'assistant',
-    model: 'claude-sonnet-4-5-20250929',
+    model: 'claude-sonnet-5-5',
     stop_reason: 'end_turn',
     stop_sequence: null,
     usage: { input_tokens: 1000, output_tokens: 500 },
@@ -319,6 +319,100 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
     });
   });
 
+  // 2026-10-11 Sonnet 5.5 へ移行。temperature は既定値以外だと 400、thinking を省くと effort high で動く
+  describe('Sonnet 5.5 のリクエストと応答', () => {
+    it('temperature を送らず、adaptive thinking と effort low を送る', async () => {
+      mockMessagesCreate.mockResolvedValueOnce(buildClaudeMessage({ menuItems: [] }));
+
+      await service.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
+
+      const params = mockMessagesCreate.mock.calls[0][0] as Record<string, unknown>;
+      expect(params).not.toHaveProperty('temperature');
+      expect(params.thinking).toEqual({ type: 'adaptive' });
+      expect(params.output_config).toEqual({ effort: 'low' });
+      // 思考の分も max_tokens に含まれるため、返答の 4,096 より大きく取る
+      expect(params.max_tokens).toBeGreaterThanOrEqual(16_000);
+    });
+
+    it('拒否はリトライせず 1 回で諦める (同じ入力で再送しても変わらない)', async () => {
+      mockMessagesCreate.mockResolvedValue({
+        ...buildClaudeMessage({ menuItems: [] }),
+        stop_reason: 'refusal',
+        stop_details: { type: 'refusal', category: 'general_harms', explanation: null },
+      });
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/img1.webp'],
+          prompt: 'extract',
+          category: 'menu',
+          maxRetries: 3,
+        }),
+      ).rejects.toThrow(/refused the request \(category: general_harms\)/);
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('max_tokens での切り詰めもリトライせず 1 回で諦める', async () => {
+      mockMessagesCreate.mockResolvedValue({
+        ...buildClaudeMessage({ menuItems: [] }),
+        stop_reason: 'max_tokens',
+      });
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/img1.webp'],
+          prompt: 'extract',
+          category: 'menu',
+          maxRetries: 3,
+        }),
+      ).rejects.toThrow(/truncated/);
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('時間切れのときは、SDK のリクエストも中断する (裏で完了して課金されないように)', async () => {
+      let receivedSignal: AbortSignal | undefined;
+      mockMessagesCreate.mockImplementation((_params: unknown, options?: { signal?: AbortSignal }) => {
+        receivedSignal = options?.signal;
+        return new Promise(() => {}); // 応答が返らない
+      });
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/img1.webp'],
+          prompt: 'extract',
+          category: 'menu',
+          maxRetries: 1,
+          timeout: 20,
+        }),
+      ).rejects.toThrow(/timeout after 20ms/);
+      expect(receivedSignal?.aborted).toBe(true);
+    });
+
+    it('応答の先頭が thinking のブロックでも、text のブロックから結果を読む', async () => {
+      const message = buildClaudeMessage({
+        menuItems: [{ name: 'コラボドリンク', characterName: [], confidence: 0.9 }],
+      });
+      mockMessagesCreate.mockResolvedValueOnce({
+        ...message,
+        content: [{ type: 'thinking', thinking: '', signature: 'sig' }, ...message.content],
+      });
+
+      const result = await service.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
+
+      expect(result.visionExtraction.menuItems.map((item) => item.name)).toEqual(['コラボドリンク']);
+    });
+  });
+
   describe('prompt cache (request shape)', () => {
     it('places text prompt as content[0] with cache_control 5m TTL', async () => {
       mockMessagesCreate.mockResolvedValueOnce(
@@ -387,7 +481,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         id: 'msg_test',
         type: 'message',
         role: 'assistant',
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-5-5',
         stop_reason: 'end_turn',
         stop_sequence: null,
         usage: {
@@ -424,7 +518,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         id: 'msg_test',
         type: 'message',
         role: 'assistant',
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-5-5',
         stop_reason: 'end_turn',
         stop_sequence: null,
         usage: {
@@ -470,14 +564,14 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         id: 'msg_test',
         type: 'message',
         role: 'assistant',
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-5-5',
         stop_reason: 'end_turn',
         stop_sequence: null,
         usage: {
           input_tokens: 0,
           output_tokens: 0,
           cache_creation_input_tokens: 0,
-          // 1M cache-read tokens × claude cachedInputPer1M ($0.30/M) = $0.30
+          // 1M cache-read tokens × claude-sonnet-5-5 cachedInputPer1M ($0.10/M) = $0.10
           cache_read_input_tokens: 1_000_000,
         },
         content: [
@@ -505,8 +599,8 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         .find((line) => line.includes('💰 Cost:'));
 
       expect(costLog).toBeDefined();
-      // 1M cache_read tokens × $0.30/M = $0.3000 in formatCost output
-      expect(costLog).toMatch(/\$0\.3/);
+      // 1M cache_read tokens × $0.10/M = $0.1000 in formatCost output
+      expect(costLog).toMatch(/\$0\.1000/);
 
       logSpy.mockRestore();
     });

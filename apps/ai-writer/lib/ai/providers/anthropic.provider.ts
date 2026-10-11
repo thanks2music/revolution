@@ -11,7 +11,8 @@
 
 import { Anthropic } from '@anthropic-ai/sdk';
 import { ClaudeAPIService } from '../../services/claude-api.service';
-import { DEFAULT_CLAUDE_MODEL } from '../../config/claude-models';
+import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../../config/claude-models';
+import { ClaudeIncompleteResponseError, readClaudeText } from '../claude-response';
 import type {
   AiProvider,
   ArticleGenerationRequest,
@@ -144,26 +145,15 @@ JSON以外の説明文は出力しないでください。`;
     //   (openai.provider.ts の同メソッドと同じ理由)。
     const startedAt = Date.now();
 
-    // 実送信値と記録値を 1 箇所に束ねる (openai.provider.ts の同メソッドと同じ理由)。
-    const temperature = 0;
-
     try {
       const response = await this.client.messages.create({
         model: this.modelName,
-        max_tokens: 1024,
-        temperature,
+        max_tokens: claudeMaxTokens(1024),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [{ role: 'user', content: prompt }],
       });
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        throw new Error('Claude refused to extract RSS information due to safety policies');
-      }
-
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
-      }
+      const text = readClaudeText(response, 'rss-extraction');
 
       const usage = response.usage
         ? {
@@ -182,13 +172,12 @@ JSON以外の説明文は出力しないでください。`;
         finishReason: response.stop_reason ?? undefined,
         latencyMs: Date.now() - startedAt,
         requestId: response.id,
-        temperature,
         prompt,
-        responseText: content.text,
+        responseText: text,
         usage,
       });
 
-      const result = this.parseRssExtractionResponse(content.text);
+      const result = this.parseRssExtractionResponse(text);
 
       // usage をコスト追跡用に追加
       return { ...result, usage };
@@ -200,11 +189,12 @@ JSON以外の説明文は出力しないでください。`;
         provider: 'anthropic',
         requestedModel: this.modelName,
         latencyMs: Date.now() - startedAt,
-        temperature,
         prompt,
         error: error instanceof Error ? error.message : String(error),
       });
 
+      // 拒否と切り詰めは型を保ったまま投げる (Gemini の provider と同じ。リトライ可否の判断に使う)
+      if (error instanceof ClaudeIncompleteResponseError) throw error;
       throw new Error(
         `Failed to extract RSS information: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -280,29 +270,21 @@ JSON以外の説明文は出力しないでください。`;
     console.log(`🤖 Using AI Provider: Anthropic Claude (${this.modelName})`);
 
     const stepId = options?.stepId ?? 'unknown';
-    const temperature = options?.temperature ?? 0;
     const startedAt = Date.now();
 
     try {
       const messages: Anthropic.MessageParam[] = [{ role: 'user', content: prompt }];
 
+      // `options.temperature` は送らない (CLAUDE_THINKING_SETTINGS の JSDoc)
       const response = await this.client.messages.create({
         model: this.modelName,
-        max_tokens: options?.maxTokens ?? 2048,
-        temperature,
+        max_tokens: claudeMaxTokens(options?.maxTokens ?? 2048),
+        ...CLAUDE_THINKING_SETTINGS,
         system: options?.systemPrompt,
         messages,
       });
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        throw new Error('Claude refused to process the request due to safety policies');
-      }
-
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
-      }
+      const text = readClaudeText(response, stepId);
 
       const latencyMs = Date.now() - startedAt;
       const usage = {
@@ -324,14 +306,13 @@ JSON以外の説明文は出力しないでください。`;
         finishReason: response.stop_reason ?? undefined,
         latencyMs,
         requestId: response.id,
-        temperature,
         prompt,
-        responseText: content.text,
+        responseText: text,
         usage,
       });
 
       return {
-        content: content.text,
+        content: text,
         model: this.modelName,
         usage,
         resolvedModel: response.model,
@@ -349,11 +330,11 @@ JSON以外の説明文は出力しないでください。`;
         provider: 'anthropic',
         requestedModel: this.modelName,
         latencyMs: Date.now() - startedAt,
-        temperature,
         prompt,
         error: error instanceof Error ? error.message : String(error),
       });
 
+      if (error instanceof ClaudeIncompleteResponseError) throw error;
       throw new Error(
         `Failed to send message to Claude: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

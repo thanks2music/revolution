@@ -18,7 +18,7 @@ declare namespace NodeJS {
      * 記事生成で使うモデル ID (API キーではない)
      *
      * `AI_PROVIDER` と対になる全プロバイダ共通の env。未設定なら各 provider の
-     * 既定モデルが使われる (anthropic = Claude Sonnet 4.5 / openai = gpt-5.4-mini /
+     * 既定モデルが使われる (anthropic = Claude Sonnet 5.5 / openai = gpt-5.4-mini /
      * google = gemini-3.6-flash)。値は `AI_PROVIDER` に対応するものを入れること。
      */
     AI_MODEL?: string;
@@ -56,7 +56,7 @@ declare namespace NodeJS {
      * Vision で使うモデル ID (API キーではない)
      *
      * 未設定なら各 Vision service の既定モデルが使われる
-     * (openai = gpt-4o-mini / anthropic = claude-sonnet-4-5 / google = gemini-3.6-flash)。
+     * (openai = gpt-4o-mini / anthropic = claude-sonnet-5-5 / google = gemini-3.6-flash)。
      */
     VISION_API_MODEL?: string;
 

@@ -40,7 +40,7 @@
     "clean:utm": "tsx scripts/remove-utm-from-articles.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.63.0",
+    "@anthropic-ai/sdk": "^0.133.0",
     "@aws-sdk/client-s3": "^3.948.0",
     "@extractus/article-extractor": "^8.0.20",
     "@google-cloud/secret-manager": "^6.1.2",

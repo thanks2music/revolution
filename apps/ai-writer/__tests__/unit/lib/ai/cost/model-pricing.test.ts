@@ -295,3 +295,35 @@ describe('calculateCost — Google Gemini 3.x', () => {
     }
   });
 });
+
+// 2026-10-11 に追加した既定の Claude。キャッシュの読み込みは基本料金の 0.05 倍で、
+// これまでの Claude (0.1 倍) と違う。出典: https://platform.claude.com/docs/en/about-claude/pricing
+describe('calculateCost — claude-sonnet-5-5', () => {
+  const MODEL = 'claude-sonnet-5-5';
+
+  it('入力 $2 / 出力 $10 / キャッシュの読み込み $0.10 (1M あたり)', () => {
+    const cost = calculateCost(MODEL, {
+      promptTokens: 1_000_000,
+      completionTokens: 1_000_000,
+      totalTokens: 3_000_000,
+      cachedTokens: 1_000_000,
+    });
+
+    expect(isKnownModel(MODEL)).toBe(true);
+    expect(cost.breakdown.inputCost).toBeCloseTo(2.0, 5);
+    expect(cost.breakdown.outputCost).toBeCloseTo(10.0, 5);
+    expect(cost.breakdown.cachedCost).toBeCloseTo(0.1, 5);
+  });
+
+  it('キャッシュの書き込み (5 分) は基本料金の 1.25 倍 = $2.50', () => {
+    const cost = calculateCost(MODEL, {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 1_000_000,
+      cacheCreationTokens: 1_000_000,
+    });
+
+    expect(cost.breakdown.cacheCreationCost).toBeCloseTo(2.5, 5);
+  });
+});
+

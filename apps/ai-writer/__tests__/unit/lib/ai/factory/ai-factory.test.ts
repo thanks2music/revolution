@@ -117,11 +117,11 @@ describe('ai-factory', () => {
       expect(internals(provider).modelName).toBe('gpt-5.4-mini');
     });
 
-    it('AI_MODEL 未設定なら Anthropic は Claude Sonnet 4.5 のまま', () => {
+    it('AI_MODEL 未設定なら Anthropic は既定の Claude Sonnet 5.5', () => {
       process.env.AI_PROVIDER = 'anthropic';
       const provider = createAiProvider();
       expect(provider).toBeInstanceOf(AnthropicProvider);
-      expect(internals(provider).modelName).toBe('claude-sonnet-4-5-20250929');
+      expect(internals(provider).modelName).toBe('claude-sonnet-5-5');
     });
 
     it('AI_MODEL 未設定なら Gemini は gemini-3.6-flash', () => {
