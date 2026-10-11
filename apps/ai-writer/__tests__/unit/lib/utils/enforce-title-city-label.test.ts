@@ -82,4 +82,10 @@ describe('enforceTitleCityLabel', () => {
     const title = 'ヒロアカ WE ARE HERO HOLICS カフェ in 東京/宮城 10月16日より開催';
     expect(enforce(title, '東京/愛知/大阪')).toBe('ヒロアカ WE ARE HERO HOLICS カフェ in 3都市 10月16日より開催');
   });
+
+  it('確定値が 1 都市なら、上限を超えても「1都市」に丸めない', () => {
+    // 東京 に置き換えた後も 40 字を超えるが、「in 1都市」は不自然なので確定値のまま返す
+    const title = 'ヒロアカ WE ARE HERO HOLICS スペシャルコラボカフェ in 東京/宮城 10月16日より開催';
+    expect(enforce(title, '東京')).toBe('ヒロアカ WE ARE HERO HOLICS スペシャルコラボカフェ in 東京 10月16日より開催');
+  });
 });
