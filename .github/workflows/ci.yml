@@ -141,14 +141,7 @@ jobs:
             echo "✅ No dummy Firebase config found"
           fi
 
-      # docs.anime-events.com (apps/docs)。repo 直下の docs/ をビルド時に読むので、
-      # docs/*.md の frontmatter の抜けもここで落ちる。最後に置き、前の step が失敗しても
-      # 走らせる (docs の失敗で AI Writer のビルドや bundle の検査を止めないため、逆も同じ)。
-      - name: Build Docs
-        if: ${{ !cancelled() }}
-        run: pnpm build:docs
-
-  # Job 3: Run tests (jest, apps/ai-writer)
+  # Job 3: Run tests (jest: apps/ai-writer, apps/docs) and build apps/docs
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -208,8 +201,15 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
+      # docs.anime-events.com (apps/docs)。ビルドは Build Apps ではなくここで行う (Build Apps が最も
+      # 時間のかかるジョブのため)。repo 直下の docs/ をビルド時に読むので、docs/*.md の frontmatter の
+      # 抜けもここで落ちる。AI Writer のテストが落ちても走らせる (逆も同じ)
+      - name: Build Docs
+        if: ${{ !cancelled() }}
+        run: pnpm build:docs
+
       - name: Run docs tests
-        # 上と同じく turbo を通さない (^build の重複を避ける)。AI Writer のテストが落ちても走らせる
+        # 上と同じく turbo を通さない (^build の重複を避ける)
         if: ${{ !cancelled() }}
         run: cd apps/docs && pnpm test
 
