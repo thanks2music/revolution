@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 
-import { getLLMText } from '@/lib/get-llm-text';
+import { docsLLMs } from '@/lib/llms';
 import { source } from '@/lib/source';
 import { markdownSegments, slugsFromMarkdownUrl } from '@/lib/urls';
 
@@ -12,7 +12,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug?: 
   const page = source.getPage(slugsFromMarkdownUrl(slug));
   if (!page) notFound();
 
-  return new Response(await getLLMText(page), {
+  return new Response(await docsLLMs.page(page), {
     headers: {
       'Content-Type': 'text/markdown; charset=utf-8',
     },

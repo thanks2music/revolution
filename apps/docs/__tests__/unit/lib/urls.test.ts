@@ -8,7 +8,6 @@ import {
   pickDocsHref,
   rewriteRelativeLinks,
   slugsFromMarkdownUrl,
-  stripFrontmatter,
   toRepoBlobUrl,
 } from '@/lib/urls';
 
@@ -93,16 +92,6 @@ describe('pickDocsHref', () => {
     expect(pickDocsHref('https://example.com', 'README.md', 'https://example.com')).toBe(
       'https://example.com'
     );
-  });
-});
-
-describe('stripFrontmatter', () => {
-  it('先頭の frontmatter だけを外す', () => {
-    expect(stripFrontmatter('---\ntitle: x\n---\n\n本文\n---\n')).toBe('\n本文\n---\n');
-  });
-
-  it('frontmatter が無ければそのまま', () => {
-    expect(stripFrontmatter('本文')).toBe('本文');
   });
 });
 

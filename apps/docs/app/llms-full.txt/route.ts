@@ -1,12 +1,9 @@
-import { getLLMText } from '@/lib/get-llm-text';
-import { source } from '@/lib/source';
+import { docsLLMs } from '@/lib/llms';
 
 export const revalidate = false;
 
 export async function GET() {
-  const texts = await Promise.all(source.getPages().map(getLLMText));
-
-  return new Response(texts.join('\n\n'), {
+  return new Response(await docsLLMs.full(), {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
     },

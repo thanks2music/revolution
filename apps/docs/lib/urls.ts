@@ -61,11 +61,6 @@ export function pickDocsHref(href: string, pagePath: string, siteHref: string): 
   return toRepoBlobUrl(pagePath, href) ?? href;
 }
 
-/** 先頭の YAML frontmatter (--- で囲んだ部分) を取り除く。 */
-export function stripFrontmatter(markdown: string): string {
-  return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
-}
-
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const INLINE_LINK = /(\]\()(\.{1,2}\/[^)\s]*)/g;
 

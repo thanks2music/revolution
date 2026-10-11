@@ -1,5 +1,8 @@
-import { type DocsPage, resolveDocsHref } from '@/lib/source';
-import { rewriteRelativeLinks, stripFrontmatter } from '@/lib/urls';
+import { frontmatter } from 'fumadocs-core/content/md/frontmatter';
+import { llms } from 'fumadocs-core/source';
+
+import { type DocsPage, resolveDocsHref, source } from '@/lib/source';
+import { rewriteRelativeLinks } from '@/lib/urls';
 
 /**
  * ページの Markdown 版 (/<page>.md・llms-full.txt・Copy Markdown)。
@@ -9,11 +12,14 @@ import { rewriteRelativeLinks, stripFrontmatter } from '@/lib/urls';
  * 書いたままの本文 (raw) から frontmatter を外して使う。相対リンクはサイトのページか
  * GitHub 上の URL に書き換える (Markdown 版の URL からの相対ではリンク切れになるため)。
  */
-export async function getLLMText(page: DocsPage): Promise<string> {
-  const raw = await page.data.getText('raw');
-  const body = rewriteRelativeLinks(stripFrontmatter(raw), href => resolveDocsHref(href, page));
+async function renderPage(page: DocsPage): Promise<string> {
+  const { content } = frontmatter(await page.data.getText('raw'));
+  const body = rewriteRelativeLinks(content, href => resolveDocsHref(href, page));
 
   return `# ${page.data.title} (${page.url})
 
 ${body.trimStart()}`;
 }
+
+/** llms.txt (index) / llms-full.txt (full) / 各ページの .md (page) */
+export const docsLLMs = llms(source, { renderPage });

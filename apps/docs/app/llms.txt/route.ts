@@ -1,11 +1,9 @@
-import { llms } from 'fumadocs-core/source';
-
-import { source } from '@/lib/source';
+import { docsLLMs } from '@/lib/llms';
 
 export const revalidate = false;
 
 export async function GET() {
-  return new Response(await llms(source).index(), {
+  return new Response(await docsLLMs.index(), {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
     },
