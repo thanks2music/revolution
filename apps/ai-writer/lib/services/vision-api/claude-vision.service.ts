@@ -2,10 +2,9 @@
  * Claude Vision API Service
  *
  * @description
- * Claude Vision API (Sonnet 4.5) implementation.
+ * Claude Vision API (Sonnet 5.5) implementation.
  *
- * Cost (2026-01 pricing):
- * - Sonnet 4.5: $3.00/1M input tokens, $15.00/1M output tokens
+ * Cost: `lib/ai/cost/model-pricing.ts` の単価で計算する (Sonnet 5.5 は $2.00/1M input, $10.00/1M output)。
  * - Token calculation: (width × height) / 750
  *
  * Advantages over OpenAI:
@@ -31,7 +30,8 @@ import type {
   NoveltyItem,
 } from '@/lib/types/vision-api';
 import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
-import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
+import { calculateCost, formatCost, getModelPricing, type CostResult } from '@/lib/ai/cost';
+import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '@/lib/config/claude-models';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 interface RawClaudeResponse {
@@ -47,7 +47,7 @@ interface RawClaudeResponse {
 }
 
 /** 既定モデル。`VISION_API_MODEL` / config で上書きできる */
-const DEFAULT_CLAUDE_VISION_MODEL = 'claude-sonnet-4-5-20250929';
+const DEFAULT_CLAUDE_VISION_MODEL = DEFAULT_CLAUDE_MODEL;
 
 export class ClaudeVisionService implements IVisionApiService {
   private client: Anthropic;
@@ -117,7 +117,8 @@ export class ClaudeVisionService implements IVisionApiService {
     const imageTokens = imageUrls.length * 2560;
     const promptTokens = 100; // Estimated
     const totalTokens = imageTokens + promptTokens;
-    const estimatedCost = (totalTokens / 1_000_000) * 3.0; // $3.00/1M tokens
+    const inputPer1M = getModelPricing(this.modelName)?.inputPer1M ?? 0;
+    const estimatedCost = (totalTokens / 1_000_000) * inputPer1M;
 
     return {
       provider: 'anthropic',
@@ -239,8 +240,8 @@ export class ClaudeVisionService implements IVisionApiService {
     // Anthropic prompt cache is prefix-based: `cache_control` on a block caches
     // everything from the start of the message up to that block. The static
     // text prompt must precede the per-article images so image variation does
-    // not invalidate the cache prefix. Prompts shorter than Anthropic's
-    // 1024-token minimum cacheable size are silently not cached (no error).
+    // not invalidate the cache prefix. Prompts shorter than the model's minimum
+    // cacheable size (512 tokens on Sonnet 5.5) are silently not cached (no error).
     const content: Anthropic.Messages.MessageParam['content'] = [
       {
         type: 'text',
@@ -273,8 +274,9 @@ export class ClaudeVisionService implements IVisionApiService {
       }
       response = await this.client.messages.create({
         model: this.modelName,
-        max_tokens: 4096, // Reasonable limit for extraction
-        temperature: 0.1, // Low temperature for consistent extraction
+        // 思考の分も max_tokens に含まれる。temperature は送らない (Sonnet 5.5 は既定値以外を 400 にする)
+        max_tokens: claudeMaxTokens(4096),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: 'user',

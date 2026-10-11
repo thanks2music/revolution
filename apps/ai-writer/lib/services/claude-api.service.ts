@@ -1,6 +1,11 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { extract } from '@extractus/article-extractor';
-import { DEFAULT_CLAUDE_MODEL } from '../config/claude-models';
+import {
+  CLAUDE_THINKING_SETTINGS,
+  DEFAULT_CLAUDE_MODEL,
+  claudeMaxTokens,
+  getClaudeResponseText,
+} from '../config/claude-models';
 
 // Types for article generation
 export interface ArticleGenerationRequest {
@@ -67,8 +72,8 @@ export class ClaudeAPIService {
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 4000,
-        temperature: 0.7,
+        max_tokens: claudeMaxTokens(4000),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: 'user',
@@ -82,12 +87,12 @@ export class ClaudeAPIService {
         throw new Error('Claude refused to generate content due to safety policies');
       }
 
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
+      const text = getClaudeResponseText(response);
+      if (text === null) {
+        throw new Error('No text content in Claude API response');
       }
 
-      return this.parseArticleResponse(content.text, request);
+      return this.parseArticleResponse(text, request);
     } catch (error) {
       console.error('Claude API Error:', error);
       throw new Error(
@@ -105,7 +110,8 @@ export class ClaudeAPIService {
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 50,
+        max_tokens: claudeMaxTokens(50),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: 'user',
@@ -114,8 +120,7 @@ export class ClaudeAPIService {
         ],
       });
 
-      const content = response.content[0];
-      return content.type === 'text' && content.text.includes('API connection successful');
+      return getClaudeResponseText(response)?.includes('API connection successful') ?? false;
     } catch (error) {
       console.error('Claude API connection test failed:', error);
       return false;
@@ -249,8 +254,8 @@ ${content}
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 300,
-        temperature: 0.5,
+        max_tokens: claudeMaxTokens(300),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: 'user',
@@ -264,12 +269,12 @@ ${content}
         throw new Error('Claude refused to generate excerpt due to safety policies');
       }
 
-      const responseContent = response.content[0];
-      if (responseContent.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
+      const text = getClaudeResponseText(response);
+      if (text === null) {
+        throw new Error('No text content in Claude API response');
       }
 
-      return responseContent.text.trim();
+      return text.trim();
     } catch (error) {
       console.error('Failed to generate excerpt:', error);
       throw new Error(
@@ -312,8 +317,8 @@ Slug:`;
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 100,
-        temperature: 0.1,
+        max_tokens: claudeMaxTokens(100),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: 'user',
@@ -333,12 +338,12 @@ Slug:`;
         return this.generateFallbackSlug(title);
       }
 
-      const responseContent = response.content[0];
-      if (responseContent.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
+      const text = getClaudeResponseText(response);
+      if (text === null) {
+        throw new Error('No text content in Claude API response');
       }
 
-      const rawResponse = responseContent.text.trim();
+      const rawResponse = text.trim();
       console.log(
         `🔍 [generateSlug] Raw response text: "${rawResponse}" (length: ${rawResponse.length})`
       );

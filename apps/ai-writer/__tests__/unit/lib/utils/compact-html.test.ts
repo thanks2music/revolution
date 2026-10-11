@@ -87,9 +87,10 @@ describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
    * `SMALLEST_CONTEXT_WINDOW_TOKENS` と本テストの期待値を同時に更新する。
    */
   it('[drift guard] 既定の Anthropic モデルが変わったら窓サイズの再確認を強制する', () => {
-    // claude-sonnet-4-5 = 200,000 tokens
+    // claude-sonnet-5-5 = 1,000,000 tokens (2026-10-11 に確認)。窓は広がったが、OpenAI の
+    // 窓 (推定 400,000) を確かめるまで SMALLEST_CONTEXT_WINDOW_TOKENS は保守的に 200,000 のまま
     // https://platform.claude.com/docs/en/build-with-claude/context-windows
-    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-sonnet-4-5-20250929');
+    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-sonnet-5-5');
     expect(SMALLEST_CONTEXT_WINDOW_TOKENS).toBe(200_000);
   });
 });

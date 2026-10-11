@@ -11,7 +11,12 @@
 
 import { Anthropic } from '@anthropic-ai/sdk';
 import { ClaudeAPIService } from '../../services/claude-api.service';
-import { DEFAULT_CLAUDE_MODEL } from '../../config/claude-models';
+import {
+  CLAUDE_THINKING_SETTINGS,
+  DEFAULT_CLAUDE_MODEL,
+  claudeMaxTokens,
+  getClaudeResponseText,
+} from '../../config/claude-models';
 import type {
   AiProvider,
   ArticleGenerationRequest,
@@ -144,14 +149,12 @@ JSON以外の説明文は出力しないでください。`;
     //   (openai.provider.ts の同メソッドと同じ理由)。
     const startedAt = Date.now();
 
-    // 実送信値と記録値を 1 箇所に束ねる (openai.provider.ts の同メソッドと同じ理由)。
-    const temperature = 0;
-
     try {
+      // temperature は送らない (Sonnet 5.5 は既定値以外を 400 にする。CLAUDE_THINKING_SETTINGS の JSDoc)
       const response = await this.client.messages.create({
         model: this.modelName,
-        max_tokens: 1024,
-        temperature,
+        max_tokens: claudeMaxTokens(1024),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [{ role: 'user', content: prompt }],
       });
 
@@ -160,9 +163,9 @@ JSON以外の説明文は出力しないでください。`;
         throw new Error('Claude refused to extract RSS information due to safety policies');
       }
 
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
+      const text = getClaudeResponseText(response);
+      if (text === null) {
+        throw new Error('No text content in Claude API response');
       }
 
       const usage = response.usage
@@ -182,13 +185,12 @@ JSON以外の説明文は出力しないでください。`;
         finishReason: response.stop_reason ?? undefined,
         latencyMs: Date.now() - startedAt,
         requestId: response.id,
-        temperature,
         prompt,
-        responseText: content.text,
+        responseText: text,
         usage,
       });
 
-      const result = this.parseRssExtractionResponse(content.text);
+      const result = this.parseRssExtractionResponse(text);
 
       // usage をコスト追跡用に追加
       return { ...result, usage };
@@ -200,7 +202,6 @@ JSON以外の説明文は出力しないでください。`;
         provider: 'anthropic',
         requestedModel: this.modelName,
         latencyMs: Date.now() - startedAt,
-        temperature,
         prompt,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -280,16 +281,17 @@ JSON以外の説明文は出力しないでください。`;
     console.log(`🤖 Using AI Provider: Anthropic Claude (${this.modelName})`);
 
     const stepId = options?.stepId ?? 'unknown';
-    const temperature = options?.temperature ?? 0;
     const startedAt = Date.now();
 
     try {
       const messages: Anthropic.MessageParam[] = [{ role: 'user', content: prompt }];
 
+      // `options.temperature` は Claude には送らない (Sonnet 5.5 は既定値以外を 400 にする)。
+      // 思考の分も max_tokens に含まれるため、返答の上限に下限を設ける。
       const response = await this.client.messages.create({
         model: this.modelName,
-        max_tokens: options?.maxTokens ?? 2048,
-        temperature,
+        max_tokens: claudeMaxTokens(options?.maxTokens ?? 2048),
+        ...CLAUDE_THINKING_SETTINGS,
         system: options?.systemPrompt,
         messages,
       });
@@ -299,9 +301,9 @@ JSON以外の説明文は出力しないでください。`;
         throw new Error('Claude refused to process the request due to safety policies');
       }
 
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
+      const text = getClaudeResponseText(response);
+      if (text === null) {
+        throw new Error('No text content in Claude API response');
       }
 
       const latencyMs = Date.now() - startedAt;
@@ -324,14 +326,13 @@ JSON以外の説明文は出力しないでください。`;
         finishReason: response.stop_reason ?? undefined,
         latencyMs,
         requestId: response.id,
-        temperature,
         prompt,
-        responseText: content.text,
+        responseText: text,
         usage,
       });
 
       return {
-        content: content.text,
+        content: text,
         model: this.modelName,
         usage,
         resolvedModel: response.model,
@@ -349,7 +350,6 @@ JSON以外の説明文は出力しないでください。`;
         provider: 'anthropic',
         requestedModel: this.modelName,
         latencyMs: Date.now() - startedAt,
-        temperature,
         prompt,
         error: error instanceof Error ? error.message : String(error),
       });

@@ -3,11 +3,16 @@ import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Anthropic } from '@anthropic-ai/sdk';
-import { DEFAULT_CLAUDE_MODEL } from '../lib/config/claude-models.js';
+import {
+  CLAUDE_THINKING_SETTINGS,
+  DEFAULT_CLAUDE_MODEL,
+  claudeMaxTokens,
+  getClaudeResponseText,
+} from '../lib/config/claude-models.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-config({ path: resolve(__dirname, '.env.local') });
+config({ path: resolve(__dirname, '../.env.local') });
 
 async function testDirect() {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -39,8 +44,8 @@ Slug:`;
 
   const response = await client.messages.create({
     model: DEFAULT_CLAUDE_MODEL,
-    max_tokens: 100,
-    temperature: 0.1,
+    max_tokens: claudeMaxTokens(100),
+    ...CLAUDE_THINKING_SETTINGS,
     messages: [{
       role: 'user',
       content: prompt
@@ -50,11 +55,10 @@ Slug:`;
   console.log('Full Response:');
   console.log(JSON.stringify(response, null, 2));
 
-  console.log('\nContent[0]:');
-  console.log(JSON.stringify(response.content[0], null, 2));
+  console.log('\nContent block types:', response.content.map((block) => block.type).join(', '));
 
-  if (response.content[0].type === 'text') {
-    const text = response.content[0].text;
+  const text = getClaudeResponseText(response);
+  if (text !== null) {
     console.log(`\nRaw text: "${text}"`);
     console.log(`Trimmed text: "${text.trim()}"`);
     console.log(`Length: ${text.trim().length}`);
