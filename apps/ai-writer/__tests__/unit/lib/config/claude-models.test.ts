@@ -2,9 +2,12 @@ import { describe, expect, it } from '@jest/globals';
 import type Anthropic from '@anthropic-ai/sdk';
 
 import {
+  CLAUDE_MAX_NONSTREAMING_TOKENS,
   CLAUDE_MIN_MAX_TOKENS,
   CLAUDE_THINKING_SETTINGS,
+  ClaudeIncompleteResponseError,
   DEFAULT_CLAUDE_MODEL,
+  assertClaudeResponseComplete,
   claudeMaxTokens,
   getClaudeResponseText,
 } from '@/lib/config/claude-models';
@@ -40,7 +43,37 @@ describe('claudeMaxTokens', () => {
   });
 
   it('返答の上限が下限より大きければ、そのまま使う', () => {
-    expect(claudeMaxTokens(32_000)).toBe(32_000);
+    expect(claudeMaxTokens(20_000)).toBe(20_000);
+  });
+
+  it('ストリームなしで SDK が送れる上限 (21,333) を超えない', () => {
+    // 21,334 以上は SDK が送る前に「Streaming is required」で例外にする
+    expect(claudeMaxTokens(32_000)).toBe(CLAUDE_MAX_NONSTREAMING_TOKENS);
+    expect((60 * 60 * 1000 * CLAUDE_MAX_NONSTREAMING_TOKENS) / 128_000).toBeLessThanOrEqual(10 * 60 * 1000);
+    expect((60 * 60 * 1000 * (CLAUDE_MAX_NONSTREAMING_TOKENS + 1)) / 128_000).toBeGreaterThan(10 * 60 * 1000);
+  });
+});
+
+describe('assertClaudeResponseComplete', () => {
+  it('最後まで書かれた応答 (end_turn) は通す', () => {
+    expect(() => assertClaudeResponseComplete({ stop_reason: 'end_turn', stop_details: null }, 'test')).not.toThrow();
+  });
+
+  it('拒否は分類の名前付きで失敗にする', () => {
+    const refusal = {
+      stop_reason: 'refusal',
+      stop_details: { type: 'refusal', category: 'general_harms', explanation: null },
+    } as unknown as Pick<Anthropic.Message, 'stop_reason' | 'stop_details'>;
+
+    expect(() => assertClaudeResponseComplete(refusal, 'title-generation')).toThrow(
+      new ClaudeIncompleteResponseError('refusal', '[title-generation] Claude refused the request (category: general_harms)')
+    );
+  });
+
+  it('max_tokens での切り詰めは失敗にする', () => {
+    expect(() =>
+      assertClaudeResponseComplete({ stop_reason: 'max_tokens', stop_details: null }, 'content-generation')
+    ).toThrow(/truncated \(stop_reason=max_tokens\)/);
   });
 });
 

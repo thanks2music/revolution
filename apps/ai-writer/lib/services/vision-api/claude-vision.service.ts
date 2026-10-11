@@ -31,7 +31,14 @@ import type {
 } from '@/lib/types/vision-api';
 import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
 import { calculateCost, formatCost, getModelPricing, type CostResult } from '@/lib/ai/cost';
-import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '@/lib/config/claude-models';
+import {
+  CLAUDE_THINKING_SETTINGS,
+  ClaudeIncompleteResponseError,
+  DEFAULT_CLAUDE_MODEL,
+  assertClaudeResponseComplete,
+  claudeMaxTokens,
+  getClaudeResponseText,
+} from '@/lib/config/claude-models';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 interface RawClaudeResponse {
@@ -175,7 +182,9 @@ export class ClaudeVisionService implements IVisionApiService {
         // is a deterministic shape mismatch — re-throw without retry so the bug
         // surfaces immediately instead of consuming three retries' worth of
         // tokens for the same failure.
-        if (error instanceof ZodError) {
+        // 拒否と切り詰め (ClaudeIncompleteResponseError) も、同じ入力で再送しても変わらないので
+        // リトライしない (Gemini の Vision と同じ扱い)
+        if (error instanceof ZodError || error instanceof ClaudeIncompleteResponseError) {
           throw error;
         }
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -318,14 +327,14 @@ export class ClaudeVisionService implements IVisionApiService {
       console.log('[ClaudeVisionService] Response content types:', response.content.map((block) => block.type));
     }
 
-    // Extract text content from response
-    const textContent = response.content.find((block) => block.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
+    assertClaudeResponseComplete(response, `ClaudeVisionService ${category}`);
+
+    // Extract text content from response (a thinking block may come first)
+    const messageContent = getClaudeResponseText(response);
+    if (messageContent === null) {
       console.error('[ClaudeVisionService] Response content:', JSON.stringify(response.content, null, 2));
       throw new Error('No text content in Claude Vision API response');
     }
-
-    const messageContent = textContent.text;
 
     if (!messageContent) {
       throw new Error('Empty response from Claude Vision API');

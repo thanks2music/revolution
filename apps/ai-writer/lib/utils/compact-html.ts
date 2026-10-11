@@ -60,6 +60,8 @@
 
 import * as cheerio from 'cheerio';
 
+import { claudeMaxTokens } from '@/lib/config/claude-models';
+
 /**
  * 実測した「文字数 → トークン数」の換算比。
  *
@@ -127,7 +129,7 @@ export const CHARS_PER_TOKEN_WORST_CASE = 1.88;
  * (https://developers.openai.com/api/docs/guides/amazon-bedrock)。2026-10-11 に Anthropic が
  * Sonnet 5.5 (1,000,000) へ移り、**公式に確かめた 200,000 の窓を持つ provider は無くなった**。
  * 最小の候補は OpenAI の 400,000 だが推定値のため、確かめられるまでは従来の 200,000 を
- * **保守的な上限**として据え置く (予算は窓の 30.5% なので、どちらでも収まる)。
+ * **保守的な上限**として据え置く (予算は窓の 36.5% なので、どちらでも収まる)。
  *
  * ### 内訳 (実測ベース)
  *
@@ -135,17 +137,18 @@ export const CHARS_PER_TOKEN_WORST_CASE = 1.88;
  * |---|---|---|
  * | 最小のコンテキスト窓 (`SMALLEST_CONTEXT_WINDOW_TOKENS`。当初は Sonnet 4.5) | 200,000 | 公式 (Sonnet 4.5) |
  * | − プロンプトのテンプレート部 (Few-shot 等) | −25,125 | **実測 21 本の最大値** (最小 20,921 / 平均 23,967) |
- * | − 出力 (`extraction.service.ts` の `maxTokens`) | −4,000 | 実装値 |
- * | = 本文に使える理論上の余地 | **170,875** (最悪ケース換算で ≒ 321,245 文字) | |
+ * | − 出力の予約 (Claude の `max_tokens` = 返答の `maxTokens` 4,000 に下限を当てた値) | −16,000 | 実装値 (`claudeMaxTokens`) |
+ * | = 本文に使える理論上の余地 | **158,875** (最悪ケース換算で ≒ 298,685 文字) | |
  * | **本定数** | **31,915 (60,000 文字) = 本文だけで窓の 16.0%** | |
- * | (参考) テンプレ・出力を含めた総使用率 | **30.5%** (最悪ケース。テストが強制する会計) | |
+ * | (参考) テンプレ・出力を含めた総使用率 | **36.5%** (最悪ケース。テストが強制する会計) | |
  *
  * ### なぜ理論上限まで上げないか
  *
  * 1. **`conan-cafe.jp` の圧縮前 35,344 文字を包含する**。圧縮が将来退行しても会場一覧は届く
- * 2. 総プロンプトが **最悪ケースでも ≒ 61,000 tokens = 200,000 の 30.5%** に収まり、
+ * 2. 総プロンプトが **最悪ケースでも ≒ 73,000 tokens = 200,000 の 36.5%** に収まり、
  *    3 provider すべてで余裕がある。会計は本文 (60,000 / `CHARS_PER_TOKEN_WORST_CASE`
- *    = 31,915) + `NON_CONTENT_TOKENS_ESTIMATE` (29,125 = テンプレ 25,125 + 出力 4,000)。
+ *    = 31,915) + `NON_CONTENT_TOKENS_ESTIMATE` (41,125 = テンプレ 25,125 + 出力の予約 16,000)。
+ *    出力の予約は provider ごとに違い、最大の Claude (思考の分を含めた `max_tokens` の下限) で数える
  *    **観測平均ではなく観測最大・最小の悪い側を使う** (テンプレは実測最大、
  *    chars/token は実測最小 = 同じ文字数でより多くのトークンを消費する側)。
  *    テストが強制する会計と一致させてある
@@ -233,14 +236,17 @@ export const EXTRACTION_TEMPLATE_TOKENS_ESTIMATE = 25_125;
 export const EXTRACTION_MAX_OUTPUT_TOKENS = 4_000;
 
 /**
- * 本文以外がプロンプト + 応答で占めるトークン数 (テンプレート + 出力)。
+ * 本文以外がプロンプト + 応答で占めるトークン数 (テンプレート + 出力の予約)。
  *
  * `LLM_INPUT_BUDGET_CHARS` が最小のコンテキスト窓に収まることをテストで検証するために
  * 使う。**リテラルを書かず内訳から導出する**ことで、`maxTokens` を変えたら自動的に
  * ここも変わり、制約テストが再評価される。
+ *
+ * 出力の予約は、実際に送る `max_tokens` が最大の provider で数える。Claude は思考も
+ * `max_tokens` に含まれるため、返答の 4,000 に下限 (16,000) を当てて送る (2026-10-11 から)。
  */
 export const NON_CONTENT_TOKENS_ESTIMATE =
-  EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + EXTRACTION_MAX_OUTPUT_TOKENS;
+  EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + claudeMaxTokens(EXTRACTION_MAX_OUTPUT_TOKENS);
 
 /**
  * サポートする provider のうち**最小**のコンテキスト窓 (tokens)。

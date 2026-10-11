@@ -118,9 +118,32 @@ describe('AnthropicProvider — 観測ログの記録契約', () => {
 
   it('返答の上限が下限より大きければ、そのまま使う', async () => {
     const provider = new AnthropicProvider();
-    await provider.sendMessage('hello', { maxTokens: 32_000 });
+    await provider.sendMessage('hello', { maxTokens: 20_000 });
 
-    expect(mockCreate.mock.calls[0][0].max_tokens).toBe(32_000);
+    expect(mockCreate.mock.calls[0][0].max_tokens).toBe(20_000);
+  });
+
+  it('思考を含めて max_tokens に達した応答は、切り詰めとして失敗にする', async () => {
+    mockCreate.mockResolvedValue({ ...buildResponse('{"title":"途中で'), stop_reason: 'max_tokens' });
+    const provider = new AnthropicProvider();
+
+    await expect(provider.sendMessage('hello', { stepId: 'content-generation' })).rejects.toThrow(
+      /truncated/
+    );
+    expect(mockedRecordAiCall.mock.calls[0][0].error).toMatch(/truncated/);
+  });
+
+  it('拒否は分類の名前付きで失敗にする', async () => {
+    mockCreate.mockResolvedValue({
+      ...buildResponse(''),
+      stop_reason: 'refusal',
+      stop_details: { type: 'refusal', category: 'general_harms', explanation: null },
+    });
+    const provider = new AnthropicProvider();
+
+    await expect(provider.sendMessage('hello', { stepId: 'title-generation' })).rejects.toThrow(
+      /refused the request \(category: general_harms\)/
+    );
   });
 
   it('応答の先頭が thinking のブロックでも、text のブロックを返す', async () => {

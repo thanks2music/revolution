@@ -5,7 +5,7 @@
  * **情報を減らさないこと**が最重要の不変条件。サイズが縮んでも会場名・日付・
  * リンクが消えたら本末転倒なので、削減とセットで保全を固定する。
  */
-import { DEFAULT_CLAUDE_MODEL } from '@/lib/config/claude-models';
+import { DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '@/lib/config/claude-models';
 import {
   CHARS_PER_TOKEN_ESTIMATE,
   CHARS_PER_TOKEN_WORST_CASE,
@@ -61,8 +61,9 @@ describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
     // extraction.service.ts の maxTokens を変えたら自動的にここも変わり、
     // 上の [ハード制約] / [方針] が再評価されることを保証する。
     // リテラル 28_000 に戻すと maxTokens 変更時に drift するため、構造を固定する。
+    // 出力は、実際に送る max_tokens が最大の Claude (思考の分を含めた下限) で予約する
     expect(NON_CONTENT_TOKENS_ESTIMATE).toBe(
-      EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + EXTRACTION_MAX_OUTPUT_TOKENS
+      EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + claudeMaxTokens(EXTRACTION_MAX_OUTPUT_TOKENS)
     );
   });
 

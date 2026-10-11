@@ -339,6 +339,41 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(params.max_tokens).toBeGreaterThanOrEqual(16_000);
     });
 
+    it('拒否はリトライせず 1 回で諦める (同じ入力で再送しても変わらない)', async () => {
+      mockMessagesCreate.mockResolvedValue({
+        ...buildClaudeMessage({ menuItems: [] }),
+        stop_reason: 'refusal',
+        stop_details: { type: 'refusal', category: 'general_harms', explanation: null },
+      });
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/img1.webp'],
+          prompt: 'extract',
+          category: 'menu',
+          maxRetries: 3,
+        }),
+      ).rejects.toThrow(/refused the request \(category: general_harms\)/);
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('max_tokens での切り詰めもリトライせず 1 回で諦める', async () => {
+      mockMessagesCreate.mockResolvedValue({
+        ...buildClaudeMessage({ menuItems: [] }),
+        stop_reason: 'max_tokens',
+      });
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/img1.webp'],
+          prompt: 'extract',
+          category: 'menu',
+          maxRetries: 3,
+        }),
+      ).rejects.toThrow(/truncated/);
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+    });
+
     it('応答の先頭が thinking のブロックでも、text のブロックから結果を読む', async () => {
       const message = buildClaudeMessage({
         menuItems: [{ name: 'コラボドリンク', characterName: [], confidence: 0.9 }],

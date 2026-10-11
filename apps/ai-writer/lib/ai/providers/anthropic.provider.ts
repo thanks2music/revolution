@@ -14,6 +14,7 @@ import { ClaudeAPIService } from '../../services/claude-api.service';
 import {
   CLAUDE_THINKING_SETTINGS,
   DEFAULT_CLAUDE_MODEL,
+  assertClaudeResponseComplete,
   claudeMaxTokens,
   getClaudeResponseText,
 } from '../../config/claude-models';
@@ -158,10 +159,8 @@ JSON以外の説明文は出力しないでください。`;
         messages: [{ role: 'user', content: prompt }],
       });
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        throw new Error('Claude refused to extract RSS information due to safety policies');
-      }
+      // 拒否と、思考を含めて上限に達した切り詰めは失敗にする
+      assertClaudeResponseComplete(response, 'rss-extraction');
 
       const text = getClaudeResponseText(response);
       if (text === null) {
@@ -296,10 +295,8 @@ JSON以外の説明文は出力しないでください。`;
         messages,
       });
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        throw new Error('Claude refused to process the request due to safety policies');
-      }
+      // 拒否と、思考を含めて上限に達した切り詰めは失敗にする
+      assertClaudeResponseComplete(response, stepId);
 
       const text = getClaudeResponseText(response);
       if (text === null) {
