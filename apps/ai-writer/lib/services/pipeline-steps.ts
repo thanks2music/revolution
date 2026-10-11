@@ -6,7 +6,7 @@
  *   `getStepDisplay` and `getStepContext` embed the id in the emitted log line
  *   so Cloud Logging filters can grep on the stable identifier.
  * - The array index (display number `[N/M]`) is **time-varying**: inserting a
- *   new step in the middle changes `[3/18]` to `[4/19]`. Cross-cutting analyses
+ *   new step in the middle changes `[3/N]` to `[4/N+1]`. Cross-cutting analyses
  *   should align logs by `id`, not by display number.
  *
  * Adding a new step: first decide top-level vs sub-context with the criteria

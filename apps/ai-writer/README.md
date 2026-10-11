@@ -27,7 +27,7 @@
   ↓ MDX の組み立て → GitHub PR (1 記事 = 1 PR) → Firestore の状態更新
 ```
 
-`app/api/cron/rss/route.ts` (Cloud Run の cron) は別の実装で、上の流れの多くを通りません。2026-10 時点では定期実行していません (休眠中)。
+`app/api/cron/rss/route.ts` (Cloud Run の cron) は別の実装で、上の流れの多くを通りません。2026-10 時点では Cloud Scheduler が未設定のため、定期実行していません (休眠中。経緯と有効化の条件は [`docs/sentry.md`](../../docs/sentry.md))。
 
 ## 主要コンポーネント
 
