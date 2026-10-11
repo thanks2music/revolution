@@ -20,7 +20,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { oidcFederationProvider } from '@anthropic-ai/sdk/lib/credentials/oidc-federation';
 
 /** Google の ID トークンに載せる audience。フェデレーションのルールで同じ値に固定している */
-export const ANTHROPIC_AUDIENCE = 'https://api.anthropic.com';
+const ANTHROPIC_AUDIENCE = 'https://api.anthropic.com';
 
 /**
  * Cloud Run のメタデータサーバーで ID トークンを取る URL。
@@ -31,11 +31,11 @@ export const GOOGLE_IDENTITY_TOKEN_URL =
   `?audience=${encodeURIComponent(ANTHROPIC_AUDIENCE)}&format=full`;
 
 /** ローカルで使う `ant auth login` のプロファイル */
-export const LOCAL_PROFILE = 'revolution';
+const LOCAL_PROFILE = 'revolution';
 
 /** ローカルのプロファイルを置く設定ディレクトリ (`ANTHROPIC_CONFIG_DIR` が未設定のとき) */
-export function defaultLocalConfigDir(homeDir: string = os.homedir()): string {
-  return path.join(homeDir, '.config', 'anthropic-revolution');
+export function defaultLocalConfigDir(): string {
+  return path.join(os.homedir(), '.config', 'anthropic-revolution');
 }
 
 type Env = Record<string, string | undefined>;
@@ -103,8 +103,14 @@ export async function fetchGoogleIdentityToken(fetchImpl: typeof fetch = fetch):
   return (await response.text()).trim();
 }
 
+let cachedClient: { key: string; client: Anthropic } | undefined;
+
 /**
- * Anthropic のクライアントを作る。全ての Claude の呼び出しはこれを使う。
+ * Anthropic のクライアントを返す。全ての Claude の呼び出しはこれを使う。
+ *
+ * クライアントはプロセスで 1 つを共有する (認証の設定が同じ間)。SDK はトークンを
+ * クライアントごとに持つため、1 回のパイプラインで 10 近く作ると、トークンの交換
+ * (Cloud Run) やプロファイルの読み込み (ローカル) も同じ回数だけ起きる。
  *
  * ローカルでは `profile` を明示する。SDK の仕様で、明示した `profile` は環境変数の
  * `ANTHROPIC_API_KEY` より優先される (Claude Code の中では空の `ANTHROPIC_API_KEY` が
@@ -116,42 +122,30 @@ export async function fetchGoogleIdentityToken(fetchImpl: typeof fetch = fetch):
 export function createAnthropicClient(env: Env = process.env): Anthropic {
   const auth = resolveAnthropicAuth(env);
 
-  if (auth.mode === 'federation') {
-    return new Anthropic({ credentials: federationCredentials(auth) });
-  }
-
   // 空文字も未設定として扱う (SDK も空文字なら既定の ~/.config/anthropic を読むため)
-  if (!env.ANTHROPIC_CONFIG_DIR) {
+  if (auth.mode === 'profile' && !env.ANTHROPIC_CONFIG_DIR) {
     env.ANTHROPIC_CONFIG_DIR = auth.configDir;
   }
-  return new Anthropic({ profile: auth.profile });
-}
 
-type FederationAuth = Extract<AnthropicAuth, { mode: 'federation' }>;
-type FederationCredentials = ReturnType<typeof oidcFederationProvider>;
-
-let cachedFederation: { key: string; credentials: FederationCredentials } | undefined;
-
-/**
- * フェデレーションの資格情報をプロセスで 1 つにする。
- * 1 回のパイプラインで Claude のクライアントを 10 近く作るため、クライアントごとに
- * 作るとトークンの交換も同じ回数だけ起きる。交換したトークンは資格情報が期限まで持つ。
- */
-function federationCredentials(auth: FederationAuth): FederationCredentials {
-  const key = [auth.federationRuleId, auth.organizationId, auth.serviceAccountId, auth.workspaceId].join('|');
-  if (cachedFederation?.key !== key) {
-    cachedFederation = {
+  const key = JSON.stringify(auth);
+  if (cachedClient?.key !== key) {
+    cachedClient = {
       key,
-      credentials: oidcFederationProvider({
-        identityTokenProvider: () => fetchGoogleIdentityToken(),
-        federationRuleId: auth.federationRuleId,
-        organizationId: auth.organizationId,
-        serviceAccountId: auth.serviceAccountId,
-        workspaceId: auth.workspaceId,
-        baseURL: ANTHROPIC_AUDIENCE,
-        fetch,
-      }),
+      client:
+        auth.mode === 'federation'
+          ? new Anthropic({
+              credentials: oidcFederationProvider({
+                identityTokenProvider: () => fetchGoogleIdentityToken(),
+                federationRuleId: auth.federationRuleId,
+                organizationId: auth.organizationId,
+                serviceAccountId: auth.serviceAccountId,
+                workspaceId: auth.workspaceId,
+                baseURL: ANTHROPIC_AUDIENCE,
+                fetch,
+              }),
+            })
+          : new Anthropic({ profile: auth.profile }),
     };
   }
-  return cachedFederation.credentials;
+  return cachedClient.client;
 }

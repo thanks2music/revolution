@@ -130,7 +130,7 @@ describe('createAnthropicClient', () => {
     expect(env.ANTHROPIC_CONFIG_DIR).toBe('/tmp/cfg');
   });
 
-  // 資格情報はプロセスで共有される (ID が同じなら作り直さない)。テストごとにルール ID を変えて独立させる
+  // クライアントはプロセスで共有される (設定が同じなら作り直さない)。テストごとにルール ID を変えて独立させる
   const federationEnv = (federationRuleId: string) => ({ ...FEDERATION_ENV, ANTHROPIC_FEDERATION_RULE_ID: federationRuleId });
 
   it('Cloud Run ではフェデレーションの資格情報でクライアントを作る (API キーを渡さない)', () => {
@@ -165,18 +165,19 @@ describe('createAnthropicClient', () => {
     }
   });
 
-  it('Cloud Run では資格情報を使い回し、トークンの交換をクライアントごとに起こさない', () => {
-    createAnthropicClient(federationEnv('fdrl_shared'));
-    createAnthropicClient(federationEnv('fdrl_shared'));
+  it('クライアントを使い回す (SDK はトークンをクライアントごとに持つため、作るたびに交換が起きる)', () => {
+    const first = createAnthropicClient(federationEnv('fdrl_shared'));
+    const second = createAnthropicClient(federationEnv('fdrl_shared'));
 
+    expect(second).toBe(first);
+    expect(MockedAnthropic).toHaveBeenCalledTimes(1);
     expect(mockedOidcFederationProvider).toHaveBeenCalledTimes(1);
-    expect(MockedAnthropic).toHaveBeenCalledTimes(2);
   });
 
-  it('フェデレーションの ID が変われば資格情報を作り直す', () => {
+  it('認証の設定が変われば作り直す', () => {
     createAnthropicClient(federationEnv('fdrl_first'));
     createAnthropicClient(federationEnv('fdrl_second'));
 
-    expect(mockedOidcFederationProvider).toHaveBeenCalledTimes(2);
+    expect(MockedAnthropic).toHaveBeenCalledTimes(2);
   });
 });
