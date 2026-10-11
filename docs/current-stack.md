@@ -58,6 +58,6 @@ title: 現行版 技術スタック
 ## 関連ドキュメント
 
 - [プロジェクト概要・ビジョン](./overview.md)
-- [MDX パイプライン詳細](./pipeline.md)
+- [MDX パイプライン (概要)](../apps/ai-writer/README.md)
 - [モノレポ構成](./monorepo.md)
 - [ビルド・開発コマンド](./build.md)
