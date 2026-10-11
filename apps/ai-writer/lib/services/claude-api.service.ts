@@ -1,4 +1,4 @@
-import { Anthropic } from '@anthropic-ai/sdk';
+import type { Anthropic } from '@anthropic-ai/sdk';
 import { extract } from '@extractus/article-extractor';
 import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../config/claude-models';
 import { createAnthropicClient } from '../ai/anthropic-client';

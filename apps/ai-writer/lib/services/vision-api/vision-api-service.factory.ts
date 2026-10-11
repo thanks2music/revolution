@@ -34,10 +34,10 @@ import { GeminiVisionService } from './gemini-vision.service';
  * // Use default provider (from VISION_API_PROVIDER env var, or 'openai')
  * const service = VisionApiServiceFactory.create();
  *
- * // Explicitly use Anthropic Claude
+ * // Explicitly use Anthropic Claude (no API key: lib/ai/anthropic-client.ts)
  * const claudeService = VisionApiServiceFactory.create('anthropic');
  *
- * // With custom configuration
+ * // With custom configuration (apiKey applies to openai / google only)
  * const customService = VisionApiServiceFactory.create('openai', {
  *   apiKey: 'custom-key',
  *   detail: 'low',

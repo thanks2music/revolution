@@ -244,20 +244,14 @@ describe.each(PROVIDERS_TO_TEST)(
 
     // Anthropic は API キーを使わない (資格情報は最初のリクエストで解決する) ので、OpenAI だけ
     (provider === 'openai' ? it : it.skip)(`should throw error if API key is missing (${provider})`, () => {
-      const apiKeyEnvVars = ['OPENAI_API_KEY'];
-      const originalKeys = apiKeyEnvVars.map((k) => ({ key: k, value: process.env[k] }));
-      apiKeyEnvVars.forEach((k) => delete process.env[k]);
+      const originalKey = process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_API_KEY;
 
       expect(() => {
         VisionApiServiceFactory.create(provider);
       }).toThrow(/OpenAI API key is required/);
 
-      // Restore
-      originalKeys.forEach(({ key, value }) => {
-        if (value !== undefined) {
-          process.env[key] = value;
-        }
-      });
+      if (originalKey !== undefined) process.env.OPENAI_API_KEY = originalKey;
     });
   },
 );

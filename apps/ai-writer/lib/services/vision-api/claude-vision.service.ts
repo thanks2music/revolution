@@ -15,7 +15,7 @@
  * @package revolution
  * @module services/vision-api/claude
  */
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ZodError } from 'zod';

@@ -9,7 +9,7 @@
  * @module lib/ai/providers/anthropic.provider
  */
 
-import { Anthropic } from '@anthropic-ai/sdk';
+import type { Anthropic } from '@anthropic-ai/sdk';
 import { ClaudeAPIService } from '../../services/claude-api.service';
 import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../../config/claude-models';
 import { createAnthropicClient } from '../anthropic-client';

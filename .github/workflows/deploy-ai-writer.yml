@@ -39,14 +39,14 @@ jobs:
           ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
         run: |
-          missing=""
+          missing=0
           for key in ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID ANTHROPIC_SERVICE_ACCOUNT_ID; do
-            if [ -z "${!key}" ]; then missing="$missing $key"; fi
+            if [ -z "${!key}" ]; then
+              echo "::error title=Missing variable::$key is empty or unset."
+              missing=1
+            fi
           done
-          if [ -n "$missing" ]; then
-            echo "::error::GitHub Variables are missing:$missing"
-            exit 1
-          fi
+          exit "$missing"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3

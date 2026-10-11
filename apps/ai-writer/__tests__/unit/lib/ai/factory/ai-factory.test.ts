@@ -40,7 +40,6 @@ const ENV_KEYS = [
   'AI_PROVIDER',
   'AI_MODEL',
   'AI_THINKING_LEVEL',
-  'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
   'GEMINI_API_KEY',
 ] as const;
@@ -53,8 +52,7 @@ describe('ai-factory', () => {
   });
 
   beforeEach(() => {
-    // 各 provider の constructor がキー必須なのでダミーを与える
-    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+    // OpenAI / Gemini の constructor はキー必須なのでダミーを与える (Anthropic はキーを使わない)
     process.env.OPENAI_API_KEY = 'test-openai-key';
     process.env.GEMINI_API_KEY = 'test-gemini-key';
     delete process.env.AI_MODEL;
