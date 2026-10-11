@@ -6,18 +6,22 @@
  *   `getStepDisplay` and `getStepContext` embed the id in the emitted log line
  *   so Cloud Logging filters can grep on the stable identifier.
  * - The array index (display number `[N/M]`) is **time-varying**: inserting a
- *   new step in the middle changes `[3/18]` to `[4/19]`. Cross-cutting analyses
+ *   new step in the middle changes `[3/N]` to `[4/N+1]`. Cross-cutting analyses
  *   should align logs by `id`, not by display number.
  *
- * Adding a new step: append (or insert) one entry to `PIPELINE_STEPS`. Do not
- * extend the schema with future-only fields like `requiresAi` until a concrete
- * caller exists (YAGNI).
+ * Adding a new step: first decide top-level vs sub-context with the criteria
+ * under "Sub-step convention" below, then append (or insert) one entry to
+ * `PIPELINE_STEPS`. Do not extend the schema with future-only fields like
+ * `requiresAi` until a concrete caller exists (YAGNI).
  *
  * Sub-step convention: a parent step that contains short sub-tasks emits
  * follow-up log lines via `getStepContext(parent-id)` (returns `[parent-id]`)
- * so the id stays grep-stable. The criteria for promoting a sub-task into a
- * top-level entry vs absorbing it as a sub-context are documented at
- * `docs/pipeline.md` → "ステップ追加時の判定基準".
+ * so the id stays grep-stable. Promote a sub-task into a top-level entry when
+ * either (a) it calls `recordUsage` (cost-tracker) or (b) it runs AI / an
+ * external API / heavy work whose progress should be logged on its own.
+ * Otherwise (c) absorb it as a sub-context of its parent. When promoting,
+ * also add the id to the drift detector in
+ * `__tests__/unit/lib/services/pipeline-steps.test.ts`.
  */
 
 export const PIPELINE_STEPS = [
