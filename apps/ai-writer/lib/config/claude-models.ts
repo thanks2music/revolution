@@ -6,6 +6,9 @@
  *   - Single source of truth for Claude model versions
  *   - Request settings every Claude call shares (thinking / effort / max_tokens)
  *
+ * 応答の読み取りは `lib/ai/claude-response.ts` (Gemini の `config/gemini-models.ts` と
+ * `ai/gemini-response.ts` の分け方と同じ)。
+ *
  * @module lib/config/claude-models
  */
 
@@ -53,81 +56,19 @@ export const CLAUDE_THINKING_SETTINGS = {
 /**
  * `max_tokens` の下限。思考のトークンも `max_tokens` に含まれる (返答の文字に出なくても
  * 数えられる) ため、返答だけを見込んだ小さい上限 (slug の 100 など) では途中で切れる。
+ *
+ * 上限は設けない。ストリームなしで 21,334 以上を渡すと SDK が送る前に例外にするが
+ * (`Streaming is required ...`)、黙って切り詰めるよりそのほうが気づける。今の呼び出しの
+ * 返答の上限は最大でも 8,000 (本文の生成) で、そこには届かない。
  */
 export const CLAUDE_MIN_MAX_TOKENS = 16_000;
 
 /**
- * ストリームなしで送れる `max_tokens` の上限。SDK は「3,600,000 ms × max_tokens / 128,000」が
- * 10 分を超えると、送る前に例外にする (`Streaming is required ...`)。21,334 からが該当する。
- */
-export const CLAUDE_MAX_NONSTREAMING_TOKENS = 21_333;
-
-/**
  * 返答に必要な上限から、思考の分も含めた `max_tokens` を決める。
  *
- * 呼び出し元の返答の上限は最大でも 8,000 (本文の生成) なので、下限の 16,000 との差が思考の余地になる。
- *
  * @param replyMaxTokens - 返答だけに必要なトークン数
- * @returns 下限 (`CLAUDE_MIN_MAX_TOKENS`) と上限 (`CLAUDE_MAX_NONSTREAMING_TOKENS`) の間に収めた値
+ * @returns 下限 (`CLAUDE_MIN_MAX_TOKENS`) を下回らない `max_tokens`
  */
 export function claudeMaxTokens(replyMaxTokens: number): number {
-  return Math.min(Math.max(replyMaxTokens, CLAUDE_MIN_MAX_TOKENS), CLAUDE_MAX_NONSTREAMING_TOKENS);
-}
-
-/**
- * 応答が最後まで書かれなかったことを表す (拒否、または `max_tokens` での切り詰め)。
- * どちらも同じ入力で再送しても結果は変わらないため、呼び出し側はリトライしない。
- */
-export class ClaudeIncompleteResponseError extends Error {
-  constructor(
-    readonly stopReason: 'refusal' | 'max_tokens',
-    message: string
-  ) {
-    super(message);
-    this.name = 'ClaudeIncompleteResponseError';
-  }
-}
-
-/**
- * 応答が最後まで書かれたことを確かめる。
- *
- * - `refusal`: Sonnet 5.5 の安全性の分類器 (cyber / bio / frontier_llm / reasoning_extraction /
- *   general_harms) が断った。HTTP 200 で返るため、`stop_reason` を見ないと気づけない
- * - `max_tokens`: 思考と返答で上限に達し、途中で切れた (Gemini の MAX_TOKENS と同じ扱い)
- *
- * @param message - Messages API の応答
- * @param label - エラーメッセージに付ける呼び出し元の名前
- * @throws {ClaudeIncompleteResponseError} `stop_reason` が `refusal` か `max_tokens` のとき
- */
-export function assertClaudeResponseComplete(
-  message: Pick<Anthropic.Message, 'stop_reason' | 'stop_details'>,
-  label: string
-): void {
-  if (message.stop_reason === 'refusal') {
-    const category = message.stop_details?.category ?? 'unknown';
-    throw new ClaudeIncompleteResponseError(
-      'refusal',
-      `[${label}] Claude refused the request (category: ${category})`
-    );
-  }
-  if (message.stop_reason === 'max_tokens') {
-    throw new ClaudeIncompleteResponseError(
-      'max_tokens',
-      `[${label}] Claude response was truncated (stop_reason=max_tokens)`
-    );
-  }
-}
-
-/**
- * 応答の本文 (text のブロック) を取り出す。
- *
- * adaptive thinking では、応答の先頭に `thinking` のブロックが来ることがある。
- * `content[0]` を text と決めつけず、`type` で選ぶ。複数の text ブロックはつなげる。
- *
- * @param message - Messages API の応答
- * @returns text のブロックをつないだ文字列。text のブロックが無ければ null
- */
-export function getClaudeResponseText(message: Pick<Anthropic.Message, 'content'>): string | null {
-  const texts = message.content.flatMap((block) => (block.type === 'text' ? [block.text] : []));
-  return texts.length > 0 ? texts.join('') : null;
+  return Math.max(replyMaxTokens, CLAUDE_MIN_MAX_TOKENS);
 }

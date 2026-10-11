@@ -10,11 +10,8 @@ import {
   RenderingRequest,
 } from "@/lib/types/template";
 import { ClaudeAPIService } from "./claude-api.service";
-import {
-  CLAUDE_THINKING_SETTINGS,
-  claudeMaxTokens,
-  getClaudeResponseText,
-} from "../config/claude-models";
+import { CLAUDE_THINKING_SETTINGS, claudeMaxTokens } from "../config/claude-models";
+import { readClaudeText } from "../ai/claude-response";
 
 /**
  * テンプレートレンダリングサービス
@@ -49,13 +46,8 @@ export class TemplateRendererService {
         ],
       });
 
-      const text = getClaudeResponseText(response);
-      if (text === null) {
-        throw new Error("No text content in Claude API response");
-      }
-
       // レスポンスをパース
-      const renderedContent = this.parseRenderingResponse(text);
+      const renderedContent = this.parseRenderingResponse(readClaudeText(response, "TemplateRenderer"));
 
       console.log("Rendered content:", {
         meta_description_length: renderedContent.meta_description.length,

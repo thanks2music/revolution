@@ -30,15 +30,9 @@ import type {
   NoveltyItem,
 } from '@/lib/types/vision-api';
 import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
-import { calculateCost, formatCost, getModelPricing, type CostResult } from '@/lib/ai/cost';
-import {
-  CLAUDE_THINKING_SETTINGS,
-  ClaudeIncompleteResponseError,
-  DEFAULT_CLAUDE_MODEL,
-  assertClaudeResponseComplete,
-  claudeMaxTokens,
-  getClaudeResponseText,
-} from '@/lib/config/claude-models';
+import { ClaudeIncompleteResponseError, readClaudeText } from '@/lib/ai/claude-response';
+import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
+import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '@/lib/config/claude-models';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 interface RawClaudeResponse {
@@ -52,9 +46,6 @@ interface RawClaudeResponse {
     extractionDifficulty?: string;
   };
 }
-
-/** 既定モデル。`VISION_API_MODEL` / config で上書きできる */
-const DEFAULT_CLAUDE_VISION_MODEL = DEFAULT_CLAUDE_MODEL;
 
 export class ClaudeVisionService implements IVisionApiService {
   private client: Anthropic;
@@ -79,7 +70,8 @@ export class ClaudeVisionService implements IVisionApiService {
     }
 
     this.client = new Anthropic({ apiKey: key });
-    this.modelName = config?.model || DEFAULT_CLAUDE_VISION_MODEL;
+    // 既定モデル。`VISION_API_MODEL` / config で上書きできる
+    this.modelName = config?.model || DEFAULT_CLAUDE_MODEL;
 
     // Log directory for non-production debug logs only
     // (Cloud Run has ephemeral FS; production relies on console.log → Cloud Logging)
@@ -124,8 +116,11 @@ export class ClaudeVisionService implements IVisionApiService {
     const imageTokens = imageUrls.length * 2560;
     const promptTokens = 100; // Estimated
     const totalTokens = imageTokens + promptTokens;
-    const inputPer1M = getModelPricing(this.modelName)?.inputPer1M ?? 0;
-    const estimatedCost = (totalTokens / 1_000_000) * inputPer1M;
+    const estimatedCost = calculateCost(this.modelName, {
+      promptTokens: totalTokens,
+      completionTokens: 0,
+      totalTokens,
+    }).usd;
 
     return {
       provider: 'anthropic',
@@ -222,14 +217,16 @@ export class ClaudeVisionService implements IVisionApiService {
     timeoutMs: number
   ): Promise<VisionExtractionResult> {
     let timerId: ReturnType<typeof setTimeout> | undefined;
+    // 時間切れのときはリクエストも止める。止めないと裏で完了して課金され、結果は捨てられる
+    const controller = new AbortController();
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timerId = setTimeout(
-        () => reject(new Error(`Claude Vision API timeout after ${timeoutMs}ms`)),
-        timeoutMs
-      );
+      timerId = setTimeout(() => {
+        controller.abort();
+        reject(new Error(`Claude Vision API timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
     });
 
-    const apiPromise = this.callClaudeVisionApi(imageUrls, prompt, category);
+    const apiPromise = this.callClaudeVisionApi(imageUrls, prompt, category, controller.signal);
 
     try {
       return await Promise.race([apiPromise, timeoutPromise]);
@@ -244,7 +241,8 @@ export class ClaudeVisionService implements IVisionApiService {
   private async callClaudeVisionApi(
     imageUrls: string[],
     prompt: string,
-    category: string
+    category: string,
+    signal: AbortSignal
   ): Promise<VisionExtractionResult> {
     // Anthropic prompt cache is prefix-based: `cache_control` on a block caches
     // everything from the start of the message up to that block. The static
@@ -281,18 +279,20 @@ export class ClaudeVisionService implements IVisionApiService {
       if (isDebug) {
         console.log('[ClaudeVisionService] Content structure:', JSON.stringify(content, null, 2));
       }
-      response = await this.client.messages.create({
-        model: this.modelName,
-        // 思考の分も max_tokens に含まれる。temperature は送らない (Sonnet 5.5 は既定値以外を 400 にする)
-        max_tokens: claudeMaxTokens(4096),
-        ...CLAUDE_THINKING_SETTINGS,
-        messages: [
-          {
-            role: 'user',
-            content,
-          },
-        ],
-      });
+      response = await this.client.messages.create(
+        {
+          model: this.modelName,
+          max_tokens: claudeMaxTokens(4096),
+          ...CLAUDE_THINKING_SETTINGS,
+          messages: [
+            {
+              role: 'user',
+              content,
+            },
+          ],
+        },
+        { signal }
+      );
       console.log('[ClaudeVisionService] API call completed successfully');
     } catch (apiError) {
       console.error('[ClaudeVisionService] API call failed:', apiError);
@@ -327,15 +327,7 @@ export class ClaudeVisionService implements IVisionApiService {
       console.log('[ClaudeVisionService] Response content types:', response.content.map((block) => block.type));
     }
 
-    assertClaudeResponseComplete(response, `ClaudeVisionService ${category}`);
-
-    // Extract text content from response (a thinking block may come first)
-    const messageContent = getClaudeResponseText(response);
-    if (messageContent === null) {
-      console.error('[ClaudeVisionService] Response content:', JSON.stringify(response.content, null, 2));
-      throw new Error('No text content in Claude Vision API response');
-    }
-
+    const messageContent = readClaudeText(response, `ClaudeVisionService ${category}`);
     if (!messageContent) {
       throw new Error('Empty response from Claude Vision API');
     }

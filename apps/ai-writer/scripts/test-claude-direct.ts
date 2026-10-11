@@ -3,12 +3,8 @@ import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Anthropic } from '@anthropic-ai/sdk';
-import {
-  CLAUDE_THINKING_SETTINGS,
-  DEFAULT_CLAUDE_MODEL,
-  claudeMaxTokens,
-  getClaudeResponseText,
-} from '../lib/config/claude-models.js';
+import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../lib/config/claude-models.js';
+import { readClaudeText } from '../lib/ai/claude-response.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -57,12 +53,10 @@ Slug:`;
 
   console.log('\nContent block types:', response.content.map((block) => block.type).join(', '));
 
-  const text = getClaudeResponseText(response);
-  if (text !== null) {
-    console.log(`\nRaw text: "${text}"`);
-    console.log(`Trimmed text: "${text.trim()}"`);
-    console.log(`Length: ${text.trim().length}`);
-  }
+  const text = readClaudeText(response, 'test-claude-direct');
+  console.log(`\nRaw text: "${text}"`);
+  console.log(`Trimmed text: "${text.trim()}"`);
+  console.log(`Length: ${text.trim().length}`);
 }
 
 testDirect().catch(console.error);

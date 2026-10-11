@@ -11,13 +11,8 @@
 
 import { Anthropic } from '@anthropic-ai/sdk';
 import { ClaudeAPIService } from '../../services/claude-api.service';
-import {
-  CLAUDE_THINKING_SETTINGS,
-  DEFAULT_CLAUDE_MODEL,
-  assertClaudeResponseComplete,
-  claudeMaxTokens,
-  getClaudeResponseText,
-} from '../../config/claude-models';
+import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../../config/claude-models';
+import { ClaudeIncompleteResponseError, readClaudeText } from '../claude-response';
 import type {
   AiProvider,
   ArticleGenerationRequest,
@@ -151,7 +146,6 @@ JSON以外の説明文は出力しないでください。`;
     const startedAt = Date.now();
 
     try {
-      // temperature は送らない (Sonnet 5.5 は既定値以外を 400 にする。CLAUDE_THINKING_SETTINGS の JSDoc)
       const response = await this.client.messages.create({
         model: this.modelName,
         max_tokens: claudeMaxTokens(1024),
@@ -159,13 +153,7 @@ JSON以外の説明文は出力しないでください。`;
         messages: [{ role: 'user', content: prompt }],
       });
 
-      // 拒否と、思考を含めて上限に達した切り詰めは失敗にする
-      assertClaudeResponseComplete(response, 'rss-extraction');
-
-      const text = getClaudeResponseText(response);
-      if (text === null) {
-        throw new Error('No text content in Claude API response');
-      }
+      const text = readClaudeText(response, 'rss-extraction');
 
       const usage = response.usage
         ? {
@@ -205,6 +193,8 @@ JSON以外の説明文は出力しないでください。`;
         error: error instanceof Error ? error.message : String(error),
       });
 
+      // 拒否と切り詰めは型を保ったまま投げる (Gemini の provider と同じ。リトライ可否の判断に使う)
+      if (error instanceof ClaudeIncompleteResponseError) throw error;
       throw new Error(
         `Failed to extract RSS information: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -285,8 +275,7 @@ JSON以外の説明文は出力しないでください。`;
     try {
       const messages: Anthropic.MessageParam[] = [{ role: 'user', content: prompt }];
 
-      // `options.temperature` は Claude には送らない (Sonnet 5.5 は既定値以外を 400 にする)。
-      // 思考の分も max_tokens に含まれるため、返答の上限に下限を設ける。
+      // `options.temperature` は送らない (CLAUDE_THINKING_SETTINGS の JSDoc)
       const response = await this.client.messages.create({
         model: this.modelName,
         max_tokens: claudeMaxTokens(options?.maxTokens ?? 2048),
@@ -295,13 +284,7 @@ JSON以外の説明文は出力しないでください。`;
         messages,
       });
 
-      // 拒否と、思考を含めて上限に達した切り詰めは失敗にする
-      assertClaudeResponseComplete(response, stepId);
-
-      const text = getClaudeResponseText(response);
-      if (text === null) {
-        throw new Error('No text content in Claude API response');
-      }
+      const text = readClaudeText(response, stepId);
 
       const latencyMs = Date.now() - startedAt;
       const usage = {
@@ -351,6 +334,7 @@ JSON以外の説明文は出力しないでください。`;
         error: error instanceof Error ? error.message : String(error),
       });
 
+      if (error instanceof ClaudeIncompleteResponseError) throw error;
       throw new Error(
         `Failed to send message to Claude: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

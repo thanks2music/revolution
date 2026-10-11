@@ -10,6 +10,7 @@
  * 気づかず古い語彙を書き続けていた。型を締めたうえで、テストでも固定する。
  */
 
+import { ClaudeIncompleteResponseError } from '@/lib/ai/claude-response';
 import { AnthropicProvider } from '@/lib/ai/providers/anthropic.provider';
 import { recordAiCall } from '@/lib/ai/observability/ai-call-recorder';
 
@@ -127,8 +128,9 @@ describe('AnthropicProvider — 観測ログの記録契約', () => {
     mockCreate.mockResolvedValue({ ...buildResponse('{"title":"途中で'), stop_reason: 'max_tokens' });
     const provider = new AnthropicProvider();
 
-    await expect(provider.sendMessage('hello', { stepId: 'content-generation' })).rejects.toThrow(
-      /truncated/
+    // 型を保ったまま投げる (汎用の Error に包み直すと、上流でリトライ可否を判断できない)
+    await expect(provider.sendMessage('hello', { stepId: 'content-generation' })).rejects.toBeInstanceOf(
+      ClaudeIncompleteResponseError
     );
     expect(mockedRecordAiCall.mock.calls[0][0].error).toMatch(/truncated/);
   });

@@ -1,11 +1,7 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { extract } from '@extractus/article-extractor';
-import {
-  CLAUDE_THINKING_SETTINGS,
-  DEFAULT_CLAUDE_MODEL,
-  claudeMaxTokens,
-  getClaudeResponseText,
-} from '../config/claude-models';
+import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../config/claude-models';
+import { ClaudeIncompleteResponseError, readClaudeText } from '../ai/claude-response';
 
 // Types for article generation
 export interface ArticleGenerationRequest {
@@ -82,17 +78,7 @@ export class ClaudeAPIService {
         ],
       });
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        throw new Error('Claude refused to generate content due to safety policies');
-      }
-
-      const text = getClaudeResponseText(response);
-      if (text === null) {
-        throw new Error('No text content in Claude API response');
-      }
-
-      return this.parseArticleResponse(text, request);
+      return this.parseArticleResponse(readClaudeText(response, 'generateArticle'), request);
     } catch (error) {
       console.error('Claude API Error:', error);
       throw new Error(
@@ -120,7 +106,7 @@ export class ClaudeAPIService {
         ],
       });
 
-      return getClaudeResponseText(response)?.includes('API connection successful') ?? false;
+      return readClaudeText(response, 'testConnection').includes('API connection successful');
     } catch (error) {
       console.error('Claude API connection test failed:', error);
       return false;
@@ -264,17 +250,7 @@ ${content}
         ],
       });
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        throw new Error('Claude refused to generate excerpt due to safety policies');
-      }
-
-      const text = getClaudeResponseText(response);
-      if (text === null) {
-        throw new Error('No text content in Claude API response');
-      }
-
-      return text.trim();
+      return readClaudeText(response, 'generateExcerpt').trim();
     } catch (error) {
       console.error('Failed to generate excerpt:', error);
       throw new Error(
@@ -332,15 +308,16 @@ Slug:`;
         JSON.stringify(response, null, 2)
       );
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        console.warn(`⚠️ Claude refused to generate slug for title: ${title}`);
-        return this.generateFallbackSlug(title);
-      }
-
-      const text = getClaudeResponseText(response);
-      if (text === null) {
-        throw new Error('No text content in Claude API response');
+      let text: string;
+      try {
+        text = readClaudeText(response, 'generateSlug');
+      } catch (error) {
+        // 拒否されたときだけ、従来どおりタイトルから作った slug に退避する
+        if (error instanceof ClaudeIncompleteResponseError && error.stopReason === 'refusal') {
+          console.warn(`⚠️ Claude refused to generate slug for title: ${title}`);
+          return this.generateFallbackSlug(title);
+        }
+        throw error;
       }
 
       const rawResponse = text.trim();

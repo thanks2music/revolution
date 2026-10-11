@@ -11,11 +11,8 @@ import {
   ValidationError,
 } from "@/lib/types/template";
 import { ClaudeAPIService } from "./claude-api.service";
-import {
-  CLAUDE_THINKING_SETTINGS,
-  claudeMaxTokens,
-  getClaudeResponseText,
-} from "../config/claude-models";
+import { CLAUDE_THINKING_SETTINGS, claudeMaxTokens } from "../config/claude-models";
+import { readClaudeText } from "../ai/claude-response";
 
 /**
  * プレースホルダー抽出サービス
@@ -52,13 +49,8 @@ export class PlaceholderExtractorService {
         ],
       });
 
-      const text = getClaudeResponseText(response);
-      if (text === null) {
-        throw new Error("No text content in Claude API response");
-      }
-
       // レスポンスをパース
-      const extractedData = this.parseExtractionResponse(text);
+      const extractedData = this.parseExtractionResponse(readClaudeText(response, "PlaceholderExtractor"));
 
       console.log("Extracted data:", JSON.stringify(extractedData, null, 2));
 

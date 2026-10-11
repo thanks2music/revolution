@@ -374,6 +374,25 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
     });
 
+    it('時間切れのときは、SDK のリクエストも中断する (裏で完了して課金されないように)', async () => {
+      let receivedSignal: AbortSignal | undefined;
+      mockMessagesCreate.mockImplementation((_params: unknown, options?: { signal?: AbortSignal }) => {
+        receivedSignal = options?.signal;
+        return new Promise(() => {}); // 応答が返らない
+      });
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/img1.webp'],
+          prompt: 'extract',
+          category: 'menu',
+          maxRetries: 1,
+          timeout: 20,
+        }),
+      ).rejects.toThrow(/timeout after 20ms/);
+      expect(receivedSignal?.aborted).toBe(true);
+    });
+
     it('応答の先頭が thinking のブロックでも、text のブロックから結果を読む', async () => {
       const message = buildClaudeMessage({
         menuItems: [{ name: 'コラボドリンク', characterName: [], confidence: 0.9 }],
