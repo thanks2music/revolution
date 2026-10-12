@@ -337,7 +337,7 @@ ${content}
 
     try {
       const response = await this.generate(prompt, options);
-      const text = this.readText(response);
+      const text = this.readText(response, this.resolveThinkingLevel(options));
 
       const usage = this.toTokenUsage(response);
       const latencyMs = Date.now() - startedAt;
@@ -422,10 +422,7 @@ ${content}
     const requestedMaxTokens = options?.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
     const wantsJson =
       options?.responseFormat === 'json' || options?.responseSchema !== undefined;
-    // 呼び出しごとの上書き (抽出の step など) があればそれを使う
-    const thinkingLevel = options?.thinkingLevel
-      ? normalizeThinkingLevel(options.thinkingLevel)
-      : this.thinkingLevel;
+    const thinkingLevel = this.resolveThinkingLevel(options);
 
     return {
       maxOutputTokens: resolveMaxOutputTokens(requestedMaxTokens, thinkingLevel),
@@ -446,11 +443,16 @@ ${content}
    *
    * 判定は {@link readGeminiText} に集約している (Vision 側と同じ実装を使うため)。
    */
-  private readText(response: GenerateContentResponse): string {
+  /** この呼び出しの思考の深さ (呼び出しごとの上書きがあればそれ、無ければ `AI_THINKING_LEVEL`) */
+  private resolveThinkingLevel(options?: SendMessageOptions): ThinkingLevel {
+    return options?.thinkingLevel ? normalizeThinkingLevel(options.thinkingLevel) : this.thinkingLevel;
+  }
+
+  private readText(response: GenerateContentResponse, thinkingLevel: ThinkingLevel = this.thinkingLevel): string {
     return readGeminiText(response, {
       label: 'GeminiProvider',
       modelName: this.modelName,
-      thinkingLevel: this.thinkingLevel,
+      thinkingLevel,
       thinkingEnvName: 'AI_THINKING_LEVEL',
     });
   }

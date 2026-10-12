@@ -32,8 +32,12 @@ const SUBPAGE_EXTRACTION_OPENAI_SCHEMA = zodToOpenAiSchema(
   'SubpageExtractionResponse'
 );
 
-/** 応答の上限。メニューが数十品あるサイトでも切れないように */
-const MAX_OUTPUT_TOKENS = 8000;
+/**
+ * 応答の上限。メニューが数十品あるサイトでも切れないように。Gemini は思考のトークンもここに含めて数え、
+ * 考える量 MEDIUM ではコナン (約 6 万字) で思考だけで約 9,600 使ったため、8,000 では切れた (2026-10-12)。
+ * Claude の非ストリームの上限 (21,333) の内側に置く
+ */
+const MAX_OUTPUT_TOKENS = 16_000;
 
 /** 1 ページから読み取れた事実 (入力のページと同じ順) */
 export interface SubpageFacts {
