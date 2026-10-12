@@ -99,6 +99,7 @@ export async function splitImage(buffer: Buffer, source: string): Promise<Vision
   const metadata = await load().metadata();
   const { width, height } = metadata.autoOrient ?? metadata;
   if (!width || !height) throw new Error('画像の大きさを読めない');
+  // metadata() はヘッダーしか読まず limitInputPixels で止まらないため、展開の前にここで止める (消さないこと)
   if (width * height > MAX_INPUT_PIXELS) {
     throw new Error(`画像が大きすぎる (${width}×${height})`);
   }

@@ -84,7 +84,11 @@ function toCharacterNames(value: unknown, itemName: string, provider: VisionProv
   return [];
 }
 
-/** 同じ品目かを見分けるキー。表記の揺れ (全角・半角、空白、記号) は無視する */
+/**
+ * 同じ品目かを見分けるキー。表記の揺れ (全角・半角、空白、記号) は無視する。
+ * 分割した画像の重なりで同じ品目が 2 回返るのを除くためのもの。品名・キャラクター・価格がすべて同じ別の品目も
+ * 1 つにまとめてしまうが、1 枚のメニュー表でそれが起きることはまず無いため許容する
+ */
 function itemKey(item: { name: string; characterName: string[]; price?: number }): string {
   const characters = item.characterName.map(normalizeMenuName).sort().join(',');
   return `${normalizeMenuName(item.name)}|${characters}|${item.price ?? ''}`;
