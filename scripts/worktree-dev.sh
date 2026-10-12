@@ -6,12 +6,13 @@
 # Usage (must run from inside the worktree):
 #   bash scripts/worktree-dev.sh frontend
 #   bash scripts/worktree-dev.sh ai-writer
+#   bash scripts/worktree-dev.sh docs
 #   bash scripts/worktree-dev.sh emulator
 
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: bash scripts/worktree-dev.sh <frontend|ai-writer|emulator>" >&2
+  echo "Usage: bash scripts/worktree-dev.sh <frontend|ai-writer|docs|emulator>" >&2
   exit 1
 fi
 
@@ -42,6 +43,14 @@ case "$CMD" in
     cd "$WORKTREE_ROOT/apps/ai-writer"
     exec pnpm exec next dev --port "$AI_WRITER_PORT"
     ;;
+  docs)
+    # apps/docs (2026-10-11) より前に作った worktree の .worktree.env には DOCS_PORT が無い。
+    # setup-worktree.sh と同じ式で PORT_OFFSET から求める
+    DOCS_PORT="${DOCS_PORT:-$((3333 + PORT_OFFSET))}"
+    echo "Starting docs on port $DOCS_PORT..."
+    cd "$WORKTREE_ROOT/apps/docs"
+    exec pnpm exec next dev --port "$DOCS_PORT"
+    ;;
   emulator)
     FIREBASE_CONFIG="$WORKTREE_ROOT/apps/ai-writer/firebase.worktree.json"
     FIREBASE_CONFIG_NAME="$(basename "$FIREBASE_CONFIG")"
@@ -68,7 +77,7 @@ case "$CMD" in
     ;;
   *)
     echo "Error: unknown command: $CMD" >&2
-    echo "Usage: bash scripts/worktree-dev.sh <frontend|ai-writer|emulator>" >&2
+    echo "Usage: bash scripts/worktree-dev.sh <frontend|ai-writer|docs|emulator>" >&2
     exit 1
     ;;
 esac

@@ -34,6 +34,8 @@ LLM を活用した AI 記事生成パイプラインを備えた、Jamstack 構
 
 更新履歴は [GitHub Releases](https://github.com/thanks2music/revolution/releases) を参照してください。
 
+`docs/` 直下のドキュメントは [docs.anime-events.com](https://docs.anime-events.com) でもページとして読めます (`apps/docs`、検索エンジンには載せていません)。
+
 ## Quick Start
 
 ```bash
@@ -54,9 +56,10 @@ pnpm dev                      # フロントエンド (http://localhost:4444) + 
 # 個別起動も可能
 pnpm dev:frontend             # 公開フロントエンドのみ
 pnpm dev:ai-writer            # AI Writer のみ
+pnpm dev:docs                 # ドキュメントサイトのみ (http://localhost:3333)
 ```
 
-> 💡 複数 worktree で同時に dev サーバーを動かす場合は port 衝突を避けるため、`bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` を使ってください。`pnpm dev` は常にデフォルト port (4444 / 7777) で起動します。
+> 💡 複数 worktree で同時に dev サーバーを動かす場合は port 衝突を避けるため、`bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` / `bash scripts/worktree-dev.sh docs` を使ってください。`pnpm dev` は常にデフォルト port (4444 / 7777) で起動します。
 
 詳細は [`docs/build.md`](./docs/build.md) を参照してください。
 
@@ -85,6 +88,7 @@ pnpm dev:ai-writer            # AI Writer のみ
 revolution/
 ├── apps/
 │   ├── ai-writer/   # AI 記事生成管理アプリ（Next.js 16 / React 19）
+│   ├── docs/        # ドキュメントサイト docs.anime-events.com（Next.js 16 / Fumadocs）
 │   ├── frontend/    # 公開 Web サイト（Next.js 16 / React 19）
 │   └── mcp-gcp-server/  # Model Context Protocol サーバー
 ├── docs/            # 公開ドキュメント

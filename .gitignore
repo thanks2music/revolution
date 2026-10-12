@@ -129,6 +129,9 @@ dist/
 # Next.js キャッシュ
 .next/cache/
 
+# Fumadocs MDX の生成物 (apps/docs、ビルド時に source.config.ts から作られる)
+.source/
+
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts

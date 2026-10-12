@@ -1,4 +1,6 @@
-# Revolution Documentation
+---
+title: Revolution Documentation
+---
 
 Revolution プロジェクトの **公開ドキュメント** ハブ。フラット構造で、活発に編集されているドキュメントを直下に置き、安定/停滞しているものは `archive/` に退避しています。
 
@@ -26,6 +28,16 @@ Revolution プロジェクトの **公開ドキュメント** ハブ。フラッ
 - [archive/future-flutter.md](./archive/future-flutter.md) — 将来構想: Flutter 拡張案 (2025-08)
 - [archive/future-pwa.md](./archive/future-pwa.md) — 将来構想: PWA / Capacitor 拡張案 (2025-08)
 
+## サイト (docs.anime-events.com)
+
+`docs/` 直下の `*.md` は [docs.anime-events.com](https://docs.anime-events.com) でも読めます (`apps/docs`、Fumadocs。検索エンジンには載せない noindex)。`archive/` と gitignored のディレクトリ (`plan/` `report/` `research/` 等) は載りません。本 README がトップページになります。
+
+サイトのビルドが通るよう、`docs/` 直下のファイルは次を守ってください:
+
+- **frontmatter の `title` が必須**。無いとビルドが落ちます。ページの見出し (h1) は `title` から作られるので、**本文に `#` の見出しを書かない**
+- **[`meta.json`](./meta.json) の `pages` の並べたい位置にファイル名 (拡張子なし) を足す**。サイドバーの並び順です。足し忘れたページは末尾 (`"..."`) にファイル名順で出ます
+- サイトに載らないファイル (`archive/` や `../apps/...`) への相対リンクは、サイト上では GitHub のファイルへのリンクになります
+
 ## 命名ルール
 
 - **フラット構造**: サブディレクトリは `archive/` (退避) と `research/` (調査スナップショット、gitignored) のみ。アクティブドキュメントはすべて `docs/` 直下
@@ -45,7 +57,7 @@ Revolution プロジェクトの **公開ドキュメント** ハブ。フラッ
 
 新規ドキュメントは以下の方針で配置先を決めてください:
 
-- **公開リファレンス** (アーキ・開発・運用): `docs/<name>.md` (フラット、kebab-case)
+- **公開リファレンス** (アーキ・開発・運用): `docs/<name>.md` (フラット、kebab-case)。frontmatter の `title` を忘れない。`meta.json` で並び順を決める (上の「サイト」節)
 - **調査スナップショット** (公開可、時系列付): `docs/research/<topic>-YYYY-MM-DD.md` (gitignored)
 - **古くなった公開ドキュメント** (再活性化時のみ参照): `docs/archive/<name>.md`
 

@@ -1,4 +1,6 @@
-# Sentry (エラー監視 + トレーシング)
+---
+title: Sentry (エラー監視 + トレーシング)
+---
 
 `apps/ai-writer` と `apps/frontend` の両方に `@sentry/nextjs` を導入している。本ドキュメントは
 **構成の正本**であり、計装を追加する人が最初に読むもの。

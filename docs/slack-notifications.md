@@ -1,4 +1,6 @@
-# Slack 通知
+---
+title: Slack 通知
+---
 
 デプロイ・migration・main の失敗・occurrence の取り込み・Sentry の issue・記事生成の結果を Slack へ知らせる。
 本ドキュメントは**構成の正本**であり、通知を足す・変える人が最初に読むもの。
@@ -32,7 +34,7 @@
 
 | 発生源 | 送り先 | メンション | 実装 |
 |---|---|---|---|
-| Vercel の本番デプロイの成功 / 失敗 | 本番系 | 失敗だけ | `vercel-deploy-notify.yml` (`repository_dispatch`) |
+| Vercel の本番デプロイの成功 / 失敗 | 本番系 | 失敗だけ | `vercel-deploy-notify.yml` (`repository_dispatch`)。対象はフロントエンドとドキュメントサイト (`.github/scripts/notify/vercel-projects.json`) |
 | Vercel の Preview デプロイの失敗 | 開発系 | なし | 同上。デプロイの削除と、権限起因の失敗 (Vercel にアクセスできない人の commit) は送らない |
 | AI Writer の Cloud Run デプロイの結果 | 本番系 | 失敗・トラフィックの固定 | `deploy-ai-writer.yml`。ヘルスチェックの失敗時はロールバックの手順を添える |
 | Supabase migration (production) の結果 + advisor の新規 lint | 本番系 | 失敗・新規 lint | `deploy-supabase-migrations.yml` (1 通にまとめる) |
@@ -116,7 +118,7 @@
   止まったかは `gh workflow list --all` の状態 (`disabled_inactivity`) で分かり、`gh workflow enable <workflow>` で再開する
 - **schedule は遅れるし、抜けることもある** (GitHub の公式の説明: 負荷が高い時は遅れ、十分に高ければキューに入ったジョブが落とされることがある)。2026-10-04 の実測で、keepalive (毎日 15:37 UTC) は 3〜5 時間遅れ、Sentry のまとめ (30 分ごと) はマージ後の 8 時間で 1 回しか動かなかった。Sentry のまとめは毎回直近 24 時間を見直し、知らせ済みの記録で重複を除くので、24 時間に 1 回動けば取りこぼさない。届くまでの遅れは、この遅延のぶん長くなる
 - checkout より前で job が失敗すると、その job の中からは通知できない (`notify-main-failures` の対象なら、そちらが拾う)
-- Vercel の `repository_dispatch` は、repo に write 権限のある token なら送れる。プロジェクトは名前で照合しているので、Vercel でプロジェクトを改名すると通知が止まる
+- Vercel の `repository_dispatch` は、repo に write 権限のある token なら送れる。プロジェクトは名前で照合しているので、Vercel でプロジェクトを改名すると通知が止まる (`.github/scripts/notify/vercel-projects.json` も直す)
 - PR の smoke は `SLACK_BOT_TOKEN` を使う。同じリポジトリのブランチの PR は secret を読めるため、送り先は開発系に固定している
 - occurrence 取り込みは毎回全件を対象にするので、未解決の人手キューは記事のマージのたびに再び届く
 - ShellCheck も runner と手元で版が違い、ルールの番号が違うことがある (2026-10 時点で runner の `ubuntu-latest` は 0.9、

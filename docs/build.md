@@ -1,4 +1,6 @@
-# ビルド & 開発コマンド
+---
+title: ビルド & 開発コマンド
+---
 
 Revolution は pnpm workspaces + Turborepo を採用しており、ルートから `pnpm <command>` で workspace 全体を統括できます。
 
@@ -9,7 +11,9 @@ Revolution は pnpm workspaces + Turborepo を採用しており、ルートか�
 | `pnpm dev` | Frontend と AI Writer を並列起動 |
 | `pnpm dev:frontend` | Frontend のみ起動 |
 | `pnpm dev:ai-writer` | AI Writer のみ起動 |
+| `pnpm dev:docs` | ドキュメントサイト (`apps/docs`) のみ起動 (http://localhost:3333) |
 | `pnpm build` | Frontend と AI Writer を並列ビルド |
+| `pnpm build:docs` | ドキュメントサイトをビルド (`docs/` 直下の frontmatter の抜けもここで落ちる) |
 | `pnpm lint` | ESLint 全 workspace |
 | `pnpm type-check` | TypeScript 型チェック (strict mode) |
 | `pnpm test` | Jest テスト全 workspace (Layer 1/2、E2E は別) |
@@ -34,6 +38,7 @@ pnpm --filter @revolution/ai-writer debug:vision
 |---|---|
 | Frontend (Vercel) | `pnpm deploy:frontend` |
 | AI Writer (Cloud Run) | GitHub Actions 自動デプロイ ([`ai-writer-cloud-run.md`](./ai-writer-cloud-run.md)) |
+| ドキュメントサイト (Vercel) | main へのマージで自動デプロイ (Vercel プロジェクト `revolution-phoenix-docs`、Root Directory `apps/docs`) |
 
 ## ドキュメント関連
 

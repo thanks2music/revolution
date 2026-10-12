@@ -90,13 +90,17 @@ jobs:
           jq -n --arg sha "${sha}" '{project: {name: "revolution-phoenix-frontend", id: "p"}, environment: "production",
             git: {ref: "main", sha: $sha, shortSha: "0123456"}, url: "revo.vercel.app", id: "d",
             state: {type: "failed", detail: "deployment_failed"}, error: "x <!channel> & y\nz"}' > vercel-base.json
+          # 対象のプロジェクトは本物の vercel-projects.json で確かめる (壊れているとスクリプトの jq が落ち、
+          # フロントエンドの通知も止まる)
+          jq -e 'has("revolution-phoenix-frontend") and has("revolution-phoenix-docs")' .github/scripts/notify/vercel-projects.json >/dev/null \
+            || { echo "vercel-projects.json is invalid or lacks a project" >&2; exit 1; }
           vercel() {  # $1 = action、$2 = 基準の payload に当てる jq の式。補足はファイルから body= として並べる
             local payload body
             payload="$(mktemp)"
             body="$(mktemp)"
             jq "${2:-.}" vercel-base.json > "${payload}"
             run_script .github/scripts/notify/vercel-deploy-message.sh EVENT_ACTION="$1" PAYLOAD_FILE="${payload}" \
-              PROJECT_NAME=revolution-phoenix-frontend REPO_URL=https://github.com/o/r BODY_FILE="${body}" || return 1
+              REPO_URL=https://github.com/o/r BODY_FILE="${body}" || return 1
             printf 'body=%s\n' "$(cat "${body}")"
           }
           # 本番の失敗: 本番系へメンション付き。payload 由来の値はエスケープされ、改行は消える。
@@ -115,6 +119,13 @@ jobs:
           grep -qx 'notify=true' <<<"${res}"
           grep -qx 'mention=false' <<<"${res}"
           grep -qx 'text=✅ フロントエンドを本番にデプロイしました (Vercel)' <<<"${res}"
+          # ドキュメントサイト (apps/docs) も同じ振り分けで、文面の名前だけが変わる
+          res="$(vercel vercel.deployment.success '.project.name = "revolution-phoenix-docs" | .state = {type: "success"} | del(.error)')"
+          grep -qx 'notify=true' <<<"${res}"
+          grep -qx 'text=✅ ドキュメントサイトを本番にデプロイしました (Vercel)' <<<"${res}"
+          res="$(vercel vercel.deployment.failed '.project.name = "revolution-phoenix-docs"')"
+          grep -qx 'mention=true' <<<"${res}"
+          grep -qx 'text=❌ ドキュメントサイトの本番デプロイが失敗しました (Vercel)' <<<"${res}"
           # Preview: 成功は送らない、失敗は開発系へ (メンションなし)、権限起因の失敗は送らない (本番なら送る)
           grep -qx 'notify=false' <<<"$(vercel vercel.deployment.success '.environment = "preview" | .state = {type: "success"}')"
           res="$(vercel vercel.deployment.error '.environment = "preview" | .state = {type: "error"}')"
@@ -126,6 +137,8 @@ jobs:
           # error / deployment_deleted はデプロイの削除なので送らない。別プロジェクトも送らない
           grep -qx 'notify=false' <<<"$(vercel vercel.deployment.error '.state = {type: "error", detail: "deployment_deleted"}')"
           grep -qx 'notify=false' <<<"$(vercel vercel.deployment.failed '.project.name = "other"')"
+          # project.name が文字列でなくても落ちない (照合しないだけ)
+          grep -qx 'notify=false' <<<"$(vercel vercel.deployment.failed '.project.name = 1')"
           # sha の形でない値はリンクにしない。切り詰めで entity の途中 (&am…) を残さない
           if grep -q '/commit/' <<<"$(vercel vercel.deployment.failed '.git.sha = "not-a-sha"')"; then echo "bad sha linked" >&2; exit 1; fi
           if grep -qE '&[a-z]{0,4}…' <<<"$(vercel vercel.deployment.failed '.error = ("a" * 296 + "&&&&&")')"; then echo "broken entity" >&2; exit 1; fi
