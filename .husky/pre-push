@@ -48,7 +48,7 @@ if [ "$#" -eq 0 ]; then
 fi
 
 # Run jest from inside apps/ai-writer (where jest.config.mjs lives).
-# No leading `--` because pnpm 10 forwards flags to the script directly;
+# No leading `--` because `pnpm exec` forwards flags to the command directly;
 # inserting `--` would make jest treat `--findRelatedTests` as a positional
 # test pattern (jest 30 stops flag parsing at `--`).
 cd "$REPO_ROOT/apps/ai-writer" || exit 1

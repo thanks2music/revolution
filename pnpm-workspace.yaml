@@ -11,7 +11,9 @@ overrides:
 
 # 依存のビルドスクリプトは pnpm 10 でも実行していなかった。pnpm 11 以降は
 # 許可も拒否もされていないものがあると install が失敗するため、拒否を明示して
-# 今と同じ挙動を保つ (https://pnpm.io/settings/build#allowbuilds)
+# 今と同じ挙動を保つ (https://pnpm.io/settings/build#allowbuilds)。依存の更新で
+# ビルドスクリプトを持つパッケージが増えると install が止まるので、中身を確かめて
+# true (実行する) か false (実行しない) をここに足す
 allowBuilds:
   '@firebase/util': false
   '@google/genai': false
