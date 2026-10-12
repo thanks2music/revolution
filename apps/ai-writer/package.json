@@ -106,11 +106,5 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "undici": "^7.28.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "@types/react": "19.2.7",
-      "@types/react-dom": "19.2.3"
-    }
   }
 }

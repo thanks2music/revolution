@@ -110,13 +110,13 @@
       labels: ["dependencies", "mcp-sdk-review-required"],
     },
 
-    // root pnpm.overrides で pin している脆弱性回避パッケージの override 定義は Renovate が触らない
+    // pnpm-workspace.yaml の overrides で pin している脆弱性回避パッケージの override 定義は Renovate が触らない
     // (現行: protobufjs@<7.5.5 → ^7.5.5, basic-ftp@<5.3.0 → >=5.3.0 <7, form-data@<2.5.4 → ^2.5.4)
     //
     // スコープの明示 (claude[bot] Finding #3 対応):
-    // 本 rule は "root package.json の pnpm.overrides エントリ" のみを保護する。
-    // Renovate npm manager は overrides を独立した depType として抽出するため
-    // (docs.renovatebot.com/modules/manager/npm)、matchDepTypes: ["overrides"] で該当。
+    // 本 rule は "pnpm-workspace.yaml の overrides エントリ" のみを保護する。
+    // Renovate npm manager はこれを depType "pnpm-workspace.overrides" として抽出する
+    // (docs.renovatebot.com/modules/manager/npm)。"overrides" は npm の overrides 用で、pnpm の分には当たらない。
     // 直接依存として同名パッケージを別ワークスペース (例: apps/ai-writer の form-data ^4.0.4)
     // が持つ場合、その **直接依存の update PR は Renovate が通常通り作成する**。
     // これは意図的挙動: security-motivated override は transitive resolution の下限を強制する
@@ -126,9 +126,9 @@
     {
       matchPackageNames: ["protobufjs", "basic-ftp", "form-data"],
       matchManagers: ["npm"],
-      matchDepTypes: ["overrides"],
+      matchDepTypes: ["pnpm-workspace.overrides"],
       enabled: false,
-      description: "Managed via pnpm.overrides for security pinning; do not auto-update the override entries themselves (direct dependency updates elsewhere are still allowed).",
+      description: "Managed via pnpm-workspace.yaml overrides for security pinning; do not auto-update the override entries themselves (direct dependency updates elsewhere are still allowed).",
     },
 
     // Fumadocs は 3 パッケージを一緒に上げる。fumadocs-ui は fumadocs-core を

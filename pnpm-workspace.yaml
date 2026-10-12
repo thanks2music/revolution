@@ -1,3 +1,26 @@
 packages:
   - 'apps/*'
   - 'shared/*'
+
+# 脆弱な版を推移的な依存から締め出すための下限。pnpm 11 以降は package.json の
+# "pnpm" フィールドを読まないため、ここに置く (https://pnpm.io/settings/dependency-resolution#overrides)
+overrides:
+  protobufjs@<7.5.5: ^7.5.5
+  basic-ftp@<5.3.0: '>=5.3.0 <7'
+  form-data@<2.5.4: ^2.5.4
+
+# 依存のビルドスクリプトは pnpm 10 でも実行していなかった。pnpm 11 以降は
+# 許可も拒否もされていないものがあると install が失敗するため、拒否を明示して
+# 今と同じ挙動を保つ (https://pnpm.io/settings/build#allowbuilds)
+allowBuilds:
+  '@firebase/util': false
+  '@google/genai': false
+  '@parcel/watcher': false
+  '@sentry/cli': false
+  core-js: false
+  esbuild: false
+  msw: false
+  protobufjs: false
+  re2: false
+  sharp: false
+  unrs-resolver: false
