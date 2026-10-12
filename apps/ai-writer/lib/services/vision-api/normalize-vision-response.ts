@@ -9,7 +9,7 @@
  * - 文字列の `"null"` や空文字は「値なし」
  * - 真偽値は `true` / `"true"` だけを真とする
  * - 数値は number か「数字とカンマだけの文字列」だけを受け付ける
- * - 品目の confidence は 0〜1 の数値だけを受け付ける (それ以外は値なし)
+ * - 品目の confidence は 0〜1 の数値 (数値の文字列 `"0.92"` を含む) だけを受け付ける (それ以外は値なし)
  * - 全体の confidence は、confidence のある品目の平均。品目が 0、または confidence の
  *   ある品目が 0 なら 0 (レベル A にしない)。応答の最上位の confidence は使わない
  */
@@ -58,9 +58,13 @@ export function toOptionalNumber(value: unknown): number | undefined {
   return Number(trimmed.replace(/,/g, ''));
 }
 
-/** 0〜1 の数値だけを確信度として受け付ける。 */
+/**
+ * 0〜1 の数値だけを確信度として受け付ける。価格と違って小数なので、`"0.92"` のような
+ * 数値の文字列も受け付ける (値なしにすると全体の確信度が 0 に落ち、正しい抽出を捨てるため)。
+ */
 function toConfidence(value: unknown): number | undefined {
-  const n = toOptionalNumber(value);
+  const n =
+    typeof value === 'string' && /^\d+(\.\d+)?$/.test(value.trim()) ? Number(value.trim()) : toOptionalNumber(value);
   return n !== undefined && n >= 0 && n <= 1 ? n : undefined;
 }
 

@@ -68,9 +68,21 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
 
     expect(result.goods).toEqual([GOODS_IMAGE]);
     expect(result.sources.goods).toBe('https://heroaca-cafe.ltr-online.com/lp/goods');
-    // 取得したページの HTML (Inertia 展開済み) を返す。「描き下ろし」の記載を探すのに使う
-    expect(result.pageHtml?.goods).toContain('ミニアクリルスタンド');
-    expect(result.pageHtml?.menu).toBeUndefined();
+    // HTML 自体は残さず、「描き下ろし」の記載の有無だけを返す
+    expect(result.mentionsRedrawnIllustration).toBe(false);
+  });
+
+  it('下層ページの本文ブロックに「描き下ろし」があれば mentionsRedrawnIllustration を立てる', async () => {
+    mockFetchHtml(
+      '<html><body><nav>ナビ</nav><main><h2>グッズ</h2><p>描き下ろしイラストを使用したアクリルスタンド</p><img src="/images/goods-1.jpg"></main></body></html>'
+    );
+    const service = new CategoryImageExtractorService(configLoader);
+
+    const result = await service.extractCategoryImages('https://example.com/', null, {
+      goods: ['https://example.com/goods/'],
+    });
+
+    expect(result.mentionsRedrawnIllustration).toBe(true);
   });
 
   it('通常の HTML の下層ページはこれまでどおり <img> から拾う', async () => {

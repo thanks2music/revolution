@@ -134,6 +134,16 @@ describe('normalizeVisionResponse', () => {
     expect(result.visionExtraction.goodsItems.map((g) => g.name)).toEqual(['缶バッジ']);
   });
 
+  it('confidence は数値の文字列 ("0.92") も受け付ける (値なしにすると全体が 0 に落ちるため)', () => {
+    const result = normalizeVisionResponse(
+      { menuItems: [{ name: 'A', characterName: [], confidence: '0.92' }] },
+      context
+    );
+
+    expect(result.visionExtraction.menuItems[0].confidence).toBe(0.92);
+    expect(result.visionExtraction.confidence).toBeCloseTo(0.92);
+  });
+
   it('confidence の無い品目は平均から除き、0〜1 の外の値は値なしにする', () => {
     const result = normalizeVisionResponse(
       {

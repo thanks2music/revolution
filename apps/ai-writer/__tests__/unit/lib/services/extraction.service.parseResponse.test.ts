@@ -306,14 +306,14 @@ describe('extraction fields normalizers (lenient path)', () => {
   });
 
   it('toStringList: 文字列だけを残し、空なら null', () => {
-    expect(toStringList([' A ', null, 'B'])).toEqual(['A', 'B']);
+    expect(toStringList([' A ', null, 'B', 'null'])).toEqual(['A', 'B']);
     expect(toStringList('A')).toBeNull();
   });
 
   it('toExtractionMenuItems: name の無い品目は捨て、無い値は null にする', () => {
     expect(
       toExtractionMenuItems([
-        { name: 'パフェ', price: '' },
+        { name: 'パフェ', price: '', character: 'null' },
         { price: '1,000円' },
         'not-an-object',
       ])

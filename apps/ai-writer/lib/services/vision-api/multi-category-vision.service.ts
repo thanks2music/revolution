@@ -6,6 +6,9 @@
  * `mergeVisionResults`. Per-category errors do NOT short-circuit other
  * categories. Categories with no images, or outside `options.categories`,
  * are skipped (no API call) and reported in `perCategory[cat].skipped`.
+ *
+ * 「Coming Soon」の画像から品目を作ったカテゴリは、そのカテゴリの結果だけを捨てる
+ * (`perCategory[cat].discarded`)。他のカテゴリの正しい品目は残す。
  */
 import type {
   IVisionApiService,
@@ -15,6 +18,7 @@ import type {
 } from '@/lib/types/vision-api';
 import { resolveVisionPrompt, VISION_CATEGORIES } from './category-prompt-resolver';
 import { mergeVisionResults, type CategoryResults } from './merge-vision-results';
+import { detectHallucination } from '@/lib/utils/vision-api-utils';
 
 /**
  * Per-category image map. Designed as a structural subset of both
@@ -34,6 +38,8 @@ export interface PerCategoryStatus {
   error?: string;
   /** Set when the category was intentionally skipped (e.g. no images). */
   skipped?: string;
+  /** 呼んだが結果を捨てたとき (Coming Soon の画像から品目を作った) の理由 */
+  discarded?: string;
 }
 
 export interface MultiCategoryVisionResult {
@@ -87,7 +93,12 @@ export async function callVisionApiForAllCategories(
       const { result, skipped } = entry.value;
       perCategory[category] = skipped ? { ok: true, skipped } : { ok: true };
       if (result) {
-        successful[category] = result;
+        const hallucination = detectHallucination(result);
+        if (hallucination.detected) {
+          perCategory[category] = { ok: true, discarded: hallucination.reason };
+        } else {
+          successful[category] = result;
+        }
       }
     } else {
       perCategory[category] = {

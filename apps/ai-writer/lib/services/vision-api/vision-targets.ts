@@ -26,16 +26,17 @@ type ExtractionFields = Pick<
   'キャラクター名' | 'メニュー詳細リスト' | '具体的なメニュー名リスト' | 'グッズ名' | 'ノベルティ名'
 >;
 
-const isEmpty = (list: readonly unknown[] | null | undefined): boolean => !list || list.length === 0;
+/** HTML の抽出で「書けなかった」とみなす: null か空の配列 (合流の判定と共有する) */
+export const isEmptyList = (list: readonly unknown[] | null | undefined): boolean => !list || list.length === 0;
 
 export function determineVisionTargets(extraction: ExtractionFields): VisionTargets {
   const missingFields: VisionTargetField[] = [];
-  if (isEmpty(extraction.キャラクター名)) missingFields.push('キャラクター名');
-  if (isEmpty(extraction.メニュー詳細リスト) && isEmpty(extraction.具体的なメニュー名リスト)) {
+  if (isEmptyList(extraction.キャラクター名)) missingFields.push('キャラクター名');
+  if (isEmptyList(extraction.メニュー詳細リスト) && isEmptyList(extraction.具体的なメニュー名リスト)) {
     missingFields.push('メニュー名');
   }
-  if (isEmpty(extraction.グッズ名)) missingFields.push('グッズ名');
-  if (isEmpty(extraction.ノベルティ名)) missingFields.push('ノベルティ名');
+  if (isEmptyList(extraction.グッズ名)) missingFields.push('グッズ名');
+  if (isEmptyList(extraction.ノベルティ名)) missingFields.push('ノベルティ名');
 
   const needs = new Set<VisionExtractionCategory>();
   if (missingFields.includes('メニュー名')) needs.add('menu');

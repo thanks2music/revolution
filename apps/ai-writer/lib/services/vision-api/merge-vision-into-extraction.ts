@@ -15,11 +15,12 @@
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import type { ExtractionResult } from '@/lib/services/extraction.service';
 import type { MenuItem, PriceTaxType, VisionExtractionResult } from '@revolution/schemas/vision-api-extraction';
+import { isEmptyList } from './vision-targets';
 
 type VisionExtraction = VisionExtractionResult['visionExtraction'];
 
 export interface VisionMergeOptions {
-  /** 公式ページに「描き下ろし」「描き起こし」の記載があるか (`mentionsRedrawnIllustration`) */
+  /** 公式ページに「描き下ろし」「描き起こし」の記載があるか (`lib/utils/redrawn-illustration.ts`) */
   hasRedrawnIllustrations: boolean;
 }
 
@@ -27,13 +28,6 @@ export interface VisionMergeResult {
   extraction: ExtractionResult;
   /** 何を埋めたか (ログ用)。空なら何も変えていない */
   changes: string[];
-}
-
-const REDRAWN_ILLUSTRATION_PATTERN = /描き下ろし|描きおろし|描き起こし|描きおこし/;
-
-/** 公式ページのどれかに「描き下ろし」「描き起こし」(ひらがな表記を含む) の記載があるか。 */
-export function mentionsRedrawnIllustration(pages: ReadonlyArray<string | null | undefined>): boolean {
-  return pages.some((page) => !!page && REDRAWN_ILLUSTRATION_PATTERN.test(page));
 }
 
 /**
@@ -55,7 +49,8 @@ export function formatPrice(price: number, taxType?: PriceTaxType): string {
   return amount;
 }
 
-const isEmpty = (list: readonly unknown[] | null | undefined): boolean => !list || list.length === 0;
+/** 包含 (部分一致) で照合するときの、HTML の名前の最短の長さ。「パフェ」のような短い名前が多くの品目に当たらないように */
+const MIN_CONTAINMENT_MATCH_LENGTH = 4;
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values.filter((v) => v.length > 0)));
@@ -67,6 +62,49 @@ function visionPrice(item: MenuItem): string | null {
 
 function visionCharacter(item: MenuItem): string | null {
   return item.characterName.length > 0 ? item.characterName.join('、') : null;
+}
+
+/**
+ * HTML の品目に対応する Vision の品目を 1 つ選ぶ。候補が 1 つに決まらなければ選ばない (取り違えを防ぐ)。
+ *
+ * まず名前の一致を探す。無ければ、HTML の名前を含む Vision の品目を探す。Vision はキャラクター名を
+ * 含めて読む (「五条悟の唯我独尊フルーツサンド」) が、HTML はキャラクターを別の欄に分ける
+ * (「唯我独尊フルーツサンド」) ため。同じ名前の品目が複数 (キャラ違いの「コラボドリンク」など) なら選ばない。
+ */
+function findVisionMatch(
+  htmlName: string,
+  visionItems: ReadonlyArray<{ key: string; item: MenuItem }>
+): MenuItem | undefined {
+  const key = normalizeMenuName(htmlName);
+  const exact = visionItems.filter((v) => v.key === key);
+  if (exact.length > 0) return exact.length === 1 ? exact[0].item : undefined;
+  if (key.length < MIN_CONTAINMENT_MATCH_LENGTH) return undefined;
+  const containing = visionItems.filter((v) => v.key.includes(key));
+  return containing.length === 1 ? containing[0].item : undefined;
+}
+
+/** キャラクター名の照合用。空白と中黒の揺れを無視する */
+function characterKey(name: string): string {
+  return name.normalize('NFKC').replace(/[\s・･]/g, '');
+}
+
+/**
+ * キャラクター名を足し合わせる (Vision を先、重複を除く)。Vision と HTML で同じ人物の表記が違う
+ * (一方がもう一方を含む:「虎杖」と「虎杖悠仁」、「五条悟」と「五条 悟」) ときは、公式の HTML の表記を使う。
+ */
+function combineCharacters(visionNames: string[], htmlNames: string[]): string[] {
+  const html = htmlNames.map((name) => ({ name, key: characterKey(name) }));
+  const result: string[] = [];
+  const add = (name: string) => {
+    if (!result.includes(name)) result.push(name);
+  };
+  for (const visionName of visionNames) {
+    const key = characterKey(visionName);
+    const same = html.find((h) => h.key.includes(key) || key.includes(h.key));
+    add(same ? same.name : visionName);
+  }
+  html.forEach((h) => add(h.name));
+  return result;
 }
 
 function mergeMenu(
@@ -81,7 +119,7 @@ function mergeMenu(
   if (visionMenu.length === 0) return current;
 
   // HTML の一覧: 詳細リストが無ければ、名前だけの一覧から品目を起こす
-  const htmlItems: ExtractionMenuItem[] = !isEmpty(extraction.メニュー詳細リスト)
+  const htmlItems: ExtractionMenuItem[] = !isEmptyList(extraction.メニュー詳細リスト)
     ? extraction.メニュー詳細リスト!
     : (extraction.具体的なメニュー名リスト ?? []).map((name) => ({
         character: null,
@@ -105,10 +143,10 @@ function mergeMenu(
     };
   }
 
-  const visionByName = new Map(visionMenu.map((item) => [normalizeMenuName(item.name), item]));
+  const visionItems = visionMenu.map((item) => ({ key: normalizeMenuName(item.name), item }));
   let filled = 0;
   const merged = htmlItems.map((htmlItem) => {
-    const match = visionByName.get(normalizeMenuName(htmlItem.name));
+    const match = findVisionMatch(htmlItem.name, visionItems);
     if (!match) return htmlItem;
     const price = htmlItem.price ?? visionPrice(match);
     const character = htmlItem.character ?? visionCharacter(match);
@@ -130,13 +168,13 @@ export function mergeVisionIntoExtraction(
   const menu = mergeMenu(extraction, vision.menuItems, changes);
 
   let グッズ名 = extraction.グッズ名;
-  if (isEmpty(グッズ名) && vision.goodsItems.length > 0) {
+  if (isEmptyList(グッズ名) && vision.goodsItems.length > 0) {
     グッズ名 = unique(vision.goodsItems.map((item) => item.name));
     changes.push(`グッズ名: HTML に無いため Vision の ${グッズ名.length} 件を使う`);
   }
 
   let ノベルティ名 = extraction.ノベルティ名;
-  if (isEmpty(ノベルティ名) && vision.noveltyItems.length > 0) {
+  if (isEmptyList(ノベルティ名) && vision.noveltyItems.length > 0) {
     ノベルティ名 = unique(vision.noveltyItems.map((item) => item.name));
     changes.push(`ノベルティ名: HTML に無いため Vision の ${ノベルティ名.length} 件を使う`);
   }
@@ -147,12 +185,12 @@ export function mergeVisionIntoExtraction(
   );
   if (visionCharacters.length > 0) {
     if (options.hasRedrawnIllustrations) {
-      const combined = unique([...visionCharacters, ...(キャラクター名 ?? [])]);
+      const combined = combineCharacters(visionCharacters, キャラクター名 ?? []);
       if (combined.length !== (キャラクター名?.length ?? 0)) {
         changes.push(`キャラクター名: 描き下ろしの記載があるため Vision と HTML を合わせた (${combined.length} 人)`);
         キャラクター名 = combined;
       }
-    } else if (isEmpty(キャラクター名)) {
+    } else if (isEmptyList(キャラクター名)) {
       changes.push(`キャラクター名: HTML に無いため Vision の ${visionCharacters.length} 人を使う`);
       キャラクター名 = visionCharacters;
     }

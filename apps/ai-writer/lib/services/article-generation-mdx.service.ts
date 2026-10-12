@@ -99,16 +99,10 @@ import { validateStoreName } from '@/lib/utils/store-name-validator';
 import { VisionApiServiceFactory } from './vision-api/vision-api-service.factory';
 import { callVisionApiForAllCategories } from './vision-api/multi-category-vision.service';
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
-import {
-  detectHallucination,
-  selectFallbackLevel,
-  validateBusinessRules,
-} from '@/lib/utils/vision-api-utils';
+import { selectFallbackLevel, validateBusinessRules } from '@/lib/utils/vision-api-utils';
 import { determineVisionTargets, type VisionTargets } from './vision-api/vision-targets';
-import {
-  mentionsRedrawnIllustration,
-  mergeVisionIntoExtraction,
-} from './vision-api/merge-vision-into-extraction';
+import { mergeVisionIntoExtraction } from './vision-api/merge-vision-into-extraction';
+import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
 import type {
   VisionExtractionResult,
   FallbackLevelType,
@@ -372,8 +366,6 @@ export class ArticleGenerationMdxService {
       let detailedExtraction: ExtractionResult | undefined;
       // 公式サイトのHTMLを保持（content-generation step と image-upload-r2 step で再利用）
       let officialHtml: string | undefined;
-      // 圧縮前の HTML (Inertia 展開済み)。vision-api step で「描き下ろし」の記載を探すのに使う
-      let officialRawHtml: string | undefined;
 
       if (selectionResult.primary_official_url) {
         try {
@@ -383,7 +375,6 @@ export class ArticleGenerationMdxService {
           //    (圧縮は class 属性を全て落とすため、raw でないと会場ブロックを認識できない)。
           const contentHtml = await extractContentHtml(selectionResult.primary_official_url);
           officialHtml = contentHtml.compacted;
-          officialRawHtml = contentHtml.raw;
           console.log(
             '公式サイトHTML取得完了:',
             officialHtml.length,
@@ -667,67 +658,63 @@ export class ArticleGenerationMdxService {
               );
             }
 
-            // 「Coming Soon」の画像から品目を作った場合は、Vision の結果を使わない (記事は続ける)
-            const hallucinationResult = detectHallucination(visionExtraction);
-            visionApiResult.hallucinationDetected = hallucinationResult.detected;
+            // 「Coming Soon」の画像から品目を作ったカテゴリは、そのカテゴリの結果だけを捨てた
+            // (callVisionApiForAllCategories)。記事は続け、他のカテゴリの結果は使う
+            const discarded = Object.entries(perCategory).filter(([, status]) => status.discarded);
+            visionApiResult.hallucinationDetected = discarded.length > 0;
+            if (discarded.length > 0) {
+              console.warn(`${getStepContext('vision-api')} 🚨 Hallucination 検出、そのカテゴリの結果は使わない:`, Object.fromEntries(discarded));
+            }
 
-            if (hallucinationResult.detected) {
-              visionApiResult.discardReason = `Coming Soon: ${hallucinationResult.reason}`;
-              console.warn(`${getStepContext('vision-api')} 🚨 Hallucination 検出、Vision の結果は使わない:`, {
-                type: hallucinationResult.type,
-                reason: hallucinationResult.reason,
+            // 業務ルールの減点を、レベルを決める前にかける
+            const businessValidation = validateBusinessRules(visionExtraction);
+            const adjusted: VisionExtractionResult =
+              businessValidation.issues.length > 0
+                ? {
+                    ...visionExtraction,
+                    visionExtraction: {
+                      ...visionExtraction.visionExtraction,
+                      confidence: businessValidation.adjustedConfidence,
+                    },
+                  }
+                : visionExtraction;
+
+            if (businessValidation.issues.length > 0) {
+              console.warn(`${getStepContext('vision-api')} ⚠️ Business rules 違反、信頼度を調整:`, {
+                issues: businessValidation.issues,
+                original: visionExtraction.visionExtraction.confidence,
+                adjusted: businessValidation.adjustedConfidence,
               });
+            }
+            visionApiResult.visionExtraction = adjusted;
+
+            const fallbackLevel = selectFallbackLevel(adjusted);
+            visionApiResult.fallbackLevel = fallbackLevel;
+
+            if (fallbackLevel !== 'A') {
+              visionApiResult.discardReason = `レベル ${fallbackLevel} (A のときだけ使う)`;
+              console.log(`${getStepContext('vision-api')} Fallback レベル ${fallbackLevel} → Vision の結果は使わない`);
             } else {
-              // 業務ルールの減点を、レベルを決める前にかける
-              const businessValidation = validateBusinessRules(visionExtraction);
-              const adjusted: VisionExtractionResult =
-                businessValidation.issues.length > 0
-                  ? {
-                      ...visionExtraction,
-                      visionExtraction: {
-                        ...visionExtraction.visionExtraction,
-                        confidence: businessValidation.adjustedConfidence,
-                      },
-                    }
-                  : visionExtraction;
-
-              if (businessValidation.issues.length > 0) {
-                console.warn(`${getStepContext('vision-api')} ⚠️ Business rules 違反、信頼度を調整:`, {
-                  issues: businessValidation.issues,
-                  original: visionExtraction.visionExtraction.confidence,
-                  adjusted: businessValidation.adjustedConfidence,
-                });
-              }
-              visionApiResult.visionExtraction = adjusted;
-
-              const fallbackLevel = selectFallbackLevel(adjusted);
-              visionApiResult.fallbackLevel = fallbackLevel;
-
-              if (fallbackLevel !== 'A') {
-                visionApiResult.discardReason = `レベル ${fallbackLevel} (A のときだけ使う)`;
-                console.log(`${getStepContext('vision-api')} Fallback レベル ${fallbackLevel} → Vision の結果は使わない`);
+              // トップページは本文ブロック (`officialHtml`)、下層ページは画像の抽出で調べた結果を使う
+              const hasRedrawnIllustrations =
+                mentionsRedrawnIllustration([officialHtml]) ||
+                categoryImages?.mentionsRedrawnIllustration === true;
+              const { extraction: mergedExtraction, changes } = mergeVisionIntoExtraction(
+                detailedExtraction,
+                adjusted.visionExtraction,
+                { hasRedrawnIllustrations },
+              );
+              if (changes.length === 0) {
+                visionApiResult.discardReason = '埋める欄が無い';
+                console.log(`${getStepContext('vision-api')} Fallback レベル A だが、埋める欄が無い`);
               } else {
-                const hasRedrawnIllustrations = mentionsRedrawnIllustration([
-                  officialRawHtml,
-                  ...Object.values(categoryImages?.pageHtml ?? {}),
-                ]);
-                const { extraction: mergedExtraction, changes } = mergeVisionIntoExtraction(
-                  detailedExtraction,
-                  adjusted.visionExtraction,
-                  { hasRedrawnIllustrations },
-                );
-                if (changes.length === 0) {
-                  visionApiResult.discardReason = '埋める欄が無い';
-                  console.log(`${getStepContext('vision-api')} Fallback レベル A だが、埋める欄が無い`);
-                } else {
-                  detailedExtraction = mergedExtraction;
-                  visionApiResult.merged = true;
-                  visionApiResult.mergeChanges = changes;
-                  console.log(`${getStepContext('vision-api')} ✅ Fallback レベル A → 抽出結果を埋めた:`, {
-                    hasRedrawnIllustrations,
-                    changes,
-                  });
-                }
+                detailedExtraction = mergedExtraction;
+                visionApiResult.merged = true;
+                visionApiResult.mergeChanges = changes;
+                console.log(`${getStepContext('vision-api')} ✅ Fallback レベル A → 抽出結果を埋めた:`, {
+                  hasRedrawnIllustrations,
+                  changes,
+                });
               }
             }
           } catch (visionError) {

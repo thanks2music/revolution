@@ -235,6 +235,22 @@ describe('callVisionApiForAllCategories', () => {
     expect(result.visionExtraction.confidence).toBe(0);
   });
 
+  it('discards only the category that made items from a Coming Soon image', async () => {
+    const comingSoon = buildResult('novelty');
+    comingSoon.visionExtraction.metadata = { hasComingSoonNotice: true, totalImagesAnalyzed: 1 };
+    const service = new FakeVisionService({
+      responses: { novelty: { kind: 'success', result: comingSoon } },
+    });
+
+    const { result, perCategory } = await callVisionApiForAllCategories(service, buildTemplate(), TRIPLE_IMAGES);
+
+    expect(perCategory.novelty.discarded).toContain('Coming Soon');
+    expect(perCategory.menu).toEqual({ ok: true });
+    expect(result.visionExtraction.noveltyItems).toEqual([]);
+    expect(result.visionExtraction.menuItems.length).toBeGreaterThan(0);
+    expect(result.visionExtraction.goodsItems.length).toBeGreaterThan(0);
+  });
+
   it('calls only the categories passed in options.categories', async () => {
     const service = new FakeVisionService();
 

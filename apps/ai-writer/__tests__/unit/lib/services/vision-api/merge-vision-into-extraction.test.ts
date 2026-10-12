@@ -4,10 +4,10 @@
 import type { ExtractionResult } from '@/lib/services/extraction.service';
 import {
   formatPrice,
-  mentionsRedrawnIllustration,
   mergeVisionIntoExtraction,
   normalizeMenuName,
 } from '@/lib/services/vision-api/merge-vision-into-extraction';
+import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
 import type { MenuItem, VisionExtractionResult } from '@/lib/types/vision-api';
 
 function extraction(overrides: Partial<ExtractionResult> = {}): ExtractionResult {
@@ -115,6 +115,45 @@ describe('mergeVisionIntoExtraction: メニュー', () => {
     ]);
   });
 
+  it('Vision がキャラクター名を含めて読んだ品目も、HTML の名前を含んでいれば照合する', () => {
+    // 2-extraction は【キャラ】を character に分け、Vision は name にキャラクター名を含める
+    const { extraction: merged } = mergeVisionIntoExtraction(
+      extraction({
+        メニュー詳細リスト: [
+          { character: '五条悟', name: '唯我独尊フルーツサンド', price: null, imageUrl: null, copyright: null },
+        ],
+      }),
+      vision({ menuItems: [menu('五条悟の唯我独尊フルーツサンド', { price: 1650, priceTaxType: 'included' })] }),
+      noRedrawn
+    );
+
+    expect(merged.メニュー詳細リスト?.[0].price).toBe('1,650円(税込)');
+  });
+
+  it('候補が 1 つに決まらないときは埋めない (同名の品目・短い名前の部分一致)', () => {
+    const html = extraction({
+      メニュー詳細リスト: [
+        { character: null, name: 'コラボドリンク', price: null, imageUrl: null, copyright: null },
+        { character: null, name: 'パフェ', price: null, imageUrl: null, copyright: null },
+      ],
+    });
+
+    const { extraction: merged, changes } = mergeVisionIntoExtraction(
+      html,
+      vision({
+        menuItems: [
+          menu('コラボドリンク', { price: 800, characterName: ['狗巻棘'] }),
+          menu('コラボドリンク', { price: 700, characterName: ['五条悟'] }),
+          menu('五条悟のパフェ', { price: 1500 }),
+        ],
+      }),
+      noRedrawn
+    );
+
+    expect(merged.メニュー詳細リスト).toBe(html.メニュー詳細リスト);
+    expect(changes.some((c) => c.startsWith('メニュー'))).toBe(false);
+  });
+
   it('HTML に名前の一覧だけがあるときも、Vision の品目は足さない', () => {
     const { extraction: merged, changes } = mergeVisionIntoExtraction(
       extraction({ 具体的なメニュー名リスト: ['ナポリタン'] }),
@@ -172,6 +211,16 @@ describe('mergeVisionIntoExtraction: キャラクター名', () => {
     );
 
     expect(merged.キャラクター名).toEqual(['デク', '爆豪', '轟', 'オールマイト']);
+  });
+
+  it('描き下ろしで合わせるとき、同じ人物の表記ゆれは HTML (公式) の表記にまとめる', () => {
+    const { extraction: merged } = mergeVisionIntoExtraction(
+      extraction({ キャラクター名: ['虎杖悠仁', '五条 悟'] }),
+      vision({ menuItems: [menu('パフェ', { characterName: ['虎杖', '五条悟', '伏黒恵'] })] }),
+      { hasRedrawnIllustrations: true }
+    );
+
+    expect(merged.キャラクター名).toEqual(['虎杖悠仁', '五条 悟', '伏黒恵']);
   });
 
   it('描き下ろしの記載が無ければ、HTML にあるときは変えない', () => {

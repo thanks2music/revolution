@@ -31,6 +31,7 @@ import {
   shouldSuppressInlinePromptDump,
 } from '@/lib/ai/observability/ai-call-recorder';
 import { getStepContext } from './pipeline-steps';
+import { toOptionalString } from './vision-api/normalize-vision-response';
 
 /**
  * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
@@ -44,13 +45,13 @@ const EXTRACTION_RESPONSE_OPENAI_SCHEMA = zodToOpenAiSchema(
   'ExtractionResponse'
 );
 
-/** 文字列の配列にする (空文字は除き、空なら null)。lenient の経路では LLM の応答をそのまま受けるため */
+/**
+ * 文字列の配列にする (空文字と `"null"` は除き、空なら null)。lenient の経路では LLM の応答を
+ * そのまま受けるため
+ */
 export function toStringList(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
-  const list = value
-    .filter((v): v is string => typeof v === 'string')
-    .map((v) => v.trim())
-    .filter((v) => v.length > 0);
+  const list = value.map(toOptionalString).filter((v): v is string => v !== undefined);
   return list.length > 0 ? list : null;
 }
 
@@ -60,17 +61,17 @@ export function toStringList(value: unknown): string[] | null {
  */
 export function toNoveltyNames(value: unknown): string[] | null {
   if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed ? [trimmed] : null;
+    const name = toOptionalString(value);
+    return name ? [name] : null;
   }
   return toStringList(value);
 }
 
-/** HTML のメニューの品目をそろえる。name の無い品目は捨て、無い値は null にする。 */
+/** HTML のメニューの品目をそろえる。name の無い品目は捨て、無い値 (`"null"` を含む) は null にする。 */
 export function toExtractionMenuItems(value: unknown): ExtractionMenuItem[] | null {
   if (!Array.isArray(value)) return null;
-  const optional = (v: unknown): string | null =>
-    typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
+  // `"null"` という文字列も値なしにする (02-menu の {{#if price}} を通って「null」と書かれないように)
+  const optional = (v: unknown): string | null => toOptionalString(v) ?? null;
   const items: ExtractionMenuItem[] = [];
   for (const raw of value) {
     if (typeof raw !== 'object' || raw === null) continue;

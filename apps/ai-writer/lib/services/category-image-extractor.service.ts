@@ -10,6 +10,8 @@
 import * as cheerio from 'cheerio';
 import type { CategoryUrls } from '@/lib/types/subpage-detection';
 import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
+import { selectMainContent } from '@/lib/utils/html-extractor';
+import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
 
 /**
@@ -34,10 +36,11 @@ export interface CategoryImages {
   /** 全画像URL（重複排除済み） */
   all: string[];
   /**
-   * 取得した下層ページの HTML (Inertia 展開済み)。「描き下ろし」の記載を探すのに使う
-   * (追加の通信をしないよう、画像の抽出で取得したものをそのまま返す)
+   * 取得した下層ページのどれかの本文ブロックに「描き下ろし」「描き起こし」の記載があったか。
+   * キャラクター名を Vision と HTML で足し合わせるかの判定に使う (画像の抽出で取得したページを
+   * そのまま調べ、追加の通信はしない。HTML 自体は結果に残さない)
    */
-  pageHtml?: Partial<Record<'menu' | 'novelty' | 'goods', string>>;
+  mentionsRedrawnIllustration?: boolean;
 }
 
 /**
@@ -99,7 +102,7 @@ export class CategoryImageExtractorService {
       goods: [],
       sources: {},
       all: [],
-      pageHtml: {},
+      mentionsRedrawnIllustration: false,
     };
 
     const allImages = new Set<string>();
@@ -133,7 +136,12 @@ export class CategoryImageExtractorService {
 
           // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する
           const html = expandInertiaPayload(await this.fetchPage(targetUrl));
-          result.pageHtml![category] = html;
+          if (!result.mentionsRedrawnIllustration) {
+            // ナビ・フッター・関連ニュースの欄を除いた本文ブロックだけを調べる
+            result.mentionsRedrawnIllustration = mentionsRedrawnIllustration([
+              selectMainContent(cheerio.load(html)).html,
+            ]);
+          }
           const pageResult = this.extractImagesFromHtml(html, targetUrl, imageConfig);
           if (pageResult.excluded.length > 0) {
             console.log(
