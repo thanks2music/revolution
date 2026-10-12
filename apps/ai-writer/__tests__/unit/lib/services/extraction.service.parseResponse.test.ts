@@ -7,7 +7,12 @@
  * - Provider-agnostic (Anthropic/Gemini also honor the runtime validation gate)
  */
 
-import { ExtractionService } from '@/lib/services/extraction.service';
+import {
+  ExtractionService,
+  toExtractionMenuItems,
+  toNoveltyNames,
+  toStringList,
+} from '@/lib/services/extraction.service';
 import type {
   AiProvider,
   SendMessageOptions,
@@ -45,7 +50,7 @@ function stubAiProvider(response: string): AiProvider {
   } as unknown as AiProvider;
 }
 
-function buildSchemaConformingResponse() {
+function buildSchemaConformingResponse(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     works: [{ title: 'テスト作品', title_en: null, is_primary: true }],
     store: { name: 'テスト店舗', multiple_locations: null },
@@ -109,6 +114,7 @@ function buildSchemaConformingResponse() {
       具体的なメニュー名リスト: null,
       event_data_reason: 'test',
     },
+    ...overrides,
   });
 }
 
@@ -248,5 +254,71 @@ describe('ExtractionService.parseResponse — Layer 2 safeParse contract', () =>
       expect.stringContaining('ExtractionResponseSchema.safeParse failed'),
       expect.any(Object)
     );
+  });
+
+  // 2026-10-11: メニューの詳細とスタジオ系の項目を返り値に入れる (以前は捨てていた)
+  it('passes the menu details, novelty names (array) and studio fields through to the result', async () => {
+    const service = new ExtractionService(
+      stubTemplateLoader(),
+      stubAiProvider(
+        buildSchemaConformingResponse({
+          ノベルティ名: ['アクリルキーホルダー', 'クリアポーチ'],
+          メニュー詳細リスト: [
+            { character: '江戸川コナン', name: 'ショートケーキ', price: '1,590円(税込)', imageUrl: null, copyright: null },
+            { character: null, name: 'ナポリタン', price: null, imageUrl: null, copyright: null },
+          ],
+          メニューテーマ説明: '港町の洋食屋',
+          具体的なメニュー名リスト: ['ショートケーキ', 'ナポリタン'],
+          スタジオ名: 'ボンズ',
+          監督名: '監督',
+          シリーズ名: 'シリーズ',
+        })
+      )
+    );
+    const result = await service.extractFromOfficialSite({
+      primary_official_url: 'https://example.com',
+      page_content: 'stub',
+    });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(result.ノベルティ名).toEqual(['アクリルキーホルダー', 'クリアポーチ']);
+    expect(result.メニュー詳細リスト).toEqual([
+      { character: '江戸川コナン', name: 'ショートケーキ', price: '1,590円(税込)', imageUrl: null, copyright: null },
+      { character: null, name: 'ナポリタン', price: null, imageUrl: null, copyright: null },
+    ]);
+    expect(result.メニューテーマ説明).toBe('港町の洋食屋');
+    expect(result.具体的なメニュー名リスト).toEqual(['ショートケーキ', 'ナポリタン']);
+    expect(result.スタジオ名).toBe('ボンズ');
+    expect(result.監督名).toBe('監督');
+    expect(result.シリーズ名).toBe('シリーズ');
+  });
+});
+
+describe('extraction fields normalizers (lenient path)', () => {
+  it('toNoveltyNames: 文字列は 1 要素の配列にし (区切らない)、空なら null', () => {
+    expect(toNoveltyNames('選べるアクリルキーホルダー、カラビナ付きクリアポーチ')).toEqual([
+      '選べるアクリルキーホルダー、カラビナ付きクリアポーチ',
+    ]);
+    expect(toNoveltyNames(['カード', '', 3])).toEqual(['カード']);
+    expect(toNoveltyNames('  ')).toBeNull();
+    expect(toNoveltyNames([])).toBeNull();
+    expect(toNoveltyNames(null)).toBeNull();
+  });
+
+  it('toStringList: 文字列だけを残し、空なら null', () => {
+    expect(toStringList([' A ', null, 'B'])).toEqual(['A', 'B']);
+    expect(toStringList('A')).toBeNull();
+  });
+
+  it('toExtractionMenuItems: name の無い品目は捨て、無い値は null にする', () => {
+    expect(
+      toExtractionMenuItems([
+        { name: 'パフェ', price: '' },
+        { price: '1,000円' },
+        'not-an-object',
+      ])
+    ).toEqual([{ character: null, name: 'パフェ', price: null, imageUrl: null, copyright: null }]);
+    expect(toExtractionMenuItems([])).toBeNull();
+    expect(toExtractionMenuItems(undefined)).toBeNull();
   });
 });

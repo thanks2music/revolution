@@ -17,6 +17,7 @@ import {
   type MediaType as MediaTypeFromSchema,
   type SourceType as SourceTypeFromSchema,
   type ExtractionReasoning,
+  type ExtractionMenuItem,
 } from '@revolution/schemas/extraction-response';
 
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
@@ -42,6 +43,50 @@ const EXTRACTION_RESPONSE_OPENAI_SCHEMA = zodToOpenAiSchema(
   ExtractionResponseSchema,
   'ExtractionResponse'
 );
+
+/** 文字列の配列にする (空文字は除き、空なら null)。lenient の経路では LLM の応答をそのまま受けるため */
+export function toStringList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const list = value
+    .filter((v): v is string => typeof v === 'string')
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+  return list.length > 0 ? list : null;
+}
+
+/**
+ * ノベルティ名を配列にそろえる。2026-10-11 に文字列から配列へ変えたため、文字列が来たら
+ * 1 要素の配列にする (区切り文字で分けない。名前に「、」を含むことがあるため)。
+ */
+export function toNoveltyNames(value: unknown): string[] | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : null;
+  }
+  return toStringList(value);
+}
+
+/** HTML のメニューの品目をそろえる。name の無い品目は捨て、無い値は null にする。 */
+export function toExtractionMenuItems(value: unknown): ExtractionMenuItem[] | null {
+  if (!Array.isArray(value)) return null;
+  const optional = (v: unknown): string | null =>
+    typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
+  const items: ExtractionMenuItem[] = [];
+  for (const raw of value) {
+    if (typeof raw !== 'object' || raw === null) continue;
+    const record = raw as Record<string, unknown>;
+    const name = optional(record.name);
+    if (!name) continue;
+    items.push({
+      character: optional(record.character),
+      name,
+      price: optional(record.price),
+      imageUrl: optional(record.imageUrl),
+      copyright: optional(record.copyright),
+    });
+  }
+  return items.length > 0 ? items : null;
+}
 
 /**
  * 抽出リクエスト
@@ -248,14 +293,26 @@ export interface ExtractionResult {
    * @description Vol.N, Season N 等は全て「第N弾」形式に変換される
    */
   開催回数: string | null;
-  /** 特典ノベルティの名称 */
-  ノベルティ名: string | null;
+  /** 特典ノベルティの名前の一覧 (2026-10-11 に配列へ。配布条件は含めない) */
+  ノベルティ名: string[] | null;
   /** ノベルティ種類数（「全N種」形式） */
   ノベルティ種類数: string | null;
   /** メニュー種類数（「計NN種」形式） */
   メニュー種類数: string | null;
   /** コラボグッズ名リスト */
   グッズ名: string[] | null;
+  /** HTML から抽出したメニューの品目 (品目・価格・キャラクター)。Vision で空欄を埋めることがある */
+  メニュー詳細リスト: ExtractionMenuItem[] | null;
+  /** メニュー全体のコンセプトの説明 */
+  メニューテーマ説明: string | null;
+  /** 具体的な料理名の一覧 */
+  具体的なメニュー名リスト: string[] | null;
+  /** アニメ制作スタジオ名 (オリジナルアニメのリード文で使う) */
+  スタジオ名: string | null;
+  /** 監督名 */
+  監督名: string | null;
+  /** シリーズ名 */
+  シリーズ名: string | null;
   /** 店舗の住所（1店舗の場合のみ） */
   店舗の住所: string | null;
   /**
@@ -710,10 +767,17 @@ ${schemaStr}
         キャラクター名: jsonData.キャラクター名 || null,
         テーマ名: jsonData.テーマ名 || null,
         開催回数: jsonData.開催回数 || null,
-        ノベルティ名: jsonData.ノベルティ名 || null,
+        ノベルティ名: toNoveltyNames(jsonData.ノベルティ名),
         ノベルティ種類数: jsonData.ノベルティ種類数 || null,
         メニュー種類数: jsonData.メニュー種類数 || null,
         グッズ名: jsonData.グッズ名 || null,
+        // 以前は返り値に入れておらず、本文の生成まで届いていなかった (SoT §3.3 の「捨てられている項目」)
+        メニュー詳細リスト: toExtractionMenuItems(jsonData.メニュー詳細リスト),
+        メニューテーマ説明: jsonData.メニューテーマ説明 || null,
+        具体的なメニュー名リスト: toStringList(jsonData.具体的なメニュー名リスト),
+        スタジオ名: jsonData.スタジオ名 || null,
+        監督名: jsonData.監督名 || null,
+        シリーズ名: jsonData.シリーズ名 || null,
         店舗の住所: jsonData.店舗の住所 || null,
         開催都道府県: jsonData.開催都道府県 || null,
         コピーライト: jsonData.コピーライト || null,

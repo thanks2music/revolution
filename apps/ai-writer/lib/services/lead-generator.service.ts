@@ -77,7 +77,7 @@ export interface LeadGeneratorInput {
   監督名?: string | null;
   シリーズ名?: string | null;
   テーマ名?: string | null;
-  ノベルティ名?: string | null;
+  ノベルティ名?: string[] | null;
   グッズ名?: string[] | null;
 
   // 後方互換用 (省略可、内部で作品名/店舗名として使用)
