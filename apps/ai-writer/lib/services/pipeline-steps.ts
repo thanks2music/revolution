@@ -30,6 +30,7 @@ export const PIPELINE_STEPS = [
   { id: 'detail-extraction',             label: '公式サイト HTML 詳細抽出'                  },
   { id: 'subpage-detection',             label: '下層ページ検出'                            },
   { id: 'category-image-extraction',     label: 'カテゴリ別画像抽出'                        },
+  { id: 'subpage-extraction',            label: '下層ページの抽出 (メニュー/グッズ/ノベルティ)' },
   { id: 'vision-api',                    label: 'Vision API 統合 (条件付)'                  },
   { id: 'slug-generation',               label: 'Slug 解決'                                 },
   { id: 'duplication-check',             label: 'Firestore 重複チェック'                    },

@@ -5,14 +5,36 @@
  * @description
  * SubpageDetectorService で検出されたカテゴリ別URLから
  * 各ページの画像を抽出し、カテゴリごとに整理して返す。
+ *
+ * 取得したページの本文 (本文ブロックを圧縮した文字) も `pages` に残し、下層ページの抽出
+ * (`subpage-extraction`) に渡す (2026-10-12。追加の通信をしないため、ここで取得したものを使う)。
+ * 会場ごとの案内ページ (`venueUrls`) も取得する。ノベルティが案内ページにしか無いサイトがあるため
+ * (ヒロアカ)、ノベルティの下層ページが無いときは、最初の案内ページの画像をノベルティの画像にする。
  */
 
 import * as cheerio from 'cheerio';
 import type { CategoryUrls } from '@/lib/types/subpage-detection';
 import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
 import { selectMainContent } from '@/lib/utils/html-extractor';
+import { compactHtmlForLlm, truncateForLlm } from '@/lib/utils/compact-html';
 import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
+
+/** 下層ページの種類。venue は会場ごとの案内ページ */
+export type SubpageKind = 'menu' | 'novelty' | 'goods' | 'venue';
+
+/** 取得した下層ページの本文 (本文ブロックを圧縮したもの。画像は「[画像: 代替テキスト]」) */
+export interface SubpageText {
+  url: string;
+  kind: SubpageKind;
+  text: string;
+}
+
+/** 1 ページの本文の上限 (文字)。全体の上限は下層ページの抽出が受け持つ */
+export const SUBPAGE_TEXT_BUDGET_CHARS = 20_000;
+
+/** 取得する会場の案内ページの上限 */
+export const MAX_VENUE_PAGES = 10;
 
 /**
  * カテゴリ別画像抽出結果
@@ -41,6 +63,8 @@ export interface CategoryImages {
    * そのまま調べ、追加の通信はしない。HTML 自体は結果に残さない)
    */
   mentionsRedrawnIllustration: boolean;
+  /** 取得した下層ページと会場の案内ページの本文 (取得に失敗したページは含まない) */
+  pages: SubpageText[];
 }
 
 /**
@@ -82,12 +106,14 @@ export class CategoryImageExtractorService {
    * @param topPageUrl トップページURL（フォールバック & OGP取得用）
    * @param topPageHtml トップページのHTML（既に取得済みの場合）
    * @param categoryUrls カテゴリ別URLマップ（SubpageDetectorService の出力）
+   * @param venueUrls 会場ごとの案内ページ (記事選別の公式 URL のうち、トップと同じサイトのもの)
    * @returns カテゴリ別画像
    */
   async extractCategoryImages(
     topPageUrl: string,
     topPageHtml: string | null,
-    categoryUrls: CategoryUrls
+    categoryUrls: CategoryUrls,
+    venueUrls: string[] = []
   ): Promise<CategoryImages> {
     console.log('[CategoryImageExtractor] カテゴリ別画像抽出開始');
 
@@ -103,6 +129,7 @@ export class CategoryImageExtractorService {
       sources: {},
       all: [],
       mentionsRedrawnIllustration: false,
+      pages: [],
     };
 
     const allImages = new Set<string>();
@@ -136,13 +163,7 @@ export class CategoryImageExtractorService {
 
           // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する
           const html = expandInertiaPayload(await this.fetchPage(targetUrl));
-          // ナビ・フッター・関連ニュースの欄を除いた本文ブロックだけを調べる。ほとんどのページは
-          // 記載が無いので、生の HTML で先に当たりを付けてから本文ブロックを切り出す (2 回目の parse を避ける)
-          if (!result.mentionsRedrawnIllustration && mentionsRedrawnIllustration(html)) {
-            result.mentionsRedrawnIllustration = mentionsRedrawnIllustration(
-              selectMainContent(cheerio.load(html)).html
-            );
-          }
+          this.addPageText(result, targetUrl, category, html);
           const pageResult = this.extractImagesFromHtml(html, targetUrl, imageConfig);
           if (pageResult.excluded.length > 0) {
             console.log(
@@ -172,6 +193,44 @@ export class CategoryImageExtractorService {
           );
         }
       }
+    }
+
+    // 2.5 会場ごとの案内ページ。本文を残し、ノベルティの画像が無ければ最初のページの本文ブロックの画像を使う
+    const fetchedUrls = new Set(Object.values(result.sources));
+    const venues = Array.from(new Set(venueUrls))
+      .filter((url) => url !== topPageUrl && !fetchedUrls.has(url))
+      .slice(0, MAX_VENUE_PAGES);
+    const venueHtmls = await Promise.all(
+      venues.map(async (url) => {
+        try {
+          return { url, html: expandInertiaPayload(await this.fetchPage(url)) };
+        } catch (error) {
+          console.warn(`[CategoryImageExtractor] venue: ページ取得失敗 (${url})`, error);
+          return null;
+        }
+      })
+    );
+    for (const venue of venueHtmls) {
+      if (!venue) continue;
+      const mainHtml = this.addPageText(result, venue.url, 'venue', venue.html);
+      if (result.novelty.length === 0) {
+        // ヘッダーのロゴを拾わないよう、本文ブロックの画像だけを使う
+        const images = this.extractImagesFromHtml(mainHtml, venue.url, imageConfig).images.slice(
+          0,
+          imageConfig.max_images_per_category
+        );
+        if (images.length > 0) {
+          result.novelty = images;
+          result.sources.novelty = venue.url;
+          images.forEach((img) => allImages.add(img));
+          console.log(`[CategoryImageExtractor] novelty: 会場の案内ページ ${venue.url} から ${images.length}枚`);
+        }
+      }
+    }
+    if (venues.length > 0) {
+      console.log(
+        `[CategoryImageExtractor] venue: 案内ページ ${venueHtmls.filter(Boolean).length}/${venues.length} 件の本文を取得`
+      );
     }
 
     // 3. 下層ページがない場合はトップページから推測（フォールバック）
@@ -215,6 +274,20 @@ export class CategoryImageExtractorService {
     });
 
     return result;
+  }
+
+  /**
+   * 本文ブロックを切り出して `pages` に残し、「描き下ろし」の記載も調べる。本文ブロックの HTML を返す
+   */
+  private addPageText(result: CategoryImages, url: string, kind: SubpageKind, html: string): string {
+    // ナビ・フッター・関連ニュースの欄を除いた本文ブロックだけを使う
+    const mainHtml = selectMainContent(cheerio.load(html)).html;
+    if (!result.mentionsRedrawnIllustration && mentionsRedrawnIllustration(mainHtml)) {
+      result.mentionsRedrawnIllustration = true;
+    }
+    const { text } = truncateForLlm(compactHtmlForLlm(mainHtml).html, SUBPAGE_TEXT_BUDGET_CHARS);
+    result.pages.push({ url, kind, text });
+    return mainHtml;
   }
 
   /**

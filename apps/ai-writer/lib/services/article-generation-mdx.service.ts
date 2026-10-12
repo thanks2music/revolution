@@ -103,6 +103,10 @@ import { selectFallbackLevel, validateBusinessRules } from '@/lib/utils/vision-a
 import { determineVisionTargets, type VisionTargets } from './vision-api/vision-targets';
 import { mergeVisionIntoExtraction } from './vision-api/merge-vision-into-extraction';
 import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
+import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
+import { isEmptyList } from '@/lib/utils/llm-values';
+import { SubpageExtractionService } from './subpage-extraction.service';
+import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
 import type {
   VisionExtractionResult,
   FallbackLevelType,
@@ -126,6 +130,12 @@ import type {
  *   本閾値は**作品名という最も支配的な要因を先に潰す**ためのもの。
  */
 const WORK_TITLE_SHORTEN_THRESHOLD = 10;
+
+/**
+ * Vision の 1 カテゴリあたりの時間切れ (ms)。縦に長い画像は分割して 10〜20 片を高い解像度で
+ * 読むため、以前の 30 秒では足りない (2026-10-12)
+ */
+const VISION_TIMEOUT_MS = 120_000;
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -556,7 +566,8 @@ export class ArticleGenerationMdxService {
           categoryImages = await categoryImageService.extractCategoryImages(
             selectionResult.primary_official_url,
             officialHtml,
-            subpageDetection.categoryUrls
+            subpageDetection.categoryUrls,
+            sameSiteOfficialUrls(selectionResult.primary_official_url, selectionResult.official_urls)
           );
 
           console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {
@@ -574,6 +585,14 @@ export class ArticleGenerationMdxService {
         console.log(`[subpage-detection/category-image-extraction] 公式サイトHTMLがないため、下層ページ検出をスキップ`);
       }
 
+      // subpage-extraction step: 下層ページと会場の案内ページの文字から、メニュー・グッズ・ノベルティ・キャラクターを読む
+      console.log(`\n${getStepDisplay('subpage-extraction')} 下層ページの文字からメニュー/グッズ/ノベルティを抽出...`);
+      if (detailedExtraction && categoryImages && categoryImages.pages.length > 0) {
+        detailedExtraction = await this.runSubpageExtraction(detailedExtraction, categoryImages, costTracker);
+      } else {
+        console.log(`${getStepContext('subpage-extraction')} 読む下層ページが無いため、スキップ`);
+      }
+
       // vision-api step: HTML から書けなかった項目の画像だけを読み、レベル A なら抽出結果を埋める
       console.log(`\n${getStepDisplay('vision-api')} Vision API統合（HTML で書けない項目の画像だけを読む）...`);
 
@@ -584,6 +603,16 @@ export class ArticleGenerationMdxService {
         const visionStep = await this.runVisionStep(detailedExtraction, categoryImages, officialHtml, costTracker);
         detailedExtraction = visionStep.extraction;
         visionApiResult = visionStep.result;
+      }
+
+      // ノベルティ名が書けないときは、画像があってもノベルティの節を書かせない。本文の LLM は画像の数で
+      // 節を書くかを決めるため、名前の無いまま「来店特典のノベルティー」のような根拠の無い文を書いた
+      // (2026-10-12、ヒロアカで AI が利用ガイドのページをノベルティのページと判定したとき)
+      if (categoryImages && categoryImages.novelty.length > 0 && isEmptyList(detailedExtraction?.ノベルティ名)) {
+        console.log(
+          `${getStepContext('vision-api')} ノベルティ名が無いため、ノベルティの画像 ${categoryImages.novelty.length} 枚を使わない (節を書かない)`,
+        );
+        categoryImages = { ...categoryImages, novelty: [] };
       }
 
       // slug-generation step: Resolve slugs (YAML config → AI API → ASCII fallback)
@@ -1571,6 +1600,46 @@ export class ArticleGenerationMdxService {
    * @private
    */
   /**
+   * subpage-extraction step。下層ページの抽出に失敗しても記事は止めない (トップページの抽出のまま続ける)。
+   */
+  private async runSubpageExtraction(
+    extraction: ExtractionResult,
+    categoryImages: CategoryImages,
+    costTracker: CostTrackerService,
+  ): Promise<ExtractionResult> {
+    const ctx = getStepContext('subpage-extraction');
+    console.log(
+      `${ctx} 読むページ:`,
+      categoryImages.pages.map((page) => `${page.kind} ${page.url} (${page.text.length.toLocaleString()} 字)`),
+    );
+    try {
+      const result = await new SubpageExtractionService().extract({
+        作品名: extraction.作品名,
+        pages: categoryImages.pages,
+      });
+      if (!result) return extraction;
+      if (result.usage) costTracker.recordUsage('subpage-extraction', result.model, result.usage);
+      console.log(
+        `${ctx} ページごとの結果:`,
+        result.pages.map((page) => ({
+          url: page.url,
+          area: page.area,
+          メニュー: page.メニュー詳細リスト?.length ?? 0,
+          グッズ: page.グッズ名?.length ?? 0,
+          ノベルティ: page.ノベルティ名,
+          キャラクター: page.キャラクター名?.length ?? 0,
+        })),
+      );
+      const merged = mergeSubpagesIntoExtraction(extraction, result.pages);
+      console.log(`${ctx} ${merged.changes.length > 0 ? '✅ 抽出結果を補った:' : '補う項目なし'}`, merged.changes);
+      return merged.extraction;
+    } catch (error) {
+      console.error(`${ctx} ❌ 下層ページの抽出に失敗 (トップページの抽出のまま続行):`, error);
+      return extraction;
+    }
+  }
+
+  /**
    * vision-api step。HTML から書けなかった項目のカテゴリの画像だけを Vision で読み、
    * 確信度がレベル A のときだけ抽出結果を埋める (Vision の失敗は記事を止めない)。
    */
@@ -1612,7 +1681,7 @@ export class ArticleGenerationMdxService {
         visionService,
         visionTemplate,
         { menu: categoryImages.menu, goods: categoryImages.goods, novelty: categoryImages.novelty },
-        { maxRetries: 3, timeout: 30000, categories: targets.categories },
+        { maxRetries: 3, timeout: VISION_TIMEOUT_MS, categories: targets.categories },
       );
 
       console.log(`${ctx} 並列呼び出し完了:`, {

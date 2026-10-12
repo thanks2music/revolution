@@ -93,6 +93,7 @@ describe('pipeline-steps — Layer 1 contracts', () => {
       'detail-extraction',
       'subpage-detection',
       'category-image-extraction',
+      'subpage-extraction', // 2026-10-12 (下層ページの文字を読む)
       'vision-api',
       'slug-generation',
       'duplication-check',
@@ -112,6 +113,11 @@ describe('pipeline-steps — Layer 1 contracts', () => {
     for (const id of expected) {
       expect(actualIds.has(id)).toBe(true);
     }
+  });
+
+  it('subpage-extraction は画像の抽出の後、Vision の前 (下層ページの文字で埋めた後に、欠けた分だけ画像を読む)', () => {
+    expect(getStepIndex('category-image-extraction')).toBeLessThan(getStepIndex('subpage-extraction'));
+    expect(getStepIndex('subpage-extraction')).toBeLessThan(getStepIndex('vision-api'));
   });
 
   it('Sprint C-β P11: lead-generation is placed between title-generation and content-generation', () => {

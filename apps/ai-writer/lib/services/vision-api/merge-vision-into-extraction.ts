@@ -84,7 +84,7 @@ function findVisionMatch(
 }
 
 /** キャラクター名の照合用。空白と中黒の揺れを無視する */
-function characterKey(name: string): string {
+export function characterKey(name: string): string {
   return name.normalize('NFKC').replace(/[\s・･]/g, '');
 }
 
