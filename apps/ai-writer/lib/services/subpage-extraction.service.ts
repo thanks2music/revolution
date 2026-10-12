@@ -83,16 +83,21 @@ export function batchPages(pages: SubpageText[], budget = LLM_INPUT_BUDGET_CHARS
   return batches;
 }
 
-function sumUsage(usages: Array<TokenUsage | undefined>): TokenUsage | undefined {
+/** 使用量を合算する。キャッシュの項目は、どれかの呼び出しが報告したときだけ入れる (報告なしを 0 と見せない) */
+export function sumUsage(usages: Array<TokenUsage | undefined>): TokenUsage | undefined {
   const present = usages.filter((usage): usage is TokenUsage => usage !== undefined);
   if (present.length === 0) return undefined;
-  return present.reduce((sum, usage) => ({
-    promptTokens: sum.promptTokens + usage.promptTokens,
-    completionTokens: sum.completionTokens + usage.completionTokens,
-    totalTokens: sum.totalTokens + usage.totalTokens,
-    cachedTokens: (sum.cachedTokens ?? 0) + (usage.cachedTokens ?? 0),
-    cacheCreationTokens: (sum.cacheCreationTokens ?? 0) + (usage.cacheCreationTokens ?? 0),
-  }));
+  const total = (key: keyof TokenUsage) =>
+    present.some((usage) => usage[key] !== undefined)
+      ? present.reduce((sum, usage) => sum + (usage[key] ?? 0), 0)
+      : undefined;
+  return {
+    promptTokens: total('promptTokens') ?? 0,
+    completionTokens: total('completionTokens') ?? 0,
+    totalTokens: total('totalTokens') ?? 0,
+    ...(total('cachedTokens') !== undefined && { cachedTokens: total('cachedTokens') }),
+    ...(total('cacheCreationTokens') !== undefined && { cacheCreationTokens: total('cacheCreationTokens') }),
+  };
 }
 
 /**
@@ -131,6 +136,12 @@ export function toGoodsItems(value: unknown): SubpageGoodsItem[] | null {
 }
 
 function parseJson(content: string): unknown {
+  // 応答は JSON を指定して受けているので、まずそのまま読む (本文に ``` や { } が混ざっても取り違えない)
+  try {
+    return JSON.parse(content);
+  } catch {
+    // コードブロックや前後の説明が付いた応答は、下で取り出す
+  }
   const match = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/) ?? content.match(/\{[\s\S]*\}/);
   return JSON.parse(match ? (match[1] ?? match[0]) : content);
 }
@@ -194,9 +205,12 @@ export class SubpageExtractionService {
     const batches = batchPages(request.pages);
     const settled = await Promise.allSettled(
       batches.map(async (pages) => {
-        const prompt = instruction
-          .replace('{{作品名}}', () => request.作品名 ?? '(不明)')
-          .replace('{{pages}}', () => formatPagesForPrompt(pages));
+        // 1 回で置き換える (作品名に `{{pages}}` の文字列が含まれていても、そこへページを展開しない)
+        const values: Record<string, string> = {
+          作品名: request.作品名 ?? '(不明)',
+          pages: formatPagesForPrompt(pages),
+        };
+        const prompt = instruction.replace(/\{\{(作品名|pages)\}\}/g, (_, key: string) => values[key]);
         const response = await this.aiProvider.sendMessage(prompt, {
           stepId: 'subpage-extraction',
           maxTokens: MAX_OUTPUT_TOKENS,

@@ -49,6 +49,20 @@ describe('planSlices', () => {
     expect(slices).toHaveLength(11);
   });
 
+  it('極端に細い画像でも終わり、上端から下端までを隙間なく覆う', () => {
+    for (const [width, height] of [[1, 2], [1, 5_000], [2, 1_000], [5, 100_000]]) {
+      const slices = planSlices(width, height);
+
+      expect(slices.length).toBeLessThanOrEqual(MAX_SLICES_PER_IMAGE);
+      expect(slices[0].top).toBe(0);
+      expect(slices.at(-1)!.top + slices.at(-1)!.height).toBe(height);
+      for (let i = 1; i < slices.length; i++) {
+        expect(slices[i].top).toBeGreaterThan(slices[i - 1].top);
+        expect(slices[i].top).toBeLessThanOrEqual(slices[i - 1].top + slices[i - 1].height);
+      }
+    }
+  });
+
   it('片が上限を超えるほど長い画像は、片を高くして上限に収める (隙間は作らない)', () => {
     const slices = planSlices(500, 100_000);
 

@@ -7,6 +7,7 @@ import {
   batchPages,
   formatPagesForPrompt,
   parseSubpageResponse,
+  sumUsage,
   toGoodsItems,
 } from '@/lib/services/subpage-extraction.service';
 import type { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
@@ -195,10 +196,38 @@ describe('SubpageExtractionService.extract', () => {
     ]);
   });
 
+  it('作品名に {{pages}} の文字列があってもページを展開せず、本文に ``` を含む JSON もそのまま読む', async () => {
+    const { service, sendMessage } = build(
+      JSON.stringify({ pages: [{ url: 'https://example.com/menu', ノベルティ名: ['```ステッカー```'] }] })
+    );
+
+    const result = await service.extract({ 作品名: 'A{{pages}}B', pages: PAGES });
+
+    const [prompt] = sendMessage.mock.calls[0] as unknown as [string];
+    expect(prompt).toContain('作品名: A{{pages}}B');
+    expect(prompt.match(/### ページ 1/g)).toHaveLength(1);
+    expect(result?.pages[0].ノベルティ名).toEqual(['```ステッカー```']);
+  });
+
   it('ページが無ければ LLM を呼ばない', async () => {
     const { service, sendMessage } = build('{}');
 
     expect(await service.extract({ 作品名: null, pages: [] })).toBeNull();
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('sumUsage', () => {
+  it('キャッシュの項目は、どれかの呼び出しが報告したときだけ合計する', () => {
+    const base = { promptTokens: 10, completionTokens: 5, totalTokens: 15 };
+
+    expect(sumUsage([base, base])).toEqual({ promptTokens: 20, completionTokens: 10, totalTokens: 30 });
+    expect(sumUsage([base, { ...base, cachedTokens: 4 }])).toEqual({
+      promptTokens: 20,
+      completionTokens: 10,
+      totalTokens: 30,
+      cachedTokens: 4,
+    });
+    expect(sumUsage([undefined])).toBeUndefined();
   });
 });
