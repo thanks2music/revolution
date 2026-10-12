@@ -16,8 +16,9 @@
 # - <base-branch> 省略時は main
 # - --skip-install 指定で pnpm install を skip (検証・動作確認用)
 # - port offset は worktree dir 名の SHA1 ハッシュから決定 (1000-9000 の 1000 単位)
-#   port range: frontend 5444-13444 / ai-writer 8777-16777 / fb auth 10099-18099 /
-#               fb firestore 9088-17088 / fb storage 10199-18199 / fb ui 5000-13000
+#   port range: frontend 5444-13444 / ai-writer 8777-16777 / docs 4333-12333 /
+#               fb auth 10099-18099 / fb firestore 9088-17088 / fb storage 10199-18199 /
+#               fb ui 5000-13000
 # - main 側の .env.local / firebase.json は無改変、symlink + 独立 firebase.worktree.json で対応
 
 set -euo pipefail
@@ -79,6 +80,7 @@ PORT_OFFSET="$((OFFSET_INDEX * 1000))"
 
 FRONTEND_PORT="$((4444 + PORT_OFFSET))"
 AI_WRITER_PORT="$((7777 + PORT_OFFSET))"
+DOCS_PORT="$((3333 + PORT_OFFSET))"
 FB_AUTH_PORT="$((9099 + PORT_OFFSET))"
 FB_FIRESTORE_PORT="$((8088 + PORT_OFFSET))"
 FB_STORAGE_PORT="$((9199 + PORT_OFFSET))"
@@ -88,7 +90,7 @@ FB_UI_PORT="$((4000 + PORT_OFFSET))"
 PORT_WARNINGS=()
 LSOF_SKIPPED=false
 if command -v lsof >/dev/null 2>&1; then
-  for port in "$FRONTEND_PORT" "$AI_WRITER_PORT" "$FB_AUTH_PORT" "$FB_FIRESTORE_PORT" "$FB_STORAGE_PORT" "$FB_UI_PORT"; do
+  for port in "$FRONTEND_PORT" "$AI_WRITER_PORT" "$DOCS_PORT" "$FB_AUTH_PORT" "$FB_FIRESTORE_PORT" "$FB_STORAGE_PORT" "$FB_UI_PORT"; do
     if lsof -i "tcp:$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
       PORT_WARNINGS+=("$port")
     fi
@@ -116,6 +118,7 @@ echo "  Worktree dir:  $WORKTREE_PATH"
 echo "  Port offset:   +$PORT_OFFSET"
 echo "    frontend:    $FRONTEND_PORT"
 echo "    ai-writer:   $AI_WRITER_PORT"
+echo "    docs:        $DOCS_PORT"
 echo "    fb auth:     $FB_AUTH_PORT"
 echo "    fb firestore:$FB_FIRESTORE_PORT"
 echo "    fb storage:  $FB_STORAGE_PORT"
@@ -240,6 +243,7 @@ WORKTREE_NAME=$DIR_NAME
 PORT_OFFSET=$PORT_OFFSET
 FRONTEND_PORT=$FRONTEND_PORT
 AI_WRITER_PORT=$AI_WRITER_PORT
+DOCS_PORT=$DOCS_PORT
 FB_AUTH_PORT=$FB_AUTH_PORT
 FB_FIRESTORE_PORT=$FB_FIRESTORE_PORT
 FB_STORAGE_PORT=$FB_STORAGE_PORT
@@ -275,6 +279,7 @@ echo "次のステップ:"
 echo "  cd $WORKTREE_PATH"
 echo "  bash scripts/worktree-dev.sh frontend    # http://localhost:$FRONTEND_PORT"
 echo "  bash scripts/worktree-dev.sh ai-writer   # http://localhost:$AI_WRITER_PORT"
+echo "  bash scripts/worktree-dev.sh docs        # http://localhost:$DOCS_PORT"
 echo "  bash scripts/worktree-dev.sh emulator    # Firebase UI: http://localhost:$FB_UI_PORT"
 echo ""
 echo "削除する場合:"

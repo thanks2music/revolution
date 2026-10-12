@@ -46,7 +46,6 @@ jobs:
         # run: 内で ${{ }} を展開しない (injection 対策)
         env:
           EVENT_ACTION: ${{ github.event.action }}
-          PROJECT_NAME: revolution-phoenix-frontend
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           # 補足 (URL・branch・失敗の理由) はファイルで渡す。with: の値は public なログに出るため
           BODY_FILE: vercel-body.txt

@@ -1,0 +1,15 @@
+{
+  "title": "anime-events.com Docs",
+  "pages": [
+    "README",
+    "overview",
+    "current-stack",
+    "monorepo",
+    "build",
+    "nextjs-page-props",
+    "ai-writer-cloud-run",
+    "sentry",
+    "slack-notifications",
+    "..."
+  ]
+}

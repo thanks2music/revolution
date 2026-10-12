@@ -1,4 +1,6 @@
-# Frontend: TypeScript ページ Props 型定義の一元管理
+---
+title: "Frontend: TypeScript ページ Props 型定義の一元管理"
+---
 
 > Next.js 16 の **Async Request APIs** 対応に伴い、`apps/frontend/types/page-props.ts` で動的ルートの Props 型を一元管理しています。
 

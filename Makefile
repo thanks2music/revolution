@@ -1,7 +1,7 @@
 # Revolution Project - Root Makefile
 # Turbo を介して ai-writer + frontend を統合管理
 
-.PHONY: help dev build clean test stop stop-frontend stop-ai-writer restart status docs-sync docs-create
+.PHONY: help dev build clean test stop stop-frontend stop-ai-writer stop-docs restart status docs-sync docs-create
 
 help:
 	@echo "🚀 Revolution Project - 統合コマンド"
@@ -17,6 +17,7 @@ help:
 	@echo "🔧 個別起動:"
 	@echo "  pnpm dev:frontend   - フロントエンドのみ (4444)"
 	@echo "  pnpm dev:ai-writer  - AI Writer のみ (7777)"
+	@echo "  pnpm dev:docs       - ドキュメントサイトのみ (3333)"
 	@echo ""
 	@echo "⚡ 開発ツール:"
 	@echo "  pnpm lint         - コード品質チェック"
@@ -39,7 +40,7 @@ clean:
 test:
 	@pnpm test
 
-stop: stop-frontend stop-ai-writer
+stop: stop-frontend stop-ai-writer stop-docs
 	@echo "🛑 All dev servers stopped"
 
 restart:
@@ -60,6 +61,13 @@ stop-ai-writer:
 	@lsof -ti:7777 | xargs kill -9 2>/dev/null || true
 	@echo "✅ AI Writer stopped"
 
+stop-docs:
+	@echo "📚 Stopping docs on port 3333..."
+	@lsof -ti:3333 | xargs kill 2>/dev/null || true
+	@sleep 1
+	@lsof -ti:3333 | xargs kill -9 2>/dev/null || true
+	@echo "✅ Docs stopped"
+
 status:
 	@echo "📊 Revolution Dev Server Status"
 	@echo "==============================="
@@ -67,6 +75,8 @@ status:
 	@lsof -ti:4444 >/dev/null 2>&1 && echo "✅ running" || echo "❌ stopped"
 	@printf "🤖 AI Writer (7777): "
 	@lsof -ti:7777 >/dev/null 2>&1 && echo "✅ running" || echo "❌ stopped"
+	@printf "📚 Docs      (3333): "
+	@lsof -ti:3333 >/dev/null 2>&1 && echo "✅ running" || echo "❌ stopped"
 
 docs-sync:
 	@echo "📚 Syncing documents to iCloud..."
