@@ -1,12 +1,15 @@
-# Stage 1: 依存関係のインストール
-FROM node:24-alpine AS deps
-WORKDIR /app
-
-# pnpm インストール
+# Stage 0: pnpm の準備 (deps / builder で共有)
 # corepack install はルート package.json の packageManager の版を入れる。
-# 版はそこだけで管理する (ここに書くと Renovate が更新せず、食い違う)
+# 版をここに書かないのは、Renovate が packageManager しか更新しないため。
+# pnpm 12 は最初の実行で native binary を取得するので、`pnpm --version` で
+# ここで 1 回だけ取得しておく
+FROM node:24-alpine AS base
+WORKDIR /app
 COPY package.json ./
-RUN corepack enable && corepack install
+RUN corepack enable && corepack install && pnpm --version
+
+# Stage 1: 依存関係のインストール
+FROM base AS deps
 
 # モノレポ対応: ワークスペース設定と lockfile をコピー
 COPY pnpm-workspace.yaml ./
@@ -27,12 +30,7 @@ ENV PNPM_NODE_LINKER=hoisted
 RUN pnpm install --frozen-lockfile --filter=@revolution/ai-writer...
 
 # Stage 2: ビルド
-FROM node:24-alpine AS builder
-WORKDIR /app
-
-# pnpm インストール (deps ステージと同じく packageManager の版)
-COPY package.json ./
-RUN corepack enable && corepack install
+FROM base AS builder
 
 # このステージには pnpm-lock.yaml が無く、node_modules は deps ステージから持ってくる。
 # pnpm 11 以降は既定の verifyDepsBeforeRun: install により `pnpm build` の前に
@@ -50,7 +48,7 @@ COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
 # deps ステージの COPY shared/schemas/package.json と対で維持すること
 COPY --from=deps /app/shared/schemas/node_modules ./shared/schemas/node_modules
 
-# ルート設定ファイルをコピー (package.json は pnpm インストールの前にコピー済み)
+# ルート設定ファイルをコピー (package.json は base ステージでコピー済み)
 COPY pnpm-workspace.yaml ./
 
 # shared/schemas の実体をコピー。exports が .ts を直接指しており、
