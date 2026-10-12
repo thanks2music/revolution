@@ -3,14 +3,14 @@ FROM node:24-alpine AS deps
 WORKDIR /app
 
 # pnpm インストール
-# バージョンはルート package.json の packageManager と一致させること
-# (corepack 公式: packageManager フィールドが install の決定性を担保する)
-RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
+# corepack install はルート package.json の packageManager の版を入れる。
+# 版はそこだけで管理する (ここに書くと Renovate が更新せず、食い違う)
+COPY package.json ./
+RUN corepack enable && corepack install
 
-# モノレポ対応: ルートとワークスペース設定をコピー
+# モノレポ対応: ワークスペース設定と lockfile をコピー
 COPY pnpm-workspace.yaml ./
 COPY pnpm-lock.yaml ./
-COPY package.json ./
 
 # ai-writerのpackage.jsonをコピー
 COPY apps/ai-writer/package.json ./apps/ai-writer/
@@ -30,10 +30,9 @@ RUN pnpm install --frozen-lockfile --filter=@revolution/ai-writer...
 FROM node:24-alpine AS builder
 WORKDIR /app
 
-# pnpm インストール
-# バージョンはルート package.json の packageManager と一致させること
-# (corepack 公式: packageManager フィールドが install の決定性を担保する)
-RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
+# pnpm インストール (deps ステージと同じく packageManager の版)
+COPY package.json ./
+RUN corepack enable && corepack install
 
 # このステージには pnpm-lock.yaml が無く、node_modules は deps ステージから持ってくる。
 # pnpm 11 以降は既定の verifyDepsBeforeRun: install により `pnpm build` の前に
@@ -51,9 +50,8 @@ COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
 # deps ステージの COPY shared/schemas/package.json と対で維持すること
 COPY --from=deps /app/shared/schemas/node_modules ./shared/schemas/node_modules
 
-# ルート設定ファイルをコピー
+# ルート設定ファイルをコピー (package.json は pnpm インストールの前にコピー済み)
 COPY pnpm-workspace.yaml ./
-COPY package.json ./
 
 # shared/schemas の実体をコピー。exports が .ts を直接指しており、
 # ai-writer の next.config.ts が transpilePackages: ['@revolution/schemas'] で
