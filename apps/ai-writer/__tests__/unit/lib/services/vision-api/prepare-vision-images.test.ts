@@ -9,8 +9,10 @@
  *
  * 2026-10-12、ヒロアカの 1920×28,300 のメニュー表を 1 枚のまま渡して品名を読み違えたことが発端。
  */
+import zlib from 'node:zlib';
 import sharp from 'sharp';
 import {
+  MAX_INPUT_PIXELS,
   MAX_LONG_EDGE,
   MAX_SLICE_ASPECT,
   MAX_SLICES_PER_IMAGE,
@@ -69,6 +71,18 @@ describe('splitImage', () => {
       const { width, height } = await sharp(Buffer.from(image.data, 'base64')).metadata();
       expect(Math.max(width!, height!)).toBeLessThanOrEqual(MAX_LONG_EDGE);
     }
+  });
+
+  it('画素数が上限を超える画像は、展開する前に断る (解凍爆弾の防御)', async () => {
+    // 1×1 の PNG のヘッダーを、上限を超える大きさに書き換える (中身は展開されない)
+    const png = await sharp({ create: { width: 1, height: 1, channels: 3, background: '#fff' } }).png().toBuffer();
+    const huge = Buffer.from(png);
+    huge.writeUInt32BE(20_000, 16); // IHDR width
+    huge.writeUInt32BE(20_000, 20); // IHDR height
+    huge.writeUInt32BE(zlib.crc32(huge.subarray(12, 29)) >>> 0, 29); // IHDR の CRC を合わせる (壊れた PNG として断られないように)
+
+    await expect(splitImage(huge, 'https://example.com/bomb.png')).rejects.toThrow(/pixel limit|大きすぎる/);
+    expect(20_000 * 20_000).toBeGreaterThan(MAX_INPUT_PIXELS);
   });
 
   it('分割しない画像は 1 片で、出所は元の URL のまま', async () => {

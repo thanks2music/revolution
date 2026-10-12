@@ -35,6 +35,13 @@ export const MAX_SLICES_PER_IMAGE = 20;
 /** 長辺の上限 (px)。Claude の推奨に合わせる。Gemini の HIGH もこの大きさで足りる */
 export const MAX_LONG_EDGE = 1568;
 
+/**
+ * 読む画像の画素数の上限。sharp の既定 (約 2.7 億画素) のままだと、小さなファイルが巨大な画像に
+ * 展開されてメモリを使い切りうる (解凍爆弾)。実在するメニュー表 (1920×28,300 = 約 5,400 万画素) の
+ * 倍程度に抑える。画素数はヘッダーだけを読む `metadata()` で先に確かめる
+ */
+export const MAX_INPUT_PIXELS = 100_000_000;
+
 const IMAGE_FETCH_TIMEOUT_MS = 15000;
 const JPEG_QUALITY = 85;
 
@@ -82,16 +89,20 @@ async function toJpeg(input: sharp.Sharp): Promise<string> {
 
 /** 取得した 1 枚を、分割・縮小した JPEG にする */
 export async function splitImage(buffer: Buffer, source: string): Promise<VisionImage[]> {
-  const { width, height } = await sharp(buffer).metadata();
+  const { width, height } = await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
   if (!width || !height) throw new Error('画像の大きさを読めない');
+  if (width * height > MAX_INPUT_PIXELS) {
+    throw new Error(`画像が大きすぎる (${width}×${height})`);
+  }
+  const load = () => sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS });
 
   const slices = planSlices(width, height);
   if (slices.length === 1) {
-    return [{ source, data: await toJpeg(sharp(buffer)), mimeType: 'image/jpeg' }];
+    return [{ source, data: await toJpeg(load()), mimeType: 'image/jpeg' }];
   }
   const images: VisionImage[] = [];
   for (const [index, slice] of slices.entries()) {
-    const data = await toJpeg(sharp(buffer).extract({ left: 0, top: slice.top, width, height: slice.height }));
+    const data = await toJpeg(load().extract({ left: 0, top: slice.top, width, height: slice.height }));
     images.push({ source: `${source}#slice=${index + 1}/${slices.length}`, data, mimeType: 'image/jpeg' });
   }
   return images;
