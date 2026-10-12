@@ -22,7 +22,6 @@ import { fetchImageSafely } from '@/lib/utils/safe-image-fetch';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 import type { VisionImage } from '@/lib/types/vision-api';
 
-
 /** 1 片の高さの上限 (幅に対する比) */
 export const MAX_SLICE_ASPECT = 1.5;
 
@@ -41,6 +40,9 @@ export const MAX_LONG_EDGE = 1568;
  * 倍程度に抑える。画素数はヘッダーだけを読む `metadata()` で先に確かめる
  */
 export const MAX_INPUT_PIXELS = 100_000_000;
+
+/** 1 回のリクエストで渡す片の上限 (1 カテゴリあたり)。Claude は 1 リクエスト 100 枚・32MB まで */
+export const MAX_IMAGES_PER_REQUEST = 40;
 
 const IMAGE_FETCH_TIMEOUT_MS = 15000;
 const JPEG_QUALITY = 85;
@@ -86,9 +88,6 @@ async function toJpeg(input: sharp.Sharp): Promise<string> {
     .toBuffer();
   return buffer.toString('base64');
 }
-
-/** 1 回のリクエストで渡す片の上限 (1 カテゴリあたり)。Claude は 1 リクエスト 100 枚・32MB まで */
-export const MAX_IMAGES_PER_REQUEST = 40;
 
 /**
  * 取得した 1 枚を、分割・縮小した JPEG にする。

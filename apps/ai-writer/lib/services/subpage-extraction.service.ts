@@ -19,11 +19,12 @@ import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { TokenUsage } from '@revolution/schemas/ai-provider-response';
-import { toExtractionMenuItems, toStringList } from '@/lib/services/extraction.service';
+import { toExtractionMenuItems, toNoveltyNames, toStringList } from '@/lib/services/extraction.service';
 import { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
 import type { SubpageKind, SubpageText } from '@/lib/services/category-image-extractor.service';
 import { LLM_INPUT_BUDGET_CHARS, truncateForLlm } from '@/lib/utils/compact-html';
 import { isRecord, toOptionalString } from '@/lib/utils/llm-values';
+import { pageUrlKey } from '@/lib/utils/url';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
 import { EXTRACTION_THINKING_LEVEL } from '@/lib/config/gemini-models';
 
@@ -136,7 +137,7 @@ function parseJson(content: string): unknown {
 
 /** URL の照合用 (末尾の / と # 以降の違いを無視する) */
 function urlKey(value: unknown): string {
-  return typeof value === 'string' ? value.replace(/#.*$/, '').replace(/\/+$/, '') : '';
+  return typeof value === 'string' ? pageUrlKey(value) : '';
 }
 
 /**
@@ -156,7 +157,7 @@ export function parseSubpageResponse(raw: unknown, pages: SubpageText[]): Subpag
       area: page.kind === 'venue' ? (toOptionalString(item?.area) ?? null) : null,
       メニュー詳細リスト: toExtractionMenuItems(item?.メニュー詳細リスト),
       グッズ詳細リスト: toGoodsItems(item?.グッズ詳細リスト),
-      ノベルティ名: toStringList(item?.ノベルティ名),
+      ノベルティ名: toNoveltyNames(item?.ノベルティ名),
       キャラクター名: toStringList(item?.キャラクター名),
     };
   });
@@ -194,8 +195,8 @@ export class SubpageExtractionService {
     const settled = await Promise.allSettled(
       batches.map(async (pages) => {
         const prompt = instruction
-          .replace('{{作品名}}', request.作品名 ?? '(不明)')
-          .replace('{{pages}}', formatPagesForPrompt(pages));
+          .replace('{{作品名}}', () => request.作品名 ?? '(不明)')
+          .replace('{{pages}}', () => formatPagesForPrompt(pages));
         const response = await this.aiProvider.sendMessage(prompt, {
           stepId: 'subpage-extraction',
           maxTokens: MAX_OUTPUT_TOKENS,

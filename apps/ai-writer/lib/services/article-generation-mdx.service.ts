@@ -102,7 +102,7 @@ import { callVisionApiForAllCategories } from './vision-api/multi-category-visio
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { selectFallbackLevel, validateBusinessRules } from '@/lib/utils/vision-api-utils';
 import { determineVisionTargets, type VisionTargets } from './vision-api/vision-targets';
-import { mergeVisionIntoExtraction } from './vision-api/merge-vision-into-extraction';
+import { menuItemsOf, mergeVisionIntoExtraction } from './vision-api/merge-vision-into-extraction';
 import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
@@ -950,10 +950,11 @@ export class ArticleGenerationMdxService {
         );
       }
 
-      // ========================================================================
-      // グッズの一覧の書式と、文に並べるグッズ名の件数 (Templates の sections/04-goods.yaml)
+      // グッズの一覧の書式と、文に並べるグッズ名 (先頭の数件。Templates の sections/04-goods.yaml)
       const goodsListConfig = loadGoodsListConfig();
+      const proseGoodsNames = goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig);
 
+      // ========================================================================
       // lead-generation step (Sprint C-β P11): rule-driven リード文生成
       // ========================================================================
       // BOSS Q2=B 承認済: リード文を LLM 生成から切り出し、TypeScript 側で
@@ -998,7 +999,7 @@ export class ArticleGenerationMdxService {
         テーマ名: detailedExtraction.テーマ名,
         ノベルティ名: detailedExtraction.ノベルティ名,
         // 文に並べるのは先頭の数件だけ (全件はグッズの節の一覧に書く)
-        グッズ名: goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig),
+        グッズ名: proseGoodsNames,
         作品名: detailedExtraction.作品名,
         店舗名: 会場表現,
         略称: detailedExtraction.略称,
@@ -1035,7 +1036,7 @@ export class ArticleGenerationMdxService {
           // グッズの節の導入文に並べるのは先頭の数件だけ (全件は一覧に書く)。詳細は一覧をコードで差し込むので渡さない
           extractedData: {
             ...detailedExtraction,
-            グッズ名: goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig),
+            グッズ名: proseGoodsNames,
             グッズ詳細リスト: null,
           },
           generatedTitle: titleResult.title,
@@ -1271,7 +1272,7 @@ export class ArticleGenerationMdxService {
           キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
           テーマ名: detailedExtraction.テーマ名 ?? undefined,
           ノベルティ名: detailedExtraction.ノベルティ名 ?? undefined,
-          グッズ名: goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig) ?? undefined,
+          グッズ名: proseGoodsNames ?? undefined,
           開催期間: detailedExtraction.開催期間,
           works: detailedExtraction.works || [],
           store: detailedExtraction.store || { name: detailedExtraction.店舗名 },
@@ -1630,11 +1631,6 @@ export class ArticleGenerationMdxService {
   }
 
   /**
-   * GitHub PR説明文を生成
-   *
-   * @private
-   */
-  /**
    * メニューの品目とノベルティの文を、抽出結果からコードで組み立てて差し替える (書式と文面は Templates の YAML)。
    * 本文の LLM が名前を書き写すと誤字が混ざるため (2026-10-12、「招待状（ランダム7种）」)。
    */
@@ -1642,15 +1638,7 @@ export class ArticleGenerationMdxService {
     const ctx = getStepContext('text-placeholder-replacement', '名前の差し込み');
     let result = content;
 
-    const menuItems: ExtractionMenuItem[] = !isEmptyList(extraction.メニュー詳細リスト)
-      ? extraction.メニュー詳細リスト!
-      : (extraction.具体的なメニュー名リスト ?? []).map((name) => ({
-          character: null,
-          name,
-          price: null,
-          imageUrl: null,
-          copyright: null,
-        }));
+    const menuItems = menuItemsOf(extraction);
     if (menuItems.length > 0) {
       const { item_line } = loadSectionYaml<{ item_line: string }>('02-menu.yaml', 'rendered');
       result = replaceMenuItems(result, renderMenuItems(menuItems, item_line));
@@ -1835,6 +1823,11 @@ export class ArticleGenerationMdxService {
     }
   }
 
+  /**
+   * GitHub PR説明文を生成
+   *
+   * @private
+   */
   private generatePrBody(params: {
     rssItem: { title: string; link: string; pubDate?: string };
     extraction: { workTitle: string; storeName: string; eventTypeName: string };

@@ -18,7 +18,7 @@ import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response
 import type { SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 import type { ExtractionResult } from '@/lib/services/extraction.service';
 import type { SubpageFacts } from '@/lib/services/subpage-extraction.service';
-import { characterKey, normalizeMenuName } from '@/lib/services/vision-api/merge-vision-into-extraction';
+import { characterKey, menuItemsOf, normalizeMenuName } from '@/lib/services/vision-api/merge-vision-into-extraction';
 import { isEmptyList } from '@/lib/utils/llm-values';
 
 export interface SubpageMergeResult {
@@ -84,15 +84,7 @@ function mergeMenu(
   }
   if (fromSubpages.length === 0) return extraction.メニュー詳細リスト;
 
-  const top: ExtractionMenuItem[] = !isEmptyList(extraction.メニュー詳細リスト)
-    ? extraction.メニュー詳細リスト!
-    : (extraction.具体的なメニュー名リスト ?? []).map((name) => ({
-        character: null,
-        name,
-        price: null,
-        imageUrl: null,
-        copyright: null,
-      }));
+  const top = menuItemsOf(extraction);
   // 品名だけで照合する (トップはキャラクターを書かないことがあるため)
   const topByName = new Map(top.map((item) => [normalizeMenuName(item.name), item]));
   const subpageNames = new Set(fromSubpages.map((item) => normalizeMenuName(item.name)));

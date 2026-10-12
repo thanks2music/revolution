@@ -285,6 +285,31 @@ describe('callVisionApiForAllCategories', () => {
     expect(perCategory.novelty).toEqual({ ok: true, skipped: 'images could not be fetched' });
   });
 
+  it('prepares the images one category at a time (decoding tall images in parallel would use too much memory), and a failed preparation does not stop the next one', async () => {
+    const service = new FakeVisionService();
+    let running = 0;
+    let maxRunning = 0;
+    const order: string[] = [];
+    const slowPrepare: MultiCategoryVisionOptions['prepareImages'] = async (urls) => {
+      running++;
+      maxRunning = Math.max(maxRunning, running);
+      order.push(urls[0]);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      running--;
+      if (urls[0].includes('goods')) throw new Error('fetch failed');
+      return urls.map((source) => ({ source, data: 'aW1n', mimeType: 'image/jpeg' }));
+    };
+
+    const { perCategory } = await callVisionApiForAllCategories(service, buildTemplate(), TRIPLE_IMAGES, {
+      prepareImages: slowPrepare,
+    });
+
+    expect(maxRunning).toBe(1);
+    expect(order).toHaveLength(3);
+    expect(perCategory.goods).toEqual({ ok: false, error: 'fetch failed' });
+    expect(service.calls.map((c) => c.category).sort()).toEqual(['menu', 'novelty']);
+  });
+
   it('forwards maxRetries and timeout options to the underlying service', async () => {
     const service = new FakeVisionService();
 

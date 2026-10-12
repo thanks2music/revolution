@@ -438,16 +438,16 @@ ${content}
     };
   }
 
-  /**
-   * 応答本文を取り出す。**異常終了した応答を正常な結果として返さない**
-   *
-   * 判定は {@link readGeminiText} に集約している (Vision 側と同じ実装を使うため)。
-   */
   /** この呼び出しの思考の深さ (呼び出しごとの上書きがあればそれ、無ければ `AI_THINKING_LEVEL`) */
   private resolveThinkingLevel(options?: SendMessageOptions): ThinkingLevel {
     return options?.thinkingLevel ? normalizeThinkingLevel(options.thinkingLevel) : this.thinkingLevel;
   }
 
+  /**
+   * 応答本文を取り出す。**異常終了した応答を正常な結果として返さない**
+   *
+   * 判定は {@link readGeminiText} に集約している (Vision 側と同じ実装を使うため)。
+   */
   private readText(response: GenerateContentResponse, thinkingLevel: ThinkingLevel = this.thinkingLevel): string {
     return readGeminiText(response, {
       label: 'GeminiProvider',

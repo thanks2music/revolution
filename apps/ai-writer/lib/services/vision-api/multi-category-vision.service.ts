@@ -76,11 +76,21 @@ export async function callVisionApiForAllCategories(
   images: MultiCategoryImageMap,
   options: MultiCategoryVisionOptions = {},
 ): Promise<MultiCategoryVisionResult> {
+  // 画像の用意 (取得・展開・分割) はカテゴリをまたいでも 1 つずつ行う。縦に長い画像は展開すると数百 MB になるため。
+  // Vision の呼び出しは、そのカテゴリの画像が揃った時点で始める (呼び出しどうしは並列のまま)
+  const prepare = options.prepareImages ?? prepareVisionImages;
+  let queue: Promise<unknown> = Promise.resolve();
+  const prepareInTurn = (imageUrls: string[]): Promise<VisionImage[]> => {
+    const run = queue.then(() => prepare(imageUrls));
+    queue = run.catch(() => undefined);
+    return run;
+  };
+
   const settled = await Promise.allSettled(
     VISION_CATEGORIES.map((category) =>
       options.categories && !options.categories.includes(category)
         ? Promise.resolve<CategoryCallResult>({ skipped: 'not needed' })
-        : callOneCategory(service, template, category, images[category], options),
+        : callOneCategory(service, template, category, images[category], prepareInTurn, options),
     ),
   );
 
@@ -129,12 +139,13 @@ async function callOneCategory(
   template: VisionApiTemplate,
   category: VisionExtractionCategory,
   imageUrls: string[],
+  prepareImages: (imageUrls: string[]) => Promise<VisionImage[]>,
   options: MultiCategoryVisionOptions,
 ): Promise<CategoryCallResult> {
   if (imageUrls.length === 0) {
     return { skipped: 'no images' };
   }
-  const images = await (options.prepareImages ?? prepareVisionImages)(imageUrls);
+  const images = await prepareImages(imageUrls);
   if (images.length === 0) {
     return { skipped: 'images could not be fetched' };
   }

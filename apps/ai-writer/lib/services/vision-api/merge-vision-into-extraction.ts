@@ -41,6 +41,20 @@ export function normalizeMenuName(name: string): string {
     .replace(/[\s"'“”‘’「」『』【】()（）\[\]［］〈〉《》~〜～・･.,、。!！?？★☆♪♡]/g, '');
 }
 
+/** HTML のメニューの品目。詳細リストが無ければ、名前だけの一覧から品目を起こす */
+export function menuItemsOf(
+  extraction: Pick<ExtractionResult, 'メニュー詳細リスト' | '具体的なメニュー名リスト'>
+): ExtractionMenuItem[] {
+  if (!isEmptyList(extraction.メニュー詳細リスト)) return extraction.メニュー詳細リスト!;
+  return (extraction.具体的なメニュー名リスト ?? []).map((name) => ({
+    character: null,
+    name,
+    price: null,
+    imageUrl: null,
+    copyright: null,
+  }));
+}
+
 /** 価格を記事の表記にする。例: 2090 + included → "2,090円(税込)" */
 export function formatPrice(price: number, taxType?: PriceTaxType): string {
   const amount = `${price.toLocaleString('ja-JP')}円`;
@@ -118,16 +132,7 @@ function mergeMenu(
   };
   if (visionMenu.length === 0) return current;
 
-  // HTML の一覧: 詳細リストが無ければ、名前だけの一覧から品目を起こす
-  const htmlItems: ExtractionMenuItem[] = !isEmptyList(extraction.メニュー詳細リスト)
-    ? extraction.メニュー詳細リスト!
-    : (extraction.具体的なメニュー名リスト ?? []).map((name) => ({
-        character: null,
-        name,
-        price: null,
-        imageUrl: null,
-        copyright: null,
-      }));
+  const htmlItems = menuItemsOf(extraction);
 
   if (htmlItems.length === 0) {
     changes.push(`メニュー: HTML に品目が無いため Vision の ${visionMenu.length} 品を使う`);

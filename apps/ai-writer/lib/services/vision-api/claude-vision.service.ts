@@ -238,7 +238,7 @@ export class ClaudeVisionService implements IVisionApiService {
         source: {
           type: 'base64',
           // prepareVisionImages は JPEG に揃えて返す
-          media_type: image.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+          media_type: image.mimeType,
           data: image.data,
         },
       });

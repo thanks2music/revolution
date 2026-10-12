@@ -18,6 +18,7 @@ import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
 import { selectMainContent } from '@/lib/utils/html-extractor';
 import { compactHtmlForLlm, truncateForLlm } from '@/lib/utils/compact-html';
 import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
+import { pageUrlKey } from '@/lib/utils/url';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
 
 /** 下層ページの種類。venue は会場ごとの案内ページ */
@@ -199,11 +200,9 @@ export class CategoryImageExtractorService {
     }
 
     // 2.5 会場ごとの案内ページ。本文を残し、ノベルティの画像が無ければ最初のページの本文ブロックの画像を使う
-    // 末尾の / と # 以降の違いは同じページとみなす (トップのリンクと下層ページの URL で表記が揺れる)
-    const pageKey = (url: string) => url.replace(/#.*$/, '').replace(/\/+$/, '');
-    const fetchedKeys = new Set([topPageUrl, ...Object.values(result.sources)].map(pageKey));
+    const fetchedKeys = new Set([topPageUrl, ...Object.values(result.sources)].map(pageUrlKey));
     const venues = Array.from(new Set(venueUrls))
-      .filter((url) => !fetchedKeys.has(pageKey(url)))
+      .filter((url) => !fetchedKeys.has(pageUrlKey(url)))
       .slice(0, MAX_VENUE_PAGES);
     const venueHtmls = await Promise.all(
       venues.map(async (url) => {
@@ -293,9 +292,7 @@ export class CategoryImageExtractorService {
   private addPageText(result: CategoryImages, url: string, kind: SubpageKind, html: string): string {
     // ナビ・フッター・関連ニュースの欄を除いた本文ブロックだけを使う
     const mainHtml = selectMainContent(cheerio.load(html)).html;
-    if (!result.mentionsRedrawnIllustration && mentionsRedrawnIllustration(mainHtml)) {
-      result.mentionsRedrawnIllustration = true;
-    }
+    result.mentionsRedrawnIllustration ||= mentionsRedrawnIllustration(mainHtml);
     const { text } = truncateForLlm(compactHtmlForLlm(mainHtml).html, SUBPAGE_TEXT_BUDGET_CHARS);
     result.pages.push({ url, kind, text });
     return mainHtml;

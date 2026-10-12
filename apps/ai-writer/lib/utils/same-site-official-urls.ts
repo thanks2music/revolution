@@ -10,6 +10,8 @@
  * 記事選別の `official_urls` だけでなく、トップページのリンクも渡す (2026-10-12)。記事選別 (LLM) が
  * 会場の案内ページを返さない回があり、ヒロアカでノベルティが記事から消えたため。
  */
+import { pageUrlKey } from '@/lib/utils/url';
+
 function hostOf(url: string): string | null {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -18,20 +20,16 @@ function hostOf(url: string): string | null {
   }
 }
 
-function withoutTrailingSlash(url: string): string {
-  return url.replace(/#.*$/, '').replace(/\/+$/, '');
-}
-
 /** ページではないリンク (画像・PDF など) */
 const NON_PAGE = /\.(?:jpe?g|png|gif|webp|svg|avif|pdf|zip|mp4|mp3)(?:[?#]|$)/i;
 
 export function sameSiteOfficialUrls(primaryUrl: string, officialUrls: readonly string[] | undefined): string[] {
   const host = hostOf(primaryUrl);
   if (!host) return [];
-  const seen = new Set([withoutTrailingSlash(primaryUrl)]);
+  const seen = new Set([pageUrlKey(primaryUrl)]);
   const result: string[] = [];
   for (const url of officialUrls ?? []) {
-    const key = withoutTrailingSlash(url);
+    const key = pageUrlKey(url);
     if (hostOf(url) !== host || seen.has(key) || NON_PAGE.test(url)) continue;
     seen.add(key);
     result.push(url.replace(/#.*$/, ''));

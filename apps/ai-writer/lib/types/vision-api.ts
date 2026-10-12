@@ -10,7 +10,6 @@
  * Categories the Vision API can extract from collabo café images.
  * Used by the YAML prompt resolver, multi-category orchestrator, and merger.
  */
-
 export type VisionExtractionCategory = 'menu' | 'goods' | 'novelty';
 
 /**
@@ -431,7 +430,8 @@ export interface VisionImage {
   source: string;
   /** base64 */
   data: string;
-  mimeType: string;
+  /** `prepareVisionImages` は JPEG に再エンコードする */
+  mimeType: 'image/jpeg';
 }
 
 /**
