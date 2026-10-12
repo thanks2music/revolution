@@ -127,6 +127,11 @@ export interface ImageExtractionConfig {
     height: number;
   };
   exclude_patterns: string[];
+  /**
+   * 会場の案内ページで、ノベルティの画像とみなす代替テキストの語 (例: 特典 / ノベルティ)。
+   * 当たった画像には除外パターンを当てない (代替テキストが根拠になるため。LTR は特典の画像のファイル名に banner を含む)
+   */
+  novelty_alt_keywords?: string[];
 }
 
 /**

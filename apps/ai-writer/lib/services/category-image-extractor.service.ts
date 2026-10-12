@@ -70,6 +70,18 @@ export interface CategoryImages {
   mentionsRedrawnIllustration: boolean;
   /** 取得した下層ページと会場の案内ページの本文 (取得に失敗したページは含まない) */
   pages: SubpageText[];
+  /**
+   * 会場の案内ページごとの、ノベルティの画像の候補 (本文ブロックの画像のうち、代替テキストが
+   * `novelty_alt_keywords` に当たるもの)。どのページの画像を使うかは、下層ページの抽出でノベルティ名が
+   * 読めたページから選ぶ (`pickNoveltyImages`)。利用ガイドのような汎用のページの画像を使わないため
+   */
+  venueNoveltyImages: VenueNoveltyImages[];
+}
+
+/** 会場の案内ページ 1 つのノベルティの画像の候補 */
+export interface VenueNoveltyImages {
+  url: string;
+  images: string[];
 }
 
 /**
@@ -93,6 +105,39 @@ function toExcludeTarget(url: URL): string {
   } catch {
     return `${url.pathname}${url.search}`;
   }
+}
+
+/**
+ * 本文ブロックの画像のうち、代替テキストが語のどれかを含むものの絶対 URL (Layer 1)。
+ * 除外パターンは当てない (代替テキストが根拠になるため)。大きさの下限は、width / height の属性があるときだけ当てる
+ * (他の画像と同じ。代替テキストが「特典」の小さなアイコンを除くため)。語が無ければ空
+ */
+export function findImagesByAlt(
+  html: string,
+  sourceUrl: string,
+  keywords: readonly string[],
+  minSize?: { width: number; height: number }
+): string[] {
+  if (keywords.length === 0) return [];
+  const $ = cheerio.load(html);
+  const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase());
+  const images: string[] = [];
+  $('img').each((_, element) => {
+    const alt = ($(element).attr('alt') ?? '').toLowerCase();
+    if (!lowerKeywords.some((keyword) => alt.includes(keyword))) return;
+    const src = $(element).attr('src') || $(element).attr('data-src') || $(element).attr('data-lazy-src');
+    if (!src) return;
+    const width = parseInt($(element).attr('width') ?? '', 10);
+    const height = parseInt($(element).attr('height') ?? '', 10);
+    if (minSize && width > 0 && height > 0 && (width < minSize.width || height < minSize.height)) return;
+    try {
+      const absoluteUrl = new URL(src, sourceUrl).href;
+      if (!images.includes(absoluteUrl)) images.push(absoluteUrl);
+    } catch {
+      // URL として読めない src は飛ばす
+    }
+  });
+  return images;
 }
 
 /**
@@ -135,6 +180,7 @@ export class CategoryImageExtractorService {
       all: [],
       mentionsRedrawnIllustration: false,
       pages: [],
+      venueNoveltyImages: [],
     };
 
     const allImages = new Set<string>();
@@ -200,7 +246,7 @@ export class CategoryImageExtractorService {
       }
     }
 
-    // 2.5 会場ごとの案内ページ。本文を残し、ノベルティの画像が無ければ最初のページの本文ブロックの画像を使う
+    // 2.5 会場ごとの案内ページ。本文と、ノベルティの画像の候補 (代替テキストで選ぶ) を残す
     const fetchedKeys = new Set([topPageUrl, ...Object.values(result.sources)].map(pageUrlKey));
     const venues = Array.from(new Set(venueUrls))
       .filter((url) => !fetchedKeys.has(pageUrlKey(url)))
@@ -215,10 +261,25 @@ export class CategoryImageExtractorService {
         }
       })
     );
-    const venueMainHtmls: Array<{ url: string; mainHtml: string }> = [];
     for (const venue of venueHtmls) {
       if (!venue) continue;
-      venueMainHtmls.push({ url: venue.url, mainHtml: this.addPageText(result, venue.url, 'venue', venue.html) });
+      const mainHtml = this.addPageText(result, venue.url, 'venue', venue.html);
+      const images = findImagesByAlt(
+        mainHtml,
+        venue.url,
+        imageConfig.novelty_alt_keywords ?? [],
+        imageConfig.min_image_size
+      ).slice(
+        0,
+        imageConfig.max_images_per_category
+      );
+      if (images.length > 0) result.venueNoveltyImages.push({ url: venue.url, images });
+    }
+    if (venues.length > 0 && (imageConfig.novelty_alt_keywords ?? []).length === 0) {
+      // Templates の設定 (store-url-patterns.yaml) が古いと、ノベルティの画像を黙って選ばなくなる
+      console.warn(
+        '[CategoryImageExtractor] ⚠️ novelty_alt_keywords が未設定のため、会場のページからノベルティの画像を選べない (pnpm sync:templates を確認)'
+      );
     }
     if (venues.length > 0) {
       console.log(
@@ -254,24 +315,6 @@ export class CategoryImageExtractorService {
       result.sources.goods = topPageUrl;
 
       images.forEach((img) => allImages.add(img));
-    }
-
-    // 4. ノベルティの画像がまだ無ければ、最初に画像のある会場の案内ページの本文ブロックの画像を使う
-    //    (トップページへの退避 (3) より後に行う。先に埋めると、3 の「3 カテゴリとも空」の条件が崩れる)
-    if (result.novelty.length === 0) {
-      for (const venue of venueMainHtmls) {
-        // ヘッダーのロゴを拾わないよう、本文ブロックの画像だけを使う
-        const images = this.extractImagesFromHtml(venue.mainHtml, venue.url, imageConfig).images.slice(
-          0,
-          imageConfig.max_images_per_category
-        );
-        if (images.length === 0) continue;
-        result.novelty = images;
-        result.sources.novelty = venue.url;
-        images.forEach((img) => allImages.add(img));
-        console.log(`[CategoryImageExtractor] novelty: 会場の案内ページ ${venue.url} から ${images.length}枚`);
-        break;
-      }
     }
 
     result.all = Array.from(allImages);
