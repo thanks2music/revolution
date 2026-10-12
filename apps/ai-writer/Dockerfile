@@ -35,6 +35,12 @@ WORKDIR /app
 # (corepack 公式: packageManager フィールドが install の決定性を担保する)
 RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
 
+# このステージには pnpm-lock.yaml が無く、node_modules は deps ステージから持ってくる。
+# pnpm 11 以降は既定の verifyDepsBeforeRun: install により `pnpm build` の前に
+# install をやり直してしまうため、pnpm 10 と同じく確認しない
+# (https://pnpm.io/settings/build#verifydepsbeforerun)
+ENV pnpm_config_verify_deps_before_run=false
+
 # 依存関係をコピー
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
