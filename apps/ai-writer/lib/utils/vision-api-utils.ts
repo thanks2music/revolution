@@ -3,9 +3,9 @@
  *
  * @description
  * Utility functions for Vision API integration:
- * - Cross-check logic (HTML vs Vision API validation)
- * - Hallucination detection
+ * - Hallucination detection (「Coming Soon」の画像から品目を作った場合)
  * - Fallback level selection (A/B/C)
+ * - Business rules (価格や種類数が範囲外なら確信度を減点する)
  *
  * @package revolution
  * @module utils/vision-api-utils
@@ -14,7 +14,6 @@
 import type {
   VisionExtractionResult,
   FallbackLevelType,
-  CrossCheckResult,
   HallucinationDetectionResult,
 } from '@/lib/types/vision-api';
 
@@ -47,153 +46,29 @@ export function assertHttpImageUrls(imageUrls: string[]): void {
 }
 
 /**
- * HTML Extraction Result (for cross-check)
- */
-export interface HtmlExtractionData {
-  /** Number of menu items extracted from HTML */
-  menuItemCount: number;
-
-  /** Number of prices extracted from HTML */
-  priceCount: number;
-
-  /** HTML sufficiency rate (0.0-1.0) */
-  htmlSufficiencyRate: number;
-}
-
-/**
- * Cross-check Vision API result against HTML extraction
- *
- * @description
- * Validates Vision API extraction by comparing it with HTML extraction.
- * Detects potential hallucinations or inconsistencies.
- *
- * Detection criteria:
- * 1. "Coming Soon" notice check
- * 2. Excessive detail without HTML data
- * 3. Confidence inconsistency (high confidence but no HTML data)
- *
- * @param visionResult - Vision API extraction result
- * @param htmlExtraction - HTML extraction data
- * @returns Cross-check result with pass/fail and detected issues
- *
- * @example
- * ```typescript
- * const crossCheckResult = crossCheckVisionResult(visionResult, {
- *   menuItemCount: 0,
- *   priceCount: 0,
- *   htmlSufficiencyRate: 0.05,
- * });
- *
- * if (!crossCheckResult.passed) {
- *   console.error('Cross-check failed:', crossCheckResult.issues);
- *   // Abort article generation
- * }
- * ```
- */
-export function crossCheckVisionResult(
-  visionResult: VisionExtractionResult,
-  htmlExtraction: HtmlExtractionData
-): CrossCheckResult {
-  const issues: string[] = [];
-  const { visionExtraction } = visionResult;
-
-  // Issue 1: "Coming Soon" notice detected but menu items were generated
-  if (visionExtraction.metadata?.hasComingSoonNotice === true) {
-    if (visionExtraction.menuItems.length > 0) {
-      issues.push(
-        `Hallucination detected: Generated ${visionExtraction.menuItems.length} menu items despite "Coming Soon" notice`
-      );
-    }
-  }
-
-  // Issue 2: No HTML data but excessive Vision API extraction
-  // Note: Only flag if BOTH conditions are met:
-  // 1. Extracted many items (> 10) without any HTML data
-  // 2. High confidence (> 0.7) suggests possible hallucination
-  // Low confidence (≤ 0.7) indicates Vision API is uncertain, which is acceptable
-  if (
-    htmlExtraction.menuItemCount === 0 &&
-    htmlExtraction.priceCount === 0
-  ) {
-    if (
-      visionExtraction.menuItems.length > 10 &&
-      visionExtraction.confidence > 0.7
-    ) {
-      issues.push(
-        `Suspicious: Generated ${visionExtraction.menuItems.length} menu items with high confidence (${visionExtraction.confidence.toFixed(2)}) but no HTML data`
-      );
-    }
-  }
-
-  // Issue 3: High confidence but no HTML data at all
-  if (
-    visionExtraction.confidence > 0.8 &&
-    htmlExtraction.menuItemCount === 0 &&
-    htmlExtraction.priceCount === 0 &&
-    htmlExtraction.htmlSufficiencyRate < 0.1
-  ) {
-    issues.push(
-      `Confidence inconsistency: High confidence (${visionExtraction.confidence.toFixed(2)}) but HTML sufficiency is very low (${(htmlExtraction.htmlSufficiencyRate * 100).toFixed(1)}%)`
-    );
-  }
-
-  const passed = issues.length === 0;
-
-  return {
-    passed,
-    issues,
-    details: {
-      htmlMenuCount: htmlExtraction.menuItemCount,
-      visionMenuCount: visionExtraction.menuItems.length,
-      htmlPriceCount: htmlExtraction.priceCount,
-      visionPriceCount: [
-        ...visionExtraction.menuItems,
-        ...visionExtraction.goodsItems,
-      ].filter((item) => item.price != null).length,
-      hasComingSoonNotice: visionExtraction.metadata?.hasComingSoonNotice ?? false,
-      confidenceScore: visionExtraction.confidence,
-    },
-  };
-}
-
-/**
  * Detect hallucination in Vision API result
  *
  * @description
- * Specialized function to detect hallucinations (false information generation).
- * This is a critical safety check to prevent publishing incorrect information.
+ * 「近日公開」「Coming Soon」の画像なのに品目を作った場合を検出する。検出したら、呼び出し側は
+ * その回の Vision の結果を本文に使わない (記事は HTML の抽出だけで続ける。2026-10-11 の方針)。
  *
- * Hallucination types:
- * 1. Coming Soon Fabrication: Generated menu items for "Coming Soon" images
- * 2. Excessive Detail Without HTML: Generated detailed info without any HTML evidence
- * 3. Confidence Inconsistency: High confidence without supporting HTML data
+ * 以前は「HTML にメニューが無いのに Vision が 11 品以上」「HTML がほぼ空なのに確信度が高い」も
+ * 検出して記事ごと止めていた。Vision は HTML の欠けを埋めるために呼ぶので、その 2 つは正当な
+ * 場面と重なるためやめた。Vision を使うかの関門は、確信度のレベル A (`selectFallbackLevel`)。
  *
  * @param visionResult - Vision API extraction result
- * @param htmlExtraction - HTML extraction data
  * @returns Hallucination detection result
- *
- * @example
- * ```typescript
- * const hallucinationResult = detectHallucination(visionResult, htmlData);
- *
- * if (hallucinationResult.detected) {
- *   console.error(`[CRITICAL] Hallucination detected: ${hallucinationResult.type}`);
- *   console.error(`Reason: ${hallucinationResult.reason}`);
- *   // Abort article generation
- * }
- * ```
  */
 export function detectHallucination(
-  visionResult: VisionExtractionResult,
-  htmlExtraction: HtmlExtractionData
+  visionResult: VisionExtractionResult
 ): HallucinationDetectionResult {
   const { visionExtraction } = visionResult;
 
-  // Type 1: Coming Soon Fabrication (covers menu/goods/novelty per Templates v1.2)
   const totalExtracted =
     visionExtraction.menuItems.length +
     visionExtraction.goodsItems.length +
     visionExtraction.noveltyItems.length;
+
   if (
     visionExtraction.metadata?.hasComingSoonNotice === true &&
     totalExtracted > 0
@@ -206,38 +81,6 @@ export function detectHallucination(
     };
   }
 
-  // Type 2: Excessive Detail Without HTML
-  // NOTE: Only flag as hallucination if HTML sufficiency is >= 20% (above Vision API threshold).
-  // When HTML sufficiency is < 20%, Vision API is the primary source and many extracted items is expected.
-  if (
-    htmlExtraction.menuItemCount === 0 &&
-    htmlExtraction.priceCount === 0 &&
-    htmlExtraction.htmlSufficiencyRate >= 0.20 &&
-    visionExtraction.menuItems.length > 10
-  ) {
-    return {
-      detected: true,
-      type: 'excessive_detail_without_html',
-      reason: `Generated ${visionExtraction.menuItems.length} menu items without any HTML data (HTML sufficiency: ${(htmlExtraction.htmlSufficiencyRate * 100).toFixed(1)}%)`,
-      confidence: visionExtraction.confidence,
-    };
-  }
-
-  // Type 3: Confidence Inconsistency
-  if (
-    visionExtraction.confidence > 0.85 &&
-    htmlExtraction.htmlSufficiencyRate < 0.05 &&
-    visionExtraction.menuItems.length > 3
-  ) {
-    return {
-      detected: true,
-      type: 'confidence_inconsistency',
-      reason: `High confidence (${(visionExtraction.confidence * 100).toFixed(1)}%) but HTML sufficiency is very low (${(htmlExtraction.htmlSufficiencyRate * 100).toFixed(1)}%)`,
-      confidence: visionExtraction.confidence,
-    };
-  }
-
-  // No hallucination detected
   return {
     detected: false,
   };

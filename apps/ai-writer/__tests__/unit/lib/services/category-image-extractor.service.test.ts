@@ -68,6 +68,9 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
 
     expect(result.goods).toEqual([GOODS_IMAGE]);
     expect(result.sources.goods).toBe('https://heroaca-cafe.ltr-online.com/lp/goods');
+    // 取得したページの HTML (Inertia 展開済み) を返す。「描き下ろし」の記載を探すのに使う
+    expect(result.pageHtml?.goods).toContain('ミニアクリルスタンド');
+    expect(result.pageHtml?.menu).toBeUndefined();
   });
 
   it('通常の HTML の下層ページはこれまでどおり <img> から拾う', async () => {

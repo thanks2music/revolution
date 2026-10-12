@@ -288,27 +288,6 @@ export interface MonitoringMetric {
 export type FallbackLevelType = 'A' | 'B' | 'C';
 
 /**
- * Cross-Check Result
- */
-export interface CrossCheckResult {
-  /** Whether cross-check passed */
-  passed: boolean;
-
-  /** Issues detected (empty if passed) */
-  issues: string[];
-
-  /** Cross-check details */
-  details: {
-    htmlMenuCount: number;
-    visionMenuCount: number;
-    htmlPriceCount: number;
-    visionPriceCount: number;
-    hasComingSoonNotice: boolean;
-    confidenceScore: number;
-  };
-}
-
-/**
  * Hallucination Detection Result
  */
 export interface HallucinationDetectionResult {
@@ -316,7 +295,7 @@ export interface HallucinationDetectionResult {
   detected: boolean;
 
   /** Hallucination type (if detected) */
-  type?: 'coming_soon_fabrication' | 'excessive_detail_without_html' | 'confidence_inconsistency';
+  type?: 'coming_soon_fabrication';
 
   /** Detection reason */
   reason?: string;

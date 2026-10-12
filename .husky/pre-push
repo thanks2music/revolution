@@ -6,7 +6,7 @@
 # - HUSKY=0 git push to bypass in an emergency.
 # - apps/frontend is excluded (jest not configured there yet).
 # - __tests__/e2e is excluded — live-API E2E belongs in CI, not a local
-#   pre-push gate (it needs OPENAI_API_KEY / ANTHROPIC_API_KEY and is slow).
+#   pre-push gate (it calls paid APIs — OPENAI_API_KEY / an `ant` profile — and is slow).
 #
 # Husky 9 ignores the hook script's shebang and runs the file through
 # POSIX `sh`, so this script must avoid bash-only constructs (arrays,

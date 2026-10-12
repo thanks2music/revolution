@@ -28,13 +28,11 @@ import { VisionApiServiceFactory } from '@/lib/services/vision-api/vision-api-se
 import type { IVisionApiService, VisionProvider } from '@/lib/types/vision-api';
 import { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
 import {
-  crossCheckVisionResult,
   detectHallucination,
   selectFallbackLevel,
   validateBusinessRules,
 } from '@/lib/utils/vision-api-utils';
-import type { HtmlExtractionData } from '@/lib/utils/vision-api-utils';
-import { checkExtractionSufficiency } from '@/lib/config/vision-api-thresholds';
+import { determineVisionTargets } from '@/lib/services/vision-api/vision-targets';
 
 /**
  * Providers under test
@@ -109,20 +107,15 @@ describe.each(PROVIDERS_TO_TEST)(
       it(`extracts ${category} items from category-specific image (${provider})`, async () => {
         const fixtureUrls = TR2604_FIXTURES[category];
 
-        // Step 1: HTML extraction (insufficient — drives Vision API path)
-        const htmlExtraction: HtmlExtractionData = {
-          menuItemCount: 0,
-          priceCount: 0,
-          htmlSufficiencyRate: 0.05,
-        };
-
-        // Step 2: Sufficiency check
-        const sufficiencyResult = checkExtractionSufficiency(
-          htmlExtraction.menuItemCount,
-          htmlExtraction.priceCount,
-          htmlExtraction.htmlSufficiencyRate,
-        );
-        expect(sufficiencyResult.isSufficient).toBe(false);
+        // Step 1-2: HTML から 4 項目とも書けない → 3 カテゴリとも読む対象になる
+        const targets = determineVisionTargets({
+          キャラクター名: null,
+          メニュー詳細リスト: null,
+          具体的なメニュー名リスト: null,
+          グッズ名: null,
+          ノベルティ名: null,
+        });
+        expect(targets.categories).toContain(category);
 
         // Step 3: Load Templates v1.2 prompt for this category
         const template = await yamlTemplateLoaderService.loadVisionApiTemplate('collabo-cafe');
@@ -165,18 +158,8 @@ describe.each(PROVIDERS_TO_TEST)(
           expect(Array.isArray(item.characterName)).toBe(true);
         }
 
-        // Step 6: Cross-check (HTML vs Vision API).
-        // For the menu category, also assert `visionMenuCount > 0` to keep a
-        // concrete signal that items were actually extracted (the legacy menu-
-        // only test exposed this via `details.visionMenuCount`).
-        const crossCheck = crossCheckVisionResult(visionResult, htmlExtraction);
-        expect(crossCheck.details).toBeDefined();
-        if (category === 'menu') {
-          expect(crossCheck.details.visionMenuCount).toBeGreaterThan(0);
-        }
-
-        // Step 7: Hallucination detection
-        const hallucination = detectHallucination(visionResult, htmlExtraction);
+        // Step 7: Hallucination detection (Coming Soon)
+        const hallucination = detectHallucination(visionResult);
         expect(hallucination.detected).toBe(false);
 
         // Step 8: Fallback level selection

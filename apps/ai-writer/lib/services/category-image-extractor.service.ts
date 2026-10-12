@@ -33,6 +33,11 @@ export interface CategoryImages {
   };
   /** 全画像URL（重複排除済み） */
   all: string[];
+  /**
+   * 取得した下層ページの HTML (Inertia 展開済み)。「描き下ろし」の記載を探すのに使う
+   * (追加の通信をしないよう、画像の抽出で取得したものをそのまま返す)
+   */
+  pageHtml?: Partial<Record<'menu' | 'novelty' | 'goods', string>>;
 }
 
 /**
@@ -94,6 +99,7 @@ export class CategoryImageExtractorService {
       goods: [],
       sources: {},
       all: [],
+      pageHtml: {},
     };
 
     const allImages = new Set<string>();
@@ -127,6 +133,7 @@ export class CategoryImageExtractorService {
 
           // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する
           const html = expandInertiaPayload(await this.fetchPage(targetUrl));
+          result.pageHtml![category] = html;
           const pageResult = this.extractImagesFromHtml(html, targetUrl, imageConfig);
           if (pageResult.excluded.length > 0) {
             console.log(
