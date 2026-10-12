@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { findUnclosedVoidElements, selfCloseVoidElements } from '@/lib/utils/mdx-safety';
+import { escapeMdxText, findUnclosedVoidElements, selfCloseVoidElements } from '@/lib/utils/mdx-safety';
 
 describe('selfCloseVoidElements', () => {
   it('<br> を自己閉じにする', () => {
@@ -94,5 +94,11 @@ describe('ビルドを落とした実データ (回帰)', () => {
     expect(fixed).toContain('登場します。<br />');
     // 本文は失われない
     expect(fixed).toContain('レモンスカッシュフロート');
+  });
+});
+
+describe('escapeMdxText', () => {
+  it('{ } < > を文字参照にし、他の文字はそのまま', () => {
+    expect(escapeMdxText('缶バッジ <限定> {全12種} 605円')).toBe('缶バッジ &#60;限定&#62; &#123;全12種&#125; 605円');
   });
 });

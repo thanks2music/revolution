@@ -77,6 +77,10 @@ describe('renderGoodsList', () => {
     expect(text).not.toContain('コンプリートセット');
   });
 
+  it('品名の { } < > は MDX の式・JSX として評価されないよう文字参照にする', () => {
+    expect(renderGoodsList(['{alert(1)}<script>'], [], CONFIG)).toContain('- &#123;alert(1)&#125;&#60;script&#62;');
+  });
+
   it('グッズ名もオンライン限定も無ければ空', () => {
     expect(renderGoodsList(null, null, CONFIG)).toBe('');
   });

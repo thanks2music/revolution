@@ -15,6 +15,7 @@ import * as path from 'path';
 import yaml from 'js-yaml';
 import type { GoodsSales, SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 import { itemNameKey } from '@/lib/services/merge-subpage-into-extraction';
+import { escapeMdxText } from '@/lib/utils/mdx-safety';
 
 /** `sections/04-goods.yaml` の `goods_list` */
 export interface GoodsListConfig {
@@ -80,9 +81,10 @@ export function renderGoodsList(
     const byKey = new Map((details ?? []).map((item) => [itemNameKey(item.name), item]));
     const rows = names.map((name) => {
       const detail = byKey.get(itemNameKey(name));
+      // 品名と価格は外部のページから読んだ値。MDX の式・JSX として評価されないようにする
       return {
-        name,
-        price: detail?.price ?? '',
+        name: escapeMdxText(name),
+        price: escapeMdxText(detail?.price ?? ''),
         sales: detail?.sales ? (config.sales_labels[detail.sales] ?? '') : '',
       };
     });
