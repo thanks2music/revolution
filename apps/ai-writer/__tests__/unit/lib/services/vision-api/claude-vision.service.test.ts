@@ -280,9 +280,8 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(mockMessagesCreate).toHaveBeenCalledTimes(2);
     });
 
-    it('rethrows ZodError immediately without retry (deterministic shape failure)', async () => {
-      // confidence: 999 violates z.number().min(0).max(1). Note: name omission alone
-      // won't fail because Claude's convertToMenuItem defaults name to '' (line 461).
+    it('範囲外の confidence は値なしにして通す (形の崩れで失敗させず、リトライもしない)', async () => {
+      // 2026-10-11: 変換を normalizeVisionResponse にまとめ、0〜1 以外の confidence は「値なし」にした
       mockMessagesCreate.mockResolvedValue(
         buildClaudeMessage({
           menuItems: [
@@ -296,16 +295,15 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         }),
       );
 
-      await expect(
-        service.extractFromImages({
-          imageUrls: ['https://example.com/menu.webp'],
-          prompt: 'menu prompt',
-          category: 'menu',
-          maxRetries: 3,
-        }),
-      ).rejects.toThrow();
+      const result = await service.extractFromImages({
+        imageUrls: ['https://example.com/menu.webp'],
+        prompt: 'menu prompt',
+        category: 'menu',
+        maxRetries: 3,
+      });
 
-      // ZodError は deterministic shape failure としてリトライせず即 rethrow
+      expect(result.visionExtraction.menuItems[0].confidence).toBeUndefined();
+      expect(result.visionExtraction.confidence).toBe(0);
       expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
     });
   });

@@ -32,14 +32,11 @@ import { ZodError } from 'zod';
 import type {
   IVisionApiService,
   VisionExtractionResult,
-  MenuItem,
-  GoodsItem,
-  NoveltyItem,
   VisionApiCallOptions,
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
-import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
+import { normalizeVisionResponse } from './normalize-vision-response';
 import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 import {
@@ -55,62 +52,6 @@ import {
 } from '@/lib/ai/gemini-response';
 import { fetchImageSafely } from '@/lib/utils/safe-image-fetch';
 
-/** LLM が「値なし」を null で返した文字列を undefined に揃える (schema の `optional()` は null を通さない)。 */
-function optionalString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-/**
- * Raw Vision API Response (Internal Type)
- *
- * @description
- * Mirrors Templates v1.2 `output_schema.visionExtraction.{menu,goods,novelty}Items[]`.
- *
- * ⚠️ 本型は `openai-vision.service.ts` / `claude-vision.service.ts` にも同型の定義があり、
- * 本ファイルで 3 つ目になる (開発原則の「3 つで抽象化」の閾値に到達)。**本 PR では
- * 統合しない** — 既存 2 つは許容する optional フィールドが微妙に異なる可能性があり、
- * 突き合わせて 1 本化するのは回帰リスクを伴う独立したリファクタになるため。
- * 統合は別タスクで扱う。
- */
-interface RawVisionResponse {
-  menuItems?: Array<{
-    name: string;
-    price?: number;
-    characterName?: string[] | string;
-    hasNovelty?: boolean;
-    noveltyCondition?: string;
-    bonus?: string;
-    description?: string;
-    notes?: string;
-    remarks?: string;
-    confidence?: number;
-  }>;
-  noveltyItems?: Array<{
-    name: string;
-    condition?: string;
-    variantCount?: number;
-    characterName?: string[] | string;
-    isRandom?: boolean;
-    confidence?: number;
-    notes?: string;
-    remarks?: string;
-  }>;
-  goodsItems?: Array<{
-    name: string;
-    price?: number;
-    variantCount?: number;
-    variantDetails?: string;
-    characterName?: string[] | string;
-    isRandomSale?: boolean;
-    confidence?: number;
-  }>;
-  metadata?: {
-    imageQuality?: string;
-    hasComingSoonNotice?: boolean;
-    extractionDifficulty?: string;
-    totalImagesAnalyzed?: number;
-  };
-}
 
 /**
  * 画像 1 枚あたりの入力トークン (mediaResolution 別、2026-08-16 実測)
@@ -295,7 +236,11 @@ export class GeminiVisionService implements IVisionApiService {
           timeout
         );
 
-        const result = this.convertToVisionExtractionResult(rawResponse, imageUrls.length, usage);
+        const result = normalizeVisionResponse(rawResponse, {
+          provider: 'google',
+          totalImagesAnalyzed: imageUrls.length,
+          tokensUsed: usage,
+        });
 
         console.log(
           `[GeminiVisionService] ✅ Extraction successful: ${result.visionExtraction.menuItems.length} menu items, ${result.visionExtraction.noveltyItems.length} novelty items, ${result.visionExtraction.goodsItems.length} goods items`
@@ -354,7 +299,7 @@ export class GeminiVisionService implements IVisionApiService {
     category: string,
     timeout: number
   ): Promise<{
-    raw: RawVisionResponse;
+    raw: unknown;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
   }> {
     let timerId: ReturnType<typeof setTimeout> | undefined;
@@ -382,7 +327,7 @@ export class GeminiVisionService implements IVisionApiService {
     prompt: string,
     category: string
   ): Promise<{
-    raw: RawVisionResponse;
+    raw: unknown;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
   }> {
     const startTime = Date.now();
@@ -438,7 +383,7 @@ export class GeminiVisionService implements IVisionApiService {
       `[GeminiVisionService] ✅ API call completed in ${elapsedTime}ms (tokens: ${usage.totalTokens})`
     );
 
-    let parsed: RawVisionResponse;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(rawContent);
     } catch {
@@ -551,163 +496,6 @@ export class GeminiVisionService implements IVisionApiService {
         (usageMetadata?.candidatesTokenCount ?? 0) + (usageMetadata?.thoughtsTokenCount ?? 0),
       totalTokens: usageMetadata?.totalTokenCount ?? 0,
     };
-  }
-
-  /**
-   * Convert raw response to VisionExtractionResult
-   */
-  private convertToVisionExtractionResult(
-    raw: RawVisionResponse,
-    totalImages: number,
-    tokensUsed: { promptTokens: number; completionTokens: number; totalTokens: number }
-  ): VisionExtractionResult {
-    const menuItems: MenuItem[] =
-      raw.menuItems?.map((item) => this.convertToMenuItem(item)) || [];
-    const goodsItems: GoodsItem[] =
-      raw.goodsItems?.map((item) => this.convertToGoodsItem(item)) || [];
-    const noveltyItems: NoveltyItem[] =
-      raw.noveltyItems?.map((item) => this.convertToNoveltyItem(item)) || [];
-
-    // Aggregate per-item confidence across all 3 categories (mirrors the other
-    // providers). Items without an LLM-supplied confidence are skipped so they
-    // don't pull the average toward a fabricated default.
-    const allConfidences: number[] = [];
-    for (const item of [...menuItems, ...goodsItems, ...noveltyItems]) {
-      if (item.confidence != null) {
-        allConfidences.push(item.confidence);
-      }
-    }
-    const averageConfidence =
-      allConfidences.length > 0
-        ? allConfidences.reduce((sum, c) => sum + c, 0) / allConfidences.length
-        : 0.5;
-
-    const result: VisionExtractionResult = {
-      visionExtraction: {
-        confidence: averageConfidence,
-        provider: 'google',
-        timestamp: new Date().toISOString(),
-        menuItems,
-        goodsItems,
-        noveltyItems,
-        metadata: {
-          hasComingSoonNotice: raw.metadata?.hasComingSoonNotice || false,
-          totalImagesAnalyzed: totalImages,
-          tokensUsed,
-        },
-      },
-    };
-
-    // Layer 2 contract validation (Schema-SDD): throw on shape drift so that LLM
-    // output regressions surface immediately rather than silently propagating.
-    return VisionExtractionResultSchema.parse(result);
-  }
-
-  /**
-   * Convert raw item to MenuItem.
-   *
-   * Numeric fields (`price`, `confidence`) use `typeof === 'number'` checks
-   * rather than `??` so that LLM-emitted `null` or stringified numbers are
-   * coerced to `undefined` (or the `0.5` confidence default) instead of
-   * propagating to `VisionExtractionResultSchema.parse` and triggering a
-   * deterministic ZodError. Mirrors the other Vision services.
-   * Optional string fields go through `optionalString` for the same reason.
-   */
-  private convertToMenuItem(item: NonNullable<RawVisionResponse['menuItems']>[number]): MenuItem {
-    return {
-      name: item.name,
-      price: typeof item.price === 'number' ? item.price : undefined,
-      characterName: this.parseCharacterNameArray(item.characterName, item.name),
-      hasNovelty: item.hasNovelty ?? false,
-      noveltyCondition: item.noveltyCondition,
-      bonus: optionalString(item.bonus),
-      description: optionalString(item.description),
-      notes: optionalString(item.notes),
-      remarks: optionalString(item.remarks),
-      confidence: typeof item.confidence === 'number' ? item.confidence : 0.5,
-    };
-  }
-
-  /**
-   * Convert raw item to GoodsItem (see `convertToMenuItem` for numeric
-   * coercion rationale).
-   */
-  private convertToGoodsItem(
-    item: NonNullable<RawVisionResponse['goodsItems']>[number]
-  ): GoodsItem {
-    return {
-      name: item.name,
-      price: typeof item.price === 'number' ? item.price : undefined,
-      variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
-      variantDetails: optionalString(item.variantDetails),
-      characterName: this.parseCharacterNameArray(item.characterName, item.name),
-      isRandomSale: item.isRandomSale ?? false,
-      confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
-    };
-  }
-
-  /**
-   * Convert raw item to NoveltyItem (see `convertToMenuItem` for numeric
-   * coercion rationale).
-   */
-  private convertToNoveltyItem(
-    item: NonNullable<RawVisionResponse['noveltyItems']>[number]
-  ): NoveltyItem {
-    return {
-      name: item.name,
-      condition: optionalString(item.condition),
-      variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
-      characterName: this.parseCharacterNameArray(item.characterName, item.name),
-      isRandom: item.isRandom ?? false,
-      confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
-      notes: optionalString(item.notes),
-      remarks: optionalString(item.remarks),
-    };
-  }
-
-  /**
-   * Parse characterName field to string array
-   *
-   * @description
-   * Expects array format from LLM. Applies minimal cleaning for robustness.
-   * Legacy string format is NOT supported (development phase only).
-   */
-  private parseCharacterNameArray(value: unknown, itemName: unknown): string[] {
-    // Case 1: Array (expected)
-    if (Array.isArray(value)) {
-      return value.map((v) => this.cleanCharacterName(String(v))).filter((v) => v.length > 0);
-    }
-
-    // Case 2: Unexpected string format (should not happen in new implementation)
-    if (typeof value === 'string' && value.length > 0) {
-      console.warn(
-        `[GeminiVisionService] Unexpected string format for characterName: "${value}". ` +
-          `Expected array format. Item name: "${itemName || 'unknown'}". ` +
-          `Returning empty array.`
-      );
-      return [];
-    }
-
-    // Case 3: No character name or invalid
-    return [];
-  }
-
-  /**
-   * Clean character name (minimal decorations removal)
-   *
-   * Examples:
-   * - "場地（制服ver）" → "場地"
-   * - "千冬★" → "千冬"
-   */
-  private cleanCharacterName(name: string): string {
-    return (
-      name
-        // Remove decorative symbols
-        .replace(/[★☆♪♡【】]/g, '')
-        // Remove parentheses and their contents
-        .replace(/[（(][^）)]*[）)]/g, '')
-        .trim()
-    );
   }
 
   /**

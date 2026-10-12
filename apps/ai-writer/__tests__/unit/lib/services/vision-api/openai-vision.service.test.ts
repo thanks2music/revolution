@@ -292,25 +292,22 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(mockChatCompletionsCreate).toHaveBeenCalledTimes(2);
     });
 
-    it('rethrows ZodError immediately without retry (deterministic shape failure)', async () => {
-      // name omission triggers ZodError at MenuItemSchema.name=z.string().
-      // (Unlike Claude's service, OpenAI's convertToMenuItem doesn't default name to ''.)
+    it('name の無い品目は捨てて通す (形の崩れで失敗させず、リトライもしない)', async () => {
+      // 2026-10-11: 変換を normalizeVisionResponse にまとめ、name の無い品目は捨てるようにした
       mockChatCompletionsCreate.mockResolvedValue(
         buildOpenAiCompletion({
           menuItems: [{ price: 800 }],
         }),
       );
 
-      await expect(
-        service.extractFromImages({
-          imageUrls: ['https://example.com/menu.webp'],
-          prompt: 'menu prompt',
-          category: 'menu',
-          maxRetries: 3,
-        }),
-      ).rejects.toThrow();
+      const result = await service.extractFromImages({
+        imageUrls: ['https://example.com/menu.webp'],
+        prompt: 'menu prompt',
+        category: 'menu',
+        maxRetries: 3,
+      });
 
-      // ZodError は deterministic shape failure としてリトライせず即 rethrow
+      expect(result.visionExtraction.menuItems).toEqual([]);
       expect(mockChatCompletionsCreate).toHaveBeenCalledTimes(1);
     });
   });

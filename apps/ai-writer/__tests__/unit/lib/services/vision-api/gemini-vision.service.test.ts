@@ -367,14 +367,17 @@ describe('GeminiVisionService', () => {
      * ZodError は決定論的な契約違反なのでリトライしない (他 2 provider と同じ方針)。
      * リトライするとトークンを浪費したうえ、本当のバグの表面化が遅れる。
      */
-    it('スキーマ違反はリトライせず即 throw する', async () => {
-      // `name` 必須の MenuItem に対して数値を返す = 形が違う
+    it('name の無い品目や数値でない価格は、捨てる・値なしにして通す (リトライしない)', async () => {
+      // 2026-10-11: 変換を normalizeVisionResponse にまとめ、形の崩れで失敗させないようにした
       mockGenerateContent.mockResolvedValue(
-        buildResponse({ menuItems: [{ price: 'not-a-number' }] })
+        buildResponse({ menuItems: [{ price: 'not-a-number' }, { name: 'パフェ', price: 'not-a-number' }] })
       );
       const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
 
-      await expect(service.extractFromImages(callOptions({ maxRetries: 3 }))).rejects.toThrow();
+      const result = await service.extractFromImages(callOptions({ maxRetries: 3 }));
+
+      expect(result.visionExtraction.menuItems).toHaveLength(1);
+      expect(result.visionExtraction.menuItems[0]).toMatchObject({ name: 'パフェ', price: undefined });
       expect(mockGenerateContent).toHaveBeenCalledTimes(1);
     });
   });

@@ -23,64 +23,14 @@ import { ZodError } from 'zod';
 import type {
   IVisionApiService,
   VisionExtractionResult,
-  MenuItem,
-  GoodsItem,
-  NoveltyItem,
   VisionApiCallOptions,
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
-import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
+import { normalizeVisionResponse } from './normalize-vision-response';
 import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
-/**
- * Raw Vision API Response (Internal Type)
- *
- * @description
- * Mirrors Templates v1.2 `output_schema.visionExtraction.{menu,goods,novelty}Items[]`.
- * v1.2 added: MenuItem.hasNovelty/noveltyCondition, GoodsItem.isRandomSale/confidence,
- * NoveltyItem.isRandom/confidence. Optional fields tolerate older or partial responses.
- */
-interface RawVisionResponse {
-  menuItems?: Array<{
-    name: string;
-    price?: number;
-    characterName?: string[] | string;
-    hasNovelty?: boolean;
-    noveltyCondition?: string;
-    bonus?: string;
-    description?: string;
-    notes?: string;
-    remarks?: string;
-    confidence?: number;
-  }>;
-  noveltyItems?: Array<{
-    name: string;
-    condition?: string;
-    variantCount?: number;
-    characterName?: string[] | string;
-    isRandom?: boolean;
-    confidence?: number;
-    notes?: string;
-    remarks?: string;
-  }>;
-  goodsItems?: Array<{
-    name: string;
-    price?: number;
-    variantCount?: number;
-    variantDetails?: string;
-    characterName?: string[] | string;
-    isRandomSale?: boolean;
-    confidence?: number;
-  }>;
-  metadata?: {
-    imageQuality?: string;
-    hasComingSoonNotice?: boolean;
-    extractionDifficulty?: string;
-    totalImagesAnalyzed?: number;
-  };
-}
 
 /**
  * OpenAI Vision API Configuration
@@ -259,7 +209,11 @@ export class OpenAiVisionService implements IVisionApiService {
           timeout
         );
 
-        const result = this.convertToVisionExtractionResult(rawResponse, imageUrls.length, usage);
+        const result = normalizeVisionResponse(rawResponse, {
+          provider: 'openai',
+          totalImagesAnalyzed: imageUrls.length,
+          tokensUsed: usage,
+        });
 
         console.log(
           `[OpenAiVisionService] ✅ Extraction successful: ${result.visionExtraction.menuItems.length} menu items, ${result.visionExtraction.noveltyItems.length} novelty items, ${result.visionExtraction.goodsItems.length} goods items`
@@ -308,7 +262,7 @@ export class OpenAiVisionService implements IVisionApiService {
     category: string,
     timeout: number
   ): Promise<{
-    raw: RawVisionResponse;
+    raw: unknown;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
   }> {
     let timerId: ReturnType<typeof setTimeout> | undefined;
@@ -336,7 +290,7 @@ export class OpenAiVisionService implements IVisionApiService {
     prompt: string,
     category: string
   ): Promise<{
-    raw: RawVisionResponse;
+    raw: unknown;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
   }> {
     const startTime = Date.now();
@@ -408,7 +362,7 @@ export class OpenAiVisionService implements IVisionApiService {
       `[OpenAiVisionService] ✅ API call completed in ${elapsedTime}ms (tokens: ${response.usage?.total_tokens || 'unknown'})`
     );
 
-    let parsed: RawVisionResponse;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(rawContent);
     } catch (error) {
@@ -425,177 +379,6 @@ export class OpenAiVisionService implements IVisionApiService {
       },
     };
   }
-
-  /**
-   * Convert raw response to VisionExtractionResult
-   */
-  private convertToVisionExtractionResult(
-    raw: RawVisionResponse,
-    totalImages: number,
-    tokensUsed: { promptTokens: number; completionTokens: number; totalTokens: number }
-  ): VisionExtractionResult {
-    const menuItems: MenuItem[] =
-      raw.menuItems?.map((item) => this.convertToMenuItem(item)) || [];
-    const goodsItems: GoodsItem[] =
-      raw.goodsItems?.map((item) => this.convertToGoodsItem(item)) || [];
-    const noveltyItems: NoveltyItem[] =
-      raw.noveltyItems?.map((item) => this.convertToNoveltyItem(item)) || [];
-
-    // Aggregate per-item confidence across all 3 categories so the overall
-    // score reflects the actual extraction breadth (Templates v1.2). Mirrors
-    // claude-vision.service.ts:calculateOverallConfidence — items without an
-    // LLM-supplied confidence are skipped so they don't pull the average toward
-    // a fabricated default.
-    const allConfidences: number[] = [];
-    for (const item of [...menuItems, ...goodsItems, ...noveltyItems]) {
-      if (item.confidence != null) {
-        allConfidences.push(item.confidence);
-      }
-    }
-    const averageConfidence =
-      allConfidences.length > 0
-        ? allConfidences.reduce((sum, c) => sum + c, 0) / allConfidences.length
-        : 0.5;
-
-    const result: VisionExtractionResult = {
-      visionExtraction: {
-        confidence: averageConfidence,
-        provider: 'openai',
-        timestamp: new Date().toISOString(),
-        menuItems,
-        goodsItems,
-        noveltyItems,
-        metadata: {
-          hasComingSoonNotice: raw.metadata?.hasComingSoonNotice || false,
-          totalImagesAnalyzed: totalImages,
-          tokensUsed,
-        },
-      },
-    };
-
-    // Layer 2 contract validation (Schema-SDD Phase 3): throw on shape drift
-    // so that LLM output regressions surface immediately rather than silently
-    // propagating downstream. The caller's retry loop in `extractFromImages`
-    // re-throws ZodError without retry (deterministic shape failure, not a
-    // transient network issue), surfacing the bug immediately.
-    return VisionExtractionResultSchema.parse(result);
-  }
-
-  /**
-   * Convert raw item to MenuItem.
-   *
-   * Numeric fields (`price`, `confidence`) use `typeof === 'number'` checks
-   * rather than `??` so that LLM-emitted `null` or stringified numbers are
-   * coerced to `undefined` (or the `0.5` confidence default) instead of
-   * propagating to `VisionExtractionResultSchema.parse` and triggering a
-   * deterministic ZodError. Mirrors `claude-vision.service.ts`.
-   */
-  private convertToMenuItem(item: NonNullable<RawVisionResponse['menuItems']>[number]): MenuItem {
-    return {
-      name: item.name,
-      price: typeof item.price === 'number' ? item.price : undefined,
-      characterName: this.parseCharacterNameArray(item.characterName, item.name),
-      hasNovelty: item.hasNovelty ?? false,
-      noveltyCondition: item.noveltyCondition,
-      bonus: item.bonus,
-      description: item.description,
-      notes: item.notes,
-      remarks: item.remarks,
-      confidence: typeof item.confidence === 'number' ? item.confidence : 0.5,
-    };
-  }
-
-  /**
-   * Parse characterName field to string array
-   *
-   * @description
-   * Expects array format from LLM. Applies minimal cleaning for robustness.
-   * Legacy string format is NOT supported (development phase only).
-   *
-   * @param value - Raw characterName value from LLM response
-   * @param itemName - Item name (menu/goods/novelty) for logging purposes
-   * @returns Cleaned character names array (empty array if no characters)
-   */
-  private parseCharacterNameArray(value: unknown, itemName: unknown): string[] {
-    // Case 1: Array (expected)
-    if (Array.isArray(value)) {
-      return value
-        .map(v => this.cleanCharacterName(String(v)))
-        .filter(v => v.length > 0);
-    }
-
-    // Case 2: Unexpected string format (should not happen in new implementation)
-    if (typeof value === 'string' && value.length > 0) {
-      console.warn(
-        `[OpenAiVisionService] Unexpected string format for characterName: "${value}". ` +
-        `Expected array format. Item name: "${itemName || 'unknown'}". ` +
-        `Returning empty array.`
-      );
-      return [];
-    }
-
-    // Case 3: No character name or invalid
-    return [];
-  }
-
-  /**
-   * Clean character name (minimal decorations removal)
-   *
-   * @description
-   * Removes common decorative symbols and parentheses.
-   * Note: Assumes character names appear outside parentheses in menu names.
-   *
-   * Examples:
-   * - "場地（制服ver）" → "場地"
-   * - "千冬★" → "千冬"
-   * - "マイキー♡" → "マイキー"
-   *
-   * @param name - Character name string
-   * @returns Cleaned character name
-   */
-  private cleanCharacterName(name: string): string {
-    return name
-      // Remove decorative symbols
-      .replace(/[★☆♪♡【】]/g, '')
-      // Remove parentheses and their contents (e.g., "場地（制服ver）" → "場地")
-      .replace(/[（(][^）)]*[）)]/g, '')
-      // Trim whitespace
-      .trim();
-  }
-
-  /**
-   * Convert raw item to GoodsItem (see `convertToMenuItem` for numeric
-   * coercion rationale).
-   */
-  private convertToGoodsItem(item: NonNullable<RawVisionResponse['goodsItems']>[number]): GoodsItem {
-    return {
-      name: item.name,
-      price: typeof item.price === 'number' ? item.price : undefined,
-      variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
-      variantDetails: item.variantDetails,
-      characterName: this.parseCharacterNameArray(item.characterName, item.name),
-      isRandomSale: item.isRandomSale ?? false,
-      confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
-    };
-  }
-
-  /**
-   * Convert raw item to NoveltyItem (see `convertToMenuItem` for numeric
-   * coercion rationale).
-   */
-  private convertToNoveltyItem(item: NonNullable<RawVisionResponse['noveltyItems']>[number]): NoveltyItem {
-    return {
-      name: item.name,
-      condition: item.condition,
-      variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
-      characterName: this.parseCharacterNameArray(item.characterName, item.name),
-      isRandom: item.isRandom ?? false,
-      confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
-      notes: item.notes,
-      remarks: item.remarks,
-    };
-  }
-
 
   /**
    * Sleep utility

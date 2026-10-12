@@ -189,7 +189,9 @@ describe('callVisionApiForAllCategories', () => {
     expect(result.visionExtraction.menuItems).toEqual([]);
     expect(result.visionExtraction.goodsItems).toEqual([]);
     expect(result.visionExtraction.noveltyItems).toEqual([]);
-    expect(result.visionExtraction.confidence).toBe(0.5);
+    // 品目が 0 なら確信度は 0 (レベル A にしない)。provider は失敗しても実際の値
+    expect(result.visionExtraction.confidence).toBe(0);
+    expect(result.visionExtraction.provider).toBe(service.getProviderName());
   });
 
   it('skips API calls for categories with empty image arrays', async () => {
@@ -230,7 +232,20 @@ describe('callVisionApiForAllCategories', () => {
     expect(perCategory.goods.skipped).toBe('no images');
     expect(perCategory.novelty.skipped).toBe('no images');
     expect(result.visionExtraction.menuItems).toEqual([]);
-    expect(result.visionExtraction.confidence).toBe(0.5);
+    expect(result.visionExtraction.confidence).toBe(0);
+  });
+
+  it('calls only the categories passed in options.categories', async () => {
+    const service = new FakeVisionService();
+
+    const { perCategory } = await callVisionApiForAllCategories(service, buildTemplate(), TRIPLE_IMAGES, {
+      categories: ['novelty'],
+    });
+
+    expect(service.calls.map((c) => c.category)).toEqual(['novelty']);
+    expect(perCategory.menu).toEqual({ ok: true, skipped: 'not needed' });
+    expect(perCategory.goods).toEqual({ ok: true, skipped: 'not needed' });
+    expect(perCategory.novelty).toEqual({ ok: true });
   });
 
   it('forwards maxRetries and timeout options to the underlying service', async () => {

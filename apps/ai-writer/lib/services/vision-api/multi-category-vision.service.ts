@@ -4,8 +4,8 @@
  * Calls one `IVisionApiService` per category (menu / goods / novelty) in
  * parallel via `Promise.allSettled` and merges the successes via
  * `mergeVisionResults`. Per-category errors do NOT short-circuit other
- * categories. Categories with no images are skipped (no API call) and
- * reported in `perCategory[cat].skipped`.
+ * categories. Categories with no images, or outside `options.categories`,
+ * are skipped (no API call) and reported in `perCategory[cat].skipped`.
  */
 import type {
   IVisionApiService,
@@ -46,6 +46,8 @@ export interface MultiCategoryVisionOptions {
   maxRetries?: number;
   /** Forwarded to `IVisionApiService.extractFromImages.timeout` (ms). */
   timeout?: number;
+  /** 読むカテゴリ (既定は 3 つとも)。HTML から書けなかった項目のカテゴリだけを渡す */
+  categories?: readonly VisionExtractionCategory[];
 }
 
 /**
@@ -66,7 +68,9 @@ export async function callVisionApiForAllCategories(
 ): Promise<MultiCategoryVisionResult> {
   const settled = await Promise.allSettled(
     VISION_CATEGORIES.map((category) =>
-      callOneCategory(service, template, category, images[category], options),
+      options.categories && !options.categories.includes(category)
+        ? Promise.resolve<CategoryCallResult>({ skipped: 'not needed' })
+        : callOneCategory(service, template, category, images[category], options),
     ),
   );
 
@@ -96,8 +100,13 @@ export async function callVisionApiForAllCategories(
     }
   });
 
-  const result = mergeVisionResults(successful);
+  const result = mergeVisionResults(successful, service.getProviderName());
   return { result, perCategory };
+}
+
+interface CategoryCallResult {
+  result?: VisionExtractionResult;
+  skipped?: string;
 }
 
 async function callOneCategory(
@@ -106,7 +115,7 @@ async function callOneCategory(
   category: VisionExtractionCategory,
   imageUrls: string[],
   options: MultiCategoryVisionOptions,
-): Promise<{ result?: VisionExtractionResult; skipped?: string }> {
+): Promise<CategoryCallResult> {
   if (imageUrls.length === 0) {
     return { skipped: 'no images' };
   }

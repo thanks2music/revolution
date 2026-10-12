@@ -1,7 +1,7 @@
 /**
  * Layer 1 unit tests for `mergeVisionResults`.
  *
- * Verifies category-attached merge, weighted confidence, metadata aggregation,
+ * Verifies category-attached merge, item-level confidence, metadata aggregation,
  * and cross-category leakage warnings.
  */
 
@@ -66,7 +66,7 @@ describe('mergeVisionResults', () => {
       menu: makeResult({ menuItems: [menuItem({ name: 'M1' })] }),
       goods: makeResult({ goodsItems: [goodsItem({ name: 'G1' })] }),
       novelty: makeResult({ noveltyItems: [noveltyItem({ name: 'N1' })] }),
-    });
+    }, 'openai');
 
     expect(merged.visionExtraction.menuItems).toHaveLength(1);
     expect(merged.visionExtraction.menuItems[0].name).toBe('M1');
@@ -79,39 +79,38 @@ describe('mergeVisionResults', () => {
   it('preserves only the menu category when goods/novelty are undefined', () => {
     const merged = mergeVisionResults({
       menu: makeResult({ menuItems: [menuItem()] }),
-    });
+    }, 'openai');
 
     expect(merged.visionExtraction.menuItems).toHaveLength(1);
     expect(merged.visionExtraction.goodsItems).toEqual([]);
     expect(merged.visionExtraction.noveltyItems).toEqual([]);
   });
 
-  it('returns an empty result with FALLBACK_CONFIDENCE when input is empty', () => {
-    const merged = mergeVisionResults({});
+  it('returns an empty result with confidence 0 when input is empty (never level A)', () => {
+    const merged = mergeVisionResults({}, 'openai');
 
     expect(merged.visionExtraction.menuItems).toEqual([]);
     expect(merged.visionExtraction.goodsItems).toEqual([]);
     expect(merged.visionExtraction.noveltyItems).toEqual([]);
-    expect(merged.visionExtraction.confidence).toBe(0.5);
+    expect(merged.visionExtraction.confidence).toBe(0);
     expect(merged.visionExtraction.metadata?.totalImagesAnalyzed).toBe(0);
     expect(merged.visionExtraction.metadata?.tokensUsed).toBeUndefined();
   });
 
-  it('weighs confidence by per-call item count', () => {
-    // menu: confidence 1.0 over 3 items, goods: confidence 0.5 over 1 item
-    // weighted = (1.0 * 3 + 0.5 * 1) / 4 = 0.875
+  it('averages the confidence of the adopted items, skipping items without one', () => {
+    // 1 回の呼び出しの確信度と同じ規則 (averageItemConfidence): (1.0 + 1.0 + 0.4) / 3 = 0.8
     const merged = mergeVisionResults({
       menu: makeResult({
-        confidence: 1.0,
-        menuItems: [menuItem(), menuItem(), menuItem()],
+        confidence: 0.99,
+        menuItems: [menuItem({ confidence: 1.0 }), menuItem({ confidence: 1.0 }), menuItem()],
       }),
       goods: makeResult({
-        confidence: 0.5,
-        goodsItems: [goodsItem()],
+        confidence: 0.1,
+        goodsItems: [goodsItem({ confidence: 0.4 })],
       }),
-    });
+    }, 'openai');
 
-    expect(merged.visionExtraction.confidence).toBeCloseTo(0.875, 3);
+    expect(merged.visionExtraction.confidence).toBeCloseTo(0.8, 3);
   });
 
   it('OR-combines metadata.hasComingSoonNotice across calls', () => {
@@ -123,7 +122,7 @@ describe('mergeVisionResults', () => {
       goods: makeResult({
         metadata: { hasComingSoonNotice: true, totalImagesAnalyzed: 1 },
       }),
-    });
+    }, 'openai');
 
     expect(merged.visionExtraction.metadata?.hasComingSoonNotice).toBe(true);
   });
@@ -151,7 +150,7 @@ describe('mergeVisionResults', () => {
           tokensUsed: { promptTokens: 60, completionTokens: 30, totalTokens: 90 },
         },
       }),
-    });
+    }, 'openai');
 
     expect(merged.visionExtraction.metadata?.tokensUsed).toEqual({
       promptTokens: 360,
@@ -171,12 +170,12 @@ describe('mergeVisionResults', () => {
       novelty: makeResult({
         metadata: { hasComingSoonNotice: false, totalImagesAnalyzed: 1 },
       }),
-    });
+    }, 'openai');
 
     expect(merged.visionExtraction.metadata?.totalImagesAnalyzed).toBe(6);
   });
 
-  it('takes provider and timestamp from the first non-undefined call (menu > goods > novelty)', () => {
+  it('uses the provider passed by the caller and the timestamp of the first call (menu > goods > novelty)', () => {
     const merged = mergeVisionResults({
       goods: makeResult({
         provider: 'anthropic',
@@ -186,11 +185,15 @@ describe('mergeVisionResults', () => {
         provider: 'openai',
         timestamp: '2026-05-06T02:00:00.000Z',
       }),
-    });
+    }, 'google');
 
+    expect(merged.visionExtraction.provider).toBe('google');
     // goods is the first non-undefined entry in menu→goods→novelty order
-    expect(merged.visionExtraction.provider).toBe('anthropic');
     expect(merged.visionExtraction.timestamp).toBe('2026-05-06T01:00:00.000Z');
+  });
+
+  it('keeps the actual provider even when every category failed (was hardcoded to openai)', () => {
+    expect(mergeVisionResults({}, 'google').visionExtraction.provider).toBe('google');
   });
 
   it('warns and discards cross-category leakage (menu call returning goods/novelty items)', () => {
@@ -202,7 +205,7 @@ describe('mergeVisionResults', () => {
           goodsItems: [goodsItem({ name: 'leaked-from-menu' })],
           noveltyItems: [noveltyItem({ name: 'leaked-from-menu' })],
         }),
-      });
+      }, 'openai');
 
       // Leakage discarded — only menuItems[] survives.
       expect(merged.visionExtraction.menuItems).toHaveLength(1);
@@ -223,7 +226,7 @@ describe('mergeVisionResults', () => {
         metadata: { hasComingSoonNotice: false, totalImagesAnalyzed: 1 },
         // tokensUsed intentionally undefined
       }),
-    });
+    }, 'openai');
 
     expect(merged.visionExtraction.metadata?.tokensUsed).toBeUndefined();
   });
