@@ -33,6 +33,7 @@ import {
   validateBusinessRules,
 } from '@/lib/utils/vision-api-utils';
 import { determineVisionTargets } from '@/lib/services/vision-api/vision-targets';
+import { prepareVisionImages } from '@/lib/services/vision-api/prepare-vision-images';
 
 /**
  * Providers under test
@@ -129,7 +130,7 @@ describe.each(PROVIDERS_TO_TEST)(
 
         // Step 4: Call Vision API
         const visionResult = await visionApiService.extractFromImages({
-          imageUrls: fixtureUrls,
+          images: await prepareVisionImages(fixtureUrls),
           prompt,
           category,
           maxRetries: 3,
@@ -183,10 +184,11 @@ describe.each(PROVIDERS_TO_TEST)(
 
     it(`should handle Vision API timeout gracefully (${provider})`, async () => {
       const template = await yamlTemplateLoaderService.loadVisionApiTemplate('collabo-cafe');
+      const images = await prepareVisionImages([TOREVE_2512_MENU]);
 
       await expect(
         visionApiService.extractFromImages({
-          imageUrls: [TOREVE_2512_MENU],
+          images,
           prompt: template.prompts.menu_extraction.content,
           category: 'menu',
           maxRetries: 1,
@@ -199,31 +201,13 @@ describe.each(PROVIDERS_TO_TEST)(
       );
     });
 
-    // Anthropic/OpenAI Vision APIs return 200 OK + empty arrays for unreachable URLs
-    // (no exception). Gated behind LIVE_API=1 — each run hits real APIs (~$0.026).
-    // Retry/rethrow contract is covered without charge by Layer 2 unit tests.
-    (process.env.LIVE_API ? it : it.skip)(
-      `should return empty result when image URL is unreachable (${provider})`,
-      async () => {
-        const template = await yamlTemplateLoaderService.loadVisionApiTemplate('collabo-cafe');
-
-        const result = await visionApiService.extractFromImages({
-          imageUrls: ['https://invalid-url-that-does-not-exist.com/image.jpg'],
-          prompt: template.prompts.menu_extraction.content,
-          category: 'menu',
-          maxRetries: 1,
-          timeout: 10000,
-        });
-
-        expect(result.visionExtraction.menuItems).toEqual([]);
-        expect(result.visionExtraction.goodsItems).toEqual([]);
-        expect(result.visionExtraction.noveltyItems).toEqual([]);
-        expect(result.visionExtraction.confidence).toBeGreaterThanOrEqual(0);
-        expect(result.visionExtraction.confidence).toBeLessThanOrEqual(1);
-        expect(result.visionExtraction.provider).toBe(provider);
-      },
-      30000,
-    );
+    // 取得できない画像は prepareVisionImages が除く (Vision の API は呼ばない)。orchestrator は
+    // そのカテゴリを 'images could not be fetched' として飛ばす (multi-category のテストで固定)
+    it(`should drop an unreachable image before calling the API (${provider})`, async () => {
+      expect(
+        await prepareVisionImages(['https://invalid-url-that-does-not-exist.com/image.jpg']),
+      ).toEqual([]);
+    }, 30000);
 
     // Anthropic は API キーを使わない (資格情報は最初のリクエストで解決する) ので、OpenAI だけ
     (provider === 'openai' ? it : it.skip)(`should throw error if API key is missing (${provider})`, () => {

@@ -12,6 +12,8 @@
  * - 品目の confidence は 0〜1 の数値 (数値の文字列 `"0.92"` を含む) だけを受け付ける (それ以外は値なし)
  * - 全体の confidence は、confidence のある品目の平均。品目が 0、または confidence の
  *   ある品目が 0 なら 0 (レベル A にしない)。応答の最上位の confidence は使わない
+ * - 同じ品目 (品名・キャラクター・価格が同じ) は 1 つにする。縦に長い画像は重ねて分割して渡すため
+ *   (`prepare-vision-images.ts`)、境目の品目が 2 回返る
  */
 import type { TokenUsage } from '@revolution/schemas/ai-provider-response';
 import {
@@ -30,6 +32,7 @@ import {
   toOptionalString,
   type RawRecord,
 } from '@/lib/utils/llm-values';
+import { normalizeMenuName } from './merge-vision-into-extraction';
 
 export interface NormalizeVisionContext {
   provider: VisionProvider;
@@ -81,14 +84,28 @@ function toCharacterNames(value: unknown, itemName: string, provider: VisionProv
   return [];
 }
 
-function toItems<T>(value: unknown, convert: (raw: RawRecord, name: string) => T): T[] {
+/** 同じ品目かを見分けるキー。表記の揺れ (全角・半角、空白、記号) は無視する */
+function itemKey(item: { name: string; characterName: string[]; price?: number }): string {
+  const characters = item.characterName.map(normalizeMenuName).sort().join(',');
+  return `${normalizeMenuName(item.name)}|${characters}|${item.price ?? ''}`;
+}
+
+function toItems<T extends { name: string; characterName: string[]; price?: number }>(
+  value: unknown,
+  convert: (raw: RawRecord, name: string) => T
+): T[] {
   if (!Array.isArray(value)) return [];
   const items: T[] = [];
+  const seen = new Set<string>();
   for (const raw of value) {
     if (!isRecord(raw)) continue;
     const name = toOptionalString(raw.name);
     if (!name) continue;
-    items.push(convert(raw, name));
+    const item = convert(raw, name);
+    const key = itemKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(item);
   }
   return items;
 }

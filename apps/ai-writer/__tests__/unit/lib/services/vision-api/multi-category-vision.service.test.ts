@@ -9,6 +9,7 @@
 import {
   callVisionApiForAllCategories,
   type MultiCategoryImageMap,
+  type MultiCategoryVisionOptions,
 } from '@/lib/services/vision-api/multi-category-vision.service';
 import type {
   IVisionApiService,
@@ -18,6 +19,10 @@ import type {
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
+
+/** 画像の取得・分割を差し替える (ネットワークに出ない)。URL 1 つを 1 片にする */
+const prepareImages: NonNullable<MultiCategoryVisionOptions['prepareImages']> = async (urls) =>
+  urls.map((source) => ({ source, data: 'aW1n', mimeType: 'image/jpeg' }));
 
 function buildTemplate(): VisionApiTemplate {
   return {
@@ -62,7 +67,7 @@ function buildResult(
 }
 
 interface FakeServiceCall {
-  imageUrls: string[];
+  imageSources: string[];
   category: VisionApiCallOptions['category'];
   prompt: string;
   maxRetries?: number;
@@ -88,7 +93,7 @@ class FakeVisionService implements IVisionApiService {
     options: VisionApiCallOptions,
   ): Promise<VisionExtractionResult> {
     this.calls.push({
-      imageUrls: options.imageUrls,
+      imageSources: options.images.map((image) => image.source),
       category: options.category,
       prompt: options.prompt,
       maxRetries: options.maxRetries,
@@ -132,8 +137,7 @@ describe('callVisionApiForAllCategories', () => {
     const { result, perCategory } = await callVisionApiForAllCategories(
       service,
       buildTemplate(),
-      TRIPLE_IMAGES,
-    );
+      TRIPLE_IMAGES, { prepareImages });
 
     expect(service.calls).toHaveLength(3);
     expect(perCategory.menu.ok).toBe(true);
@@ -154,8 +158,7 @@ describe('callVisionApiForAllCategories', () => {
     const { result, perCategory } = await callVisionApiForAllCategories(
       service,
       buildTemplate(),
-      TRIPLE_IMAGES,
-    );
+      TRIPLE_IMAGES, { prepareImages });
 
     expect(perCategory.menu.ok).toBe(false);
     expect(perCategory.menu.error).toBe('menu API timeout');
@@ -180,8 +183,7 @@ describe('callVisionApiForAllCategories', () => {
     const { result, perCategory } = await callVisionApiForAllCategories(
       service,
       buildTemplate(),
-      TRIPLE_IMAGES,
-    );
+      TRIPLE_IMAGES, { prepareImages });
 
     expect(perCategory.menu.error).toBe('menu fail');
     expect(perCategory.goods.error).toBe('goods fail');
@@ -205,8 +207,7 @@ describe('callVisionApiForAllCategories', () => {
     const { result, perCategory } = await callVisionApiForAllCategories(
       service,
       buildTemplate(),
-      onlyMenu,
-    );
+      onlyMenu, { prepareImages });
 
     expect(service.calls).toHaveLength(1);
     expect(service.calls[0].category).toBe('menu');
@@ -224,8 +225,7 @@ describe('callVisionApiForAllCategories', () => {
     const { result, perCategory } = await callVisionApiForAllCategories(
       service,
       buildTemplate(),
-      { menu: [], goods: [], novelty: [] },
-    );
+      { menu: [], goods: [], novelty: [] }, { prepareImages });
 
     expect(service.calls).toHaveLength(0);
     expect(perCategory.menu.skipped).toBe('no images');
@@ -242,7 +242,7 @@ describe('callVisionApiForAllCategories', () => {
       responses: { novelty: { kind: 'success', result: comingSoon } },
     });
 
-    const { result, perCategory } = await callVisionApiForAllCategories(service, buildTemplate(), TRIPLE_IMAGES);
+    const { result, perCategory } = await callVisionApiForAllCategories(service, buildTemplate(), TRIPLE_IMAGES, { prepareImages });
 
     expect(perCategory.novelty.discarded).toContain('Coming Soon');
     expect(perCategory.menu).toEqual({ ok: true });
@@ -255,6 +255,7 @@ describe('callVisionApiForAllCategories', () => {
     const service = new FakeVisionService();
 
     const { perCategory } = await callVisionApiForAllCategories(service, buildTemplate(), TRIPLE_IMAGES, {
+      prepareImages,
       categories: ['novelty'],
     });
 
@@ -264,10 +265,31 @@ describe('callVisionApiForAllCategories', () => {
     expect(perCategory.novelty).toEqual({ ok: true });
   });
 
+  it('passes the prepared images (slices) to the service, and skips a category whose images could not be fetched', async () => {
+    const service = new FakeVisionService();
+    const sliceOrNothing: MultiCategoryVisionOptions['prepareImages'] = async (urls) =>
+      urls[0].includes('menu')
+        ? [1, 2].map((n) => ({ source: `${urls[0]}#slice=${n}/2`, data: 'aW1n', mimeType: 'image/jpeg' }))
+        : [];
+
+    const { perCategory } = await callVisionApiForAllCategories(service, buildTemplate(), TRIPLE_IMAGES, {
+      prepareImages: sliceOrNothing,
+    });
+
+    expect(service.calls).toHaveLength(1);
+    expect(service.calls[0].imageSources).toEqual([
+      'https://example.com/menu.webp#slice=1/2',
+      'https://example.com/menu.webp#slice=2/2',
+    ]);
+    expect(perCategory.goods).toEqual({ ok: true, skipped: 'images could not be fetched' });
+    expect(perCategory.novelty).toEqual({ ok: true, skipped: 'images could not be fetched' });
+  });
+
   it('forwards maxRetries and timeout options to the underlying service', async () => {
     const service = new FakeVisionService();
 
     await callVisionApiForAllCategories(service, buildTemplate(), TRIPLE_IMAGES, {
+      prepareImages,
       maxRetries: 5,
       timeout: 12345,
     });

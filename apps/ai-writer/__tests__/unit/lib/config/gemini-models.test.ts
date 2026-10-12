@@ -5,8 +5,8 @@
  * 両方から呼ばれる純粋関数なので、両者が同じ挙動になることをここで固定する。
  *
  * ⚠️ 既定値のテストは飾りではない。**Gemini 側の既定は thinking=medium /
- * media resolution=high 相当**で、どちらもコストに直結する。既定を LOW に倒している
- * ことが崩れると、気づかないままコストが数倍になる。
+ * media resolution=high 相当**で、どちらもコストに直結する。thinking は LOW に倒している。
+ * media resolution は品名を読むため HIGH にしている (2026-10-12)。
  */
 
 import { MediaResolution, ThinkingLevel } from '@google/genai';
@@ -74,14 +74,13 @@ describe('normalizeThinkingLevel', () => {
 
 describe('normalizeMediaResolution', () => {
   /**
-   * 🔴 既定を LOW にしているのは実測に基づく。`gemini-3.6-flash` で画像 1 枚あたり
-   * 未指定 = 1,083 / low = 252 / medium = 520 / high = 1,083 入力トークン
-   * (2026-08-16 実測。画像のバイト数では変わらない)。
+   * 🔴 既定は HIGH (公式の画像の推奨)。2026-10-12 に LOW から上げた。LOW では縦に長いメニュー表の
+   * 品名を読み違えた (`gemini-3.6-flash` の画像 1 枚あたり low = 252 / high = 1,083 入力トークン)。
    */
-  it('未設定なら既定の LOW', () => {
-    expect(normalizeMediaResolution(undefined)).toBe(MediaResolution.MEDIA_RESOLUTION_LOW);
-    expect(normalizeMediaResolution('')).toBe(MediaResolution.MEDIA_RESOLUTION_LOW);
-    expect(DEFAULT_GEMINI_MEDIA_RESOLUTION).toBe(MediaResolution.MEDIA_RESOLUTION_LOW);
+  it('未設定なら既定の HIGH', () => {
+    expect(normalizeMediaResolution(undefined)).toBe(MediaResolution.MEDIA_RESOLUTION_HIGH);
+    expect(normalizeMediaResolution('')).toBe(MediaResolution.MEDIA_RESOLUTION_HIGH);
+    expect(DEFAULT_GEMINI_MEDIA_RESOLUTION).toBe(MediaResolution.MEDIA_RESOLUTION_HIGH);
   });
 
   it.each([
@@ -100,7 +99,7 @@ describe('normalizeMediaResolution', () => {
 
   it('不正値は throw せず既定へフォールバックする', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    expect(normalizeMediaResolution('ultra')).toBe(MediaResolution.MEDIA_RESOLUTION_LOW);
+    expect(normalizeMediaResolution('ultra')).toBe(MediaResolution.MEDIA_RESOLUTION_HIGH);
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });

@@ -15,10 +15,12 @@ import type {
   VisionApiTemplate,
   VisionExtractionCategory,
   VisionExtractionResult,
+  VisionImage,
 } from '@/lib/types/vision-api';
 import { resolveVisionPrompt, VISION_CATEGORIES } from './category-prompt-resolver';
 import { mergeVisionResults, type CategoryResults } from './merge-vision-results';
 import { detectHallucination } from '@/lib/utils/vision-api-utils';
+import { prepareVisionImages } from './prepare-vision-images';
 
 /**
  * Per-category image map. Designed as a structural subset of both
@@ -54,6 +56,8 @@ export interface MultiCategoryVisionOptions {
   timeout?: number;
   /** 読むカテゴリ (既定は 3 つとも)。HTML から書けなかった項目のカテゴリだけを渡す */
   categories?: readonly VisionExtractionCategory[];
+  /** 画像の取得・分割 (既定は `prepareVisionImages`。テストで差し替える) */
+  prepareImages?: (imageUrls: string[]) => Promise<VisionImage[]>;
 }
 
 /**
@@ -130,9 +134,13 @@ async function callOneCategory(
   if (imageUrls.length === 0) {
     return { skipped: 'no images' };
   }
+  const images = await (options.prepareImages ?? prepareVisionImages)(imageUrls);
+  if (images.length === 0) {
+    return { skipped: 'images could not be fetched' };
+  }
   const prompt = resolveVisionPrompt(template, category);
   const result = await service.extractFromImages({
-    imageUrls,
+    images,
     prompt,
     category,
     maxRetries: options.maxRetries,

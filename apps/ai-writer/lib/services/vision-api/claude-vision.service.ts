@@ -9,7 +9,7 @@
  *
  * Advantages over OpenAI:
  * - No explicit Japanese language limitations
- * - Native URL image input (no base64 needed)
+ * - 画像は `prepareVisionImages` が取得・分割した base64 で受け取る (3 社共通)
  * - Max 100 images per request
  *
  * @package revolution
@@ -23,6 +23,7 @@ import type {
   IVisionApiService,
   VisionApiCallOptions,
   VisionExtractionResult,
+  VisionImage,
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
@@ -31,7 +32,6 @@ import { createAnthropicClient } from '@/lib/ai/anthropic-client';
 import { ClaudeIncompleteResponseError, readClaudeText } from '@/lib/ai/claude-response';
 import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
 import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '@/lib/config/claude-models';
-import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 
 export class ClaudeVisionService implements IVisionApiService {
@@ -118,19 +118,15 @@ export class ClaudeVisionService implements IVisionApiService {
     options: VisionApiCallOptions
   ): Promise<VisionExtractionResult> {
     const {
-      imageUrls,
+      images,
       prompt,
       category,
       maxRetries = 3,
       timeout = 30000,
     } = options;
 
-    // Defense-in-depth: reject non-http(s) URLs (file://, data:, etc.) before
-    // they reach the Anthropic API to avoid opaque errors and unintended fetches.
-    assertHttpImageUrls(imageUrls);
-
     console.log(
-      `[ClaudeVisionService] Extracting ${category} from ${imageUrls.length} images`
+      `[ClaudeVisionService] Extracting ${category} from ${images.length} images`
     );
 
     let lastError: Error | null = null;
@@ -139,7 +135,7 @@ export class ClaudeVisionService implements IVisionApiService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const result = await this.callClaudeVisionApiWithTimeout(
-          imageUrls,
+          images,
           prompt,
           category,
           timeout
@@ -189,7 +185,7 @@ export class ClaudeVisionService implements IVisionApiService {
    * Call Claude Vision API with timeout
    */
   private async callClaudeVisionApiWithTimeout(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string,
     timeoutMs: number
@@ -204,7 +200,7 @@ export class ClaudeVisionService implements IVisionApiService {
       }, timeoutMs);
     });
 
-    const apiPromise = this.callClaudeVisionApi(imageUrls, prompt, category, controller.signal);
+    const apiPromise = this.callClaudeVisionApi(images, prompt, category, controller.signal);
 
     try {
       return await Promise.race([apiPromise, timeoutPromise]);
@@ -217,7 +213,7 @@ export class ClaudeVisionService implements IVisionApiService {
    * Call Claude Vision API
    */
   private async callClaudeVisionApi(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string,
     signal: AbortSignal
@@ -236,18 +232,20 @@ export class ClaudeVisionService implements IVisionApiService {
     ];
 
     // Add all images after the cached prompt block
-    for (const imageUrl of imageUrls) {
+    for (const image of images) {
       content.push({
         type: 'image',
         source: {
-          type: 'url',
-          url: imageUrl,
+          type: 'base64',
+          // prepareVisionImages は JPEG に揃えて返す
+          media_type: image.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+          data: image.data,
         },
       });
     }
 
     console.log(
-      `[ClaudeVisionService] Calling Claude Vision API with ${imageUrls.length} images`
+      `[ClaudeVisionService] Calling Claude Vision API with ${images.length} images`
     );
 
     const isDebug = process.env.DEBUG_VISION_API === 'true';
@@ -343,12 +341,12 @@ export class ClaudeVisionService implements IVisionApiService {
     // Convert raw response to typed VisionExtractionResult
     const result = normalizeVisionResponse(rawJson, {
       provider: 'anthropic',
-      totalImagesAnalyzed: imageUrls.length,
+      totalImagesAnalyzed: images.length,
       tokensUsed,
     });
 
     // Save debug log with cost information
-    await this.saveLogToFile(imageUrls, prompt, category, response, rawJson, result, cost);
+    await this.saveLogToFile(images.map((image) => image.source), prompt, category, response, rawJson, result, cost);
 
     console.log(
       `[ClaudeVisionService] Extracted ${category}: confidence=${result.visionExtraction.confidence}`

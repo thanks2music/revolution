@@ -90,18 +90,18 @@ export const DEFAULT_GEMINI_THINKING_LEVEL = ThinkingLevel.LOW;
 /**
  * Vision の画像解像度の既定値
  *
- * `MEDIA_RESOLUTION_LOW` を既定にする理由: **未指定時の Gemini の既定は HIGH 相当**で、
- * 画像 1 枚あたり 1,083 入力トークンかかる (2026-08-16 実測)。LOW なら 252 トークンで、
- * OpenAI Vision 側の既定 (`VISION_API_DETAIL=low`) ともコスト感が揃う。
+ * `MEDIA_RESOLUTION_HIGH` (公式の画像の推奨)。2026-10-12 に LOW から上げた。LOW では、縦に長い
+ * メニュー表 (1920×28,300) の品名を 26 品中 1〜4 品読み違えた。縦に長い画像は
+ * `prepareVisionImages` が分割するので、1 片あたり 1,083 トークンで小さな文字まで読める
+ * (https://ai.google.dev/gemini-api/docs/media-resolution)。
  *
  * 実測 (`gemini-3.6-flash`、画像 1 枚あたりの入力トークン):
  * - 未指定 = 1,083 / LOW = 252 / MEDIUM = 520 / HIGH = 1,083
  * - **画像のバイト数を変えてもトークンは動かず、本設定だけで決まる**
  *
- * ⚠️ メニュー画像の文字読み取り精度が不足する場合は
- * `VISION_API_MEDIA_RESOLUTION=MEDIUM` 等で引き上げる (コストは比例して増える)。
+ * 費用を下げたいときは `VISION_API_MEDIA_RESOLUTION` で下げられるが、品名の誤読が増える。
  */
-export const DEFAULT_GEMINI_MEDIA_RESOLUTION = MediaResolution.MEDIA_RESOLUTION_LOW;
+export const DEFAULT_GEMINI_MEDIA_RESOLUTION = MediaResolution.MEDIA_RESOLUTION_HIGH;
 
 const THINKING_LEVEL_BY_INPUT: Record<string, ThinkingLevel> = {
   minimal: ThinkingLevel.MINIMAL,

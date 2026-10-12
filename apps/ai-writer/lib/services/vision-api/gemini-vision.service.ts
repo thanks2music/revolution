@@ -16,8 +16,8 @@
  * `fileData.fileUri` に公開 HTTPS URL を渡すと **429 RESOURCE_EXHAUSTED が恒常的に
  * 返る** (2026-08-16 に 2 回実測、直後の inlineData 呼び出しは成功するのでアカウントの
  * quota ではない)。公式のリモート画像の例も「fetch して base64 にしてから `inlineData`」
- * であり、URL を渡す例は存在しない。よって本サービスは**画像を自前でダウンロードして
- * base64 で送る**。OpenAI (`image_url`) / Claude (`source.type: 'url'`) と異なる唯一の点。
+ * であり、URL を渡す例は存在しない。2026-10-12 からは 3 社とも、`prepareVisionImages` が
+ * 取得・分割した画像を base64 で受け取る。
  *
  * @package revolution
  * @module services/vision-api/gemini-vision
@@ -33,12 +33,12 @@ import type {
   IVisionApiService,
   VisionExtractionResult,
   VisionApiCallOptions,
+  VisionImage,
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
 import { normalizeVisionResponse } from './normalize-vision-response';
 import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
-import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 import {
   DEFAULT_GEMINI_MEDIA_RESOLUTION,
   DEFAULT_GEMINI_MODEL,
@@ -50,7 +50,6 @@ import {
   GeminiTruncatedResponseError,
   readGeminiText,
 } from '@/lib/ai/gemini-response';
-import { fetchImageSafely } from '@/lib/utils/safe-image-fetch';
 
 
 /**
@@ -79,9 +78,6 @@ const ESTIMATED_PROMPT_TOKENS = 2000;
 /** Vision の出力上限 (他 2 provider と揃える) */
 const MAX_OUTPUT_TOKENS = 4096;
 
-/** 画像ダウンロードのタイムアウト (ms、1 枚あたり) */
-const IMAGE_FETCH_TIMEOUT_MS = 15000;
-
 /**
  * Gemini Vision API Configuration
  */
@@ -97,13 +93,6 @@ interface GeminiVisionConfig {
 
   /** Thinking level (default: {@link DEFAULT_GEMINI_THINKING_LEVEL}) */
   thinkingLevel?: ThinkingLevel;
-}
-
-/** ダウンロード済み画像 */
-interface FetchedImage {
-  url: string;
-  data: string;
-  mimeType: string;
 }
 
 /**
@@ -211,13 +200,10 @@ export class GeminiVisionService implements IVisionApiService {
    * @returns Vision extraction result with menu/goods/novelty items
    */
   async extractFromImages(options: VisionApiCallOptions): Promise<VisionExtractionResult> {
-    const { imageUrls, prompt, category, maxRetries = 3, timeout = 30000 } = options;
-
-    // Defense-in-depth: reject non-http(s) URLs (file://, data:, etc.) before we fetch them.
-    assertHttpImageUrls(imageUrls);
+    const { images, prompt, category, maxRetries = 3, timeout = 30000 } = options;
 
     console.log(
-      `[GeminiVisionService] Extracting ${category} from ${imageUrls.length} images ` +
+      `[GeminiVisionService] Extracting ${category} from ${images.length} images ` +
         `(mediaResolution: ${this.mediaResolution})`
     );
 
@@ -230,7 +216,7 @@ export class GeminiVisionService implements IVisionApiService {
         );
 
         const { raw: rawResponse, usage } = await this.callVisionApiWithTimeout(
-          imageUrls,
+          images,
           prompt,
           category,
           timeout
@@ -238,7 +224,7 @@ export class GeminiVisionService implements IVisionApiService {
 
         const result = normalizeVisionResponse(rawResponse, {
           provider: 'google',
-          totalImagesAnalyzed: imageUrls.length,
+          totalImagesAnalyzed: images.length,
           tokensUsed: usage,
         });
 
@@ -294,7 +280,7 @@ export class GeminiVisionService implements IVisionApiService {
    * Call Vision API with timeout
    */
   private async callVisionApiWithTimeout(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string,
     timeout: number
@@ -311,7 +297,7 @@ export class GeminiVisionService implements IVisionApiService {
     });
     try {
       return await Promise.race([
-        this.callVisionApi(imageUrls, prompt, category),
+        this.callVisionApi(images, prompt, category),
         timeoutPromise,
       ]);
     } finally {
@@ -323,7 +309,7 @@ export class GeminiVisionService implements IVisionApiService {
    * Call Gemini Vision API
    */
   private async callVisionApi(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string
   ): Promise<{
@@ -331,8 +317,6 @@ export class GeminiVisionService implements IVisionApiService {
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
   }> {
     const startTime = Date.now();
-
-    const images = await this.fetchImages(imageUrls);
 
     // Use the caller-provided prompt as-is (per IVisionApiService contract).
     // The prompt itself lives in the Templates YAML — never hardcode it here.
@@ -342,7 +326,7 @@ export class GeminiVisionService implements IVisionApiService {
     }
 
     console.log(
-      `[GeminiVisionService] Calling Gemini Vision API with ${images.length}/${imageUrls.length} images ` +
+      `[GeminiVisionService] Calling Gemini Vision API with ${images.length} images ` +
         `(mediaResolution: ${this.mediaResolution})`
     );
 
@@ -366,12 +350,11 @@ export class GeminiVisionService implements IVisionApiService {
     const cost = calculateCost(this.modelName, usage);
     console.log(`[GeminiVisionService] 💰 Cost: ${formatCost(cost)}`);
 
-    const domain = this.extractDomain(imageUrls[0]);
+    const domain = this.extractDomain(images[0]?.source ?? '');
     await this.saveLogToFile(
       domain,
       category,
-      imageUrls,
-      images.length,
+      images.map((image) => image.source),
       prompt,
       rawContent,
       response,
@@ -392,75 +375,6 @@ export class GeminiVisionService implements IVisionApiService {
     }
 
     return { raw: parsed, usage };
-  }
-
-  /**
-   * 画像をダウンロードして base64 へ変換する
-   *
-   * 🔴 Gemini は URL 直渡しができないためここで自前取得する (ファイル冒頭の注記参照)。
-   *
-   * 取得に失敗した画像は**警告して除外する**。全滅した場合も例外にはせず 0 枚で続行する
-   * — 「到達不能・無効な画像でも 200 + 空配列を返す」のが Vision の既存契約で
-   * (`shared/schemas/vision-api-extraction.ts`)、ここだけ throw に変えると
-   * 呼び出し側のハルシネーション判定の前提が provider によって変わってしまうため。
-   * ただし**件数は必ず loud に出す**ので、全滅は握り潰されずログに残る。
-   */
-  private async fetchImages(imageUrls: string[]): Promise<FetchedImage[]> {
-    const results = await Promise.all(
-      imageUrls.map(async (url): Promise<FetchedImage | null> => {
-        try {
-          const { buffer, contentType } = await fetchImageSafely(url, {
-            timeoutMs: IMAGE_FETCH_TIMEOUT_MS,
-          });
-          const mimeType = this.resolveMimeType(contentType, url);
-
-          return { url, data: buffer.toString('base64'), mimeType };
-        } catch (error) {
-          console.warn(
-            `[GeminiVisionService] ⚠️ Image fetch failed (${error instanceof Error ? error.message : String(error)}): ${url}`
-          );
-          return null;
-        }
-      })
-    );
-
-    const images = results.filter((image): image is FetchedImage => image !== null);
-
-    if (images.length < imageUrls.length) {
-      console.warn(
-        `[GeminiVisionService] ⚠️ Fetched ${images.length}/${imageUrls.length} images. ` +
-          `Missing images are excluded from the request.`
-      );
-    }
-
-    return images;
-  }
-
-  /**
-   * `Content-Type` ヘッダ (無ければ拡張子) から MIME タイプを決める
-   *
-   * Gemini は `inlineData.mimeType` を必須で要求するため、推測できない場合は
-   * `image/jpeg` へ倒す (Vision で扱う画像の大半が JPEG のため)。
-   */
-  private resolveMimeType(contentType: string | null, url: string): string {
-    const fromHeader = contentType?.split(';')[0]?.trim().toLowerCase();
-    if (fromHeader?.startsWith('image/')) {
-      return fromHeader;
-    }
-
-    const extension = new URL(url).pathname.split('.').pop()?.toLowerCase();
-    switch (extension) {
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      case 'gif':
-        return 'image/gif';
-      case 'heic':
-        return 'image/heic';
-      default:
-        return 'image/jpeg';
-    }
   }
 
   /**
@@ -523,8 +437,7 @@ export class GeminiVisionService implements IVisionApiService {
   private async saveLogToFile(
     domain: string,
     category: string,
-    imageUrls: string[],
-    fetchedImageCount: number,
+    imageSources: string[],
     prompt: string,
     responseText: string,
     response: GenerateContentResponse,
@@ -564,8 +477,8 @@ Timestamp: ${tsSuffix}
 REQUEST
 =================================================================
 
-Image URLs (${imageUrls.length}, fetched ${fetchedImageCount}):
-${imageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}
+Images (${imageSources.length}):
+${imageSources.map((source, i) => `${i + 1}. ${source}`).join('\n')}
 
 Prompt:
 ${prompt}

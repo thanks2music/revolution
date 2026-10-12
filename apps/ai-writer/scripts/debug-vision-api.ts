@@ -40,6 +40,7 @@ config({ path: resolve(__dirname, '../.env.local') });
 // Vision API サービス
 import { VisionApiServiceFactory } from '../lib/services/vision-api/vision-api-service.factory';
 import { callVisionApiForAllCategories } from '../lib/services/vision-api/multi-category-vision.service';
+import { prepareVisionImages } from '../lib/services/vision-api/prepare-vision-images';
 import { YamlTemplateLoaderService } from '../lib/services/yaml-template-loader.service';
 import type {
   VisionProvider,
@@ -371,7 +372,7 @@ async function main() {
       const prompt = visionTemplate.prompts[promptKey].content;
 
       result = await visionService.extractFromImages({
-        imageUrls: args.imageUrls,
+        images: await prepareVisionImages(args.imageUrls),
         prompt,
         category: args.category,
         maxRetries: 3,

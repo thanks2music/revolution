@@ -24,12 +24,12 @@ import type {
   IVisionApiService,
   VisionExtractionResult,
   VisionApiCallOptions,
+  VisionImage,
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
 import { normalizeVisionResponse } from './normalize-vision-response';
 import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
-import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
 
 /**
@@ -51,7 +51,7 @@ interface OpenAiVisionConfig {
  *
  * @description
  * OpenAI-specific implementation of Vision API service.
- * Uses gpt-4o-mini with configurable detail level (default: 'low' for cost).
+ * Uses gpt-4o-mini with configurable detail level (default: 'high' to read item names).
  *
  * Token pricing (per OpenAI official docs as of 2026-04):
  * - Input: $0.15/1M tokens (gpt-4o-mini)
@@ -59,14 +59,14 @@ interface OpenAiVisionConfig {
  * - detail=high: base + N × (512px tile cost) — scaled to fit 2048×2048,
  *                shortest side 768px. Typically 10–20× costlier than low.
  *
- * Default = 'low' (cost-optimized). Use 'high' opt-in via VISION_API_DETAIL=high
- * env or explicit config when Japanese OCR accuracy is required.
+ * Default = 'high' (2026-10-12、品名を読むため。Gemini の HIGH とそろえる)。
+ * 費用を下げたいときは VISION_API_DETAIL=low。
  *
  * @example
  * ```typescript
  * const service = new OpenAiVisionService({ detail: 'high' });
  * const result = await service.extractFromImages({
- *   imageUrls: ['https://example.com/menu.jpg'],
+ *   images: await prepareVisionImages(['https://example.com/menu.jpg']),
  *   prompt: 'Extract menu items',
  *   category: 'menu'
  * });
@@ -93,9 +93,8 @@ export class OpenAiVisionService implements IVisionApiService {
 
     this.client = new OpenAI({ apiKey });
     this.modelName = config?.model || 'gpt-4o-mini';
-    // Default to 'low' (cost-optimized, ~85 tokens/image per OpenAI spec).
-    // 'high' opt-in requires explicit config or VISION_API_DETAIL=high env var via Factory.
-    this.detailLevel = config?.detail || 'low';
+    // 既定は 'high' (品名を読むため)。下げるときは config か VISION_API_DETAIL=low
+    this.detailLevel = config?.detail || 'high';
 
     // Log directory for non-production debug logs only
     // (Cloud Run has ephemeral FS; production relies on console.log → Cloud Logging)
@@ -184,14 +183,10 @@ export class OpenAiVisionService implements IVisionApiService {
    * @returns Vision extraction result with menu/goods/novelty items
    */
   async extractFromImages(options: VisionApiCallOptions): Promise<VisionExtractionResult> {
-    const { imageUrls, prompt, category, maxRetries = 3, timeout = 30000 } = options;
-
-    // Defense-in-depth: reject non-http(s) URLs (file://, data:, etc.) before
-    // they reach the OpenAI API to avoid opaque errors and unintended fetches.
-    assertHttpImageUrls(imageUrls);
+    const { images, prompt, category, maxRetries = 3, timeout = 30000 } = options;
 
     console.log(
-      `[OpenAiVisionService] Extracting ${category} from ${imageUrls.length} images (detail: ${this.detailLevel})`
+      `[OpenAiVisionService] Extracting ${category} from ${images.length} images (detail: ${this.detailLevel})`
     );
 
     let lastError: Error | null = null;
@@ -203,7 +198,7 @@ export class OpenAiVisionService implements IVisionApiService {
         );
 
         const { raw: rawResponse, usage } = await this.callVisionApiWithTimeout(
-          imageUrls,
+          images,
           prompt,
           category,
           timeout
@@ -211,7 +206,7 @@ export class OpenAiVisionService implements IVisionApiService {
 
         const result = normalizeVisionResponse(rawResponse, {
           provider: 'openai',
-          totalImagesAnalyzed: imageUrls.length,
+          totalImagesAnalyzed: images.length,
           tokensUsed: usage,
         });
 
@@ -257,7 +252,7 @@ export class OpenAiVisionService implements IVisionApiService {
    * Call Vision API with timeout
    */
   private async callVisionApiWithTimeout(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string,
     timeout: number
@@ -274,7 +269,7 @@ export class OpenAiVisionService implements IVisionApiService {
     });
     try {
       return await Promise.race([
-        this.callVisionApi(imageUrls, prompt, category),
+        this.callVisionApi(images, prompt, category),
         timeoutPromise,
       ]);
     } finally {
@@ -286,7 +281,7 @@ export class OpenAiVisionService implements IVisionApiService {
    * Call OpenAI Vision API
    */
   private async callVisionApi(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string
   ): Promise<{
@@ -304,18 +299,18 @@ export class OpenAiVisionService implements IVisionApiService {
       },
     ];
 
-    for (const imageUrl of imageUrls) {
+    for (const image of images) {
       content.push({
         type: 'image_url',
         image_url: {
-          url: imageUrl,
+          url: `data:${image.mimeType};base64,${image.data}`,
           detail: this.detailLevel, // Use configurable detail level
         },
       });
     }
 
     console.log(
-      `[OpenAiVisionService] Calling OpenAI Vision API with ${imageUrls.length} images (detail: ${this.detailLevel})`
+      `[OpenAiVisionService] Calling OpenAI Vision API with ${images.length} images (detail: ${this.detailLevel})`
     );
 
     const response = await this.client.chat.completions.create({
@@ -346,11 +341,11 @@ export class OpenAiVisionService implements IVisionApiService {
     console.log(`[OpenAiVisionService] 💰 Cost: ${costStr}`);
 
     // Save log with cost information
-    const domain = this.extractDomain(imageUrls[0]);
+    const domain = this.extractDomain(images[0]?.source ?? '');
     await this.saveLogToFile(
       domain,
       category,
-      imageUrls,
+      images.map((image) => image.source),
       prompt,
       rawContent,
       response.usage,

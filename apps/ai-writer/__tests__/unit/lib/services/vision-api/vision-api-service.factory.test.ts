@@ -176,14 +176,25 @@ describe('VisionApiServiceFactory — model / Gemini 固有設定の解決', () 
     ).toBe('gemini-3.6-flash');
   });
 
+  it('OpenAI の detail は、VISION_API_DETAIL 未設定なら high (品名を読むため、2026-10-12)', () => {
+    const previous = process.env.VISION_API_DETAIL;
+    delete process.env.VISION_API_DETAIL;
+    try {
+      const service = VisionApiServiceFactory.create('openai', { apiKey: DUMMY_API_KEY });
+      expect((service as unknown as { detailLevel: string }).detailLevel).toBe('high');
+    } finally {
+      if (previous !== undefined) process.env.VISION_API_DETAIL = previous;
+    }
+  });
+
   /**
-   * 🔴 Gemini 側の既定 media resolution は high 相当で、画像 1 枚 1,083 入力トークン
-   * かかる (low は 252)。明示しないとコストが 4.2 倍になるため既定を low に倒している。
+   * 🔴 既定は HIGH (画像 1 枚 1,083 入力トークン、low は 252)。LOW では縦に長いメニュー表の
+   * 品名を読み違えたため、2026-10-12 に上げた。
    */
-  it('VISION_API_MEDIA_RESOLUTION 未設定なら LOW を使う', () => {
+  it('VISION_API_MEDIA_RESOLUTION 未設定なら HIGH を使う', () => {
     const service = VisionApiServiceFactory.create('google', { apiKey: DUMMY_API_KEY });
     expect(geminiInternals(service).mediaResolution).toBe(
-      MediaResolution.MEDIA_RESOLUTION_LOW
+      MediaResolution.MEDIA_RESOLUTION_HIGH
     );
   });
 

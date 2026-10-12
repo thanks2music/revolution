@@ -132,6 +132,25 @@ describe('normalizeVisionResponse', () => {
     expect(result.visionExtraction.goodsItems.map((g) => g.name)).toEqual(['缶バッジ']);
   });
 
+  it('分割の重なりで 2 回返った品目は 1 つにする (品名・キャラクター・価格が同じとき)', () => {
+    const result = normalizeVisionResponse(
+      {
+        menuItems: [
+          { name: 'マルゲリータ', price: 2090, characterName: ['オールマイト'] },
+          { name: 'マルゲリータ ', price: 2090, characterName: ['オールマイト'] },
+          // キャラクターが違えば別の品目 (キャラ違いの同名ドリンクなど)
+          { name: 'コラボドリンク', price: 990, characterName: ['緑谷出久'] },
+          { name: 'コラボドリンク', price: 990, characterName: ['爆豪勝己'] },
+        ],
+      },
+      context
+    );
+
+    expect(
+      result.visionExtraction.menuItems.map((m) => `${m.name.trim()}/${m.characterName.join('')}`)
+    ).toEqual(['マルゲリータ/オールマイト', 'コラボドリンク/緑谷出久', 'コラボドリンク/爆豪勝己']);
+  });
+
   it('confidence は数値の文字列 ("0.92") も受け付ける (値なしにすると全体が 0 に落ちるため)', () => {
     const result = normalizeVisionResponse(
       { menuItems: [{ name: 'A', characterName: [], confidence: '0.92' }] },
