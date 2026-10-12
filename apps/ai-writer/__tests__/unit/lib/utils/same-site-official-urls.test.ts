@@ -38,6 +38,16 @@ describe('sameSiteOfficialUrls', () => {
     ).toEqual(['https://heroaca-cafe.ltr-online.com/lp/goods']);
   });
 
+  it('http(s) 以外の URL は、ホスト名が同じでも返さない', () => {
+    expect(
+      sameSiteOfficialUrls(TOP, [
+        'ftp://heroaca-cafe.ltr-online.com/lp/a',
+        'ws://heroaca-cafe.ltr-online.com/lp/b',
+        'http://heroaca-cafe.ltr-online.com/lp/c',
+      ])
+    ).toEqual(['http://heroaca-cafe.ltr-online.com/lp/c']);
+  });
+
   it('公式 URL が無ければ空', () => {
     expect(sameSiteOfficialUrls(TOP, undefined)).toEqual([]);
   });

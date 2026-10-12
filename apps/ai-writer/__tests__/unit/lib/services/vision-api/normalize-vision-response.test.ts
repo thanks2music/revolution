@@ -138,6 +138,9 @@ describe('normalizeVisionResponse', () => {
         menuItems: [
           { name: 'マルゲリータ', price: 2090, characterName: ['オールマイト'] },
           { name: 'マルゲリータ ', price: 2090, characterName: ['オールマイト'] },
+          // 2 回の読みで表記が少し違っても同じ品目 (全角の空白、半角カナ)
+          { name: 'マルゲリータ\u3000', price: 2090, characterName: ['オールマイト'] },
+          { name: 'ﾏﾙｹﾞﾘｰﾀ', price: 2090, characterName: ['オールマイト'] },
           // キャラクターが違えば別の品目 (キャラ違いの同名ドリンクなど)
           { name: 'コラボドリンク', price: 990, characterName: ['緑谷出久'] },
           { name: 'コラボドリンク', price: 990, characterName: ['爆豪勝己'] },

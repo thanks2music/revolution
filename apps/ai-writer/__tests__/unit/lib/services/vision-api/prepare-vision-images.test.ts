@@ -49,6 +49,15 @@ describe('planSlices', () => {
     expect(slices).toHaveLength(11);
   });
 
+  it('高さが幅 × 1.5 をわずかに超えると 2 片になり、2 片目は下端に揃う', () => {
+    const sliceHeight = Math.floor(1000 * MAX_SLICE_ASPECT);
+
+    expect(planSlices(1000, sliceHeight + 1)).toEqual([
+      { top: 0, height: sliceHeight },
+      { top: 1, height: sliceHeight },
+    ]);
+  });
+
   it('極端に細い画像でも終わり、上端から下端までを隙間なく覆う', () => {
     for (const [width, height] of [[1, 2], [1, 5_000], [2, 1_000], [5, 100_000]]) {
       const slices = planSlices(width, height);

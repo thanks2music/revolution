@@ -3,7 +3,7 @@
  * ページを返す (Layer 1)。会場ごとの案内ページ (ヒロアカの `/lp/heroaca-cafe-s004` など) を
  * 下層ページの抽出で読むために使う (2026-10-12)。
  *
- * - 同じサイト = ホスト名が同じ (`www.` の有無は無視)
+ * - 同じサイト = ホスト名が同じ (`www.` の有無は無視)。http(s) の URL だけを扱う (取得するのはページなので)
  * - トップ自身と、同じ URL の重複は除く (末尾の `/` の有無と `#` 以降は同じとみなす)
  * - URL として読めないもの、画像・PDF などページでないものは除く
  *
@@ -14,7 +14,9 @@ import { pageUrlKey } from '@/lib/utils/url';
 
 function hostOf(url: string): string | null {
   try {
-    return new URL(url).hostname.replace(/^www\./, '');
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.hostname.replace(/^www\./, '');
   } catch {
     return null;
   }
