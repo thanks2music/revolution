@@ -208,6 +208,13 @@ export interface TextPlaceholderReplacementResult {
 /**
  * テキストプレースホルダー置換サービス
  */
+/** {{#if}} の中身: 別の {{#if}} / {{else}} / {{/if}} を含まない任意の文字 (改行を含む) */
+const CONDITIONAL_BODY = '((?:(?!\\{\\{(?:#if\\s|else\\}\\}|\\/if\\}\\}))[\\s\\S])*)';
+/** `{{#if 条件}}中身{{/if}}` または `{{#if 条件}}中身{{else}}中身{{/if}}` (入れ子の一番内側だけに当たる) */
+const CONDITIONAL_BLOCK_PATTERN = new RegExp(
+  `\\{\\{#if\\s+([^\\}]+)\\}\\}${CONDITIONAL_BODY}(?:\\{\\{else\\}\\}${CONDITIONAL_BODY})?\\{\\{\\/if\\}\\}`
+);
+
 export class TextPlaceholderReplacerService {
   /**
    * テキストプレースホルダーを実データで置換
@@ -582,11 +589,8 @@ export class TextPlaceholderReplacerService {
     // 中身に別の {{#if}} / {{else}} / {{/if}} を含まないものだけを 1 回で置き換え、内側から順に繰り返す。
     // 以前は if-else を先に「最初の {{#if}} から最初の {{else}} まで」で取っていたため、1 行に条件が 2 つあると
     // ({{#if 原作者名}}…{{/if}}…{{#if 開催期間.終了.未定}}…{{else}}…{{/if}})、前の条件の {{/if}} をまたいで壊れた (2026-10-13)
-    const body = '((?:(?!\\{\\{(?:#if\\s|else\\}\\}|\\/if\\}\\}))[\\s\\S])*)';
-    const conditionalPattern = new RegExp(
-      `\\{\\{#if\\s+([^\\}]+)\\}\\}${body}(?:\\{\\{else\\}\\}${body})?\\{\\{\\/if\\}\\}`,
-      'g'
-    );
+    const conditionalPattern = new RegExp(CONDITIONAL_BLOCK_PATTERN.source, 'g');
+    // 入れ子の深さの上限 (1 回の繰り返しで 1 段ずつ内側から解く)。超えた分は {{...}} が残り、未置換として検知される
     for (let pass = 0; pass < 10; pass++) {
       const next = result.replace(
         conditionalPattern,
