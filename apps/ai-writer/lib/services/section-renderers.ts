@@ -100,32 +100,30 @@ const MENU_SECTION = /^## .*メニュー[ \t]*$/m;
 const NOVELTY_SECTION = /^## .*ノベルティー?[ \t]*$/m;
 
 /**
- * メニューの節の品目を差し替える。LLM が書いた `### ` の行を消し、最初に消した位置 (無ければ最初の画像の手前、
- * それも無ければ節の末尾) に品目を並べる。節が無い、または品目が無ければそのまま。
+ * メニューの節の品目を差し替える。LLM が書いた品目の範囲 (最初の `### ` の行から、最初の画像の手前まで) を
+ * 丸ごと消し (品目ごとの説明・`<img>`・コピーライトの行も含む)、そこに品目を並べる。LLM が品目を書いていなければ
+ * 最初の画像の手前 (無ければ節の末尾) に並べる。節が無い、または品目が無ければそのまま。
  */
 export function replaceMenuItems(content: string, itemLines: string[]): string {
   const range = findSection(content, MENU_SECTION);
   if (!range || itemLines.length === 0) return content;
 
   const lines = content.slice(range.start, range.end).split('\n');
-  let insertAt = -1;
-  const kept: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith('### ')) {
-      if (insertAt === -1) insertAt = kept.length;
-      continue;
-    }
-    kept.push(line);
+  const isImage = (line: string) => line.startsWith('![') || line.startsWith('{ここに');
+  const firstItem = lines.findIndex((line) => line.startsWith('### '));
+  let from: number;
+  let to: number;
+  if (firstItem === -1) {
+    const firstImage = lines.findIndex(isImage);
+    from = to = firstImage === -1 ? lines.length : firstImage;
+  } else {
+    const nextImage = lines.slice(firstItem).findIndex(isImage);
+    from = firstItem;
+    to = nextImage === -1 ? lines.length : firstItem + nextImage;
   }
-  if (insertAt === -1) {
-    const firstImage = kept.findIndex((line) => line.startsWith('![') || line.startsWith('{ここに'));
-    insertAt = firstImage === -1 ? kept.length : firstImage;
-  }
-  // 品目の見出しを消した跡の空行を詰める
-  const before = kept.slice(0, insertAt).join('\n').replace(/\n+$/, '');
-  const after = kept.slice(insertAt).join('\n').replace(/^\n+/, '');
-  const block = itemLines.join('\n\n');
-  const body = `${before}\n\n${block}\n\n${after}`.replace(/\n{3,}/g, '\n\n');
+  const before = lines.slice(0, from).join('\n').replace(/\n+$/, '');
+  const after = lines.slice(to).join('\n').replace(/^\n+/, '');
+  const body = `${before}\n\n${itemLines.join('\n\n')}\n\n${after}`.replace(/\n{3,}/g, '\n\n');
   return replaceSectionBody(content, range, body.endsWith('\n') ? body : `${body}\n`);
 }
 

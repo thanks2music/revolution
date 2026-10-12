@@ -134,14 +134,22 @@ function parseJson(content: string): unknown {
   return JSON.parse(match ? (match[1] ?? match[0]) : content);
 }
 
+/** URL の照合用 (末尾の / と # 以降の違いを無視する) */
+function urlKey(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/#.*$/, '').replace(/\/+$/, '') : '';
+}
+
 /**
- * 応答をページごとの事実にそろえる。URL で入力のページに対応づけ、無ければ順番で対応づける。
+ * 応答をページごとの事実にそろえる。URL で入力のページに対応づける。順番での対応づけは、応答のページ数が
+ * 入力と同じときだけ行う (ページを飛ばした応答で、別のページの事実を写してしまわないように)。
  * 値の無いもの (`null`・空文字・`"null"`) は null にする。応答に無いページは、何も読めなかったものとして扱う。
  */
 export function parseSubpageResponse(raw: unknown, pages: SubpageText[]): SubpageFacts[] {
   const items = isRecord(raw) && Array.isArray(raw.pages) ? raw.pages.filter(isRecord) : [];
+  const byIndex = items.length === pages.length;
   return pages.map((page, index) => {
-    const item = items.find((candidate) => candidate.url === page.url) ?? items[index];
+    const item =
+      items.find((candidate) => urlKey(candidate.url) === urlKey(page.url)) ?? (byIndex ? items[index] : undefined);
     return {
       url: page.url,
       kind: page.kind,
@@ -181,9 +189,10 @@ export class SubpageExtractionService {
     if (!instruction) {
       throw new Error(`${this.pipelineId}.yaml に prompts.extract_subpages がありません`);
     }
-    // 予算に収まるまとまりごとに呼ぶ (並列)。ページの順番は保つ
-    const results = await Promise.all(
-      batchPages(request.pages).map(async (pages) => {
+    // 予算に収まるまとまりごとに呼ぶ (並列)。ページの順番は保つ。1 つのまとまりが失敗しても、他の結果は使う
+    const batches = batchPages(request.pages);
+    const settled = await Promise.allSettled(
+      batches.map(async (pages) => {
         const prompt = instruction
           .replace('{{作品名}}', request.作品名 ?? '(不明)')
           .replace('{{pages}}', formatPagesForPrompt(pages));
@@ -200,8 +209,21 @@ export class SubpageExtractionService {
       })
     );
 
+    const results = settled.flatMap((entry, index) => {
+      if (entry.status === 'fulfilled') return [entry.value];
+      console.error(
+        `[subpage-extraction] ⚠️ ${batches[index].length} ページ分の抽出に失敗 (このまとまりは読めなかったものとする):`,
+        entry.reason
+      );
+      return [];
+    });
+    if (results.length === 0) {
+      throw settled[0].status === 'rejected' ? settled[0].reason : new Error('下層ページの抽出に失敗');
+    }
+    // 失敗したまとまりのページは「何も読めなかった」として返す (会場限定の書き分けは、読めないページがあれば行わない)
+    const factsByUrl = new Map(results.flatMap((result) => result.pages).map((facts) => [facts.url, facts]));
     return {
-      pages: results.flatMap((result) => result.pages),
+      pages: request.pages.map((page) => factsByUrl.get(page.url) ?? parseSubpageResponse(null, [page])[0]),
       model: results[0].response.model,
       usage: sumUsage(results.map((result) => result.response.usage)),
     };

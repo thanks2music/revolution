@@ -87,14 +87,22 @@ async function toJpeg(input: sharp.Sharp): Promise<string> {
   return buffer.toString('base64');
 }
 
-/** 取得した 1 枚を、分割・縮小した JPEG にする */
+/** 1 回のリクエストで渡す片の上限 (1 カテゴリあたり)。Claude は 1 リクエスト 100 枚・32MB まで */
+export const MAX_IMAGES_PER_REQUEST = 40;
+
+/**
+ * 取得した 1 枚を、分割・縮小した JPEG にする。
+ * EXIF の向き (Orientation) を反映してから扱う (sharp は既定では向きを反映せず、再エンコードで EXIF も落とす。
+ * 反映しないと、縦に撮った写真が横倒しのまま渡る)。
+ */
 export async function splitImage(buffer: Buffer, source: string): Promise<VisionImage[]> {
-  const { width, height } = await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
+  const load = () => sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, autoOrient: true });
+  const metadata = await load().metadata();
+  const { width, height } = metadata.autoOrient ?? metadata;
   if (!width || !height) throw new Error('画像の大きさを読めない');
   if (width * height > MAX_INPUT_PIXELS) {
     throw new Error(`画像が大きすぎる (${width}×${height})`);
   }
-  const load = () => sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS });
 
   const slices = planSlices(width, height);
   if (slices.length === 1) {
@@ -128,8 +136,13 @@ export async function prepareVisionImages(
   assertHttpImageUrls(imageUrls);
   const images: VisionImage[] = [];
   for (const url of imageUrls) {
+    if (images.length >= MAX_IMAGES_PER_REQUEST) {
+      console.warn(`[prepareVisionImages] ⚠️ 片が上限 (${MAX_IMAGES_PER_REQUEST}) に達したため、残りの画像を読まない: ${url}`);
+      break;
+    }
     try {
-      images.push(...(await splitImage(await fetcher(url), url)));
+      const pieces = await splitImage(await fetcher(url), url);
+      images.push(...pieces.slice(0, MAX_IMAGES_PER_REQUEST - images.length));
     } catch (error) {
       console.warn(
         `[prepareVisionImages] ⚠️ 画像を使えない (${error instanceof Error ? error.message : String(error)}): ${url}`

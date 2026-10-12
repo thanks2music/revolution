@@ -93,10 +93,20 @@ describe('parseSubpageResponse', () => {
     expect(facts[1]).toMatchObject({ kind: 'venue', area: '東京', ノベルティ名: ['ホログラムステッカー'], グッズ詳細リスト: null });
   });
 
-  it('URL が無ければ順番で対応づけ、応答に無いページは何も読めなかったものとする', () => {
-    const facts = parseSubpageResponse({ pages: [{ グッズ詳細リスト: [{ name: '缶バッジ' }] }] }, PAGES);
+  it('URL は末尾の / の違いを無視して対応づける。URL が無くても、ページ数が同じなら順番で対応づける', () => {
+    const facts = parseSubpageResponse(
+      { pages: [{ url: 'https://example.com/menu/', グッズ詳細リスト: [{ name: '缶バッジ' }] }, { ノベルティ名: ['ステッカー'] }] },
+      PAGES
+    );
 
-    expect(facts.map((f) => f.グッズ詳細リスト?.map((g) => g.name) ?? null)).toEqual([['缶バッジ'], null]);
+    expect(facts[0].グッズ詳細リスト?.[0].name).toBe('缶バッジ');
+    expect(facts[1].ノベルティ名).toEqual(['ステッカー']);
+  });
+
+  it('ページを飛ばした応答では、順番で別のページの事実を写さない', () => {
+    const facts = parseSubpageResponse({ pages: [{ ノベルティ名: ['ステッカー'] }] }, PAGES);
+
+    expect(facts.map((f) => f.ノベルティ名)).toEqual([null, null]);
   });
 
   it('応答の形が崩れていても例外にせず、全ページを空にする', () => {
@@ -165,6 +175,24 @@ describe('SubpageExtractionService.extract', () => {
     expect(sendMessage).toHaveBeenCalledTimes(2);
     expect(result?.pages.map((p) => p.ノベルティ名)).toEqual([['https://example.com/a'], ['https://example.com/b']]);
     expect(result?.usage).toMatchObject({ promptTokens: 20, completionTokens: 10, totalTokens: 30 });
+  });
+
+  it('一部のまとまりが失敗しても、他のまとまりの結果は使う (失敗したページは何も読めなかったものとする)', async () => {
+    const big = (url: string): SubpageText => ({ url, kind: 'venue', text: 'あ'.repeat(40_000) });
+    const sendMessage = jest.fn(async (prompt: string) => {
+      const url = /- URL: (\S+)/.exec(prompt)![1];
+      if (url.endsWith('/b')) throw new Error('MAX_TOKENS');
+      return { content: JSON.stringify({ pages: [{ url, ノベルティ名: ['ステッカー'] }] }), model: 'm', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+    });
+    const loader = { loadModularTemplate: jest.fn(async () => TEMPLATE) } as unknown as YamlTemplateLoaderService;
+    const service = new SubpageExtractionService(loader, { sendMessage } as unknown as AiProvider);
+
+    const result = await service.extract({ 作品名: null, pages: [big('https://example.com/a'), big('https://example.com/b')] });
+
+    expect(result?.pages.map((p) => [p.url, p.ノベルティ名])).toEqual([
+      ['https://example.com/a', ['ステッカー']],
+      ['https://example.com/b', null],
+    ]);
   });
 
   it('ページが無ければ LLM を呼ばない', async () => {

@@ -36,6 +36,9 @@ export const SUBPAGE_TEXT_BUDGET_CHARS = 20_000;
 /** 取得する会場の案内ページの上限 */
 export const MAX_VENUE_PAGES = 10;
 
+/** 下層ページ・会場の案内ページの取得の時間切れ (ms、1 ページあたり) */
+const PAGE_FETCH_TIMEOUT_MS = 15_000;
+
 /**
  * カテゴリ別画像抽出結果
  */
@@ -212,22 +215,10 @@ export class CategoryImageExtractorService {
         }
       })
     );
+    const venueMainHtmls: Array<{ url: string; mainHtml: string }> = [];
     for (const venue of venueHtmls) {
       if (!venue) continue;
-      const mainHtml = this.addPageText(result, venue.url, 'venue', venue.html);
-      if (result.novelty.length === 0) {
-        // ヘッダーのロゴを拾わないよう、本文ブロックの画像だけを使う
-        const images = this.extractImagesFromHtml(mainHtml, venue.url, imageConfig).images.slice(
-          0,
-          imageConfig.max_images_per_category
-        );
-        if (images.length > 0) {
-          result.novelty = images;
-          result.sources.novelty = venue.url;
-          images.forEach((img) => allImages.add(img));
-          console.log(`[CategoryImageExtractor] novelty: 会場の案内ページ ${venue.url} から ${images.length}枚`);
-        }
-      }
+      venueMainHtmls.push({ url: venue.url, mainHtml: this.addPageText(result, venue.url, 'venue', venue.html) });
     }
     if (venues.length > 0) {
       console.log(
@@ -265,6 +256,24 @@ export class CategoryImageExtractorService {
       images.forEach((img) => allImages.add(img));
     }
 
+    // 4. ノベルティの画像がまだ無ければ、最初に画像のある会場の案内ページの本文ブロックの画像を使う
+    //    (トップページへの退避 (3) より後に行う。先に埋めると、3 の「3 カテゴリとも空」の条件が崩れる)
+    if (result.novelty.length === 0) {
+      for (const venue of venueMainHtmls) {
+        // ヘッダーのロゴを拾わないよう、本文ブロックの画像だけを使う
+        const images = this.extractImagesFromHtml(venue.mainHtml, venue.url, imageConfig).images.slice(
+          0,
+          imageConfig.max_images_per_category
+        );
+        if (images.length === 0) continue;
+        result.novelty = images;
+        result.sources.novelty = venue.url;
+        images.forEach((img) => allImages.add(img));
+        console.log(`[CategoryImageExtractor] novelty: 会場の案内ページ ${venue.url} から ${images.length}枚`);
+        break;
+      }
+    }
+
     result.all = Array.from(allImages);
 
     console.log('[CategoryImageExtractor] 抽出結果:', {
@@ -297,6 +306,8 @@ export class CategoryImageExtractorService {
    */
   private async fetchPage(url: string): Promise<string> {
     const response = await fetch(url, {
+      // 1 ページの取得が止まっても、記事の生成全体を止めない
+      signal: AbortSignal.timeout(PAGE_FETCH_TIMEOUT_MS),
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

@@ -212,6 +212,19 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
       expect(result.sources.novelty).toBe(TOKYO);
     });
 
+    it('下層ページが無いサイトでは、会場のページの画像より先にトップページへの退避が働き、残った空きを会場のページで補う', async () => {
+      mockFetchByUrl({ [TOKYO]: venuePage('TOKYO') });
+      const service = new CategoryImageExtractorService(configLoader);
+      const topHtml = '<html><body><main>' + [1, 2, 3].map((n) => `<img src="/img/top-${n}.jpg">`).join('') + '</main></body></html>';
+
+      const result = await service.extractCategoryImages(TOP, topHtml, {}, [TOKYO]);
+
+      // トップの 3 枚はメニューに入り (3 カテゴリとも空だったため退避が働く)、空のノベルティは会場のページから補う
+      expect(result.sources.menu).toBe(TOP);
+      expect(result.menu).toHaveLength(3);
+      expect(result.sources.novelty).toBe(TOKYO);
+    });
+
     it('取得に失敗した会場のページは飛ばし、トップや取得済みのページは読み直さない', async () => {
       mockFetchByUrl({ [MENU]: '<html><body><main><p>メニュー</p></main></body></html>', [OSAKA]: venuePage('OSAKA') });
       const service = new CategoryImageExtractorService(configLoader);

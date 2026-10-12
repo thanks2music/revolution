@@ -57,6 +57,17 @@ describe('メニュー', () => {
     expect(changes[0]).toContain('下層ページの 2 品');
   });
 
+  it('同じ品目の画像やコピーライトなど下層に無い値は、トップの値で補う', () => {
+    const top = { ...item('てりマヨチキン', '2,090円(税込)'), imageUrl: 'https://example.com/1.jpg', copyright: '©堀越耕平／集英社' };
+    const { extraction: merged } = mergeSubpagesIntoExtraction(extraction({ メニュー詳細リスト: [top] }), [
+      page({ kind: 'menu', メニュー詳細リスト: [item('てりマヨチキン', null, 'ホークス')] }),
+    ]);
+
+    expect(merged.メニュー詳細リスト).toEqual([
+      { character: 'ホークス', name: 'てりマヨチキン', price: '2,090円(税込)', imageUrl: 'https://example.com/1.jpg', copyright: '©堀越耕平／集英社' },
+    ]);
+  });
+
   it('メニューのページを先に並べ、ページをまたいだ重複は除く', () => {
     const { extraction: merged } = mergeSubpagesIntoExtraction(extraction(), [
       page({ kind: 'venue', メニュー詳細リスト: [item('マルゲリータ'), item('限定ドリンク')] }),

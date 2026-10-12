@@ -94,13 +94,26 @@ function mergeMenu(
         copyright: null,
       }));
   // 品名だけで照合する (トップはキャラクターを書かないことがあるため)
+  const topByName = new Map(top.map((item) => [normalizeMenuName(item.name), item]));
   const subpageNames = new Set(fromSubpages.map((item) => normalizeMenuName(item.name)));
   const topOnly = top.filter((item) => !subpageNames.has(normalizeMenuName(item.name)));
+  // 下層の品目に無い値 (画像・コピーライトなど。下層の抽出は読まない) は、同じ品目のトップの値で補う
+  const merged = fromSubpages.map((item) => {
+    const fromTop = topByName.get(normalizeMenuName(item.name));
+    if (!fromTop) return item;
+    return {
+      character: item.character ?? fromTop.character,
+      name: item.name,
+      price: item.price ?? fromTop.price,
+      imageUrl: item.imageUrl ?? fromTop.imageUrl,
+      copyright: item.copyright ?? fromTop.copyright,
+    };
+  });
 
   changes.push(
     `メニュー: 下層ページの ${fromSubpages.length} 品を使い、トップにしか無い ${topOnly.length} 品を足した (トップは ${top.length} 品)`
   );
-  return [...fromSubpages, ...topOnly];
+  return [...merged, ...topOnly];
 }
 
 /**

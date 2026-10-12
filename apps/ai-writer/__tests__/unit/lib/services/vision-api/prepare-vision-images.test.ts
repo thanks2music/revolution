@@ -12,6 +12,7 @@
 import zlib from 'node:zlib';
 import sharp from 'sharp';
 import {
+  MAX_IMAGES_PER_REQUEST,
   MAX_INPUT_PIXELS,
   MAX_LONG_EDGE,
   MAX_SLICE_ASPECT,
@@ -85,6 +86,20 @@ describe('splitImage', () => {
     expect(20_000 * 20_000).toBeGreaterThan(MAX_INPUT_PIXELS);
   });
 
+  it('EXIF の向きを反映してから扱う (縦横を入れ替えて保存された写真を横倒しのまま分割しない)', async () => {
+    // 保存は 200×1000 (縦長) だが、Orientation=6 なので表示は 1000×200 (横長) = 分割しない
+    const stored = await sharp({ create: { width: 200, height: 1000, channels: 3, background: '#fff' } })
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .toBuffer();
+
+    const images = await splitImage(stored, 'https://example.com/photo.jpg');
+
+    expect(images).toHaveLength(1);
+    const { width, height } = await sharp(Buffer.from(images[0].data, 'base64')).metadata();
+    expect(width).toBeGreaterThan(height!);
+  });
+
   it('分割しない画像は 1 片で、出所は元の URL のまま', async () => {
     const images = await splitImage(await solidImage(800, 600), 'https://example.com/goods.png');
 
@@ -110,6 +125,16 @@ describe('prepareVisionImages', () => {
     );
 
     expect(images.map((image) => image.source)).toEqual(['https://example.com/a.jpg']);
+  });
+
+  it('1 回のリクエストに渡す片は上限まで (縦に長い画像が多くても API の上限を超えない)', async () => {
+    const tall = await solidImage(400, 400 * 1.5 * 30); // 1 枚で上限 (20 片) まで分割される
+    const images = await prepareVisionImages(
+      ['https://example.com/1.jpg', 'https://example.com/2.jpg', 'https://example.com/3.jpg'],
+      async () => tall
+    );
+
+    expect(images).toHaveLength(MAX_IMAGES_PER_REQUEST);
   });
 
   it('http(s) 以外の URL は取得の前に弾く (SSRF の防御)', async () => {
