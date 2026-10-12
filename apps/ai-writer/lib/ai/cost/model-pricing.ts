@@ -126,6 +126,16 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     provider: 'openai',
   },
   // Anthropic Claude series
+  // Sonnet 5.5 (2026-10-11 追加、既定モデル)。キャッシュの読み込みは基本料金の 0.05 倍 ($0.10)、
+  // 書き込み (5 分) は 1.25 倍 ($2.50) で CACHE_WRITE_5M_MULTIPLIER と一致する。
+  // 出典: https://platform.claude.com/docs/en/about-claude/pricing
+  'claude-sonnet-5-5': {
+    inputPer1M: 2.0,
+    cachedInputPer1M: 0.1,
+    outputPer1M: 10.0,
+    provider: 'anthropic',
+  },
+  // Sonnet 4.5 は 2026-11-30 に提供終了。過去のコストログの再計算のために残す
   'claude-sonnet-4-5-20250514': {
     inputPer1M: 3.0,
     cachedInputPer1M: 0.3,

@@ -392,6 +392,40 @@ describe('GeminiVisionService', () => {
       });
     });
 
+    // 2026-10-10 heroaca-cafe の実測: description が null の品目が 1 つでもあると
+    // ZodError でメニュー 20 品以上がまとめて 0 品になっていた
+    it('文字列フィールドの null は値なしとして扱い、品目を落とさない', async () => {
+      mockGenerateContent.mockResolvedValue(
+        buildResponse({
+          menuItems: [
+            { name: 'デクのオムライス', price: 1890, characterName: [], description: null, notes: null },
+          ],
+          goodsItems: [{ name: '缶バッジ', characterName: [], variantDetails: null }],
+          noveltyItems: [{ name: 'ランチョンマット', characterName: [], condition: null, remarks: null }],
+        })
+      );
+      const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
+      const { visionExtraction } = await service.extractFromImages(callOptions());
+
+      expect(visionExtraction.menuItems).toHaveLength(1);
+      expect(visionExtraction.menuItems[0].description).toBeUndefined();
+      expect(visionExtraction.goodsItems[0].variantDetails).toBeUndefined();
+      expect(visionExtraction.noveltyItems[0].condition).toBeUndefined();
+    });
+
+    it('文字列フィールドに文字列以外が来たら値なしとして扱い、品目は残す', async () => {
+      mockGenerateContent.mockResolvedValue(
+        buildResponse({
+          menuItems: [{ name: 'デクのオムライス', price: 1890, characterName: [], description: 123 }],
+        })
+      );
+      const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
+      const { visionExtraction } = await service.extractFromImages(callOptions());
+
+      expect(visionExtraction.menuItems).toHaveLength(1);
+      expect(visionExtraction.menuItems[0].description).toBeUndefined();
+    });
+
     it('JSON mode を有効にして呼ぶ', async () => {
       const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
       await service.extractFromImages(callOptions());

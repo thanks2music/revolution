@@ -101,7 +101,11 @@ export interface RssExtractionResult {
 export interface SendMessageOptions {
   /** Maximum tokens to generate (default: provider-specific) */
   maxTokens?: number;
-  /** Temperature for response randomness (0-1, default: 0) */
+  /**
+   * Temperature for response randomness (0-1, default: 0)
+   *
+   * Anthropic (claude-sonnet-5-5) には送らない。Claude 4.7 以降は既定値以外を 400 にするため。
+   */
   temperature?: number;
   /** System prompt to set context (optional) */
   systemPrompt?: string;

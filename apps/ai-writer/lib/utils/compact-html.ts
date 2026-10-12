@@ -60,6 +60,8 @@
 
 import * as cheerio from 'cheerio';
 
+import { claudeMaxTokens } from '@/lib/config/claude-models';
+
 /**
  * 実測した「文字数 → トークン数」の換算比。
  *
@@ -118,32 +120,35 @@ export const CHARS_PER_TOKEN_WORST_CASE = 1.88;
  * | provider | 実使用モデル | コンテキスト窓 | 出典 |
  * |---|---|---|---|
  * | OpenAI (既定) | `gpt-5.4-mini` | 400,000 (GPT-5 mini 系) | https://developers.openai.com/api/docs/models/gpt-5-mini |
- * | Anthropic | `claude-sonnet-4-5-20250929` | **200,000** ← 最小 | https://platform.claude.com/docs/en/build-with-claude/context-windows |
+ * | Anthropic | `claude-sonnet-5-5` (2026-10-11 から。それまでは `claude-sonnet-4-5-20250929` = 200,000) | 1,000,000 | https://platform.claude.com/docs/en/build-with-claude/context-windows |
  * | Google | `gemini-2.5-flash-lite` | 1,048,576 (2.5 Flash 系) | https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-preview-09-2025 |
  *
  * ⚠️ **未確認の点**: `gpt-5.4-mini` / `gemini-2.5-flash-lite` の専用ページは見つからず、
  * それぞれ `gpt-5-mini` (400k) / `gemini-2.5-flash-preview` (1,048,576) からの推定。
  * OpenAI は Amazon Bedrock 経由だと GPT-5.4/5.5/5.6 が 272,000 に制限される
- * (https://developers.openai.com/api/docs/guides/amazon-bedrock)。**確実なのは
- * Anthropic Sonnet 4.5 の 200,000 のみ**で、本定数はこれを binding constraint とする。
+ * (https://developers.openai.com/api/docs/guides/amazon-bedrock)。2026-10-11 に Anthropic が
+ * Sonnet 5.5 (1,000,000) へ移り、**公式に確かめた 200,000 の窓を持つ provider は無くなった**。
+ * 最小の候補は OpenAI の 400,000 だが推定値のため、確かめられるまでは従来の 200,000 を
+ * **保守的な上限**として据え置く (予算は窓の 36.5% なので、どちらでも収まる)。
  *
  * ### 内訳 (実測ベース)
  *
  * | 要素 | tokens | 根拠 |
  * |---|---|---|
- * | Sonnet 4.5 のコンテキスト窓 | 200,000 | 公式 |
+ * | 最小のコンテキスト窓 (`SMALLEST_CONTEXT_WINDOW_TOKENS`。当初は Sonnet 4.5) | 200,000 | 公式 (Sonnet 4.5) |
  * | − プロンプトのテンプレート部 (Few-shot 等) | −25,125 | **実測 21 本の最大値** (最小 20,921 / 平均 23,967) |
- * | − 出力 (`extraction.service.ts` の `maxTokens`) | −4,000 | 実装値 |
- * | = 本文に使える理論上の余地 | **170,875** (最悪ケース換算で ≒ 321,245 文字) | |
+ * | − 出力の予約 (Claude の `max_tokens` = 返答の `maxTokens` 4,000 に下限を当てた値) | −16,000 | 実装値 (`claudeMaxTokens`) |
+ * | = 本文に使える理論上の余地 | **158,875** (最悪ケース換算で ≒ 298,685 文字) | |
  * | **本定数** | **31,915 (60,000 文字) = 本文だけで窓の 16.0%** | |
- * | (参考) テンプレ・出力を含めた総使用率 | **30.5%** (最悪ケース。テストが強制する会計) | |
+ * | (参考) テンプレ・出力を含めた総使用率 | **36.5%** (最悪ケース。テストが強制する会計) | |
  *
  * ### なぜ理論上限まで上げないか
  *
  * 1. **`conan-cafe.jp` の圧縮前 35,344 文字を包含する**。圧縮が将来退行しても会場一覧は届く
- * 2. 総プロンプトが **最悪ケースでも ≒ 61,000 tokens = Sonnet 4.5 の 30.5%** に収まり、
+ * 2. 総プロンプトが **最悪ケースでも ≒ 73,000 tokens = 200,000 の 36.5%** に収まり、
  *    3 provider すべてで余裕がある。会計は本文 (60,000 / `CHARS_PER_TOKEN_WORST_CASE`
- *    = 31,915) + `NON_CONTENT_TOKENS_ESTIMATE` (29,125 = テンプレ 25,125 + 出力 4,000)。
+ *    = 31,915) + `NON_CONTENT_TOKENS_ESTIMATE` (41,125 = テンプレ 25,125 + 出力の予約 16,000)。
+ *    出力の予約は provider ごとに違い、最大の Claude (思考の分を含めた `max_tokens` の下限) で数える
  *    **観測平均ではなく観測最大・最小の悪い側を使う** (テンプレは実測最大、
  *    chars/token は実測最小 = 同じ文字数でより多くのトークンを消費する側)。
  *    テストが強制する会計と一致させてある
@@ -231,20 +236,26 @@ export const EXTRACTION_TEMPLATE_TOKENS_ESTIMATE = 25_125;
 export const EXTRACTION_MAX_OUTPUT_TOKENS = 4_000;
 
 /**
- * 本文以外がプロンプト + 応答で占めるトークン数 (テンプレート + 出力)。
+ * 本文以外がプロンプト + 応答で占めるトークン数 (テンプレート + 出力の予約)。
  *
  * `LLM_INPUT_BUDGET_CHARS` が最小のコンテキスト窓に収まることをテストで検証するために
  * 使う。**リテラルを書かず内訳から導出する**ことで、`maxTokens` を変えたら自動的に
  * ここも変わり、制約テストが再評価される。
+ *
+ * 出力の予約は、実際に送る `max_tokens` が最大の provider で数える。Claude は思考も
+ * `max_tokens` に含まれるため、返答の 4,000 に下限 (16,000) を当てて送る (2026-10-11 から)。
  */
 export const NON_CONTENT_TOKENS_ESTIMATE =
-  EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + EXTRACTION_MAX_OUTPUT_TOKENS;
+  EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + claudeMaxTokens(EXTRACTION_MAX_OUTPUT_TOKENS);
 
 /**
  * サポートする provider のうち**最小**のコンテキスト窓 (tokens)。
  *
- * 2026-08-12 時点では Anthropic `claude-sonnet-4-5-20250929` の 200,000。
- * provider 非依存の実装である以上、予算はここに合わせる必要がある。
+ * 2026-08-12 時点では Anthropic `claude-sonnet-4-5-20250929` の 200,000 だった。2026-10-11 に
+ * Sonnet 5.5 (1,000,000) へ移った後も、OpenAI の窓 (推定 400,000) を確かめるまでは保守的に
+ * 200,000 のままにしている。provider 非依存の実装である以上、予算はここに合わせる必要がある。
+ * (Sonnet 5.5 の tokenizer は同じ文字列を Sonnet 4.5 より約 3 割多いトークンに数えるが、
+ * 窓が 1,000,000 あるので本定数の判断には影響しない)
  *
  * ⚠️ **この値は `DEFAULT_CLAUDE_MODEL` と機械的に連動していない。** 既定の Anthropic
  * モデルが別の窓サイズのものへ変わっても、本定数は自動では追随しない —

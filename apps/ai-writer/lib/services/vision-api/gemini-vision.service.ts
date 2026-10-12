@@ -55,6 +55,11 @@ import {
 } from '@/lib/ai/gemini-response';
 import { fetchImageSafely } from '@/lib/utils/safe-image-fetch';
 
+/** LLM が「値なし」を null で返した文字列を undefined に揃える (schema の `optional()` は null を通さない)。 */
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
 /**
  * Raw Vision API Response (Internal Type)
  *
@@ -606,6 +611,7 @@ export class GeminiVisionService implements IVisionApiService {
    * coerced to `undefined` (or the `0.5` confidence default) instead of
    * propagating to `VisionExtractionResultSchema.parse` and triggering a
    * deterministic ZodError. Mirrors the other Vision services.
+   * Optional string fields go through `optionalString` for the same reason.
    */
   private convertToMenuItem(item: NonNullable<RawVisionResponse['menuItems']>[number]): MenuItem {
     return {
@@ -614,10 +620,10 @@ export class GeminiVisionService implements IVisionApiService {
       characterName: this.parseCharacterNameArray(item.characterName, item.name),
       hasNovelty: item.hasNovelty ?? false,
       noveltyCondition: item.noveltyCondition,
-      bonus: item.bonus,
-      description: item.description,
-      notes: item.notes,
-      remarks: item.remarks,
+      bonus: optionalString(item.bonus),
+      description: optionalString(item.description),
+      notes: optionalString(item.notes),
+      remarks: optionalString(item.remarks),
       confidence: typeof item.confidence === 'number' ? item.confidence : 0.5,
     };
   }
@@ -633,7 +639,7 @@ export class GeminiVisionService implements IVisionApiService {
       name: item.name,
       price: typeof item.price === 'number' ? item.price : undefined,
       variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
-      variantDetails: item.variantDetails,
+      variantDetails: optionalString(item.variantDetails),
       characterName: this.parseCharacterNameArray(item.characterName, item.name),
       isRandomSale: item.isRandomSale ?? false,
       confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
@@ -649,13 +655,13 @@ export class GeminiVisionService implements IVisionApiService {
   ): NoveltyItem {
     return {
       name: item.name,
-      condition: item.condition,
+      condition: optionalString(item.condition),
       variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
       characterName: this.parseCharacterNameArray(item.characterName, item.name),
       isRandom: item.isRandom ?? false,
       confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
-      notes: item.notes,
-      remarks: item.remarks,
+      notes: optionalString(item.notes),
+      remarks: optionalString(item.remarks),
     };
   }
 

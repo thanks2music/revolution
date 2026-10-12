@@ -199,7 +199,6 @@ jobs:
             --testPathIgnorePatterns='__tests__/unit/lib/services/lead-generator.service.contract.test.ts'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       # docs.anime-events.com (apps/docs)。ビルドは Build Apps ではなくここで行う (Build Apps が最も
       # 時間のかかるジョブのため)。repo 直下の docs/ をビルド時に読むので、docs/*.md の frontmatter の

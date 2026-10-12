@@ -14,7 +14,7 @@
  *
  * 前提条件:
  *   - .env.local に GITHUB_PAT を設定
- *   - .env.local に ANTHROPIC_API_KEY を設定
+ *   - Claude は ant auth login のプロファイルで認証する (キー不要。apps/ai-writer/README.md 参照)
  *   - Firebase Admin SDK の認証情報を設定
  */
 

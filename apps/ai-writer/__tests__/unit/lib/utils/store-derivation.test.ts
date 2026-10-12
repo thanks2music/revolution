@@ -1,6 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { deriveStoreContext } from '@/lib/utils/store-derivation';
+import {
+  deriveStoreContext,
+  formatRoundedCityLabel,
+  parseRoundedCityLabel,
+} from '@/lib/utils/store-derivation';
 import type { EventDataOccurrence } from '@revolution/schemas/mdx-frontmatter';
 
 /** 1 開催の最小形。会場名だけ変えれば足りるケースが多い。 */
@@ -583,5 +587,25 @@ describe('deriveStoreContext — 代表会場名の決定表', () => {
 
       expect(r.都市表記タイトル用).toBe('');
     });
+  });
+});
+
+describe('「N都市」の書式と解析', () => {
+  it('都市の数から「N都市」を作る', () => {
+    expect(formatRoundedCityLabel(5)).toBe('5都市');
+  });
+
+  it('「N都市」から都市の数を取り出す', () => {
+    expect(parseRoundedCityLabel('12都市')).toBe(12);
+  });
+
+  it('書式と解析は往復できる', () => {
+    expect(parseRoundedCityLabel(formatRoundedCityLabel(4))).toBe(4);
+  });
+
+  it('「N都市」の形でなければ null (都市の一覧・前後に文字がある・全角数字)', () => {
+    expect(parseRoundedCityLabel('東京/大阪')).toBeNull();
+    expect(parseRoundedCityLabel('in 4都市')).toBeNull();
+    expect(parseRoundedCityLabel('４都市')).toBeNull();
   });
 });

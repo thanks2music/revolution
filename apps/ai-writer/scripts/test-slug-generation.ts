@@ -25,8 +25,9 @@ async function testSlugGeneration() {
   const originalCreate = (claudeService as any).client.messages.create.bind((claudeService as any).client.messages);
   (claudeService as any).client.messages.create = async function(params: any) {
     const response = await originalCreate(params);
+    // adaptive thinking では先頭が thinking のブロックになりうるので、全ブロックを出す
     console.log('\n📡 Raw Claude API Response:');
-    console.log(JSON.stringify(response.content[0], null, 2));
+    console.log(JSON.stringify(response.content, null, 2));
     return response;
   };
 

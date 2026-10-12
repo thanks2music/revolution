@@ -7,12 +7,15 @@
  * `isRandom`, `confidence`) added in Sprint 3 PR-A1.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+
+import { createAnthropicClient } from '@/lib/ai/anthropic-client';
 import { ClaudeVisionService } from '@/lib/services/vision-api/claude-vision.service';
 
-jest.mock('@anthropic-ai/sdk');
+// 認証 (ID フェデレーション / プロファイル) は anthropic-client.test.ts で固定する。ここでは差し替える
+jest.mock('@/lib/ai/anthropic-client', () => ({ createAnthropicClient: jest.fn() }));
 
-const MockedAnthropic = Anthropic as unknown as jest.MockedClass<typeof Anthropic>;
+const mockedCreateAnthropicClient = createAnthropicClient as unknown as jest.Mock;
 
 interface MockClaudeRawResponse {
   confidence?: number;
@@ -27,7 +30,7 @@ function buildClaudeMessage(raw: MockClaudeRawResponse) {
     id: 'msg_test',
     type: 'message',
     role: 'assistant',
-    model: 'claude-sonnet-4-5-20250929',
+    model: 'claude-sonnet-5-5',
     stop_reason: 'end_turn',
     stop_sequence: null,
     usage: { input_tokens: 1000, output_tokens: 500 },
@@ -42,22 +45,15 @@ function buildClaudeMessage(raw: MockClaudeRawResponse) {
 
 describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () => {
   const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
-  const ORIGINAL_API_KEY = process.env.ANTHROPIC_API_KEY;
   let service: ClaudeVisionService;
   let mockMessagesCreate: jest.Mock;
 
   beforeEach(() => {
     // Skip filesystem log writes by pretending production (per service implementation).
     process.env.NODE_ENV = 'production';
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
 
     mockMessagesCreate = jest.fn();
-    MockedAnthropic.mockImplementation(
-      () =>
-        ({
-          messages: { create: mockMessagesCreate },
-        }) as unknown as Anthropic,
-    );
+    mockedCreateAnthropicClient.mockReturnValue({ messages: { create: mockMessagesCreate } });
 
     service = new ClaudeVisionService();
   });
@@ -65,11 +61,6 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
   afterEach(() => {
     jest.clearAllMocks();
     process.env.NODE_ENV = ORIGINAL_NODE_ENV;
-    if (ORIGINAL_API_KEY === undefined) {
-      delete process.env.ANTHROPIC_API_KEY;
-    } else {
-      process.env.ANTHROPIC_API_KEY = ORIGINAL_API_KEY;
-    }
   });
 
   describe('menu category', () => {
@@ -319,6 +310,100 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
     });
   });
 
+  // 2026-10-11 Sonnet 5.5 へ移行。temperature は既定値以外だと 400、thinking を省くと effort high で動く
+  describe('Sonnet 5.5 のリクエストと応答', () => {
+    it('temperature を送らず、adaptive thinking と effort low を送る', async () => {
+      mockMessagesCreate.mockResolvedValueOnce(buildClaudeMessage({ menuItems: [] }));
+
+      await service.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
+
+      const params = mockMessagesCreate.mock.calls[0][0] as Record<string, unknown>;
+      expect(params).not.toHaveProperty('temperature');
+      expect(params.thinking).toEqual({ type: 'adaptive' });
+      expect(params.output_config).toEqual({ effort: 'low' });
+      // 思考の分も max_tokens に含まれるため、返答の 4,096 より大きく取る
+      expect(params.max_tokens).toBeGreaterThanOrEqual(16_000);
+    });
+
+    it('拒否はリトライせず 1 回で諦める (同じ入力で再送しても変わらない)', async () => {
+      mockMessagesCreate.mockResolvedValue({
+        ...buildClaudeMessage({ menuItems: [] }),
+        stop_reason: 'refusal',
+        stop_details: { type: 'refusal', category: 'general_harms', explanation: null },
+      });
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/img1.webp'],
+          prompt: 'extract',
+          category: 'menu',
+          maxRetries: 3,
+        }),
+      ).rejects.toThrow(/refused the request \(category: general_harms\)/);
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('max_tokens での切り詰めもリトライせず 1 回で諦める', async () => {
+      mockMessagesCreate.mockResolvedValue({
+        ...buildClaudeMessage({ menuItems: [] }),
+        stop_reason: 'max_tokens',
+      });
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/img1.webp'],
+          prompt: 'extract',
+          category: 'menu',
+          maxRetries: 3,
+        }),
+      ).rejects.toThrow(/truncated/);
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('時間切れのときは、SDK のリクエストも中断する (裏で完了して課金されないように)', async () => {
+      let receivedSignal: AbortSignal | undefined;
+      mockMessagesCreate.mockImplementation((_params: unknown, options?: { signal?: AbortSignal }) => {
+        receivedSignal = options?.signal;
+        return new Promise(() => {}); // 応答が返らない
+      });
+
+      await expect(
+        service.extractFromImages({
+          imageUrls: ['https://example.com/img1.webp'],
+          prompt: 'extract',
+          category: 'menu',
+          maxRetries: 1,
+          timeout: 20,
+        }),
+      ).rejects.toThrow(/timeout after 20ms/);
+      expect(receivedSignal?.aborted).toBe(true);
+    });
+
+    it('応答の先頭が thinking のブロックでも、text のブロックから結果を読む', async () => {
+      const message = buildClaudeMessage({
+        menuItems: [{ name: 'コラボドリンク', characterName: [], confidence: 0.9 }],
+      });
+      mockMessagesCreate.mockResolvedValueOnce({
+        ...message,
+        content: [{ type: 'thinking', thinking: '', signature: 'sig' }, ...message.content],
+      });
+
+      const result = await service.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
+
+      expect(result.visionExtraction.menuItems.map((item) => item.name)).toEqual(['コラボドリンク']);
+    });
+  });
+
   describe('prompt cache (request shape)', () => {
     it('places text prompt as content[0] with cache_control 5m TTL', async () => {
       mockMessagesCreate.mockResolvedValueOnce(
@@ -387,7 +472,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         id: 'msg_test',
         type: 'message',
         role: 'assistant',
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-5-5',
         stop_reason: 'end_turn',
         stop_sequence: null,
         usage: {
@@ -424,7 +509,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         id: 'msg_test',
         type: 'message',
         role: 'assistant',
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-5-5',
         stop_reason: 'end_turn',
         stop_sequence: null,
         usage: {
@@ -470,14 +555,14 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         id: 'msg_test',
         type: 'message',
         role: 'assistant',
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-5-5',
         stop_reason: 'end_turn',
         stop_sequence: null,
         usage: {
           input_tokens: 0,
           output_tokens: 0,
           cache_creation_input_tokens: 0,
-          // 1M cache-read tokens × claude cachedInputPer1M ($0.30/M) = $0.30
+          // 1M cache-read tokens × claude-sonnet-5-5 cachedInputPer1M ($0.10/M) = $0.10
           cache_read_input_tokens: 1_000_000,
         },
         content: [
@@ -505,78 +590,39 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         .find((line) => line.includes('💰 Cost:'));
 
       expect(costLog).toBeDefined();
-      // 1M cache_read tokens × $0.30/M = $0.3000 in formatCost output
-      expect(costLog).toMatch(/\$0\.3/);
+      // 1M cache_read tokens × $0.10/M = $0.1000 in formatCost output
+      expect(costLog).toMatch(/\$0\.1000/);
 
       logSpy.mockRestore();
     });
   });
 
-  describe('API key resolution priority (Sprint C-α)', () => {
-    // Sprint C-α で追加: BOSS が Vision 用と generation 用の Anthropic API key を
-    // 分けたい (課金トラッキング + rate limit 分離) 意図で `.env.local` に
-    // `ANTHROPIC_API_KEY_VISION` を設定していたが、旧実装は `ANTHROPIC_API_KEY` 単一を
-    // 読んでいたため animatecafe 型 URL の生成が全滅していた (2026-07-12 実測)。
-    // 新実装は `config.apiKey` → `ANTHROPIC_API_KEY_VISION` → `ANTHROPIC_API_KEY` の
-    // 優先順位で解決する。
-
-    const ORIGINAL_VISION_KEY = process.env.ANTHROPIC_API_KEY_VISION;
-
-    beforeEach(() => {
-      delete process.env.ANTHROPIC_API_KEY_VISION;
-    });
-
-    afterEach(() => {
-      if (ORIGINAL_VISION_KEY === undefined) {
-        delete process.env.ANTHROPIC_API_KEY_VISION;
-      } else {
-        process.env.ANTHROPIC_API_KEY_VISION = ORIGINAL_VISION_KEY;
-      }
-    });
-
-    it('prefers ANTHROPIC_API_KEY_VISION over ANTHROPIC_API_KEY when both are set', () => {
-      process.env.ANTHROPIC_API_KEY_VISION = 'sk-ant-vision-preferred';
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-generation-fallback';
-      MockedAnthropic.mockClear();
+  // 2026-10-11 に API キー (Vision 専用キーを含む) を廃止し、認証は createAnthropicClient に一本化した
+  describe('クライアントの作り方', () => {
+    it('API キーを読まず、createAnthropicClient のクライアントを使う', () => {
+      mockedCreateAnthropicClient.mockClear();
 
       new ClaudeVisionService();
 
-      expect(MockedAnthropic).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'sk-ant-vision-preferred' }),
-      );
+      expect(mockedCreateAnthropicClient).toHaveBeenCalledTimes(1);
     });
 
-    it('falls back to ANTHROPIC_API_KEY when ANTHROPIC_API_KEY_VISION is not set (backward compatibility)', () => {
-      // beforeEach で ANTHROPIC_API_KEY_VISION は削除済
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-generation-fallback';
-      MockedAnthropic.mockClear();
+    it('config.client を渡したら、それを使う (createAnthropicClient を呼ばない)', async () => {
+      mockedCreateAnthropicClient.mockClear();
+      const create = jest.fn().mockResolvedValue(buildClaudeMessage({ menuItems: [] }));
 
-      new ClaudeVisionService();
+      const injected = new ClaudeVisionService({
+        client: { messages: { create } } as unknown as Anthropic,
+      });
+      await injected.extractFromImages({
+        imageUrls: ['https://example.com/img1.webp'],
+        prompt: 'extract',
+        category: 'menu',
+        maxRetries: 1,
+      });
 
-      expect(MockedAnthropic).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'sk-ant-generation-fallback' }),
-      );
-    });
-
-    it('config.apiKey has highest priority over both env variables', () => {
-      process.env.ANTHROPIC_API_KEY_VISION = 'sk-ant-vision-env';
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-generation-env';
-      MockedAnthropic.mockClear();
-
-      new ClaudeVisionService({ apiKey: 'sk-ant-explicit-config' });
-
-      expect(MockedAnthropic).toHaveBeenCalledWith(
-        expect.objectContaining({ apiKey: 'sk-ant-explicit-config' }),
-      );
-    });
-
-    it('throws with helpful message when neither env variable nor config.apiKey is set', () => {
-      // beforeEach で ANTHROPIC_API_KEY_VISION は削除済
-      delete process.env.ANTHROPIC_API_KEY;
-
-      expect(() => new ClaudeVisionService()).toThrow(
-        /ANTHROPIC_API_KEY_VISION.*ANTHROPIC_API_KEY/,
-      );
+      expect(mockedCreateAnthropicClient).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledTimes(1);
     });
   });
 });

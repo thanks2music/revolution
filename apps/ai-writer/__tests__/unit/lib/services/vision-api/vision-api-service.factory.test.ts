@@ -170,7 +170,7 @@ describe('VisionApiServiceFactory — model / Gemini 固有設定の解決', () 
     ).toBe('gpt-4o-mini');
     expect(
       VisionApiServiceFactory.create('anthropic', { apiKey: DUMMY_API_KEY }).getModelName()
-    ).toBe('claude-sonnet-4-5-20250929');
+    ).toBe('claude-sonnet-5-5');
     expect(
       VisionApiServiceFactory.create('google', { apiKey: DUMMY_API_KEY }).getModelName()
     ).toBe('gemini-3.6-flash');

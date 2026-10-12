@@ -34,10 +34,10 @@ import { GeminiVisionService } from './gemini-vision.service';
  * // Use default provider (from VISION_API_PROVIDER env var, or 'openai')
  * const service = VisionApiServiceFactory.create();
  *
- * // Explicitly use Anthropic Claude
+ * // Explicitly use Anthropic Claude (no API key: lib/ai/anthropic-client.ts)
  * const claudeService = VisionApiServiceFactory.create('anthropic');
  *
- * // With custom configuration
+ * // With custom configuration (apiKey applies to openai / google only)
  * const customService = VisionApiServiceFactory.create('openai', {
  *   apiKey: 'custom-key',
  *   detail: 'low',
@@ -86,10 +86,8 @@ export class VisionApiServiceFactory {
       }
 
       case 'anthropic':
-        return new ClaudeVisionService({
-          apiKey: config?.apiKey,
-          model: modelName,
-        });
+        // Anthropic は API キーを受け取らない (createAnthropicClient が認証を決める)
+        return new ClaudeVisionService({ model: modelName });
 
       case 'google':
         // ⚠️ `VISION_API_MEDIA_RESOLUTION` / `VISION_API_THINKING_LEVEL` は Gemini 専用。

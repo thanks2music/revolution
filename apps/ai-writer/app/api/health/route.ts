@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { resolveAnthropicAuth } from '@/lib/ai/anthropic-client';
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
@@ -108,13 +110,22 @@ export async function GET() {
     // 環境変数名は GEMINI_API_KEY のまま。env 名の統一は本番 Secret Manager と
     // deploy-ai-writer.yml の変更を伴うため、別タスクとして意図的に分離している。
     const aiKeyMap: Record<string, string> = {
-      anthropic: 'ANTHROPIC_API_KEY',
       google: 'GEMINI_API_KEY',
       openai: 'OPENAI_API_KEY',
     };
 
-    const requiredAIKey = aiKeyMap[aiProvider];
-    if (!requiredAIKey || !process.env[requiredAIKey]) {
+    // Anthropic は API キーを使わない。Cloud Run では ID フェデレーションの変数が揃っているかを見る
+    if (aiProvider === 'anthropic') {
+      try {
+        const auth = resolveAnthropicAuth(process.env);
+        healthCheck.checks.ai.message = `AI provider: anthropic (${auth.mode})`;
+      } catch (error) {
+        healthCheck.checks.ai.status = 'fail';
+        healthCheck.checks.ai.message = error instanceof Error ? error.message : String(error);
+        healthCheck.status = 'degraded';
+      }
+    } else if (!aiKeyMap[aiProvider] || !process.env[aiKeyMap[aiProvider]]) {
+      const requiredAIKey = aiKeyMap[aiProvider];
       healthCheck.checks.ai.status = 'fail';
       healthCheck.checks.ai.message = `AI provider ${aiProvider} not configured (missing ${requiredAIKey})`;
       healthCheck.status = 'degraded';

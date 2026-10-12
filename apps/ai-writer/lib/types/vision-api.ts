@@ -346,7 +346,7 @@ export interface VisionApiConfig {
   /** Provider to use (openai / anthropic / google) */
   provider: VisionProvider;
 
-  /** API key (optional, defaults to environment variable) */
+  /** API key for openai / google (optional, defaults to environment variable). Anthropic ignores it: see lib/ai/anthropic-client.ts */
   apiKey?: string;
 
   /** Model name override (optional, defaults to provider-specific default) */
@@ -431,7 +431,7 @@ export interface IVisionApiService {
    * model names per provider to avoid silent drift when the service
    * upgrades its default model.
    *
-   * @returns Model identifier (e.g. 'gpt-4o-mini', 'claude-sonnet-4-5-20250929')
+   * @returns Model identifier (e.g. 'gpt-5.4-mini', 'claude-sonnet-5-5')
    */
   getModelName(): string;
 

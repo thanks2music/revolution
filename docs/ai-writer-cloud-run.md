@@ -48,6 +48,30 @@ GitHub Actions は WIF を使用して**キーレス認証**で GCP に接続し
 | `WIF_PROVIDER` | Workload Identity Federation プロバイダー |
 | `WIF_SERVICE_ACCOUNT` | WIF サービスアカウント |
 
+## 実行用のサービスアカウント
+
+Cloud Run は専用の `revo-ai-writer-runtime` で動きます（2026-10-11 から。それまでは WordPress 用のアカウントを共用していた）。プロジェクト全体の権限は持たず、次の secret の `roles/secretmanager.secretAccessor` だけを持ちます（secret ごとに付与）。
+
+- `revo-allowed-emails` / `revo-firebase-service-account` / `GEMINI_API_KEY` / `OPENAI_API_KEY` / `GITHUB_PAT`（`--set-secrets` で注入）
+- `CRON_KEY` / `GITHUB_PAT`（コードが Secret Manager から直接読む）
+
+Firebase Admin SDK は `revo-firebase-service-account` の鍵で初期化するため、このアカウントに Firebase の権限は要りません。デプロイする側のアカウントは、このアカウントを指定するために `roles/iam.serviceAccountUser` が要ります（プロジェクト単位で付与済み）。secret を増やした時は、このアカウントにも付与してください。
+
+## Claude の認証（Anthropic の ID フェデレーション）
+
+Claude は API キーを使いません。Cloud Run のメタデータサーバーが発行する Google の ID トークンを、Anthropic の短命のトークンに交換します（実装: [`apps/ai-writer/lib/ai/anthropic-client.ts`](../apps/ai-writer/lib/ai/anthropic-client.ts)）。Anthropic 側のルールは、上の実行用のアカウントの ID トークンだけを受け付けます。
+
+ID は GitHub の Variables に置き、デプロイ時に環境変数として渡します。値はいずれも秘密ではありません。
+
+| Variable 名 | 説明 |
+|-------------|------|
+| `ANTHROPIC_FEDERATION_RULE_ID` | フェデレーションのルール (`fdrl_...`) |
+| `ANTHROPIC_ORGANIZATION_ID` | Anthropic の組織 |
+| `ANTHROPIC_SERVICE_ACCOUNT_ID` | Anthropic のサービスアカウント (`svac_...`) |
+| `ANTHROPIC_WORKSPACE_ID` | ワークスペース (任意) |
+
+最初の 3 つが欠けているとワークフローはデプロイの前に失敗します。Cloud Run の上でも欠けていればアプリは API キーに戻らず、Claude の呼び出しを失敗させます。
+
 ## ヘルスチェック仕様
 
 デプロイ後、ワークフローは 30 秒待機してから `/api/health` エンドポイントを 1 回 curl し、HTTP 200 が返るかどうかだけを判定します（[`.github/workflows/deploy-ai-writer.yml`](../.github/workflows/deploy-ai-writer.yml) の "Health check" ステップ）。
@@ -56,7 +80,7 @@ GitHub Actions は WIF を使用して**キーレス認証**で GCP に接続し
 
 - **Firebase 設定**: `NEXT_PUBLIC_FIREBASE_*` 6 種の env var が存在するか（ビルド時に埋め込まれる値のため、runtime での欠落は許容）
 - **必須シークレット**: `ALLOWED_EMAILS` / `GITHUB_PAT` / `GITHUB_OWNER` / `GITHUB_REPO`、および `GOOGLE_APPLICATION_CREDENTIALS_JSON` か個別 Firebase 変数のいずれか — Cloud Run が Secret Manager から注入した env var の有無で代用（Secret Manager API への直接接続テストは行わない）
-- **AI プロバイダー**: `AI_PROVIDER`（デフォルト `anthropic`）で選択された **1 プロバイダー** の API キー env var が存在するか — 全 3 プロバイダー（`anthropic` / `google` / `openai`）を網羅的に検証するわけではない
+- **AI プロバイダー**: `AI_PROVIDER`（デフォルト `anthropic`）で選択された **1 プロバイダー** の設定が存在するか。`google` / `openai` は API キーの env var、`anthropic` は ID フェデレーションの env var（トークンの交換までは試さない）— 全 3 プロバイダーを網羅的に検証するわけではない
 
 failed checks の数で `200 / 503` を返し分けます（1 件失敗まで `degraded` として 200、2 件以上で 503）。
 

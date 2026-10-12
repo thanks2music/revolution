@@ -20,6 +20,10 @@
 // We need real API calls for E2E tests, not mocked responses.
 jest.unmock('@anthropic-ai/sdk');
 
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { resolveAnthropicAuth } from '@/lib/ai/anthropic-client';
 import { VisionApiServiceFactory } from '@/lib/services/vision-api/vision-api-service.factory';
 import type { IVisionApiService, VisionProvider } from '@/lib/types/vision-api';
 import { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
@@ -44,14 +48,22 @@ const CATEGORIES_TO_TEST = ['menu', 'goods', 'novelty'] as const;
 type Category = (typeof CATEGORIES_TO_TEST)[number];
 
 /**
- * Per-provider API key requirement
- * E2E tests hit real APIs and require the corresponding key to be set.
- * Without keys (e.g. CI without secrets), the provider's tests are skipped.
+ * Per-provider credential requirement
+ * E2E tests hit real APIs and require credentials. Without them (e.g. CI), the
+ * provider's tests are skipped.
+ * - openai: OPENAI_API_KEY
+ * - anthropic: キーは使わない (2026-10-11 に API キーから移行)。`.env.test.local` で
+ *   `ANTHROPIC_PROFILE` を設定し、そのプロファイルの設定ファイルがあるときだけ走る。
+ *   普段の開発でもプロファイルはあるため、明示的な指定が無ければ課金される呼び出しをしない
  */
-const PROVIDER_API_KEY_ENV: Record<VisionProvider, string> = {
-  openai: 'OPENAI_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-};
+function credentialSource(provider: VisionProvider): string | null {
+  if (provider === 'openai') return process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY' : null;
+  if (!process.env.ANTHROPIC_PROFILE) return null;
+  const auth = resolveAnthropicAuth(process.env);
+  if (auth.mode !== 'profile') return 'federation';
+  const configFile = path.join(auth.configDir, 'configs', `${auth.profile}.json`);
+  return fs.existsSync(configFile) ? `profile ${auth.profile}` : null;
+}
 
 /**
  * Main-scenario fixtures: Princess Cafe × Tokyo Revengers (tr2604_sb_*.webp)
@@ -75,11 +87,8 @@ const TOREVE_2512_MENU = 'https://www.pripricafe.com/event/cafe/img/toreve2512_f
 describe.each(PROVIDERS_TO_TEST)(
   'Vision API E2E - Provider: %s',
   (provider: VisionProvider) => {
-    const apiKeyEnv = PROVIDER_API_KEY_ENV[provider];
-    const hasApiKey = Boolean(process.env[apiKeyEnv]);
-
-    if (!hasApiKey) {
-      it.skip(`(skipped: ${apiKeyEnv} not set, real API call required)`, () => {});
+    if (!credentialSource(provider)) {
+      it.skip(`(skipped: no credentials for ${provider}, real API call required)`, () => {});
       return;
     }
 
@@ -233,30 +242,16 @@ describe.each(PROVIDERS_TO_TEST)(
       30000,
     );
 
-    it(`should throw error if API key is missing (${provider})`, () => {
-      // Sprint C-α PR #268 R1 対応: Vision service の env resolution 優先順位変更
-      // (ANTHROPIC_API_KEY_VISION → ANTHROPIC_API_KEY) に追随し、claude provider の
-      // missing-key test では両 env variable を delete する必要がある
-      // (`claude-vision.service.ts` L54-58 参照)。
-      const apiKeyEnvVars =
-        provider === 'openai' ? ['OPENAI_API_KEY'] : ['ANTHROPIC_API_KEY_VISION', 'ANTHROPIC_API_KEY'];
-      const originalKeys = apiKeyEnvVars.map((k) => ({ key: k, value: process.env[k] }));
-      apiKeyEnvVars.forEach((k) => delete process.env[k]);
+    // Anthropic は API キーを使わない (資格情報は最初のリクエストで解決する) ので、OpenAI だけ
+    (provider === 'openai' ? it : it.skip)(`should throw error if API key is missing (${provider})`, () => {
+      const originalKey = process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_API_KEY;
 
       expect(() => {
         VisionApiServiceFactory.create(provider);
-      }).toThrow(
-        provider === 'openai'
-          ? /OpenAI API key is required/
-          : /Claude API key is required/,
-      );
+      }).toThrow(/OpenAI API key is required/);
 
-      // Restore
-      originalKeys.forEach(({ key, value }) => {
-        if (value !== undefined) {
-          process.env[key] = value;
-        }
-      });
+      if (originalKey !== undefined) process.env.OPENAI_API_KEY = originalKey;
     });
   },
 );

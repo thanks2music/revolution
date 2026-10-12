@@ -101,7 +101,8 @@ export function createAiProvider(): AiProvider {
   switch (providerType) {
     case 'anthropic':
       console.log('🤖 Using Anthropic Claude provider');
-      return new AnthropicProvider(undefined, modelName);
+      // 認証は API キーではなく createAnthropicClient (ID フェデレーション / プロファイル)
+      return new AnthropicProvider(modelName);
 
     case 'google':
       console.log('🤖 Using Google Gemini provider');
@@ -113,38 +114,6 @@ export function createAiProvider(): AiProvider {
 
     default:
       // TypeScript should never reach here due to type checking
-      throw new Error(`Unknown provider type: ${providerType}`);
-  }
-}
-
-/**
- * Create a specific AI provider instance (for testing or advanced use)
- *
- * @param providerType - The specific provider to create
- * @param apiKey - Optional API key override
- * @returns An instance of the specified AI provider
- * @throws Error if the provider type is not supported
- *
- * @example
- * ```typescript
- * const claudeProvider = createSpecificProvider('anthropic', 'sk-ant-...');
- * ```
- */
-export function createSpecificProvider(
-  providerType: AiProviderType,
-  apiKey?: string
-): AiProvider {
-  switch (providerType) {
-    case 'anthropic':
-      return new AnthropicProvider(apiKey);
-
-    case 'google':
-      return new GeminiProvider(apiKey);
-
-    case 'openai':
-      return new OpenAIProvider(apiKey);
-
-    default:
       throw new Error(`Unknown provider type: ${providerType}`);
   }
 }

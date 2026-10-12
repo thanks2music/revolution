@@ -40,7 +40,6 @@ const ENV_KEYS = [
   'AI_PROVIDER',
   'AI_MODEL',
   'AI_THINKING_LEVEL',
-  'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
   'GEMINI_API_KEY',
 ] as const;
@@ -53,8 +52,7 @@ describe('ai-factory', () => {
   });
 
   beforeEach(() => {
-    // 各 provider の constructor がキー必須なのでダミーを与える
-    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+    // OpenAI / Gemini の constructor はキー必須なのでダミーを与える (Anthropic はキーを使わない)
     process.env.OPENAI_API_KEY = 'test-openai-key';
     process.env.GEMINI_API_KEY = 'test-gemini-key';
     delete process.env.AI_MODEL;
@@ -117,11 +115,11 @@ describe('ai-factory', () => {
       expect(internals(provider).modelName).toBe('gpt-5.4-mini');
     });
 
-    it('AI_MODEL 未設定なら Anthropic は Claude Sonnet 4.5 のまま', () => {
+    it('AI_MODEL 未設定なら Anthropic は既定の Claude Sonnet 5.5', () => {
       process.env.AI_PROVIDER = 'anthropic';
       const provider = createAiProvider();
       expect(provider).toBeInstanceOf(AnthropicProvider);
-      expect(internals(provider).modelName).toBe('claude-sonnet-4-5-20250929');
+      expect(internals(provider).modelName).toBe('claude-sonnet-5-5');
     });
 
     it('AI_MODEL 未設定なら Gemini は gemini-3.6-flash', () => {

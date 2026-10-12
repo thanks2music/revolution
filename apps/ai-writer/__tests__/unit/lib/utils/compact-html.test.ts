@@ -5,7 +5,7 @@
  * **情報を減らさないこと**が最重要の不変条件。サイズが縮んでも会場名・日付・
  * リンクが消えたら本末転倒なので、削減とセットで保全を固定する。
  */
-import { DEFAULT_CLAUDE_MODEL } from '@/lib/config/claude-models';
+import { DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '@/lib/config/claude-models';
 import {
   CHARS_PER_TOKEN_ESTIMATE,
   CHARS_PER_TOKEN_WORST_CASE,
@@ -61,8 +61,9 @@ describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
     // extraction.service.ts の maxTokens を変えたら自動的にここも変わり、
     // 上の [ハード制約] / [方針] が再評価されることを保証する。
     // リテラル 28_000 に戻すと maxTokens 変更時に drift するため、構造を固定する。
+    // 出力は、実際に送る max_tokens が最大の Claude (思考の分を含めた下限) で予約する
     expect(NON_CONTENT_TOKENS_ESTIMATE).toBe(
-      EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + EXTRACTION_MAX_OUTPUT_TOKENS
+      EXTRACTION_TEMPLATE_TOKENS_ESTIMATE + claudeMaxTokens(EXTRACTION_MAX_OUTPUT_TOKENS)
     );
   });
 
@@ -87,9 +88,10 @@ describe('LLM_INPUT_BUDGET_CHARS の不変条件', () => {
    * `SMALLEST_CONTEXT_WINDOW_TOKENS` と本テストの期待値を同時に更新する。
    */
   it('[drift guard] 既定の Anthropic モデルが変わったら窓サイズの再確認を強制する', () => {
-    // claude-sonnet-4-5 = 200,000 tokens
+    // claude-sonnet-5-5 = 1,000,000 tokens (2026-10-11 に確認)。窓は広がったが、OpenAI の
+    // 窓 (推定 400,000) を確かめるまで SMALLEST_CONTEXT_WINDOW_TOKENS は保守的に 200,000 のまま
     // https://platform.claude.com/docs/en/build-with-claude/context-windows
-    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-sonnet-4-5-20250929');
+    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-sonnet-5-5');
     expect(SMALLEST_CONTEXT_WINDOW_TOKENS).toBe(200_000);
   });
 });

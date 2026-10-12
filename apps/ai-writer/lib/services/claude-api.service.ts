@@ -1,6 +1,8 @@
-import { Anthropic } from '@anthropic-ai/sdk';
+import type { Anthropic } from '@anthropic-ai/sdk';
 import { extract } from '@extractus/article-extractor';
-import { DEFAULT_CLAUDE_MODEL } from '../config/claude-models';
+import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '../config/claude-models';
+import { createAnthropicClient } from '../ai/anthropic-client';
+import { ClaudeIncompleteResponseError, readClaudeText } from '../ai/claude-response';
 
 // Types for article generation
 export interface ArticleGenerationRequest {
@@ -30,45 +32,32 @@ export interface GeneratedArticle {
 
 export class ClaudeAPIService {
   private client: Anthropic;
-  private model: string = DEFAULT_CLAUDE_MODEL;
-  private apiKey?: string;
-
-  constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.ANTHROPIC_API_KEY;
-
-    // Defer client initialization until first use
-    // This allows the class to be instantiated during build without environment variables
-    this.client = new Anthropic({
-      apiKey: this.apiKey || 'placeholder-will-validate-on-use',
-    });
-  }
+  private model: string;
 
   /**
-   * Ensure API key is configured before making requests
-   * @throws Error if API key is not available
+   * 認証は `createAnthropicClient` が決める (Cloud Run は ID フェデレーション、ローカルは
+   * `ant auth login` のプロファイル)。資格情報の解決は最初のリクエストの時なので、
+   * 環境変数の無いビルドの最中に作っても失敗しない。
+   *
+   * @param client - 既定は `createAnthropicClient()`。AnthropicProvider は自分のクライアントを渡す
+   * @param model - 既定は `DEFAULT_CLAUDE_MODEL`。AnthropicProvider は AI_MODEL の上書きを渡す
    */
-  private ensureApiKey(): void {
-    if (!this.apiKey) {
-      throw new Error(
-        'Anthropic API key is required. ' +
-          'Set ANTHROPIC_API_KEY environment variable or pass it as parameter to the constructor.'
-      );
-    }
+  constructor(client: Anthropic = createAnthropicClient(), model: string = DEFAULT_CLAUDE_MODEL) {
+    this.client = client;
+    this.model = model;
   }
 
   /**
    * Generate an article based on source content or topic
    */
   async generateArticle(request: ArticleGenerationRequest): Promise<GeneratedArticle> {
-    this.ensureApiKey();
-
     const prompt = this.buildArticlePrompt(request);
 
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 4000,
-        temperature: 0.7,
+        max_tokens: claudeMaxTokens(4000),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: 'user',
@@ -77,17 +66,7 @@ export class ClaudeAPIService {
         ],
       });
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        throw new Error('Claude refused to generate content due to safety policies');
-      }
-
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
-      }
-
-      return this.parseArticleResponse(content.text, request);
+      return this.parseArticleResponse(readClaudeText(response, 'generateArticle'), request);
     } catch (error) {
       console.error('Claude API Error:', error);
       throw new Error(
@@ -100,12 +79,11 @@ export class ClaudeAPIService {
    * Test connection to Claude API
    */
   async testConnection(): Promise<boolean> {
-    this.ensureApiKey();
-
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 50,
+        max_tokens: claudeMaxTokens(50),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: 'user',
@@ -114,8 +92,7 @@ export class ClaudeAPIService {
         ],
       });
 
-      const content = response.content[0];
-      return content.type === 'text' && content.text.includes('API connection successful');
+      return readClaudeText(response, 'testConnection').includes('API connection successful');
     } catch (error) {
       console.error('Claude API connection test failed:', error);
       return false;
@@ -153,8 +130,6 @@ export class ClaudeAPIService {
     url: string,
     request: Partial<ArticleGenerationRequest>
   ): Promise<GeneratedArticle> {
-    this.ensureApiKey();
-
     try {
       console.log(`Extracting content from URL: ${url}`);
 
@@ -237,8 +212,6 @@ export class ClaudeAPIService {
    * Generate article summary/excerpt
    */
   async generateExcerpt(content: string, maxLength: number = 150): Promise<string> {
-    this.ensureApiKey();
-
     const prompt = `以下の記事内容から、${maxLength}文字以内で魅力的な要約を作成してください。SEOを意識した要約にしてください。
 
 記事内容:
@@ -249,8 +222,8 @@ ${content}
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 300,
-        temperature: 0.5,
+        max_tokens: claudeMaxTokens(300),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: 'user',
@@ -259,17 +232,7 @@ ${content}
         ],
       });
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        throw new Error('Claude refused to generate excerpt due to safety policies');
-      }
-
-      const responseContent = response.content[0];
-      if (responseContent.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
-      }
-
-      return responseContent.text.trim();
+      return readClaudeText(response, 'generateExcerpt').trim();
     } catch (error) {
       console.error('Failed to generate excerpt:', error);
       throw new Error(
@@ -283,8 +246,6 @@ ${content}
    * 日本語タイトルからWordPress用のURLスラッグを生成
    */
   async generateSlug(title: string): Promise<string> {
-    this.ensureApiKey();
-
     console.log(`>>> generateSlug called with: "${title}" <<<`);
     const prompt = `Convert the following Japanese title to a URL-friendly slug (lowercase alphanumeric characters and hyphens only).
 
@@ -312,8 +273,8 @@ Slug:`;
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 100,
-        temperature: 0.1,
+        max_tokens: claudeMaxTokens(100),
+        ...CLAUDE_THINKING_SETTINGS,
         messages: [
           {
             role: 'user',
@@ -327,18 +288,19 @@ Slug:`;
         JSON.stringify(response, null, 2)
       );
 
-      // Handle refusal stop reason (Claude 4.5+)
-      if (response.stop_reason === 'refusal') {
-        console.warn(`⚠️ Claude refused to generate slug for title: ${title}`);
-        return this.generateFallbackSlug(title);
+      let text: string;
+      try {
+        text = readClaudeText(response, 'generateSlug');
+      } catch (error) {
+        // 拒否されたときだけ、従来どおりタイトルから作った slug に退避する
+        if (error instanceof ClaudeIncompleteResponseError && error.stopReason === 'refusal') {
+          console.warn(`⚠️ Claude refused to generate slug for title: ${title}`);
+          return this.generateFallbackSlug(title);
+        }
+        throw error;
       }
 
-      const responseContent = response.content[0];
-      if (responseContent.type !== 'text') {
-        throw new Error('Unexpected response type from Claude API');
-      }
-
-      const rawResponse = responseContent.text.trim();
+      const rawResponse = text.trim();
       console.log(
         `🔍 [generateSlug] Raw response text: "${rawResponse}" (length: ${rawResponse.length})`
       );
