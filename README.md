@@ -68,7 +68,7 @@ pnpm dev:docs                 # ドキュメントサイトのみ (http://localh
 - **Frontend**: Next.js 16 / React 19 / TypeScript 5 / Tailwind CSS / SWR
 - **AI Providers**: Claude (Anthropic) ・ Gemini (Google) ・ OpenAI（環境変数で切替）
 - **Infra**: Google Cloud Run / Firebase Authentication / Vercel / CloudFlare CDN
-- **Tooling**: pnpm 10 / Turbo 2.5 / Jest 30 / ESLint 9 / Husky 9
+- **Tooling**: pnpm 12 / Turbo 2.5 / Jest 30 / ESLint 9 / Husky 9
 
 詳細表は [`docs/current-stack.md`](./docs/current-stack.md) にあります。
 

@@ -70,7 +70,7 @@ See [`docs/build.md`](./docs/build.md) for the full command reference.
 - **Frontend**: Next.js 16 / React 19 / TypeScript 5 / Tailwind CSS / SWR
 - **AI Providers**: Claude (Anthropic) · Gemini (Google) · OpenAI (switchable via env var)
 - **Infra**: Google Cloud Run / Firebase Authentication / Vercel / CloudFlare CDN
-- **Tooling**: pnpm 10 / Turbo 2.5 / Jest 30 / ESLint 9
+- **Tooling**: pnpm 12 / Turbo 2.5 / Jest 30 / ESLint 9
 
 For the detailed table see [`docs/current-stack.md`](./docs/current-stack.md).
 
