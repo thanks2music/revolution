@@ -199,13 +199,18 @@ export function normalizeMediaResolution(value?: string): MediaResolution {
  * すると thoughts は 92 → 273 へ)。したがって余裕枠を広げるほど thinking のコストも
  * 増えうる。**コストを絞る正しいレバーは `maxOutputTokens` ではなく `thinkingLevel`**
  * であり、余裕枠は「切り詰めを防ぐための安全側の値」として置く。
+ *
+ * MEDIUM / HIGH は 2026-10-12 に広げた (旧 2,048 / 4,096)。抽出の step を MEDIUM にしたところ、
+ * detail-extraction で思考 3,934 + 出力 2,099 (上限 4,000 + 2,048 で MAX_TOKENS)、
+ * subpage-extraction で思考約 9,600 を実測した。余裕枠そのものは課金されないが、上の注記のとおり
+ * 思考の量は予算に比例して増えうるので、MEDIUM を使うのは抽出の step だけにしている
  */
 const THINKING_HEADROOM_TOKENS: Record<ThinkingLevel, number> = {
   [ThinkingLevel.THINKING_LEVEL_UNSPECIFIED]: 1024,
   [ThinkingLevel.MINIMAL]: 0,
   [ThinkingLevel.LOW]: 1024,
-  [ThinkingLevel.MEDIUM]: 2048,
-  [ThinkingLevel.HIGH]: 4096,
+  [ThinkingLevel.MEDIUM]: 8192,
+  [ThinkingLevel.HIGH]: 16384,
 };
 
 /**
