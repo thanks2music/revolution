@@ -5,7 +5,7 @@ WORKDIR /app
 # pnpm インストール
 # バージョンはルート package.json の packageManager と一致させること
 # (corepack 公式: packageManager フィールドが install の決定性を担保する)
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
 
 # モノレポ対応: ルートとワークスペース設定をコピー
 COPY pnpm-workspace.yaml ./
@@ -33,7 +33,7 @@ WORKDIR /app
 # pnpm インストール
 # バージョンはルート package.json の packageManager と一致させること
 # (corepack 公式: packageManager フィールドが install の決定性を担保する)
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
 
 # 依存関係をコピー
 COPY --from=deps /app/node_modules ./node_modules
