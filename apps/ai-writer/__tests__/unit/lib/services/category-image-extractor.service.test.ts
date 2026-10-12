@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
-import { CategoryImageExtractorService } from '@/lib/services/category-image-extractor.service';
+import { CategoryImageExtractorService, findImagesByAlt } from '@/lib/services/category-image-extractor.service';
 
 // ページの取得は SSRF ガード (DNS で内部アドレスを弾く) を通る。テストではネットワークに出ず、公開アドレスに解決させる
 jest.mock('node:dns/promises', () => ({
@@ -19,7 +19,8 @@ const IMAGE_CONFIG = {
   max_images_per_category: 5,
   min_image_size: { width: 200, height: 200 },
   // store-url-patterns.yaml の実際の値の一部。`line` はホスト名の ltr-online に部分一致する
-  exclude_patterns: ['logo', 'icon', 'line'],
+  exclude_patterns: ['logo', 'icon', 'line', 'banner'],
+  novelty_alt_keywords: ['特典', 'ノベルティ', 'novelty'],
 };
 
 const configLoader = {
@@ -179,7 +180,9 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     const TOKYO = 'https://heroaca-cafe.ltr-online.com/lp/heroaca-cafe-s004';
     const OSAKA = 'https://heroaca-cafe.ltr-online.com/lp/heroaca-cafe-s019';
     const venuePage = (area: string) =>
-      `<html><body><header><img src="/img/site-header.jpg"></header><main><h1>${area} INFORMATION</h1><h2>ノベルティ</h2><p>「ホログラムステッカー」を1枚プレゼント!</p><img src="/img/novelty-${area}.jpg"></main></body></html>`;
+      `<html><body><header><img src="/img/site-header.jpg" alt="特典"></header><main><h1>${area} INFORMATION</h1><h2>ノベルティ</h2><p>「ホログラムステッカー」を1枚プレゼント!</p><img src="/img/tokutenbanner-${area}.jpg" alt="事前予約者限定カフェ利用特典"><img src="/img/map-${area}.jpg" alt="アクセスマップ"></main></body></html>`;
+    const GUIDE = 'https://heroaca-cafe.ltr-online.com/lp/guide';
+    const guidePage = '<html><body><main><h1>ご利用ガイド</h1><img src="/img/step_01.png" alt="STEP1"></main></body></html>';
 
     it('取得した下層ページと会場の案内ページの本文を、種類つきで残す', async () => {
       mockFetchByUrl({
@@ -200,27 +203,38 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
       expect(result.pages[1].text).toContain('ホログラムステッカー');
     });
 
-    it('ノベルティの下層ページが無ければ、最初の会場の案内ページの本文ブロックの画像をノベルティの画像にする (ヘッダーの画像は使わない)', async () => {
-      mockFetchByUrl({ [TOKYO]: venuePage('TOKYO'), [OSAKA]: venuePage('OSAKA') });
+    it('会場のページごとに、本文ブロックの画像のうち代替テキストが特典・ノベルティを示すものを候補として残す (除外パターン banner は当てない。ヘッダーと他の画像は使わない)', async () => {
+      mockFetchByUrl({ [GUIDE]: guidePage, [TOKYO]: venuePage('TOKYO'), [OSAKA]: venuePage('OSAKA') });
       const service = new CategoryImageExtractorService(configLoader);
 
-      const result = await service.extractCategoryImages(TOP, null, {}, [TOKYO, OSAKA]);
+      const result = await service.extractCategoryImages(TOP, null, {}, [GUIDE, TOKYO, OSAKA]);
 
-      expect(result.novelty).toEqual(['https://heroaca-cafe.ltr-online.com/img/novelty-TOKYO.jpg']);
-      expect(result.sources.novelty).toBe(TOKYO);
+      expect(result.venueNoveltyImages).toEqual([
+        { url: TOKYO, images: ['https://heroaca-cafe.ltr-online.com/img/tokutenbanner-TOKYO.jpg'] },
+        { url: OSAKA, images: ['https://heroaca-cafe.ltr-online.com/img/tokutenbanner-OSAKA.jpg'] },
+      ]);
     });
 
-    it('下層ページが無いサイトでは、会場のページの画像より先にトップページへの退避が働き、残った空きを会場のページで補う', async () => {
+    it('ノベルティの画像を、画像の抽出の段階では会場のページから選ばない (利用ガイドの画像がノベルティに入った不具合の再発防止)', async () => {
+      mockFetchByUrl({ [GUIDE]: guidePage, [TOKYO]: venuePage('TOKYO') });
+      const service = new CategoryImageExtractorService(configLoader);
+
+      const result = await service.extractCategoryImages(TOP, null, {}, [GUIDE, TOKYO]);
+
+      expect(result.novelty).toEqual([]);
+      expect(result.sources.novelty).toBeUndefined();
+    });
+
+    it('下層ページが無いサイトでは、トップページへの退避が働く (会場のページは使わない)', async () => {
       mockFetchByUrl({ [TOKYO]: venuePage('TOKYO') });
       const service = new CategoryImageExtractorService(configLoader);
       const topHtml = '<html><body><main>' + [1, 2, 3].map((n) => `<img src="/img/top-${n}.jpg">`).join('') + '</main></body></html>';
 
       const result = await service.extractCategoryImages(TOP, topHtml, {}, [TOKYO]);
 
-      // トップの 3 枚はメニューに入り (3 カテゴリとも空だったため退避が働く)、空のノベルティは会場のページから補う
       expect(result.sources.menu).toBe(TOP);
       expect(result.menu).toHaveLength(3);
-      expect(result.sources.novelty).toBe(TOKYO);
+      expect(result.novelty).toEqual([]);
     });
 
     it('内部アドレスのページは取得しない (SSRF ガード)', async () => {
@@ -246,5 +260,21 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
         [MENU, TOKYO, OSAKA].sort()
       );
     });
+  });
+});
+
+describe('findImagesByAlt', () => {
+  it('代替テキストが語を含む画像の絶対 URL を、重複を除いて返す (大文字・小文字は区別しない)', () => {
+    const html =
+      '<img src="/a.jpg" alt="ドリンク特典"><img src="/a.jpg" alt="ドリンク特典"><img src="/b.jpg" alt="NOVELTY"><img src="/c.jpg" alt="MENU"><img alt="特典">';
+
+    expect(findImagesByAlt(html, 'https://example.com/lp/x', ['特典', 'novelty'])).toEqual([
+      'https://example.com/a.jpg',
+      'https://example.com/b.jpg',
+    ]);
+  });
+
+  it('語が無ければ何も返さない', () => {
+    expect(findImagesByAlt('<img src="/a.jpg" alt="特典">', 'https://example.com/', [])).toEqual([]);
   });
 });

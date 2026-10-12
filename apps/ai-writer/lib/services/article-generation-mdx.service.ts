@@ -106,7 +106,8 @@ import { menuItemsOf, mergeVisionIntoExtraction } from './vision-api/merge-visio
 import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
-import { SubpageExtractionService } from './subpage-extraction.service';
+import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
+import { pickNoveltyImages } from './pick-novelty-images';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
 import { goodsNamesForProse, insertIntoGoodsSection, loadGoodsListConfig, renderGoodsList } from './goods-list';
 import {
@@ -601,7 +602,23 @@ export class ArticleGenerationMdxService {
       // subpage-extraction step: 下層ページと会場の案内ページの文字から、メニュー・グッズ・ノベルティ・キャラクターを読む
       console.log(`\n${getStepDisplay('subpage-extraction')} 下層ページの文字からメニュー/グッズ/ノベルティを抽出...`);
       if (detailedExtraction && categoryImages && categoryImages.pages.length > 0) {
-        detailedExtraction = await this.runSubpageExtraction(detailedExtraction, categoryImages, costTracker);
+        const subpageStep = await this.runSubpageExtraction(detailedExtraction, categoryImages, costTracker);
+        detailedExtraction = subpageStep.extraction;
+        // ノベルティの下層ページが無ければ、ノベルティ名が読めた会場の案内ページの特典の画像を使う
+        if (categoryImages.novelty.length === 0 && subpageStep.pages.length > 0) {
+          const picked = pickNoveltyImages(categoryImages.venueNoveltyImages, subpageStep.pages);
+          if (picked) {
+            console.log(
+              `${getStepContext('subpage-extraction')} ノベルティの画像: ノベルティ名が読めた会場のページ ${picked.url} から ${picked.images.length}枚`,
+            );
+            categoryImages = {
+              ...categoryImages,
+              novelty: picked.images,
+              sources: { ...categoryImages.sources, novelty: picked.url },
+              all: Array.from(new Set([...categoryImages.all, ...picked.images])),
+            };
+          }
+        }
       } else {
         console.log(`${getStepContext('subpage-extraction')} 読む下層ページが無いため、スキップ`);
       }
@@ -1036,6 +1053,9 @@ export class ArticleGenerationMdxService {
           // グッズの節の導入文に並べるのは先頭の数件だけ (全件は一覧に書く)。詳細は一覧をコードで差し込むので渡さない
           extractedData: {
             ...detailedExtraction,
+            // ★ リード文・テキストの置換と同じ会場の表記 (`会場表現`)。抽出結果の `店舗名` は主催のブランド名で、
+            //   会場ごとにブランドが違うと「BOX cafe&space にて開催」のように一部の会場を落とす (ヒロアカの北海道)
+            店舗名: 会場表現,
             グッズ名: proseGoodsNames,
             グッズ詳細リスト: null,
           },
@@ -1668,7 +1688,7 @@ export class ArticleGenerationMdxService {
     extraction: ExtractionResult,
     categoryImages: CategoryImages,
     costTracker: CostTrackerService,
-  ): Promise<ExtractionResult> {
+  ): Promise<{ extraction: ExtractionResult; pages: SubpageFacts[] }> {
     const ctx = getStepContext('subpage-extraction');
     console.log(
       `${ctx} 読むページ:`,
@@ -1679,7 +1699,7 @@ export class ArticleGenerationMdxService {
         作品名: extraction.作品名,
         pages: categoryImages.pages,
       });
-      if (!result) return extraction;
+      if (!result) return { extraction, pages: [] };
       if (result.usage) costTracker.recordUsage('subpage-extraction', result.model, result.usage);
       console.log(
         `${ctx} ページごとの結果:`,
@@ -1694,10 +1714,10 @@ export class ArticleGenerationMdxService {
       );
       const merged = mergeSubpagesIntoExtraction(extraction, result.pages);
       console.log(`${ctx} ${merged.changes.length > 0 ? '✅ 抽出結果を補った:' : '補う項目なし'}`, merged.changes);
-      return merged.extraction;
+      return { extraction: merged.extraction, pages: result.pages };
     } catch (error) {
       console.error(`${ctx} ❌ 下層ページの抽出に失敗 (トップページの抽出のまま続行):`, error);
-      return extraction;
+      return { extraction, pages: [] };
     }
   }
 
