@@ -94,14 +94,38 @@ describe('parseSubpageResponse', () => {
     expect(facts[1]).toMatchObject({ kind: 'venue', area: '東京', ノベルティ名: ['ホログラムステッカー'], グッズ詳細リスト: null });
   });
 
-  it('URL は末尾の / の違いを無視して対応づける。URL が無くても、ページ数が同じなら順番で対応づける', () => {
+  it('URL は末尾の / の違いを無視して対応づける', () => {
     const facts = parseSubpageResponse(
-      { pages: [{ url: 'https://example.com/menu/', グッズ詳細リスト: [{ name: '缶バッジ' }] }, { ノベルティ名: ['ステッカー'] }] },
+      { pages: [{ url: 'https://example.com/menu/', グッズ詳細リスト: [{ name: '缶バッジ' }] }] },
       PAGES
     );
 
     expect(facts[0].グッズ詳細リスト?.[0].name).toBe('缶バッジ');
+    expect(facts[1].グッズ詳細リスト).toBeNull();
+  });
+
+  it('URL が 1 件も対応づけられず、ページ数が同じときだけ順番で対応づける', () => {
+    const facts = parseSubpageResponse({ pages: [{ グッズ詳細リスト: [{ name: '缶バッジ' }] }, { ノベルティ名: ['ステッカー'] }] }, PAGES);
+
+    expect(facts[0].グッズ詳細リスト?.[0].name).toBe('缶バッジ');
     expect(facts[1].ノベルティ名).toEqual(['ステッカー']);
+  });
+
+  it('順番を入れ替え、一部の URL だけを書き換えた応答では、順番で別のページの事実を写さない', () => {
+    const facts = parseSubpageResponse(
+      {
+        pages: [
+          { url: 'https://example.com/s004', ノベルティ名: ['ホログラムステッカー'] },
+          { url: 'https://example.com/MENU-rewritten', メニュー詳細リスト: [{ name: 'マルゲリータ' }] },
+        ],
+      },
+      PAGES
+    );
+
+    // venue は URL で対応づく。menu は URL が合わないので、順番 (= venue の事実) を写さず空にする
+    expect(facts[1].ノベルティ名).toEqual(['ホログラムステッカー']);
+    expect(facts[0].ノベルティ名).toBeNull();
+    expect(facts[0].メニュー詳細リスト).toBeNull();
   });
 
   it('ページを飛ばした応答では、順番で別のページの事実を写さない', () => {

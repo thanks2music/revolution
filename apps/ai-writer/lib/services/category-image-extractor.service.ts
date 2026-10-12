@@ -19,6 +19,7 @@ import { selectMainContent } from '@/lib/utils/html-extractor';
 import { compactHtmlForLlm, truncateForLlm } from '@/lib/utils/compact-html';
 import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
 import { pageUrlKey } from '@/lib/utils/url';
+import { fetchPageSafely } from '@/lib/utils/safe-image-fetch';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
 
 /** 下層ページの種類。venue は会場ごとの案内ページ */
@@ -302,9 +303,10 @@ export class CategoryImageExtractorService {
    * ページをフェッチ
    */
   private async fetchPage(url: string): Promise<string> {
-    const response = await fetch(url, {
-      // 1 ページの取得が止まっても、記事の生成全体を止めない
-      signal: AbortSignal.timeout(PAGE_FETCH_TIMEOUT_MS),
+    // URL は記事選別の応答やトップページのリンク由来なので、画像と同じ SSRF ガードを通す
+    // (内部アドレス・リダイレクトの各ホップ・本文の大きさ)。1 ページの取得が止まっても、記事の生成全体を止めない
+    return fetchPageSafely(url, {
+      timeoutMs: PAGE_FETCH_TIMEOUT_MS,
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -312,12 +314,6 @@ export class CategoryImageExtractorService {
         'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
       },
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return response.text();
   }
 
   /**

@@ -153,15 +153,16 @@ function urlKey(value: unknown): string {
 
 /**
  * 応答をページごとの事実にそろえる。URL で入力のページに対応づける。順番での対応づけは、応答のページ数が
- * 入力と同じときだけ行う (ページを飛ばした応答で、別のページの事実を写してしまわないように)。
+ * 入力と同じで、かつ URL で 1 件も対応づけられなかったときだけ行う (ページを飛ばした応答や、順番を入れ替えて
+ * 一部の URL だけを書き換えた応答で、別のページの事実を写してしまわないように)。
  * 値の無いもの (`null`・空文字・`"null"`) は null にする。応答に無いページは、何も読めなかったものとして扱う。
  */
 export function parseSubpageResponse(raw: unknown, pages: SubpageText[]): SubpageFacts[] {
   const items = isRecord(raw) && Array.isArray(raw.pages) ? raw.pages.filter(isRecord) : [];
-  const byIndex = items.length === pages.length;
+  const byUrl = (page: SubpageText) => items.find((candidate) => urlKey(candidate.url) === urlKey(page.url));
+  const byIndex = items.length === pages.length && pages.every((page) => byUrl(page) === undefined);
   return pages.map((page, index) => {
-    const item =
-      items.find((candidate) => urlKey(candidate.url) === urlKey(page.url)) ?? (byIndex ? items[index] : undefined);
+    const item = byUrl(page) ?? (byIndex ? items[index] : undefined);
     return {
       url: page.url,
       kind: page.kind,

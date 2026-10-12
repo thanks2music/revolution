@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 import { CategoryImageExtractorService } from '@/lib/services/category-image-extractor.service';
+
+// ページの取得は SSRF ガード (DNS で内部アドレスを弾く) を通る。テストではネットワークに出ず、公開アドレスに解決させる
+jest.mock('node:dns/promises', () => ({
+  lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+}));
 import type { ConfigLoaderService } from '@/lib/services/config-loader.service';
 
 /**
@@ -45,12 +50,7 @@ const INERTIA_GOODS_PAGE = buildInertiaHtml({
 const originalFetch = global.fetch;
 
 function mockFetchHtml(html: string): void {
-  global.fetch = jest.fn(async () => ({
-    ok: true,
-    status: 200,
-    statusText: '',
-    text: async () => html,
-  })) as unknown as typeof global.fetch;
+  global.fetch = jest.fn(async () => new Response(html, { status: 200 })) as unknown as typeof global.fetch;
 }
 
 describe('CategoryImageExtractorService.extractCategoryImages', () => {
@@ -170,9 +170,7 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     function mockFetchByUrl(pages: Record<string, string>): void {
       global.fetch = jest.fn(async (url: unknown) => {
         const html = pages[String(url)];
-        return html === undefined
-          ? { ok: false, status: 404, statusText: 'Not Found', text: async () => '' }
-          : { ok: true, status: 200, statusText: '', text: async () => html };
+        return html === undefined ? new Response('', { status: 404 }) : new Response(html, { status: 200 });
       }) as unknown as typeof global.fetch;
     }
 
@@ -225,6 +223,17 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
       expect(result.sources.novelty).toBe(TOKYO);
     });
 
+    it('内部アドレスのページは取得しない (SSRF ガード)', async () => {
+      const internal = 'http://169.254.169.254/latest/meta-data';
+      mockFetchByUrl({ [internal]: '<html><body><main><p>secret</p></main></body></html>' });
+      const service = new CategoryImageExtractorService(configLoader);
+
+      const result = await service.extractCategoryImages('http://169.254.169.254/', null, {}, [internal]);
+
+      expect(result.pages).toEqual([]);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it('取得に失敗した会場のページは飛ばし、トップや取得済みのページは読み直さない', async () => {
       mockFetchByUrl({ [MENU]: '<html><body><main><p>メニュー</p></main></body></html>', [OSAKA]: venuePage('OSAKA') });
       const service = new CategoryImageExtractorService(configLoader);
@@ -232,7 +241,10 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
       const result = await service.extractCategoryImages(TOP, null, { menu: [MENU] }, [TOP, `${MENU}/`, TOKYO, OSAKA]);
 
       expect(result.pages.map((page) => page.url)).toEqual([MENU, OSAKA]);
-      expect((global.fetch as jest.Mock).mock.calls.map((call) => String(call[0]))).toEqual([MENU, TOKYO, OSAKA]);
+      // 会場のページは並列に取るので、取得の順は決まらない (結果の pages の順は保つ)
+      expect((global.fetch as jest.Mock).mock.calls.map((call) => String(call[0])).sort()).toEqual(
+        [MENU, TOKYO, OSAKA].sort()
+      );
     });
   });
 });
