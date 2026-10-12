@@ -165,6 +165,16 @@ describe('ノベルティ名', () => {
     expect(merged.ノベルティ名).toEqual(['ステッカー', 'アクリルカード']);
   });
 
+  it('ノベルティが読めない会場のページがあれば、限定とは書かない (その会場に無いとは言い切れない)', () => {
+    const { extraction: merged } = mergeSubpagesIntoExtraction(extraction(), [
+      venue('東京', ['ステッカー', 'アクリルカード']),
+      venue('神奈川', ['ステッカー', 'アクリルカード']),
+      venue('愛知', []), // 本文が切り詰められた、お知らせの記事だった、など
+    ]);
+
+    expect(merged.ノベルティ名).toEqual(['ステッカー', 'アクリルカード']);
+  });
+
   it('会場のページが 1 つだけなら、限定かどうかは分からないので名前だけにする', () => {
     const { extraction: merged } = mergeSubpagesIntoExtraction(extraction(), [venue('東京', ['ステッカー'])]);
 

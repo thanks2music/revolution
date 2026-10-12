@@ -54,8 +54,44 @@ export interface SubpageExtractionResult {
 }
 
 /**
+ * ページを、1 回の呼び出しの予算 (本文の合計の文字数) に収まるまとまりに分ける (順番は保つ)。
+ * 1 ページで予算を超えるものは、そのページだけのまとまりにする (並べるときに切り詰める)。
+ *
+ * コナンでは下層ページと会場の案内ページが 13 件・約 10 万字あり、1 回に詰めると後半のページが空のまま渡って
+ * 「ノベルティの無い会場」と読まれた (2026-10-12)。ページを落とさないため、分けて読む。
+ */
+export function batchPages(pages: SubpageText[], budget = LLM_INPUT_BUDGET_CHARS): SubpageText[][] {
+  const batches: SubpageText[][] = [];
+  let current: SubpageText[] = [];
+  let size = 0;
+  for (const page of pages) {
+    if (current.length > 0 && size + page.text.length > budget) {
+      batches.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(page);
+    size += page.text.length;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+function sumUsage(usages: Array<TokenUsage | undefined>): TokenUsage | undefined {
+  const present = usages.filter((usage): usage is TokenUsage => usage !== undefined);
+  if (present.length === 0) return undefined;
+  return present.reduce((sum, usage) => ({
+    promptTokens: sum.promptTokens + usage.promptTokens,
+    completionTokens: sum.completionTokens + usage.completionTokens,
+    totalTokens: sum.totalTokens + usage.totalTokens,
+    cachedTokens: (sum.cachedTokens ?? 0) + (usage.cachedTokens ?? 0),
+    cacheCreationTokens: (sum.cacheCreationTokens ?? 0) + (usage.cacheCreationTokens ?? 0),
+  }));
+}
+
+/**
  * ページの本文をプロンプトに並べる。全体を {@link LLM_INPUT_BUDGET_CHARS} に収める
- * (先のページから順に予算を使い、足りなくなったページは切り詰める)。
+ * (先のページから順に予算を使い、足りなくなったページは切り詰める。通常は {@link batchPages} で分けてから呼ぶ)。
  */
 export function formatPagesForPrompt(pages: SubpageText[], budget = LLM_INPUT_BUDGET_CHARS): string {
   let remaining = budget;
@@ -140,23 +176,28 @@ export class SubpageExtractionService {
     if (!instruction) {
       throw new Error(`${this.pipelineId}.yaml に prompts.extract_subpages がありません`);
     }
-    const prompt = instruction
-      .replace('{{作品名}}', request.作品名 ?? '(不明)')
-      .replace('{{pages}}', formatPagesForPrompt(request.pages));
-
-    const response = await this.aiProvider.sendMessage(prompt, {
-      stepId: 'subpage-extraction',
-      maxTokens: MAX_OUTPUT_TOKENS,
-      temperature: 0.2,
-      responseFormat: 'json',
-      responseSchema: SUBPAGE_EXTRACTION_OPENAI_SCHEMA,
-      recordContext: { pageUrls: request.pages.map((page) => page.url) },
-    });
+    // 予算に収まるまとまりごとに呼ぶ (並列)。ページの順番は保つ
+    const results = await Promise.all(
+      batchPages(request.pages).map(async (pages) => {
+        const prompt = instruction
+          .replace('{{作品名}}', request.作品名 ?? '(不明)')
+          .replace('{{pages}}', formatPagesForPrompt(pages));
+        const response = await this.aiProvider.sendMessage(prompt, {
+          stepId: 'subpage-extraction',
+          maxTokens: MAX_OUTPUT_TOKENS,
+          temperature: 0.2,
+          responseFormat: 'json',
+          responseSchema: SUBPAGE_EXTRACTION_OPENAI_SCHEMA,
+          recordContext: { pageUrls: pages.map((page) => page.url) },
+        });
+        return { pages: parseSubpageResponse(parseJson(response.content), pages), response };
+      })
+    );
 
     return {
-      pages: parseSubpageResponse(parseJson(response.content), request.pages),
-      model: response.model,
-      usage: response.usage,
+      pages: results.flatMap((result) => result.pages),
+      model: results[0].response.model,
+      usage: sumUsage(results.map((result) => result.response.usage)),
     };
   }
 }

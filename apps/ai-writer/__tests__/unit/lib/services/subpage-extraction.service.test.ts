@@ -4,6 +4,7 @@ import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { SubpageText } from '@/lib/services/category-image-extractor.service';
 import {
   SubpageExtractionService,
+  batchPages,
   formatPagesForPrompt,
   parseSubpageResponse,
   toGoodsItems,
@@ -39,6 +40,23 @@ describe('formatPagesForPrompt', () => {
     expect(text).toContain('あ'.repeat(80));
     expect(text).toContain('い'.repeat(20) + '\n(以下省略)');
     expect(text).not.toContain('い'.repeat(21));
+  });
+});
+
+describe('batchPages', () => {
+  const pageOf = (url: string, size: number): SubpageText => ({ url, kind: 'venue', text: 'あ'.repeat(size) });
+
+  it('本文の合計が予算に収まるまとまりに、順番を保って分ける', () => {
+    const pages = [pageOf('a', 40), pageOf('b', 50), pageOf('c', 30), pageOf('d', 90)];
+
+    expect(batchPages(pages, 100).map((batch) => batch.map((p) => p.url))).toEqual([['a', 'b'], ['c'], ['d']]);
+  });
+
+  it('1 ページで予算を超えるものは、そのページだけのまとまりにする', () => {
+    expect(batchPages([pageOf('big', 500), pageOf('small', 10)], 100).map((b) => b.map((p) => p.url))).toEqual([
+      ['big'],
+      ['small'],
+    ]);
   });
 });
 
@@ -127,6 +145,26 @@ describe('SubpageExtractionService.extract', () => {
     expect(options.responseSchema).toBeDefined();
     expect(result?.pages[0].メニュー詳細リスト?.[0].name).toBe('マルゲリータ');
     expect(result?.model).toBe('test-model');
+  });
+
+  it('予算を超えるページは分けて呼び、結果を入力の順にまとめて、使用量を合計する', async () => {
+    const big = (url: string): SubpageText => ({ url, kind: 'venue', text: 'あ'.repeat(40_000) });
+    const sendMessage = jest.fn(async (prompt: string) => {
+      const url = /- URL: (\S+)/.exec(prompt)![1];
+      return {
+        content: JSON.stringify({ pages: [{ url, area: '東京', ノベルティ名: [url] }] }),
+        model: 'test-model',
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      };
+    });
+    const loader = { loadModularTemplate: jest.fn(async () => TEMPLATE) } as unknown as YamlTemplateLoaderService;
+    const service = new SubpageExtractionService(loader, { sendMessage } as unknown as AiProvider);
+
+    const result = await service.extract({ 作品名: null, pages: [big('https://example.com/a'), big('https://example.com/b')] });
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(result?.pages.map((p) => p.ノベルティ名)).toEqual([['https://example.com/a'], ['https://example.com/b']]);
+    expect(result?.usage).toMatchObject({ promptTokens: 20, completionTokens: 10, totalTokens: 30 });
   });
 
   it('ページが無ければ LLM を呼ばない', async () => {

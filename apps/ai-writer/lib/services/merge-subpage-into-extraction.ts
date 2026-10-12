@@ -11,7 +11,7 @@
  * - 名前の重複は「（全1種）」「（ランダム7種）」のような種類数の有無を無視して見分け、種類数の付いた方を残す
  * - ノベルティ名: トップと下層を合わせる。会場ごとの案内ページが 2 つ以上あり、一部の会場にしか無い
  *   ノベルティは「〇〇（大阪会場のみ）」のように会場を付ける (東京の読者がもらえると誤解しないように)。
- *   付けるのは会場だけで、配布条件は書かない。会場の地域名が読み取れなかったときは付けない
+ *   付けるのは会場だけで、配布条件は書かない。すべての会場のページで地域名とノベルティが読めたときだけ付ける
  * - 下層ページの抽出は Vision より先に行う。Vision は、ここで埋めた後もまだ欠けている項目だけを読む
  */
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
@@ -127,13 +127,17 @@ function mergeNovelties(
     }
   }
 
+  // 会場ごとの違いを書き分けるのは、すべての会場のページで地域名とノベルティが読めたときだけ。
+  // 読めなかったページ (取得の失敗、本文の切り詰め、お知らせの記事など) があると、「その会場には無い」と
+  // 誤って限定を付けてしまうため (2026-10-12、コナンで「（東京・神奈川会場のみ）」と誤った)
+  const comparable =
+    venuePages.length >= 2 && venuePages.every((page) => page.area !== null && !isEmptyList(page.ノベルティ名));
   const common: string[] = [];
   const limited: string[] = [];
   const limitedKeys = new Set<string>();
   for (const [key, entry] of byName) {
     const areas = Array.from(new Set(entry.pages.map((page) => page.area)));
-    const isLimited =
-      venuePages.length >= 2 && entry.pages.length < venuePages.length && areas.every((area) => area !== null);
+    const isLimited = comparable && entry.pages.length < venuePages.length;
     if (isLimited) {
       limited.push(`${entry.name}（${areas.join('・')}会場のみ）`);
       limitedKeys.add(key);
