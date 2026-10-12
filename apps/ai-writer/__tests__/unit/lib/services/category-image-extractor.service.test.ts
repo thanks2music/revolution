@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 import { CategoryImageExtractorService } from '@/lib/services/category-image-extractor.service';
+
+// ページの取得は SSRF ガード (DNS で内部アドレスを弾く) を通る。テストではネットワークに出ず、公開アドレスに解決させる
+jest.mock('node:dns/promises', () => ({
+  lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+}));
 import type { ConfigLoaderService } from '@/lib/services/config-loader.service';
 
 /**
@@ -45,12 +50,7 @@ const INERTIA_GOODS_PAGE = buildInertiaHtml({
 const originalFetch = global.fetch;
 
 function mockFetchHtml(html: string): void {
-  global.fetch = jest.fn(async () => ({
-    ok: true,
-    status: 200,
-    statusText: '',
-    text: async () => html,
-  })) as unknown as typeof global.fetch;
+  global.fetch = jest.fn(async () => new Response(html, { status: 200 })) as unknown as typeof global.fetch;
 }
 
 describe('CategoryImageExtractorService.extractCategoryImages', () => {
@@ -68,6 +68,21 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
 
     expect(result.goods).toEqual([GOODS_IMAGE]);
     expect(result.sources.goods).toBe('https://heroaca-cafe.ltr-online.com/lp/goods');
+    // HTML 自体は残さず、「描き下ろし」の記載の有無だけを返す
+    expect(result.mentionsRedrawnIllustration).toBe(false);
+  });
+
+  it('下層ページの本文ブロックに「描き下ろし」があれば mentionsRedrawnIllustration を立てる', async () => {
+    mockFetchHtml(
+      '<html><body><nav>ナビ</nav><main><h2>グッズ</h2><p>描き下ろしイラストを使用したアクリルスタンド</p><img src="/images/goods-1.jpg"></main></body></html>'
+    );
+    const service = new CategoryImageExtractorService(configLoader);
+
+    const result = await service.extractCategoryImages('https://example.com/', null, {
+      goods: ['https://example.com/goods/'],
+    });
+
+    expect(result.mentionsRedrawnIllustration).toBe(true);
   });
 
   it('通常の HTML の下層ページはこれまでどおり <img> から拾う', async () => {
@@ -148,5 +163,88 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     });
 
     expect(result.menu).toEqual(['https://example.com/img/menu.jpg']);
+  });
+
+  describe('下層ページの本文 (pages) と会場の案内ページ', () => {
+    /** URL ごとに返す HTML を切り替える */
+    function mockFetchByUrl(pages: Record<string, string>): void {
+      global.fetch = jest.fn(async (url: unknown) => {
+        const html = pages[String(url)];
+        return html === undefined ? new Response('', { status: 404 }) : new Response(html, { status: 200 });
+      }) as unknown as typeof global.fetch;
+    }
+
+    const TOP = 'https://heroaca-cafe.ltr-online.com/';
+    const MENU = 'https://heroaca-cafe.ltr-online.com/lp/cafe-menu';
+    const TOKYO = 'https://heroaca-cafe.ltr-online.com/lp/heroaca-cafe-s004';
+    const OSAKA = 'https://heroaca-cafe.ltr-online.com/lp/heroaca-cafe-s019';
+    const venuePage = (area: string) =>
+      `<html><body><header><img src="/img/site-header.jpg"></header><main><h1>${area} INFORMATION</h1><h2>ノベルティ</h2><p>「ホログラムステッカー」を1枚プレゼント!</p><img src="/img/novelty-${area}.jpg"></main></body></html>`;
+
+    it('取得した下層ページと会場の案内ページの本文を、種類つきで残す', async () => {
+      mockFetchByUrl({
+        [MENU]: '<html><body><main><h2>PIZZA</h2><p>【緑谷出久】バジルクリームとルッコラ 各¥2,090(税込)</p></main></body></html>',
+        [TOKYO]: venuePage('TOKYO'),
+        [OSAKA]: venuePage('OSAKA'),
+      });
+      const service = new CategoryImageExtractorService(configLoader);
+
+      const result = await service.extractCategoryImages(TOP, null, { menu: [MENU] }, [TOKYO, OSAKA]);
+
+      expect(result.pages.map((page) => [page.kind, page.url])).toEqual([
+        ['menu', MENU],
+        ['venue', TOKYO],
+        ['venue', OSAKA],
+      ]);
+      expect(result.pages[0].text).toContain('バジルクリームとルッコラ');
+      expect(result.pages[1].text).toContain('ホログラムステッカー');
+    });
+
+    it('ノベルティの下層ページが無ければ、最初の会場の案内ページの本文ブロックの画像をノベルティの画像にする (ヘッダーの画像は使わない)', async () => {
+      mockFetchByUrl({ [TOKYO]: venuePage('TOKYO'), [OSAKA]: venuePage('OSAKA') });
+      const service = new CategoryImageExtractorService(configLoader);
+
+      const result = await service.extractCategoryImages(TOP, null, {}, [TOKYO, OSAKA]);
+
+      expect(result.novelty).toEqual(['https://heroaca-cafe.ltr-online.com/img/novelty-TOKYO.jpg']);
+      expect(result.sources.novelty).toBe(TOKYO);
+    });
+
+    it('下層ページが無いサイトでは、会場のページの画像より先にトップページへの退避が働き、残った空きを会場のページで補う', async () => {
+      mockFetchByUrl({ [TOKYO]: venuePage('TOKYO') });
+      const service = new CategoryImageExtractorService(configLoader);
+      const topHtml = '<html><body><main>' + [1, 2, 3].map((n) => `<img src="/img/top-${n}.jpg">`).join('') + '</main></body></html>';
+
+      const result = await service.extractCategoryImages(TOP, topHtml, {}, [TOKYO]);
+
+      // トップの 3 枚はメニューに入り (3 カテゴリとも空だったため退避が働く)、空のノベルティは会場のページから補う
+      expect(result.sources.menu).toBe(TOP);
+      expect(result.menu).toHaveLength(3);
+      expect(result.sources.novelty).toBe(TOKYO);
+    });
+
+    it('内部アドレスのページは取得しない (SSRF ガード)', async () => {
+      const internal = 'http://169.254.169.254/latest/meta-data';
+      mockFetchByUrl({ [internal]: '<html><body><main><p>secret</p></main></body></html>' });
+      const service = new CategoryImageExtractorService(configLoader);
+
+      const result = await service.extractCategoryImages('http://169.254.169.254/', null, {}, [internal]);
+
+      expect(result.pages).toEqual([]);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('取得に失敗した会場のページは飛ばし、トップや取得済みのページは読み直さない', async () => {
+      mockFetchByUrl({ [MENU]: '<html><body><main><p>メニュー</p></main></body></html>', [OSAKA]: venuePage('OSAKA') });
+      const service = new CategoryImageExtractorService(configLoader);
+
+      const result = await service.extractCategoryImages(TOP, null, { menu: [MENU] }, [TOP, `${MENU}/`, TOKYO, OSAKA]);
+
+      expect(result.pages.map((page) => page.url)).toEqual([MENU, OSAKA]);
+      // 会場のページは並列に取るので、取得の順は決まらない (結果の pages の順は保つ)
+      expect((global.fetch as jest.Mock).mock.calls.map((call) => String(call[0])).sort()).toEqual(
+        [MENU, TOKYO, OSAKA].sort()
+      );
+    });
   });
 });

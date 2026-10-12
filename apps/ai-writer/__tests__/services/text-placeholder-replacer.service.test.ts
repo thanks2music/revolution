@@ -221,6 +221,27 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
     });
   });
 
+  // 2026-10-11: ノベルティ名を配列にした
+  describe('ノベルティ名 (配列)', () => {
+    it('{{ノベルティ名}} は「、」でつなぐ', () => {
+      const data: TextPlaceholderData = { ノベルティ名: ['カード', 'ステッカー'] };
+
+      expect(service.replaceAll('「{{ノベルティ名}}」', data).content).toBe('「カード、ステッカー」');
+    });
+
+    it('{{ノベルティ名|join:...}} は指定の区切りでつなぐ', () => {
+      const data: TextPlaceholderData = { ノベルティ名: ['カード', 'ステッカー'] };
+
+      expect(service.replaceAll(`「{{ノベルティ名|join:'」「'}}」`, data).content).toBe('「カード」「ステッカー」');
+    });
+
+    it('空の配列なら置き換えない (未置換として残し、呼び出し側が検知する)', () => {
+      const data: TextPlaceholderData = { ノベルティ名: [] };
+
+      expect(service.replaceAll('{{ノベルティ名}}', data).content).toBe('{{ノベルティ名}}');
+    });
+  });
+
   describe('Enhanced Join Helper - v1.4.0 動的セパレーター対応', () => {
     describe('キャラクター名 のリテラルセパレーター', () => {
       it('{{キャラクター名|join:"・"}} パターンで正しく結合すること', () => {

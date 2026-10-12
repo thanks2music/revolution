@@ -268,6 +268,8 @@ async function readBodyWithLimit(
 export interface SafeImageFetchOptions {
   timeoutMs?: number;
   maxBytes?: number;
+  /** リクエストのヘッダー (ページの取得で User-Agent などを付ける) */
+  headers?: Record<string, string>;
 }
 
 export interface SafeImageFetchResult {
@@ -308,6 +310,7 @@ export async function fetchImageSafely(
     const response = await fetch(current.href, {
       redirect: 'manual',
       signal: AbortSignal.timeout(timeoutMs),
+      headers: options.headers,
     });
 
     // 3xx は自前で追跡する (各ホップを検証するため)
@@ -344,4 +347,26 @@ export async function fetchImageSafely(
 
   // ループは必ず return / throw で抜けるが、型のために置く
   throw new Error(`Too many redirects (> ${MAX_REDIRECTS}) for "${imageUrl}"`);
+}
+
+/** ページの本文の上限 (公式サイトの HTML は大きくても数 MB) */
+const DEFAULT_PAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * HTML のページを、画像と同じ SSRF ガード付きで取得し、UTF-8 の文字列で返す (2026-10-12)。
+ *
+ * 下層ページや会場の案内ページの URL は、記事選別 (LLM) の応答やトップページのリンク由来で、
+ * 外部の入力にあたる。スキーム・内部アドレス・リダイレクトの各ホップ・本文の大きさを、画像と同じく検証する。
+ *
+ * @throws {Error} 検証に失敗した / HTTP が失敗した / 上限を超えた場合
+ */
+export async function fetchPageSafely(
+  pageUrl: string,
+  options: SafeImageFetchOptions = {}
+): Promise<string> {
+  const { buffer } = await fetchImageSafely(pageUrl, {
+    ...options,
+    maxBytes: options.maxBytes ?? DEFAULT_PAGE_MAX_BYTES,
+  });
+  return buffer.toString('utf-8');
 }

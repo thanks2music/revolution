@@ -109,6 +109,12 @@ export interface SendMessageOptions {
   temperature?: number;
   /** System prompt to set context (optional) */
   systemPrompt?: string;
+  /**
+   * この呼び出しだけの思考の深さ (Gemini だけが使う。他の provider は無視する)。
+   * 省略時は provider の既定 (`AI_THINKING_LEVEL`)。指示の多い抽出の step で上げる (2026-10-12、
+   * Gemini が LOW のときにノベルティの除外の条件を守らなかったため)
+   */
+  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
   /** Expected response format hint */
   responseFormat?: 'text' | 'json';
   /**

@@ -5,12 +5,41 @@
  * @description
  * SubpageDetectorService で検出されたカテゴリ別URLから
  * 各ページの画像を抽出し、カテゴリごとに整理して返す。
+ *
+ * 取得したページの本文 (本文ブロックを圧縮した文字) も `pages` に残し、下層ページの抽出
+ * (`subpage-extraction`) に渡す (2026-10-12。追加の通信をしないため、ここで取得したものを使う)。
+ * 会場ごとの案内ページ (`venueUrls`) も取得する。ノベルティが案内ページにしか無いサイトがあるため
+ * (ヒロアカ)、ノベルティの下層ページが無いときは、最初の案内ページの画像をノベルティの画像にする。
  */
 
 import * as cheerio from 'cheerio';
 import type { CategoryUrls } from '@/lib/types/subpage-detection';
 import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
+import { selectMainContent } from '@/lib/utils/html-extractor';
+import { compactHtmlForLlm, truncateForLlm } from '@/lib/utils/compact-html';
+import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
+import { pageUrlKey } from '@/lib/utils/url';
+import { fetchPageSafely } from '@/lib/utils/safe-image-fetch';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
+
+/** 下層ページの種類。venue は会場ごとの案内ページ */
+export type SubpageKind = 'menu' | 'novelty' | 'goods' | 'venue';
+
+/** 取得した下層ページの本文 (本文ブロックを圧縮したもの。画像は「[画像: 代替テキスト]」) */
+export interface SubpageText {
+  url: string;
+  kind: SubpageKind;
+  text: string;
+}
+
+/** 1 ページの本文の上限 (文字)。全体の上限は下層ページの抽出が受け持つ */
+export const SUBPAGE_TEXT_BUDGET_CHARS = 20_000;
+
+/** 取得する会場の案内ページの上限 */
+export const MAX_VENUE_PAGES = 10;
+
+/** 下層ページ・会場の案内ページの取得の時間切れ (ms、1 ページあたり) */
+const PAGE_FETCH_TIMEOUT_MS = 15_000;
 
 /**
  * カテゴリ別画像抽出結果
@@ -33,6 +62,14 @@ export interface CategoryImages {
   };
   /** 全画像URL（重複排除済み） */
   all: string[];
+  /**
+   * 取得した下層ページのどれかの本文ブロックに「描き下ろし」「描き起こし」の記載があったか。
+   * キャラクター名を Vision と HTML で足し合わせるかの判定に使う (画像の抽出で取得したページを
+   * そのまま調べ、追加の通信はしない。HTML 自体は結果に残さない)
+   */
+  mentionsRedrawnIllustration: boolean;
+  /** 取得した下層ページと会場の案内ページの本文 (取得に失敗したページは含まない) */
+  pages: SubpageText[];
 }
 
 /**
@@ -74,12 +111,14 @@ export class CategoryImageExtractorService {
    * @param topPageUrl トップページURL（フォールバック & OGP取得用）
    * @param topPageHtml トップページのHTML（既に取得済みの場合）
    * @param categoryUrls カテゴリ別URLマップ（SubpageDetectorService の出力）
+   * @param venueUrls 会場ごとの案内ページ (記事選別の公式 URL のうち、トップと同じサイトのもの)
    * @returns カテゴリ別画像
    */
   async extractCategoryImages(
     topPageUrl: string,
     topPageHtml: string | null,
-    categoryUrls: CategoryUrls
+    categoryUrls: CategoryUrls,
+    venueUrls: string[] = []
   ): Promise<CategoryImages> {
     console.log('[CategoryImageExtractor] カテゴリ別画像抽出開始');
 
@@ -94,6 +133,8 @@ export class CategoryImageExtractorService {
       goods: [],
       sources: {},
       all: [],
+      mentionsRedrawnIllustration: false,
+      pages: [],
     };
 
     const allImages = new Set<string>();
@@ -127,6 +168,7 @@ export class CategoryImageExtractorService {
 
           // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する
           const html = expandInertiaPayload(await this.fetchPage(targetUrl));
+          this.addPageText(result, targetUrl, category, html);
           const pageResult = this.extractImagesFromHtml(html, targetUrl, imageConfig);
           if (pageResult.excluded.length > 0) {
             console.log(
@@ -156,6 +198,32 @@ export class CategoryImageExtractorService {
           );
         }
       }
+    }
+
+    // 2.5 会場ごとの案内ページ。本文を残し、ノベルティの画像が無ければ最初のページの本文ブロックの画像を使う
+    const fetchedKeys = new Set([topPageUrl, ...Object.values(result.sources)].map(pageUrlKey));
+    const venues = Array.from(new Set(venueUrls))
+      .filter((url) => !fetchedKeys.has(pageUrlKey(url)))
+      .slice(0, MAX_VENUE_PAGES);
+    const venueHtmls = await Promise.all(
+      venues.map(async (url) => {
+        try {
+          return { url, html: expandInertiaPayload(await this.fetchPage(url)) };
+        } catch (error) {
+          console.warn(`[CategoryImageExtractor] venue: ページ取得失敗 (${url})`, error);
+          return null;
+        }
+      })
+    );
+    const venueMainHtmls: Array<{ url: string; mainHtml: string }> = [];
+    for (const venue of venueHtmls) {
+      if (!venue) continue;
+      venueMainHtmls.push({ url: venue.url, mainHtml: this.addPageText(result, venue.url, 'venue', venue.html) });
+    }
+    if (venues.length > 0) {
+      console.log(
+        `[CategoryImageExtractor] venue: 案内ページ ${venueHtmls.filter(Boolean).length}/${venues.length} 件の本文を取得`
+      );
     }
 
     // 3. 下層ページがない場合はトップページから推測（フォールバック）
@@ -188,6 +256,24 @@ export class CategoryImageExtractorService {
       images.forEach((img) => allImages.add(img));
     }
 
+    // 4. ノベルティの画像がまだ無ければ、最初に画像のある会場の案内ページの本文ブロックの画像を使う
+    //    (トップページへの退避 (3) より後に行う。先に埋めると、3 の「3 カテゴリとも空」の条件が崩れる)
+    if (result.novelty.length === 0) {
+      for (const venue of venueMainHtmls) {
+        // ヘッダーのロゴを拾わないよう、本文ブロックの画像だけを使う
+        const images = this.extractImagesFromHtml(venue.mainHtml, venue.url, imageConfig).images.slice(
+          0,
+          imageConfig.max_images_per_category
+        );
+        if (images.length === 0) continue;
+        result.novelty = images;
+        result.sources.novelty = venue.url;
+        images.forEach((img) => allImages.add(img));
+        console.log(`[CategoryImageExtractor] novelty: 会場の案内ページ ${venue.url} から ${images.length}枚`);
+        break;
+      }
+    }
+
     result.all = Array.from(allImages);
 
     console.log('[CategoryImageExtractor] 抽出結果:', {
@@ -202,10 +288,25 @@ export class CategoryImageExtractorService {
   }
 
   /**
+   * 本文ブロックを切り出して `pages` に残し、「描き下ろし」の記載も調べる。本文ブロックの HTML を返す
+   */
+  private addPageText(result: CategoryImages, url: string, kind: SubpageKind, html: string): string {
+    // ナビ・フッター・関連ニュースの欄を除いた本文ブロックだけを使う
+    const mainHtml = selectMainContent(cheerio.load(html)).html;
+    result.mentionsRedrawnIllustration ||= mentionsRedrawnIllustration(mainHtml);
+    const { text } = truncateForLlm(compactHtmlForLlm(mainHtml).html, SUBPAGE_TEXT_BUDGET_CHARS);
+    result.pages.push({ url, kind, text });
+    return mainHtml;
+  }
+
+  /**
    * ページをフェッチ
    */
   private async fetchPage(url: string): Promise<string> {
-    const response = await fetch(url, {
+    // URL は記事選別の応答やトップページのリンク由来なので、画像と同じ SSRF ガードを通す
+    // (内部アドレス・リダイレクトの各ホップ・本文の大きさ)。1 ページの取得が止まっても、記事の生成全体を止めない
+    return fetchPageSafely(url, {
+      timeoutMs: PAGE_FETCH_TIMEOUT_MS,
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -213,12 +314,6 @@ export class CategoryImageExtractorService {
         'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
       },
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return response.text();
   }
 
   /**

@@ -16,11 +16,16 @@ import { TokenUsageSchema, type TokenUsage } from './ai-provider-response';
  * shared/schemas は typed の最終戻り値の契約のみを保持する (SoC: 境界スキーマ集約)。
  */
 
+/** 価格が税込か税抜か (画像に書かれているときだけ)。 */
+export const PriceTaxTypeSchema = z.enum(['included', 'excluded']);
+
 export const MenuItemSchema = z.object({
   /** Menu item name (as written in the image). */
   name: z.string(),
   /** Tax-included price preferred. */
   price: z.number().optional(),
+  /** Whether the image says the price includes or excludes tax. Absent when the image does not say. (Templates v1.4) */
+  priceTaxType: PriceTaxTypeSchema.optional(),
   /** Character names. Empty array (not null) when no characters. */
   characterName: z.array(z.string()),
   /** Whether this menu item has an attached novelty/bonus. (Templates v1.2) */
@@ -44,6 +49,7 @@ export const MenuItemSchema = z.object({
 export const GoodsItemSchema = z.object({
   name: z.string(),
   price: z.number().optional(),
+  priceTaxType: PriceTaxTypeSchema.optional(),
   variantCount: z.number().optional(),
   variantDetails: z.string().optional(),
   /** Character names. Empty array (not null) when no characters. */
@@ -110,6 +116,7 @@ export const VisionExtractionResultSchema = z.object({
   }),
 });
 
+export type PriceTaxType = z.infer<typeof PriceTaxTypeSchema>;
 export type MenuItem = z.infer<typeof MenuItemSchema>;
 export type GoodsItem = z.infer<typeof GoodsItemSchema>;
 export type NoveltyItem = z.infer<typeof NoveltyItemSchema>;

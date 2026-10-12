@@ -82,7 +82,8 @@ export interface TextPlaceholderData {
    */
   メンバー名?: string[] | null;
   テーマ名?: string | null;
-  ノベルティ名?: string | null;
+  /** ノベルティ名の一覧。`{{ノベルティ名}}` は「、」で、`{{ノベルティ名|join:'…'}}` は指定の区切りでつなぐ */
+  ノベルティ名?: string[] | null;
   グッズ名?: string[] | null;
 
   // Sprint C-β P11 追加 (2026-07-19、LeadGeneratorService から派生):
@@ -374,7 +375,7 @@ export class TextPlaceholderReplacerService {
       開催回数: data.開催回数 ?? undefined,
       公式サイトURL: data.公式サイトURL ?? undefined,
       テーマ名: data.テーマ名 ?? undefined,
-      ノベルティ名: data.ノベルティ名 ?? undefined,
+      ノベルティ名: data.ノベルティ名?.length ? data.ノベルティ名.join('、') : undefined,
       コラボ作品名: data.コラボ作品名,
 
       // Sprint C-β P11 追加 (2026-07-19、LeadGeneratorService から派生):
@@ -433,48 +434,31 @@ export class TextPlaceholderReplacerService {
 
     // 配列のjoin処理: {{配列名|join:'・'}} or {{配列名|join:member_separator}}
     // v1.4.0: 動的セパレーター対応（リテラル文字列とデータフィールドの両方をサポート）
-    if (data.キャラクター名 && data.キャラクター名.length > 0) {
+    const joinableLists: Array<[string, string[] | null | undefined]> = [
+      ['キャラクター名', data.キャラクター名],
+      ['グッズ名', data.グッズ名],
+      ['ノベルティ名', data.ノベルティ名],
+    ];
+    for (const [listName, list] of joinableLists) {
+      if (!list || list.length === 0) continue;
+
       // パターン1: リテラルセパレーター {{キャラクター名|join:'・'}}
-      const literalPattern = /\{\{キャラクター名\|join:'([^']+)'\}\}/g;
+      const literalPattern = new RegExp(`\\{\\{${listName}\\|join:'([^']+)'\\}\\}`, 'g');
       result = result.replace(literalPattern, (match, separator) => {
-        const value = data.キャラクター名!.join(separator);
+        const value = list.join(separator);
         count++;
         log.push({ placeholder: match, value });
         return value;
       });
 
       // パターン2: 動的セパレーター {{キャラクター名|join:member_separator}}
-      const dynamicPattern = /\{\{キャラクター名\|join:([a-zA-Z_]\w*)\}\}/g;
+      const dynamicPattern = new RegExp(`\\{\\{${listName}\\|join:([a-zA-Z_]\\w*)\\}\\}`, 'g');
       result = result.replace(dynamicPattern, (match, separatorKey) => {
-        // データから動的セパレーターを取得（フォールバック: '・'）
+        // データから動的セパレーターを取得
         const rawSeparator = (data as any)[separatorKey];
         // Sprint C-β P11 §6.1 準拠: fallback default "・" → "、" に統一
         const separator = typeof rawSeparator === 'string' ? rawSeparator : '、';
-        const value = data.キャラクター名!.join(separator);
-        count++;
-        log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
-        return value;
-      });
-    }
-
-    if (data.グッズ名 && data.グッズ名.length > 0) {
-      // パターン1: リテラルセパレーター {{グッズ名|join:'・'}}
-      const literalPattern = /\{\{グッズ名\|join:'([^']+)'\}\}/g;
-      result = result.replace(literalPattern, (match, separator) => {
-        const value = data.グッズ名!.join(separator);
-        count++;
-        log.push({ placeholder: match, value });
-        return value;
-      });
-
-      // パターン2: 動的セパレーター {{グッズ名|join:member_separator}}
-      const dynamicPattern = /\{\{グッズ名\|join:([a-zA-Z_]\w*)\}\}/g;
-      result = result.replace(dynamicPattern, (match, separatorKey) => {
-        // データから動的セパレーターを取得（フォールバック: '・'）
-        const rawSeparator = (data as any)[separatorKey];
-        // Sprint C-β P11 §6.1 準拠: fallback default "・" → "、" に統一
-        const separator = typeof rawSeparator === 'string' ? rawSeparator : '、';
-        const value = data.グッズ名!.join(separator);
+        const value = list.join(separator);
         count++;
         log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
         return value;

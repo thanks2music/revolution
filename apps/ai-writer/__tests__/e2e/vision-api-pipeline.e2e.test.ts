@@ -28,13 +28,12 @@ import { VisionApiServiceFactory } from '@/lib/services/vision-api/vision-api-se
 import type { IVisionApiService, VisionProvider } from '@/lib/types/vision-api';
 import { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
 import {
-  crossCheckVisionResult,
   detectHallucination,
   selectFallbackLevel,
   validateBusinessRules,
 } from '@/lib/utils/vision-api-utils';
-import type { HtmlExtractionData } from '@/lib/utils/vision-api-utils';
-import { checkExtractionSufficiency } from '@/lib/config/vision-api-thresholds';
+import { determineVisionTargets } from '@/lib/services/vision-api/vision-targets';
+import { prepareVisionImages } from '@/lib/services/vision-api/prepare-vision-images';
 
 /**
  * Providers under test
@@ -109,20 +108,15 @@ describe.each(PROVIDERS_TO_TEST)(
       it(`extracts ${category} items from category-specific image (${provider})`, async () => {
         const fixtureUrls = TR2604_FIXTURES[category];
 
-        // Step 1: HTML extraction (insufficient — drives Vision API path)
-        const htmlExtraction: HtmlExtractionData = {
-          menuItemCount: 0,
-          priceCount: 0,
-          htmlSufficiencyRate: 0.05,
-        };
-
-        // Step 2: Sufficiency check
-        const sufficiencyResult = checkExtractionSufficiency(
-          htmlExtraction.menuItemCount,
-          htmlExtraction.priceCount,
-          htmlExtraction.htmlSufficiencyRate,
-        );
-        expect(sufficiencyResult.isSufficient).toBe(false);
+        // Step 1-2: HTML から 4 項目とも書けない → 3 カテゴリとも読む対象になる
+        const targets = determineVisionTargets({
+          キャラクター名: null,
+          メニュー詳細リスト: null,
+          具体的なメニュー名リスト: null,
+          グッズ名: null,
+          ノベルティ名: null,
+        });
+        expect(targets.categories).toContain(category);
 
         // Step 3: Load Templates v1.2 prompt for this category
         const template = await yamlTemplateLoaderService.loadVisionApiTemplate('collabo-cafe');
@@ -136,7 +130,7 @@ describe.each(PROVIDERS_TO_TEST)(
 
         // Step 4: Call Vision API
         const visionResult = await visionApiService.extractFromImages({
-          imageUrls: fixtureUrls,
+          images: await prepareVisionImages(fixtureUrls),
           prompt,
           category,
           maxRetries: 3,
@@ -165,18 +159,8 @@ describe.each(PROVIDERS_TO_TEST)(
           expect(Array.isArray(item.characterName)).toBe(true);
         }
 
-        // Step 6: Cross-check (HTML vs Vision API).
-        // For the menu category, also assert `visionMenuCount > 0` to keep a
-        // concrete signal that items were actually extracted (the legacy menu-
-        // only test exposed this via `details.visionMenuCount`).
-        const crossCheck = crossCheckVisionResult(visionResult, htmlExtraction);
-        expect(crossCheck.details).toBeDefined();
-        if (category === 'menu') {
-          expect(crossCheck.details.visionMenuCount).toBeGreaterThan(0);
-        }
-
-        // Step 7: Hallucination detection
-        const hallucination = detectHallucination(visionResult, htmlExtraction);
+        // Step 7: Hallucination detection (Coming Soon)
+        const hallucination = detectHallucination(visionResult);
         expect(hallucination.detected).toBe(false);
 
         // Step 8: Fallback level selection
@@ -200,10 +184,11 @@ describe.each(PROVIDERS_TO_TEST)(
 
     it(`should handle Vision API timeout gracefully (${provider})`, async () => {
       const template = await yamlTemplateLoaderService.loadVisionApiTemplate('collabo-cafe');
+      const images = await prepareVisionImages([TOREVE_2512_MENU]);
 
       await expect(
         visionApiService.extractFromImages({
-          imageUrls: [TOREVE_2512_MENU],
+          images,
           prompt: template.prompts.menu_extraction.content,
           category: 'menu',
           maxRetries: 1,
@@ -216,31 +201,13 @@ describe.each(PROVIDERS_TO_TEST)(
       );
     });
 
-    // Anthropic/OpenAI Vision APIs return 200 OK + empty arrays for unreachable URLs
-    // (no exception). Gated behind LIVE_API=1 — each run hits real APIs (~$0.026).
-    // Retry/rethrow contract is covered without charge by Layer 2 unit tests.
-    (process.env.LIVE_API ? it : it.skip)(
-      `should return empty result when image URL is unreachable (${provider})`,
-      async () => {
-        const template = await yamlTemplateLoaderService.loadVisionApiTemplate('collabo-cafe');
-
-        const result = await visionApiService.extractFromImages({
-          imageUrls: ['https://invalid-url-that-does-not-exist.com/image.jpg'],
-          prompt: template.prompts.menu_extraction.content,
-          category: 'menu',
-          maxRetries: 1,
-          timeout: 10000,
-        });
-
-        expect(result.visionExtraction.menuItems).toEqual([]);
-        expect(result.visionExtraction.goodsItems).toEqual([]);
-        expect(result.visionExtraction.noveltyItems).toEqual([]);
-        expect(result.visionExtraction.confidence).toBeGreaterThanOrEqual(0);
-        expect(result.visionExtraction.confidence).toBeLessThanOrEqual(1);
-        expect(result.visionExtraction.provider).toBe(provider);
-      },
-      30000,
-    );
+    // 取得できない画像は prepareVisionImages が除く (Vision の API は呼ばない)。orchestrator は
+    // そのカテゴリを 'images could not be fetched' として飛ばす (multi-category のテストで固定)
+    it(`should drop an unreachable image before calling the API (${provider})`, async () => {
+      expect(
+        await prepareVisionImages(['https://invalid-url-that-does-not-exist.com/image.jpg']),
+      ).toEqual([]);
+    }, 30000);
 
     // Anthropic は API キーを使わない (資格情報は最初のリクエストで解決する) ので、OpenAI だけ
     (provider === 'openai' ? it : it.skip)(`should throw error if API key is missing (${provider})`, () => {

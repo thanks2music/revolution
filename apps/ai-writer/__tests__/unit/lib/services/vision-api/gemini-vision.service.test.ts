@@ -4,15 +4,14 @@
  * ⚠️ **本ファイルの最重要ケースは「画像を inlineData で送ること」である。**
  * Gemini は `fileData.fileUri` に公開 HTTPS URL を渡すと **429 RESOURCE_EXHAUSTED が
  * 恒常的に返る** (2026-08-16 に 2 回実測。直後の inlineData 呼び出しは成功するので
- * アカウントの quota ではない)。OpenAI (`image_url`) / Claude (`source.type: 'url'`) と
- * 違い、**この provider だけ画像を自前でダウンロードして base64 で送る**。
+ * アカウントの quota ではない)。画像は `prepareVisionImages` が取得・分割した base64 を
+ * 受け取る (2026-10-12 から 3 社共通。取得と分割のテストは prepare-vision-images.test.ts)。
  * ここが URL 直渡しに戻ると全 Vision 呼び出しが 429 で落ちる。
  *
  * あわせて以下も固定する:
  * - `mediaResolution` / `thinkingLevel` が config へ渡ること (どちらもコスト直結)
  * - thinking トークンを出力として計上すること
  * - 切り詰め応答 (`MAX_TOKENS`) を正常な結果として返さないこと
- * - 画像取得に失敗しても throw せず空配列で返す既存契約を壊さないこと
  */
 
 import { MediaResolution, ThinkingLevel } from '@google/genai';
@@ -84,19 +83,9 @@ function lastRequest() {
   };
 }
 
-/** `fetch` を成功レスポンスで差し替える */
-function mockFetchOk(contentType = 'image/jpeg') {
-  global.fetch = jest.fn(async () => ({
-    ok: true,
-    status: 200,
-    headers: { get: () => contentType },
-    arrayBuffer: async () => new TextEncoder().encode('fake-image-bytes').buffer,
-  })) as unknown as typeof fetch;
-}
-
 function callOptions(overrides: Record<string, unknown> = {}) {
   return {
-    imageUrls: [IMAGE_URL],
+    images: [{ source: IMAGE_URL, data: 'aW1n', mimeType: 'image/jpeg' }],
     prompt: 'メニューを抽出してください',
     category: 'menu' as const,
     maxRetries: 1,
@@ -105,17 +94,13 @@ function callOptions(overrides: Record<string, unknown> = {}) {
 }
 
 describe('GeminiVisionService', () => {
-  const ORIGINAL_FETCH = global.fetch;
-
   beforeEach(() => {
     mockGenerateContent.mockReset();
     mockGenerateContent.mockResolvedValue(buildResponse(MENU_PAYLOAD));
-    mockFetchOk();
   });
 
   afterEach(() => {
     jest.clearAllMocks();
-    global.fetch = ORIGINAL_FETCH;
   });
 
   describe('provider / model の識別', () => {
@@ -150,8 +135,7 @@ describe('GeminiVisionService', () => {
       const imageParts = parts.filter((p) => 'inlineData' in p);
 
       expect(imageParts).toHaveLength(1);
-      expect(imageParts[0].inlineData).toMatchObject({ mimeType: 'image/jpeg' });
-      expect(typeof (imageParts[0].inlineData as { data: string }).data).toBe('string');
+      expect(imageParts[0].inlineData).toEqual({ mimeType: 'image/jpeg', data: 'aW1n' });
       expect(parts.some((p) => 'fileData' in p)).toBe(false);
     });
 
@@ -163,64 +147,21 @@ describe('GeminiVisionService', () => {
       expect(lastRequest().contents[0].parts[0]).toEqual({ text: 'ノベルティを抽出' });
     });
 
-    it('Content-Type から MIME タイプを決める', async () => {
-      mockFetchOk('image/png; charset=binary');
-      const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
-      await service.extractFromImages(callOptions());
-
-      const imagePart = lastRequest().contents[0].parts.find((p) => 'inlineData' in p);
-      expect(imagePart?.inlineData).toMatchObject({ mimeType: 'image/png' });
-    });
-
-    it('http(s) 以外の URL は API へ届く前に弾く', async () => {
-      const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
-      await expect(
-        service.extractFromImages(callOptions({ imageUrls: ['file:///etc/passwd'] }))
-      ).rejects.toThrow();
-      expect(mockGenerateContent).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('画像取得失敗時の契約', () => {
-    /**
-     * 「到達不能・無効な画像でも 200 + 空配列を返す」のが Vision の既存契約
-     * (`shared/schemas/vision-api-extraction.ts`)。Gemini だけ throw に変えると
-     * 呼び出し側のハルシネーション判定の前提が provider によって変わる。
-     */
-    it('取得できなかった画像は除外して続行する', async () => {
-      global.fetch = jest.fn(async (url: unknown) =>
-        String(url).includes('broken')
-          ? { ok: false, status: 404, headers: { get: () => null }, arrayBuffer: async () => new ArrayBuffer(0) }
-          : {
-              ok: true,
-              status: 200,
-              headers: { get: () => 'image/jpeg' },
-              arrayBuffer: async () => new TextEncoder().encode('ok').buffer,
-            }
-      ) as unknown as typeof fetch;
-
+    it('画像が複数 (分割した片) なら、渡された順に並べる', async () => {
       const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
       await service.extractFromImages(
-        callOptions({ imageUrls: [IMAGE_URL, 'https://example.com/broken.jpg'] })
+        callOptions({
+          images: [
+            { source: `${IMAGE_URL}#slice=1/2`, data: 'MQ==', mimeType: 'image/jpeg' },
+            { source: `${IMAGE_URL}#slice=2/2`, data: 'Mg==', mimeType: 'image/jpeg' },
+          ],
+        })
       );
 
-      const imageParts = lastRequest().contents[0].parts.filter((p) => 'inlineData' in p);
-      expect(imageParts).toHaveLength(1);
-    });
-
-    it('全画像が取得できなくても throw せず空配列で返す', async () => {
-      global.fetch = jest.fn(async () => {
-        throw new Error('ENOTFOUND');
-      }) as unknown as typeof fetch;
-      mockGenerateContent.mockResolvedValue(
-        buildResponse({ menuItems: [], goodsItems: [], noveltyItems: [] })
-      );
-
-      const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
-      const result = await service.extractFromImages(callOptions());
-
-      expect(result.visionExtraction.menuItems).toEqual([]);
-      expect(result.visionExtraction.provider).toBe('google');
+      const data = lastRequest()
+        .contents[0].parts.filter((p) => 'inlineData' in p)
+        .map((p) => (p.inlineData as { data: string }).data);
+      expect(data).toEqual(['MQ==', 'Mg==']);
     });
   });
 
@@ -237,11 +178,11 @@ describe('GeminiVisionService', () => {
       );
     });
 
-    it('mediaResolution 未指定なら LOW (既定が high 相当のため明示が必須)', async () => {
+    it('mediaResolution 未指定なら HIGH (品名の小さな文字を読むため。2026-10-12 に LOW から変更)', async () => {
       const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
       await service.extractFromImages(callOptions());
 
-      expect(lastRequest().config.mediaResolution).toBe(MediaResolution.MEDIA_RESOLUTION_LOW);
+      expect(lastRequest().config.mediaResolution).toBe(MediaResolution.MEDIA_RESOLUTION_HIGH);
     });
 
     it('thinkingLevel を config へ渡す', async () => {
@@ -367,14 +308,17 @@ describe('GeminiVisionService', () => {
      * ZodError は決定論的な契約違反なのでリトライしない (他 2 provider と同じ方針)。
      * リトライするとトークンを浪費したうえ、本当のバグの表面化が遅れる。
      */
-    it('スキーマ違反はリトライせず即 throw する', async () => {
-      // `name` 必須の MenuItem に対して数値を返す = 形が違う
+    it('name の無い品目や数値でない価格は、捨てる・値なしにして通す (リトライしない)', async () => {
+      // 2026-10-11: 変換を normalizeVisionResponse にまとめ、形の崩れで失敗させないようにした
       mockGenerateContent.mockResolvedValue(
-        buildResponse({ menuItems: [{ price: 'not-a-number' }] })
+        buildResponse({ menuItems: [{ price: 'not-a-number' }, { name: 'パフェ', price: 'not-a-number' }] })
       );
       const service = new GeminiVisionService({ apiKey: DUMMY_API_KEY });
 
-      await expect(service.extractFromImages(callOptions({ maxRetries: 3 }))).rejects.toThrow();
+      const result = await service.extractFromImages(callOptions({ maxRetries: 3 }));
+
+      expect(result.visionExtraction.menuItems).toHaveLength(1);
+      expect(result.visionExtraction.menuItems[0]).toMatchObject({ name: 'パフェ', price: undefined });
       expect(mockGenerateContent).toHaveBeenCalledTimes(1);
     });
   });

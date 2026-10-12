@@ -9,6 +9,12 @@
 
 import OpenAI from 'openai';
 import { OpenAiVisionService } from '@/lib/services/vision-api/openai-vision.service';
+import type { VisionImage } from '@/lib/types/vision-api';
+
+/** prepareVisionImages の出力を模した 1 枚 (中身は使わない) */
+function testImage(source: string): VisionImage {
+  return { source, data: 'aW1n', mimeType: 'image/jpeg' };
+}
 
 jest.mock('openai');
 
@@ -93,7 +99,7 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/menu.webp'],
+        images: [testImage('https://example.com/menu.webp')],
         prompt: 'menu prompt',
         category: 'menu',
         maxRetries: 1,
@@ -122,7 +128,7 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/menu.webp'],
+        images: [testImage('https://example.com/menu.webp')],
         prompt: 'menu prompt',
         category: 'menu',
         maxRetries: 1,
@@ -152,7 +158,7 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/goods.webp'],
+        images: [testImage('https://example.com/goods.webp')],
         prompt: 'goods prompt',
         category: 'goods',
         maxRetries: 1,
@@ -178,7 +184,7 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/goods.webp'],
+        images: [testImage('https://example.com/goods.webp')],
         prompt: 'goods prompt',
         category: 'goods',
         maxRetries: 1,
@@ -208,7 +214,7 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/novelty.webp'],
+        images: [testImage('https://example.com/novelty.webp')],
         prompt: 'novelty prompt',
         category: 'novelty',
         maxRetries: 1,
@@ -235,7 +241,7 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/novelty.webp'],
+        images: [testImage('https://example.com/novelty.webp')],
         prompt: 'novelty prompt',
         category: 'novelty',
         maxRetries: 1,
@@ -265,7 +271,7 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/menu.webp'],
+        images: [testImage('https://example.com/menu.webp')],
         prompt: 'menu prompt',
         category: 'menu',
         maxRetries: 2,
@@ -282,7 +288,7 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
 
       await expect(
         service.extractFromImages({
-          imageUrls: ['https://example.com/menu.webp'],
+          images: [testImage('https://example.com/menu.webp')],
           prompt: 'menu prompt',
           category: 'menu',
           maxRetries: 2,
@@ -292,25 +298,22 @@ describe('OpenAiVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(mockChatCompletionsCreate).toHaveBeenCalledTimes(2);
     });
 
-    it('rethrows ZodError immediately without retry (deterministic shape failure)', async () => {
-      // name omission triggers ZodError at MenuItemSchema.name=z.string().
-      // (Unlike Claude's service, OpenAI's convertToMenuItem doesn't default name to ''.)
+    it('name の無い品目は捨てて通す (形の崩れで失敗させず、リトライもしない)', async () => {
+      // 2026-10-11: 変換を normalizeVisionResponse にまとめ、name の無い品目は捨てるようにした
       mockChatCompletionsCreate.mockResolvedValue(
         buildOpenAiCompletion({
           menuItems: [{ price: 800 }],
         }),
       );
 
-      await expect(
-        service.extractFromImages({
-          imageUrls: ['https://example.com/menu.webp'],
-          prompt: 'menu prompt',
-          category: 'menu',
-          maxRetries: 3,
-        }),
-      ).rejects.toThrow();
+      const result = await service.extractFromImages({
+        images: [testImage('https://example.com/menu.webp')],
+        prompt: 'menu prompt',
+        category: 'menu',
+        maxRetries: 3,
+      });
 
-      // ZodError は deterministic shape failure としてリトライせず即 rethrow
+      expect(result.visionExtraction.menuItems).toEqual([]);
       expect(mockChatCompletionsCreate).toHaveBeenCalledTimes(1);
     });
   });

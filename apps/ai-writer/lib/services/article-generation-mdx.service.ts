@@ -35,7 +35,8 @@ import { deriveStoreContext } from '../utils/store-derivation';
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
 import { stripUtmFromUrl } from '../utils/url';
-import { selfCloseVoidElements } from '../utils/mdx-safety';
+import { escapeMdxText, selfCloseVoidElements } from '../utils/mdx-safety';
+import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import {
   findUnreplacedPlaceholders,
   removeImagePlaceholderLines,
@@ -99,14 +100,22 @@ import { validateStoreName } from '@/lib/utils/store-name-validator';
 import { VisionApiServiceFactory } from './vision-api/vision-api-service.factory';
 import { callVisionApiForAllCategories } from './vision-api/multi-category-vision.service';
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
+import { selectFallbackLevel, validateBusinessRules } from '@/lib/utils/vision-api-utils';
+import { determineVisionTargets, type VisionTargets } from './vision-api/vision-targets';
+import { menuItemsOf, mergeVisionIntoExtraction } from './vision-api/merge-vision-into-extraction';
+import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
+import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
+import { isEmptyList } from '@/lib/utils/llm-values';
+import { SubpageExtractionService } from './subpage-extraction.service';
+import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
+import { goodsNamesForProse, insertIntoGoodsSection, loadGoodsListConfig, renderGoodsList } from './goods-list';
 import {
-  crossCheckVisionResult,
-  detectHallucination,
-  selectFallbackLevel,
-  validateBusinessRules,
-  type HtmlExtractionData,
-} from '@/lib/utils/vision-api-utils';
-import { checkExtractionSufficiency } from '@/lib/config/vision-api-thresholds';
+  fillTemplate,
+  loadSectionYaml,
+  renderMenuItems,
+  replaceMenuItems,
+  replaceNoveltySentence,
+} from './section-renderers';
 import type {
   VisionExtractionResult,
   FallbackLevelType,
@@ -130,6 +139,12 @@ import type {
  *   本閾値は**作品名という最も支配的な要因を先に潰す**ためのもの。
  */
 const WORK_TITLE_SHORTEN_THRESHOLD = 10;
+
+/**
+ * Vision の 1 カテゴリあたりの時間切れ (ms)。縦に長い画像は分割して 10〜20 片を高い解像度で
+ * 読むため、以前の 30 秒では足りない (2026-10-12)
+ */
+const VISION_TIMEOUT_MS = 120_000;
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -202,14 +217,26 @@ export interface MdxGenerationResult {
   // テキストプレースホルダー置換結果（text-placeholder-replacement step）
   textPlaceholderReplacement?: TextPlaceholderReplacementResult;
   // Vision API 統合結果（vision-api step）
-  visionApiResult?: {
-    called: boolean;
-    htmlSufficiencyCheck?: HtmlExtractionData;
-    visionExtraction?: VisionExtractionResult;
-    fallbackLevel?: FallbackLevelType;
-    hallucinationDetected?: boolean;
-    crossCheckPassed?: boolean;
-  };
+  visionApiResult?: VisionStepResult;
+}
+
+/**
+ * vision-api step の結果。Vision の結果を本文に使ったかは `merged` で分かる。
+ */
+interface VisionStepResult {
+  /** Vision を呼んだか */
+  called: boolean;
+  /** HTML から書けなかった項目と、読んだカテゴリ */
+  targets?: VisionTargets;
+  /** Vision の結果 (業務ルールの減点を反映した確信度) */
+  visionExtraction?: VisionExtractionResult;
+  fallbackLevel?: FallbackLevelType;
+  /** Coming Soon の画像から品目を作ったカテゴリがあり、その結果を捨てたか */
+  hallucinationDetected?: boolean;
+  /** Vision の結果で抽出結果を埋めたか (レベル A のときだけ) */
+  merged: boolean;
+  /** 埋めた内容 */
+  mergeChanges?: string[];
 }
 
 /**
@@ -548,7 +575,12 @@ export class ArticleGenerationMdxService {
           categoryImages = await categoryImageService.extractCategoryImages(
             selectionResult.primary_official_url,
             officialHtml,
-            subpageDetection.categoryUrls
+            subpageDetection.categoryUrls,
+            // 記事選別の公式 URL を先に、トップページのリンクを後に (上限は画像の抽出の側で 10 件)
+            sameSiteOfficialUrls(selectionResult.primary_official_url, [
+              ...(selectionResult.official_urls ?? []),
+              ...pageLinks,
+            ])
           );
 
           console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {
@@ -566,191 +598,34 @@ export class ArticleGenerationMdxService {
         console.log(`[subpage-detection/category-image-extraction] 公式サイトHTMLがないため、下層ページ検出をスキップ`);
       }
 
-      // vision-api step: Vision API Integration (conditional)
-      console.log(`\n${getStepDisplay('vision-api')} Vision API統合（HTML充足性チェック + 条件付き呼び出し）...`);
+      // subpage-extraction step: 下層ページと会場の案内ページの文字から、メニュー・グッズ・ノベルティ・キャラクターを読む
+      console.log(`\n${getStepDisplay('subpage-extraction')} 下層ページの文字からメニュー/グッズ/ノベルティを抽出...`);
+      if (detailedExtraction && categoryImages && categoryImages.pages.length > 0) {
+        detailedExtraction = await this.runSubpageExtraction(detailedExtraction, categoryImages, costTracker);
+      } else {
+        console.log(`${getStepContext('subpage-extraction')} 読む下層ページが無いため、スキップ`);
+      }
 
-      let visionApiResult: {
-        called: boolean;
-        htmlSufficiencyCheck?: HtmlExtractionData;
-        visionExtraction?: VisionExtractionResult;
-        fallbackLevel?: FallbackLevelType;
-        hallucinationDetected?: boolean;
-        crossCheckPassed?: boolean;
-      } = { called: false };
+      // vision-api step: HTML から書けなかった項目の画像だけを読み、レベル A なら抽出結果を埋める
+      console.log(`\n${getStepDisplay('vision-api')} Vision API統合（HTML で書けない項目の画像だけを読む）...`);
 
+      let visionApiResult: VisionStepResult = { called: false, merged: false };
       if (!detailedExtraction) {
         console.log(`${getStepContext('vision-api')} detailedExtraction がないため、Vision API をスキップ`);
       } else {
-        // HTML充足性チェック
-        const htmlSufficiency: HtmlExtractionData = this.calculateHtmlSufficiency(detailedExtraction);
-        visionApiResult.htmlSufficiencyCheck = htmlSufficiency;
+        const visionStep = await this.runVisionStep(detailedExtraction, categoryImages, officialHtml, costTracker);
+        detailedExtraction = visionStep.extraction;
+        visionApiResult = visionStep.result;
+      }
 
-        console.log(`${getStepContext('vision-api')} HTML充足性チェック結果:`, {
-          menuItemCount: htmlSufficiency.menuItemCount,
-          priceCount: htmlSufficiency.priceCount,
-          sufficiencyRate: `${(htmlSufficiency.htmlSufficiencyRate * 100).toFixed(1)}%`,
-        });
-
-        // 充足性判定（閾値は VISION_API_THRESHOLDS に集約、checkExtractionSufficiency() を使用）
-        const sufficiencyResult = checkExtractionSufficiency(
-          htmlSufficiency.menuItemCount,
-          htmlSufficiency.priceCount,
-          htmlSufficiency.htmlSufficiencyRate,
+      // ノベルティ名が書けないときは、画像があってもノベルティの節を書かせない。本文の LLM は画像の数で
+      // 節を書くかを決めるため、名前の無いまま「来店特典のノベルティー」のような根拠の無い文を書いた
+      // (2026-10-12、ヒロアカで AI が利用ガイドのページをノベルティのページと判定したとき)
+      if (categoryImages && categoryImages.novelty.length > 0 && isEmptyList(detailedExtraction?.ノベルティ名)) {
+        console.log(
+          `${getStepContext('vision-api')} ノベルティ名が無いため、ノベルティの画像 ${categoryImages.novelty.length} 枚を使わない (節を書かない)`,
         );
-
-        if (sufficiencyResult.isSufficient) {
-          console.log(`${getStepContext('vision-api')} ✅ HTML充足 → Vision API をスキップ`, { reason: sufficiencyResult.reason });
-        } else {
-          console.log(`${getStepContext('vision-api')} ❌ HTML不足 → Vision API を呼び出し`, { reason: sufficiencyResult.reason });
-          visionApiResult.called = true;
-
-          try {
-            // 各カテゴリに 1 件以上の画像があるかチェック
-            const hasAnyImages =
-              !!categoryImages &&
-              (categoryImages.menu.length > 0 ||
-                categoryImages.goods.length > 0 ||
-                categoryImages.novelty.length > 0);
-
-            if (!hasAnyImages) {
-              console.warn(`${getStepContext('vision-api')} ⚠️ カテゴリ別画像なし、Vision API をスキップ`);
-            } else {
-              // Vision API サービス + Templates v1.2 YAML loader を初期化
-              const visionService = VisionApiServiceFactory.create();
-              const yamlLoader = new YamlTemplateLoaderService();
-              const visionTemplate = await yamlLoader.loadVisionApiTemplate('collabo-cafe');
-
-              console.log(`${getStepContext('vision-api')} Vision API 並列呼び出し開始 (menu/goods/novelty)...`);
-
-              const { result: visionExtraction, perCategory } =
-                await callVisionApiForAllCategories(
-                  visionService,
-                  visionTemplate,
-                  {
-                    menu: categoryImages!.menu,
-                    goods: categoryImages!.goods,
-                    novelty: categoryImages!.novelty,
-                  },
-                  { maxRetries: 3, timeout: 30000 },
-                );
-
-              visionApiResult.visionExtraction = visionExtraction;
-
-              console.log(`${getStepContext('vision-api')} menu/goods/novelty 並列呼び出し完了:`, {
-                confidence: visionExtraction.visionExtraction.confidence,
-                menuItems: visionExtraction.visionExtraction.menuItems.length,
-                goodsItems: visionExtraction.visionExtraction.goodsItems.length,
-                noveltyItems: visionExtraction.visionExtraction.noveltyItems.length,
-                perCategory,
-              });
-
-              // Cost tracking — record under one aggregate key (`vision-api`).
-              // The merger's `metadata.tokensUsed` is the sum across successful calls
-              // and is optional (undefined when no call surfaced usage). Per-category
-              // breakdown intentionally stays out of cost-tracker for now; recording it
-              // requires a merger signature change and is deferred to a later sprint.
-              const provider = visionService.getProviderName();
-              const modelName = visionService.getModelName();
-              const actualUsage = visionExtraction.visionExtraction.metadata?.tokensUsed;
-
-              if (actualUsage) {
-                const costResult = costTracker.recordUsage(
-                  'vision-api',
-                  modelName,
-                  actualUsage,
-                );
-                console.log(`${getStepContext('vision-api')} Vision API コスト追跡:`, {
-                  provider,
-                  model: modelName,
-                  promptTokens: actualUsage.promptTokens,
-                  completionTokens: actualUsage.completionTokens,
-                  totalTokens: actualUsage.totalTokens,
-                  ...(actualUsage.cacheCreationTokens
-                    ? { cacheCreationTokens: actualUsage.cacheCreationTokens }
-                    : {}),
-                  ...(actualUsage.cachedTokens
-                    ? { cachedTokens: actualUsage.cachedTokens }
-                    : {}),
-                  cost: `$${costResult.usd.toFixed(6)} (¥${costResult.jpy.toFixed(2)})`,
-                });
-              } else {
-                console.log(
-                  `${getStepContext('vision-api')} Vision API コスト追跡: tokensUsed 不在のためスキップ (全 call が usage を返さず)`,
-                );
-              }
-
-              // Cross-check (HTML vs merged Vision API result)
-              const crossCheckResult = crossCheckVisionResult(visionExtraction, htmlSufficiency);
-              visionApiResult.crossCheckPassed = crossCheckResult.passed;
-
-              console.log(`${getStepContext('vision-api')} Cross-check 結果:`, {
-                passed: crossCheckResult.passed,
-                issues: crossCheckResult.issues,
-              });
-
-              if (!crossCheckResult.passed) {
-                console.warn(`${getStepContext('vision-api')} ⚠️ Cross-check 失敗:`, crossCheckResult.issues);
-              }
-
-              // Hallucination detection (covers menu+goods+novelty per Templates v1.2)
-              const hallucinationResult = detectHallucination(visionExtraction, htmlSufficiency);
-              visionApiResult.hallucinationDetected = hallucinationResult.detected;
-
-              if (hallucinationResult.detected) {
-                console.error(`${getStepContext('vision-api')} 🚨 Hallucination 検出:`, {
-                  type: hallucinationResult.type,
-                  reason: hallucinationResult.reason,
-                });
-
-                // Hallucination が検出された場合は記事生成を中止
-                return {
-                  success: false,
-                  skipped: true,
-                  skipReason: `Vision API でハルシネーション検出: ${hallucinationResult.reason}`,
-                  detailedExtraction,
-                  visionApiResult,
-                };
-              }
-
-              console.log(`${getStepContext('vision-api')} ✅ Hallucination なし`);
-
-              // Fallback level selection (novelty-aware per step 3 utils 拡張)
-              const fallbackLevel = selectFallbackLevel(visionExtraction);
-              visionApiResult.fallbackLevel = fallbackLevel;
-
-              console.log(`${getStepContext('vision-api')} Fallback レベル:`, fallbackLevel);
-
-              // Business rules validation
-              const businessValidation = validateBusinessRules(visionExtraction);
-
-              if (businessValidation.issues.length > 0) {
-                console.warn(`${getStepContext('vision-api')} ⚠️ Business rules 違反:`, businessValidation.issues);
-
-                // 信頼度を調整: 元の `visionExtraction` オブジェクトは mutate せず、
-                // visionApiResult.visionExtraction だけを spread copy で差し替える。
-                // これにより、API 結果（unchanged）と記録用結果（adjusted）が分離される。
-                const originalConfidence = visionExtraction.visionExtraction.confidence;
-                visionApiResult.visionExtraction = {
-                  ...visionExtraction,
-                  visionExtraction: {
-                    ...visionExtraction.visionExtraction,
-                    confidence: businessValidation.adjustedConfidence,
-                  },
-                };
-
-                console.log(`${getStepContext('vision-api')} 信頼度調整:`, {
-                  original: originalConfidence,
-                  adjusted: businessValidation.adjustedConfidence,
-                });
-              }
-
-              console.log(`${getStepContext('vision-api')} ✅ Vision API 統合完了 (3 カテゴリ並列)`);
-            }
-          } catch (visionError) {
-            console.error(`${getStepContext('vision-api')} ❌ Vision API 呼び出し失敗:`, visionError);
-            console.log(`${getStepContext('vision-api')} HTML抽出結果のみで記事生成を続行`);
-          }
-        }
+        categoryImages = { ...categoryImages, novelty: [] };
       }
 
       // slug-generation step: Resolve slugs (YAML config → AI API → ASCII fallback)
@@ -1075,6 +950,10 @@ export class ArticleGenerationMdxService {
         );
       }
 
+      // グッズの一覧の書式と、文に並べるグッズ名 (先頭の数件。Templates の sections/04-goods.yaml)
+      const goodsListConfig = loadGoodsListConfig();
+      const proseGoodsNames = goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig);
+
       // ========================================================================
       // lead-generation step (Sprint C-β P11): rule-driven リード文生成
       // ========================================================================
@@ -1119,15 +998,15 @@ export class ArticleGenerationMdxService {
         キャラクター名: detailedExtraction.キャラクター名,
         テーマ名: detailedExtraction.テーマ名,
         ノベルティ名: detailedExtraction.ノベルティ名,
-        グッズ名: detailedExtraction.グッズ名,
+        // 文に並べるのは先頭の数件だけ (全件はグッズの節の一覧に書く)
+        グッズ名: proseGoodsNames,
         作品名: detailedExtraction.作品名,
         店舗名: 会場表現,
         略称: detailedExtraction.略称,
         公式サイトURL: detailedExtraction.公式サイトURL,
-        // NOTE: スタジオ名/監督名/シリーズ名 は現状 ExtractionResult に未定義
-        // (Sprint C-β P11 スコープ外、別 Sprint で 2-extraction.yaml v3.2.0 の
-        // TS interface 反映と併せて対応予定)。undefined のため studio 系 template
-        // は発火せず、has_studio_name === false に評価される。
+        スタジオ名: detailedExtraction.スタジオ名,
+        監督名: detailedExtraction.監督名,
+        シリーズ名: detailedExtraction.シリーズ名,
       });
 
       console.log('✅ リード文生成完了:', {
@@ -1154,7 +1033,12 @@ export class ArticleGenerationMdxService {
         // detail-extraction step で取得した officialHtml を再利用（再取得不要）
         // categoryImages を渡して、画像有無でセクションスキップを判断させる
         contentGeneration = await contentService.generateContent({
-          extractedData: detailedExtraction,
+          // グッズの節の導入文に並べるのは先頭の数件だけ (全件は一覧に書く)。詳細は一覧をコードで差し込むので渡さない
+          extractedData: {
+            ...detailedExtraction,
+            グッズ名: proseGoodsNames,
+            グッズ詳細リスト: null,
+          },
           generatedTitle: titleResult.title,
           officialHtml: officialHtml, // detail-extraction step で取得済みのHTMLを再利用
           categoryImages: categoryImages ? {
@@ -1388,7 +1272,7 @@ export class ArticleGenerationMdxService {
           キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
           テーマ名: detailedExtraction.テーマ名 ?? undefined,
           ノベルティ名: detailedExtraction.ノベルティ名 ?? undefined,
-          グッズ名: detailedExtraction.グッズ名 ?? undefined,
+          グッズ名: proseGoodsNames ?? undefined,
           開催期間: detailedExtraction.開催期間,
           works: detailedExtraction.works || [],
           store: detailedExtraction.store || { name: detailedExtraction.店舗名 },
@@ -1402,6 +1286,19 @@ export class ArticleGenerationMdxService {
         });
 
         finalContent = textPlaceholderReplacement.content;
+
+        // グッズの節の末尾に、会場で買えるグッズの一覧を差し込む (全件。文に並べた数件の残りもここに書く)
+        const goodsList = renderGoodsList(detailedExtraction.グッズ名, detailedExtraction.グッズ詳細リスト, goodsListConfig);
+        const withGoodsList = insertIntoGoodsSection(finalContent, goodsList);
+        if (withGoodsList !== finalContent) {
+          console.log(
+            `${getStepContext('text-placeholder-replacement', 'グッズ一覧')} グッズの節に一覧を差し込んだ (${detailedExtraction.グッズ名?.length ?? 0} 件)`,
+          );
+          finalContent = withGoodsList;
+        }
+
+        // 名前の入る部分は抽出結果から組み立て、本文の LLM が書いたものと置き換える (打ち直しの誤字を防ぐ)
+        finalContent = this.renderExtractedNames(finalContent, detailedExtraction);
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
@@ -1734,6 +1631,199 @@ export class ArticleGenerationMdxService {
   }
 
   /**
+   * メニューの品目とノベルティの文を、抽出結果からコードで組み立てて差し替える (書式と文面は Templates の YAML)。
+   * 本文の LLM が名前を書き写すと誤字が混ざるため (2026-10-12、「招待状（ランダム7种）」)。
+   */
+  private renderExtractedNames(content: string, extraction: ExtractionResult): string {
+    const ctx = getStepContext('text-placeholder-replacement', '名前の差し込み');
+    let result = content;
+
+    const menuItems = menuItemsOf(extraction);
+    if (menuItems.length > 0) {
+      const { item_line } = loadSectionYaml<{ item_line: string }>('02-menu.yaml', 'rendered');
+      result = replaceMenuItems(result, renderMenuItems(menuItems, item_line));
+    }
+
+    if (!isEmptyList(extraction.ノベルティ名)) {
+      const { sentence } = loadSectionYaml<{ sentence: string }>('03-novelty.yaml', 'rendered');
+      result = replaceNoveltySentence(
+        result,
+        fillTemplate(sentence, {
+          作品名: escapeMdxText(extraction.作品名 ?? ''),
+          ノベルティ名: extraction.ノベルティ名!.map(escapeMdxText),
+        }),
+      );
+    }
+
+    if (result !== content) {
+      console.log(`${ctx} メニュー ${menuItems.length} 品・ノベルティ ${extraction.ノベルティ名?.length ?? 0} 件を抽出結果のまま差し込んだ`);
+    }
+    return result;
+  }
+
+  /**
+   * subpage-extraction step。下層ページの抽出に失敗しても記事は止めない (トップページの抽出のまま続ける)。
+   */
+  private async runSubpageExtraction(
+    extraction: ExtractionResult,
+    categoryImages: CategoryImages,
+    costTracker: CostTrackerService,
+  ): Promise<ExtractionResult> {
+    const ctx = getStepContext('subpage-extraction');
+    console.log(
+      `${ctx} 読むページ:`,
+      categoryImages.pages.map((page) => `${page.kind} ${page.url} (${page.text.length.toLocaleString()} 字)`),
+    );
+    try {
+      const result = await new SubpageExtractionService().extract({
+        作品名: extraction.作品名,
+        pages: categoryImages.pages,
+      });
+      if (!result) return extraction;
+      if (result.usage) costTracker.recordUsage('subpage-extraction', result.model, result.usage);
+      console.log(
+        `${ctx} ページごとの結果:`,
+        result.pages.map((page) => ({
+          url: page.url,
+          area: page.area,
+          メニュー: page.メニュー詳細リスト?.length ?? 0,
+          グッズ: page.グッズ詳細リスト?.length ?? 0,
+          ノベルティ: page.ノベルティ名,
+          キャラクター: page.キャラクター名?.length ?? 0,
+        })),
+      );
+      const merged = mergeSubpagesIntoExtraction(extraction, result.pages);
+      console.log(`${ctx} ${merged.changes.length > 0 ? '✅ 抽出結果を補った:' : '補う項目なし'}`, merged.changes);
+      return merged.extraction;
+    } catch (error) {
+      console.error(`${ctx} ❌ 下層ページの抽出に失敗 (トップページの抽出のまま続行):`, error);
+      return extraction;
+    }
+  }
+
+  /**
+   * vision-api step。HTML から書けなかった項目のカテゴリの画像だけを Vision で読み、
+   * 確信度がレベル A のときだけ抽出結果を埋める (Vision の失敗は記事を止めない)。
+   */
+  private async runVisionStep(
+    extraction: ExtractionResult,
+    categoryImages: CategoryImages | undefined,
+    officialHtml: string | undefined,
+    costTracker: CostTrackerService,
+  ): Promise<{ extraction: ExtractionResult; result: VisionStepResult }> {
+    const ctx = getStepContext('vision-api');
+    const targets = determineVisionTargets(extraction);
+    const result: VisionStepResult = { called: false, merged: false, targets };
+    const unchanged = { extraction, result };
+
+    // 読むカテゴリのうち、画像があるもの (無いカテゴリは orchestrator が "no images" で飛ばす)
+    const withImages = targets.categories.filter((category) => (categoryImages?.[category].length ?? 0) > 0);
+    console.log(`${ctx} HTML で書けない項目:`, {
+      missingFields: targets.missingFields,
+      categories: targets.categories,
+      withImages,
+    });
+
+    if (targets.categories.length === 0) {
+      console.log(`${ctx} ✅ HTML で 4 項目とも書ける → Vision API をスキップ`);
+      return unchanged;
+    }
+    if (!categoryImages || withImages.length === 0) {
+      console.warn(`${ctx} ⚠️ 読むカテゴリに画像なし、Vision API をスキップ`);
+      return unchanged;
+    }
+
+    result.called = true;
+    try {
+      const visionService = VisionApiServiceFactory.create();
+      const visionTemplate = await new YamlTemplateLoaderService().loadVisionApiTemplate('collabo-cafe');
+
+      console.log(`${ctx} Vision API 並列呼び出し開始 (${withImages.join('/')})...`);
+      const { result: visionExtraction, perCategory } = await callVisionApiForAllCategories(
+        visionService,
+        visionTemplate,
+        { menu: categoryImages.menu, goods: categoryImages.goods, novelty: categoryImages.novelty },
+        { maxRetries: 3, timeout: VISION_TIMEOUT_MS, categories: targets.categories },
+      );
+
+      console.log(`${ctx} 並列呼び出し完了:`, {
+        confidence: visionExtraction.visionExtraction.confidence,
+        menuItems: visionExtraction.visionExtraction.menuItems.length,
+        goodsItems: visionExtraction.visionExtraction.goodsItems.length,
+        noveltyItems: visionExtraction.visionExtraction.noveltyItems.length,
+        perCategory,
+      });
+
+      // Cost tracking — record under one aggregate key (`vision-api`).
+      // `metadata.tokensUsed` is the sum across successful calls and is optional.
+      const modelName = visionService.getModelName();
+      const actualUsage = visionExtraction.visionExtraction.metadata?.tokensUsed;
+      if (actualUsage) {
+        const costResult = costTracker.recordUsage('vision-api', modelName, actualUsage);
+        console.log(`${ctx} Vision API コスト追跡:`, {
+          provider: visionService.getProviderName(),
+          model: modelName,
+          promptTokens: actualUsage.promptTokens,
+          completionTokens: actualUsage.completionTokens,
+          totalTokens: actualUsage.totalTokens,
+          ...(actualUsage.cacheCreationTokens ? { cacheCreationTokens: actualUsage.cacheCreationTokens } : {}),
+          ...(actualUsage.cachedTokens ? { cachedTokens: actualUsage.cachedTokens } : {}),
+          cost: `$${costResult.usd.toFixed(6)} (¥${costResult.jpy.toFixed(2)})`,
+        });
+      } else {
+        console.log(`${ctx} Vision API コスト追跡: tokensUsed 不在のためスキップ (全 call が usage を返さず)`);
+      }
+
+      // 「Coming Soon」の画像から品目を作ったカテゴリは、そのカテゴリの結果だけを捨てた
+      // (callVisionApiForAllCategories)。記事は続け、他のカテゴリの結果は使う
+      const discarded = Object.entries(perCategory).filter(([, status]) => status.discarded);
+      result.hallucinationDetected = discarded.length > 0;
+      if (discarded.length > 0) {
+        console.warn(`${ctx} 🚨 Hallucination 検出、そのカテゴリの結果は使わない:`, Object.fromEntries(discarded));
+      }
+
+      // 業務ルールの減点を、レベルを決める前にかける
+      const businessValidation = validateBusinessRules(visionExtraction);
+      if (businessValidation.issues.length > 0) {
+        console.warn(`${ctx} ⚠️ Business rules 違反、信頼度を調整:`, {
+          issues: businessValidation.issues,
+          original: visionExtraction.visionExtraction.confidence,
+          adjusted: businessValidation.adjustedConfidence,
+        });
+      }
+      const adjusted: VisionExtractionResult = {
+        ...visionExtraction,
+        visionExtraction: { ...visionExtraction.visionExtraction, confidence: businessValidation.adjustedConfidence },
+      };
+      result.visionExtraction = adjusted;
+      result.fallbackLevel = selectFallbackLevel(adjusted);
+
+      if (result.fallbackLevel !== 'A') {
+        console.log(`${ctx} Fallback レベル ${result.fallbackLevel} → Vision の結果は使わない (A のときだけ使う)`);
+        return { extraction, result };
+      }
+
+      // トップページは本文ブロック (`officialHtml`)、下層ページは画像の抽出で調べた結果を使う
+      const hasRedrawnIllustrations =
+        mentionsRedrawnIllustration(officialHtml) || categoryImages.mentionsRedrawnIllustration;
+      const merged = mergeVisionIntoExtraction(extraction, adjusted.visionExtraction, { hasRedrawnIllustrations });
+      if (merged.changes.length === 0) {
+        console.log(`${ctx} Fallback レベル A だが、埋める欄が無い`);
+        return { extraction, result };
+      }
+
+      result.merged = true;
+      result.mergeChanges = merged.changes;
+      console.log(`${ctx} ✅ Fallback レベル A → 抽出結果を埋めた:`, { hasRedrawnIllustrations, changes: merged.changes });
+      return { extraction: merged.extraction, result };
+    } catch (visionError) {
+      console.error(`${ctx} ❌ Vision API 呼び出し失敗:`, visionError);
+      console.log(`${ctx} HTML抽出結果のみで記事生成を続行`);
+      return { extraction, result };
+    }
+  }
+
+  /**
    * GitHub PR説明文を生成
    *
    * @private
@@ -1818,91 +1908,6 @@ export class ArticleGenerationMdxService {
     result = result.replace(/\n{3,}/g, '\n\n');
 
     return result;
-  }
-
-  /**
-   * HTML充足性を計算
-   *
-   * @param extraction AI拡張された抽出結果
-   * @returns HTML抽出データ（menuItemCount, priceCount, htmlSufficiencyRate）
-   *
-   * @description
-   * ExtractionResultから利用可能なデータポイントをカウントし、
-   * HTML充足性を推定します。実際のHTML解析ではなく、
-   * AI抽出結果に含まれるデータの充実度を評価します。
-   *
-   * 評価基準:
-   * - キャラクター名の有無とカウント
-   * - メニュー種類数の有無
-   * - グッズ名の有無とカウント
-   * - ノベルティ名の有無
-   *
-   * 充足率計算:
-   * - 期待データポイント数: 10
-   *   - キャラクター名配列 (最大3ポイント)
-   *   - メニュー種類数 (1ポイント)
-   *   - グッズ名配列 (最大3ポイント)
-   *   - ノベルティ名 (1ポイント)
-   *   - テーマ名 (1ポイント)
-   *   - 開催回数 (1ポイント)
-   * - 実際のポイント数 / 期待ポイント数 = 充足率
-   *
-   * @private
-   */
-  private calculateHtmlSufficiency(extraction: ExtractionResult): HtmlExtractionData {
-    // メニューアイテム数（キャラクター名を代用）
-    const characterNames = extraction.キャラクター名 || [];
-    const menuItemCount = characterNames.length;
-
-    // 価格カウント（メニュー種類数から推定）
-    let priceCount = 0;
-    if (extraction.メニュー種類数) {
-      // "計10種" → 10 を抽出
-      const match = extraction.メニュー種類数.match(/\d+/);
-      if (match) {
-        priceCount = parseInt(match[0], 10);
-      }
-    }
-
-    // データポイントカウント（充足率計算用）
-    let actualPoints = 0;
-    const expectedPoints = 10;
-
-    // キャラクター名（最大3ポイント）
-    actualPoints += Math.min(characterNames.length, 3);
-
-    // メニュー種類数（1ポイント）
-    if (extraction.メニュー種類数) {
-      actualPoints += 1;
-    }
-
-    // グッズ名（最大3ポイント）
-    const goodsNames = extraction.グッズ名 || [];
-    actualPoints += Math.min(goodsNames.length, 3);
-
-    // ノベルティ名（1ポイント）
-    if (extraction.ノベルティ名) {
-      actualPoints += 1;
-    }
-
-    // テーマ名（1ポイント）
-    if (extraction.テーマ名) {
-      actualPoints += 1;
-    }
-
-    // 開催回数（1ポイント）
-    if (extraction.開催回数) {
-      actualPoints += 1;
-    }
-
-    // 充足率計算
-    const htmlSufficiencyRate = actualPoints / expectedPoints;
-
-    return {
-      menuItemCount,
-      priceCount,
-      htmlSufficiencyRate,
-    };
   }
 
   /**

@@ -4,17 +4,23 @@
  * Calls one `IVisionApiService` per category (menu / goods / novelty) in
  * parallel via `Promise.allSettled` and merges the successes via
  * `mergeVisionResults`. Per-category errors do NOT short-circuit other
- * categories. Categories with no images are skipped (no API call) and
- * reported in `perCategory[cat].skipped`.
+ * categories. Categories with no images, or outside `options.categories`,
+ * are skipped (no API call) and reported in `perCategory[cat].skipped`.
+ *
+ * 「Coming Soon」の画像から品目を作ったカテゴリは、そのカテゴリの結果だけを捨てる
+ * (`perCategory[cat].discarded`)。他のカテゴリの正しい品目は残す。
  */
 import type {
   IVisionApiService,
   VisionApiTemplate,
   VisionExtractionCategory,
   VisionExtractionResult,
+  VisionImage,
 } from '@/lib/types/vision-api';
 import { resolveVisionPrompt, VISION_CATEGORIES } from './category-prompt-resolver';
 import { mergeVisionResults, type CategoryResults } from './merge-vision-results';
+import { detectHallucination } from '@/lib/utils/vision-api-utils';
+import { prepareVisionImages } from './prepare-vision-images';
 
 /**
  * Per-category image map. Designed as a structural subset of both
@@ -34,6 +40,8 @@ export interface PerCategoryStatus {
   error?: string;
   /** Set when the category was intentionally skipped (e.g. no images). */
   skipped?: string;
+  /** 呼んだが結果を捨てたとき (Coming Soon の画像から品目を作った) の理由 */
+  discarded?: string;
 }
 
 export interface MultiCategoryVisionResult {
@@ -46,6 +54,10 @@ export interface MultiCategoryVisionOptions {
   maxRetries?: number;
   /** Forwarded to `IVisionApiService.extractFromImages.timeout` (ms). */
   timeout?: number;
+  /** 読むカテゴリ (既定は 3 つとも)。HTML から書けなかった項目のカテゴリだけを渡す */
+  categories?: readonly VisionExtractionCategory[];
+  /** 画像の取得・分割 (既定は `prepareVisionImages`。テストで差し替える) */
+  prepareImages?: (imageUrls: string[]) => Promise<VisionImage[]>;
 }
 
 /**
@@ -64,9 +76,21 @@ export async function callVisionApiForAllCategories(
   images: MultiCategoryImageMap,
   options: MultiCategoryVisionOptions = {},
 ): Promise<MultiCategoryVisionResult> {
+  // 画像の用意 (取得・展開・分割) はカテゴリをまたいでも 1 つずつ行う。縦に長い画像は展開すると数百 MB になるため。
+  // Vision の呼び出しは、そのカテゴリの画像が揃った時点で始める (呼び出しどうしは並列のまま)
+  const prepare = options.prepareImages ?? prepareVisionImages;
+  let queue: Promise<unknown> = Promise.resolve();
+  const prepareInTurn = (imageUrls: string[]): Promise<VisionImage[]> => {
+    const run = queue.then(() => prepare(imageUrls));
+    queue = run.catch(() => undefined);
+    return run;
+  };
+
   const settled = await Promise.allSettled(
     VISION_CATEGORIES.map((category) =>
-      callOneCategory(service, template, category, images[category], options),
+      options.categories && !options.categories.includes(category)
+        ? Promise.resolve<CategoryCallResult>({ skipped: 'not needed' })
+        : callOneCategory(service, template, category, images[category], prepareInTurn, options),
     ),
   );
 
@@ -83,7 +107,12 @@ export async function callVisionApiForAllCategories(
       const { result, skipped } = entry.value;
       perCategory[category] = skipped ? { ok: true, skipped } : { ok: true };
       if (result) {
-        successful[category] = result;
+        const hallucination = detectHallucination(result);
+        if (hallucination.detected) {
+          perCategory[category] = { ok: true, discarded: hallucination.reason };
+        } else {
+          successful[category] = result;
+        }
       }
     } else {
       perCategory[category] = {
@@ -96,8 +125,13 @@ export async function callVisionApiForAllCategories(
     }
   });
 
-  const result = mergeVisionResults(successful);
+  const result = mergeVisionResults(successful, service.getProviderName());
   return { result, perCategory };
+}
+
+interface CategoryCallResult {
+  result?: VisionExtractionResult;
+  skipped?: string;
 }
 
 async function callOneCategory(
@@ -105,14 +139,19 @@ async function callOneCategory(
   template: VisionApiTemplate,
   category: VisionExtractionCategory,
   imageUrls: string[],
+  prepareImages: (imageUrls: string[]) => Promise<VisionImage[]>,
   options: MultiCategoryVisionOptions,
-): Promise<{ result?: VisionExtractionResult; skipped?: string }> {
+): Promise<CategoryCallResult> {
   if (imageUrls.length === 0) {
     return { skipped: 'no images' };
   }
+  const images = await prepareImages(imageUrls);
+  if (images.length === 0) {
+    return { skipped: 'images could not be fetched' };
+  }
   const prompt = resolveVisionPrompt(template, category);
   const result = await service.extractFromImages({
-    imageUrls,
+    images,
     prompt,
     category,
     maxRetries: options.maxRetries,

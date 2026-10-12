@@ -74,14 +74,13 @@ export class VisionApiServiceFactory {
 
     switch (selectedProvider) {
       case 'openai': {
-        // Detail resolution order: explicit config > VISION_API_DETAIL env > 'low' (cost-optimized default)
-        // 'high' opt-in is intended for cases where Japanese OCR accuracy is required.
-        // detail=high costs ~10x more tokens than detail=low (per OpenAI pricing).
+        // Detail resolution order: explicit config > VISION_API_DETAIL env > 'high'.
+        // 品名の文字を読むため high を既定にする (2026-10-12。Gemini の HIGH とそろえる)。
         const envDetail = process.env.VISION_API_DETAIL as 'low' | 'high' | 'auto' | undefined;
         return new OpenAiVisionService({
           apiKey: config?.apiKey,
           model: modelName,
-          detail: config?.detail ?? envDetail ?? 'low',
+          detail: config?.detail ?? envDetail ?? 'high',
         });
       }
 
@@ -91,9 +90,8 @@ export class VisionApiServiceFactory {
 
       case 'google':
         // ⚠️ `VISION_API_MEDIA_RESOLUTION` / `VISION_API_THINKING_LEVEL` は Gemini 専用。
-        // 未指定時はどちらも `low` (画像 1 枚 252 トークン / thinking 最小限)。
-        // Gemini 側の既定は media resolution が high 相当で 1,083 トークンかかるため、
-        // 明示しないとコストが 4.2 倍になる (2026-08-16 実測)。
+        // 未指定時は media resolution が HIGH (画像 1 枚 1,083 トークン、品名を読むため)、
+        // thinking が low。既定値は `lib/config/gemini-models.ts`。
         return new GeminiVisionService({
           apiKey: config?.apiKey,
           model: modelName,
