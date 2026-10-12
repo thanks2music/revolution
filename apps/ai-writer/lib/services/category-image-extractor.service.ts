@@ -109,9 +109,15 @@ function toExcludeTarget(url: URL): string {
 
 /**
  * 本文ブロックの画像のうち、代替テキストが語のどれかを含むものの絶対 URL (Layer 1)。
- * 除外パターンは当てない (代替テキストが根拠になるため)。語が無ければ空
+ * 除外パターンは当てない (代替テキストが根拠になるため)。大きさの下限は、width / height の属性があるときだけ当てる
+ * (他の画像と同じ。代替テキストが「特典」の小さなアイコンを除くため)。語が無ければ空
  */
-export function findImagesByAlt(html: string, sourceUrl: string, keywords: readonly string[]): string[] {
+export function findImagesByAlt(
+  html: string,
+  sourceUrl: string,
+  keywords: readonly string[],
+  minSize?: { width: number; height: number }
+): string[] {
   if (keywords.length === 0) return [];
   const $ = cheerio.load(html);
   const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase());
@@ -121,6 +127,9 @@ export function findImagesByAlt(html: string, sourceUrl: string, keywords: reado
     if (!lowerKeywords.some((keyword) => alt.includes(keyword))) return;
     const src = $(element).attr('src') || $(element).attr('data-src') || $(element).attr('data-lazy-src');
     if (!src) return;
+    const width = parseInt($(element).attr('width') ?? '', 10);
+    const height = parseInt($(element).attr('height') ?? '', 10);
+    if (minSize && width > 0 && height > 0 && (width < minSize.width || height < minSize.height)) return;
     try {
       const absoluteUrl = new URL(src, sourceUrl).href;
       if (!images.includes(absoluteUrl)) images.push(absoluteUrl);
@@ -255,11 +264,22 @@ export class CategoryImageExtractorService {
     for (const venue of venueHtmls) {
       if (!venue) continue;
       const mainHtml = this.addPageText(result, venue.url, 'venue', venue.html);
-      const images = findImagesByAlt(mainHtml, venue.url, imageConfig.novelty_alt_keywords ?? []).slice(
+      const images = findImagesByAlt(
+        mainHtml,
+        venue.url,
+        imageConfig.novelty_alt_keywords ?? [],
+        imageConfig.min_image_size
+      ).slice(
         0,
         imageConfig.max_images_per_category
       );
       if (images.length > 0) result.venueNoveltyImages.push({ url: venue.url, images });
+    }
+    if (venues.length > 0 && (imageConfig.novelty_alt_keywords ?? []).length === 0) {
+      // Templates の設定 (store-url-patterns.yaml) が古いと、ノベルティの画像を黙って選ばなくなる
+      console.warn(
+        '[CategoryImageExtractor] ⚠️ novelty_alt_keywords が未設定のため、会場のページからノベルティの画像を選べない (pnpm sync:templates を確認)'
+      );
     }
     if (venues.length > 0) {
       console.log(

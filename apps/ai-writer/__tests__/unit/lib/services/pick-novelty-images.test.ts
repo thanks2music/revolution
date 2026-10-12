@@ -1,7 +1,8 @@
 /**
  * Layer 1: ノベルティの画像を、ノベルティ名が読めた会場の案内ページから選ぶ (`pick-novelty-images.ts`、2026-10-13)。
  */
-import { pickNoveltyImages } from '@/lib/services/pick-novelty-images';
+import type { CategoryImages } from '@/lib/services/category-image-extractor.service';
+import { pickNoveltyImages, withNoveltyImagesFromVenues } from '@/lib/services/pick-novelty-images';
 import type { SubpageFacts } from '@/lib/services/subpage-extraction.service';
 
 const facts = (url: string, kind: SubpageFacts['kind'], ノベルティ名: string[] | null): SubpageFacts => ({
@@ -42,5 +43,38 @@ describe('pickNoveltyImages', () => {
     expect(
       pickNoveltyImages([{ url: TOKYO, images: ['https://example.com/a.jpg'] }], [facts(TOKYO, 'menu', ['ステッカー'])])
     ).toBeNull();
+  });
+});
+
+describe('withNoveltyImagesFromVenues', () => {
+  const TOKYO = 'https://example.com/lp/s004';
+  const base = (novelty: string[]): CategoryImages => ({
+    eyecatch: null,
+    menu: ['https://example.com/menu.jpg'],
+    novelty,
+    goods: [],
+    sources: { menu: 'https://example.com/menu' },
+    all: ['https://example.com/menu.jpg'],
+    mentionsRedrawnIllustration: false,
+    pages: [],
+    venueNoveltyImages: [{ url: TOKYO, images: ['https://example.com/tokuten.jpg'] }],
+  });
+  const pages = [facts(TOKYO, 'venue', ['ホログラムステッカー'])];
+
+  it('ノベルティの画像が無ければ、選んだ画像と取得元を入れ、all にも足す', () => {
+    const { categoryImages, picked } = withNoveltyImagesFromVenues(base([]), pages);
+
+    expect(picked?.url).toBe(TOKYO);
+    expect(categoryImages.novelty).toEqual(['https://example.com/tokuten.jpg']);
+    expect(categoryImages.sources).toEqual({ menu: 'https://example.com/menu', novelty: TOKYO });
+    expect(categoryImages.all).toEqual(['https://example.com/menu.jpg', 'https://example.com/tokuten.jpg']);
+  });
+
+  it('ノベルティの画像が既にある (ノベルティの下層ページがある) ときは変えない', () => {
+    const original = base(['https://example.com/novelty-page.jpg']);
+    const { categoryImages, picked } = withNoveltyImagesFromVenues(original, pages);
+
+    expect(picked).toBeNull();
+    expect(categoryImages).toBe(original);
   });
 });

@@ -107,7 +107,7 @@ import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
-import { pickNoveltyImages } from './pick-novelty-images';
+import { withNoveltyImagesFromVenues } from './pick-novelty-images';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
 import { goodsNamesForProse, insertIntoGoodsSection, loadGoodsListConfig, renderGoodsList } from './goods-list';
 import {
@@ -605,19 +605,13 @@ export class ArticleGenerationMdxService {
         const subpageStep = await this.runSubpageExtraction(detailedExtraction, categoryImages, costTracker);
         detailedExtraction = subpageStep.extraction;
         // ノベルティの下層ページが無ければ、ノベルティ名が読めた会場の案内ページの特典の画像を使う
-        if (categoryImages.novelty.length === 0 && subpageStep.pages.length > 0) {
-          const picked = pickNoveltyImages(categoryImages.venueNoveltyImages, subpageStep.pages);
-          if (picked) {
-            console.log(
-              `${getStepContext('subpage-extraction')} ノベルティの画像: ノベルティ名が読めた会場のページ ${picked.url} から ${picked.images.length}枚`,
-            );
-            categoryImages = {
-              ...categoryImages,
-              novelty: picked.images,
-              sources: { ...categoryImages.sources, novelty: picked.url },
-              all: Array.from(new Set([...categoryImages.all, ...picked.images])),
-            };
-          }
+        const noveltyStep = withNoveltyImagesFromVenues(categoryImages, subpageStep.pages);
+        categoryImages = noveltyStep.categoryImages;
+        if (noveltyStep.picked) {
+          console.log(
+            `${getStepContext('subpage-extraction')} ノベルティの画像: ノベルティ名が読めた会場のページ ${noveltyStep.picked.url} から ${noveltyStep.picked.images.length}枚`,
+            `(候補のある会場のページ ${categoryImages.venueNoveltyImages.length} 件)`,
+          );
         }
       } else {
         console.log(`${getStepContext('subpage-extraction')} 読む下層ページが無いため、スキップ`);
