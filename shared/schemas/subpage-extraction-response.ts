@@ -17,13 +17,23 @@ export const SubpageMenuItemSchema = z.object({
   price: z.string().nullable(),
 });
 
+/** グッズの販売方法。オンライン限定のグッズは記事の一覧に載せない (会場で買えるグッズを中心に書くため) */
+export const GoodsSalesSchema = z.enum(['store', 'store_and_online', 'store_only', 'online_only']);
+
+export const SubpageGoodsItemSchema = z.object({
+  name: z.string(),
+  /** 「605円(税込)」の形。税込・税抜は書かれているときだけ */
+  price: z.string().nullable(),
+  sales: GoodsSalesSchema.nullable(),
+});
+
 export const SubpagePageSchema = z.object({
   /** 入力の URL をそのまま返させる (ページの取り違えを防ぐ) */
   url: z.string(),
   /** 会場の地域名 (例: 東京)。会場の案内ページで読み取れたときだけ */
   area: z.string().nullable(),
   メニュー詳細リスト: z.array(SubpageMenuItemSchema).nullable(),
-  グッズ名: z.array(z.string()).nullable(),
+  グッズ詳細リスト: z.array(SubpageGoodsItemSchema).nullable(),
   ノベルティ名: z.array(z.string()).nullable(),
   キャラクター名: z.array(z.string()).nullable(),
   _reasoning: z.string().nullable(),
@@ -34,5 +44,7 @@ export const SubpageExtractionResponseSchema = z.object({
 });
 
 export type SubpageMenuItem = z.infer<typeof SubpageMenuItemSchema>;
+export type GoodsSales = z.infer<typeof GoodsSalesSchema>;
+export type SubpageGoodsItem = z.infer<typeof SubpageGoodsItemSchema>;
 export type SubpagePage = z.infer<typeof SubpagePageSchema>;
 export type SubpageExtractionResponse = z.infer<typeof SubpageExtractionResponseSchema>;

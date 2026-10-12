@@ -6,6 +6,7 @@ import {
   SubpageExtractionService,
   formatPagesForPrompt,
   parseSubpageResponse,
+  toGoodsItems,
 } from '@/lib/services/subpage-extraction.service';
 import type { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
 
@@ -50,7 +51,7 @@ describe('parseSubpageResponse', () => {
             url: 'https://example.com/s004',
             area: '東京',
             ノベルティ名: ['ホログラムステッカー', ''],
-            グッズ名: 'null',
+            グッズ詳細リスト: 'null',
           },
           {
             url: 'https://example.com/menu',
@@ -67,21 +68,38 @@ describe('parseSubpageResponse', () => {
       kind: 'menu',
       area: null,
       メニュー詳細リスト: [{ character: null, name: 'マルゲリータ', price: '2,090円(税込)', imageUrl: null, copyright: null }],
-      グッズ名: null,
+      グッズ詳細リスト: null,
       ノベルティ名: null,
       キャラクター名: null,
     });
-    expect(facts[1]).toMatchObject({ kind: 'venue', area: '東京', ノベルティ名: ['ホログラムステッカー'], グッズ名: null });
+    expect(facts[1]).toMatchObject({ kind: 'venue', area: '東京', ノベルティ名: ['ホログラムステッカー'], グッズ詳細リスト: null });
   });
 
   it('URL が無ければ順番で対応づけ、応答に無いページは何も読めなかったものとする', () => {
-    const facts = parseSubpageResponse({ pages: [{ グッズ名: ['缶バッジ'] }] }, PAGES);
+    const facts = parseSubpageResponse({ pages: [{ グッズ詳細リスト: [{ name: '缶バッジ' }] }] }, PAGES);
 
-    expect(facts.map((f) => f.グッズ名)).toEqual([['缶バッジ'], null]);
+    expect(facts.map((f) => f.グッズ詳細リスト?.map((g) => g.name) ?? null)).toEqual([['缶バッジ'], null]);
   });
 
   it('応答の形が崩れていても例外にせず、全ページを空にする', () => {
     expect(parseSubpageResponse('broken', PAGES).every((f) => f.メニュー詳細リスト === null)).toBe(true);
+  });
+});
+
+describe('toGoodsItems', () => {
+  it('品名・価格・販売方法を読み、販売方法は決まった値だけを受け付ける', () => {
+    expect(
+      toGoodsItems([
+        { name: '缶バッジ レトロver.（ランダム12種）', price: '605円(税込)', sales: 'store_and_online' },
+        { name: 'コンプリートセット', price: 'null', sales: 'online_only' },
+        { name: 'サイダー', sales: '店舗限定' }, // 決まった値でなければ null
+        { name: '', price: '100円' },
+      ])
+    ).toEqual([
+      { name: '缶バッジ レトロver.（ランダム12種）', price: '605円(税込)', sales: 'store_and_online' },
+      { name: 'コンプリートセット', price: null, sales: 'online_only' },
+      { name: 'サイダー', price: null, sales: null },
+    ]);
   });
 });
 

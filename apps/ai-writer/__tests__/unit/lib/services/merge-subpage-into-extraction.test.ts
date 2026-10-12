@@ -5,6 +5,7 @@ import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response
 import type { ExtractionResult } from '@/lib/services/extraction.service';
 import { mergeSubpagesIntoExtraction } from '@/lib/services/merge-subpage-into-extraction';
 import type { SubpageFacts } from '@/lib/services/subpage-extraction.service';
+import type { SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 
 function extraction(overrides: Partial<ExtractionResult> = {}): ExtractionResult {
   return {
@@ -27,7 +28,7 @@ function page(overrides: Partial<SubpageFacts> & Pick<SubpageFacts, 'kind'>): Su
     url: `https://example.com/${overrides.kind}`,
     area: null,
     メニュー詳細リスト: null,
-    グッズ名: null,
+    グッズ詳細リスト: null,
     ノベルティ名: null,
     キャラクター名: null,
     ...overrides,
@@ -76,14 +77,54 @@ describe('メニュー', () => {
   });
 });
 
-describe('グッズ名・キャラクター名', () => {
-  it('トップを先に、下層ページの新しい名前を後ろに足す (表記の揺れは同じとみなす)', () => {
-    const { extraction: merged } = mergeSubpagesIntoExtraction(
-      extraction({ グッズ名: ['缶バッジ'], キャラクター名: ['緑谷出久'] }),
-      [page({ kind: 'goods', グッズ名: ['缶バッジ ', 'アクリルスタンド'], キャラクター名: ['緑谷 出久', '爆豪勝己'] })]
-    );
+describe('グッズ', () => {
+  const goods = (name: string, price: string | null, sales: SubpageGoodsItem['sales']): SubpageGoodsItem => ({
+    name,
+    price,
+    sales,
+  });
 
-    expect(merged.グッズ名).toEqual(['缶バッジ', 'アクリルスタンド']);
+  it('下層ページの品目を正とし、会場で買えるものだけをグッズ名にする (オンライン限定は除く)', () => {
+    const { extraction: merged, changes } = mergeSubpagesIntoExtraction(extraction({ グッズ名: ['缶バッジ', 'クッキー缶'] }), [
+      page({
+        kind: 'goods',
+        グッズ詳細リスト: [
+          goods('缶バッジ レトロver.（ランダム12種）', '605円(税込)', 'store_and_online'),
+          goods('缶バッジ レトロver.（全12種）コンプリートセット', '7,260円(税込)', 'online_only'),
+          goods('サイダー', '972円(税込)', 'store_only'),
+        ],
+      }),
+    ]);
+
+    expect(merged.グッズ名).toEqual(['缶バッジ レトロver.（ランダム12種）', 'サイダー', '缶バッジ', 'クッキー缶']);
+    expect(merged.グッズ詳細リスト).toHaveLength(3);
+    expect(changes[0]).toContain('うちオンライン限定 1 件');
+  });
+
+  it('トップの名前がオンライン限定の品目と同じなら足さない', () => {
+    const { extraction: merged } = mergeSubpagesIntoExtraction(extraction({ グッズ名: ['限定セット（全1種）'] }), [
+      page({ kind: 'goods', グッズ詳細リスト: [goods('限定セット', null, 'online_only'), goods('缶バッジ', null, 'store')] }),
+    ]);
+
+    expect(merged.グッズ名).toEqual(['缶バッジ']);
+  });
+
+  it('同じ商品が複数のページにあれば、欠けている価格や販売方法を補い、種類数の付いた名前を残す', () => {
+    const { extraction: merged } = mergeSubpagesIntoExtraction(extraction(), [
+      page({ kind: 'menu', グッズ詳細リスト: [goods('プレート', '1,650円(税込)', null)] }),
+      page({ kind: 'goods', グッズ詳細リスト: [goods('プレート（全1種）', null, 'store')] }),
+    ]);
+
+    expect(merged.グッズ詳細リスト).toEqual([goods('プレート（全1種）', '1,650円(税込)', 'store')]);
+  });
+});
+
+describe('キャラクター名', () => {
+  it('トップを先に、下層ページの新しい名前を後ろに足す (表記の揺れは同じとみなす)', () => {
+    const { extraction: merged } = mergeSubpagesIntoExtraction(extraction({ キャラクター名: ['緑谷出久'] }), [
+      page({ kind: 'goods', キャラクター名: ['緑谷 出久', '爆豪勝己'] }),
+    ]);
+
     expect(merged.キャラクター名).toEqual(['緑谷出久', '爆豪勝己']);
   });
 });
@@ -139,6 +180,15 @@ describe('ノベルティ名', () => {
     expect(merged.ノベルティ名).toEqual(['ステッカー', 'アクリルカード（大阪会場のみ）']);
   });
 
+  it('種類数の注記の有無だけが違う名前は 1 つにし、注記の付いた方を残す', () => {
+    const { extraction: merged } = mergeSubpagesIntoExtraction(
+      extraction({ ノベルティ名: ['カラビナ付きクリアポーチ', 'オリジナルクリアケース'] }),
+      [page({ kind: 'novelty', ノベルティ名: ['カラビナ付きクリアポーチ（全1種）', 'オリジナルクリアケース (全1種)'] })]
+    );
+
+    expect(merged.ノベルティ名).toEqual(['カラビナ付きクリアポーチ（全1種）', 'オリジナルクリアケース (全1種)']);
+  });
+
   it('ノベルティのページ (会場以外) の名前はそのまま足す', () => {
     const { extraction: merged } = mergeSubpagesIntoExtraction(extraction({ ノベルティ名: ['コースター'] }), [
       page({ kind: 'novelty', ノベルティ名: ['コースター', 'ランチョンマット'] }),
@@ -149,7 +199,7 @@ describe('ノベルティ名', () => {
 });
 
 it('何も読めなければ抽出結果をそのまま返す', () => {
-  const base = extraction({ グッズ名: ['缶バッジ'] });
+  const base = extraction({ キャラクター名: ['緑谷出久'] });
   const result = mergeSubpagesIntoExtraction(base, [page({ kind: 'menu' }), page({ kind: 'venue' })]);
 
   expect(result.extraction).toBe(base);

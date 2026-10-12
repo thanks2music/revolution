@@ -10,7 +10,11 @@
  * - 応答: `shared/schemas/subpage-extraction-response.ts`。ページごとに返させる
  *   (会場によって違うノベルティを書き分けるため。合わせ方は `merge-subpage-into-extraction.ts`)
  */
-import { SubpageExtractionResponseSchema } from '@revolution/schemas/subpage-extraction-response';
+import {
+  GoodsSalesSchema,
+  SubpageExtractionResponseSchema,
+  type SubpageGoodsItem,
+} from '@revolution/schemas/subpage-extraction-response';
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
@@ -37,7 +41,8 @@ export interface SubpageFacts {
   /** 会場の地域名 (venue のページで読み取れたときだけ) */
   area: string | null;
   メニュー詳細リスト: ExtractionMenuItem[] | null;
-  グッズ名: string[] | null;
+  /** グッズの品名・価格・販売方法 */
+  グッズ詳細リスト: SubpageGoodsItem[] | null;
   ノベルティ名: string[] | null;
   キャラクター名: string[] | null;
 }
@@ -69,6 +74,20 @@ export function formatPagesForPrompt(pages: SubpageText[], budget = LLM_INPUT_BU
     .join('\n\n');
 }
 
+/** グッズの品目をそろえる。name の無い品目は捨て、販売方法は決まった値だけを受け付ける (それ以外は null) */
+export function toGoodsItems(value: unknown): SubpageGoodsItem[] | null {
+  if (!Array.isArray(value)) return null;
+  const items: SubpageGoodsItem[] = [];
+  for (const raw of value) {
+    if (!isRecord(raw)) continue;
+    const name = toOptionalString(raw.name);
+    if (!name) continue;
+    const sales = GoodsSalesSchema.safeParse(toOptionalString(raw.sales));
+    items.push({ name, price: toOptionalString(raw.price) ?? null, sales: sales.success ? sales.data : null });
+  }
+  return items.length > 0 ? items : null;
+}
+
 function parseJson(content: string): unknown {
   const match = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/) ?? content.match(/\{[\s\S]*\}/);
   return JSON.parse(match ? (match[1] ?? match[0]) : content);
@@ -87,7 +106,7 @@ export function parseSubpageResponse(raw: unknown, pages: SubpageText[]): Subpag
       kind: page.kind,
       area: page.kind === 'venue' ? (toOptionalString(item?.area) ?? null) : null,
       メニュー詳細リスト: toExtractionMenuItems(item?.メニュー詳細リスト),
-      グッズ名: toStringList(item?.グッズ名),
+      グッズ詳細リスト: toGoodsItems(item?.グッズ詳細リスト),
       ノベルティ名: toStringList(item?.ノベルティ名),
       キャラクター名: toStringList(item?.キャラクター名),
     };

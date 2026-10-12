@@ -5,13 +5,17 @@
  *
  * - メニュー: 下層ページの一覧を正とする (メニューページは全品を載せ、トップは抜粋のことが多い)。
  *   トップにしか無い品目は、品名で重複を除いて後ろに足す (漏れなく)。価格やキャラクターが食い違えば下層の値
- * - グッズ名・キャラクター名: トップと下層を合わせ、重複を除く (トップを先に並べる)
+ * - グッズ: 下層ページの品目 (品名・価格・販売方法) を正とし、グッズの下層ページを先に並べる。グッズ名は会場で
+ *   買えるもの (オンライン限定を除く) を下層の順に並べ、トップにしか無い名前を後ろに足す
+ * - キャラクター名: トップと下層を合わせ、重複を除く (トップを先に並べる)
+ * - 名前の重複は「（全1種）」「（ランダム7種）」のような種類数の有無を無視して見分け、種類数の付いた方を残す
  * - ノベルティ名: トップと下層を合わせる。会場ごとの案内ページが 2 つ以上あり、一部の会場にしか無い
  *   ノベルティは「〇〇（大阪会場のみ）」のように会場を付ける (東京の読者がもらえると誤解しないように)。
  *   付けるのは会場だけで、配布条件は書かない。会場の地域名が読み取れなかったときは付けない
  * - 下層ページの抽出は Vision より先に行う。Vision は、ここで埋めた後もまだ欠けている項目だけを読む
  */
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
+import type { SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 import type { ExtractionResult } from '@/lib/services/extraction.service';
 import type { SubpageFacts } from '@/lib/services/subpage-extraction.service';
 import { characterKey, normalizeMenuName } from '@/lib/services/vision-api/merge-vision-into-extraction';
@@ -23,15 +27,38 @@ export interface SubpageMergeResult {
   changes: string[];
 }
 
-/** 重複を除いて合わせる (先に出たものを残す) */
-function unionBy(lists: Array<string[] | null | undefined>, key: (value: string) => string): string[] {
-  const seen = new Set<string>();
+/** 名前の末尾の種類数の注記 (「（全1種）」「(ランダム12種)」) */
+const COUNT_SUFFIX = /[（(][^（）()]*種[^（）()]*[)）]\s*$/;
+
+/**
+ * 商品・特典の名前の照合キー。表記の揺れに加えて、末尾の種類数の注記の有無を無視する
+ * (「カラビナ付きクリアポーチ」と「カラビナ付きクリアポーチ（全1種）」を同じとみなす)。
+ */
+export function itemNameKey(name: string): string {
+  return normalizeMenuName(name.replace(COUNT_SUFFIX, ''));
+}
+
+/**
+ * 重複を除いて合わせる (先に出た位置に残す)。`preferLonger` のときは、同じキーの名前が後から来て、
+ * そちらの方が長ければ (種類数の注記が付いているなど、情報が多ければ) 差し替える (商品・特典の名前用)。
+ */
+function unionBy(
+  lists: Array<string[] | null | undefined>,
+  key: (value: string) => string,
+  preferLonger = false
+): string[] {
+  const indexByKey = new Map<string, number>();
   const result: string[] = [];
   for (const value of lists.flatMap((list) => list ?? [])) {
     const k = key(value);
-    if (k.length === 0 || seen.has(k)) continue;
-    seen.add(k);
-    result.push(value);
+    if (k.length === 0) continue;
+    const index = indexByKey.get(k);
+    if (index === undefined) {
+      indexByKey.set(k, result.length);
+      result.push(value);
+    } else if (preferLonger && value.length > result[index].length) {
+      result[index] = value;
+    }
   }
   return result;
 }
@@ -86,14 +113,15 @@ function mergeNovelties(
 ): string[] | null {
   const venuePages = pages.filter((page) => page.kind === 'venue');
   const otherPages = pages.filter((page) => page.kind !== 'venue');
-  const plain = unionBy([extraction.ノベルティ名, ...otherPages.map((p) => p.ノベルティ名)], normalizeMenuName);
+  const plain = unionBy([extraction.ノベルティ名, ...otherPages.map((p) => p.ノベルティ名)], itemNameKey, true);
 
   // 名前ごとに、載っている会場のページを数える
   const byName = new Map<string, { name: string; pages: SubpageFacts[] }>();
   for (const page of venuePages) {
-    for (const name of unionBy([page.ノベルティ名], normalizeMenuName)) {
-      const key = normalizeMenuName(name);
+    for (const name of unionBy([page.ノベルティ名], itemNameKey, true)) {
+      const key = itemNameKey(name);
       const entry = byName.get(key) ?? { name, pages: [] };
+      if (name.length > entry.name.length) entry.name = name;
       entry.pages.push(page);
       byName.set(key, entry);
     }
@@ -116,8 +144,9 @@ function mergeNovelties(
 
   // 会場の案内ページで限定と分かったものは、トップの書き方 (限定の記載なし) より優先する
   const merged = unionBy(
-    [plain.filter((name) => !limitedKeys.has(normalizeMenuName(name))), common, limited],
-    normalizeMenuName
+    [plain.filter((name) => !limitedKeys.has(itemNameKey(name))), common, limited],
+    (name) => itemNameKey(name.replace(/（[^（）]*会場のみ）$/, '')),
+    true
   );
   if (merged.length === 0) return extraction.ノベルティ名;
 
@@ -128,6 +157,49 @@ function mergeNovelties(
     );
   }
   return merged;
+}
+
+/**
+ * グッズ。下層ページの品目を正とし (グッズのページを先に)、会場で買えるものだけをグッズ名にする。
+ * トップにしか無い名前は後ろに足す (オンライン限定と分かっている名前は足さない)。
+ */
+function mergeGoods(
+  extraction: ExtractionResult,
+  pages: SubpageFacts[],
+  changes: string[]
+): Pick<ExtractionResult, 'グッズ名' | 'グッズ詳細リスト'> {
+  const ordered = [...pages.filter((p) => p.kind === 'goods'), ...pages.filter((p) => p.kind !== 'goods')];
+  const indexByKey = new Map<string, number>();
+  const details: SubpageGoodsItem[] = [];
+  for (const item of ordered.flatMap((page) => page.グッズ詳細リスト ?? [])) {
+    const key = itemNameKey(item.name);
+    const index = indexByKey.get(key);
+    if (index === undefined) {
+      indexByKey.set(key, details.length);
+      details.push(item);
+    } else {
+      // 同じ商品が複数のページにあれば、欠けている値を補う
+      const current = details[index];
+      details[index] = {
+        name: item.name.length > current.name.length ? item.name : current.name,
+        price: current.price ?? item.price,
+        sales: current.sales ?? item.sales,
+      };
+    }
+  }
+  if (details.length === 0) {
+    return { グッズ名: extraction.グッズ名, グッズ詳細リスト: extraction.グッズ詳細リスト };
+  }
+
+  const onlineOnly = new Set(details.filter((d) => d.sales === 'online_only').map((d) => itemNameKey(d.name)));
+  const atVenue = details.filter((d) => d.sales !== 'online_only').map((d) => d.name);
+  const fromTop = (extraction.グッズ名 ?? []).filter((name) => !onlineOnly.has(itemNameKey(name)));
+  const グッズ名 = unionBy([atVenue, fromTop], itemNameKey, true);
+
+  changes.push(
+    `グッズ: 下層ページの ${details.length} 件 (うちオンライン限定 ${onlineOnly.size} 件) を読み、会場で買えるグッズ名は ${グッズ名.length} 件`
+  );
+  return { グッズ名: グッズ名.length > 0 ? グッズ名 : null, グッズ詳細リスト: details };
 }
 
 function mergeNames(
@@ -150,7 +222,7 @@ export function mergeSubpagesIntoExtraction(
 ): SubpageMergeResult {
   const changes: string[] = [];
   const メニュー詳細リスト = mergeMenu(extraction, pages, changes);
-  const グッズ名 = mergeNames('グッズ名', extraction.グッズ名, pages.map((p) => p.グッズ名), normalizeMenuName, changes);
+  const goods = mergeGoods(extraction, pages, changes);
   const キャラクター名 = mergeNames(
     'キャラクター名',
     extraction.キャラクター名,
@@ -162,7 +234,7 @@ export function mergeSubpagesIntoExtraction(
 
   if (changes.length === 0) return { extraction, changes };
   return {
-    extraction: { ...extraction, メニュー詳細リスト, グッズ名, キャラクター名, ノベルティ名 },
+    extraction: { ...extraction, メニュー詳細リスト, ...goods, キャラクター名, ノベルティ名 },
     changes,
   };
 }

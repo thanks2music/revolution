@@ -32,6 +32,7 @@ import {
 } from '@/lib/ai/observability/ai-call-recorder';
 import { getStepContext } from './pipeline-steps';
 import { isRecord, toOptionalString } from '@/lib/utils/llm-values';
+import type { SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 
 /**
  * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
@@ -300,8 +301,16 @@ export interface ExtractionResult {
   ノベルティ種類数: string | null;
   /** メニュー種類数（「計NN種」形式） */
   メニュー種類数: string | null;
-  /** コラボグッズ名リスト */
+  /**
+   * コラボグッズ名リスト。下層ページを読んだときは、会場で買えるグッズだけ (オンライン限定は除く)。
+   * 本文の文 (リード文・グッズの節の導入文) では先頭の数件だけを使う (`goods-list.ts`)
+   */
   グッズ名: string[] | null;
+  /**
+   * グッズの品名・価格・販売方法 (下層ページの抽出で読めたときだけ。トップページの抽出では null)。
+   * グッズの節の末尾の一覧に使う
+   */
+  グッズ詳細リスト: SubpageGoodsItem[] | null;
   /** HTML から抽出したメニューの品目 (品目・価格・キャラクター)。Vision で空欄を埋めることがある */
   メニュー詳細リスト: ExtractionMenuItem[] | null;
   /** メニュー全体のコンセプトの説明 */
@@ -772,6 +781,8 @@ ${schemaStr}
         ノベルティ種類数: jsonData.ノベルティ種類数 || null,
         メニュー種類数: jsonData.メニュー種類数 || null,
         グッズ名: toStringList(jsonData.グッズ名),
+        // トップページの抽出は品名だけを読む。価格・販売方法は下層ページの抽出が埋める
+        グッズ詳細リスト: null,
         // 以前は返り値に入れておらず、本文の生成まで届いていなかった (SoT §3.3 の「捨てられている項目」)
         メニュー詳細リスト: toExtractionMenuItems(jsonData.メニュー詳細リスト),
         メニューテーマ説明: toOptionalString(jsonData.メニューテーマ説明) ?? null,

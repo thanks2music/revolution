@@ -107,6 +107,7 @@ import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService } from './subpage-extraction.service';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
+import { goodsNamesForProse, insertIntoGoodsSection, loadGoodsListConfig, renderGoodsList } from './goods-list';
 import type {
   VisionExtractionResult,
   FallbackLevelType,
@@ -938,6 +939,9 @@ export class ArticleGenerationMdxService {
       }
 
       // ========================================================================
+      // グッズの一覧の書式と、文に並べるグッズ名の件数 (Templates の sections/04-goods.yaml)
+      const goodsListConfig = loadGoodsListConfig();
+
       // lead-generation step (Sprint C-β P11): rule-driven リード文生成
       // ========================================================================
       // BOSS Q2=B 承認済: リード文を LLM 生成から切り出し、TypeScript 側で
@@ -981,7 +985,8 @@ export class ArticleGenerationMdxService {
         キャラクター名: detailedExtraction.キャラクター名,
         テーマ名: detailedExtraction.テーマ名,
         ノベルティ名: detailedExtraction.ノベルティ名,
-        グッズ名: detailedExtraction.グッズ名,
+        // 文に並べるのは先頭の数件だけ (全件はグッズの節の一覧に書く)
+        グッズ名: goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig),
         作品名: detailedExtraction.作品名,
         店舗名: 会場表現,
         略称: detailedExtraction.略称,
@@ -1015,7 +1020,12 @@ export class ArticleGenerationMdxService {
         // detail-extraction step で取得した officialHtml を再利用（再取得不要）
         // categoryImages を渡して、画像有無でセクションスキップを判断させる
         contentGeneration = await contentService.generateContent({
-          extractedData: detailedExtraction,
+          // グッズの節の導入文に並べるのは先頭の数件だけ (全件は一覧に書く)。詳細は一覧をコードで差し込むので渡さない
+          extractedData: {
+            ...detailedExtraction,
+            グッズ名: goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig),
+            グッズ詳細リスト: null,
+          },
           generatedTitle: titleResult.title,
           officialHtml: officialHtml, // detail-extraction step で取得済みのHTMLを再利用
           categoryImages: categoryImages ? {
@@ -1249,7 +1259,7 @@ export class ArticleGenerationMdxService {
           キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
           テーマ名: detailedExtraction.テーマ名 ?? undefined,
           ノベルティ名: detailedExtraction.ノベルティ名 ?? undefined,
-          グッズ名: detailedExtraction.グッズ名 ?? undefined,
+          グッズ名: goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig) ?? undefined,
           開催期間: detailedExtraction.開催期間,
           works: detailedExtraction.works || [],
           store: detailedExtraction.store || { name: detailedExtraction.店舗名 },
@@ -1263,6 +1273,16 @@ export class ArticleGenerationMdxService {
         });
 
         finalContent = textPlaceholderReplacement.content;
+
+        // グッズの節の末尾に、会場で買えるグッズの一覧を差し込む (全件。文に並べた数件の残りもここに書く)
+        const goodsList = renderGoodsList(detailedExtraction.グッズ名, detailedExtraction.グッズ詳細リスト, goodsListConfig);
+        const withGoodsList = insertIntoGoodsSection(finalContent, goodsList);
+        if (withGoodsList !== finalContent) {
+          console.log(
+            `${getStepContext('text-placeholder-replacement', 'グッズ一覧')} グッズの節に一覧を差し込んだ (${detailedExtraction.グッズ名?.length ?? 0} 件)`,
+          );
+          finalContent = withGoodsList;
+        }
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
@@ -1625,7 +1645,7 @@ export class ArticleGenerationMdxService {
           url: page.url,
           area: page.area,
           メニュー: page.メニュー詳細リスト?.length ?? 0,
-          グッズ: page.グッズ名?.length ?? 0,
+          グッズ: page.グッズ詳細リスト?.length ?? 0,
           ノベルティ: page.ノベルティ名,
           キャラクター: page.キャラクター名?.length ?? 0,
         })),
