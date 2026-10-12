@@ -108,8 +108,10 @@ export function formatPagesForPrompt(pages: SubpageText[], budget = LLM_INPUT_BU
   let remaining = budget;
   return pages
     .map((page, index) => {
-      const { text, truncated } = truncateForLlm(page.text, Math.max(0, remaining));
-      remaining -= text.length;
+      const { text: raw, truncated } = truncateForLlm(page.text, Math.max(0, remaining));
+      remaining -= raw.length;
+      // プロンプトはページの本文を <pages> で囲む。本文に閉じタグがあっても囲みを抜けないよう、タグの形を崩す
+      const text = raw.replace(/<\/?pages\b/gi, (tag) => tag.replace('<', '&lt;'));
       return [
         `### ページ ${index + 1}`,
         `- URL: ${page.url}`,
