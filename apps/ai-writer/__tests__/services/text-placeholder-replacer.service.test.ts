@@ -221,6 +221,36 @@ describe('TextPlaceholderReplacerService (v1.4.0 Features)', () => {
     });
   });
 
+  describe('条件分岐 ({{#if}} / {{else}})', () => {
+    it('1 行に条件が 2 つあっても、それぞれ別に評価する (前の {{/if}} をまたがない)', () => {
+      const template =
+        '{{#if 原作者名}}{{原作者名}}による{{/if}}人気作品「{{作品名}}」{{#if 略称}}(略称あり){{else}}(略称なし){{/if}}';
+
+      expect(service.replaceAll(template, { 作品名: 'ヒロアカ', 原作者名: null }).content).toBe('人気作品「ヒロアカ」(略称なし)');
+      expect(service.replaceAll(template, { 作品名: 'ヒロアカ', 原作者名: '堀越耕平先生', 略称: 'MHA' }).content).toBe(
+        '堀越耕平先生による人気作品「ヒロアカ」(略称あり)'
+      );
+    });
+
+    it('入れ子の条件は内側から評価する', () => {
+      const template = '{{#if 作品名}}A{{#if 略称}}B{{else}}C{{/if}}D{{else}}E{{/if}}';
+
+      expect(service.replaceAll(template, { 作品名: 'x', 略称: 'y' }).content).toBe('ABD');
+      expect(service.replaceAll(template, { 作品名: 'x' }).content).toBe('ACD');
+      expect(service.replaceAll(template, {}).content).toBe('E');
+    });
+
+    it('中身が複数行でも評価し、{{#unless}} と同じ行に並んでも互いに干渉しない', () => {
+      const template = '{{#if 作品名}}1行目\n2行目{{/if}}|{{#unless 略称}}略称なし{{/unless}}';
+
+      expect(service.replaceAll(template, { 作品名: 'x' }).content).toBe('1行目\n2行目|略称なし');
+    });
+
+    it('閉じていない {{#if}} はそのまま残す (呼び出し側が未置換として検知できるように)', () => {
+      expect(service.replaceAll('{{#if 作品名}}本文', { 作品名: 'x' }).content).toBe('{{#if 作品名}}本文');
+    });
+  });
+
   // 2026-10-11: ノベルティ名を配列にした
   describe('ノベルティ名 (配列)', () => {
     it('{{ノベルティ名}} は「、」でつなぐ', () => {
