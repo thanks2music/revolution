@@ -9,7 +9,7 @@
  *   買えるもの (オンライン限定を除く) を下層の順に並べ、トップにしか無い名前を後ろに足す
  * - キャラクター名: トップと下層を合わせ、重複を除く (トップを先に並べる)
  * - 名前の重複は「（全1種）」「（ランダム7種）」のような種類数の有無を無視して見分け、種類数の付いた方を残す
- * - ノベルティ名: トップと下層を合わせる。会場ごとの案内ページが 2 つ以上あり、一部の会場にしか無い
+ * - ノベルティ名: 下層ページから読めたときは下層だけを使い、読めなかったときだけトップを使う。会場ごとの案内ページが 2 つ以上あり、一部の会場にしか無い
  *   ノベルティは「〇〇（大阪会場のみ）」のように会場を付ける (東京の読者がもらえると誤解しないように)。
  *   付けるのは会場だけで、配布条件は書かない。すべての会場のページで地域名とノベルティが読めたときだけ付ける
  * - 下層ページの抽出は Vision より先に行う。Vision は、ここで埋めた後もまだ欠けている項目だけを読む
@@ -113,7 +113,14 @@ function mergeNovelties(
 ): string[] | null {
   const venuePages = pages.filter((page) => page.kind === 'venue');
   const otherPages = pages.filter((page) => page.kind !== 'venue');
-  const plain = unionBy([extraction.ノベルティ名, ...otherPages.map((p) => p.ノベルティ名)], itemNameKey, true);
+  // 下層ページからノベルティが読めたときは、下層だけを使う (トップの短い紹介文は特典かどうかを見分けにくく、
+  // コナンでは有料プランに付く物がトップから混ざった)。下層から読めなかったときだけトップを使う (2026-10-12)
+  const fromSubpages = pages.some((page) => !isEmptyList(page.ノベルティ名));
+  const plain = unionBy(
+    [fromSubpages ? null : extraction.ノベルティ名, ...otherPages.map((p) => p.ノベルティ名)],
+    itemNameKey,
+    true
+  );
 
   // 名前ごとに、載っている会場のページを数える
   const byName = new Map<string, { name: string; pages: SubpageFacts[] }>();

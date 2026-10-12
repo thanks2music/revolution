@@ -122,9 +122,8 @@ describe('insertIntoGoodsSection', () => {
 describe('loadGoodsListConfig', () => {
   it('04-goods.yaml の goods_list を読み、無ければ同期を促して止まる', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'goods-list-'));
-    const missing = path.join(dir, 'missing.yaml');
-    fs.writeFileSync(missing, 'section:\n  id: goods\n');
+    fs.writeFileSync(path.join(dir, '04-goods.yaml'), 'section:\n  id: goods\n');
 
-    expect(() => loadGoodsListConfig(missing)).toThrow(/sync:templates/);
+    expect(() => loadGoodsListConfig(dir)).toThrow(/sync:templates/);
   });
 });

@@ -10,11 +10,9 @@
  * 文言と書式は Templates の `sections/04-goods.yaml` の `goods_list` (YAML が SoT)。ここは組み立てだけを行う。
  * 一覧はコードで差し込む (本文の LLM に任せると、数十件を漏れなく書き写す保証が無いため)。
  */
-import * as fs from 'fs';
-import * as path from 'path';
-import yaml from 'js-yaml';
 import type { GoodsSales, SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 import { itemNameKey } from '@/lib/services/merge-subpage-into-extraction';
+import { fillTemplate as fill, findSection, loadSectionYaml } from '@/lib/services/section-renderers';
 import { escapeMdxText } from '@/lib/utils/mdx-safety';
 
 /** `sections/04-goods.yaml` の `goods_list` */
@@ -30,36 +28,19 @@ export interface GoodsListConfig {
   online_only_note: string;
 }
 
-let cachedConfig: GoodsListConfig | null = null;
-
 /**
- * `sections/04-goods.yaml` の `goods_list` を読む (初回だけ。以降はキャッシュ)。
+ * `sections/04-goods.yaml` の `goods_list` を読む (キャッシュあり)。
  *
  * @throws YAML が無い、または `goods_list` が無いとき (`pnpm sync:templates` が要る)
  */
-export function loadGoodsListConfig(
-  yamlPath = path.join(process.cwd(), 'templates', 'collabo-cafe', 'sections', '04-goods.yaml')
-): GoodsListConfig {
-  if (cachedConfig) return cachedConfig;
-  const parsed = yaml.load(fs.readFileSync(yamlPath, 'utf-8')) as { goods_list?: GoodsListConfig };
-  if (!parsed?.goods_list) {
-    throw new Error(`${yamlPath} に goods_list がありません。pnpm sync:templates で Templates を同期してください`);
-  }
-  cachedConfig = parsed.goods_list;
-  return cachedConfig;
+export function loadGoodsListConfig(dir?: string): GoodsListConfig {
+  return loadSectionYaml<GoodsListConfig>('04-goods.yaml', 'goods_list', dir);
 }
 
 /** 本文の文に並べるグッズ名 (先頭の数件)。残りは本文の「など」で受け、一覧に全件を書く */
 export function goodsNamesForProse(names: string[] | null | undefined, config: GoodsListConfig): string[] | null {
   if (!names || names.length === 0) return names ?? null;
   return names.slice(0, config.prose_limit);
-}
-
-/** `{{name}}` などの差し込みと `{{#if x}}...{{/if}}` だけを扱う (値が空なら if の中身を落とす) */
-function fill(template: string, values: Record<string, string>): string {
-  return template
-    .replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, key: string, body: string) => (values[key] ? body : ''))
-    .replace(/\{\{(\w+)\}\}/g, (_, key: string) => values[key] ?? '');
 }
 
 /** 表のセルを壊さないよう、区切りの | を全角にする */
@@ -113,12 +94,9 @@ export function renderGoodsList(
  */
 export function insertIntoGoodsSection(content: string, block: string): string {
   if (!block) return content;
-  const heading = /^## .*グッズ\s*$/m.exec(content);
-  if (!heading) return content;
-  const afterHeading = heading.index + heading[0].length;
-  const next = content.slice(afterHeading).search(/^## /m);
-  const end = next === -1 ? content.length : afterHeading + next;
-  const before = content.slice(0, end).replace(/\s+$/, '');
-  const after = content.slice(end);
+  const range = findSection(content, /^## .*グッズ[ \t]*$/m);
+  if (!range) return content;
+  const before = content.slice(0, range.end).replace(/\s+$/, '');
+  const after = content.slice(range.end);
   return `${before}\n\n${block}\n${after ? `\n${after}` : ''}`;
 }

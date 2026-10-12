@@ -35,7 +35,8 @@ import { deriveStoreContext } from '../utils/store-derivation';
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
 import { stripUtmFromUrl } from '../utils/url';
-import { selfCloseVoidElements } from '../utils/mdx-safety';
+import { escapeMdxText, selfCloseVoidElements } from '../utils/mdx-safety';
+import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import {
   findUnreplacedPlaceholders,
   removeImagePlaceholderLines,
@@ -108,6 +109,13 @@ import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService } from './subpage-extraction.service';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
 import { goodsNamesForProse, insertIntoGoodsSection, loadGoodsListConfig, renderGoodsList } from './goods-list';
+import {
+  fillTemplate,
+  loadSectionYaml,
+  renderMenuItems,
+  replaceMenuItems,
+  replaceNoveltySentence,
+} from './section-renderers';
 import type {
   VisionExtractionResult,
   FallbackLevelType,
@@ -1288,6 +1296,9 @@ export class ArticleGenerationMdxService {
           finalContent = withGoodsList;
         }
 
+        // 名前の入る部分は抽出結果から組み立て、本文の LLM が書いたものと置き換える (打ち直しの誤字を防ぐ)
+        finalContent = this.renderExtractedNames(finalContent, detailedExtraction);
+
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
           unreplacedCount: textPlaceholderReplacement.unreplacedPlaceholders.length,
@@ -1623,6 +1634,45 @@ export class ArticleGenerationMdxService {
    *
    * @private
    */
+  /**
+   * メニューの品目とノベルティの文を、抽出結果からコードで組み立てて差し替える (書式と文面は Templates の YAML)。
+   * 本文の LLM が名前を書き写すと誤字が混ざるため (2026-10-12、「招待状（ランダム7种）」)。
+   */
+  private renderExtractedNames(content: string, extraction: ExtractionResult): string {
+    const ctx = getStepContext('text-placeholder-replacement', '名前の差し込み');
+    let result = content;
+
+    const menuItems: ExtractionMenuItem[] = !isEmptyList(extraction.メニュー詳細リスト)
+      ? extraction.メニュー詳細リスト!
+      : (extraction.具体的なメニュー名リスト ?? []).map((name) => ({
+          character: null,
+          name,
+          price: null,
+          imageUrl: null,
+          copyright: null,
+        }));
+    if (menuItems.length > 0) {
+      const { item_line } = loadSectionYaml<{ item_line: string }>('02-menu.yaml', 'rendered');
+      result = replaceMenuItems(result, renderMenuItems(menuItems, item_line));
+    }
+
+    if (!isEmptyList(extraction.ノベルティ名)) {
+      const { sentence } = loadSectionYaml<{ sentence: string }>('03-novelty.yaml', 'rendered');
+      result = replaceNoveltySentence(
+        result,
+        fillTemplate(sentence, {
+          作品名: escapeMdxText(extraction.作品名 ?? ''),
+          ノベルティ名: extraction.ノベルティ名!.map(escapeMdxText),
+        }),
+      );
+    }
+
+    if (result !== content) {
+      console.log(`${ctx} メニュー ${menuItems.length} 品・ノベルティ ${extraction.ノベルティ名?.length ?? 0} 件を抽出結果のまま差し込んだ`);
+    }
+    return result;
+  }
+
   /**
    * subpage-extraction step。下層ページの抽出に失敗しても記事は止めない (トップページの抽出のまま続ける)。
    */

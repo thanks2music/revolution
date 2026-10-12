@@ -199,6 +199,24 @@ describe('ノベルティ名', () => {
     expect(merged.ノベルティ名).toEqual(['カラビナ付きクリアポーチ（全1種）', 'オリジナルクリアケース (全1種)']);
   });
 
+  it('下層ページからノベルティが読めたら下層だけを使い、トップの名前は使わない (トップの紹介文は特典か見分けにくい)', () => {
+    const { extraction: merged } = mergeSubpagesIntoExtraction(
+      extraction({ ノベルティ名: ['アクリルキーホルダー', 'カラビナ付きクリアポーチ'] }), // 有料プランに付く物
+      [page({ kind: 'novelty', ノベルティ名: ['招待状（ランダム7種）', 'ナゾトキブック（全1種）'] })]
+    );
+
+    expect(merged.ノベルティ名).toEqual(['招待状（ランダム7種）', 'ナゾトキブック（全1種）']);
+  });
+
+  it('下層ページから読めなければトップの名前のまま (下層を持たないサイト)', () => {
+    const top = ['コースター'];
+    const { extraction: merged } = mergeSubpagesIntoExtraction(extraction({ ノベルティ名: top }), [
+      page({ kind: 'menu', メニュー詳細リスト: [item('パフェ')] }),
+    ]);
+
+    expect(merged.ノベルティ名).toEqual(top);
+  });
+
   it('ノベルティのページ (会場以外) の名前はそのまま足す', () => {
     const { extraction: merged } = mergeSubpagesIntoExtraction(extraction({ ノベルティ名: ['コースター'] }), [
       page({ kind: 'novelty', ノベルティ名: ['コースター', 'ランチョンマット'] }),
