@@ -25,6 +25,7 @@ import type { SubpageKind, SubpageText } from '@/lib/services/category-image-ext
 import { LLM_INPUT_BUDGET_CHARS, truncateForLlm } from '@/lib/utils/compact-html';
 import { isRecord, toOptionalString } from '@/lib/utils/llm-values';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
+import { EXTRACTION_THINKING_LEVEL } from '@/lib/config/gemini-models';
 
 const SUBPAGE_EXTRACTION_OPENAI_SCHEMA = zodToOpenAiSchema(
   SubpageExtractionResponseSchema,
@@ -186,6 +187,7 @@ export class SubpageExtractionService {
           stepId: 'subpage-extraction',
           maxTokens: MAX_OUTPUT_TOKENS,
           temperature: 0.2,
+          thinkingLevel: EXTRACTION_THINKING_LEVEL,
           responseFormat: 'json',
           responseSchema: SUBPAGE_EXTRACTION_OPENAI_SCHEMA,
           recordContext: { pageUrls: pages.map((page) => page.url) },

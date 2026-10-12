@@ -27,6 +27,17 @@ describe('sameSiteOfficialUrls', () => {
     ).toEqual(['https://example.com/cafe/osaka']);
   });
 
+  it('# 以降は外して同じページとみなし、画像・PDF などページでないリンクは除く', () => {
+    expect(
+      sameSiteOfficialUrls(TOP, [
+        'https://heroaca-cafe.ltr-online.com/lp/goods#top',
+        'https://heroaca-cafe.ltr-online.com/lp/goods',
+        'https://heroaca-cafe.ltr-online.com/images/menu.jpg',
+        'https://heroaca-cafe.ltr-online.com/guide.pdf?v=2',
+      ])
+    ).toEqual(['https://heroaca-cafe.ltr-online.com/lp/goods']);
+  });
+
   it('公式 URL が無ければ空', () => {
     expect(sameSiteOfficialUrls(TOP, undefined)).toEqual([]);
   });

@@ -25,6 +25,7 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
+import { EXTRACTION_THINKING_LEVEL } from '@/lib/config/gemini-models';
 import { EXTRACTION_MAX_OUTPUT_TOKENS, truncateForLlm } from '@/lib/utils/compact-html';
 import {
   hashForAiCallRecord,
@@ -443,6 +444,7 @@ export class ExtractionService {
         //    この値から導出されるため、ここでリテラルを書くと drift する。
         maxTokens: EXTRACTION_MAX_OUTPUT_TOKENS,
         temperature: 0.2, // 抽出は正確性を重視
+        thinkingLevel: EXTRACTION_THINKING_LEVEL,
         responseFormat: 'json',
         responseSchema: EXTRACTION_RESPONSE_OPENAI_SCHEMA,
         recordContext: {

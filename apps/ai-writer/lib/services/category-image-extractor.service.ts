@@ -196,9 +196,11 @@ export class CategoryImageExtractorService {
     }
 
     // 2.5 会場ごとの案内ページ。本文を残し、ノベルティの画像が無ければ最初のページの本文ブロックの画像を使う
-    const fetchedUrls = new Set(Object.values(result.sources));
+    // 末尾の / と # 以降の違いは同じページとみなす (トップのリンクと下層ページの URL で表記が揺れる)
+    const pageKey = (url: string) => url.replace(/#.*$/, '').replace(/\/+$/, '');
+    const fetchedKeys = new Set([topPageUrl, ...Object.values(result.sources)].map(pageKey));
     const venues = Array.from(new Set(venueUrls))
-      .filter((url) => url !== topPageUrl && !fetchedUrls.has(url))
+      .filter((url) => !fetchedKeys.has(pageKey(url)))
       .slice(0, MAX_VENUE_PAGES);
     const venueHtmls = await Promise.all(
       venues.map(async (url) => {

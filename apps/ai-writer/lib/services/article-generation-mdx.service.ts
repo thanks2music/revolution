@@ -568,7 +568,11 @@ export class ArticleGenerationMdxService {
             selectionResult.primary_official_url,
             officialHtml,
             subpageDetection.categoryUrls,
-            sameSiteOfficialUrls(selectionResult.primary_official_url, selectionResult.official_urls)
+            // 記事選別の公式 URL を先に、トップページのリンクを後に (上限は画像の抽出の側で 10 件)
+            sameSiteOfficialUrls(selectionResult.primary_official_url, [
+              ...(selectionResult.official_urls ?? []),
+              ...pageLinks,
+            ])
           );
 
           console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {

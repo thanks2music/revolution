@@ -20,6 +20,7 @@ import type { GenerateContentConfig, GenerateContentResponse } from '@google/gen
 import {
   DEFAULT_GEMINI_MODEL,
   DEFAULT_GEMINI_THINKING_LEVEL,
+  normalizeThinkingLevel,
   resolveMaxOutputTokens,
 } from '@/lib/config/gemini-models';
 import { isGeminiDeterministicError, readGeminiText } from '@/lib/ai/gemini-response';
@@ -421,11 +422,15 @@ ${content}
     const requestedMaxTokens = options?.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
     const wantsJson =
       options?.responseFormat === 'json' || options?.responseSchema !== undefined;
+    // 呼び出しごとの上書き (抽出の step など) があればそれを使う
+    const thinkingLevel = options?.thinkingLevel
+      ? normalizeThinkingLevel(options.thinkingLevel)
+      : this.thinkingLevel;
 
     return {
-      maxOutputTokens: resolveMaxOutputTokens(requestedMaxTokens, this.thinkingLevel),
+      maxOutputTokens: resolveMaxOutputTokens(requestedMaxTokens, thinkingLevel),
       temperature: options?.temperature ?? 0,
-      thinkingConfig: { thinkingLevel: this.thinkingLevel },
+      thinkingConfig: { thinkingLevel },
       ...(options?.systemPrompt ? { systemInstruction: options.systemPrompt } : {}),
       ...(wantsJson ? { responseMimeType: 'application/json' } : {}),
       // `responseSchema` (interface 側の命名は OpenAI 由来) は JSON Schema なので

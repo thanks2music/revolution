@@ -216,7 +216,7 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
       mockFetchByUrl({ [MENU]: '<html><body><main><p>メニュー</p></main></body></html>', [OSAKA]: venuePage('OSAKA') });
       const service = new CategoryImageExtractorService(configLoader);
 
-      const result = await service.extractCategoryImages(TOP, null, { menu: [MENU] }, [TOP, MENU, TOKYO, OSAKA]);
+      const result = await service.extractCategoryImages(TOP, null, { menu: [MENU] }, [TOP, `${MENU}/`, TOKYO, OSAKA]);
 
       expect(result.pages.map((page) => page.url)).toEqual([MENU, OSAKA]);
       expect((global.fetch as jest.Mock).mock.calls.map((call) => String(call[0]))).toEqual([MENU, TOKYO, OSAKA]);

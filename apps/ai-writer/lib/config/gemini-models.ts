@@ -88,6 +88,13 @@ export type GeminiModel = (typeof GEMINI_MODELS)[keyof typeof GEMINI_MODELS];
 export const DEFAULT_GEMINI_THINKING_LEVEL = ThinkingLevel.LOW;
 
 /**
+ * 公式サイトから事実を抜き出す step (detail-extraction / subpage-extraction) の思考の深さ。
+ * 2026-10-12 に試す: LOW では、ノベルティの除外の条件 (メニューの付属品・有料の予約プランに付く物) を
+ * Gemini が守らなかった。Gemini だけが使い、他の provider は無視する (`SendMessageOptions.thinkingLevel`)
+ */
+export const EXTRACTION_THINKING_LEVEL = 'medium' as const;
+
+/**
  * Vision の画像解像度の既定値
  *
  * `MEDIA_RESOLUTION_HIGH` (公式の画像の推奨)。2026-10-12 に LOW から上げた。LOW では、縦に長い
