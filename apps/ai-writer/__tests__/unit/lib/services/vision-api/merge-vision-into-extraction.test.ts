@@ -59,11 +59,12 @@ describe('normalizeMenuName', () => {
 });
 
 describe('mentionsRedrawnIllustration', () => {
-  it('どれかのページに「描き下ろし」「描き起こし」(ひらがな表記を含む) があれば true', () => {
-    expect(mentionsRedrawnIllustration([undefined, '<p>描き下ろしイラスト</p>'])).toBe(true);
-    expect(mentionsRedrawnIllustration(['描き起こしビジュアル'])).toBe(true);
-    expect(mentionsRedrawnIllustration(['描きおろし'])).toBe(true);
-    expect(mentionsRedrawnIllustration(['公式イラスト', null])).toBe(false);
+  it('「描き下ろし」「描き起こし」(ひらがな表記を含む) があれば true', () => {
+    expect(mentionsRedrawnIllustration('<p>描き下ろしイラスト</p>')).toBe(true);
+    expect(mentionsRedrawnIllustration('描き起こしビジュアル')).toBe(true);
+    expect(mentionsRedrawnIllustration('描きおろし')).toBe(true);
+    expect(mentionsRedrawnIllustration('公式イラスト')).toBe(false);
+    expect(mentionsRedrawnIllustration(undefined)).toBe(false);
   });
 });
 

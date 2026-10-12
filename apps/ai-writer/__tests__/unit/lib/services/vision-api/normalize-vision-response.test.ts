@@ -8,11 +8,9 @@ import {
   averageItemConfidence,
   cleanCharacterName,
   normalizeVisionResponse,
-  toBoolean,
-  toOptionalNumber,
-  toOptionalString,
   toPriceTaxType,
 } from '@/lib/services/vision-api/normalize-vision-response';
+import { toBoolean, toOptionalNumber, toOptionalString } from '@/lib/utils/llm-values';
 
 const context = { provider: 'google' as const, totalImagesAnalyzed: 2 };
 

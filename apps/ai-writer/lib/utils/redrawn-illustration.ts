@@ -7,7 +7,7 @@
  */
 const REDRAWN_ILLUSTRATION_PATTERN = /描き下ろし|描きおろし|描き起こし|描きおこし/;
 
-/** どれかのページに「描き下ろし」「描き起こし」(ひらがな表記を含む) の記載があるか。 */
-export function mentionsRedrawnIllustration(pages: ReadonlyArray<string | null | undefined>): boolean {
-  return pages.some((page) => !!page && REDRAWN_ILLUSTRATION_PATTERN.test(page));
+/** 「描き下ろし」「描き起こし」(ひらがな表記を含む) の記載があるか。 */
+export function mentionsRedrawnIllustration(html: string | null | undefined): boolean {
+  return !!html && REDRAWN_ILLUSTRATION_PATTERN.test(html);
 }

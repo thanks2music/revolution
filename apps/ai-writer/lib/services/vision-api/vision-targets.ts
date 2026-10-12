@@ -10,6 +10,7 @@
  */
 import type { ExtractionResult } from '@/lib/services/extraction.service';
 import type { VisionExtractionCategory } from '@/lib/types/vision-api';
+import { isEmptyList } from '@/lib/utils/llm-values';
 import { VISION_CATEGORIES } from './category-prompt-resolver';
 
 export type VisionTargetField = 'キャラクター名' | 'メニュー名' | 'グッズ名' | 'ノベルティ名';
@@ -26,8 +27,6 @@ type ExtractionFields = Pick<
   'キャラクター名' | 'メニュー詳細リスト' | '具体的なメニュー名リスト' | 'グッズ名' | 'ノベルティ名'
 >;
 
-/** HTML の抽出で「書けなかった」とみなす: null か空の配列 (合流の判定と共有する) */
-export const isEmptyList = (list: readonly unknown[] | null | undefined): boolean => !list || list.length === 0;
 
 export function determineVisionTargets(extraction: ExtractionFields): VisionTargets {
   const missingFields: VisionTargetField[] = [];

@@ -40,7 +40,7 @@ export interface CategoryImages {
    * キャラクター名を Vision と HTML で足し合わせるかの判定に使う (画像の抽出で取得したページを
    * そのまま調べ、追加の通信はしない。HTML 自体は結果に残さない)
    */
-  mentionsRedrawnIllustration?: boolean;
+  mentionsRedrawnIllustration: boolean;
 }
 
 /**
@@ -136,11 +136,12 @@ export class CategoryImageExtractorService {
 
           // Inertia.js のサイトは画像を <img> ではなく data-page の JSON に持つため展開する
           const html = expandInertiaPayload(await this.fetchPage(targetUrl));
-          if (!result.mentionsRedrawnIllustration) {
-            // ナビ・フッター・関連ニュースの欄を除いた本文ブロックだけを調べる
-            result.mentionsRedrawnIllustration = mentionsRedrawnIllustration([
-              selectMainContent(cheerio.load(html)).html,
-            ]);
+          // ナビ・フッター・関連ニュースの欄を除いた本文ブロックだけを調べる。ほとんどのページは
+          // 記載が無いので、生の HTML で先に当たりを付けてから本文ブロックを切り出す (2 回目の parse を避ける)
+          if (!result.mentionsRedrawnIllustration && mentionsRedrawnIllustration(html)) {
+            result.mentionsRedrawnIllustration = mentionsRedrawnIllustration(
+              selectMainContent(cheerio.load(html)).html
+            );
           }
           const pageResult = this.extractImagesFromHtml(html, targetUrl, imageConfig);
           if (pageResult.excluded.length > 0) {

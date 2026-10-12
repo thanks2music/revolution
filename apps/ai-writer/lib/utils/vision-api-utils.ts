@@ -99,21 +99,7 @@ export function detectHallucination(
  * @param visionResult - Vision API extraction result
  * @returns Fallback level ('A', 'B', or 'C')
  *
- * @example
- * ```typescript
- * const fallbackLevel = selectFallbackLevel(visionResult);
- *
- * if (fallbackLevel === 'A') {
- *   // Use detailed template with menu names and prices
- *   content = generateDetailedSection(visionResult);
- * } else if (fallbackLevel === 'B') {
- *   // Use partial template with character names only
- *   content = generatePartialSection(visionResult);
- * } else {
- *   // Use generic template
- *   content = generateGenericSection();
- * }
- * ```
+ * 呼び出し側は A のときだけ Vision の結果を本文に使う (B / C はログに残すだけ)。
  */
 export function selectFallbackLevel(
   visionResult: VisionExtractionResult
@@ -171,15 +157,7 @@ export function selectFallbackLevel(
  * @param visionResult - Vision API extraction result
  * @returns Adjusted confidence score and validation issues
  *
- * @example
- * ```typescript
- * const validation = validateBusinessRules(visionResult);
- *
- * if (validation.issues.length > 0) {
- *   console.warn('Business rule violations:', validation.issues);
- *   visionResult.visionExtraction.confidence = validation.adjustedConfidence;
- * }
- * ```
+ * 呼び出し側は、減点後の確信度でレベル (`selectFallbackLevel`) を決める (減点はレベルの前)。
  */
 export function validateBusinessRules(visionResult: VisionExtractionResult): {
   adjustedConfidence: number;

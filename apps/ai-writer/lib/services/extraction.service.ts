@@ -31,7 +31,7 @@ import {
   shouldSuppressInlinePromptDump,
 } from '@/lib/ai/observability/ai-call-recorder';
 import { getStepContext } from './pipeline-steps';
-import { toOptionalString } from './vision-api/normalize-vision-response';
+import { isRecord, toOptionalString } from '@/lib/utils/llm-values';
 
 /**
  * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
@@ -74,8 +74,8 @@ export function toExtractionMenuItems(value: unknown): ExtractionMenuItem[] | nu
   const optional = (v: unknown): string | null => toOptionalString(v) ?? null;
   const items: ExtractionMenuItem[] = [];
   for (const raw of value) {
-    if (typeof raw !== 'object' || raw === null) continue;
-    const record = raw as Record<string, unknown>;
+    if (!isRecord(raw)) continue;
+    const record = raw;
     const name = optional(record.name);
     if (!name) continue;
     items.push({
@@ -765,20 +765,20 @@ ${schemaStr}
         // 将来 YAML `extraction_fields` に新 legacy field を追加する場合は、ここに同パターンの
         // fallback を追加するか、または `ExtractionResponseSchema` にも declare すること。
         複数店舗情報: jsonData.複数店舗情報 || jsonData.store?.multiple_locations || null,
-        キャラクター名: jsonData.キャラクター名 || null,
+        キャラクター名: toStringList(jsonData.キャラクター名),
         テーマ名: jsonData.テーマ名 || null,
         開催回数: jsonData.開催回数 || null,
         ノベルティ名: toNoveltyNames(jsonData.ノベルティ名),
         ノベルティ種類数: jsonData.ノベルティ種類数 || null,
         メニュー種類数: jsonData.メニュー種類数 || null,
-        グッズ名: jsonData.グッズ名 || null,
+        グッズ名: toStringList(jsonData.グッズ名),
         // 以前は返り値に入れておらず、本文の生成まで届いていなかった (SoT §3.3 の「捨てられている項目」)
         メニュー詳細リスト: toExtractionMenuItems(jsonData.メニュー詳細リスト),
-        メニューテーマ説明: jsonData.メニューテーマ説明 || null,
+        メニューテーマ説明: toOptionalString(jsonData.メニューテーマ説明) ?? null,
         具体的なメニュー名リスト: toStringList(jsonData.具体的なメニュー名リスト),
-        スタジオ名: jsonData.スタジオ名 || null,
-        監督名: jsonData.監督名 || null,
-        シリーズ名: jsonData.シリーズ名 || null,
+        スタジオ名: toOptionalString(jsonData.スタジオ名) ?? null,
+        監督名: toOptionalString(jsonData.監督名) ?? null,
+        シリーズ名: toOptionalString(jsonData.シリーズ名) ?? null,
         店舗の住所: jsonData.店舗の住所 || null,
         開催都道府県: jsonData.開催都道府県 || null,
         コピーライト: jsonData.コピーライト || null,

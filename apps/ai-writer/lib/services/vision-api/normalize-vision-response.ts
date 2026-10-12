@@ -23,8 +23,13 @@ import {
   type VisionExtractionResult,
 } from '@revolution/schemas/vision-api-extraction';
 import type { VisionProvider } from '@/lib/types/vision-api';
-
-type RawRecord = Record<string, unknown>;
+import {
+  isRecord,
+  toBoolean,
+  toOptionalNumber,
+  toOptionalString,
+  type RawRecord,
+} from '@/lib/utils/llm-values';
 
 export interface NormalizeVisionContext {
   provider: VisionProvider;
@@ -32,40 +37,13 @@ export interface NormalizeVisionContext {
   tokensUsed?: TokenUsage;
 }
 
-function isRecord(value: unknown): value is RawRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** 文字列なら trim して返す。空文字や `"null"` は値なし。 */
-export function toOptionalString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  if (trimmed === '' || trimmed.toLowerCase() === 'null') return undefined;
-  return trimmed;
-}
-
-/** `true` と `"true"` だけを真とする。 */
-export function toBoolean(value: unknown): boolean {
-  return value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
-}
-
-/** number、または「数字とカンマだけの文字列」(`"2,090"`) を数値にする。それ以外は値なし。 */
-export function toOptionalNumber(value: unknown): number | undefined {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  if (!/^\d[\d,]*$/.test(trimmed)) return undefined;
-  return Number(trimmed.replace(/,/g, ''));
-}
-
 /**
  * 0〜1 の数値だけを確信度として受け付ける。価格と違って小数なので、`"0.92"` のような
  * 数値の文字列も受け付ける (値なしにすると全体の確信度が 0 に落ち、正しい抽出を捨てるため)。
  */
 function toConfidence(value: unknown): number | undefined {
-  const n =
-    typeof value === 'string' && /^\d+(\.\d+)?$/.test(value.trim()) ? Number(value.trim()) : toOptionalNumber(value);
-  return n !== undefined && n >= 0 && n <= 1 ? n : undefined;
+  const n = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1 ? n : undefined;
 }
 
 /** 税込・税抜の表記。`included` / `excluded` と、日本語の「税込」「税抜」を受け付ける。 */

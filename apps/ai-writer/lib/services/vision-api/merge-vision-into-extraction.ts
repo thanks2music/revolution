@@ -15,7 +15,7 @@
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import type { ExtractionResult } from '@/lib/services/extraction.service';
 import type { MenuItem, PriceTaxType, VisionExtractionResult } from '@revolution/schemas/vision-api-extraction';
-import { isEmptyList } from './vision-targets';
+import { isEmptyList } from '@/lib/utils/llm-values';
 
 type VisionExtraction = VisionExtractionResult['visionExtraction'];
 
@@ -159,6 +159,19 @@ function mergeMenu(
   return { メニュー詳細リスト: merged, 具体的なメニュー名リスト: current.具体的なメニュー名リスト };
 }
 
+/** HTML が空のときだけ Vision の名前を使う (重複を除く) */
+function fillNamesIfEmpty(
+  label: string,
+  htmlNames: string[] | null,
+  visionItems: ReadonlyArray<{ name: string }>,
+  changes: string[]
+): string[] | null {
+  if (!isEmptyList(htmlNames) || visionItems.length === 0) return htmlNames;
+  const names = unique(visionItems.map((item) => item.name));
+  changes.push(`${label}: HTML に無いため Vision の ${names.length} 件を使う`);
+  return names;
+}
+
 export function mergeVisionIntoExtraction(
   extraction: ExtractionResult,
   vision: VisionExtraction,
@@ -167,17 +180,8 @@ export function mergeVisionIntoExtraction(
   const changes: string[] = [];
   const menu = mergeMenu(extraction, vision.menuItems, changes);
 
-  let グッズ名 = extraction.グッズ名;
-  if (isEmptyList(グッズ名) && vision.goodsItems.length > 0) {
-    グッズ名 = unique(vision.goodsItems.map((item) => item.name));
-    changes.push(`グッズ名: HTML に無いため Vision の ${グッズ名.length} 件を使う`);
-  }
-
-  let ノベルティ名 = extraction.ノベルティ名;
-  if (isEmptyList(ノベルティ名) && vision.noveltyItems.length > 0) {
-    ノベルティ名 = unique(vision.noveltyItems.map((item) => item.name));
-    changes.push(`ノベルティ名: HTML に無いため Vision の ${ノベルティ名.length} 件を使う`);
-  }
+  const グッズ名 = fillNamesIfEmpty('グッズ名', extraction.グッズ名, vision.goodsItems, changes);
+  const ノベルティ名 = fillNamesIfEmpty('ノベルティ名', extraction.ノベルティ名, vision.noveltyItems, changes);
 
   let キャラクター名 = extraction.キャラクター名;
   const visionCharacters = unique(
