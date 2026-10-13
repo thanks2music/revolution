@@ -214,7 +214,11 @@ async function processmdxFile(
 
       // オプショナルフィールド
       ogImage: frontmatter.ogImage || null,  // .mjs から追加
-      updated: frontmatter.updated,
+      // date と同じく ISO の ms 付きにそろえる。読めない値は捨てる (toIsoMsDate は読めないと現在時刻を返すため)
+      updated:
+        frontmatter.updated && !Number.isNaN(Date.parse(frontmatter.updated))
+          ? toIsoMsDate(frontmatter.updated)
+          : undefined,
 
       // EventFactCard 用 optional フィールド (Sprint 5)
       // undefined のまま渡し、JSON.stringify で key 自体が省略される。

@@ -8,7 +8,7 @@ import {
 import { CustomMDX } from '@/components/mdx';
 import { ArticleImage } from '@/components/molecules/ArticleImage';
 import { ArticleGallery } from '@/components/organisms/ArticleGallery';
-import { isArticleEyecatch } from '@/lib/mdx/article-image';
+import { formatJstDate, isArticleEyecatch } from '@/lib/mdx/article-image';
 import { notFound } from 'next/navigation';
 import { Metadata } from 'next';
 import Link from 'next/link';
@@ -91,11 +91,7 @@ export default async function ArticlePage(props: ArticlePageProps) {
           {/* Metadata */}
           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-6">
             <time dateTime={article.date}>
-              {new Date(article.date).toLocaleDateString('ja-JP', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
+              {formatJstDate(article.date)}
             </time>
             {article.updated && (
               <>
@@ -103,11 +99,7 @@ export default async function ArticlePage(props: ArticlePageProps) {
                 <span>
                   更新:{' '}
                   <time dateTime={article.updated}>
-                    {new Date(article.updated).toLocaleDateString('ja-JP', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
+                    {formatJstDate(article.updated)}
                   </time>
                 </span>
               </>

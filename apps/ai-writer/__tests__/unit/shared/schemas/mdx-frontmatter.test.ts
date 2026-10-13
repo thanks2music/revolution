@@ -158,6 +158,23 @@ describe('MdxFrontmatterSchema', () => {
     });
   });
 
+  describe('updated (更新日、任意)', () => {
+    it('省略できる', () => {
+      expect(MdxFrontmatterSchema.safeParse(validFrontmatterSample7).success).toBe(true);
+    });
+    it('date と同じ ISO 8601 ms 形式は OK', () => {
+      const result = MdxFrontmatterSchema.safeParse({
+        ...validFrontmatterSample7,
+        updated: '2026-10-20T01:02:03.004Z',
+      });
+      expect(result.success).toBe(true);
+    });
+    it('plain YYYY-MM-DD は失敗', () => {
+      const result = MdxFrontmatterSchema.safeParse({ ...validFrontmatterSample7, updated: '2026-10-20' });
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe('year レンジの境界値', () => {
     it.each([2000, 2026, 2050, 2100])('year: %d は OK', (year) => {
       const result = MdxFrontmatterSchema.safeParse({

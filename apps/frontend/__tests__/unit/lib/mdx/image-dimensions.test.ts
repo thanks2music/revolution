@@ -1,4 +1,4 @@
-import { getImageDimensions, isOwnImageUrl } from '@/lib/mdx/image-dimensions';
+import { getImageDimensions } from '@/lib/mdx/image-dimensions';
 
 // 幅 2・高さ 3 の PNG の先頭 (IHDR まで読めれば寸法が分かる)
 const PNG_2x3 = Uint8Array.from(
@@ -7,16 +7,6 @@ const PNG_2x3 = Uint8Array.from(
     'hex'
   )
 );
-
-describe('isOwnImageUrl', () => {
-  it('自前の画像の配信元 (https) だけを許す', () => {
-    expect(isOwnImageUrl('https://images.anime-events.com/a.jpg')).toBe(true);
-    expect(isOwnImageUrl('http://images.anime-events.com/a.jpg')).toBe(false);
-    expect(isOwnImageUrl('https://example.com/a.jpg')).toBe(false);
-    expect(isOwnImageUrl('http://169.254.169.254/latest')).toBe(false);
-    expect(isOwnImageUrl('not a url')).toBe(false);
-  });
-});
 
 describe('getImageDimensions', () => {
   const originalFetch = global.fetch;
@@ -45,6 +35,26 @@ describe('getImageDimensions', () => {
       height: 3,
     });
     expect(fetchMock.mock.calls[1][1].headers.Range).toBe('bytes=0-524287');
+  });
+
+  it('配信元が Range を無視して全体 (200) を返しても、先頭だけ読んで残りは捨てる', async () => {
+    const big = new Uint8Array(200 * 1024);
+    big.set(PNG_2x3, 0);
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        // 16 KB ずつ流す。64 KB 読んだら止まるはず
+        controller.enqueue(big.subarray(pulled, pulled + 16 * 1024));
+        pulled += 16 * 1024;
+        if (pulled >= big.length) controller.close();
+      },
+    });
+    global.fetch = jest.fn().mockResolvedValue(new Response(body, { status: 200 })) as unknown as typeof fetch;
+    await expect(getImageDimensions('https://images.anime-events.com/t/e.png')).resolves.toEqual({
+      width: 2,
+      height: 3,
+    });
+    expect(pulled).toBeLessThan(big.length);
   });
 
   it('取得に失敗したら null (記事は幅いっぱいで出す)', async () => {

@@ -50,7 +50,8 @@ function buildArticlePages(baseUrl: string): MetadataRoute.Sitemap {
   try {
     return getAllArticles().map((article) => ({
       url: `${baseUrl}${getArticleUrl(article)}`,
-      lastModified: article.date ? new Date(article.date) : new Date(),
+      // 更新した記事は更新日を伝える (公開日 date は変えない)
+      lastModified: new Date(article.updated ?? article.date ?? Date.now()),
       changeFrequency: 'weekly' as const,
       priority: 0.8,
     }));

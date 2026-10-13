@@ -1,6 +1,9 @@
 import {
   articleImageSizes,
+  formatJstDate,
   isArticleEyecatch,
+  isOwnImageUrl,
+  maxOptimizableWidth,
   nextImageUrl,
   toDimensions,
   toLightboxSlide,
@@ -9,6 +12,9 @@ import {
 describe('isArticleEyecatch', () => {
   it('R2 の画像は冒頭に出す', () => {
     expect(isArticleEyecatch('https://images.anime-events.com/a.jpg')).toBe(true);
+  });
+  it('変換を許していない配信元の URL は出さない (/_next/image が 400 になる)', () => {
+    expect(isArticleEyecatch('https://example.com/og.jpg')).toBe(false);
   });
   it('サイト共通の OG 画像・空・null は出さない', () => {
     expect(isArticleEyecatch('/images/og-image-compressed.png')).toBe(false);
@@ -40,25 +46,58 @@ describe('articleImageSizes', () => {
   });
 });
 
+describe('maxOptimizableWidth', () => {
+  it('高さが WebP の上限 (16,383px) 以下なら制限しない', () => {
+    expect(maxOptimizableWidth(1200, 600)).toBeNull();
+    expect(maxOptimizableWidth(800, 16383)).toBeNull();
+  });
+  it('極端に縦長なら、変換後の高さが上限に収まる最大の変換幅 (ヒロアカのメニュー画像)', () => {
+    expect(maxOptimizableWidth(1920, 19600)).toBe(1200); // 1200 → 12,250px、1920 → 19,600px
+    expect(maxOptimizableWidth(1920, 28300)).toBe(1080); // 1080 → 15,919px、1200 → 17,688px
+  });
+});
+
 describe('toLightboxSlide', () => {
   const src = 'https://images.anime-events.com/collabo-cafe/2026/x/menu/a.jpg';
 
-  it('元の幅以下の変換版だけを srcSet に並べ、src は最大のもの', () => {
-    const slide = toLightboxSlide({ src, alt: 'メニュー', width: 1200, height: 600 });
-    const widths = slide.srcSet?.map((s) => s.width) ?? [];
-    expect(Math.max(...widths)).toBe(1200);
-    expect(widths.every((w) => w <= 1200)).toBe(true);
+  it('元の幅を超える最小の変換幅まで並べ、その幅は実際に返る元の幅で表す (変換は拡大しない)', () => {
+    const slide = toLightboxSlide({ src, alt: 'ノベルティ', width: 1000, height: 1000 });
+    const last = slide.srcSet?.at(-1);
+    expect(last).toEqual({ src: nextImageUrl(src, 1080), width: 1000, height: 1000 });
+    expect(slide.src).toBe(nextImageUrl(src, 1080));
+    expect(slide.srcSet?.every((s) => s.width <= 1000)).toBe(true);
+  });
+
+  it('元の幅が変換幅と同じなら、それが最大', () => {
+    const slide = toLightboxSlide({ src, alt: '', width: 1200, height: 600 });
     expect(slide.src).toBe(nextImageUrl(src, 1200));
     expect(slide.srcSet?.find((s) => s.width === 640)?.height).toBe(320);
   });
 
-  it('変換できる幅は next.config の値だけ (元の幅 1000 → 最大 828)', () => {
-    const slide = toLightboxSlide({ src, alt: '', width: 1000, height: 1000 });
-    expect(slide.src).toBe(nextImageUrl(src, 828));
+  it('極端に縦長なら、変換後の高さが上限に収まる幅まで', () => {
+    const slide = toLightboxSlide({ src, alt: '', width: 1920, height: 28300 });
+    expect(slide.src).toBe(nextImageUrl(src, 1080));
+    expect(Math.max(...(slide.srcSet ?? []).map((s) => s.height))).toBeLessThanOrEqual(16383);
   });
 
   it('寸法が分からなければ元の URL をそのまま使う', () => {
     expect(toLightboxSlide({ src, alt: 'x' })).toEqual({ src, alt: 'x' });
+  });
+});
+
+describe('formatJstDate', () => {
+  it('UTC の夜 (日本時間の朝) は日本時間の日付で出す', () => {
+    expect(formatJstDate('2026-10-12T21:26:06.709Z')).toBe('2026年10月13日');
+  });
+});
+
+describe('isOwnImageUrl', () => {
+  it('自前の画像の配信元 (https) だけを許す', () => {
+    expect(isOwnImageUrl('https://images.anime-events.com/a.jpg')).toBe(true);
+    expect(isOwnImageUrl('http://images.anime-events.com/a.jpg')).toBe(false);
+    expect(isOwnImageUrl('https://example.com/a.jpg')).toBe(false);
+    expect(isOwnImageUrl('http://169.254.169.254/latest')).toBe(false);
+    expect(isOwnImageUrl('not a url')).toBe(false);
   });
 });
 

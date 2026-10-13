@@ -33,9 +33,34 @@ export function maxOptimizableWidth(width: number, height: number): number | nul
   return OPTIMIZER_WIDTHS.filter(fits).at(-1) ?? OPTIMIZER_WIDTHS[0];
 }
 
-/** サイト共通の OG 画像 (AI Writer がアイキャッチを取れなかったときの値)。冒頭には出さない */
+/** 自前の画像の配信元 (next.config の images.remotePatterns にある R2 の配信元) */
+const OWN_IMAGE_HOSTS = new Set(['images.anime-events.com']);
+
+export function isOwnImageUrl(src: string): boolean {
+  try {
+    const url = new URL(src);
+    return url.protocol === 'https:' && OWN_IMAGE_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 冒頭に出すアイキャッチか。自前の配信元の画像だけ (サイト共通の OG 画像や、
+ * 変換を許していない配信元の URL は出さない。後者は /_next/image が 400 を返す)
+ */
 export function isArticleEyecatch(ogImage: string | null | undefined): ogImage is string {
-  return typeof ogImage === 'string' && ogImage.startsWith('https://');
+  return typeof ogImage === 'string' && isOwnImageUrl(ogImage);
+}
+
+/** 公開日・更新日を日本時間の日付で (サーバーは UTC で描くため、タイムゾーンを明示する) */
+export function formatJstDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 }
 
 /** MDX の属性 (文字列のことがある) を寸法にする。どちらかが無い・正でなければ null */
@@ -74,24 +99,24 @@ export interface LightboxSlide {
 }
 
 /**
- * 拡大表示のスライド。寸法が分かる画像は、元の幅以下 (かつ変換後の高さが上限以下) の変換版を srcSet に並べる
- * (元の幅より大きい変換版は作らない)。寸法が分からない画像は元の URL をそのまま使う
+ * 拡大表示のスライド。寸法が分かる画像は、変換版を srcSet に並べる。
+ * 元の幅以下の変換幅に加えて、元の幅を超える最小の変換幅も入れる (変換は拡大しないので、元の大きさの画像が返る)。
+ * 極端に縦長の画像は、変換後の高さが上限に収まる幅まで。寸法が分からない画像は元の URL をそのまま使う
  */
 export function toLightboxSlide(image: LightboxImage): LightboxSlide {
   const { src, alt, width, height } = image;
   if (!width || !height) return { src, alt };
-  const limit = maxOptimizableWidth(width, height) ?? width;
-  const widths = OPTIMIZER_WIDTHS.filter((w) => w <= limit);
-  const largest = widths.at(-1) ?? OPTIMIZER_WIDTHS[0];
-  return {
-    src: nextImageUrl(src, largest),
-    alt,
-    width,
-    height,
-    srcSet: (widths.length > 0 ? widths : [largest]).map((w) => ({
-      src: nextImageUrl(src, w),
-      width: w,
-      height: Math.round((height / width) * w),
-    })),
-  };
+  const capped = maxOptimizableWidth(width, height);
+  const widths = capped
+    ? OPTIMIZER_WIDTHS.filter((w) => w <= capped)
+    : [
+        ...OPTIMIZER_WIDTHS.filter((w) => w < width),
+        OPTIMIZER_WIDTHS.find((w) => w >= width) ?? OPTIMIZER_WIDTHS[OPTIMIZER_WIDTHS.length - 1],
+      ];
+  // srcSet の幅は、実際に返る画像の幅 (元の幅を超えない)
+  const entries = widths.map((w) => {
+    const actual = Math.min(w, width);
+    return { src: nextImageUrl(src, w), width: actual, height: Math.round((height / width) * actual) };
+  });
+  return { src: entries[entries.length - 1].src, alt, width, height, srcSet: entries };
 }

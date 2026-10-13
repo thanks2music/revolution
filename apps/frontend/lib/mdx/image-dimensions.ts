@@ -1,5 +1,6 @@
 import { cache } from 'react';
 import { imageSize } from 'image-size';
+import { isOwnImageUrl } from '@/lib/mdx/article-image';
 
 /**
  * 記事の画像の元の幅と高さを、画像の先頭だけを取得して読む。
@@ -14,7 +15,6 @@ import { imageSize } from 'image-size';
  * - 読めなければ null (呼び出し側は記事の幅いっぱいで出す)
  */
 
-const IMAGE_HOSTS = new Set(['images.anime-events.com']);
 const RANGE_BYTES = [64 * 1024, 512 * 1024];
 
 export interface ImageDimensions {
@@ -22,15 +22,7 @@ export interface ImageDimensions {
   height: number;
 }
 
-export function isOwnImageUrl(src: string): boolean {
-  try {
-    const url = new URL(src);
-    return url.protocol === 'https:' && IMAGE_HOSTS.has(url.hostname);
-  } catch {
-    return false;
-  }
-}
-
+/** 先頭の bytes バイトだけを読む。配信元が Range を無視して全体を返しても、bytes で読むのをやめる */
 async function readHead(src: string, bytes: number): Promise<Uint8Array | null> {
   const response = await fetch(src, {
     headers: { Range: `bytes=0-${bytes - 1}` },
@@ -38,7 +30,28 @@ async function readHead(src: string, bytes: number): Promise<Uint8Array | null> 
     cache: 'force-cache',
   });
   if (!response.ok) return null;
-  return new Uint8Array(await response.arrayBuffer());
+  if (response.status === 206 || !response.body) return new Uint8Array(await response.arrayBuffer());
+
+  // 200 (Range を無視して全体が返った): 先頭だけ読んで残りは捨てる (7 MB の画像を丸ごと読まない)
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  while (received < bytes) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+  }
+  await reader.cancel();
+  const head = new Uint8Array(Math.min(received, bytes));
+  let offset = 0;
+  for (const chunk of chunks) {
+    const part = chunk.subarray(0, head.length - offset);
+    head.set(part, offset);
+    offset += part.length;
+    if (offset >= head.length) break;
+  }
+  return head;
 }
 
 export const getImageDimensions = cache(async (src: string): Promise<ImageDimensions | null> => {
@@ -47,8 +60,10 @@ export const getImageDimensions = cache(async (src: string): Promise<ImageDimens
     try {
       const head = await readHead(src, bytes);
       if (!head) return null;
-      const { width, height } = imageSize(head);
-      if (width > 0 && height > 0) return { width, height };
+      const { width, height, orientation } = imageSize(head);
+      if (!(width > 0 && height > 0)) continue;
+      // EXIF の向き 5〜8 は 90 度回転して表示される (ブラウザも変換も回転する) ので、幅と高さを入れ替える
+      return orientation && orientation >= 5 ? { width: height, height: width } : { width, height };
     } catch {
       // 先頭だけでは寸法まで届かなかった。次の大きさで取り直す
     }
