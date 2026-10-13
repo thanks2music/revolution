@@ -67,29 +67,27 @@ export function renderGoodsList(
   /** 品目ごとの形のとき、品目の後に並べる画像 (どの品目にも照合できなかったもの。節の末尾に置く) */
   trailingImages = ''
 ): string {
+  const byKey = new Map((details ?? []).map((item) => [itemNameKey(item.name), item]));
+  const rows = (names ?? []).map((name) => {
+    const detail = byKey.get(itemNameKey(name));
+    // 品名と価格は外部のページから読んだ値。MDX の式・JSX として評価されないようにする
+    return {
+      name: escapeMdxText(name),
+      price: escapeMdxText(detail?.price ?? ''),
+      sales: detail?.sales ? (config.sales_labels[detail.sales] ?? '') : '',
+    };
+  });
+
   const lines: string[] = [];
-  if (names && names.length > 0 && itemImages.some(Boolean)) {
-    const byKey = new Map((details ?? []).map((item) => [itemNameKey(item.name), item]));
-    names.forEach((name, index) => {
-      const detail = byKey.get(itemNameKey(name));
-      const sales = detail?.sales ? (config.sales_labels[detail.sales] ?? '') : '';
+  if (rows.length > 0 && itemImages.some(Boolean)) {
+    rows.forEach((row, index) => {
       if (lines.length > 0) lines.push('');
-      lines.push(fill(config.item_heading, { name: escapeMdxText(name), price: escapeMdxText(detail?.price ?? '') }));
-      if (sales) lines.push('', fill(config.item_sales_line, { sales }));
+      lines.push(fill(config.item_heading, row));
+      if (row.sales) lines.push('', fill(config.item_sales_line, row));
       if (itemImages[index]) lines.push('', itemImages[index]);
     });
     if (trailingImages) lines.push('', trailingImages);
-  } else if (names && names.length > 0) {
-    const byKey = new Map((details ?? []).map((item) => [itemNameKey(item.name), item]));
-    const rows = names.map((name) => {
-      const detail = byKey.get(itemNameKey(name));
-      // 品名と価格は外部のページから読んだ値。MDX の式・JSX として評価されないようにする
-      return {
-        name: escapeMdxText(name),
-        price: escapeMdxText(detail?.price ?? ''),
-        sales: detail?.sales ? (config.sales_labels[detail.sales] ?? '') : '',
-      };
-    });
+  } else if (rows.length > 0) {
     lines.push(config.heading, '');
     if (rows.length <= config.list_max_items) {
       lines.push(...rows.map((row) => fill(config.bullet, row)));
@@ -110,9 +108,6 @@ export function renderGoodsList(
   return lines.join('\n');
 }
 
-/**
- * グッズの節 (`## …のグッズ`) の末尾に差し込む。グッズの節が無ければ (画像が無く書かれなかったなど) 何もしない。
- */
 const GOODS_SECTION = /^## .*グッズ[ \t]*$/m;
 
 /** グッズの節があるか (品目ごとの画像は、節が無いと差し込めない) */
@@ -120,6 +115,9 @@ export function hasGoodsSection(content: string): boolean {
   return findSection(content, GOODS_SECTION) !== null;
 }
 
+/**
+ * グッズの節 (`## …のグッズ`) の末尾に差し込む。グッズの節が無ければ (画像が無く書かれなかったなど) 何もしない。
+ */
 export function insertIntoGoodsSection(content: string, block: string): string {
   if (!block) return content;
   const range = findSection(content, GOODS_SECTION);

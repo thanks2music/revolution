@@ -1071,3 +1071,22 @@ ${bodyContent}`;
     throw new Error(`コンテンツHTMLの取得に失敗: ${url}`);
   }
 }
+
+/**
+ * ページの og:image (無ければ twitter:image)。相対 URL (`/img/ogp.jpg`) はページの URL で解決する。
+ * `<head>` を含む HTML を渡す (`extractContentHtml` の `raw`。`compacted` は本文のブロックだけのことがあり meta が無い)
+ */
+export function extractOgImageUrl(html: string, pageUrl: string): string | null {
+  const $ = cheerio.load(html);
+  const content =
+    $('meta[property="og:image"]').attr('content') ||
+    $('meta[name="og:image"]').attr('content') ||
+    $('meta[property="twitter:image"]').attr('content') ||
+    $('meta[name="twitter:image"]').attr('content');
+  if (!content) return null;
+  try {
+    return new URL(content.trim(), pageUrl).href;
+  } catch {
+    return null;
+  }
+}

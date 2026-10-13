@@ -13,12 +13,14 @@ import type { ImageExtractionConfig } from '@/lib/types/subpage-detection';
 import { articleImageTags } from './article-image-tag';
 import { matchImagesToItems } from './match-item-images';
 import {
+  folderWriter,
   uploadArticleImages,
   uploadEyecatchImage,
   type ArticleImageRef,
   type ImageFetcher,
   type ImageStore,
   type SkippedImage,
+  type SourceImage,
   type UploadedArticleImage,
 } from './upload-article-images';
 
@@ -74,7 +76,7 @@ export function itemImageTags(
   names: readonly string[],
   images: readonly UploadedArticleImage[]
 ): { tags: string[]; rest: UploadedArticleImage[]; matched: number } {
-  const { byItem, rest } = matchImagesToItems([...names], [...images]);
+  const { byItem, rest } = matchImagesToItems(names, images);
   const tags = byItem.map((itemImages, index) =>
     itemImages
       .map((image, n) => articleImageTags(image.segments, itemImages.length > 1 ? `${names[index]} ${n + 1}` : names[index]))
@@ -86,8 +88,8 @@ export function itemImageTags(
 export interface UploadImagesForArticleOptions {
   folder: string;
   config: Pick<ImageExtractionConfig, 'min_short_side' | 'upload' | 'eyecatch_landscape_ratio'>;
+  /** null なら dry-run (取得と加工まで行い、R2 には触らない) */
   store: ImageStore | null;
-  dryRun: boolean;
   fetcher?: ImageFetcher;
 }
 
@@ -121,19 +123,17 @@ export async function uploadImagesForArticle(
     newObjects: 0,
   };
 
+  const writer = folderWriter(options.store, options.folder);
   const seen = new Set<string>();
   for (const category of IMAGE_CATEGORIES) {
-    const images = sources[category]
-      .filter((url) => !seen.has(url) && seen.add(url))
-      .map((url) => ({ url, alt: sources.imageAlts[url] ?? null }));
+    const images: SourceImage[] = [];
+    for (const url of sources[category]) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      images.push({ url, alt: sources.imageAlts[url] ?? null });
+    }
     if (images.length === 0) continue;
-    const uploaded = await uploadArticleImages(images, {
-      folder: options.folder,
-      config: options.config,
-      store: options.store,
-      dryRun: options.dryRun,
-      fetcher: options.fetcher,
-    });
+    const uploaded = await uploadArticleImages(images, { writer, config: options.config, fetcher: options.fetcher });
     result.categories[category] = uploaded.uploaded;
     result.skipped.push(...uploaded.skipped);
     result.newObjects += uploaded.newObjects;
@@ -143,9 +143,7 @@ export async function uploadImagesForArticle(
   for (const candidate of eyecatchCandidates(sources.ogImage, bodyImages, options.config.eyecatch_landscape_ratio)) {
     try {
       const eyecatch = await uploadEyecatchImage(candidate.sourceUrl, {
-        folder: options.folder,
-        store: options.store,
-        dryRun: options.dryRun,
+        writer,
         fetcher: options.fetcher,
         derive: candidate.origin === 'og' ? undefined : options.config.upload,
       });

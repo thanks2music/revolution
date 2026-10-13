@@ -22,7 +22,7 @@ import { extractFromRss, type RssExtractionResult } from '../claude/rss-extracto
 import { generateArticleMetadata } from '../claude/metadata-generator';
 import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
-import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
+import { extractArticleHtml, extractContentHtml, extractOgImageUrl, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
 import { recordPipelineEvent } from '../ai/observability/ai-call-recorder';
 import { parseAndNormalizeEventData } from '../utils/event-data-normalization';
@@ -77,7 +77,6 @@ import {
   type SubpageDetectionResult,
 } from './subpage-detector.service';
 import {
-  extractOgImageUrl,
   getCategoryImageExtractorService,
   type CategoryImages,
 } from './category-image-extractor.service';
@@ -597,7 +596,6 @@ export class ArticleGenerationMdxService {
           );
 
           console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {
-            ogImage: categoryImages.ogImage ? '取得済み' : 'なし',
             menu: categoryImages.menu.length,
             novelty: categoryImages.novelty.length,
             goods: categoryImages.goods.length,
@@ -1115,13 +1113,12 @@ export class ArticleGenerationMdxService {
       let imagesUpload: ArticleImagesUpload | undefined;
       let ogImageUrl = '/images/og-image-compressed.png'; // デフォルト画像
 
-      const ogImageSource = officialOgImage ?? categoryImages?.ogImage ?? null;
-      if (categoryImages || ogImageSource) {
+      if (categoryImages || officialOgImage) {
         try {
           const imageConfig = (await getConfigLoaderService().loadStoreUrlPatterns()).image_extraction;
           imagesUpload = await uploadImagesForArticle(
             {
-              ogImage: ogImageSource,
+              ogImage: officialOgImage,
               menu: categoryImages?.menu ?? [],
               novelty: categoryImages?.novelty ?? [],
               goods: categoryImages?.goods ?? [],
@@ -1131,7 +1128,6 @@ export class ArticleGenerationMdxService {
               folder: `${eventType}/${year}/${eventRecord.postId}`,
               config: imageConfig,
               store: skipImageUpload ? null : r2ImageStore(getR2StorageService()),
-              dryRun: skipImageUpload,
             },
           );
 
@@ -1208,20 +1204,21 @@ export class ArticleGenerationMdxService {
       if (!isEmptyList(detailedExtraction?.ノベルティ名)) keepSections.add('novelty');
       if (!isEmptyList(detailedExtraction?.グッズ名)) keepSections.add('goods');
 
-      // グッズを品目ごとの形にするときは、照合できなかった画像を一覧の後ろ (節の末尾) に並べる。
-      // プレースホルダーの位置に置くと、後から節の末尾に差し込む一覧より前に出てしまう
-      const goodsTrailingImages =
-        goodsItemImages.matched > 0
-          ? goodsItemImages.rest
-              .map((image, index) => articleImageTags(image.segments, `${titleResult.title} グッズ${index + 1}`))
-              .join('\n\n')
-          : '';
+      // グッズを品目ごとの形にするか (renderGoodsList も品目の画像が 1 枚でもあれば品目ごとにする)。
+      // そのときは、照合できなかった画像を一覧の後ろ (節の末尾) に並べる。プレースホルダーの位置に置くと、
+      // 後から節の末尾に差し込む一覧より前に出てしまう
+      const goodsPerItem = goodsItemImages.matched > 0;
+      const goodsTrailingImages = goodsPerItem
+        ? goodsItemImages.rest
+            .map((image, index) => articleImageTags(image.segments, `${titleResult.title} グッズ${index + 1}`))
+            .join('\n\n')
+        : '';
 
       // カテゴリ別R2画像（image-placeholder-replacement step で使用）
       const uploadedCategoryR2Images: CategoryR2Images = {
         menu: menuItemImages.rest.map((image) => image.segments),
         novelty: (imagesUpload?.categories.novelty ?? []).map((image) => image.segments),
-        goods: goodsItemImages.matched > 0 ? [] : goodsItemImages.rest.map((image) => image.segments),
+        goods: goodsPerItem ? [] : goodsItemImages.rest.map((image) => image.segments),
         eyecatch: imagesUpload?.eyecatch,
       };
 

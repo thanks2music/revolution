@@ -54,11 +54,6 @@ const PAGE_FETCH_TIMEOUT_MS = 15_000;
  * カテゴリ別画像抽出結果
  */
 export interface CategoryImages {
-  /**
-   * トップページの og:image (相対 URL はページの URL で解決済み)。アイキャッチの第 1 候補。
-   * 無いときの代わり (本文の最初の横長の画像 → 最初の画像) は、上げた後の寸法で選ぶ (`article-images/upload-images-for-article.ts`)
-   */
-  ogImage: string | null;
   /** メニュー画像URL配列 */
   menu: string[];
   /** ノベルティ画像URL配列 */
@@ -67,7 +62,6 @@ export interface CategoryImages {
   goods: string[];
   /** 各カテゴリの取得元URL */
   sources: {
-    ogImage?: string;
     menu?: string;
     novelty?: string;
     goods?: string;
@@ -105,7 +99,6 @@ interface PageImagesResult {
   images: string[];
   /** 画像の URL → 代替テキスト */
   alts: Record<string, string>;
-  ogpImage: string | null;
   /** 除外パターンに当たって捨てた画像の、パスとクエリ (原因を追えるようにログへ出す) */
   excluded: string[];
 }
@@ -120,25 +113,6 @@ function toExcludeTarget(url: URL): string {
     return `${url.pathname}${decodeURIComponent(url.search)}`;
   } catch {
     return `${url.pathname}${url.search}`;
-  }
-}
-
-/**
- * ページの og:image (無ければ twitter:image)。相対 URL (`/img/ogp.jpg`) はページの URL で解決する。
- * `<head>` を含む HTML を渡す (本文だけに絞った HTML には meta が無い)
- */
-export function extractOgImageUrl(html: string | cheerio.CheerioAPI, pageUrl: string): string | null {
-  const $ = typeof html === 'string' ? cheerio.load(html) : html;
-  const content =
-    $('meta[property="og:image"]').attr('content') ||
-    $('meta[name="og:image"]').attr('content') ||
-    $('meta[property="twitter:image"]').attr('content') ||
-    $('meta[name="twitter:image"]').attr('content');
-  if (!content) return null;
-  try {
-    return new URL(content.trim(), pageUrl).href;
-  } catch {
-    return null;
   }
 }
 
@@ -210,7 +184,6 @@ export class CategoryImageExtractorService {
     const imageConfig = config.image_extraction;
 
     const result: CategoryImages = {
-      ogImage: null,
       menu: [],
       novelty: [],
       goods: [],
@@ -224,17 +197,14 @@ export class CategoryImageExtractorService {
 
     const allImages = new Set<string>();
 
-    // 1. トップページからOGP画像とアイキャッチを取得
+    // 1. トップページの画像を all に追加 (og:image はパイプラインが圧縮前の HTML から読む)
     if (topPageHtml) {
       const topPageResult = this.extractImagesFromHtml(
         topPageHtml,
         topPageUrl,
         imageConfig
       );
-      result.ogImage = topPageResult.ogpImage;
-      result.sources.ogImage = topPageUrl;
 
-      // トップページの画像を all に追加
       topPageResult.images.forEach((img) => allImages.add(img));
     }
 
@@ -349,7 +319,6 @@ export class CategoryImageExtractorService {
     result.all = Array.from(allImages);
 
     console.log('[CategoryImageExtractor] 抽出結果:', {
-      ogImage: result.ogImage ? '取得済み' : 'なし',
       menu: result.menu.length,
       novelty: result.novelty.length,
       goods: result.goods.length,
@@ -399,8 +368,6 @@ export class CategoryImageExtractorService {
     const $ = cheerio.load(html);
 
     // OGP画像を取得
-    const ogpImage = extractOgImageUrl($, sourceUrl);
-
     // 記事内の画像を全て取得
     const images: string[] = [];
     const alts: Record<string, string> = {};
@@ -437,10 +404,8 @@ export class CategoryImageExtractorService {
       }
     });
 
-    return { images, alts, ogpImage, excluded };
+    return { images, alts, excluded };
   }
-
-
 }
 
 /**

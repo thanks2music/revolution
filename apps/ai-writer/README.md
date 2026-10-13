@@ -365,12 +365,6 @@ AI_PROVIDER=google pnpm tsx scripts/test-send-message.ts
 # R2 ストレージ接続テスト
 pnpm tsx scripts/test-r2-connection.ts
 
-# OG 画像アップロードテスト
-pnpm tsx scripts/test-og-image-upload.ts
-
-# 記事画像アップロードテスト
-pnpm tsx scripts/test-article-image-upload.ts
-
 # スラッグ生成テスト
 pnpm tsx scripts/test-slug-generation.ts
 ```

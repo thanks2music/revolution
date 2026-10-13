@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import type { ImageExtractionConfig } from '@/lib/types/subpage-detection';
 import {
   contentKey,
+  folderWriter,
   r2ImageStore,
   uploadArticleImages,
   uploadEyecatchImage,
@@ -45,7 +46,7 @@ function memoryStore(existing: string[] = []): ImageStore & { puts: string[] } {
   const puts: string[] = [];
   return {
     puts,
-    exists: jest.fn(async (key: string) => keys.has(key)),
+    listKeys: jest.fn(async (prefix: string) => [...keys].filter((key) => key.startsWith(prefix))),
     put: jest.fn(async (key: string) => {
       keys.add(key);
       puts.push(key);
@@ -63,6 +64,29 @@ describe('contentKey', () => {
   });
 });
 
+describe('folderWriter', () => {
+  it('既にあるキーは一覧で 1 回だけ読み、上げない。新しいキーだけ上げる', async () => {
+    const existingKey = contentKey('f', Buffer.from('old'), 'webp');
+    const store = memoryStore([existingKey, 'other/x.webp']);
+    const writer = folderWriter(store, 'f');
+
+    const old = await writer.put(Buffer.from('old'), 'webp', 'image/webp');
+    const fresh = await writer.put(Buffer.from('new'), 'webp', 'image/webp');
+    const again = await writer.put(Buffer.from('new'), 'webp', 'image/webp');
+
+    expect(store.listKeys).toHaveBeenCalledTimes(1);
+    expect(store.listKeys).toHaveBeenCalledWith('f/');
+    expect([old.uploaded, fresh.uploaded, again.uploaded]).toEqual([false, true, false]);
+    expect(store.puts).toEqual([contentKey('f', Buffer.from('new'), 'webp')]);
+    expect(old.url).toBe(`https://images.example.com/${existingKey}`);
+  });
+
+  it('store が null なら dry-run (R2 に触らず、URL を [DRY RUN] にする)', async () => {
+    const result = await folderWriter(null, 'f').put(Buffer.from('a'), 'webp', 'image/webp');
+    expect(result).toEqual({ url: expect.stringMatching(/^\[DRY RUN\] .*\/f\/[0-9a-f]{32}\.webp$/), uploaded: false });
+  });
+});
+
 describe('uploadArticleImages', () => {
   it('加工した WebP を上げ、寸法と R2 の URL を返す。並びは元の順', async () => {
     const fetcher = fetcherOf({
@@ -76,7 +100,7 @@ describe('uploadArticleImages', () => {
         { url: 'https://a.test/1.png', alt: 'マルゲリータ' },
         { url: 'https://a.test/2.png', alt: null },
       ],
-      { folder: 'cafe/2026/X', config: CONFIG, store, dryRun: false, fetcher }
+      { writer: folderWriter(store, 'cafe/2026/X'), config: CONFIG, fetcher }
     );
 
     expect(result.skipped).toEqual([]);
@@ -92,23 +116,18 @@ describe('uploadArticleImages', () => {
   });
 
   it('R2 に既にあるキーは上げない (記事の更新で、差分の無い画像を上げ直さない)', async () => {
-    const buffer = await image(800, 600);
-    const fetcher = fetcherOf({ 'https://a.test/1.png': { buffer } });
+    const fetcher = fetcherOf({ 'https://a.test/1.png': { buffer: await image(800, 600) } });
     const first = memoryStore();
     await uploadArticleImages([{ url: 'https://a.test/1.png', alt: null }], {
-      folder: 'f',
+      writer: folderWriter(first, 'f'),
       config: CONFIG,
-      store: first,
-      dryRun: false,
       fetcher,
     });
 
     const second = memoryStore(first.puts);
     const result = await uploadArticleImages([{ url: 'https://a.test/1.png', alt: null }], {
-      folder: 'f',
+      writer: folderWriter(second, 'f'),
       config: CONFIG,
-      store: second,
-      dryRun: false,
       fetcher,
     });
 
@@ -129,7 +148,7 @@ describe('uploadArticleImages', () => {
         { url: 'https://a.test/missing.png', alt: null },
         { url: 'https://a.test/ok.png', alt: null },
       ],
-      { folder: 'f', config: CONFIG, store: memoryStore(), dryRun: false, fetcher }
+      { writer: folderWriter(memoryStore(), 'f'), config: CONFIG, fetcher }
     );
 
     expect(result.uploaded.map((u) => u.sourceUrl)).toEqual(['https://a.test/ok.png']);
@@ -143,10 +162,8 @@ describe('uploadArticleImages', () => {
     const fetcher = fetcherOf({ 'https://a.test/tall.png': { buffer: await image(1600, 6000) } });
 
     const result = await uploadArticleImages([{ url: 'https://a.test/tall.png', alt: null }], {
-      folder: 'f',
+      writer: folderWriter(memoryStore(), 'f'),
       config: CONFIG,
-      store: memoryStore(),
-      dryRun: false,
       fetcher,
     });
 
@@ -154,77 +171,39 @@ describe('uploadArticleImages', () => {
     expect(result.newObjects).toBe(2);
   });
 
-  it('dry-run では R2 に触らず、URL を [DRY RUN] にする (加工はするので寸法は本物)', async () => {
+  it('dry-run でも加工はするので、寸法は本物', async () => {
     const fetcher = fetcherOf({ 'https://a.test/1.png': { buffer: await image(800, 600) } });
-    const store = memoryStore();
 
     const result = await uploadArticleImages([{ url: 'https://a.test/1.png', alt: null }], {
-      folder: 'f',
+      writer: folderWriter(null, 'f'),
       config: CONFIG,
-      store,
-      dryRun: true,
       fetcher,
     });
 
-    expect(store.exists).not.toHaveBeenCalled();
-    expect(store.puts).toEqual([]);
-    expect(result.uploaded[0].segments[0]).toMatchObject({ url: expect.stringMatching(/^\[DRY RUN\] .*\/f\/[0-9a-f]{32}\.webp$/), width: 800, height: 600 });
-  });
-
-  it('同じ URL は 1 回だけ取得する', async () => {
-    const fetcher = fetcherOf({ 'https://a.test/1.png': { buffer: await image(800, 600) } });
-
-    const result = await uploadArticleImages(
-      [
-        { url: 'https://a.test/1.png', alt: null },
-        { url: 'https://a.test/1.png', alt: 'x' },
-      ],
-      { folder: 'f', config: CONFIG, store: memoryStore(), dryRun: false, fetcher }
-    );
-
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(result.uploaded).toHaveLength(1);
+    expect(result.uploaded[0].segments[0]).toMatchObject({ url: expect.stringMatching(/^\[DRY RUN\] /), width: 800, height: 600 });
+    expect(result.newObjects).toBe(0);
   });
 });
 
 describe('uploadEyecatchImage', () => {
-  it('形式を変えずに上げ (SNS で読めるように)、寸法を測る', async () => {
+  it('og:image は形式を変えずに上げ (SNS で読めるように)、寸法を測る。拡張子は中身の形式で決める', async () => {
     const buffer = await image(1200, 630, 'jpeg');
     const store = memoryStore();
 
-    const result = await uploadEyecatchImage('https://a.test/og.jpg', {
-      folder: 'f',
-      store,
-      dryRun: false,
-      fetcher: fetcherOf({ 'https://a.test/og.jpg': { buffer, contentType: 'image/jpeg; charset=binary' } }),
-    });
-
-    expect(result).toEqual({ url: `https://images.example.com/${store.puts[0]}`, width: 1200, height: 630, uploaded: true });
-    expect(store.puts[0]).toBe(contentKey('f', buffer, 'jpg'));
-    expect(store.put).toHaveBeenCalledWith(store.puts[0], buffer, 'image/jpeg');
-  });
-
-  it('Content-Type が画像でなければ、中身の形式で拡張子を決める', async () => {
-    const buffer = await image(1200, 630, 'png');
-    const store = memoryStore();
-
-    await uploadEyecatchImage('https://a.test/og', {
-      folder: 'f',
-      store,
-      dryRun: false,
+    const result = await uploadEyecatchImage('https://a.test/og', {
+      writer: folderWriter(store, 'f'),
       fetcher: fetcherOf({ 'https://a.test/og': { buffer, contentType: 'application/octet-stream' } }),
     });
 
-    expect(store.put).toHaveBeenCalledWith(contentKey('f', buffer, 'png'), buffer, 'image/png');
+    expect(result).toEqual({ url: `https://images.example.com/${store.puts[0]}`, width: 1200, height: 630, uploaded: true });
+    expect(store.put).toHaveBeenCalledWith(contentKey('f', buffer, 'jpg'), buffer, 'image/jpeg');
   });
 
   it('本文の画像から作るとき (derive) は、縮めて上端の片だけを JPEG にする', async () => {
     const store = memoryStore();
 
     const result = await uploadEyecatchImage('https://a.test/tall.png', {
-      folder: 'f',
-      store,
-      dryRun: false,
+      writer: folderWriter(store, 'f'),
       fetcher: fetcherOf({ 'https://a.test/tall.png': { buffer: await image(2000, 12500) } }),
       derive: CONFIG.upload,
     });
@@ -237,9 +216,7 @@ describe('uploadEyecatchImage', () => {
   it('画像でなければ例外', async () => {
     await expect(
       uploadEyecatchImage('https://a.test/og', {
-        folder: 'f',
-        store: memoryStore(),
-        dryRun: false,
+        writer: folderWriter(memoryStore(), 'f'),
         fetcher: fetcherOf({ 'https://a.test/og': { buffer: Buffer.from('<html>') } }),
       })
     ).rejects.toThrow();
@@ -247,15 +224,16 @@ describe('uploadEyecatchImage', () => {
 });
 
 describe('r2ImageStore', () => {
-  it('R2StorageService の存在確認・アップロード (キーを指定)・公開 URL につなぐ', async () => {
+  it('R2StorageService の一覧・アップロード (キーを指定)・公開 URL につなぐ', async () => {
     const r2 = {
-      objectExists: jest.fn(async () => true),
+      listObjects: jest.fn(async () => ['f/a.webp']),
       uploadImage: jest.fn(async () => ({})),
-      publicUrlFor: jest.fn((key: string) => `https://images.example.com/${key}`),
+      getPublicUrl: jest.fn((key: string) => `https://images.example.com/${key}`),
     };
     const store = r2ImageStore(r2);
 
-    await expect(store.exists('f/a.webp')).resolves.toBe(true);
+    await expect(store.listKeys('f/')).resolves.toEqual(['f/a.webp']);
+    expect(r2.listObjects).toHaveBeenCalledWith('f/');
     await store.put('f/a.webp', Buffer.from('x'), 'image/webp');
     expect(r2.uploadImage).toHaveBeenCalledWith(Buffer.from('x'), {
       filename: 'a.webp',

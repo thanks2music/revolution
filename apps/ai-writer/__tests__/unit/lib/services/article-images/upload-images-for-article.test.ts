@@ -82,7 +82,7 @@ describe('uploadImagesForArticle', () => {
 
   function store(): ImageStore {
     return {
-      exists: async () => false,
+      listKeys: async () => [],
       put: async () => undefined,
       publicUrlFor: (key) => `https://images.example.com/${key}`,
     };
@@ -106,7 +106,7 @@ describe('uploadImagesForArticle', () => {
         goods: ['https://a.test/goods-wide.png'],
         imageAlts: { 'https://a.test/goods-wide.png': '缶バッジ' },
       },
-      { folder: 'f', config, store: store(), dryRun: false, fetcher }
+      { folder: 'f', config, store: store(), fetcher }
     );
 
     expect(result.categories.menu.map((i) => i.sourceUrl)).toEqual(['https://a.test/menu-tall.png']);
@@ -124,23 +124,24 @@ describe('uploadImagesForArticle', () => {
     expect(result.newObjects).toBe(3);
   });
 
-  it('同じ画像が複数のカテゴリにあれば、先のカテゴリにだけ載せる (取得も 1 回)', async () => {
+  it('同じ画像が複数のカテゴリ・同じカテゴリに何度あっても、最初の 1 回だけ載せる (取得も 1 回)', async () => {
     const buffer = await png(800, 800, 30);
     const fetcher = jest.fn<ReturnType<ImageFetcher>, Parameters<ImageFetcher>>(async () => ({ buffer, contentType: 'image/png' }));
 
     const result = await uploadImagesForArticle(
-      { ogImage: null, menu: ['https://a.test/x.png'], novelty: [], goods: ['https://a.test/x.png'], imageAlts: {} },
-      { folder: 'f', config, store: store(), dryRun: true, fetcher }
+      { ogImage: null, menu: ['https://a.test/x.png', 'https://a.test/x.png'], novelty: [], goods: ['https://a.test/x.png'], imageAlts: {} },
+      { folder: 'f', config, store: null, fetcher }
     );
 
     expect(result.categories.menu).toHaveLength(1);
     expect(result.categories.goods).toHaveLength(0);
+    expect(fetcher).toHaveBeenCalledTimes(2); // 本文の 1 回と、アイキャッチ (og:image が無い) の 1 回
   });
 
   it('画像が 1 枚も無ければアイキャッチも無い', async () => {
     const result = await uploadImagesForArticle(
       { ogImage: null, menu: [], novelty: [], goods: [], imageAlts: {} },
-      { folder: 'f', config, store: store(), dryRun: false, fetcher: async () => ({ buffer: Buffer.alloc(0), contentType: null }) }
+      { folder: 'f', config, store: store(), fetcher: async () => ({ buffer: Buffer.alloc(0), contentType: null }) }
     );
     expect(result.eyecatch).toBeUndefined();
     expect(result.newObjects).toBe(0);

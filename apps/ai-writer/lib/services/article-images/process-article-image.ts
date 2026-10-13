@@ -12,9 +12,7 @@
  */
 import sharp from 'sharp';
 import type { ImageUploadConfig } from '@/lib/types/subpage-detection';
-
-/** 展開する画素数の上限 (Vision の下準備と同じ。悪意のある巨大な画像で止まらないため) */
-const MAX_INPUT_PIXELS = 100_000_000;
+import { MAX_INPUT_PIXELS } from '@/lib/services/vision-api/prepare-vision-images';
 
 export interface ProcessedSegment {
   buffer: Buffer;
@@ -47,6 +45,53 @@ export function resizedSize(width: number, height: number, maxWidth: number): { 
 }
 
 /**
+ * 読み込む画像。EXIF の向きを反映し (反映しないと縦の写真が横倒しになる)、画素数の上限を付ける
+ * (悪意のある巨大な画像で止まらないため。上限は Vision の下準備と共通)
+ */
+function loadImage(buffer: Buffer): sharp.Sharp {
+  return sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, autoOrient: true, animated: false });
+}
+
+/**
+ * 向きを反映した後の寸法と形式。metadata() はヘッダーしか読まず limitInputPixels で止まらないため、
+ * 展開の前にここで画素数を確かめる
+ *
+ * @throws 画像として読めないとき・画素数が大きすぎるとき
+ */
+export async function readImageInfo(buffer: Buffer): Promise<{ width: number; height: number; format: string }> {
+  const metadata = await loadImage(buffer).metadata();
+  const { width, height } = metadata.autoOrient ?? metadata;
+  if (!width || !height || !metadata.format) throw new Error('画像の大きさを読めない');
+  if (width * height > MAX_INPUT_PIXELS) throw new Error(`画像が大きすぎる (${width}×${height})`);
+  return { width, height, format: metadata.format };
+}
+
+/**
+ * max_width まで縮めて一度だけ展開し (無圧縮の画素)、分割の片を切り出せる形にする。分割の座標は、
+ * 縮めた後の実際の寸法で決める (計算の丸めで 1px ずれると extract が失敗するため)
+ */
+async function decodeResized(buffer: Buffer, source: { width: number; height: number }, config: ImageUploadConfig) {
+  const size = resizedSize(source.width, source.height, config.max_width);
+  const { data, info } = await loadImage(buffer)
+    .resize({ width: size.width, withoutEnlargement: true })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const raw = { width: info.width, height: info.height, channels: info.channels };
+  return {
+    width: info.width,
+    segments: planSegments(info.width, info.height, config),
+    /** 片を切り出す (品質を下げて作り直すたびに呼ぶ。sharp の clone は jsdom の Jest で動かないため使わない) */
+    extract: (segment: { top: number; height: number }) => () =>
+      sharp(data, { raw, limitInputPixels: MAX_INPUT_PIXELS }).extract({
+        left: 0,
+        top: segment.top,
+        width: info.width,
+        height: segment.height,
+      }),
+  };
+}
+
+/**
  * WebP (既定) か JPEG にする。max_bytes を超えたら品質を下げる (min_quality で止め、それでも超えればそのまま返す)。
  * 品質の段階は WebP と同じ値を使う
  */
@@ -60,7 +105,7 @@ async function encode(input: () => sharp.Sharp, config: ImageUploadConfig, forma
 }
 
 /**
- * 取得した 1 枚を加工する。EXIF の向きを反映してから測る (反映しないと縦の写真が横倒しになる)。
+ * 取得した 1 枚を加工する (縮小・分割・WebP)。
  *
  * @throws 画像として読めないとき・画素数が大きすぎるとき
  */
@@ -69,34 +114,15 @@ export async function processArticleImage(
   config: ImageUploadConfig,
   minShortSide: number
 ): Promise<ProcessedImage> {
-  const load = () => sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, autoOrient: true, animated: false });
-  const metadata = await load().metadata();
-  const { width, height } = metadata.autoOrient ?? metadata;
-  if (!width || !height) throw new Error('画像の大きさを読めない');
-  // metadata() はヘッダーしか読まず limitInputPixels で止まらないため、展開の前にここで止める
-  if (width * height > MAX_INPUT_PIXELS) throw new Error(`画像が大きすぎる (${width}×${height})`);
-  if (Math.min(width, height) < minShortSide) return { kind: 'too_small', width, height };
+  const source = await readImageInfo(buffer);
+  if (Math.min(source.width, source.height) < minShortSide) return { kind: 'too_small', ...pick(source) };
 
-  const size = resizedSize(width, height, config.max_width);
-  // 縮めた画像を一度だけ展開し (無圧縮の画素)、分割はそこから切り出す (分割の座標は縮めた後のもの)
-  const { data, info } = await load()
-    .resize({ width: size.width, withoutEnlargement: true })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const raw = { width: info.width, height: info.height, channels: info.channels };
+  const decoded = await decodeResized(buffer, source, config);
   const segments: ProcessedSegment[] = [];
-  for (const segment of planSegments(info.width, info.height, config)) {
-    // 品質を下げて作り直すたびに、同じ片を切り出し直す (sharp の clone は jsdom の Jest で動かないため使わない)
-    const input = () =>
-      sharp(data, { raw, limitInputPixels: MAX_INPUT_PIXELS }).extract({
-        left: 0,
-        top: segment.top,
-        width: info.width,
-        height: segment.height,
-      });
-    segments.push({ buffer: await encode(input, config), width: info.width, height: segment.height });
+  for (const segment of decoded.segments) {
+    segments.push({ buffer: await encode(decoded.extract(segment), config), width: decoded.width, height: segment.height });
   }
-  return { kind: 'ok', width, height, segments };
+  return { kind: 'ok', ...pick(source), segments };
 }
 
 /**
@@ -105,28 +131,12 @@ export async function processArticleImage(
  *
  * @throws 画像として読めないとき・画素数が大きすぎるとき
  */
-export async function processEyecatchFallback(
-  buffer: Buffer,
-  config: ImageUploadConfig
-): Promise<ProcessedSegment> {
-  const load = () => sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, autoOrient: true, animated: false });
-  const metadata = await load().metadata();
-  const { width, height } = metadata.autoOrient ?? metadata;
-  if (!width || !height) throw new Error('画像の大きさを読めない');
-  if (width * height > MAX_INPUT_PIXELS) throw new Error(`画像が大きすぎる (${width}×${height})`);
+export async function processEyecatchFallback(buffer: Buffer, config: ImageUploadConfig): Promise<ProcessedSegment> {
+  const decoded = await decodeResized(buffer, await readImageInfo(buffer), config);
+  const top = decoded.segments[0];
+  return { buffer: await encode(decoded.extract(top), config, 'jpeg'), width: decoded.width, height: top.height };
+}
 
-  const size = resizedSize(width, height, config.max_width);
-  // 縮めた後の実際の寸法から切り出す (計算の丸めで 1px ずれると extract が失敗するため)
-  const { data, info } = await load()
-    .resize({ width: size.width, withoutEnlargement: true })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const top = planSegments(info.width, info.height, config)[0];
-  const raw = { width: info.width, height: info.height, channels: info.channels };
-  const output = await encode(
-    () => sharp(data, { raw, limitInputPixels: MAX_INPUT_PIXELS }).extract({ left: 0, top: 0, width: info.width, height: top.height }),
-    config,
-    'jpeg'
-  );
-  return { buffer: output, width: info.width, height: top.height };
+function pick({ width, height }: { width: number; height: number }) {
+  return { width, height };
 }

@@ -17,8 +17,6 @@ import { articleImageTag, articleImageTags } from './article-images/article-imag
 import type { ArticleImageRef } from './article-images/upload-article-images';
 import type { ImageCategory } from './article-images/upload-images-for-article';
 
-export type { ImageCategory };
-
 /**
  * プレースホルダー定義
  */

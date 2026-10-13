@@ -31,14 +31,6 @@ jest.mock('@/lib/firestore/event-deduplication', () => ({
 
 // 画像アップロード系は uuid@14 (ESM-only) を引き込むため同様に止める
 jest.mock('@/lib/services/r2-storage.service', () => ({ getR2StorageService: jest.fn() }));
-jest.mock('@/lib/services/og-image-upload.service', () => ({
-  uploadOgImageForArticle: jest.fn(),
-  OgImageUploadService: jest.fn(),
-}));
-jest.mock('@/lib/services/article-image-upload.service', () => ({
-  uploadArticleImages: jest.fn(),
-  ArticleImageUploadService: jest.fn(),
-}));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { extractArticleHtml } = require('@/lib/utils/html-extractor') as {

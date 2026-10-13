@@ -6,13 +6,12 @@
  *   (記事を更新しても、画像に差分が無ければ上げ直さない。Frontend は寸法を URL ごとに期限なしで保存するので、
  *   同じキーの中身を差し替えてはいけない — ハッシュの名前ならそれが起きない)
  * - 1 枚の失敗で記事を止めない (その画像を飛ばし、理由を返す)
- * - dry-run では取得と加工まで行い (寸法と分割が確かめられる)、R2 には触らない。URL は `[DRY RUN] …` にする
+ * - store が null なら dry-run: 取得と加工まで行い (寸法と分割が確かめられる)、R2 には触らない。URL は `[DRY RUN] …`
  */
 import { createHash } from 'crypto';
-import sharp from 'sharp';
 import type { ImageExtractionConfig, ImageUploadConfig } from '@/lib/types/subpage-detection';
 import { fetchImageSafely } from '@/lib/utils/safe-image-fetch';
-import { processArticleImage, processEyecatchFallback } from './process-article-image';
+import { processArticleImage, processEyecatchFallback, readImageInfo } from './process-article-image';
 
 /** 記事に載せる画像 1 枚 (R2 の URL と寸法) */
 export interface ArticleImageRef {
@@ -46,7 +45,8 @@ export interface SkippedImage {
 
 /** R2 への読み書き (テストで差し替えるため) */
 export interface ImageStore {
-  exists(key: string): Promise<boolean>;
+  /** prefix で始まるキーの一覧 */
+  listKeys(prefix: string): Promise<string[]>;
   put(key: string, buffer: Buffer, contentType: string): Promise<void>;
   publicUrlFor(key: string): string;
 }
@@ -57,7 +57,7 @@ export type ImageFetcher = (url: string) => Promise<{ buffer: Buffer; contentTyp
 const SOURCE_MAX_BYTES = 40 * 1024 * 1024;
 const SOURCE_TIMEOUT_MS = 30_000;
 
-const defaultFetcher: ImageFetcher = (url) =>
+export const defaultFetcher: ImageFetcher = (url) =>
   fetchImageSafely(url, { maxBytes: SOURCE_MAX_BYTES, timeoutMs: SOURCE_TIMEOUT_MS });
 
 /** 中身のハッシュのキー (`{folder}/{sha256 の先頭 32 桁}.{ext}`) */
@@ -66,67 +66,78 @@ export function contentKey(folder: string, buffer: Buffer, ext: string): string 
   return `${folder}/${hash}.${ext}`;
 }
 
-interface UploadContext {
-  store: ImageStore | null;
-  dryRun: boolean;
+/** 記事 1 本のフォルダへの書き込み。キーが既にあれば上げない */
+export interface FolderWriter {
+  put(buffer: Buffer, ext: string, contentType: string): Promise<{ url: string; uploaded: boolean }>;
 }
 
-/** キーに上げる (既にあれば上げない)。上げたか・既にあったかを返す */
-async function putIfAbsent(
-  key: string,
-  buffer: Buffer,
-  contentType: string,
-  context: UploadContext
-): Promise<{ url: string; uploaded: boolean }> {
-  if (context.dryRun || !context.store) {
-    return { url: `[DRY RUN] ${process.env.R2_PUBLIC_URL ?? ''}/${key}`, uploaded: false };
-  }
-  if (await context.store.exists(key)) return { url: context.store.publicUrlFor(key), uploaded: false };
-  await context.store.put(key, buffer, contentType);
-  return { url: context.store.publicUrlFor(key), uploaded: true };
+/**
+ * フォルダへの書き込み口を作る。既にあるキーは、最初の書き込みのときに一覧で 1 回だけ読む
+ * (画像ごとに有無を問い合わせると、100 枚の記事で 100 回の往復になる)。一覧に漏れがあっても
+ * (1,000 件を超えるなど)、同じ中身を同じキーに上げ直すだけで害はない。store が null なら dry-run
+ */
+export function folderWriter(store: ImageStore | null, folder: string): FolderWriter {
+  let existing: Promise<Set<string>> | undefined;
+  return {
+    async put(buffer, ext, contentType) {
+      const key = contentKey(folder, buffer, ext);
+      if (!store) return { url: `[DRY RUN] ${process.env.R2_PUBLIC_URL ?? ''}/${key}`, uploaded: false };
+      existing ??= store.listKeys(`${folder}/`).then((keys) => new Set(keys));
+      const keys = await existing;
+      if (keys.has(key)) return { url: store.publicUrlFor(key), uploaded: false };
+      await store.put(key, buffer, contentType);
+      keys.add(key);
+      return { url: store.publicUrlFor(key), uploaded: true };
+    },
+  };
 }
 
 export interface UploadArticleImagesOptions {
-  folder: string;
+  writer: FolderWriter;
   config: Pick<ImageExtractionConfig, 'min_short_side' | 'upload'>;
-  store: ImageStore | null;
-  dryRun: boolean;
   fetcher?: ImageFetcher;
 }
 
 /**
- * 画像を順に取得・加工して上げる (縦長の画像は展開すると大きいので、並列にしない)。
- * 返す順は元の順。短辺が足りない画像・失敗した画像は skipped に入れる
+ * 画像を順に取得・加工して上げる (縦長の画像は展開すると大きいので、画像どうしは並列にしない。
+ * 1 枚の片は並列に上げる)。返す順は元の順。短辺が足りない画像・失敗した画像は skipped に入れる
  */
 export async function uploadArticleImages(
   images: SourceImage[],
   options: UploadArticleImagesOptions
 ): Promise<{ uploaded: UploadedArticleImage[]; skipped: SkippedImage[]; newObjects: number }> {
   const fetcher = options.fetcher ?? defaultFetcher;
-  const context: UploadContext = { store: options.store, dryRun: options.dryRun };
   const uploaded: UploadedArticleImage[] = [];
   const skipped: SkippedImage[] = [];
   let newObjects = 0;
-  const seen = new Set<string>();
 
   for (const image of images) {
-    if (seen.has(image.url)) continue;
-    seen.add(image.url);
     try {
       const { buffer } = await fetcher(image.url);
       const processed = await processArticleImage(buffer, options.config.upload, options.config.min_short_side);
       if (processed.kind === 'too_small') {
-        skipped.push({ sourceUrl: image.url, kind: 'too_small', reason: `短辺が ${options.config.min_short_side}px 未満 (${processed.width}×${processed.height})` });
+        skipped.push({
+          sourceUrl: image.url,
+          kind: 'too_small',
+          reason: `短辺が ${options.config.min_short_side}px 未満 (${processed.width}×${processed.height})`,
+        });
         continue;
       }
-      const segments: ArticleImageRef[] = [];
-      for (const segment of processed.segments) {
-        const key = contentKey(options.folder, segment.buffer, 'webp');
-        const result = await putIfAbsent(key, segment.buffer, 'image/webp', context);
-        if (result.uploaded) newObjects++;
-        segments.push({ url: result.url, width: segment.width, height: segment.height });
-      }
-      uploaded.push({ sourceUrl: image.url, alt: image.alt, width: processed.width, height: processed.height, segments });
+      const results = await Promise.all(
+        processed.segments.map((segment) => options.writer.put(segment.buffer, 'webp', 'image/webp'))
+      );
+      newObjects += results.filter((result) => result.uploaded).length;
+      uploaded.push({
+        sourceUrl: image.url,
+        alt: image.alt,
+        width: processed.width,
+        height: processed.height,
+        segments: results.map((result, index) => ({
+          url: result.url,
+          width: processed.segments[index].width,
+          height: processed.segments[index].height,
+        })),
+      });
     } catch (error) {
       skipped.push({ sourceUrl: image.url, kind: 'failed', reason: error instanceof Error ? error.message : String(error) });
     }
@@ -134,12 +145,13 @@ export async function uploadArticleImages(
   return { uploaded, skipped, newObjects };
 }
 
-const EXTENSIONS: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'image/avif': 'avif',
+/** sharp の形式名 → 拡張子と Content-Type (sharp は AVIF を heif と報告する) */
+const FORMATS: Record<string, [ext: string, contentType: string]> = {
+  jpeg: ['jpg', 'image/jpeg'],
+  png: ['png', 'image/png'],
+  webp: ['webp', 'image/webp'],
+  gif: ['gif', 'image/gif'],
+  heif: ['avif', 'image/avif'],
 };
 
 /**
@@ -152,36 +164,31 @@ const EXTENSIONS: Record<string, string> = {
  */
 export async function uploadEyecatchImage(
   sourceUrl: string,
-  options: { folder: string; store: ImageStore | null; dryRun: boolean; fetcher?: ImageFetcher; derive?: ImageUploadConfig }
+  options: { writer: FolderWriter; fetcher?: ImageFetcher; derive?: ImageUploadConfig }
 ): Promise<ArticleImageRef & { uploaded: boolean }> {
-  const { buffer, contentType } = await (options.fetcher ?? defaultFetcher)(sourceUrl);
-  const context = { store: options.store, dryRun: options.dryRun };
+  const { buffer } = await (options.fetcher ?? defaultFetcher)(sourceUrl);
   if (options.derive) {
     const derived = await processEyecatchFallback(buffer, options.derive);
-    const result = await putIfAbsent(contentKey(options.folder, derived.buffer, 'jpg'), derived.buffer, 'image/jpeg', context);
+    const result = await options.writer.put(derived.buffer, 'jpg', 'image/jpeg');
     return { url: result.url, width: derived.width, height: derived.height, uploaded: result.uploaded };
   }
-  const metadata = await sharp(buffer, { autoOrient: true }).metadata();
-  const { width, height } = metadata.autoOrient ?? metadata;
-  if (!width || !height || !metadata.format) throw new Error('画像の大きさを読めない');
-  const type = contentType?.split(';')[0].trim() ?? '';
-  const ext = EXTENSIONS[type] ?? (metadata.format === 'jpeg' ? 'jpg' : metadata.format);
-  const mime = EXTENSIONS[type] ? type : `image/${metadata.format}`;
-  const result = await putIfAbsent(contentKey(options.folder, buffer, ext), buffer, mime, context);
-  return { url: result.url, width, height, uploaded: result.uploaded };
+  const info = await readImageInfo(buffer);
+  const [ext, contentType] = FORMATS[info.format] ?? [info.format, `image/${info.format}`];
+  const result = await options.writer.put(buffer, ext, contentType);
+  return { url: result.url, width: info.width, height: info.height, uploaded: result.uploaded };
 }
 
 /** R2StorageService を ImageStore として使う */
 export function r2ImageStore(r2: {
-  objectExists(key: string): Promise<boolean>;
+  listObjects(prefix: string): Promise<string[]>;
   uploadImage(buffer: Buffer, options: { filename: string; contentType: string; customKey: string }): Promise<unknown>;
-  publicUrlFor(key: string): string;
+  getPublicUrl(key: string): string;
 }): ImageStore {
   return {
-    exists: (key) => r2.objectExists(key),
+    listKeys: (prefix) => r2.listObjects(prefix),
     put: async (key, buffer, contentType) => {
       await r2.uploadImage(buffer, { filename: key.split('/').pop() ?? key, contentType, customKey: key });
     },
-    publicUrlFor: (key) => r2.publicUrlFor(key),
+    publicUrlFor: (key) => r2.getPublicUrl(key),
   };
 }

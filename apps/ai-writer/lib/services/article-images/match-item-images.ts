@@ -61,8 +61,8 @@ function altBaseKeys(alt: string): string[] {
  * (両方に別の副題があれば別の品目)。副題を外した形が複数の品目で同じなら、その形では結びつけない
  */
 export function matchImagesToItems<T extends { alt: string | null }>(
-  names: string[],
-  images: T[]
+  names: readonly string[],
+  images: readonly T[]
 ): { byItem: T[][]; rest: T[] } {
   const exact = new Map<string, number>();
   names.forEach((name, index) => {

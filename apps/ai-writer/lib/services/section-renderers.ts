@@ -102,12 +102,18 @@ export function renderMenuItems(items: ExtractionMenuItem[], itemLine: string, i
 }
 
 const MENU_SECTION = /^## .*メニュー[ \t]*$/m;
+const NOVELTY_SECTION = /^## .*ノベルティー?[ \t]*$/m;
+
+/**
+ * 画像の欄の行 (Markdown の画像・画像のプレースホルダー・`<ArticleImage>`)。名前を差し込むとき、
+ * この行を LLM の地の文や品目と取り違えると画像が消える
+ */
+const IMAGE_LINE = /^(?:!\[|\{ここに|<ArticleImage)/;
 
 /** メニューの節があるか (品目ごとの画像は、節が無いと差し込めない) */
 export function hasMenuSection(content: string): boolean {
   return findSection(content, MENU_SECTION) !== null;
 }
-const NOVELTY_SECTION = /^## .*ノベルティー?[ \t]*$/m;
 
 /**
  * メニューの節の品目を差し替える。LLM が書いた品目の範囲 (最初の `### ` の行から、最初の画像の手前まで) を
@@ -119,9 +125,7 @@ export function replaceMenuItems(content: string, itemLines: string[]): string {
   if (!range || itemLines.length === 0) return content;
 
   const lines = content.slice(range.start, range.end).split('\n');
-  // 節の末尾の画像の欄。`<ArticleImage` を外すと、品目の範囲が節の末尾まで広がって画像が消える
-  const isImage = (line: string) =>
-    line.startsWith('![') || line.startsWith('{ここに') || line.startsWith('<ArticleImage');
+  const isImage = (line: string) => IMAGE_LINE.test(line);
   const firstItem = lines.findIndex((line) => line.startsWith('### '));
   let from: number;
   let to: number;
@@ -148,9 +152,12 @@ export function replaceNoveltySentence(content: string, sentence: string): strin
   if (!range || !sentence) return content;
 
   const body = content.slice(range.start, range.end);
-  const paragraph = /\n\n?((?!#|!\[|\{ここに|\||<ArticleImage)[^\n]+(?:\n(?!\n)[^\n]+)*)/.exec(body);
+  // 見出し・表・画像の欄でない、最初の段落
+  const paragraph = [...body.matchAll(/\n\n?([^\n]+(?:\n(?!\n)[^\n]+)*)/g)].find(
+    (match) => !/^(?:#|\|)/.test(match[1]) && !IMAGE_LINE.test(match[1])
+  );
   const replaced = paragraph
-    ? body.slice(0, paragraph.index) + body.slice(paragraph.index).replace(paragraph[1], () => sentence)
+    ? body.slice(0, paragraph.index) + body.slice(paragraph.index!).replace(paragraph[1], () => sentence)
     : `\n\n${sentence}${body}`;
   return replaceSectionBody(content, range, replaced);
 }
