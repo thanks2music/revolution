@@ -11,7 +11,9 @@
  * 会場ごとの案内ページ (`venueUrls`) も取得する。ノベルティが案内ページにしか無いサイトがあるため
  * (ヒロアカ)、ノベルティの下層ページが無いときは、案内ページの特典の画像を候補に残す (`venueNoveltyImages`)。
  *
- * 2026-10-13: 枚数の上限を廃止した (公式の画像をすべて載せる。BOSS 決定)。歯止めは短辺 (`min_short_side`)。
+ * 2026-10-13: 枚数の上限を廃止した (公式の画像をすべて載せる。BOSS 決定)。歯止めの短辺 (`min_short_side`) は、
+ * 取得した後に実際の画素数で当てる (`article-images/process-article-image.ts`)。HTML の width / height は表示の大きさで、
+ * 高解像度の画像を小さく並べたグッズの一覧を落としてしまうため使わない。
  * 画像は下層ページの本文ブロックから集め (ヘッダー・ナビの画像を拾わない)、代替テキストも残す
  * (`imageAlts`。品目ごとの画像の照合に使う)。
  */
@@ -86,7 +88,7 @@ export interface CategoryImages {
    * 読めたページから選ぶ (`pickNoveltyImages`)。利用ガイドのような汎用のページの画像を使わないため
    */
   venueNoveltyImages: VenueNoveltyImages[];
-  /** 画像の URL → 代替テキスト (下層ページ・会場の案内ページの画像。空の代替テキストは入れない) */
+  /** 画像の URL → 代替テキスト (下層ページの画像。品目ごとの画像の照合に使う。空の代替テキストは入れない) */
   imageAlts: Record<string, string>;
 }
 
@@ -122,16 +124,22 @@ function toExcludeTarget(url: URL): string {
 }
 
 /**
- * width / height の属性から、短辺が足りないと分かる画像か (属性が無い・読めない画像は取得してから判定する)
+ * ページの og:image (無ければ twitter:image)。相対 URL (`/img/ogp.jpg`) はページの URL で解決する。
+ * `<head>` を含む HTML を渡す (本文だけに絞った HTML には meta が無い)
  */
-export function isTooSmallByAttributes(
-  width: string | undefined,
-  height: string | undefined,
-  minShortSide: number
-): boolean {
-  const w = parseInt(width ?? '', 10);
-  const h = parseInt(height ?? '', 10);
-  return w > 0 && h > 0 && Math.min(w, h) < minShortSide;
+export function extractOgImageUrl(html: string | cheerio.CheerioAPI, pageUrl: string): string | null {
+  const $ = typeof html === 'string' ? cheerio.load(html) : html;
+  const content =
+    $('meta[property="og:image"]').attr('content') ||
+    $('meta[name="og:image"]').attr('content') ||
+    $('meta[property="twitter:image"]').attr('content') ||
+    $('meta[name="twitter:image"]').attr('content');
+  if (!content) return null;
+  try {
+    return new URL(content.trim(), pageUrl).href;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -147,15 +155,10 @@ function imageSource(element: { attr(name: string): string | undefined }): strin
 
 /**
  * 本文ブロックの画像のうち、代替テキストが語のどれかを含むものの絶対 URL (Layer 1)。
- * 除外パターンは当てない (代替テキストが根拠になるため)。短辺の下限は、width / height の属性があるときだけ当てる
- * (他の画像と同じ。代替テキストが「特典」の小さなアイコンを除くため)。語が無ければ空
+ * 除外パターンは当てない (代替テキストが根拠になるため)。短辺の下限は、上げる前に実際の画素数で当てる
+ * (代替テキストが「特典」の小さなアイコンはそこで落ちる)。語が無ければ空
  */
-export function findImagesByAlt(
-  html: string,
-  sourceUrl: string,
-  keywords: readonly string[],
-  minShortSide?: number
-): string[] {
+export function findImagesByAlt(html: string, sourceUrl: string, keywords: readonly string[]): string[] {
   if (keywords.length === 0) return [];
   const $ = cheerio.load(html);
   const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase());
@@ -165,7 +168,6 @@ export function findImagesByAlt(
     if (!lowerKeywords.some((keyword) => alt.includes(keyword))) return;
     const src = imageSource($(element));
     if (!src) return;
-    if (minShortSide && isTooSmallByAttributes($(element).attr('width'), $(element).attr('height'), minShortSide)) return;
     try {
       const absoluteUrl = new URL(src, sourceUrl).href;
       if (!images.includes(absoluteUrl)) images.push(absoluteUrl);
@@ -298,14 +300,8 @@ export class CategoryImageExtractorService {
     for (const venue of venueHtmls) {
       if (!venue) continue;
       const mainHtml = this.addPageText(result, venue.url, 'venue', venue.html);
-      const images = findImagesByAlt(
-        mainHtml,
-        venue.url,
-        imageConfig.novelty_alt_keywords ?? [],
-        imageConfig.min_short_side
-      );
+      const images = findImagesByAlt(mainHtml, venue.url, imageConfig.novelty_alt_keywords ?? []);
       if (images.length > 0) result.venueNoveltyImages.push({ url: venue.url, images });
-      Object.assign(result.imageAlts, this.extractImagesFromHtml(mainHtml, venue.url, imageConfig).alts);
     }
     if (venues.length > 0 && (imageConfig.novelty_alt_keywords ?? []).length === 0) {
       // Templates の設定 (store-url-patterns.yaml) が古いと、ノベルティの画像を黙って選ばなくなる
@@ -398,12 +394,12 @@ export class CategoryImageExtractorService {
   private extractImagesFromHtml(
     html: string,
     sourceUrl: string,
-    config: { min_short_side: number; exclude_patterns: string[] }
+    config: { exclude_patterns: string[] }
   ): PageImagesResult {
     const $ = cheerio.load(html);
 
     // OGP画像を取得
-    const ogpImage = this.extractOgpImage($, sourceUrl);
+    const ogpImage = extractOgImageUrl($, sourceUrl);
 
     // 記事内の画像を全て取得
     const images: string[] = [];
@@ -433,11 +429,6 @@ export class CategoryImageExtractorService {
         return;
       }
 
-      // 短辺の下限 (属性があるときだけ。無ければ取得してから判定する)
-      if (isTooSmallByAttributes($(element).attr('width'), $(element).attr('height'), config.min_short_side)) {
-        return;
-      }
-
       // 重複チェック
       if (!images.includes(absoluteUrl)) {
         images.push(absoluteUrl);
@@ -449,23 +440,7 @@ export class CategoryImageExtractorService {
     return { images, alts, ogpImage, excluded };
   }
 
-  /**
-   * OGP画像を抽出
-   */
-  private extractOgpImage($: cheerio.CheerioAPI, sourceUrl: string): string | null {
-    const ogpImage =
-      $('meta[property="og:image"]').attr('content') ||
-      $('meta[name="og:image"]').attr('content') ||
-      $('meta[property="twitter:image"]').attr('content') ||
-      $('meta[name="twitter:image"]').attr('content');
-    if (!ogpImage) return null;
-    // 相対 URL (`/img/ogp.jpg`) で書くサイトがあるため、ページの URL で解決する
-    try {
-      return new URL(ogpImage.trim(), sourceUrl).href;
-    } catch {
-      return null;
-    }
-  }
+
 }
 
 /**

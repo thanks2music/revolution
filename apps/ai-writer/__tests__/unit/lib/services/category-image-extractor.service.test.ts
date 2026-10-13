@@ -274,12 +274,13 @@ describe('findImagesByAlt', () => {
     ]);
   });
 
-  it('data-src も読み、URL として読めない src は飛ばす。width / height があれば短辺の下限を当てる', () => {
+  it('data-src も読み、URL として読めない src は飛ばす。width / height の属性では落とさない (短辺は取得後に当てる)', () => {
     const html =
       '<img data-src="/lazy.jpg" alt="特典"><img src="http://[bad" alt="特典"><img src="/icon.png" alt="特典" width="40" height="40"><img src="/big.jpg" alt="特典" width="600" height="600">';
 
-    expect(findImagesByAlt(html, 'https://example.com/', ['特典'], 200)).toEqual([
+    expect(findImagesByAlt(html, 'https://example.com/', ['特典'])).toEqual([
       'https://example.com/lazy.jpg',
+      'https://example.com/icon.png',
       'https://example.com/big.jpg',
     ]);
   });

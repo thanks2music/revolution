@@ -13,12 +13,6 @@ describe('altKeys', () => {
     expect(altKeys('badge缶バッジ')).toContain(itemNameKey('缶バッジ'));
   });
 
-  it('末尾の副題 (――…―― / ～…～) を外した形も候補にする。接頭辞の ～ は副題と取り違えない', () => {
-    expect(altKeys('風の女神ドリンク ――旋風を、巻き起こせ――')).toContain(itemNameKey('風の女神ドリンク'));
-    expect(altKeys('ナポリタン～風の女神～')).toContain(itemNameKey('ナポリタン'));
-    expect(altKeys('0427～_後期_アクリルスタンド')).not.toContain(itemNameKey('0427'));
-  });
-
   it('元の代替テキストそのものも候補に残す (品名に英字・_ を含むもののため)', () => {
     expect(altKeys('T_シャツ')).toContain(itemNameKey('T_シャツ'));
   });
@@ -61,6 +55,26 @@ describe('matchImagesToItems', () => {
       ['風の女神ドリンク～限定～'],
     ]);
     expect(rest).toEqual([]);
+  });
+
+  it('副題は末尾で囲まれたものだけ外す (途中の ～…～ は品名の一部)', () => {
+    const { byItem, rest } = matchImagesToItems(
+      ['炭治郎～水の呼吸～パフェ', 'ナポリタン～風の女神～'],
+      [img('炭治郎'), img('ナポリタン'), img('0427～_後期_ナポリタン～風の女神～')]
+    );
+
+    expect(byItem.map((list) => list.map((i) => i.id))).toEqual([[], ['ナポリタン', '0427～_後期_ナポリタン～風の女神～']]);
+    expect(rest.map((i) => i.id)).toEqual(['炭治郎']);
+  });
+
+  it('両方に別の副題があれば結びつけない。副題を外した形が複数の品目で同じなら、その形では結びつけない', () => {
+    const { byItem, rest } = matchImagesToItems(
+      ['ドリンク～A～', 'ドリンク～B～', 'パフェ～春～'],
+      [img('ドリンク'), img('パフェ～夏～')]
+    );
+
+    expect(byItem.every((list) => list.length === 0)).toBe(true);
+    expect(rest.map((i) => i.id)).toEqual(['ドリンク', 'パフェ～夏～']);
   });
 
   it('品目が無ければ全部 rest', () => {

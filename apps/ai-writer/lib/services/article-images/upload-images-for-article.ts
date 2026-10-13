@@ -4,7 +4,9 @@
  * - カテゴリ (メニュー・ノベルティ・グッズ) ごとに全件を上げる (枚数の上限なし。短辺の下限・縮小・WebP・分割は
  *   `processArticleImage`)
  * - アイキャッチは og:image → 本文の最初の横長の画像 (幅 / 高さ ≥ `eyecatch_landscape_ratio`) → 本文の最初の画像。
- *   候補を上げられなければ次の候補へ進む。SNS で読めるよう、アイキャッチは元の形式のまま上げる
+ *   候補を上げられなければ次の候補へ進む。og:image は元のまま、本文の画像から作るときは縮めた JPEG にする
+ *   (`uploadEyecatchImage`)
+ * - 複数のカテゴリに同じ画像があれば、先のカテゴリ (メニュー → ノベルティ → グッズ) にだけ載せる
  * - 品目ごとの画像 (代替テキストと品名の照合) を見出しの下に並べる形の MDX にする (`itemImageTags`)
  */
 import type { ImageExtractionConfig } from '@/lib/types/subpage-detection';
@@ -89,18 +91,41 @@ export interface UploadImagesForArticleOptions {
   fetcher?: ImageFetcher;
 }
 
+/**
+ * 画像の設定が揃っているか。Templates が古いまま (`max_images_per_category` の頃) だと、全画像が
+ * 「undefined を読めない」で個別に失敗し、記事が黙って画像なしになるため、最初にまとめて止める
+ *
+ * @throws 設定が欠けているとき
+ */
+export function assertImageUploadConfig(config: Partial<UploadImagesForArticleOptions['config']> | undefined): void {
+  const missing = [
+    typeof config?.min_short_side !== 'number' && 'min_short_side',
+    typeof config?.eyecatch_landscape_ratio !== 'number' && 'eyecatch_landscape_ratio',
+    typeof config?.upload?.max_width !== 'number' && 'upload',
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    throw new Error(
+      `store-url-patterns.yaml の image_extraction に ${missing.join(' / ')} が無い (pnpm sync:templates で Templates を同期する)`
+    );
+  }
+}
+
 export async function uploadImagesForArticle(
   sources: ArticleImageSources,
   options: UploadImagesForArticleOptions
 ): Promise<ArticleImagesUpload> {
+  assertImageUploadConfig(options.config);
   const result: ArticleImagesUpload = {
     categories: { menu: [], novelty: [], goods: [] },
     skipped: [],
     newObjects: 0,
   };
 
+  const seen = new Set<string>();
   for (const category of IMAGE_CATEGORIES) {
-    const images = sources[category].map((url) => ({ url, alt: sources.imageAlts[url] ?? null }));
+    const images = sources[category]
+      .filter((url) => !seen.has(url) && seen.add(url))
+      .map((url) => ({ url, alt: sources.imageAlts[url] ?? null }));
     if (images.length === 0) continue;
     const uploaded = await uploadArticleImages(images, {
       folder: options.folder,
@@ -122,6 +147,7 @@ export async function uploadImagesForArticle(
         store: options.store,
         dryRun: options.dryRun,
         fetcher: options.fetcher,
+        derive: candidate.origin === 'og' ? undefined : options.config.upload,
       });
       if (eyecatch.uploaded) result.newObjects++;
       result.eyecatch = { url: eyecatch.url, width: eyecatch.width, height: eyecatch.height, ...candidate };

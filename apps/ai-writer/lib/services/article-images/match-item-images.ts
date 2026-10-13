@@ -17,8 +17,11 @@ import { itemNameKey } from '@/lib/services/merge-subpage-into-extraction';
 const UNDERSCORE_PREFIX = /^.*_/;
 /** 品名の前に付いた英字 (「badge缶バッジ」の badge) */
 const LEADING_LATIN = /^[a-z]+(?=[^\x00-\x7f])/i;
-/** 末尾の副題 (「――旋風を、巻き起こせ――」「～風の女神～」)。区切りは ― / — の 1〜2 文字か、波線 */
-const SUBTITLE = /\s*(?:[―—]{1,2}|[～〜~]).*$/;
+/**
+ * 末尾の副題。区切りで囲まれ、文字列の末尾にあるものだけ (「――旋風を、巻き起こせ――」「～風の女神～」)。
+ * 途中の「炭治郎～水の呼吸～パフェ」は副題ではなく品名の一部として扱う
+ */
+const SUBTITLE = /\s*(?:[―—]{1,2}[^―—]+[―—]{1,2}|[～〜~][^～〜~]+[～〜~])\s*$/;
 
 /** 副題を外した形。外せない・外すと空になるときは null */
 function withoutSubtitle(text: string): string | null {
@@ -26,41 +29,71 @@ function withoutSubtitle(text: string): string | null {
   return base && base !== text.trim() ? base : null;
 }
 
+/** 「2枚目_」などの接頭辞と品名の前の英字を外した形 (元の形も含む) */
+function cleanedAlts(alt: string): string[] {
+  const withoutPrefix = alt.replace(UNDERSCORE_PREFIX, '');
+  return [alt, withoutPrefix, withoutPrefix.replace(LEADING_LATIN, '')];
+}
+
+/** 代替テキストから作る照合キーの候補 (副題は外さない形) */
+export function altKeys(alt: string): string[] {
+  return [...new Set(cleanedAlts(alt).map(itemNameKey))].filter(Boolean);
+}
+
 /**
- * 代替テキストから作る照合キーの候補 (そのままの形 → 副題を外した形の順)。副題は接頭辞を外した形からだけ外す
+ * 代替テキストの副題を外した照合キー。副題は接頭辞を外した形からだけ外す
  * (「0427～_後期_…」の ～ を副題の区切りと取り違えないため)
  */
-export function altKeys(alt: string): string[] {
-  const withoutPrefix = alt.replace(UNDERSCORE_PREFIX, '');
-  const cleaned = [withoutPrefix, withoutPrefix.replace(LEADING_LATIN, '')];
-  const subtitles = cleaned.map(withoutSubtitle).filter((text): text is string => text !== null);
-  return [...new Set([alt, ...cleaned, ...subtitles].map(itemNameKey))].filter(Boolean);
+function altBaseKeys(alt: string): string[] {
+  const bases = cleanedAlts(alt)
+    .slice(1)
+    .map(withoutSubtitle)
+    .filter((text): text is string => text !== null);
+  return [...new Set(bases.map(itemNameKey))].filter(Boolean);
 }
 
 /**
  * 画像を品目に振り分ける。byItem[i] は names[i] の画像 (元の順)。1 枚の画像は 1 品目にだけ付く
- * (同じキーの品目が複数あれば先の品目)。代替テキストが無い・照合できない画像は rest
+ * (同じキーの品目が複数あれば先の品目)。代替テキストが無い・照合できない画像は rest。
+ *
+ * 照合の順: (1) そのままの形どうし → (2) 代替テキスト (副題なし) と、品名の副題を外した形 →
+ * (3) 代替テキストの副題を外した形と、品名 (そのままの形)。副題は片方にだけ付く場合しか外さない
+ * (両方に別の副題があれば別の品目)。副題を外した形が複数の品目で同じなら、その形では結びつけない
  */
 export function matchImagesToItems<T extends { alt: string | null }>(
   names: string[],
   images: T[]
 ): { byItem: T[][]; rest: T[] } {
-  const indexByKey = new Map<string, number>();
-  // そのままの形を先に全品目ぶん登録し、副題を外した形はその後 (同じキーの品目があればそちらが優先)
-  const register = (key: string | null, index: number) => {
-    if (key && !indexByKey.has(key)) indexByKey.set(key, index);
-  };
-  names.forEach((name, index) => register(itemNameKey(name), index));
+  const exact = new Map<string, number>();
   names.forEach((name, index) => {
-    const base = withoutSubtitle(name);
-    if (base) register(itemNameKey(base), index);
+    const key = itemNameKey(name);
+    if (key && !exact.has(key)) exact.set(key, index);
   });
+  const base = new Map<string, number | null>();
+  names.forEach((name, index) => {
+    const stripped = withoutSubtitle(name);
+    const key = stripped ? itemNameKey(stripped) : '';
+    if (!key) return;
+    base.set(key, base.has(key) ? null : index); // 2 品目以上で同じなら null (使わない)
+  });
+
   const byItem: T[][] = names.map(() => []);
   const rest: T[] = [];
   for (const image of images) {
-    const index = image.alt ? altKeys(image.alt).map((key) => indexByKey.get(key)).find((i) => i !== undefined) : undefined;
+    const index = image.alt ? findIndex(image.alt, exact, base) : undefined;
     if (index === undefined) rest.push(image);
     else byItem[index].push(image);
   }
   return { byItem, rest };
+}
+
+function findIndex(alt: string, exact: Map<string, number>, base: Map<string, number | null>): number | undefined {
+  const keys = altKeys(alt);
+  for (const key of keys) if (exact.has(key)) return exact.get(key);
+  for (const key of keys) {
+    const index = base.get(key);
+    if (index !== undefined && index !== null) return index;
+  }
+  for (const key of altBaseKeys(alt)) if (exact.has(key)) return exact.get(key);
+  return undefined;
 }

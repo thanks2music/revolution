@@ -46,11 +46,14 @@ export function resizedSize(width: number, height: number, maxWidth: number): { 
   return { width: maxWidth, height: Math.round((height * maxWidth) / width) };
 }
 
-/** WebP にする。max_bytes を超えたら品質を下げる (min_quality で止め、それでも超えればそのまま返す) */
-async function encodeWebp(input: () => sharp.Sharp, config: ImageUploadConfig): Promise<Buffer> {
+/**
+ * WebP (既定) か JPEG にする。max_bytes を超えたら品質を下げる (min_quality で止め、それでも超えればそのまま返す)。
+ * 品質の段階は WebP と同じ値を使う
+ */
+async function encode(input: () => sharp.Sharp, config: ImageUploadConfig, format: 'webp' | 'jpeg' = 'webp'): Promise<Buffer> {
   let quality = config.webp_quality;
   for (;;) {
-    const buffer = await input().webp({ quality }).toBuffer();
+    const buffer = await (format === 'webp' ? input().webp({ quality }) : input().jpeg({ quality, mozjpeg: true })).toBuffer();
     if (buffer.length <= config.max_bytes || quality <= config.webp_min_quality) return buffer;
     quality = Math.max(config.webp_min_quality, quality - config.quality_step);
   }
@@ -91,7 +94,39 @@ export async function processArticleImage(
         width: info.width,
         height: segment.height,
       });
-    segments.push({ buffer: await encodeWebp(input, config), width: info.width, height: segment.height });
+    segments.push({ buffer: await encode(input, config), width: info.width, height: segment.height });
   }
   return { kind: 'ok', width, height, segments };
+}
+
+/**
+ * og:image が無いときに、本文の画像から作るアイキャッチ (記事の冒頭と SNS の共有画像)。
+ * 幅は max_width まで縮め、縦長の画像は分割の最初の片の範囲 (上端から) だけを使い、SNS で読める JPEG にする
+ *
+ * @throws 画像として読めないとき・画素数が大きすぎるとき
+ */
+export async function processEyecatchFallback(
+  buffer: Buffer,
+  config: ImageUploadConfig
+): Promise<ProcessedSegment> {
+  const load = () => sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, autoOrient: true, animated: false });
+  const metadata = await load().metadata();
+  const { width, height } = metadata.autoOrient ?? metadata;
+  if (!width || !height) throw new Error('画像の大きさを読めない');
+  if (width * height > MAX_INPUT_PIXELS) throw new Error(`画像が大きすぎる (${width}×${height})`);
+
+  const size = resizedSize(width, height, config.max_width);
+  // 縮めた後の実際の寸法から切り出す (計算の丸めで 1px ずれると extract が失敗するため)
+  const { data, info } = await load()
+    .resize({ width: size.width, withoutEnlargement: true })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const top = planSegments(info.width, info.height, config)[0];
+  const raw = { width: info.width, height: info.height, channels: info.channels };
+  const output = await encode(
+    () => sharp(data, { raw, limitInputPixels: MAX_INPUT_PIXELS }).extract({ left: 0, top: 0, width: info.width, height: top.height }),
+    config,
+    'jpeg'
+  );
+  return { buffer: output, width: info.width, height: top.height };
 }

@@ -11,6 +11,7 @@ import {
   fillTemplate,
   findSection,
   loadSectionYaml,
+  hasMenuSection,
   renderMenuItems,
   replaceMenuItems,
   replaceNoveltySentence,
@@ -135,6 +136,25 @@ describe('replaceMenuItems と <ArticleImage>', () => {
     expect(replaceMenuItems(article, ['### マルゲリータ'])).toBe(
       ['## カフェのメニュー', '', '導入文', '', '### マルゲリータ', '', tail, ''].join('\n')
     );
+  });
+});
+
+describe('hasMenuSection', () => {
+  it('## …メニュー の見出しがあるか', () => {
+    expect(hasMenuSection('## {{見出し主語}}のメニュー\n\n文')).toBe(true);
+    expect(hasMenuSection('## フード・ドリンク\n\n文')).toBe(false);
+  });
+});
+
+describe('replaceNoveltySentence と <ArticleImage>', () => {
+  it('地の文が無く画像が先にあるとき、画像を地の文と取り違えず、見出しの直後に入れる', () => {
+    const image = '<ArticleImage src="https://images.example.com/n.webp" alt="ノベルティ1" width="800" height="800" />';
+    const article = ['## カフェのノベルティー', '', image, '', '## 次'].join('\n');
+
+    const result = replaceNoveltySentence(article, '文');
+
+    expect(result).toContain(image);
+    expect(result.indexOf('文')).toBeLessThan(result.indexOf(image));
   });
 });
 

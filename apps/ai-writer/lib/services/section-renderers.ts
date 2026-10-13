@@ -102,6 +102,11 @@ export function renderMenuItems(items: ExtractionMenuItem[], itemLine: string, i
 }
 
 const MENU_SECTION = /^## .*メニュー[ \t]*$/m;
+
+/** メニューの節があるか (品目ごとの画像は、節が無いと差し込めない) */
+export function hasMenuSection(content: string): boolean {
+  return findSection(content, MENU_SECTION) !== null;
+}
 const NOVELTY_SECTION = /^## .*ノベルティー?[ \t]*$/m;
 
 /**
@@ -143,7 +148,7 @@ export function replaceNoveltySentence(content: string, sentence: string): strin
   if (!range || !sentence) return content;
 
   const body = content.slice(range.start, range.end);
-  const paragraph = /\n\n?((?!#|!\[|\{ここに|\|)[^\n]+(?:\n(?!\n)[^\n]+)*)/.exec(body);
+  const paragraph = /\n\n?((?!#|!\[|\{ここに|\||<ArticleImage)[^\n]+(?:\n(?!\n)[^\n]+)*)/.exec(body);
   const replaced = paragraph
     ? body.slice(0, paragraph.index) + body.slice(paragraph.index).replace(paragraph[1], () => sentence)
     : `\n\n${sentence}${body}`;

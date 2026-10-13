@@ -7,6 +7,7 @@ import * as path from 'path';
 import type { SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 import {
   goodsNamesForProse,
+  hasGoodsSection,
   insertIntoGoodsSection,
   loadGoodsListConfig,
   renderGoodsList,
@@ -159,6 +160,13 @@ describe('insertIntoGoodsSection', () => {
   it('グッズの節が無い、または差し込むものが無ければそのまま', () => {
     expect(insertIntoGoodsSection('## まとめ\n', '- 缶バッジ')).toBe('## まとめ\n');
     expect(insertIntoGoodsSection(ARTICLE, '')).toBe(ARTICLE);
+  });
+});
+
+describe('hasGoodsSection', () => {
+  it('## …グッズ の見出しがあるか', () => {
+    expect(hasGoodsSection('## {{見出し主語}}のグッズ\n')).toBe(true);
+    expect(hasGoodsSection('## グッズ・ノベルティ情報\n')).toBe(false);
   });
 });
 

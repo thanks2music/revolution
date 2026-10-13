@@ -3,6 +3,7 @@
  */
 import sharp from 'sharp';
 import {
+  assertImageUploadConfig,
   eyecatchCandidates,
   itemImageTags,
   uploadImagesForArticle,
@@ -87,7 +88,7 @@ describe('uploadImagesForArticle', () => {
     };
   }
 
-  it('カテゴリごとに上げ、代替テキストを付ける。og:image が取れなければ本文の横長の画像をアイキャッチにする', async () => {
+  it('カテゴリごとに上げ、代替テキストを付ける。og:image が取れなければ本文の横長の画像から JPEG のアイキャッチを作る', async () => {
     const images: Record<string, Buffer> = {
       'https://a.test/menu-tall.png': await png(600, 900, 10),
       'https://a.test/goods-wide.png': await png(1600, 900, 20),
@@ -115,12 +116,25 @@ describe('uploadImagesForArticle', () => {
       origin: 'landscape',
       width: 1600,
       height: 900,
-      url: expect.stringMatching(/^https:\/\/images\.example\.com\/f\/[0-9a-f]{32}\.png$/),
+      url: expect.stringMatching(/^https:\/\/images\.example\.com\/f\/[0-9a-f]{32}\.jpg$/),
     });
     expect(result.skipped).toEqual([
       { sourceUrl: 'https://a.test/og-missing.jpg', kind: 'failed', reason: expect.stringContaining('アイキャッチ (og)') },
     ]);
     expect(result.newObjects).toBe(3);
+  });
+
+  it('同じ画像が複数のカテゴリにあれば、先のカテゴリにだけ載せる (取得も 1 回)', async () => {
+    const buffer = await png(800, 800, 30);
+    const fetcher = jest.fn<ReturnType<ImageFetcher>, Parameters<ImageFetcher>>(async () => ({ buffer, contentType: 'image/png' }));
+
+    const result = await uploadImagesForArticle(
+      { ogImage: null, menu: ['https://a.test/x.png'], novelty: [], goods: ['https://a.test/x.png'], imageAlts: {} },
+      { folder: 'f', config, store: store(), dryRun: true, fetcher }
+    );
+
+    expect(result.categories.menu).toHaveLength(1);
+    expect(result.categories.goods).toHaveLength(0);
   });
 
   it('画像が 1 枚も無ければアイキャッチも無い', async () => {
@@ -130,5 +144,14 @@ describe('uploadImagesForArticle', () => {
     );
     expect(result.eyecatch).toBeUndefined();
     expect(result.newObjects).toBe(0);
+  });
+});
+
+describe('assertImageUploadConfig', () => {
+  it('Templates が古く、画像の設定が欠けていれば、欠けた名前を挙げて止める', () => {
+    expect(() => assertImageUploadConfig({ min_short_side: 300 })).toThrow(
+      'store-url-patterns.yaml の image_extraction に eyecatch_landscape_ratio / upload が無い'
+    );
+    expect(() => assertImageUploadConfig(undefined)).toThrow('min_short_side / eyecatch_landscape_ratio / upload');
   });
 });

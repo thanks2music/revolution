@@ -10,9 +10,9 @@
  */
 import { createHash } from 'crypto';
 import sharp from 'sharp';
-import type { ImageExtractionConfig } from '@/lib/types/subpage-detection';
+import type { ImageExtractionConfig, ImageUploadConfig } from '@/lib/types/subpage-detection';
 import { fetchImageSafely } from '@/lib/utils/safe-image-fetch';
-import { processArticleImage } from './process-article-image';
+import { processArticleImage, processEyecatchFallback } from './process-article-image';
 
 /** 記事に載せる画像 1 枚 (R2 の URL と寸法) */
 export interface ArticleImageRef {
@@ -143,24 +143,31 @@ const EXTENSIONS: Record<string, string> = {
 };
 
 /**
- * アイキャッチ (記事の冒頭・SNS の共有画像) を上げる。SNS で読めるよう**形式は変えず**に上げ、寸法だけ測る。
- * キーは中身のハッシュ (差分が無ければ上げない)
+ * アイキャッチ (記事の冒頭・SNS の共有画像) を上げる。キーは中身のハッシュ (差分が無ければ上げない)。
+ * - og:image (`derive` なし): SNS 向けに作られた画像なので、**形式も大きさも変えず**に上げ、寸法だけ測る
+ * - 本文の画像から作るとき (`derive` あり): 縮めて、縦長なら上端の片だけを使い、JPEG にする
+ *   (本文の画像は 1920×28300 のような縦長や数十 MB のものがあり、そのままでは SNS で読めない)
  *
  * @throws 取得・読み込みに失敗したとき、画像でないとき
  */
 export async function uploadEyecatchImage(
   sourceUrl: string,
-  options: { folder: string; store: ImageStore | null; dryRun: boolean; fetcher?: ImageFetcher }
+  options: { folder: string; store: ImageStore | null; dryRun: boolean; fetcher?: ImageFetcher; derive?: ImageUploadConfig }
 ): Promise<ArticleImageRef & { uploaded: boolean }> {
   const { buffer, contentType } = await (options.fetcher ?? defaultFetcher)(sourceUrl);
+  const context = { store: options.store, dryRun: options.dryRun };
+  if (options.derive) {
+    const derived = await processEyecatchFallback(buffer, options.derive);
+    const result = await putIfAbsent(contentKey(options.folder, derived.buffer, 'jpg'), derived.buffer, 'image/jpeg', context);
+    return { url: result.url, width: derived.width, height: derived.height, uploaded: result.uploaded };
+  }
   const metadata = await sharp(buffer, { autoOrient: true }).metadata();
   const { width, height } = metadata.autoOrient ?? metadata;
   if (!width || !height || !metadata.format) throw new Error('画像の大きさを読めない');
   const type = contentType?.split(';')[0].trim() ?? '';
   const ext = EXTENSIONS[type] ?? (metadata.format === 'jpeg' ? 'jpg' : metadata.format);
   const mime = EXTENSIONS[type] ? type : `image/${metadata.format}`;
-  const key = contentKey(options.folder, buffer, ext);
-  const result = await putIfAbsent(key, buffer, mime, { store: options.store, dryRun: options.dryRun });
+  const result = await putIfAbsent(contentKey(options.folder, buffer, ext), buffer, mime, context);
   return { url: result.url, width, height, uploaded: result.uploaded };
 }
 

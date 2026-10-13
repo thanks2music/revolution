@@ -77,6 +77,7 @@ import {
   type SubpageDetectionResult,
 } from './subpage-detector.service';
 import {
+  extractOgImageUrl,
   getCategoryImageExtractorService,
   type CategoryImages,
 } from './category-image-extractor.service';
@@ -111,10 +112,17 @@ import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
 import { withNoveltyImagesFromVenues } from './pick-novelty-images';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
-import { goodsNamesForProse, insertIntoGoodsSection, loadGoodsListConfig, renderGoodsList } from './goods-list';
+import {
+  goodsNamesForProse,
+  hasGoodsSection,
+  insertIntoGoodsSection,
+  loadGoodsListConfig,
+  renderGoodsList,
+} from './goods-list';
 import {
   fillTemplate,
   loadSectionYaml,
+  hasMenuSection,
   renderMenuItems,
   replaceMenuItems,
   replaceNoveltySentence,
@@ -385,6 +393,8 @@ export class ArticleGenerationMdxService {
       let detailedExtraction: ExtractionResult | undefined;
       // 公式サイトのHTMLを保持（content-generation step と image-upload-r2 step で再利用）
       let officialHtml: string | undefined;
+      // 公式サイトのトップページの og:image (アイキャッチの第 1 候補。image-upload-r2 step で使う)
+      let officialOgImage: string | null = null;
 
       if (selectionResult.primary_official_url) {
         try {
@@ -394,6 +404,8 @@ export class ArticleGenerationMdxService {
           //    (圧縮は class 属性を全て落とすため、raw でないと会場ブロックを認識できない)。
           const contentHtml = await extractContentHtml(selectionResult.primary_official_url);
           officialHtml = contentHtml.compacted;
+          // og:image は <head> にある。compacted は本文のブロックだけのことがある (meta が無い) ので、ここで読む
+          officialOgImage = extractOgImageUrl(contentHtml.raw, selectionResult.primary_official_url);
           console.log(
             '公式サイトHTML取得完了:',
             officialHtml.length,
@@ -593,7 +605,7 @@ export class ArticleGenerationMdxService {
           });
         } catch (subpageError) {
           console.warn('⚠️ 下層ページ検出/画像抽出に失敗（処理は続行）:', subpageError);
-          // エラーが発生しても処理は続行（既存のトップページ画像抽出にフォールバック）
+          // エラーが発生しても処理は続行 (本文の画像は無し。アイキャッチは og:image があれば使う)
         }
       } else {
         console.log(`[subpage-detection/category-image-extraction] 公式サイトHTMLがないため、下層ページ検出をスキップ`);
@@ -1103,21 +1115,31 @@ export class ArticleGenerationMdxService {
       let imagesUpload: ArticleImagesUpload | undefined;
       let ogImageUrl = '/images/og-image-compressed.png'; // デフォルト画像
 
-      if (categoryImages) {
+      const ogImageSource = officialOgImage ?? categoryImages?.ogImage ?? null;
+      if (categoryImages || ogImageSource) {
         try {
           const imageConfig = (await getConfigLoaderService().loadStoreUrlPatterns()).image_extraction;
-          imagesUpload = await uploadImagesForArticle(categoryImages, {
-            folder: `${eventType}/${year}/${eventRecord.postId}`,
-            config: imageConfig,
-            store: skipImageUpload ? null : r2ImageStore(getR2StorageService()),
-            dryRun: skipImageUpload,
-          });
+          imagesUpload = await uploadImagesForArticle(
+            {
+              ogImage: ogImageSource,
+              menu: categoryImages?.menu ?? [],
+              novelty: categoryImages?.novelty ?? [],
+              goods: categoryImages?.goods ?? [],
+              imageAlts: categoryImages?.imageAlts ?? {},
+            },
+            {
+              folder: `${eventType}/${year}/${eventRecord.postId}`,
+              config: imageConfig,
+              store: skipImageUpload ? null : r2ImageStore(getR2StorageService()),
+              dryRun: skipImageUpload,
+            },
+          );
 
           for (const category of IMAGE_CATEGORIES) {
             const uploaded = imagesUpload.categories[category];
             const segments = uploaded.reduce((sum, image) => sum + image.segments.length, 0);
             console.log(
-              `${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${uploaded.length}/${categoryImages[category].length} 枚` +
+              `${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${uploaded.length}/${categoryImages?.[category].length ?? 0} 枚` +
                 (segments > uploaded.length ? ` (縦長の画像を分割して ${segments} 片)` : ''),
             );
           }
@@ -1158,13 +1180,22 @@ export class ArticleGenerationMdxService {
           });
         }
       } else {
-        console.log('⚠️ 公式サイトの画像を取得していないため、画像アップロードをスキップします');
+        console.log('⚠️ 公式サイトの画像も og:image も無いため、画像アップロードをスキップします');
       }
 
-      // 品目ごとの画像 (代替テキストと品名の照合)。照合できなかった画像は、節の末尾に並べる
+      // 品目ごとの画像 (代替テキストと品名の照合)。照合できなかった画像は、節の末尾に並べる。
+      // 品目の画像は節の見出しを頼りに差し込むので、節が無ければ照合しない (画像は節の末尾の欄に回す)
       const menuNames = detailedExtraction ? menuItemsOf(detailedExtraction).map((item) => item.name) : [];
-      const menuItemImages = itemImageTags(menuNames, imagesUpload?.categories.menu ?? []);
-      const goodsItemImages = itemImageTags(detailedExtraction?.グッズ名 ?? [], imagesUpload?.categories.goods ?? []);
+      const goodsNames = detailedExtraction?.グッズ名 ?? [];
+      const menuSectionFound = hasMenuSection(contentGeneration.content);
+      const goodsSectionFound = hasGoodsSection(contentGeneration.content);
+      for (const [label, names, found] of [['メニュー', menuNames, menuSectionFound], ['グッズ', goodsNames, goodsSectionFound]] as const) {
+        if (names.length > 0 && !found) {
+          console.warn(`${getStepContext('image-upload-r2', '品目ごと')} ⚠️ ${label}の節の見出しが見つからないため、品目ごとの画像を付けない`);
+        }
+      }
+      const menuItemImages = itemImageTags(menuSectionFound ? menuNames : [], imagesUpload?.categories.menu ?? []);
+      const goodsItemImages = itemImageTags(goodsSectionFound ? goodsNames : [], imagesUpload?.categories.goods ?? []);
       if (menuItemImages.matched > 0 || goodsItemImages.matched > 0) {
         console.log(
           `${getStepContext('image-upload-r2', '品目ごと')} メニュー ${menuItemImages.matched} 枚・グッズ ${goodsItemImages.matched} 枚を品目に付けた`,

@@ -113,9 +113,16 @@ export function renderGoodsList(
 /**
  * グッズの節 (`## …のグッズ`) の末尾に差し込む。グッズの節が無ければ (画像が無く書かれなかったなど) 何もしない。
  */
+const GOODS_SECTION = /^## .*グッズ[ \t]*$/m;
+
+/** グッズの節があるか (品目ごとの画像は、節が無いと差し込めない) */
+export function hasGoodsSection(content: string): boolean {
+  return findSection(content, GOODS_SECTION) !== null;
+}
+
 export function insertIntoGoodsSection(content: string, block: string): string {
   if (!block) return content;
-  const range = findSection(content, /^## .*グッズ[ \t]*$/m);
+  const range = findSection(content, GOODS_SECTION);
   if (!range) return content;
   const before = content.slice(0, range.end).replace(/\s+$/, '');
   const after = content.slice(range.end);

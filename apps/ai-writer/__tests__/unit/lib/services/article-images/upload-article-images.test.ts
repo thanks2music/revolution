@@ -218,6 +218,22 @@ describe('uploadEyecatchImage', () => {
     expect(store.put).toHaveBeenCalledWith(contentKey('f', buffer, 'png'), buffer, 'image/png');
   });
 
+  it('本文の画像から作るとき (derive) は、縮めて上端の片だけを JPEG にする', async () => {
+    const store = memoryStore();
+
+    const result = await uploadEyecatchImage('https://a.test/tall.png', {
+      folder: 'f',
+      store,
+      dryRun: false,
+      fetcher: fetcherOf({ 'https://a.test/tall.png': { buffer: await image(2000, 12500) } }),
+      derive: CONFIG.upload,
+    });
+
+    expect(result).toMatchObject({ width: 1600, height: 4800, uploaded: true });
+    expect(store.puts[0]).toMatch(/\.jpg$/);
+    expect(store.put).toHaveBeenCalledWith(store.puts[0], expect.any(Buffer), 'image/jpeg');
+  });
+
   it('画像でなければ例外', async () => {
     await expect(
       uploadEyecatchImage('https://a.test/og', {
