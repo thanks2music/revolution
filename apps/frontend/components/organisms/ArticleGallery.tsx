@@ -31,7 +31,8 @@ export function ArticleGallery({ children }: { children: React.ReactNode }) {
   function open(target: EventTarget | null): boolean {
     const container = containerRef.current;
     const image = target instanceof Element ? target.closest<HTMLImageElement>(IMAGE_SELECTOR) : null;
-    if (!container || !image) return false;
+    // リンクで包んだ画像は、拡大表示ではなくリンクの移動を優先する
+    if (!container || !image || image.closest('a')) return false;
     const images = Array.from(container.querySelectorAll<HTMLImageElement>(IMAGE_SELECTOR));
     setGallery({ slides: images.map(readSlide), index: Math.max(images.indexOf(image), 0) });
     return true;

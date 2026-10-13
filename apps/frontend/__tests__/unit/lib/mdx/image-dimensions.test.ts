@@ -1,7 +1,17 @@
 import { getImageDimensions } from '@/lib/mdx/image-dimensions';
 
-// unstable_cache は Next.js のリクエストの外では動かないので、そのまま呼ぶ形にする
-jest.mock('next/cache', () => ({ unstable_cache: (fn: unknown) => fn }));
+// unstable_cache は Next.js のリクエストの外では動かないので、そのまま呼ぶ形にする。
+// 保存されるのは「例外を投げずに返った値」なので、保存された値を記録して確かめる
+const cachedResults: unknown[] = [];
+jest.mock('next/cache', () => ({
+  unstable_cache:
+    (fn: (...args: unknown[]) => Promise<unknown>) =>
+    async (...args: unknown[]) => {
+      const result = await fn(...args);
+      cachedResults.push(result);
+      return result;
+    },
+}));
 
 // 幅 2・高さ 3 の PNG の先頭 (IHDR まで読めれば寸法が分かる)
 const PNG_2x3 = Uint8Array.from(
@@ -15,6 +25,7 @@ describe('getImageDimensions', () => {
   const originalFetch = global.fetch;
   afterEach(() => {
     global.fetch = originalFetch;
+    cachedResults.length = 0;
   });
 
   it('先頭のバイトだけを Range で取って寸法を読む (fetch のキャッシュには載せない)', async () => {
@@ -62,9 +73,20 @@ describe('getImageDimensions', () => {
     expect(pulled).toBeLessThan(big.length);
   });
 
-  it('取得に失敗したら null (記事は幅いっぱいで出す)', async () => {
-    global.fetch = jest.fn().mockResolvedValue(new Response('', { status: 404 })) as unknown as typeof fetch;
+  it('取得に失敗したら null (記事は幅いっぱいで出す)。失敗は保存しない (次の描画で取り直す)', async () => {
+    global.fetch = jest.fn().mockResolvedValue(new Response('', { status: 503 })) as unknown as typeof fetch;
     await expect(getImageDimensions('https://images.anime-events.com/t/c.jpg')).resolves.toBeNull();
+    global.fetch = jest.fn().mockRejectedValue(new Error('timeout')) as unknown as typeof fetch;
+    await expect(getImageDimensions('https://images.anime-events.com/t/c2.jpg')).resolves.toBeNull();
+    expect(cachedResults).toEqual([]);
+  });
+
+  it('取得できたのに寸法が読めない画像は null を保存する (何度読んでも同じ)', async () => {
+    global.fetch = jest
+      .fn()
+      .mockImplementation(async () => new Response(new Uint8Array([1, 2, 3]), { status: 206 })) as unknown as typeof fetch;
+    await expect(getImageDimensions('https://images.anime-events.com/t/f.bin')).resolves.toBeNull();
+    expect(cachedResults).toEqual([null]);
   });
 
   it('自前でない URL は取りに行かない', async () => {

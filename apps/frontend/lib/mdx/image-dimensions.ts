@@ -23,8 +23,11 @@ const RANGE_BYTES = [64 * 1024, 512 * 1024];
 /** 1 回の取得の時間切れ。配信元が遅くても記事の描画を止めない (時間切れは null = 記事の幅いっぱい) */
 const FETCH_TIMEOUT_MS = 5000;
 
-/** 先頭の bytes バイトだけを読み、残りは捨てる (配信元が Range を無視して全体を返しても、丸ごとは読まない) */
-async function readHead(src: string, bytes: number): Promise<Uint8Array | null> {
+/**
+ * 先頭の bytes バイトだけを読み、残りは捨てる (配信元が Range を無視して全体を返しても、丸ごとは読まない)。
+ * 取得に失敗したら例外を投げる (時間切れ・ネットワーク・2xx 以外。404 もアップロードの前後で一時的にありうる)
+ */
+async function readHead(src: string, bytes: number): Promise<Uint8Array> {
   const response = await fetch(src, {
     headers: { Range: `bytes=0-${bytes - 1}` },
     cache: 'no-store',
@@ -32,7 +35,7 @@ async function readHead(src: string, bytes: number): Promise<Uint8Array | null> 
     redirect: 'error',
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
-  if (!response.ok || !response.body) return null;
+  if (!response.ok || !response.body) throw new Error(`image head fetch failed: ${response.status} ${src}`);
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
@@ -47,11 +50,14 @@ async function readHead(src: string, bytes: number): Promise<Uint8Array | null> 
   return Buffer.concat(chunks).subarray(0, bytes);
 }
 
+/**
+ * 寸法を読む。取得の失敗は例外のまま上げる (unstable_cache は例外を保存しないので、次の描画で取り直す)。
+ * 取得できたのに寸法が読めない画像だけ null を返す (これは何度読んでも同じなので保存してよい)
+ */
 async function readDimensions(src: string): Promise<ImageDimensions | null> {
   for (const bytes of RANGE_BYTES) {
+    const head = await readHead(src, bytes);
     try {
-      const head = await readHead(src, bytes);
-      if (!head) return null;
       const { width, height, orientation } = imageSize(head);
       if (!(width > 0 && height > 0)) continue;
       // EXIF の向き 5〜8 は 90 度回転して表示される (ブラウザも変換も回転する) ので、幅と高さを入れ替える
@@ -65,6 +71,12 @@ async function readDimensions(src: string): Promise<ImageDimensions | null> {
 
 const readDimensionsCached = unstable_cache(readDimensions, ['article-image-dimensions'], { revalidate: false });
 
-export const getImageDimensions = cache(
-  async (src: string): Promise<ImageDimensions | null> => (isOwnImageUrl(src) ? readDimensionsCached(src) : null)
-);
+export const getImageDimensions = cache(async (src: string): Promise<ImageDimensions | null> => {
+  if (!isOwnImageUrl(src)) return null;
+  try {
+    return await readDimensionsCached(src);
+  } catch {
+    // 取得に失敗した (保存されない)。この描画では記事の幅いっぱいで出す
+    return null;
+  }
+});
