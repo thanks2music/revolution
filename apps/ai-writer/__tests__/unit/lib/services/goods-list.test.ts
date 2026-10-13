@@ -24,6 +24,8 @@ const CONFIG: GoodsListConfig = {
   table_row: '| {{name}} | {{price}} | {{sales}} |',
   sales_labels: { store: '店舗', store_and_online: '店舗・オンライン', store_only: '店舗限定' },
   online_only_note: 'このほか、オンライン限定のグッズも販売される。',
+  item_heading: '### {{name}}{{#if price}} {{price}}{{/if}}',
+  item_sales_line: '販売：{{sales}}',
 };
 
 const goods = (name: string, price: string | null, sales: SubpageGoodsItem['sales']): SubpageGoodsItem => ({
@@ -83,6 +85,47 @@ describe('renderGoodsList', () => {
 
   it('グッズ名もオンライン限定も無ければ空', () => {
     expect(renderGoodsList(null, null, CONFIG)).toBe('');
+  });
+});
+
+describe('renderGoodsList (品目ごとの画像があるとき、2026-10-13)', () => {
+  const IMG = (n: number) => `<ArticleImage src="https://images.example.com/${n}.webp" alt="g${n}" width="800" height="800" />`;
+
+  it('品目ごとに見出し (品名・価格)・販売方法・画像を並べる。画像の無い品目も同じ形にする', () => {
+    const text = renderGoodsList(
+      ['缶バッジ（全7種）', 'ステッカー'],
+      [goods('缶バッジ（全7種）', '605円(税込)', 'store_and_online'), goods('ステッカー', null, null)],
+      CONFIG,
+      [`${IMG(1)}\n\n${IMG(2)}`, '']
+    );
+
+    expect(text.split('\n')).toEqual([
+      '### 缶バッジ（全7種） 605円(税込)',
+      '',
+      '販売：店舗・オンライン',
+      '',
+      IMG(1),
+      '',
+      IMG(2),
+      '',
+      '### ステッカー',
+    ]);
+  });
+
+  it('照合できなかった画像は品目の後ろ (節の末尾) に、オンライン限定の 1 文はその後に書く', () => {
+    const text = renderGoodsList(
+      ['缶バッジ'],
+      [goods('缶バッジ', null, 'store'), goods('Tシャツ', null, 'online_only')],
+      CONFIG,
+      [IMG(1)],
+      IMG(9)
+    );
+
+    expect(text.split('\n')).toEqual(['### 缶バッジ', '', '販売：店舗', '', IMG(1), '', IMG(9), '', CONFIG.online_only_note]);
+  });
+
+  it('品目ごとの画像が 1 枚も無ければ、これまでどおりの箇条書き・表 (後ろの画像は使わない)', () => {
+    expect(renderGoodsList(['缶バッジ'], [], CONFIG, [''], IMG(9))).toBe(['### グッズ一覧', '', '- 缶バッジ'].join('\n'));
   });
 });
 

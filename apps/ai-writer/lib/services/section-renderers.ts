@@ -5,7 +5,8 @@
  * 中国語の字を書いた)。そこで、名前の入る部分はコードが抽出結果から組み立て、LLM が書いたものと置き換える。
  * LLM が書くのは導入文などの地の文だけになる。
  *
- * - メニューの節: LLM が書いた品目の見出し (`### …`) を消し、`sections/02-menu.yaml` の `rendered.item_line` で全品を並べる
+ * - メニューの節: LLM が書いた品目の見出し (`### …`) を消し、`sections/02-menu.yaml` の `rendered.item_line` で全品を並べる。
+ *   品目ごとの画像 (代替テキストと品名で照合したもの) があれば、見出しの直後に並べる (2026-10-13)
  * - ノベルティの節: 見出しの直後の段落を、`sections/03-novelty.yaml` の `rendered.sentence` で置き換える
  * - グッズの節の一覧は `goods-list.ts` (同じ部品を使う)
  *
@@ -85,15 +86,19 @@ function defaultSectionsDir(): string {
   return path.join(process.cwd(), 'templates', 'collabo-cafe', 'sections');
 }
 
-/** メニューの品目の見出しを組み立てる (品名・価格・キャラクターはエスケープして差し込む) */
-export function renderMenuItems(items: ExtractionMenuItem[], itemLine: string): string[] {
-  return items.map((item) =>
-    fillTemplate(itemLine, {
+/**
+ * メニューの品目の見出しを組み立てる (品名・価格・キャラクターはエスケープして差し込む)。
+ * `itemImages[i]` があれば (書き出し済みの画像の MDX)、i 番目の品目の見出しの直後に続ける
+ */
+export function renderMenuItems(items: ExtractionMenuItem[], itemLine: string, itemImages: string[] = []): string[] {
+  return items.map((item, index) => {
+    const heading = fillTemplate(itemLine, {
       character: item.character ? escapeMdxText(item.character) : null,
       name: escapeMdxText(item.name),
       price: item.price ? escapeMdxText(item.price) : null,
-    })
-  );
+    });
+    return itemImages[index] ? `${heading}\n\n${itemImages[index]}` : heading;
+  });
 }
 
 const MENU_SECTION = /^## .*メニュー[ \t]*$/m;
@@ -109,7 +114,9 @@ export function replaceMenuItems(content: string, itemLines: string[]): string {
   if (!range || itemLines.length === 0) return content;
 
   const lines = content.slice(range.start, range.end).split('\n');
-  const isImage = (line: string) => line.startsWith('![') || line.startsWith('{ここに');
+  // 節の末尾の画像の欄。`<ArticleImage` を外すと、品目の範囲が節の末尾まで広がって画像が消える
+  const isImage = (line: string) =>
+    line.startsWith('![') || line.startsWith('{ここに') || line.startsWith('<ArticleImage');
   const firstItem = lines.findIndex((line) => line.startsWith('### '));
   let from: number;
   let to: number;

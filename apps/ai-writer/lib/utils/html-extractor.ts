@@ -792,7 +792,7 @@ export function extractPageLinks(html: string, baseUrl: string): string[] {
       // 絶対URLに変換
       const absoluteUrl = href.startsWith('http')
         ? href
-        : new URL(href, baseUrlObj.origin).href;
+        : new URL(href, baseUrlObj).href; // 相対パスはページの URL で解決する (サイトの先頭で解決すると menu が /menu になる)
 
       links.add(absoluteUrl);
     } catch {

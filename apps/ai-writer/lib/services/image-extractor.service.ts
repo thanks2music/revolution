@@ -42,7 +42,7 @@ export class ImageExtractorService {
         if (src) {
           // 相対URLを絶対URLに変換
           try {
-            const absoluteUrl = new URL(src, baseUrl.origin).href;
+            const absoluteUrl = new URL(src, baseUrl).href;
             // 小さいアイコンやロゴを除外（サイズフィルタ）
             const width = $(element).attr('width');
             const height = $(element).attr('height');
@@ -173,7 +173,7 @@ export class ImageExtractorService {
 
       // 相対URLを絶対URLに変換
       try {
-        const absoluteUrl = new URL(src, baseUrl.origin).href;
+        const absoluteUrl = new URL(src, baseUrl).href;
         console.log(`📷 Extracted featured image from article: ${absoluteUrl}`);
         return absoluteUrl;
       } catch (error) {

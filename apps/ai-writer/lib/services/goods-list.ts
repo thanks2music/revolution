@@ -9,6 +9,9 @@
  *
  * 文言と書式は Templates の `sections/04-goods.yaml` の `goods_list` (YAML が SoT)。ここは組み立てだけを行う。
  * 一覧はコードで差し込む (本文の LLM に任せると、数十件を漏れなく書き写す保証が無いため)。
+ *
+ * 品目ごとの画像があるとき (2026-10-13 BOSS 決定) は、箇条書き・表の代わりに品目ごとに見出し (品名・価格)・
+ * 販売方法・画像を並べる (`item_heading` / `item_sales_line`)。画像の無い品目も同じ形で並べる。
  */
 import type { GoodsSales, SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 import { itemNameKey } from '@/lib/services/merge-subpage-into-extraction';
@@ -26,6 +29,9 @@ export interface GoodsListConfig {
   table_row: string;
   sales_labels: Partial<Record<GoodsSales, string>>;
   online_only_note: string;
+  /** 品目ごとの画像があるときの見出しと販売方法の行 (04-goods.yaml 1.2.0) */
+  item_heading: string;
+  item_sales_line: string;
 }
 
 /**
@@ -55,10 +61,25 @@ function cell(value: string): string {
 export function renderGoodsList(
   names: string[] | null | undefined,
   details: SubpageGoodsItem[] | null | undefined,
-  config: GoodsListConfig
+  config: GoodsListConfig,
+  /** names[i] の画像 (書き出し済みの画像の MDX)。1 件でもあれば品目ごとの形にする */
+  itemImages: string[] = [],
+  /** 品目ごとの形のとき、品目の後に並べる画像 (どの品目にも照合できなかったもの。節の末尾に置く) */
+  trailingImages = ''
 ): string {
   const lines: string[] = [];
-  if (names && names.length > 0) {
+  if (names && names.length > 0 && itemImages.some(Boolean)) {
+    const byKey = new Map((details ?? []).map((item) => [itemNameKey(item.name), item]));
+    names.forEach((name, index) => {
+      const detail = byKey.get(itemNameKey(name));
+      const sales = detail?.sales ? (config.sales_labels[detail.sales] ?? '') : '';
+      if (lines.length > 0) lines.push('');
+      lines.push(fill(config.item_heading, { name: escapeMdxText(name), price: escapeMdxText(detail?.price ?? '') }));
+      if (sales) lines.push('', fill(config.item_sales_line, { sales }));
+      if (itemImages[index]) lines.push('', itemImages[index]);
+    });
+    if (trailingImages) lines.push('', trailingImages);
+  } else if (names && names.length > 0) {
     const byKey = new Map((details ?? []).map((item) => [itemNameKey(item.name), item]));
     const rows = names.map((name) => {
       const detail = byKey.get(itemNameKey(name));

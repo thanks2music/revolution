@@ -61,15 +61,17 @@ import {
   ContentGenerationService,
   type ContentGenerationResult,
 } from './content-generation.service';
-import {
-  getOgImageUploadService,
-  type OgImageUploadResult,
-} from './og-image-upload.service';
-import {
-  getArticleImageUploadService,
-  type ArticleImageUploadResult,
-} from './article-image-upload.service';
 import { getR2StorageService } from './r2-storage.service';
+import { getConfigLoaderService } from './config-loader.service';
+import { r2ImageStore } from './article-images/upload-article-images';
+import { articleImageTags } from './article-images/article-image-tag';
+import {
+  IMAGE_CATEGORIES,
+  itemImageTags,
+  uploadImagesForArticle,
+  type ArticleImagesUpload,
+  type ImageCategory,
+} from './article-images/upload-images-for-article';
 import {
   getSubpageDetectorService,
   type SubpageDetectionResult,
@@ -203,10 +205,8 @@ export interface MdxGenerationResult {
   detailedExtraction?: ExtractionResult;
   // コンテンツ生成結果（content-generation step）
   contentGeneration?: ContentGenerationResult;
-  // OG画像アップロード結果（image-upload-r2 step）
-  ogImageUpload?: OgImageUploadResult;
-  // 本文画像アップロード結果（image-upload-r2 step）
-  bodyImagesUpload?: ArticleImageUploadResult;
+  // 記事の画像のアップロード結果 (image-upload-r2 step。上げた画像・アイキャッチ・飛ばした画像)
+  imagesUpload?: ArticleImagesUpload;
   // 下層ページ検出結果（subpage-detection step）
   subpageDetection?: SubpageDetectionResult;
   // カテゴリ別画像抽出結果（category-image-extraction step）
@@ -585,7 +585,7 @@ export class ArticleGenerationMdxService {
           );
 
           console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {
-            eyecatch: categoryImages.eyecatch ? '取得済み' : 'なし',
+            ogImage: categoryImages.ogImage ? '取得済み' : 'なし',
             menu: categoryImages.menu.length,
             novelty: categoryImages.novelty.length,
             goods: categoryImages.goods.length,
@@ -1096,115 +1096,53 @@ export class ArticleGenerationMdxService {
         };
       }
 
-      // image-upload-r2 step: Upload OG image and body images to R2
-      console.log(`\n${getStepDisplay('image-upload-r2')} 画像をR2にアップロード（OG画像 + 本文画像）...`);
+      // image-upload-r2 step: 記事の画像を R2 に上げ、アイキャッチを選ぶ (2026-10-13 BOSS 決定)
+      // 枚数の上限なし。短辺の下限・縮小・WebP・縦長の分割・中身のハッシュのキーは article-images/ 配下
+      console.log(`\n${getStepDisplay('image-upload-r2')} 画像をR2にアップロード（本文の画像 + アイキャッチ）...`);
 
-      let ogImageUpload: OgImageUploadResult | undefined;
-      let bodyImagesUpload: ArticleImageUploadResult | undefined;
+      let imagesUpload: ArticleImagesUpload | undefined;
       let ogImageUrl = '/images/og-image-compressed.png'; // デフォルト画像
 
-      // カテゴリ別R2 URLを追跡（image-placeholder-replacement step で使用するためスコープを外に出す）
-      const uploadedCategoryR2Images: CategoryR2Images = {
-        menu: [],
-        novelty: [],
-        goods: [],
-        eyecatch: undefined, // OG画像アップロード後に設定
-      };
-
-      if (selectionResult.primary_official_url) {
+      if (categoryImages) {
         try {
-          // 5.5a: OG画像のアップロード
-          console.log(`\n${getStepContext('image-upload-r2', 'OG')} OG画像をアップロード...`);
-          const ogService = getOgImageUploadService();
-          ogImageUpload = await ogService.uploadFromPageUrl(
-            selectionResult.primary_official_url,
-            {
-              folder: `${eventType}/${year}/${eventRecord.postId}`,
-              articleSlug: eventRecord.postId,
-              dryRun: skipImageUpload, // localOnlyモードでは実際にアップロード
-            }
-          );
+          const imageConfig = (await getConfigLoaderService().loadStoreUrlPatterns()).image_extraction;
+          imagesUpload = await uploadImagesForArticle(categoryImages, {
+            folder: `${eventType}/${year}/${eventRecord.postId}`,
+            config: imageConfig,
+            store: skipImageUpload ? null : r2ImageStore(getR2StorageService()),
+            dryRun: skipImageUpload,
+          });
 
-          if (ogImageUpload.success && ogImageUpload.r2Url) {
-            ogImageUrl = ogImageUpload.r2Url;
-            // image-placeholder-replacement step でアイキャッチプレースホルダー置換に使用
-            uploadedCategoryR2Images.eyecatch = ogImageUpload.r2Url;
-            console.log(`✅ OG画像アップロード完了: ${ogImageUrl}`);
-          } else {
-            console.log(`⚠️ OG画像アップロード失敗、デフォルト画像を使用: ${ogImageUpload.error || '不明なエラー'}`);
-          }
-
-          // 5.5b: カテゴリ別画像のアップロード
-          console.log(`\n${getStepContext('image-upload-r2', 'カテゴリ別')} カテゴリ別画像をアップロード...`);
-
-          if (categoryImages) {
-            // categoryImagesが存在する場合は、カテゴリ別にアップロード
-            const r2Service = getR2StorageService();
-            const baseFolder = `${eventType}/${year}/${eventRecord.postId}`;
-
-            for (const category of ['menu', 'novelty', 'goods'] as const) {
-              const sourceUrls = categoryImages[category];
-              if (sourceUrls.length === 0) {
-                console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: 画像なし`);
-                continue;
-              }
-
-              console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${sourceUrls.length}件の画像をアップロード中...`);
-
-              for (const sourceUrl of sourceUrls) {
-                try {
-                  if (skipImageUpload) {
-                    const dryRunUrl = `[DRY RUN] ${process.env.R2_PUBLIC_URL}/${baseFolder}/${category}/${Date.now()}.jpg`;
-                    uploadedCategoryR2Images[category].push(dryRunUrl);
-                    console.log(`  🔍 [DRY RUN] ${sourceUrl}`);
-                  } else {
-                    const uploadResult = await r2Service.uploadFromUrl(
-                      sourceUrl,
-                      `${baseFolder}/${category}`
-                    );
-                    uploadedCategoryR2Images[category].push(uploadResult.url);
-                    console.log(`  ✅ ${sourceUrl} → ${uploadResult.url}`);
-                  }
-                } catch (error) {
-                  console.warn(`  ⚠️ ${category} 画像アップロード失敗: ${sourceUrl}`, error);
-
-                  // 個別 Issue にはしない。1 記事で複数枚が同時に失敗するのが典型で、
-                  // 4 箇所を個別に captureException すると無料枠を食ううえ
-                  // 「同じ 1 回の実行で起きた」相関が失われる。
-                  // 頂点の captureException (本 service 全体 catch) に breadcrumb として
-                  // 全部乗せたほうが原因究明の情報量が多い。
-                  Sentry.addBreadcrumb({
-                    category: 'image-upload',
-                    level: 'warning',
-                    message: `カテゴリ画像アップロード失敗: ${category}`,
-                    data: { sourceUrl, error: error instanceof Error ? error.message : String(error) },
-                  });
-                }
-              }
-
-              console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${uploadedCategoryR2Images[category].length}件アップロード完了`);
-            }
-          } else if (officialHtml) {
-            // フォールバック: categoryImagesがない場合は従来のHTML抽出を使用
-            console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} categoryImagesがないため、HTML抽出にフォールバック`);
-            const articleImageService = getArticleImageUploadService();
-            bodyImagesUpload = await articleImageService.uploadFromHtml(
-              officialHtml, // detail-extraction step で取得済みのHTMLを再利用
-              selectionResult.primary_official_url,
-              {
-                articleSlug: eventRecord.postId,
-                eventType,
-                year,
-                dryRun: skipImageUpload, // localOnlyモードでは実際にアップロード
-                uploadOgImage: false, // OG画像は既にアップロード済み
-                uploadBodyImages: true,
-              }
+          for (const category of IMAGE_CATEGORIES) {
+            const uploaded = imagesUpload.categories[category];
+            const segments = uploaded.reduce((sum, image) => sum + image.segments.length, 0);
+            console.log(
+              `${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${uploaded.length}/${categoryImages[category].length} 枚` +
+                (segments > uploaded.length ? ` (縦長の画像を分割して ${segments} 片)` : ''),
             );
-
-            console.log(`✅ 本文画像アップロード完了: ${bodyImagesUpload.stats.successCount}件成功, ${bodyImagesUpload.stats.failureCount}件失敗, ${bodyImagesUpload.stats.skippedCount}件スキップ`);
-          } else {
-            console.log('⚠️ 公式サイトHTMLがないため、本文画像アップロードをスキップ');
           }
+          if (imagesUpload.eyecatch) {
+            ogImageUrl = imagesUpload.eyecatch.url;
+            console.log(
+              `${getStepContext('image-upload-r2', 'アイキャッチ')} ${imagesUpload.eyecatch.origin}: ${imagesUpload.eyecatch.sourceUrl} → ${ogImageUrl} (${imagesUpload.eyecatch.width}×${imagesUpload.eyecatch.height})`,
+            );
+          } else {
+            console.log(`${getStepContext('image-upload-r2', 'アイキャッチ')} 候補が無いため、デフォルト画像を使用`);
+          }
+          for (const skipped of imagesUpload.skipped) {
+            console.log(`  ⏭️ ${skipped.sourceUrl}: ${skipped.reason}`);
+            // 短辺の下限で落とすのは日常 (アイコンなど)。失敗だけを、頂点の captureException の手がかりに残す。
+            // 個別 Issue にはしない (1 記事で複数枚が同時に失敗するのが典型で、無料枠を食い、相関も失われる)
+            if (skipped.kind === 'failed') {
+              Sentry.addBreadcrumb({
+                category: 'image-upload',
+                level: 'warning',
+                message: '記事の画像のアップロード失敗',
+                data: { sourceUrl: skipped.sourceUrl, error: skipped.reason },
+              });
+            }
+          }
+          console.log(`${getStepContext('image-upload-r2')} R2 に新しく置いた画像: ${imagesUpload.newObjects} 件 (既にあった画像は上げない)`);
         } catch (imageError) {
           console.error('❌ 画像アップロードエラー:', imageError);
           console.log('⚠️ デフォルトOG画像を使用します');
@@ -1220,8 +1158,41 @@ export class ArticleGenerationMdxService {
           });
         }
       } else {
-        console.log('⚠️ 公式サイトURLがないため、画像アップロードをスキップします');
+        console.log('⚠️ 公式サイトの画像を取得していないため、画像アップロードをスキップします');
       }
+
+      // 品目ごとの画像 (代替テキストと品名の照合)。照合できなかった画像は、節の末尾に並べる
+      const menuNames = detailedExtraction ? menuItemsOf(detailedExtraction).map((item) => item.name) : [];
+      const menuItemImages = itemImageTags(menuNames, imagesUpload?.categories.menu ?? []);
+      const goodsItemImages = itemImageTags(detailedExtraction?.グッズ名 ?? [], imagesUpload?.categories.goods ?? []);
+      if (menuItemImages.matched > 0 || goodsItemImages.matched > 0) {
+        console.log(
+          `${getStepContext('image-upload-r2', '品目ごと')} メニュー ${menuItemImages.matched} 枚・グッズ ${goodsItemImages.matched} 枚を品目に付けた`,
+        );
+      }
+
+      // 名前のあるカテゴリは、画像が 0 枚でも節を残す (名前はコードが抽出結果から書く。2026-10-13 BOSS 決定)
+      const keepSections = new Set<ImageCategory>();
+      if (menuNames.length > 0) keepSections.add('menu');
+      if (!isEmptyList(detailedExtraction?.ノベルティ名)) keepSections.add('novelty');
+      if (!isEmptyList(detailedExtraction?.グッズ名)) keepSections.add('goods');
+
+      // グッズを品目ごとの形にするときは、照合できなかった画像を一覧の後ろ (節の末尾) に並べる。
+      // プレースホルダーの位置に置くと、後から節の末尾に差し込む一覧より前に出てしまう
+      const goodsTrailingImages =
+        goodsItemImages.matched > 0
+          ? goodsItemImages.rest
+              .map((image, index) => articleImageTags(image.segments, `${titleResult.title} グッズ${index + 1}`))
+              .join('\n\n')
+          : '';
+
+      // カテゴリ別R2画像（image-placeholder-replacement step で使用）
+      const uploadedCategoryR2Images: CategoryR2Images = {
+        menu: menuItemImages.rest.map((image) => image.segments),
+        novelty: (imagesUpload?.categories.novelty ?? []).map((image) => image.segments),
+        goods: goodsItemImages.matched > 0 ? [] : goodsItemImages.rest.map((image) => image.segments),
+        eyecatch: imagesUpload?.eyecatch,
+      };
 
       // image-placeholder-replacement step: プレースホルダー置換
       console.log(`\n${getStepDisplay('image-placeholder-replacement')} プレースホルダー置換...`);
@@ -1235,7 +1206,8 @@ export class ArticleGenerationMdxService {
         uploadedCategoryR2Images.menu.length > 0 ||
         uploadedCategoryR2Images.novelty.length > 0 ||
         uploadedCategoryR2Images.goods.length > 0 ||
-        !!uploadedCategoryR2Images.eyecatch;
+        !!uploadedCategoryR2Images.eyecatch ||
+        keepSections.size > 0;
 
       if (hasR2Images) {
         const placeholderReplacer = getImagePlaceholderReplacerService();
@@ -1243,7 +1215,8 @@ export class ArticleGenerationMdxService {
         placeholderReplacement = placeholderReplacer.replaceAll(
           contentGeneration.content,
           uploadedCategoryR2Images,
-          titleResult.title
+          titleResult.title,
+          keepSections
         );
         finalContent = placeholderReplacement.content;
 
@@ -1302,7 +1275,13 @@ export class ArticleGenerationMdxService {
         finalContent = textPlaceholderReplacement.content;
 
         // グッズの節の末尾に、会場で買えるグッズの一覧を差し込む (全件。文に並べた数件の残りもここに書く)
-        const goodsList = renderGoodsList(detailedExtraction.グッズ名, detailedExtraction.グッズ詳細リスト, goodsListConfig);
+        const goodsList = renderGoodsList(
+          detailedExtraction.グッズ名,
+          detailedExtraction.グッズ詳細リスト,
+          goodsListConfig,
+          goodsItemImages.tags,
+          goodsTrailingImages,
+        );
         const withGoodsList = insertIntoGoodsSection(finalContent, goodsList);
         if (withGoodsList !== finalContent) {
           console.log(
@@ -1312,7 +1291,7 @@ export class ArticleGenerationMdxService {
         }
 
         // 名前の入る部分は抽出結果から組み立て、本文の LLM が書いたものと置き換える (打ち直しの誤字を防ぐ)
-        finalContent = this.renderExtractedNames(finalContent, detailedExtraction);
+        finalContent = this.renderExtractedNames(finalContent, detailedExtraction, menuItemImages.tags);
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
@@ -1600,8 +1579,7 @@ export class ArticleGenerationMdxService {
         },
         detailedExtraction,
         contentGeneration,
-        ogImageUpload,
-        bodyImagesUpload,
+        imagesUpload,
         subpageDetection,
         categoryImages,
         categoryR2Images: uploadedCategoryR2Images,
@@ -1648,14 +1626,14 @@ export class ArticleGenerationMdxService {
    * メニューの品目とノベルティの文を、抽出結果からコードで組み立てて差し替える (書式と文面は Templates の YAML)。
    * 本文の LLM が名前を書き写すと誤字が混ざるため (2026-10-12、「招待状（ランダム7种）」)。
    */
-  private renderExtractedNames(content: string, extraction: ExtractionResult): string {
+  private renderExtractedNames(content: string, extraction: ExtractionResult, menuItemImages: string[] = []): string {
     const ctx = getStepContext('text-placeholder-replacement', '名前の差し込み');
     let result = content;
 
     const menuItems = menuItemsOf(extraction);
     if (menuItems.length > 0) {
       const { item_line } = loadSectionYaml<{ item_line: string }>('02-menu.yaml', 'rendered');
-      result = replaceMenuItems(result, renderMenuItems(menuItems, item_line));
+      result = replaceMenuItems(result, renderMenuItems(menuItems, item_line, menuItemImages));
     }
 
     if (!isEmptyList(extraction.ノベルティ名)) {

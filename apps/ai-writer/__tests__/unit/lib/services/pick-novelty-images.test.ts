@@ -49,7 +49,7 @@ describe('pickNoveltyImages', () => {
 describe('withNoveltyImagesFromVenues', () => {
   const TOKYO = 'https://example.com/lp/s004';
   const base = (novelty: string[]): CategoryImages => ({
-    eyecatch: null,
+    ogImage: null,
     menu: ['https://example.com/menu.jpg'],
     novelty,
     goods: [],

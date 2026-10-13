@@ -43,6 +43,14 @@ describe('renderMenuItems', () => {
       renderMenuItems([item('マルゲリータ', '2,090円(税込)', 'オールマイト'), item('<限定>ドリンク')], ITEM_LINE)
     ).toEqual(['### 【オールマイト】マルゲリータ 2,090円(税込)', '### &#60;限定&#62;ドリンク']);
   });
+
+  it('品目ごとの画像があれば、その品目の見出しの直後に続ける (2026-10-13)', () => {
+    const image = '<ArticleImage src="https://images.example.com/a.webp" alt="マルゲリータ" width="800" height="800" />';
+    expect(renderMenuItems([item('マルゲリータ'), item('サラダ')], ITEM_LINE, [image, ''])).toEqual([
+      `### マルゲリータ\n\n${image}`,
+      '### サラダ',
+    ]);
+  });
 });
 
 describe('replaceMenuItems', () => {
@@ -116,6 +124,17 @@ describe('replaceMenuItems', () => {
   it('メニューの節が無い、または品目が無ければそのまま', () => {
     expect(replaceMenuItems('## まとめ\n', ['### パフェ'])).toBe('## まとめ\n');
     expect(replaceMenuItems(ARTICLE, [])).toBe(ARTICLE);
+  });
+});
+
+describe('replaceMenuItems と <ArticleImage>', () => {
+  it('節の末尾の <ArticleImage> は画像の欄として残す (品目の範囲に含めない)', () => {
+    const tail = '<ArticleImage src="https://images.example.com/r.webp" alt="メニュー1" width="800" height="600" />';
+    const article = ['## カフェのメニュー', '', '導入文', '', '### LLM の品目', '', tail, ''].join('\n');
+
+    expect(replaceMenuItems(article, ['### マルゲリータ'])).toBe(
+      ['## カフェのメニュー', '', '導入文', '', '### マルゲリータ', '', tail, ''].join('\n')
+    );
   });
 });
 

@@ -282,6 +282,11 @@ export class R2StorageService {
     console.log(`✅ Deleted: ${key}`);
   }
 
+  /** オブジェクトキーの公開 URL */
+  publicUrlFor(key: string): string {
+    return `${this.publicUrl}/${key}`;
+  }
+
   /**
    * オブジェクトの存在確認
    *
