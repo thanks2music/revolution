@@ -1,7 +1,84 @@
 {
-  "generatedAt": "2026-08-15T15:14:02.806Z",
-  "totalArticles": 9,
+  "generatedAt": "2026-10-12T21:27:59.136Z",
+  "totalArticles": 10,
   "articles": [
+    {
+      "slug": "01m4s065g1hchh9d",
+      "title": "ヒロアカ カフェ in 4都市 10月16日よりコラボ開催",
+      "date": "2026-10-12T21:26:06.709Z",
+      "excerpt": "アニメ「僕のヒーローアカデミア」のコラボカフェ「WE ARE HERO HOLICS」が2026年10月16日より東京・愛知・大阪・北海道にて順次開催！7種から選べるボックスピザや幼い日のデクたちをイメージしたスイーツ、描き下ろしミニキャラグッズが登場。ヒーローの世界観を存分に楽しめます。",
+      "categories": [
+        "僕のヒーローアカデミア",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/my-hero-academia/01m4s065g1hchh9d.mdx",
+      "post_id": "01m4s065g1hchh9d",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "僕のヒーローアカデミア",
+      "work_titles": [
+        "僕のヒーローアカデミア"
+      ],
+      "work_slug": "my-hero-academia",
+      "prefectures": [
+        "東京都",
+        "愛知県",
+        "大阪府",
+        "北海道"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "aichi",
+        "osaka",
+        "hokkaido"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m4s065g1hchh9d/b4552093-8426-4cce-9b97-0f59c849e2ef.jpg",
+      "event_start_date": "2026-10-16",
+      "event_end_date": "2026-12-20",
+      "venue": "BOX cafe&space キュープラザ原宿店",
+      "official_url": "https://heroaca-cafe.ltr-online.com/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "my-hero-academia"
+        ],
+        "event_name": "僕のヒーローアカデミアカフェーWE ARE HERO HOLICSー",
+        "event_slug": "my-hero-academia-cafe-we-are-hero-holics",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space キュープラザ原宿店",
+            "starts_on": "2026-10-16",
+            "ends_on": "2026-12-20",
+            "official_url": "https://heroaca-cafe.ltr-online.com/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space グローバルゲート名古屋1号店",
+            "starts_on": "2026-10-16",
+            "ends_on": "2026-11-29",
+            "official_url": "https://heroaca-cafe.ltr-online.com/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "コーチャンフォー新川通り店 カフェ インターリュード",
+            "starts_on": "2026-10-16",
+            "ends_on": "2026-11-29",
+            "official_url": "https://heroaca-cafe.ltr-online.com/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space HEP FIVE店",
+            "starts_on": "2026-10-22",
+            "ends_on": "2026-12-06",
+            "official_url": "https://heroaca-cafe.ltr-online.com/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m02zq83vk1w94t",
       "title": "くまのプーさん カフェ in 東京/大阪 8月20日よりコラボ開催",
