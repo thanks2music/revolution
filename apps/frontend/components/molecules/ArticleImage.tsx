@@ -1,4 +1,4 @@
-import { articleImageSizes, maxOptimizableWidth, toDimensions } from '@/lib/mdx/article-image';
+import { toDimensions } from '@/lib/mdx/article-image';
 import { ArticleImageView } from '@/components/molecules/ArticleImageView';
 import { getImageDimensions } from '@/lib/mdx/image-dimensions';
 
@@ -32,16 +32,7 @@ export async function ArticleImage({ src, alt = '', width, height, priority = fa
 
   return (
     <span className="my-6 block">
-      <ArticleImageView
-        src={src}
-        alt={alt}
-        width={dimensions?.width ?? 0}
-        height={dimensions?.height ?? 0}
-        sizes={articleImageSizes(dimensions?.width)}
-        priority={priority}
-        maxOptimizedWidth={dimensions ? maxOptimizableWidth(dimensions.width, dimensions.height) : null}
-        unknownSize={!dimensions}
-      />
+      <ArticleImageView src={src} alt={alt} dimensions={dimensions} priority={priority} />
     </span>
   );
 }

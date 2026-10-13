@@ -1,6 +1,5 @@
 import {
   articleImageSizes,
-  formatJstDate,
   isArticleEyecatch,
   isOwnImageUrl,
   maxOptimizableWidth,
@@ -82,12 +81,6 @@ describe('toLightboxSlide', () => {
 
   it('寸法が分からなければ元の URL をそのまま使う', () => {
     expect(toLightboxSlide({ src, alt: 'x' })).toEqual({ src, alt: 'x' });
-  });
-});
-
-describe('formatJstDate', () => {
-  it('UTC の夜 (日本時間の朝) は日本時間の日付で出す', () => {
-    expect(formatJstDate('2026-10-12T21:26:06.709Z')).toBe('2026年10月13日');
   });
 });
 

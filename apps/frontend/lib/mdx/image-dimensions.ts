@@ -1,6 +1,7 @@
+import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
 import { imageSize } from 'image-size';
-import { isOwnImageUrl } from '@/lib/mdx/article-image';
+import { isOwnImageUrl, type ImageDimensions } from '@/lib/mdx/article-image';
 
 /**
  * 記事の画像の元の幅と高さを、画像の先頭だけを取得して読む。
@@ -13,26 +14,17 @@ import { isOwnImageUrl } from '@/lib/mdx/article-image';
  * - 取得するのは自前の画像の配信元だけ (MDX の中身は自前だが、任意の URL を取りに行かない)
  * - JPEG の寸法は EXIF の後ろにあることがあるので、64 KB で読めなければ 512 KB で取り直す
  * - 読めなければ null (呼び出し側は記事の幅いっぱいで出す)
+ * - キャッシュするのは寸法 (幅と高さ) だけ。画像の取得自体は Next.js の fetch のキャッシュに載せない
+ *   (Range の応答は 206 で、fetch のキャッシュは 200 しか保存しない。Range を無視して 200 で全体が返ると、
+ *   キャッシュのために本文を丸ごと読んでしまう)。R2 の画像の URL は中身が変わらないので、寸法は期限なしで保存する
  */
 
 const RANGE_BYTES = [64 * 1024, 512 * 1024];
 
-export interface ImageDimensions {
-  width: number;
-  height: number;
-}
-
-/** 先頭の bytes バイトだけを読む。配信元が Range を無視して全体を返しても、bytes で読むのをやめる */
+/** 先頭の bytes バイトだけを読み、残りは捨てる (配信元が Range を無視して全体を返しても、丸ごとは読まない) */
 async function readHead(src: string, bytes: number): Promise<Uint8Array | null> {
-  const response = await fetch(src, {
-    headers: { Range: `bytes=0-${bytes - 1}` },
-    // R2 の画像は中身のハッシュか UUID の名前で、同じ URL の中身は変わらない
-    cache: 'force-cache',
-  });
-  if (!response.ok) return null;
-  if (response.status === 206 || !response.body) return new Uint8Array(await response.arrayBuffer());
-
-  // 200 (Range を無視して全体が返った): 先頭だけ読んで残りは捨てる (7 MB の画像を丸ごと読まない)
+  const response = await fetch(src, { headers: { Range: `bytes=0-${bytes - 1}` }, cache: 'no-store' });
+  if (!response.ok || !response.body) return null;
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
@@ -42,20 +34,12 @@ async function readHead(src: string, bytes: number): Promise<Uint8Array | null> 
     chunks.push(value);
     received += value.length;
   }
-  await reader.cancel();
-  const head = new Uint8Array(Math.min(received, bytes));
-  let offset = 0;
-  for (const chunk of chunks) {
-    const part = chunk.subarray(0, head.length - offset);
-    head.set(part, offset);
-    offset += part.length;
-    if (offset >= head.length) break;
-  }
-  return head;
+  // 残りは捨てる。cancel の完了は待たない (Next.js の fetch の中では待つと応答が終わらないことがあった)
+  void reader.cancel().catch(() => {});
+  return Buffer.concat(chunks).subarray(0, bytes);
 }
 
-export const getImageDimensions = cache(async (src: string): Promise<ImageDimensions | null> => {
-  if (!isOwnImageUrl(src)) return null;
+async function readDimensions(src: string): Promise<ImageDimensions | null> {
   for (const bytes of RANGE_BYTES) {
     try {
       const head = await readHead(src, bytes);
@@ -69,4 +53,10 @@ export const getImageDimensions = cache(async (src: string): Promise<ImageDimens
     }
   }
   return null;
-});
+}
+
+const readDimensionsCached = unstable_cache(readDimensions, ['article-image-dimensions'], { revalidate: false });
+
+export const getImageDimensions = cache(
+  async (src: string): Promise<ImageDimensions | null> => (isOwnImageUrl(src) ? readDimensionsCached(src) : null)
+);

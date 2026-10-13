@@ -1,5 +1,8 @@
 import { getImageDimensions } from '@/lib/mdx/image-dimensions';
 
+// unstable_cache は Next.js のリクエストの外では動かないので、そのまま呼ぶ形にする
+jest.mock('next/cache', () => ({ unstable_cache: (fn: unknown) => fn }));
+
 // 幅 2・高さ 3 の PNG の先頭 (IHDR まで読めれば寸法が分かる)
 const PNG_2x3 = Uint8Array.from(
   Buffer.from(
@@ -14,7 +17,7 @@ describe('getImageDimensions', () => {
     global.fetch = originalFetch;
   });
 
-  it('先頭のバイトだけを Range で取って寸法を読む', async () => {
+  it('先頭のバイトだけを Range で取って寸法を読む (fetch のキャッシュには載せない)', async () => {
     const fetchMock = jest.fn().mockResolvedValue(new Response(PNG_2x3, { status: 206 }));
     global.fetch = fetchMock as unknown as typeof fetch;
     await expect(getImageDimensions('https://images.anime-events.com/t/a.png')).resolves.toEqual({
@@ -22,6 +25,7 @@ describe('getImageDimensions', () => {
       height: 3,
     });
     expect(fetchMock.mock.calls[0][1].headers.Range).toBe('bytes=0-65535');
+    expect(fetchMock.mock.calls[0][1].cache).toBe('no-store');
   });
 
   it('64 KB で読めなければ 512 KB で取り直す', async () => {

@@ -5,10 +5,10 @@ import Counter from 'yet-another-react-lightbox/plugins/counter';
 import Zoom from 'yet-another-react-lightbox/plugins/zoom';
 import 'yet-another-react-lightbox/styles.css';
 import 'yet-another-react-lightbox/plugins/counter.css';
-import type { LightboxSlide } from '@/lib/mdx/article-image';
+import type { SlideImage } from 'yet-another-react-lightbox';
 
 interface ArticleLightboxProps {
-  slides: LightboxSlide[];
+  slides: SlideImage[];
   index: number;
   close: () => void;
 }

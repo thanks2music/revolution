@@ -8,7 +8,8 @@ import {
 import { CustomMDX } from '@/components/mdx';
 import { ArticleImage } from '@/components/molecules/ArticleImage';
 import { ArticleGallery } from '@/components/organisms/ArticleGallery';
-import { formatJstDate, isArticleEyecatch } from '@/lib/mdx/article-image';
+import { formatJstDate } from '@/lib/date';
+import { isArticleEyecatch } from '@/lib/mdx/article-image';
 import { notFound } from 'next/navigation';
 import { Metadata } from 'next';
 import Link from 'next/link';
