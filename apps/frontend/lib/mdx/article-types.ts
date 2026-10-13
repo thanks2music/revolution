@@ -23,7 +23,9 @@ export interface ArticleIndexItem {
   tags: string[];
   author: string;
   filePath: string;
-  ogImage?: string;
+  ogImage?: string | null;
+  /** 更新日 (公開済みの記事を更新したとき。ISO 日時) */
+  updated?: string;
   event_type: string | null;
   work_slug: string | null;
 

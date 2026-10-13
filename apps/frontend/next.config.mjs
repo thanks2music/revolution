@@ -1,4 +1,5 @@
 import { withSentryConfig } from '@sentry/nextjs';
+import { IMAGE_DEVICE_SIZES, IMAGE_QUALITIES, IMAGE_SIZES, R2_IMAGE_HOST } from './lib/image-config.mjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -15,10 +16,11 @@ const nextConfig = {
    */
   images: {
     formats: ['image/avif', 'image/webp'],
-    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
-    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    // 記事の画像処理 (lib/mdx/article-image.ts) と共有する値は lib/image-config.mjs に置く
+    deviceSizes: IMAGE_DEVICE_SIZES,
+    imageSizes: IMAGE_SIZES,
     minimumCacheTTL: 60, // 60秒（ISRと整合）
-    qualities: [75], // Next.js 16 デフォルト設定
+    qualities: IMAGE_QUALITIES, // Next.js 16 デフォルト設定
     remotePatterns: [
       // 開発環境: HTTPを許可（localhostのみ）
       ...(process.env.NODE_ENV === 'development'
@@ -39,7 +41,7 @@ const nextConfig = {
       // Cloudflare R2画像用の設定（ogImage等）
       {
         protocol: 'https',
-        hostname: 'images.anime-events.com',
+        hostname: R2_IMAGE_HOST,
       },
     ],
   },

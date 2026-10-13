@@ -6,6 +6,10 @@ import {
   readArticleContentFile,
 } from '@/lib/mdx/articles';
 import { CustomMDX } from '@/components/mdx';
+import { ArticleImage } from '@/components/molecules/ArticleImage';
+import { ArticleGallery } from '@/components/organisms/ArticleGallery';
+import { formatJstDate } from '@/lib/date';
+import { isArticleEyecatch } from '@/lib/mdx/article-image';
 import { notFound } from 'next/navigation';
 import { Metadata } from 'next';
 import Link from 'next/link';
@@ -43,9 +47,10 @@ export async function generateMetadata(
     title: article.title,
     description: article.excerpt,
     publishedTime: article.date,
+    modifiedTime: article.updated,
     authors: [article.author],
     tags: article.tags,
-    imageUrl: article.ogImage,
+    imageUrl: article.ogImage ?? undefined,
     slug: article.slug,
     path: getArticleUrl(article),
   });
@@ -87,12 +92,19 @@ export default async function ArticlePage(props: ArticlePageProps) {
           {/* Metadata */}
           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-6">
             <time dateTime={article.date}>
-              {new Date(article.date).toLocaleDateString('ja-JP', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
+              {formatJstDate(article.date)}
             </time>
+            {article.updated && (
+              <>
+                <span>·</span>
+                <span>
+                  更新:{' '}
+                  <time dateTime={article.updated}>
+                    {formatJstDate(article.updated)}
+                  </time>
+                </span>
+              </>
+            )}
             <span>·</span>
             <span>{article.author}</span>
           </div>
@@ -143,19 +155,20 @@ export default async function ArticlePage(props: ArticlePageProps) {
           )}
         </header>
 
-        {/* Excerpt */}
-        {article.excerpt && (
-          <div className="mb-8 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border-l-4 border-blue-500">
-            <p className="text-lg text-gray-700 dark:text-gray-300 italic">
-              {article.excerpt}
-            </p>
-          </div>
-        )}
+        {/* 冒頭のアイキャッチ (2026-10-13 BOSS 決定で抜粋の枠から置き換え。抜粋は meta description にだけ使う)。
+            画像を押すと、本文の画像と合わせて拡大表示で左右に送れる */}
+        <ArticleGallery>
+          {isArticleEyecatch(article.ogImage) && (
+            <div className="mb-8">
+              <ArticleImage src={article.ogImage} alt={article.title} priority />
+            </div>
+          )}
 
-        {/* Article Content */}
-        <div className="prose prose-lg dark:prose-invert max-w-none">
-          <CustomMDX source={content} />
-        </div>
+          {/* Article Content */}
+          <div className="prose prose-lg dark:prose-invert max-w-none">
+            <CustomMDX source={content} />
+          </div>
+        </ArticleGallery>
 
         {/* Like */}
         <div className="mt-10 flex items-center gap-3 border-t border-gray-200 pt-8 dark:border-gray-700">

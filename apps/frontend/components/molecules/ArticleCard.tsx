@@ -3,6 +3,7 @@ import Link from 'next/link';
 // (PaginatedArticleGrid 経由で Client Component bundle に取り込まれるため)
 import { getArticleUrl } from '@/lib/mdx/article-url';
 import type { ArticleIndexItem } from '@/lib/mdx/article-types';
+import { formatJstDate } from '@/lib/date';
 
 /**
  * 記事カード。
@@ -36,12 +37,8 @@ type Props = {
   variant?: Variant;
 };
 
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('ja-JP', {
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-  });
+// 日本時間で出す (サーバーは UTC、ブラウザは日本時間で描くため、指定しないと表示がずれる)
+const formatDate = (iso: string) => formatJstDate(iso, 'numeric');
 
 export const ArticleCard = ({ article, variant = 'default' }: Props) => {
   const isFeature = variant === 'feature';

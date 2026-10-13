@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { MDXRemote, MDXRemoteProps } from 'next-mdx-remote/rsc';
 import remarkGfm from 'remark-gfm';
+import { ArticleImage } from '@/components/molecules/ArticleImage';
+import { ArticlePoints } from '@/components/molecules/ArticlePoints';
 
 /**
  * カスタムリンクコンポーネント
@@ -23,34 +24,6 @@ function CustomLink(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
   }
 
   return <a target="_blank" rel="noopener noreferrer" {...props} />;
-}
-
-/**
- * カスタム画像コンポーネント
- * Next.js Imageを使用して最適化
- */
-function CustomImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
-  if (!props.src) {
-    return null;
-  }
-
-  // 外部画像の場合はfillモードを使用
-  if (typeof props.src === 'string' && props.src.startsWith('http')) {
-    return (
-      <span className="relative block w-full" style={{ minHeight: '400px' }}>
-        <Image
-          src={props.src}
-          alt={props.alt || ''}
-          fill
-          className="object-contain"
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        />
-      </span>
-    );
-  }
-
-  // ローカル画像の場合は通常のimgタグ
-  return <img {...props} alt={props.alt || ''} />;
 }
 
 /**
@@ -91,7 +64,11 @@ function Pre({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) {
  */
 const components = {
   a: CustomLink,
-  img: CustomImage,
+  // 画像: Markdown の `![alt](src)` は img、AI Writer が寸法を書く画像は `<ArticleImage>`。
+  // MDX の components は JSX で直接書いた小文字の `<img>` には効かないため、寸法付きの画像は大文字の部品で書く
+  img: ArticleImage,
+  ArticleImage,
+  ArticlePoints,
   code: Code,
   pre: Pre,
   // 見出し
