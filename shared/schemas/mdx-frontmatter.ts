@@ -141,6 +141,8 @@ export const MdxFrontmatterSchema = z.object({
   slug: z.string().min(1),
   title: z.string().min(1),
   date: z.string().datetime({ precision: 3, offset: true }),
+  // 公開済みの記事を更新したときの日時 (date = 公開日は変えない)。2026-10-13 追加
+  updated: z.string().datetime({ precision: 3, offset: true }).optional(),
   categories: z.array(z.string().min(1)),
   excerpt: z.string().min(1),
   author: z.string().min(1),
