@@ -43,9 +43,10 @@ export function ArticleImageView({ src, alt, dimensions, priority }: ArticleImag
       data-lightbox-src={src}
       data-lightbox-width={dimensions?.width}
       data-lightbox-height={dimensions?.height}
+      // 押すと拡大表示 (ダイアログ) を開く。名前は alt のまま読み上げる (aria-label で上書きしない)
       tabIndex={0}
       role="button"
-      aria-label={alt ? `${alt} を拡大表示` : '画像を拡大表示'}
+      aria-haspopup="dialog"
     />
   );
 }

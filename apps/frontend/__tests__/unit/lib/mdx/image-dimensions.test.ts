@@ -26,6 +26,7 @@ describe('getImageDimensions', () => {
     });
     expect(fetchMock.mock.calls[0][1].headers.Range).toBe('bytes=0-65535');
     expect(fetchMock.mock.calls[0][1].cache).toBe('no-store');
+    expect(fetchMock.mock.calls[0][1].redirect).toBe('error');
   });
 
   it('64 KB で読めなければ 512 KB で取り直す', async () => {

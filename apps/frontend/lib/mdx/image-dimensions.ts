@@ -20,10 +20,18 @@ import { isOwnImageUrl, type ImageDimensions } from '@/lib/mdx/article-image';
  */
 
 const RANGE_BYTES = [64 * 1024, 512 * 1024];
+/** 1 回の取得の時間切れ。配信元が遅くても記事の描画を止めない (時間切れは null = 記事の幅いっぱい) */
+const FETCH_TIMEOUT_MS = 5000;
 
 /** 先頭の bytes バイトだけを読み、残りは捨てる (配信元が Range を無視して全体を返しても、丸ごとは読まない) */
 async function readHead(src: string, bytes: number): Promise<Uint8Array | null> {
-  const response = await fetch(src, { headers: { Range: `bytes=0-${bytes - 1}` }, cache: 'no-store' });
+  const response = await fetch(src, {
+    headers: { Range: `bytes=0-${bytes - 1}` },
+    cache: 'no-store',
+    // 自前の配信元だけを読む (確かめたのは最初の URL なので、リダイレクトには従わない)
+    redirect: 'error',
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
   if (!response.ok || !response.body) return null;
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];

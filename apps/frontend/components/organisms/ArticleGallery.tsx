@@ -37,19 +37,22 @@ export function ArticleGallery({ children }: { children: React.ReactNode }) {
     return true;
   }
 
+  // 拡大表示は記事の要素の外に置く (中にあると、拡大表示の中のクリックやキー入力も open に届く)
   return (
-    <div
-      ref={containerRef}
-      onClick={(event) => open(event.target)}
-      onKeyDown={(event) => {
-        if ((event.key === 'Enter' || event.key === ' ') && open(event.target)) event.preventDefault();
-      }}
-    >
-      {children}
+    <>
+      <div
+        ref={containerRef}
+        onClick={(event) => open(event.target)}
+        onKeyDown={(event) => {
+          if ((event.key === 'Enter' || event.key === ' ') && open(event.target)) event.preventDefault();
+        }}
+      >
+        {children}
+      </div>
       {gallery && (
         <ArticleLightbox slides={gallery.slides} index={gallery.index} close={() => setGallery(null)} />
       )}
-    </div>
+    </>
   );
 }
 
