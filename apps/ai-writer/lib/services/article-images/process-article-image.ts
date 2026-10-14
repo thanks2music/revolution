@@ -72,6 +72,8 @@ export async function readImageInfo(buffer: Buffer): Promise<{ width: number; he
  * max_width まで縮めて一度だけ展開し (無圧縮の画素)、分割の片を切り出せる形にする。分割の座標は、
  * 縮めた後の実際の寸法で決める (計算の丸めで 1px ずれると extract が失敗するため)
  */
+// メモリ: 縮めた後の画像を無圧縮で 1 枚分だけ持つ (1920×28300 のメニュー表で約 150〜220 MB)。画像は 1 枚ずつ処理するので、
+// ピークは「この 1 枚 + 取得したバッファ (最大 40 MB)」。ai-writer の Cloud Run は 2 GiB (deploy-ai-writer.yml)
 async function decodeResized(buffer: Buffer, source: { width: number; height: number }, config: ImageUploadConfig) {
   const size = resizedSize(source.width, source.height, config.max_width);
   const { data, info } = await loadImage(buffer)
@@ -100,7 +102,9 @@ async function decodeResized(buffer: Buffer, source: { width: number; height: nu
 async function encode(input: () => sharp.Sharp, config: ImageUploadConfig, format: 'webp' | 'jpeg' = 'webp'): Promise<Buffer> {
   let quality = config.webp_quality;
   for (;;) {
-    const buffer = await (format === 'webp' ? input().webp({ quality }) : input().jpeg({ quality, mozjpeg: true })).toBuffer();
+    // JPEG は透過を持てない。sharp の既定は透過部分を黒で塗るので、白で塗ってから JPEG にする (透過 PNG のロゴなど)
+    const encoded = format === 'webp' ? input().webp({ quality }) : input().flatten({ background: '#ffffff' }).jpeg({ quality, mozjpeg: true });
+    const buffer = await encoded.toBuffer();
     if (buffer.length <= config.max_bytes || quality <= config.webp_min_quality) return buffer;
     // quality_step は検証済み (正の数) だが、0 が来ても終わるよう 1 以上で下げる
     quality = Math.max(config.webp_min_quality, quality - Math.max(1, config.quality_step));

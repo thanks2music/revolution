@@ -4,7 +4,7 @@
  */
 import sharp from 'sharp';
 import type { ImageUploadConfig } from '@/lib/types/subpage-detection';
-import { planSegments, processArticleImage, resizedSize } from '@/lib/services/article-images/process-article-image';
+import { planSegments, processArticleImage, processEyecatchFallback, resizedSize } from '@/lib/services/article-images/process-article-image';
 
 /** Templates の config/store-url-patterns.yaml の image_extraction.upload と同じ値 */
 const CONFIG: ImageUploadConfig = {
@@ -89,5 +89,19 @@ describe('processArticleImage', () => {
 
   it('画像として読めなければ例外', async () => {
     await expect(processArticleImage(Buffer.from('not an image'), CONFIG, 300)).rejects.toThrow();
+  });
+});
+
+describe('processEyecatchFallback', () => {
+  it('透過のある画像は白で塗ってから JPEG にする (黒い背景にしない)', async () => {
+    const transparent = await sharp({ create: { width: 800, height: 400, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .png()
+      .toBuffer();
+
+    const result = await processEyecatchFallback(transparent, CONFIG);
+    const { data } = await sharp(result.buffer).raw().toBuffer({ resolveWithObject: true });
+
+    expect((await sharp(result.buffer).metadata()).format).toBe('jpeg');
+    expect([data[0], data[1], data[2]].every((value) => value > 240)).toBe(true);
   });
 });

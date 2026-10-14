@@ -100,6 +100,11 @@ export interface UploadImagesForArticleOptions {
  *
  * @throws 設定が欠けているとき
  */
+/** 品質の範囲 (0 < 下限 <= 既定 <= 100)。JPEG のアイキャッチにも同じ値を使う */
+function validQualityRange(min: unknown, quality: unknown): boolean {
+  return typeof min === 'number' && typeof quality === 'number' && min > 0 && min <= quality && quality <= 100;
+}
+
 export function assertImageUploadConfig(config: Partial<UploadImagesForArticleOptions['config']> | undefined): void {
   const upload = config?.upload;
   const positive = (value: unknown) => typeof value === 'number' && value > 0;
@@ -112,10 +117,8 @@ export function assertImageUploadConfig(config: Partial<UploadImagesForArticleOp
     upload && !positive(upload.split_ratio) && 'upload.split_ratio',
     // 0 以下だと分割が終わらない。WebP の 1 辺の上限 (16,383px) を超えると変換できない
     upload && !(positive(upload.segment_height) && upload.segment_height <= 16383) && 'upload.segment_height',
-    upload && !(positive(upload.quality_step)) && 'upload.quality_step',
-    upload &&
-      !(positive(upload.webp_min_quality) && positive(upload.webp_quality) && upload.webp_min_quality <= upload.webp_quality && upload.webp_quality <= 100) &&
-      'upload.webp_quality / webp_min_quality',
+    upload && !positive(upload.quality_step) && 'upload.quality_step',
+    upload && !validQualityRange(upload.webp_min_quality, upload.webp_quality) && 'upload.webp_quality / webp_min_quality',
   ].filter(Boolean);
   if (invalid.length > 0) {
     throw new Error(

@@ -73,8 +73,8 @@ export interface FolderWriter {
 
 /**
  * フォルダへの書き込み口を作る。既にあるキーは、最初の書き込みのときに一覧で 1 回だけ読む
- * (画像ごとに有無を問い合わせると、100 枚の記事で 100 回の往復になる)。一覧に漏れがあっても
- * (1,000 件を超えるなど)、同じ中身を同じキーに上げ直すだけで害はない。store が null なら dry-run
+ * (画像ごとに有無を問い合わせると、100 枚の記事で 100 回の往復になる)。一覧はページをたどって全件読む。
+ * store が null なら dry-run
  */
 export function folderWriter(store: ImageStore | null, folder: string): FolderWriter {
   let existing: Promise<Set<string>> | undefined;
@@ -174,6 +174,7 @@ const FORMATS: Record<string, [ext: string, contentType: string]> = {
   webp: ['webp', 'image/webp'],
   gif: ['gif', 'image/gif'],
   heif: ['avif', 'image/avif'],
+  // heic (readImageInfo が AVIF と分けたもの) は入れない。ブラウザで読めないので作り直す側に回す
 };
 
 /**
@@ -205,12 +206,12 @@ export async function uploadEyecatchImage(
 
 /** R2StorageService を ImageStore として使う */
 export function r2ImageStore(r2: {
-  listObjects(prefix: string): Promise<string[]>;
+  listAllObjects(prefix: string): Promise<string[]>;
   uploadImage(buffer: Buffer, options: { filename: string; contentType: string; customKey: string }): Promise<unknown>;
   getPublicUrl(key: string): string;
 }): ImageStore {
   return {
-    listKeys: (prefix) => r2.listObjects(prefix),
+    listKeys: (prefix) => r2.listAllObjects(prefix),
     put: async (key, buffer, contentType) => {
       await r2.uploadImage(buffer, { filename: key.split('/').pop() ?? key, contentType, customKey: key });
     },

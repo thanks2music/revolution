@@ -269,14 +269,14 @@ describe('uploadEyecatchImage', () => {
 describe('r2ImageStore', () => {
   it('R2StorageService の一覧・アップロード (キーを指定)・公開 URL につなぐ', async () => {
     const r2 = {
-      listObjects: jest.fn(async () => ['f/a.webp']),
+      listAllObjects: jest.fn(async () => ['f/a.webp']),
       uploadImage: jest.fn(async () => ({})),
       getPublicUrl: jest.fn((key: string) => `https://images.example.com/${key}`),
     };
     const store = r2ImageStore(r2);
 
     await expect(store.listKeys('f/')).resolves.toEqual(['f/a.webp']);
-    expect(r2.listObjects).toHaveBeenCalledWith('f/');
+    expect(r2.listAllObjects).toHaveBeenCalledWith('f/');
     await store.put('f/a.webp', Buffer.from('x'), 'image/webp');
     expect(r2.uploadImage).toHaveBeenCalledWith(Buffer.from('x'), {
       filename: 'a.webp',
