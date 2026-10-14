@@ -92,6 +92,16 @@ describe('folderWriter', () => {
     expect(new Set(results.map((result) => result.url)).size).toBe(1);
   });
 
+  it('一覧の取得に失敗したら、その書き込みは失敗し、次の書き込みで一覧を取り直す', async () => {
+    const store = memoryStore();
+    (store.listKeys as jest.Mock).mockRejectedValueOnce(new Error('R2 unavailable'));
+    const writer = folderWriter(store, 'f');
+
+    await expect(writer.put(Buffer.from('a'), 'webp', 'image/webp')).rejects.toThrow('R2 unavailable');
+    await expect(writer.put(Buffer.from('a'), 'webp', 'image/webp')).resolves.toMatchObject({ uploaded: true });
+    expect(store.listKeys).toHaveBeenCalledTimes(2);
+  });
+
   it('store が null なら dry-run (R2 に触らず、URL を [DRY RUN] にする)', async () => {
     const result = await folderWriter(null, 'f').put(Buffer.from('a'), 'webp', 'image/webp');
     expect(result).toEqual({ url: expect.stringMatching(/^\[DRY RUN\] .*\/f\/[0-9a-f]{32}\.webp$/), uploaded: false });

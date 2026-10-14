@@ -84,7 +84,14 @@ export function folderWriter(store: ImageStore | null, folder: string): FolderWr
     async put(buffer, ext, contentType) {
       const key = contentKey(folder, buffer, ext);
       if (!store) return { url: `[DRY RUN] ${process.env.R2_PUBLIC_URL ?? ''}/${key}`, uploaded: false };
-      existing ??= store.listKeys(`${folder}/`).then((keys) => new Set(keys));
+      // 一覧の失敗は覚えない (覚えると、このフォルダへの以後の書き込みがすべて失敗する)
+      existing ??= store.listKeys(`${folder}/`).then(
+        (keys) => new Set(keys),
+        (error) => {
+          existing = undefined;
+          throw error;
+        }
+      );
       const keys = await existing;
       const pending = inFlight.get(key);
       if (pending) {
