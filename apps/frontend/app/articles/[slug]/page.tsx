@@ -165,7 +165,7 @@ export default async function ArticlePage(props: ArticlePageProps) {
           )}
 
           {/* Article Content */}
-          <div className="prose prose-lg dark:prose-invert max-w-none">
+          <div className="article-content prose prose-lg dark:prose-invert max-w-none">
             <CustomMDX source={content} />
           </div>
         </ArticleGallery>

@@ -12,7 +12,7 @@
  * - 作品タイプに応じた柔軟な文章生成が可能
  */
 
-import * as Sentry from '@sentry/nextjs';
+import { Sentry } from '@/lib/observability/sentry';
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';

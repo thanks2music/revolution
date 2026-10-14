@@ -121,17 +121,35 @@ export interface AiFallbackConfig {
  * 画像抽出設定
  */
 export interface ImageExtractionConfig {
-  max_images_per_category: number;
-  min_image_size: {
-    width: number;
-    height: number;
-  };
+  /**
+   * 短辺がこれ未満の画像は載せない (アイコン・見出しの帯など)。枚数の上限は設けない (2026-10-13 BOSS 決定)。
+   * HTML の width / height 属性があれば取得の前に、無ければ取得して実際の画素数で判定する
+   */
+  min_short_side: number;
+  /** R2 に上げる前の加工 (`process-article-image.ts`) */
+  upload: ImageUploadConfig;
+  /** アイキャッチの代わりの画像を選ぶときの「横長」(幅 ÷ 高さ がこれ以上) */
+  eyecatch_landscape_ratio: number;
   exclude_patterns: string[];
   /**
    * 会場の案内ページで、ノベルティの画像とみなす代替テキストの語 (例: 特典 / ノベルティ)。
    * 当たった画像には除外パターンを当てない (代替テキストが根拠になるため。LTR は特典の画像のファイル名に banner を含む)
    */
   novelty_alt_keywords?: string[];
+}
+
+/** R2 に上げる前の画像の加工 (store-url-patterns.yaml の image_extraction.upload) */
+export interface ImageUploadConfig {
+  /** 幅がこれを超える画像は縮める */
+  max_width: number;
+  /** WebP の品質。出来上がりが max_bytes を超えたら quality_step ずつ下げ、min_quality で止める */
+  webp_quality: number;
+  webp_min_quality: number;
+  quality_step: number;
+  max_bytes: number;
+  /** 高さが幅の split_ratio 倍を超える画像は、上から高さ segment_height で分割する (縮めた後の寸法で判定) */
+  split_ratio: number;
+  segment_height: number;
 }
 
 /**

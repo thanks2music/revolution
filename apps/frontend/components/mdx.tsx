@@ -106,26 +106,12 @@ const components = {
   hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
     <hr className="my-8 border-gray-300 dark:border-gray-700" {...props} />
   ),
-  // テーブル
+  // テーブル: 見た目と横スクロールの枠 (article-table-scroll) は styles/globals.css の .article-content
+  // (AI Writer が HTML で書く表も同じ枠を自分で付ける。見た目を揃えるため)
   table: (props: React.TableHTMLAttributes<HTMLTableElement>) => (
-    <div className="my-4 overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" {...props} />
+    <div className="article-table-scroll">
+      <table {...props} />
     </div>
-  ),
-  thead: (props: React.HTMLAttributes<HTMLTableSectionElement>) => (
-    <thead className="bg-gray-50 dark:bg-gray-800" {...props} />
-  ),
-  tbody: (props: React.HTMLAttributes<HTMLTableSectionElement>) => (
-    <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700" {...props} />
-  ),
-  tr: (props: React.HTMLAttributes<HTMLTableRowElement>) => (
-    <tr {...props} />
-  ),
-  th: (props: React.ThHTMLAttributes<HTMLTableCellElement>) => (
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" {...props} />
-  ),
-  td: (props: React.TdHTMLAttributes<HTMLTableCellElement>) => (
-    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100" {...props} />
   ),
 };
 
@@ -138,6 +124,7 @@ const components = {
  *   だったにもかかわらず plugin が未配線で、AI Writer が出力する「まとめテーブル」
  *   (| 項目 | 内容 | 形式) が 1 行のパイプ文字列としてそのまま表示されていた。
  *   GFM は表のほかに打ち消し線・タスクリスト・自動リンクも有効にする。
+ *   (2026-10-15: 表の見た目は components から styles/globals.css の .article-content へ移した)
  */
 export function CustomMDX(props: MDXRemoteProps) {
   return (

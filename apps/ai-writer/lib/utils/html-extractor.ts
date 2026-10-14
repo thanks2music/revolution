@@ -792,7 +792,7 @@ export function extractPageLinks(html: string, baseUrl: string): string[] {
       // 絶対URLに変換
       const absoluteUrl = href.startsWith('http')
         ? href
-        : new URL(href, baseUrlObj.origin).href;
+        : new URL(href, baseUrlObj).href; // 相対パスはページの URL で解決する (サイトの先頭で解決すると menu が /menu になる)
 
       links.add(absoluteUrl);
     } catch {
@@ -1069,5 +1069,24 @@ ${bodyContent}`;
       throw new Error(`コンテンツHTMLの取得に失敗: ${url} - ${error.message}`);
     }
     throw new Error(`コンテンツHTMLの取得に失敗: ${url}`);
+  }
+}
+
+/**
+ * ページの og:image (無ければ twitter:image)。相対 URL (`/img/ogp.jpg`) はページの URL で解決する。
+ * `<head>` を含む HTML を渡す (`extractContentHtml` の `raw`。`compacted` は本文のブロックだけのことがあり meta が無い)
+ */
+export function extractOgImageUrl(html: string, pageUrl: string): string | null {
+  const $ = cheerio.load(html);
+  const content =
+    $('meta[property="og:image"]').attr('content') ||
+    $('meta[name="og:image"]').attr('content') ||
+    $('meta[property="twitter:image"]').attr('content') ||
+    $('meta[name="twitter:image"]').attr('content');
+  if (!content) return null;
+  try {
+    return new URL(content.trim(), pageUrl).href;
+  } catch {
+    return null;
   }
 }

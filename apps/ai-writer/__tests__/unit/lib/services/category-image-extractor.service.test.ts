@@ -144,7 +144,7 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     expect(result.menu).toEqual(['https://example.com/_next/image?url=%2Fimages%2Fmenu_01.jpg&bad=%E0%A4%A']);
   });
 
-  it('http で始まる相対パスも、ページの origin からの相対として解決する', async () => {
+  it('http で始まる相対パスも相対パスとして、ページの URL で解決する (ブラウザと同じ)', async () => {
     mockFetchHtml('<html><body><img src="httpdocs/menu.jpg"></body></html>');
     const service = new CategoryImageExtractorService(configLoader);
 
@@ -152,7 +152,7 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
       menu: ['https://example.com/menu/'],
     });
 
-    expect(result.menu).toEqual(['https://example.com/httpdocs/menu.jpg']);
+    expect(result.menu).toEqual(['https://example.com/menu/httpdocs/menu.jpg']);
   });
 
   it('URL として解釈できない src は飛ばし、他の画像の抽出を止めない', async () => {
@@ -274,14 +274,22 @@ describe('findImagesByAlt', () => {
     ]);
   });
 
-  it('data-src も読み、URL として読めない src は飛ばす。width / height があれば大きさの下限を当てる', () => {
+  it('data-src も読み、URL として読めない src は飛ばす。width / height の属性では落とさない (短辺は取得後に当てる)', () => {
     const html =
       '<img data-src="/lazy.jpg" alt="特典"><img src="http://[bad" alt="特典"><img src="/icon.png" alt="特典" width="40" height="40"><img src="/big.jpg" alt="特典" width="600" height="600">';
 
-    expect(findImagesByAlt(html, 'https://example.com/', ['特典'], { width: 200, height: 200 })).toEqual([
+    expect(findImagesByAlt(html, 'https://example.com/', ['特典'])).toEqual([
       'https://example.com/lazy.jpg',
+      'https://example.com/icon.png',
       'https://example.com/big.jpg',
     ]);
+  });
+
+  it('遅延読み込みの data: のダミーの src より data-src を使い、data: しか無い画像は飛ばす', () => {
+    const html =
+      '<img src="data:image/gif;base64,R0lGOD" data-src="/real.jpg" alt="特典"><img src="data:image/png;base64,AAA" alt="特典">';
+
+    expect(findImagesByAlt(html, 'https://example.com/', ['特典'])).toEqual(['https://example.com/real.jpg']);
   });
 
   it('語が無ければ何も返さない', () => {

@@ -15,7 +15,7 @@ import {
   GitHubAuthError,
   GitHubRateLimitError,
 } from '@/lib/errors/github';
-import { beforeSendFilter, flushSentry } from '@/lib/observability/sentry';
+import { beforeSendFilter, flushSentry, resolveSentrySdk, Sentry as ResolvedSentry } from '@/lib/observability/sentry';
 
 /** 最小限の ErrorEvent。level 以外は filter の判定に使われない。 */
 function makeEvent(overrides: Partial<ErrorEvent> = {}): ErrorEvent {
@@ -97,5 +97,23 @@ describe('flushSentry', () => {
     (Sentry.flush as jest.Mock).mockRejectedValueOnce(new Error('network down'));
 
     await expect(flushSentry()).resolves.toBeUndefined();
+  });
+});
+
+describe('resolveSentrySdk', () => {
+  it('名前空間に関数があればそのまま使う (Next.js / Jest)', () => {
+    const namespace = { captureException: () => undefined, default: { captureException: () => 'default' } };
+    expect(resolveSentrySdk(namespace)).toBe(namespace);
+    expect(ResolvedSentry).toBe(Sentry);
+  });
+
+  it('名前空間に無ければ default を使う (tsx で CJS 版が読まれ、再 export の関数が名前付きで見えないとき)', () => {
+    const sdk = { captureException: () => undefined, addBreadcrumb: () => undefined };
+    expect(resolveSentrySdk({ init: () => undefined, default: sdk })).toBe(sdk);
+  });
+
+  it('どちらにも無ければ名前空間を返す (呼び出し側で気づけるように、勝手に握りつぶさない)', () => {
+    const namespace = { init: () => undefined };
+    expect(resolveSentrySdk(namespace)).toBe(namespace);
   });
 });

@@ -11,7 +11,7 @@
  * @module lib/slack
  */
 
-import * as Sentry from '@sentry/nextjs';
+import { Sentry } from '@/lib/observability/sentry';
 
 import { isCloudRun, missingSlackConfigKeys, readSlackConfig } from './config';
 import { postSlackMessage } from './client';

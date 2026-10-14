@@ -322,6 +322,22 @@ export class R2StorageService {
   }
 
   /**
+   * prefix で始まるキーを全件取得する (1 回 1,000 件までなので、続きのトークンでたどる)
+   */
+  async listAllObjects(prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    let token: string | undefined;
+    do {
+      const response = await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.bucketName, Prefix: prefix, ContinuationToken: token })
+      );
+      keys.push(...(response.Contents ?? []).map((obj) => obj.Key).filter((key): key is string => !!key));
+      token = response.IsTruncated ? response.NextContinuationToken : undefined;
+    } while (token);
+    return keys;
+  }
+
+  /**
    * ユニークなキーを生成
    *
    * @description

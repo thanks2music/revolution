@@ -12,7 +12,7 @@
  * @module lib/slack/client
  */
 
-import * as Sentry from '@sentry/nextjs';
+import { Sentry } from '@/lib/observability/sentry';
 
 import type { SlackConfig } from './config';
 import type { SlackMessage } from './messages';
