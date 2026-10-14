@@ -94,6 +94,8 @@ export function folderWriter(store: ImageStore | null, folder: string): FolderWr
       );
       const keys = await existing;
       const pending = inFlight.get(key);
+      // 同じ中身を先に上げている側が失敗したら、待っていた側も同じ例外で失敗させる (その画像は skipped になる。
+      // 同じ R2 に続けて書いても同じ理由で失敗する見込みが高いので、ここでは再試行しない)
       if (pending) {
         await pending;
         return { url: store.publicUrlFor(key), uploaded: false };
@@ -176,7 +178,8 @@ const FORMATS: Record<string, [ext: string, contentType: string]> = {
 
 /**
  * アイキャッチ (記事の冒頭・SNS の共有画像) を上げる。キーは中身のハッシュ (差分が無ければ上げない)。
- * - og:image (`fromBody` なし): SNS 向けに作られた画像なので、**形式も大きさも変えず**に上げ、寸法だけ測る。
+ * - og:image (`fromBody` なし): SNS 向けに作られた画像なので、**形式も大きさも変えず**に上げ、寸法だけ測る
+ *   (公式サイトが公開している画像なので、アニメーションや EXIF も意図して残す)。
  *   ただし JPEG / PNG / WebP / GIF / AVIF 以外 (SVG はスクリプトを含められる) と、`max_bytes` を超えるものは作り直す
  * - 本文の画像から作るとき (`fromBody`): 必ず作り直す
  * - 作り直し: 幅を max_width まで縮め、縦長なら上端の片だけを使い、JPEG にする

@@ -102,7 +102,8 @@ async function encode(input: () => sharp.Sharp, config: ImageUploadConfig, forma
   for (;;) {
     const buffer = await (format === 'webp' ? input().webp({ quality }) : input().jpeg({ quality, mozjpeg: true })).toBuffer();
     if (buffer.length <= config.max_bytes || quality <= config.webp_min_quality) return buffer;
-    quality = Math.max(config.webp_min_quality, quality - config.quality_step);
+    // quality_step は検証済み (正の数) だが、0 が来ても終わるよう 1 以上で下げる
+    quality = Math.max(config.webp_min_quality, quality - Math.max(1, config.quality_step));
   }
 }
 
