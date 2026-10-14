@@ -71,8 +71,15 @@ import type { EventDataOccurrence } from '@revolution/schemas/mdx-frontmatter';
 
 import { shortenPrefecture, validateVenueLabel } from './venue-label-validator';
 
-/** 表示用に会場名を連結する際の区切り。キャラクター名と同じく読点 (Templates CLAUDE.md §6.1)。 */
-const VENUE_JOIN = '、';
+/**
+ * まとめの表の「開催場所」の表記。会場が 2 つ以上なら、会場ごとに「・」を付けて改行する (2026-10-15 BOSS 決定。
+ * 「、」で連結すると、店舗名の中の空白・記号と区切りの見分けが付かなかった)。会場が 1 つなら名前だけ。
+ * 表は Markdown なので、セルの中の改行は `<br />` で書く
+ */
+function venueListLabel(venues: readonly string[]): string {
+  if (venues.length <= 1) return venues[0] ?? '';
+  return venues.map((venue) => `・${venue}`).join('<br />');
+}
 
 /**
  * 都市名を連結する際の区切り。
@@ -398,7 +405,7 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
     会場数: 会場一覧.length,
     is_multi_venue: 会場一覧.length >= 2,
     会場一覧,
-    会場一覧表記: 会場一覧.join(VENUE_JOIN),
+    会場一覧表記: venueListLabel(会場一覧),
     ブランド一覧,
     都市表記タイトル用: buildCityLabel(都市一覧, CITY_JOIN_TITLE, CITY_LIST_MAX_TITLE),
   };

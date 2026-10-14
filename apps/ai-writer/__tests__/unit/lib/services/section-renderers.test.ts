@@ -8,6 +8,7 @@ import * as os from 'os';
 import * as path from 'path';
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import {
+  appendToNoveltySection,
   fillTemplate,
   findSection,
   loadSectionYaml,
@@ -16,6 +17,7 @@ import {
   renderMenuTable,
   replaceMenuItems,
   replaceMenuItemsWithTable,
+  replaceSummaryRowValue,
   replaceNoveltySentence,
 } from '@/lib/services/section-renderers';
 
@@ -210,6 +212,48 @@ describe('replaceMenuItemsWithTable', () => {
 
   it('メニューの節が無ければそのまま', () => {
     expect(replaceMenuItemsWithTable('## ノベルティー\n\n文', '<table>\n</table>')).toBe('## ノベルティー\n\n文');
+  });
+});
+
+describe('appendToNoveltySection', () => {
+  it('ノベルティの節の末尾 (次の ## の前) に、空行を挟んで差し込む', () => {
+    const article = ['## カフェのノベルティー', '', '導入の文', '', '## カフェのグッズ', '', 'グッズの文'].join('\n');
+
+    expect(appendToNoveltySection(article, '### ホログラムステッカー\n\n### オリジナルコースター（全7種）')).toBe(
+      [
+        '## カフェのノベルティー',
+        '',
+        '導入の文',
+        '',
+        '### ホログラムステッカー',
+        '',
+        '### オリジナルコースター（全7種）',
+        '',
+        '## カフェのグッズ',
+        '',
+        'グッズの文',
+      ].join('\n')
+    );
+  });
+
+  it('節が無い、または差し込むものが無ければそのまま', () => {
+    expect(appendToNoveltySection('## メニュー\n\n文', '### x')).toBe('## メニュー\n\n文');
+    expect(appendToNoveltySection('## ノベルティー\n\n文', '')).toBe('## ノベルティー\n\n文');
+  });
+});
+
+describe('replaceSummaryRowValue', () => {
+  const TABLE = ['| 項目 | 内容 |', '|------|------|', '| 開催場所 | 東京・愛知・大阪・北海道の各会場 |', '| 開催期間 | 2026年10月16日〜 |'].join('\n');
+
+  it('LLM が書いた「開催場所」のセルを、会場の一覧で置き換える (区切りの | は全角)', () => {
+    expect(replaceSummaryRowValue(TABLE, '開催場所', '・A店<br />・B|C店')).toBe(
+      ['| 項目 | 内容 |', '|------|------|', '| 開催場所 | ・A店<br />・B｜C店 |', '| 開催期間 | 2026年10月16日〜 |'].join('\n')
+    );
+  });
+
+  it('値が空、または行が無ければそのまま (会場のデータが無いときは LLM の文を残す)', () => {
+    expect(replaceSummaryRowValue(TABLE, '開催場所', '')).toBe(TABLE);
+    expect(replaceSummaryRowValue(TABLE, '会場', 'x')).toBe(TABLE);
   });
 });
 

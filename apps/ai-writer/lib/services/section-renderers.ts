@@ -115,6 +115,23 @@ export function hasMenuSection(content: string): boolean {
   return findSection(content, MENU_SECTION) !== null;
 }
 
+/** ノベルティの節があるか */
+export function hasNoveltySection(content: string): boolean {
+  return findSection(content, NOVELTY_SECTION) !== null;
+}
+
+/**
+ * ノベルティの節の末尾に差し込む (導入の文の下に並べるノベルティ名の見出しと画像。2026-10-15)。
+ * 節が無い、または差し込むものが無ければそのまま
+ */
+export function appendToNoveltySection(content: string, block: string): string {
+  const range = findSection(content, NOVELTY_SECTION);
+  if (!range || !block) return content;
+  const before = content.slice(range.start, range.end).replace(/\s+$/, '');
+  const tail = range.end < content.length ? '\n\n' : '\n';
+  return replaceSectionBody(content, range, `${before}\n\n${block}${tail}`);
+}
+
 /**
  * メニューの節の、LLM が書いた品目の範囲 (最初の `### ` の行から、最初の画像の手前まで)。
  * LLM が品目を書いていなければ、最初の画像の手前 (無ければ節の末尾) の空の範囲
@@ -193,6 +210,18 @@ export function replaceMenuItemsWithTable(content: string, table: string): strin
   // 次の節が続くなら、表の後に空行を入れる (MDX で表の直後の見出しが表の一部と読まれないように)
   const tail = range.end < content.length ? '\n\n' : '\n';
   return replaceSectionBody(content, range, `${kept.replace(/\n{3,}/g, '\n\n')}\n\n${table}${tail}`);
+}
+
+/**
+ * まとめの表の、`label` の行のセルを `value` で置き換える (最初の 1 行だけ)。本文の LLM が `{{会場一覧表記}}` を残さず
+ * 自分で書いた場所 (「東京・愛知・大阪・北海道の各会場」など) を、コードが組み立てた会場の一覧にするため (2026-10-15)。
+ * 区切りの `|` は全角にする。行が無い、または値が空ならそのまま
+ */
+export function replaceSummaryRowValue(content: string, label: string, value: string): string {
+  if (!label || !value) return content;
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const row = new RegExp(`^\\|[ \\t]*${escapedLabel}[ \\t]*\\|.*\\|[ \\t]*$`, 'm');
+  return content.replace(row, () => `| ${label} | ${value.replace(/\|/g, '｜')} |`);
 }
 
 /**

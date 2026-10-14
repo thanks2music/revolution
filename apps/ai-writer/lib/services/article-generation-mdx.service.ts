@@ -121,10 +121,13 @@ import {
 import {
   fillTemplate,
   loadSectionYaml,
+  appendToNoveltySection,
   hasMenuSection,
+  hasNoveltySection,
   renderMenuItems,
   renderMenuTable,
   replaceMenuItems,
+  replaceSummaryRowValue,
   replaceMenuItemsWithTable,
   type MenuTableConfig,
   replaceNoveltySentence,
@@ -1198,6 +1201,9 @@ export class ArticleGenerationMdxService {
         }
       }
       const menuItemImages = itemImageTags(menuSectionFound ? menuNames : [], imagesUpload?.categories.menu ?? []);
+      // ノベルティは名前ごとの見出しを導入の文の下に並べる (グッズと同じ形)。画像は品名と照合できたものだけ見出しの下に入れる
+      const noveltyNames = hasNoveltySection(contentGeneration.content) ? (detailedExtraction?.ノベルティ名 ?? []) : [];
+      const noveltyItemImages = itemImageTags(noveltyNames, imagesUpload?.categories.novelty ?? []);
       const goodsItemImages = itemImageTags(goodsSectionFound ? goodsNames : [], imagesUpload?.categories.goods ?? []);
       if (menuItemImages.matched > 0 || goodsItemImages.matched > 0) {
         console.log(
@@ -1223,11 +1229,13 @@ export class ArticleGenerationMdxService {
       const menuTrailingImages = menuPerItem ? restImageTags(menuItemImages.rest, 'コラボメニュー') : '';
       const goodsPerItem = goodsItemImages.matched > 0;
       const goodsTrailingImages = goodsPerItem ? restImageTags(goodsItemImages.rest, 'グッズ') : '';
+      const noveltyPerItem = noveltyNames.length > 0;
+      const noveltyTrailingImages = noveltyPerItem ? restImageTags(noveltyItemImages.rest, 'ノベルティ') : '';
 
       // カテゴリ別R2画像（image-placeholder-replacement step で使用）
       const uploadedCategoryR2Images: CategoryR2Images = {
         menu: menuPerItem ? [] : menuItemImages.rest.map((image) => image.segments),
-        novelty: (imagesUpload?.categories.novelty ?? []).map((image) => image.segments),
+        novelty: noveltyPerItem ? [] : noveltyItemImages.rest.map((image) => image.segments),
         goods: goodsPerItem ? [] : goodsItemImages.rest.map((image) => image.segments),
         eyecatch: imagesUpload?.eyecatch,
       };
@@ -1333,7 +1341,14 @@ export class ArticleGenerationMdxService {
           itemImages: menuItemImages.tags,
           trailingImages: menuTrailingImages,
           asTable: menuAsTable,
+        }, {
+          itemImages: noveltyItemImages.tags,
+          trailingImages: noveltyTrailingImages,
         });
+
+        // まとめの表の「開催場所」は、LLM が書いた文ではなく会場の一覧にする (会場のデータがあるときだけ。2026-10-15 BOSS 決定)
+        const { venue_row_label } = loadSectionYaml<{ venue_row_label: string }>('05-summary.yaml', 'rendered');
+        finalContent = replaceSummaryRowValue(finalContent, venue_row_label, storeContext.会場一覧表記);
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
@@ -1672,6 +1687,7 @@ export class ArticleGenerationMdxService {
     content: string,
     extraction: ExtractionResult,
     menu: { itemImages: string[]; trailingImages: string; asTable: boolean } = { itemImages: [], trailingImages: '', asTable: false },
+    novelty: { itemImages: string[]; trailingImages: string } = { itemImages: [], trailingImages: '' },
   ): string {
     const ctx = getStepContext('text-placeholder-replacement', '名前の差し込み');
     let result = content;
@@ -1693,14 +1709,24 @@ export class ArticleGenerationMdxService {
     }
 
     if (!isEmptyList(extraction.ノベルティ名)) {
-      const { sentence } = loadSectionYaml<{ sentence: string }>('03-novelty.yaml', 'rendered');
+      const rendered = loadSectionYaml<{ sentence: string; item_line: string; other_images_heading: string }>(
+        '03-novelty.yaml',
+        'rendered',
+      );
       result = replaceNoveltySentence(
         result,
-        fillTemplate(sentence, {
+        fillTemplate(rendered.sentence, {
           作品名: escapeMdxText(extraction.作品名 ?? ''),
           ノベルティ名: extraction.ノベルティ名!.map(escapeMdxText),
         }),
       );
+      // 導入の文の下に、ノベルティ名ごとの見出し (照合できた画像はその下) と、照合できなかった画像を並べる
+      const blocks = extraction.ノベルティ名!.map((name, index) => {
+        const heading = fillTemplate(rendered.item_line, { name: escapeMdxText(name) });
+        return novelty.itemImages[index] ? `${heading}\n\n${novelty.itemImages[index]}` : heading;
+      });
+      if (novelty.trailingImages) blocks.push(`${rendered.other_images_heading}\n\n${novelty.trailingImages}`);
+      result = appendToNoveltySection(result, blocks.join('\n\n'));
     }
 
     if (result !== content) {

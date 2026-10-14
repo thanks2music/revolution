@@ -299,6 +299,18 @@ describe('deriveStoreContext — 代表会場名の決定表', () => {
       expect(r.会場一覧表記).toBe('');
     });
 
+    it('会場一覧表記: 2 会場以上は「・」を付けて <br /> で改行、1 会場は名前だけ (まとめの表の開催場所)', () => {
+      const multi = deriveStoreContext({
+        occurrences: [occ('OH MY CAFE 表参道ヒルズ'), occ('BOX cafe&space ルミネエスト新宿2号店')],
+        brandSlugs: BRANDS,
+        workTitle: 'テスト作品',
+      });
+      const single = deriveStoreContext({ occurrences: [occ('OH MY CAFE 表参道ヒルズ')], brandSlugs: BRANDS, workTitle: 'テスト作品' });
+
+      expect(multi.会場一覧表記).toBe('・OH MY CAFE 表参道ヒルズ<br />・BOX cafe&space ルミネエスト新宿2号店');
+      expect(single.会場一覧表記).toBe('OH MY CAFE 表参道ヒルズ');
+    });
+
     it('入力の occurrences を変更しない (純粋性)', () => {
       const input = [occ('OH MY CAFE 表参道ヒルズ'), occ('BOX cafe&space 東京ソラマチ店')];
       const snapshot = JSON.stringify(input);
