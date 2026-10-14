@@ -111,7 +111,7 @@ export class ImagePlaceholderReplacerService {
 
       if (categoryImages.length > 0) {
         // 画像がある場合: 寸法付きの画像に置換
-        const imageMarkdown = this.generateImageMarkdown(categoryImages, category, articleTitle);
+        const imageMarkdown = categoryImagesMarkdown(categoryImages, category, articleTitle);
         result = result.replace(placeholder, () => imageMarkdown);
         replacedCount[category] = categoryImages.length;
         replacedCount.total += categoryImages.length;
@@ -151,50 +151,6 @@ export class ImagePlaceholderReplacerService {
       removedSections,
       unreplacedPlaceholders,
     };
-  }
-
-  /**
-   * 画像URLからマークダウン形式の画像リストを生成
-   *
-   * @param urls 画像URL配列
-   * @param category カテゴリ名
-   * @param articleTitle 記事タイトル（alt属性に使用）
-   * @returns マークダウン形式の画像
-   */
-  private generateImageMarkdown(
-    categoryImages: ArticleImageRef[][],
-    category: string,
-    articleTitle?: string
-  ): string {
-    const categoryLabel = this.getCategoryLabel(category);
-
-    // 複数画像の場合は縦に並べる (分割した縦長の画像は、片を続けて 1 枚に見せる)
-    // alt属性形式: 「{記事タイトル} {カテゴリラベル}{番号}」
-    // 例: 「機動戦士ガンダム 鉄血のオルフェンズ コラボメニュー1」
-    return categoryImages
-      .map((segments, index) => {
-        const altText = articleTitle
-          ? `${articleTitle} ${categoryLabel}${index + 1}`
-          : `${categoryLabel}${index + 1}`;
-        return articleImageTags(segments, altText);
-      })
-      .join('\n\n');
-  }
-
-  /**
-   * カテゴリに応じたラベルを取得
-   */
-  private getCategoryLabel(category: string): string {
-    switch (category) {
-      case 'menu':
-        return 'コラボメニュー';
-      case 'novelty':
-        return 'ノベルティ';
-      case 'goods':
-        return 'グッズ';
-      default:
-        return '画像';
-    }
   }
 
   /**
@@ -258,6 +214,31 @@ export class ImagePlaceholderReplacerService {
 
     return { content: cleanedContent, removed: true };
   }
+}
+
+/** 画像の代替テキストに使うカテゴリの名前 */
+const CATEGORY_LABELS: Record<ImageCategory, string> = {
+  menu: 'コラボメニュー',
+  novelty: 'ノベルティ',
+  goods: 'グッズ',
+};
+
+/**
+ * カテゴリの画像を縦に並べた MDX (分割した縦長の画像は、片を続けて 1 枚に見せる)。
+ * 代替テキストは「{記事タイトル} {カテゴリ}{番号}」(例: 「機動戦士ガンダム 鉄血のオルフェンズ コラボメニュー1」)。
+ * 節の末尾の欄と「その他参考画像」の両方で使い、代替テキストを揃える
+ */
+export function categoryImagesMarkdown(
+  categoryImages: readonly ArticleImageRef[][],
+  category: ImageCategory,
+  articleTitle?: string
+): string {
+  const label = CATEGORY_LABELS[category];
+  return categoryImages
+    .map((segments, index) =>
+      articleImageTags(segments, articleTitle ? `${articleTitle} ${label}${index + 1}` : `${label}${index + 1}`)
+    )
+    .join('\n\n');
 }
 
 /**

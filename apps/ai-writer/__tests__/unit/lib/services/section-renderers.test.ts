@@ -18,6 +18,7 @@ import {
   replaceMenuItems,
   replaceMenuItemsWithTable,
   replaceSummaryRowValue,
+  replacePlaceholderLine,
   renderVenueList,
   loadRendered,
   replaceNoveltySentence,
@@ -141,6 +142,16 @@ describe('replaceMenuItems と残したプレースホルダー', () => {
     expect(replaceMenuItems(article, ['### マルゲリータ'])).toBe(
       ['## カフェのメニュー', '', '導入文', '', '### マルゲリータ', '', '{ここにメニューの画像を入れる}', '', '※画像はイメージです', ''].join('\n')
     );
+  });
+});
+
+describe('replacePlaceholderLine', () => {
+  const PH = '{ここにメニューの画像を入れる}';
+
+  it('プレースホルダーの行だけを置き換え、直前の品目の見出しは消さない (全画像が品目に付いて、残りが無いとき)', () => {
+    const content = ['### A 800円', '', 'IMG', '', '### B 900円', '', PH, '', '※画像はイメージです'].join('\n');
+    expect(replacePlaceholderLine(content, PH, '')).toBe(['### A 800円', '', 'IMG', '', '### B 900円', '', '※画像はイメージです'].join('\n'));
+    expect(replacePlaceholderLine(content, PH, '### その他参考画像\n\nREST')).toContain('### B 900円\n\n### その他参考画像\n\nREST\n\n※画像は');
   });
 });
 

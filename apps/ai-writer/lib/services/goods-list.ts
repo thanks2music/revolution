@@ -15,7 +15,7 @@
  */
 import type { GoodsSales, SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 import { itemNameKey } from '@/lib/services/merge-subpage-into-extraction';
-import { appendToSection, fillTemplate as fill, findSection, loadSectionYaml, otherImagesBlock, tableCell as cell } from '@/lib/services/section-renderers';
+import { appendToSection, fillTemplate as fill, findSection, loadChecked, otherImagesBlock, tableCell as cell } from '@/lib/services/section-renderers';
 import { escapeMdxText } from '@/lib/utils/mdx-safety';
 
 /** `sections/04-goods.yaml` の `goods_list` */
@@ -42,7 +42,12 @@ export interface GoodsListConfig {
  * @throws YAML が無い、または `goods_list` が無いとき (`pnpm sync:templates` が要る)
  */
 export function loadGoodsListConfig(dir?: string): GoodsListConfig {
-  return loadSectionYaml<GoodsListConfig>('04-goods.yaml', 'goods_list', dir);
+  return loadChecked<GoodsListConfig>(
+    '04-goods.yaml',
+    'goods_list',
+    ['prose_limit', 'list_max_items', 'heading', 'bullet', 'table_header', 'table_divider', 'table_row', 'sales_labels', 'online_only_note', 'item_heading', 'item_sales_line', 'other_images_heading'],
+    dir
+  );
 }
 
 /** 本文の文に並べるグッズ名 (先頭の数件)。残りは本文の「など」で受け、一覧に全件を書く */

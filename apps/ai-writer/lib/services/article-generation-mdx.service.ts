@@ -64,7 +64,6 @@ import {
 import { getR2StorageService } from './r2-storage.service';
 import { getConfigLoaderService } from './config-loader.service';
 import { r2ImageStore } from './article-images/upload-article-images';
-import { articleImageTags } from './article-images/article-image-tag';
 import {
   IMAGE_CATEGORIES,
   itemImageTags,
@@ -82,8 +81,8 @@ import {
 } from './category-image-extractor.service';
 import {
   getImagePlaceholderReplacerService,
+  categoryImagesMarkdown,
   PLACEHOLDERS,
-  removePlaceholderBlock,
   type CategoryR2Images,
   type PlaceholderReplacementResult,
 } from './image-placeholder-replacer.service';
@@ -135,6 +134,7 @@ import {
   replaceMenuItems,
   replaceMenuItemsWithTable,
   replaceNoveltySentence,
+  replacePlaceholderLine,
   replaceSummaryRowValue,
   type MenuTableConfig,
   type VenueListConfig,
@@ -1224,28 +1224,28 @@ export class ArticleGenerationMdxService {
       if (!isEmptyList(detailedExtraction?.ノベルティ名)) keepSections.add('novelty');
       if (!isEmptyList(detailedExtraction?.グッズ名)) keepSections.add('goods');
 
-      // 照合できなかった画像の MDX (代替テキストは「{記事タイトル} {カテゴリ}{番号}」。節の末尾の欄と同じ)
-      const restImageTags = (images: typeof menuItemImages.rest, label: string) =>
-        images.map((image, index) => articleImageTags(image.segments, `${titleResult.title} ${label}${index + 1}`)).join('\n\n');
-
-      // 品目に写真が付いた節は品目ごとの形にし、照合できなかった画像は品目の後ろ (節の末尾) に「その他参考画像」の見出しを
-      // 付けて並べる (プレースホルダーの位置に置くと、品目より前に出てしまう)。メニューは品目に写真が 1 枚も付かなければ
-      // 表にする (画像は節の末尾の欄のまま、表はその下。2026-10-15 BOSS 決定)
+      // 品目ごとの形の節 (品目に写真が付いた・ノベルティ) は、照合できなかった画像を品目の後ろに「その他参考画像」の見出しを
+      // 付けて並べる (節の末尾の欄には並べない)。それ以外の節は、これまでどおり節の末尾の欄に並べる。
+      // メニューは品目に写真が 1 枚も付かなければ表にする (画像は節の末尾の欄のまま、表はその下。2026-10-15 BOSS 決定)
+      const splitRest = (item: ReturnType<typeof itemImageTags>, category: ImageCategory, perItem: boolean) => {
+        const rest = item.rest.map((image) => image.segments);
+        return perItem
+          ? { trailing: categoryImagesMarkdown(rest, category, titleResult.title), atPlaceholder: [] }
+          : { trailing: '', atPlaceholder: rest };
+      };
       const menuPerItem = menuItemImages.matched > 0;
-      const menuAsTable = menuNames.length > 0 && !menuPerItem;
-      // 品目ごとの形のメニューは、プレースホルダーを残し (品目の範囲の終わりの目印)、名前を差し込んだ後に置き換える
-      const menuTrailingImages = menuPerItem ? restImageTags(menuItemImages.rest, 'コラボメニュー') : '';
+      const menuRest = splitRest(menuItemImages, 'menu', menuPerItem);
+      const goodsRest = splitRest(goodsItemImages, 'goods', goodsItemImages.matched > 0);
+      const noveltyRest = splitRest(noveltyItemImages, 'novelty', noveltyNames.length > 0);
+      // 品目ごとの形のメニューは、プレースホルダーを残し (LLM が書いた品目の範囲の終わりの目印。その後ろの文を消さないため)、
+      // 名前を差し込んだ後に「その他参考画像」へ置き換える
       const deferredPlaceholders = new Set<ImageCategory>(menuPerItem ? ['menu'] : []);
-      const goodsPerItem = goodsItemImages.matched > 0;
-      const goodsTrailingImages = goodsPerItem ? restImageTags(goodsItemImages.rest, 'グッズ') : '';
-      const noveltyPerItem = noveltyNames.length > 0;
-      const noveltyTrailingImages = noveltyPerItem ? restImageTags(noveltyItemImages.rest, 'ノベルティ') : '';
 
       // カテゴリ別R2画像（image-placeholder-replacement step で使用）
       const uploadedCategoryR2Images: CategoryR2Images = {
-        menu: menuPerItem ? [] : menuItemImages.rest.map((image) => image.segments),
-        novelty: noveltyPerItem ? [] : noveltyItemImages.rest.map((image) => image.segments),
-        goods: goodsPerItem ? [] : goodsItemImages.rest.map((image) => image.segments),
+        menu: menuRest.atPlaceholder,
+        novelty: noveltyRest.atPlaceholder,
+        goods: goodsRest.atPlaceholder,
         eyecatch: imagesUpload?.eyecatch,
       };
 
@@ -1336,7 +1336,7 @@ export class ArticleGenerationMdxService {
           detailedExtraction.グッズ詳細リスト,
           goodsListConfig,
           goodsItemImages.tags,
-          goodsTrailingImages,
+          goodsRest.trailing,
         );
         const withGoodsList = insertIntoGoodsSection(finalContent, goodsList);
         if (withGoodsList !== finalContent) {
@@ -1347,15 +1347,12 @@ export class ArticleGenerationMdxService {
         }
 
         // 名前の入る部分は抽出結果から組み立て、本文の LLM が書いたものと置き換える (打ち直しの誤字を防ぐ)
-        finalContent = this.renderExtractedNames(finalContent, detailedExtraction, {
-          itemImages: menuItemImages.tags,
-          trailingImages: menuTrailingImages,
-          asTable: menuAsTable,
-          deferred: menuPerItem,
-        }, {
-          itemImages: noveltyItemImages.tags,
-          trailingImages: noveltyTrailingImages,
-        });
+        finalContent = this.renderExtractedNames(
+          finalContent,
+          detailedExtraction,
+          { itemImages: menuItemImages.tags, trailingImages: menuRest.trailing },
+          { itemImages: noveltyItemImages.tags, trailingImages: noveltyRest.trailing },
+        );
 
         // まとめの表の「開催場所」は、LLM が書いた文ではなく会場の一覧にする (会場のデータがあるときだけ。2026-10-15 BOSS 決定)
         const summary = loadRendered<{ venue_row_label: string } & VenueListConfig>('05-summary.yaml', [
@@ -1363,11 +1360,14 @@ export class ArticleGenerationMdxService {
           'venue_list_item',
           'venue_list_separator',
         ]);
-        finalContent = replaceSummaryRowValue(
-          finalContent,
-          summary.venue_row_label,
-          renderVenueList(storeContext.会場一覧, summary),
-        );
+        const venueList = renderVenueList(storeContext.会場一覧, summary);
+        const withVenues = replaceSummaryRowValue(finalContent, summary.venue_row_label, venueList);
+        if (venueList && withVenues === finalContent) {
+          console.warn(
+            `${getStepContext('text-placeholder-replacement', '開催場所')} ⚠️ まとめの表に「${summary.venue_row_label}」の行が無いため、会場の一覧を書けなかった`,
+          );
+        }
+        finalContent = withVenues;
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
@@ -1702,16 +1702,15 @@ export class ArticleGenerationMdxService {
    * メニューの品目とノベルティの文を、抽出結果からコードで組み立てて差し替える (書式と文面は Templates の YAML)。
    * 本文の LLM が名前を書き写すと誤字が混ざるため (2026-10-12、「招待状（ランダム7种）」)。
    */
+  /**
+   * `menu` / `novelty` の `itemImages[i]` は i 番目の品目の画像 (書き出し済みの MDX)、`trailingImages` は照合できなかった画像。
+   * メニューは品目の画像が 1 枚でもあれば品目ごとの見出し、無ければ表にする
+   */
   private renderExtractedNames(
     content: string,
     extraction: ExtractionResult,
-    menu: { itemImages: string[]; trailingImages: string; asTable: boolean; deferred: boolean } = {
-      itemImages: [],
-      trailingImages: '',
-      asTable: false,
-      deferred: false,
-    },
-    novelty: { itemImages: string[]; trailingImages: string } = { itemImages: [], trailingImages: '' },
+    menu: { itemImages: string[]; trailingImages: string },
+    novelty: { itemImages: string[]; trailingImages: string },
   ): string {
     const ctx = getStepContext('text-placeholder-replacement', '名前の差し込み');
     let result = content;
@@ -1722,22 +1721,17 @@ export class ArticleGenerationMdxService {
         '02-menu.yaml',
         ['item_line', 'other_images_heading', 'table'],
       );
-      if (menu.asTable) {
+      if (!menu.itemImages.some(Boolean)) {
         // 品目に写真が 1 枚も付かない (縦長のメニュー表 1 枚にまとまっているなど): 画像の下に表で並べる
         result = replaceMenuItemsWithTable(result, renderMenuTable(menuItems, rendered.table));
       } else {
+        // 品目ごとの見出し。残しておいたプレースホルダー (品目の後ろ) の行を、照合できなかった画像に置き換える (無ければ行ごと消す)。
+        // removePlaceholderBlock は使わない: 直前の見出しを「プレースホルダーだけの見出し」とみなして、最後の品目の見出しを消すため
         result = replaceMenuItems(result, renderMenuItems(menuItems, rendered.item_line, menu.itemImages));
-        if (menu.deferred) {
-          // 残しておいたプレースホルダー (品目の後ろ) を、照合できなかった画像に置き換える。無ければ消す
-          const other = otherImagesBlock(rendered.other_images_heading, menu.trailingImages);
-          if (result.includes(PLACEHOLDERS.menu)) {
-            result = other
-              ? result.replace(PLACEHOLDERS.menu, () => other)
-              : removePlaceholderBlock(result, PLACEHOLDERS.menu);
-          } else {
-            result = appendToMenuSection(result, other);
-          }
-        }
+        const other = otherImagesBlock(rendered.other_images_heading, menu.trailingImages);
+        result = result.includes(PLACEHOLDERS.menu)
+          ? replacePlaceholderLine(result, PLACEHOLDERS.menu, other)
+          : appendToMenuSection(result, other);
       }
     }
 

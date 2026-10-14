@@ -89,12 +89,17 @@ export function loadSectionYaml<T>(file: string, key: string, dir = defaultSecti
  * @throws ファイル・`rendered`・キーが無いとき (`pnpm sync:templates` が要る)
  */
 export function loadRendered<T extends object>(file: string, keys: readonly (keyof T & string)[], dir?: string): T {
-  const rendered = loadSectionYaml<T>(file, 'rendered', dir);
-  const missing = keys.filter((key) => (rendered as Record<string, unknown>)[key] === undefined);
+  return loadChecked<T>(file, 'rendered', keys, dir);
+}
+
+/** `<file>` の `key` を読み、その中に `keys` がすべてあることを確かめる (`loadRendered` と同じ理由) */
+export function loadChecked<T extends object>(file: string, key: string, keys: readonly (keyof T & string)[], dir?: string): T {
+  const value = loadSectionYaml<T>(file, key, dir);
+  const missing = keys.filter((name) => (value as Record<string, unknown>)[name] === undefined);
   if (missing.length > 0) {
-    throw new Error(`${file} の rendered に ${missing.join(' / ')} がありません。pnpm sync:templates で Templates を同期してください`);
+    throw new Error(`${file} の ${key} に ${missing.join(' / ')} がありません。pnpm sync:templates で Templates を同期してください`);
   }
-  return rendered;
+  return value;
 }
 
 function defaultSectionsDir(): string {
@@ -112,7 +117,7 @@ export function renderMenuItems(items: ExtractionMenuItem[], itemLine: string, i
       name: escapeMdxText(item.name),
       price: item.price ? escapeMdxText(item.price) : null,
     });
-    return itemImages[index] ? `${heading}\n\n${itemImages[index]}` : heading;
+    return withItemImage(heading, itemImages[index]);
   });
 }
 
@@ -157,15 +162,26 @@ export function appendToNoveltySection(content: string, block: string): string {
   return appendToSection(content, NOVELTY_SECTION, block);
 }
 
+/** 見出しの直後に、その品目の画像 (書き出し済みの MDX) を続ける */
+function withItemImage(heading: string, image: string | undefined): string {
+  return image ? `${heading}\n\n${image}` : heading;
+}
+
 /**
- * 品目の見出し (`line` に name などを差し込んだもの) を並べ、`itemImages[i]` があれば i 番目の見出しの直後に続ける
- * (ノベルティ・グッズなど、品名だけの見出し)
+ * 品名だけの見出し (`line` に name を差し込んだもの) を並べ、`itemImages[i]` があれば i 番目の見出しの直後に続ける
+ * (ノベルティ)
  */
 export function renderItemHeadings(names: readonly string[], line: string, itemImages: readonly string[] = []): string[] {
-  return names.map((name, index) => {
-    const heading = fillTemplate(line, { name: escapeMdxText(name) });
-    return itemImages[index] ? `${heading}\n\n${itemImages[index]}` : heading;
-  });
+  return names.map((name, index) => withItemImage(fillTemplate(line, { name: escapeMdxText(name) }), itemImages[index]));
+}
+
+/** `placeholder` を含む行を `replacement` に置き換える (空なら行ごと消し、続く空行を詰める) */
+export function replacePlaceholderLine(content: string, placeholder: string, replacement: string): string {
+  const lines = content.split('\n');
+  const index = lines.findIndex((line) => line.includes(placeholder));
+  if (index === -1) return content;
+  lines.splice(index, 1, ...(replacement ? [replacement] : []));
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 /** 照合できなかった画像を、見出しを付けて並べるブロック (画像が無ければ空) */
@@ -256,7 +272,7 @@ export function replaceMenuItemsWithTable(content: string, table: string): strin
   const lines = content.slice(range.start, range.end).split('\n');
   const { from, to } = llmItemRange(lines);
   const kept = [...lines.slice(0, from), ...lines.slice(to)].join('\n').replace(/\n{3,}/g, '\n\n');
-  return appendToSection(content.slice(0, range.start) + kept + content.slice(range.end), MENU_SECTION, table);
+  return appendToSection(replaceSectionBody(content, range, kept), MENU_SECTION, table);
 }
 
 /** 会場の一覧の書き方 (`sections/05-summary.yaml` の `rendered`) */
