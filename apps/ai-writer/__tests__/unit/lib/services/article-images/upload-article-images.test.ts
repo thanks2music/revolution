@@ -192,6 +192,7 @@ describe('uploadEyecatchImage', () => {
 
     const result = await uploadEyecatchImage('https://a.test/og', {
       writer: folderWriter(store, 'f'),
+      config: CONFIG.upload,
       fetcher: fetcherOf({ 'https://a.test/og': { buffer, contentType: 'application/octet-stream' } }),
     });
 
@@ -199,13 +200,33 @@ describe('uploadEyecatchImage', () => {
     expect(store.put).toHaveBeenCalledWith(contentKey('f', buffer, 'jpg'), buffer, 'image/jpeg');
   });
 
-  it('本文の画像から作るとき (derive) は、縮めて上端の片だけを JPEG にする', async () => {
+  it('og:image でも SVG (許可した形式以外) や max_bytes を超えるものは、作り直して JPEG にする', async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630"><rect width="1200" height="630" fill="red"/></svg>');
+    const big = await image(1200, 630, 'png');
+    const store = memoryStore();
+    const fetcher = fetcherOf({ 'https://a.test/og.svg': { buffer: svg }, 'https://a.test/og.png': { buffer: big } });
+
+    const fromSvg = await uploadEyecatchImage('https://a.test/og.svg', { writer: folderWriter(store, 'f'), config: CONFIG.upload, fetcher });
+    const fromBig = await uploadEyecatchImage('https://a.test/og.png', {
+      writer: folderWriter(store, 'f'),
+      config: { ...CONFIG.upload, max_bytes: 100 },
+      fetcher,
+    });
+
+    expect(fromSvg).toMatchObject({ width: 1200, height: 630 });
+    expect(store.puts.every((key) => key.endsWith('.jpg'))).toBe(true);
+    expect(fromBig.url).toMatch(/\.jpg$/);
+    expect(store.put).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), 'image/svg+xml');
+  });
+
+  it('本文の画像から作るとき (fromBody) は、縮めて上端の片だけを JPEG にする', async () => {
     const store = memoryStore();
 
     const result = await uploadEyecatchImage('https://a.test/tall.png', {
       writer: folderWriter(store, 'f'),
       fetcher: fetcherOf({ 'https://a.test/tall.png': { buffer: await image(2000, 12500) } }),
-      derive: CONFIG.upload,
+      config: CONFIG.upload,
+      fromBody: true,
     });
 
     expect(result).toMatchObject({ width: 1600, height: 4800, uploaded: true });
@@ -217,6 +238,7 @@ describe('uploadEyecatchImage', () => {
     await expect(
       uploadEyecatchImage('https://a.test/og', {
         writer: folderWriter(memoryStore(), 'f'),
+        config: CONFIG.upload,
         fetcher: fetcherOf({ 'https://a.test/og': { buffer: Buffer.from('<html>') } }),
       })
     ).rejects.toThrow();

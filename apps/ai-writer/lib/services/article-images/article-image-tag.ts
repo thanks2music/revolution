@@ -9,9 +9,12 @@
  */
 import type { ArticleImageRef } from './upload-article-images';
 
-/** 属性の値に入れられる形にする (二重引用符を全角に、改行を空白に) */
+/**
+ * 属性の値に入れられる形にする (& を文字参照に、二重引用符を全角に、改行を空白に)。
+ * MDX は属性の値の文字参照を解釈するので (`&copy;` が © になる)、& はそのまま書けない
+ */
 function attribute(value: string): string {
-  return value.replace(/"/g, '＂').replace(/\s+/g, ' ').trim();
+  return value.replace(/&/g, '&amp;').replace(/"/g, '＂').replace(/\s+/g, ' ').trim();
 }
 
 export function articleImageTag(ref: ArticleImageRef, alt: string, part?: 'first' | 'middle' | 'last'): string {

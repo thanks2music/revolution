@@ -94,20 +94,31 @@ export interface UploadImagesForArticleOptions {
 }
 
 /**
- * 画像の設定が揃っているか。Templates が古いまま (`max_images_per_category` の頃) だと、全画像が
+ * 画像の設定が揃っていて、値が使える範囲か。Templates が古いまま (`max_images_per_category` の頃) だと、全画像が
  * 「undefined を読めない」で個別に失敗し、記事が黙って画像なしになるため、最初にまとめて止める
  *
  * @throws 設定が欠けているとき
  */
 export function assertImageUploadConfig(config: Partial<UploadImagesForArticleOptions['config']> | undefined): void {
-  const missing = [
-    typeof config?.min_short_side !== 'number' && 'min_short_side',
-    typeof config?.eyecatch_landscape_ratio !== 'number' && 'eyecatch_landscape_ratio',
-    typeof config?.upload?.max_width !== 'number' && 'upload',
+  const upload = config?.upload;
+  const positive = (value: unknown) => typeof value === 'number' && value > 0;
+  const invalid = [
+    !positive(config?.min_short_side) && 'min_short_side',
+    !positive(config?.eyecatch_landscape_ratio) && 'eyecatch_landscape_ratio',
+    !upload && 'upload',
+    upload && !positive(upload.max_width) && 'upload.max_width',
+    upload && !positive(upload.max_bytes) && 'upload.max_bytes',
+    upload && !positive(upload.split_ratio) && 'upload.split_ratio',
+    // 0 以下だと分割が終わらない。WebP の 1 辺の上限 (16,383px) を超えると変換できない
+    upload && !(positive(upload.segment_height) && upload.segment_height <= 16383) && 'upload.segment_height',
+    upload && !(positive(upload.quality_step)) && 'upload.quality_step',
+    upload &&
+      !(positive(upload.webp_min_quality) && positive(upload.webp_quality) && upload.webp_min_quality <= upload.webp_quality && upload.webp_quality <= 100) &&
+      'upload.webp_quality / webp_min_quality',
   ].filter(Boolean);
-  if (missing.length > 0) {
+  if (invalid.length > 0) {
     throw new Error(
-      `store-url-patterns.yaml の image_extraction に ${missing.join(' / ')} が無い (pnpm sync:templates で Templates を同期する)`
+      `store-url-patterns.yaml の image_extraction の ${invalid.join(' / ')} が無いか、値が不正 (pnpm sync:templates で Templates を同期する)`
     );
   }
 }
@@ -145,7 +156,8 @@ export async function uploadImagesForArticle(
       const eyecatch = await uploadEyecatchImage(candidate.sourceUrl, {
         writer,
         fetcher: options.fetcher,
-        derive: candidate.origin === 'og' ? undefined : options.config.upload,
+        config: options.config.upload,
+        fromBody: candidate.origin !== 'og',
       });
       if (eyecatch.uploaded) result.newObjects++;
       result.eyecatch = { url: eyecatch.url, width: eyecatch.width, height: eyecatch.height, ...candidate };

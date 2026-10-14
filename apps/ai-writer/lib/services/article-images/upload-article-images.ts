@@ -156,26 +156,28 @@ const FORMATS: Record<string, [ext: string, contentType: string]> = {
 
 /**
  * アイキャッチ (記事の冒頭・SNS の共有画像) を上げる。キーは中身のハッシュ (差分が無ければ上げない)。
- * - og:image (`derive` なし): SNS 向けに作られた画像なので、**形式も大きさも変えず**に上げ、寸法だけ測る
- * - 本文の画像から作るとき (`derive` あり): 縮めて、縦長なら上端の片だけを使い、JPEG にする
+ * - og:image (`fromBody` なし): SNS 向けに作られた画像なので、**形式も大きさも変えず**に上げ、寸法だけ測る。
+ *   ただし JPEG / PNG / WebP / GIF / AVIF 以外 (SVG はスクリプトを含められる) と、`max_bytes` を超えるものは作り直す
+ * - 本文の画像から作るとき (`fromBody`): 必ず作り直す
+ * - 作り直し: 幅を max_width まで縮め、縦長なら上端の片だけを使い、JPEG にする
  *   (本文の画像は 1920×28300 のような縦長や数十 MB のものがあり、そのままでは SNS で読めない)
  *
  * @throws 取得・読み込みに失敗したとき、画像でないとき
  */
 export async function uploadEyecatchImage(
   sourceUrl: string,
-  options: { writer: FolderWriter; fetcher?: ImageFetcher; derive?: ImageUploadConfig }
+  options: { writer: FolderWriter; config: ImageUploadConfig; fromBody?: boolean; fetcher?: ImageFetcher }
 ): Promise<ArticleImageRef & { uploaded: boolean }> {
   const { buffer } = await (options.fetcher ?? defaultFetcher)(sourceUrl);
-  if (options.derive) {
-    const derived = await processEyecatchFallback(buffer, options.derive);
-    const result = await options.writer.put(derived.buffer, 'jpg', 'image/jpeg');
-    return { url: result.url, width: derived.width, height: derived.height, uploaded: result.uploaded };
-  }
   const info = await readImageInfo(buffer);
-  const [ext, contentType] = FORMATS[info.format] ?? [info.format, `image/${info.format}`];
-  const result = await options.writer.put(buffer, ext, contentType);
-  return { url: result.url, width: info.width, height: info.height, uploaded: result.uploaded };
+  const format = FORMATS[info.format];
+  if (!options.fromBody && format && buffer.length <= options.config.max_bytes) {
+    const result = await options.writer.put(buffer, format[0], format[1]);
+    return { url: result.url, width: info.width, height: info.height, uploaded: result.uploaded };
+  }
+  const derived = await processEyecatchFallback(buffer, options.config);
+  const result = await options.writer.put(derived.buffer, 'jpg', 'image/jpeg');
+  return { url: result.url, width: derived.width, height: derived.height, uploaded: result.uploaded };
 }
 
 /** R2StorageService を ImageStore として使う */

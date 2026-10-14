@@ -12,6 +12,10 @@ describe('articleImageTag', () => {
     );
   });
 
+  it('代替テキストの & は文字参照にする (MDX は属性の文字参照を解釈するため、&copy; が © に化ける)', () => {
+    expect(articleImageTag(ref(1), 'A&B &copy;')).toContain('alt="A&amp;B &amp;copy;"');
+  });
+
   it('代替テキストの二重引用符は全角に、改行は空白にする', () => {
     expect(articleImageTag(ref(1), '"限定"\nドリンク')).toContain('alt="＂限定＂ ドリンク"');
   });

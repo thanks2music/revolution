@@ -149,10 +149,28 @@ describe('uploadImagesForArticle', () => {
 });
 
 describe('assertImageUploadConfig', () => {
+  const upload = {
+    max_width: 1600,
+    webp_quality: 85,
+    webp_min_quality: 50,
+    quality_step: 10,
+    max_bytes: 5 * 1024 * 1024,
+    split_ratio: 3,
+    segment_height: 4800,
+  };
+
   it('Templates が古く、画像の設定が欠けていれば、欠けた名前を挙げて止める', () => {
     expect(() => assertImageUploadConfig({ min_short_side: 300 })).toThrow(
-      'store-url-patterns.yaml の image_extraction に eyecatch_landscape_ratio / upload が無い'
+      'store-url-patterns.yaml の image_extraction の eyecatch_landscape_ratio / upload が無いか、値が不正'
     );
     expect(() => assertImageUploadConfig(undefined)).toThrow('min_short_side / eyecatch_landscape_ratio / upload');
+  });
+
+  it('分割が終わらない・変換できない値も止める (segment_height が 0 や 16,384 以上、品質の上下が逆)', () => {
+    const base = { min_short_side: 300, eyecatch_landscape_ratio: 1.3 };
+    expect(() => assertImageUploadConfig({ ...base, upload })).not.toThrow();
+    expect(() => assertImageUploadConfig({ ...base, upload: { ...upload, segment_height: 0 } })).toThrow('upload.segment_height');
+    expect(() => assertImageUploadConfig({ ...base, upload: { ...upload, segment_height: 16384 } })).toThrow('upload.segment_height');
+    expect(() => assertImageUploadConfig({ ...base, upload: { ...upload, webp_min_quality: 90 } })).toThrow('webp_min_quality');
   });
 });
