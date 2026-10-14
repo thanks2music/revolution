@@ -1,4 +1,4 @@
-import * as Sentry from '@sentry/nextjs';
+import { Sentry } from '@/lib/observability/sentry';
 import { generateMdxArticle } from '../mdx/template-generator';
 import { type MdxArticle } from '../mdx/types';
 import { createMdxPr, type CreateMdxPrResult } from '../github/create-mdx-pr';
