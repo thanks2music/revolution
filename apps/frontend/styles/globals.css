@@ -338,3 +338,33 @@
   color: inherit;
   padding: 0;
 }
+
+@layer components {
+  /*
+   * 記事の本文の表 (2026-10-15)。Markdown の表 (まとめの表) と、AI Writer が HTML で書く表 (品目に写真が付かないときの
+   * メニューの表) を同じ見た目にする。HTML で書いた <table> には MDX の components が当たらないため、見た目はここに置く。
+   * - 長い内容は折り返す (以前は 1 行のまま横にはみ出していた)。項目名・キャラクター名の列 (各行の最初のセル) は折り返さない
+   * - 行の見出し (tbody の th。メニューの表のキャラクター名) は、本文と同じ大きさの太字
+   */
+  .article-content table {
+    @apply my-4 min-w-full divide-y divide-gray-200 dark:divide-gray-700;
+  }
+  .article-content thead {
+    @apply bg-gray-50 dark:bg-gray-800;
+  }
+  .article-content tbody {
+    @apply divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-900;
+  }
+  .article-content thead th {
+    @apply px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400;
+  }
+  .article-content tbody :is(th, td) {
+    @apply px-6 py-4 text-left align-top text-sm text-gray-900 dark:text-gray-100;
+  }
+  .article-content tbody th {
+    @apply font-bold;
+  }
+  .article-content tbody tr > :first-child {
+    @apply whitespace-nowrap;
+  }
+}
