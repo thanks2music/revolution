@@ -27,6 +27,7 @@ const CONFIG: GoodsListConfig = {
   online_only_note: 'このほか、オンライン限定のグッズも販売される。',
   item_heading: '### {{name}}{{#if price}} {{price}}{{/if}}',
   item_sales_line: '販売：{{sales}}',
+  other_images_heading: '### その他参考画像',
 };
 
 const goods = (name: string, price: string | null, sales: SubpageGoodsItem['sales']): SubpageGoodsItem => ({
@@ -113,7 +114,7 @@ describe('renderGoodsList (品目ごとの画像があるとき、2026-10-13)', 
     ]);
   });
 
-  it('照合できなかった画像は品目の後ろ (節の末尾) に、オンライン限定の 1 文はその後に書く', () => {
+  it('照合できなかった画像は品目の後ろ (節の末尾) に「その他参考画像」の見出しを付けて並べ、オンライン限定の 1 文はその後に書く', () => {
     const text = renderGoodsList(
       ['缶バッジ'],
       [goods('缶バッジ', null, 'store'), goods('Tシャツ', null, 'online_only')],
@@ -122,7 +123,19 @@ describe('renderGoodsList (品目ごとの画像があるとき、2026-10-13)', 
       IMG(9)
     );
 
-    expect(text.split('\n')).toEqual(['### 缶バッジ', '', '販売：店舗', '', IMG(1), '', IMG(9), '', CONFIG.online_only_note]);
+    expect(text.split('\n')).toEqual([
+      '### 缶バッジ',
+      '',
+      '販売：店舗',
+      '',
+      IMG(1),
+      '',
+      '### その他参考画像',
+      '',
+      IMG(9),
+      '',
+      CONFIG.online_only_note,
+    ]);
   });
 
   it('品目ごとの画像が 1 枚も無ければ、これまでどおりの箇条書き・表 (後ろの画像は使わない)', () => {

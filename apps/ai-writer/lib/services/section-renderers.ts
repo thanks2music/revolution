@@ -116,31 +116,83 @@ export function hasMenuSection(content: string): boolean {
 }
 
 /**
- * メニューの節の品目を差し替える。LLM が書いた品目の範囲 (最初の `### ` の行から、最初の画像の手前まで) を
- * 丸ごと消し (品目ごとの説明・`<img>`・コピーライトの行も含む)、そこに品目を並べる。LLM が品目を書いていなければ
- * 最初の画像の手前 (無ければ節の末尾) に並べる。節が無い、または品目が無ければそのまま。
+ * メニューの節の、LLM が書いた品目の範囲 (最初の `### ` の行から、最初の画像の手前まで)。
+ * LLM が品目を書いていなければ、最初の画像の手前 (無ければ節の末尾) の空の範囲
+ */
+function llmItemRange(lines: string[]): { from: number; to: number } {
+  const isImage = (line: string) => IMAGE_LINE.test(line);
+  const firstItem = lines.findIndex((line) => line.startsWith('### '));
+  if (firstItem === -1) {
+    const firstImage = lines.findIndex(isImage);
+    const at = firstImage === -1 ? lines.length : firstImage;
+    return { from: at, to: at };
+  }
+  const nextImage = lines.slice(firstItem).findIndex(isImage);
+  return { from: firstItem, to: nextImage === -1 ? lines.length : firstItem + nextImage };
+}
+
+/**
+ * メニューの節の品目を差し替える。LLM が書いた品目の範囲を丸ごと消し (品目ごとの説明・`<img>`・コピーライトの行も含む)、
+ * そこに品目を並べる。節が無い、または品目が無ければそのまま。
  */
 export function replaceMenuItems(content: string, itemLines: string[]): string {
   const range = findSection(content, MENU_SECTION);
   if (!range || itemLines.length === 0) return content;
 
   const lines = content.slice(range.start, range.end).split('\n');
-  const isImage = (line: string) => IMAGE_LINE.test(line);
-  const firstItem = lines.findIndex((line) => line.startsWith('### '));
-  let from: number;
-  let to: number;
-  if (firstItem === -1) {
-    const firstImage = lines.findIndex(isImage);
-    from = to = firstImage === -1 ? lines.length : firstImage;
-  } else {
-    const nextImage = lines.slice(firstItem).findIndex(isImage);
-    from = firstItem;
-    to = nextImage === -1 ? lines.length : firstItem + nextImage;
-  }
+  const { from, to } = llmItemRange(lines);
   const before = lines.slice(0, from).join('\n').replace(/\n+$/, '');
   const after = lines.slice(to).join('\n').replace(/^\n+/, '');
   const body = `${before}\n\n${itemLines.join('\n\n')}\n\n${after}`.replace(/\n{3,}/g, '\n\n');
   return replaceSectionBody(content, range, body.endsWith('\n') ? body : `${body}\n`);
+}
+
+/** メニューの表の文言 (`sections/02-menu.yaml` の `rendered.table`) */
+export interface MenuTableConfig {
+  head_character: string;
+  head_menu: string;
+  no_character: string;
+  menu_cell: string;
+}
+
+/**
+ * メニューの表 (品目に写真が 1 枚も付かないとき、品目の見出しの代わりに画像の下に置く。2026-10-15 BOSS 決定)。
+ * 行の見出し (th) はキャラクター名 (無ければ no_character)、セル (td) は品名と価格。名前は外部のページから読んだ値なので
+ * MDX の式・JSX として評価されないようにする
+ */
+export function renderMenuTable(items: ExtractionMenuItem[], config: MenuTableConfig): string {
+  const rows = items.map((item) => {
+    const character = item.character ? escapeMdxText(item.character) : config.no_character;
+    const menu = fillTemplate(config.menu_cell, {
+      name: escapeMdxText(item.name),
+      price: item.price ? escapeMdxText(item.price) : null,
+    });
+    return `<tr><th scope="row">${character}</th><td>${menu}</td></tr>`;
+  });
+  return [
+    '<table>',
+    `<thead><tr><th scope="col">${config.head_character}</th><th scope="col">${config.head_menu}</th></tr></thead>`,
+    '<tbody>',
+    ...rows,
+    '</tbody>',
+    '</table>',
+  ].join('\n');
+}
+
+/**
+ * メニューの節の品目を表に置き換える。LLM が書いた品目の見出しを消し、表を節の末尾 (メニューの画像の下) に置く。
+ * 節が無ければそのまま
+ */
+export function replaceMenuItemsWithTable(content: string, table: string): string {
+  const range = findSection(content, MENU_SECTION);
+  if (!range || !table) return content;
+
+  const lines = content.slice(range.start, range.end).split('\n');
+  const { from, to } = llmItemRange(lines);
+  const kept = [...lines.slice(0, from), ...lines.slice(to)].join('\n').replace(/\s+$/, '');
+  // 次の節が続くなら、表の後に空行を入れる (MDX で表の直後の見出しが表の一部と読まれないように)
+  const tail = range.end < content.length ? '\n\n' : '\n';
+  return replaceSectionBody(content, range, `${kept.replace(/\n{3,}/g, '\n\n')}\n\n${table}${tail}`);
 }
 
 /**

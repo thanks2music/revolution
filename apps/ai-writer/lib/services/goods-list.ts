@@ -32,6 +32,8 @@ export interface GoodsListConfig {
   /** 品目ごとの画像があるときの見出しと販売方法の行 (04-goods.yaml 1.2.0) */
   item_heading: string;
   item_sales_line: string;
+  /** 品目ごとの形のとき、どの品目にも照合できなかった画像の前に付ける見出し */
+  other_images_heading: string;
 }
 
 /**
@@ -64,7 +66,7 @@ export function renderGoodsList(
   config: GoodsListConfig,
   /** names[i] の画像 (書き出し済みの画像の MDX)。1 件でもあれば品目ごとの形にする */
   itemImages: string[] = [],
-  /** 品目ごとの形のとき、品目の後に並べる画像 (どの品目にも照合できなかったもの。節の末尾に置く) */
+  /** 品目ごとの形のとき、品目の後に見出し (other_images_heading) を付けて並べる画像 (どの品目にも照合できなかったもの。節の末尾) */
   trailingImages = ''
 ): string {
   const byKey = new Map((details ?? []).map((item) => [itemNameKey(item.name), item]));
@@ -86,7 +88,7 @@ export function renderGoodsList(
       if (row.sales) lines.push('', fill(config.item_sales_line, row));
       if (itemImages[index]) lines.push('', itemImages[index]);
     });
-    if (trailingImages) lines.push('', trailingImages);
+    if (trailingImages) lines.push('', config.other_images_heading, '', trailingImages);
   } else if (rows.length > 0) {
     lines.push(config.heading, '');
     if (rows.length <= config.list_max_items) {

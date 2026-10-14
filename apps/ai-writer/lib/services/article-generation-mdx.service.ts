@@ -123,7 +123,10 @@ import {
   loadSectionYaml,
   hasMenuSection,
   renderMenuItems,
+  renderMenuTable,
   replaceMenuItems,
+  replaceMenuItemsWithTable,
+  type MenuTableConfig,
   replaceNoveltySentence,
 } from './section-renderers';
 import type {
@@ -1208,19 +1211,22 @@ export class ArticleGenerationMdxService {
       if (!isEmptyList(detailedExtraction?.ノベルティ名)) keepSections.add('novelty');
       if (!isEmptyList(detailedExtraction?.グッズ名)) keepSections.add('goods');
 
-      // グッズを品目ごとの形にするか (renderGoodsList も品目の画像が 1 枚でもあれば品目ごとにする)。
-      // そのときは、照合できなかった画像を一覧の後ろ (節の末尾) に並べる。プレースホルダーの位置に置くと、
-      // 後から節の末尾に差し込む一覧より前に出てしまう
+      // 照合できなかった画像の MDX (代替テキストは「{記事タイトル} {カテゴリ}{番号}」。節の末尾の欄と同じ)
+      const restImageTags = (images: typeof menuItemImages.rest, label: string) =>
+        images.map((image, index) => articleImageTags(image.segments, `${titleResult.title} ${label}${index + 1}`)).join('\n\n');
+
+      // 品目に写真が付いた節は品目ごとの形にし、照合できなかった画像は品目の後ろ (節の末尾) に「その他参考画像」の見出しを
+      // 付けて並べる (プレースホルダーの位置に置くと、品目より前に出てしまう)。メニューは品目に写真が 1 枚も付かなければ
+      // 表にする (画像は節の末尾の欄のまま、表はその下。2026-10-15 BOSS 決定)
+      const menuPerItem = menuItemImages.matched > 0;
+      const menuAsTable = menuNames.length > 0 && !menuPerItem;
+      const menuTrailingImages = menuPerItem ? restImageTags(menuItemImages.rest, 'コラボメニュー') : '';
       const goodsPerItem = goodsItemImages.matched > 0;
-      const goodsTrailingImages = goodsPerItem
-        ? goodsItemImages.rest
-            .map((image, index) => articleImageTags(image.segments, `${titleResult.title} グッズ${index + 1}`))
-            .join('\n\n')
-        : '';
+      const goodsTrailingImages = goodsPerItem ? restImageTags(goodsItemImages.rest, 'グッズ') : '';
 
       // カテゴリ別R2画像（image-placeholder-replacement step で使用）
       const uploadedCategoryR2Images: CategoryR2Images = {
-        menu: menuItemImages.rest.map((image) => image.segments),
+        menu: menuPerItem ? [] : menuItemImages.rest.map((image) => image.segments),
         novelty: (imagesUpload?.categories.novelty ?? []).map((image) => image.segments),
         goods: goodsPerItem ? [] : goodsItemImages.rest.map((image) => image.segments),
         eyecatch: imagesUpload?.eyecatch,
@@ -1323,7 +1329,11 @@ export class ArticleGenerationMdxService {
         }
 
         // 名前の入る部分は抽出結果から組み立て、本文の LLM が書いたものと置き換える (打ち直しの誤字を防ぐ)
-        finalContent = this.renderExtractedNames(finalContent, detailedExtraction, menuItemImages.tags);
+        finalContent = this.renderExtractedNames(finalContent, detailedExtraction, {
+          itemImages: menuItemImages.tags,
+          trailingImages: menuTrailingImages,
+          asTable: menuAsTable,
+        });
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
@@ -1658,14 +1668,28 @@ export class ArticleGenerationMdxService {
    * メニューの品目とノベルティの文を、抽出結果からコードで組み立てて差し替える (書式と文面は Templates の YAML)。
    * 本文の LLM が名前を書き写すと誤字が混ざるため (2026-10-12、「招待状（ランダム7种）」)。
    */
-  private renderExtractedNames(content: string, extraction: ExtractionResult, menuItemImages: string[] = []): string {
+  private renderExtractedNames(
+    content: string,
+    extraction: ExtractionResult,
+    menu: { itemImages: string[]; trailingImages: string; asTable: boolean } = { itemImages: [], trailingImages: '', asTable: false },
+  ): string {
     const ctx = getStepContext('text-placeholder-replacement', '名前の差し込み');
     let result = content;
 
     const menuItems = menuItemsOf(extraction);
     if (menuItems.length > 0) {
-      const { item_line } = loadSectionYaml<{ item_line: string }>('02-menu.yaml', 'rendered');
-      result = replaceMenuItems(result, renderMenuItems(menuItems, item_line, menuItemImages));
+      const rendered = loadSectionYaml<{ item_line: string; other_images_heading: string; table: MenuTableConfig }>(
+        '02-menu.yaml',
+        'rendered',
+      );
+      if (menu.asTable) {
+        // 品目に写真が 1 枚も付かない (縦長のメニュー表 1 枚にまとまっているなど): 画像の下に表で並べる
+        result = replaceMenuItemsWithTable(result, renderMenuTable(menuItems, rendered.table));
+      } else {
+        const lines = renderMenuItems(menuItems, rendered.item_line, menu.itemImages);
+        if (menu.trailingImages) lines.push(`${rendered.other_images_heading}\n\n${menu.trailingImages}`);
+        result = replaceMenuItems(result, lines);
+      }
     }
 
     if (!isEmptyList(extraction.ノベルティ名)) {

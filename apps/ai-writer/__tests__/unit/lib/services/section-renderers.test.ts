@@ -13,7 +13,9 @@ import {
   loadSectionYaml,
   hasMenuSection,
   renderMenuItems,
+  renderMenuTable,
   replaceMenuItems,
+  replaceMenuItemsWithTable,
   replaceNoveltySentence,
 } from '@/lib/services/section-renderers';
 
@@ -155,6 +157,59 @@ describe('replaceNoveltySentence と <ArticleImage>', () => {
 
     expect(result).toContain(image);
     expect(result.indexOf('文')).toBeLessThan(result.indexOf(image));
+  });
+});
+
+/** Templates の sections/02-menu.yaml の rendered.table と同じ */
+const TABLE = {
+  head_character: 'キャラクター名',
+  head_menu: 'メニュー名(値段)',
+  no_character: 'その他',
+  menu_cell: '{{name}}{{#if price}} {{price}}{{/if}}',
+};
+
+describe('renderMenuTable', () => {
+  it('見出し行と、行の見出し (th) にキャラクター名・セル (td) に品名と価格を並べる。キャラクターが無ければ「その他」', () => {
+    expect(
+      renderMenuTable([item('バジルクリームとルッコラ', '2,090円(税込)', '緑谷出久'), item('<限定>プレート')], TABLE).split('\n')
+    ).toEqual([
+      '<table>',
+      '<thead><tr><th scope="col">キャラクター名</th><th scope="col">メニュー名(値段)</th></tr></thead>',
+      '<tbody>',
+      '<tr><th scope="row">緑谷出久</th><td>バジルクリームとルッコラ 2,090円(税込)</td></tr>',
+      '<tr><th scope="row">その他</th><td>&#60;限定&#62;プレート</td></tr>',
+      '</tbody>',
+      '</table>',
+    ]);
+  });
+});
+
+describe('replaceMenuItemsWithTable', () => {
+  const image = '<ArticleImage src="https://images.example.com/m.webp" alt="メニュー1 (1/2)" width="1600" height="4800" part="first" />';
+  const ARTICLE = [
+    '## カフェのメニュー',
+    '',
+    '導入文',
+    '',
+    '### 【緑谷出久】打ち直しの品目 2,090円(税込)',
+    '',
+    '### テリヤキチキン',
+    '',
+    image,
+    '',
+    '## カフェのノベルティー',
+    '',
+    'ノベルティの文',
+  ].join('\n');
+
+  it('LLM が書いた品目の見出しを消し、表を節の末尾 (メニューの画像の下) に置く', () => {
+    expect(replaceMenuItemsWithTable(ARTICLE, '<table>\n</table>')).toBe(
+      ['## カフェのメニュー', '', '導入文', '', image, '', '<table>', '</table>', '', '## カフェのノベルティー', '', 'ノベルティの文'].join('\n')
+    );
+  });
+
+  it('メニューの節が無ければそのまま', () => {
+    expect(replaceMenuItemsWithTable('## ノベルティー\n\n文', '<table>\n</table>')).toBe('## ノベルティー\n\n文');
   });
 });
 
