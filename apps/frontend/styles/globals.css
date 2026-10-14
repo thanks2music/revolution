@@ -346,8 +346,12 @@
    * - 長い内容は折り返す (以前は 1 行のまま横にはみ出していた)。項目名・キャラクター名の列 (各行の最初のセル) は折り返さない
    * - 行の見出し (tbody の th。メニューの表のキャラクター名) は、本文と同じ大きさの太字
    */
+  /* 表が画面の幅を超えるときは、表だけを横にスクロールする (Markdown の表は MDX の components、HTML の表は AI Writer が付ける枠) */
+  .article-content .article-table-scroll {
+    @apply my-4 overflow-x-auto;
+  }
   .article-content table {
-    @apply my-4 min-w-full divide-y divide-gray-200 dark:divide-gray-700;
+    @apply min-w-full divide-y divide-gray-200 dark:divide-gray-700;
   }
   .article-content thead {
     @apply bg-gray-50 dark:bg-gray-800;

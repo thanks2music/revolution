@@ -78,7 +78,12 @@ export class ImagePlaceholderReplacerService {
     images: CategoryR2Images,
     articleTitle?: string,
     /** 節の末尾に並べる画像が無くても、節を消さないカテゴリ (品目ごとの画像がある・名前がある) */
-    keepSections: ReadonlySet<ImageCategory> = new Set()
+    keepSections: ReadonlySet<ImageCategory> = new Set(),
+    /**
+     * プレースホルダーを残すカテゴリ (後の段で、名前を差し込んだ後に置き換える)。品目ごとの形のメニューは、照合できなかった
+     * 画像を「その他参考画像」として品目の後ろに置く。プレースホルダーが品目の範囲の終わりの目印になるので、ここでは消さない
+     */
+    deferred: ReadonlySet<ImageCategory> = new Set()
   ): PlaceholderReplacementResult {
     let result = content;
     const replacedCount = { menu: 0, novelty: 0, goods: 0, eyecatch: 0, total: 0 };
@@ -102,6 +107,7 @@ export class ImagePlaceholderReplacerService {
     for (const category of ['menu', 'novelty', 'goods'] as const) {
       const placeholder = PLACEHOLDERS[category];
       const categoryImages = images[category];
+      if (deferred.has(category)) continue;
 
       if (categoryImages.length > 0) {
         // 画像がある場合: 寸法付きの画像に置換
@@ -130,7 +136,8 @@ export class ImagePlaceholderReplacerService {
     }
 
     // 未置換プレースホルダーの検出（{{...}} 形式）
-    const remainingPlaceholders = result.match(/\{[^{}]+\}/g) || [];
+    const deferredPlaceholders = new Set<string>([...deferred].map((category) => PLACEHOLDERS[category]));
+    const remainingPlaceholders = (result.match(/\{[^{}]+\}/g) || []).filter((p) => !deferredPlaceholders.has(p));
     const imagePlaceholders = remainingPlaceholders.filter((p) =>
       p.includes('画像') || p.includes('ここに')
     );

@@ -15,7 +15,7 @@
  */
 import type { GoodsSales, SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 import { itemNameKey } from '@/lib/services/merge-subpage-into-extraction';
-import { fillTemplate as fill, findSection, loadSectionYaml } from '@/lib/services/section-renderers';
+import { appendToSection, fillTemplate as fill, findSection, loadSectionYaml, otherImagesBlock, tableCell as cell } from '@/lib/services/section-renderers';
 import { escapeMdxText } from '@/lib/utils/mdx-safety';
 
 /** `sections/04-goods.yaml` の `goods_list` */
@@ -51,11 +51,6 @@ export function goodsNamesForProse(names: string[] | null | undefined, config: G
   return names.slice(0, config.prose_limit);
 }
 
-/** 表のセルを壊さないよう、区切りの | を全角にする */
-function cell(value: string): string {
-  return value.replace(/\|/g, '｜');
-}
-
 /**
  * グッズの一覧の Markdown を組み立てる。並びはグッズ名の順 (会場で買えるもの)。
  * 価格・販売方法は、品名が一致した詳細から取る (無ければ空)。グッズ名が無ければ空文字。
@@ -88,7 +83,8 @@ export function renderGoodsList(
       if (row.sales) lines.push('', fill(config.item_sales_line, row));
       if (itemImages[index]) lines.push('', itemImages[index]);
     });
-    if (trailingImages) lines.push('', config.other_images_heading, '', trailingImages);
+    const other = otherImagesBlock(config.other_images_heading, trailingImages);
+    if (other) lines.push('', other);
   } else if (rows.length > 0) {
     lines.push(config.heading, '');
     if (rows.length <= config.list_max_items) {
@@ -121,10 +117,5 @@ export function hasGoodsSection(content: string): boolean {
  * グッズの節 (`## …のグッズ`) の末尾に差し込む。グッズの節が無ければ (画像が無く書かれなかったなど) 何もしない。
  */
 export function insertIntoGoodsSection(content: string, block: string): string {
-  if (!block) return content;
-  const range = findSection(content, GOODS_SECTION);
-  if (!range) return content;
-  const before = content.slice(0, range.end).replace(/\s+$/, '');
-  const after = content.slice(range.end);
-  return `${before}\n\n${block}\n${after ? `\n${after}` : ''}`;
+  return appendToSection(content, GOODS_SECTION, block);
 }

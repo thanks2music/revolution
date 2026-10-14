@@ -64,6 +64,22 @@ describe('ImagePlaceholderReplacerService.replaceAll', () => {
   });
 });
 
+describe('ImagePlaceholderReplacerService.replaceAll (deferred)', () => {
+  it('deferred のカテゴリはプレースホルダーを残し、未置換の警告にも数えない (後の段で置き換える)', () => {
+    const result = new ImagePlaceholderReplacerService().replaceAll(
+      ARTICLE,
+      { menu: [[ref(1)]], novelty: [], goods: [[ref(3)]] },
+      'ヒロアカカフェ',
+      new Set(['menu']),
+      new Set(['menu'])
+    );
+
+    expect(result.content).toContain(PLACEHOLDERS.menu);
+    expect(result.unreplacedPlaceholders).not.toContain(PLACEHOLDERS.menu);
+    expect(result.content).not.toContain(PLACEHOLDERS.goods);
+  });
+});
+
 describe('removePlaceholderBlock', () => {
   it('見出しの下に地の文があれば、見出しは残してプレースホルダーの行だけ消す', () => {
     const content = ['### グッズ', '', '文', '', PLACEHOLDERS.goods, '', '## 次'].join('\n');

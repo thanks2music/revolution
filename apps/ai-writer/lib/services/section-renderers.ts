@@ -82,6 +82,21 @@ export function loadSectionYaml<T>(file: string, key: string, dir = defaultSecti
   return value as T;
 }
 
+/**
+ * `<file>` の `rendered` を読み、`keys` がすべてあることを確かめる (Templates が古いと、undefined が本文に
+ * 「undefined」と書かれたり、書式の関数が TypeError を投げたりするため、ここでまとめて止める)
+ *
+ * @throws ファイル・`rendered`・キーが無いとき (`pnpm sync:templates` が要る)
+ */
+export function loadRendered<T extends object>(file: string, keys: readonly (keyof T & string)[], dir?: string): T {
+  const rendered = loadSectionYaml<T>(file, 'rendered', dir);
+  const missing = keys.filter((key) => (rendered as Record<string, unknown>)[key] === undefined);
+  if (missing.length > 0) {
+    throw new Error(`${file} の rendered に ${missing.join(' / ')} がありません。pnpm sync:templates で Templates を同期してください`);
+  }
+  return rendered;
+}
+
 function defaultSectionsDir(): string {
   return path.join(process.cwd(), 'templates', 'collabo-cafe', 'sections');
 }
@@ -121,20 +136,51 @@ export function hasNoveltySection(content: string): boolean {
 }
 
 /**
- * ノベルティの節の末尾に差し込む (導入の文の下に並べるノベルティ名の見出しと画像。2026-10-15)。
- * 節が無い、または差し込むものが無ければそのまま
+ * 節 (`heading` に当たる `## …`) の末尾に、空行を挟んで `block` を差し込む。次の節が続くなら block の後にも空行を入れる
+ * (MDX で、表などの直後の見出しが前のブロックの一部と読まれないように)。節が無い、または block が空ならそのまま
  */
-export function appendToNoveltySection(content: string, block: string): string {
-  const range = findSection(content, NOVELTY_SECTION);
+export function appendToSection(content: string, heading: RegExp, block: string): string {
+  const range = findSection(content, heading);
   if (!range || !block) return content;
   const before = content.slice(range.start, range.end).replace(/\s+$/, '');
   const tail = range.end < content.length ? '\n\n' : '\n';
   return replaceSectionBody(content, range, `${before}\n\n${block}${tail}`);
 }
 
+/** メニューの節の末尾に差し込む */
+export function appendToMenuSection(content: string, block: string): string {
+  return appendToSection(content, MENU_SECTION, block);
+}
+
+/** ノベルティの節の末尾に差し込む (導入の文の下に並べるノベルティ名の見出しと画像。2026-10-15) */
+export function appendToNoveltySection(content: string, block: string): string {
+  return appendToSection(content, NOVELTY_SECTION, block);
+}
+
 /**
- * メニューの節の、LLM が書いた品目の範囲 (最初の `### ` の行から、最初の画像の手前まで)。
- * LLM が品目を書いていなければ、最初の画像の手前 (無ければ節の末尾) の空の範囲
+ * 品目の見出し (`line` に name などを差し込んだもの) を並べ、`itemImages[i]` があれば i 番目の見出しの直後に続ける
+ * (ノベルティ・グッズなど、品名だけの見出し)
+ */
+export function renderItemHeadings(names: readonly string[], line: string, itemImages: readonly string[] = []): string[] {
+  return names.map((name, index) => {
+    const heading = fillTemplate(line, { name: escapeMdxText(name) });
+    return itemImages[index] ? `${heading}\n\n${itemImages[index]}` : heading;
+  });
+}
+
+/** 照合できなかった画像を、見出しを付けて並べるブロック (画像が無ければ空) */
+export function otherImagesBlock(heading: string, images: string): string {
+  return images ? `${heading}\n\n${images}` : '';
+}
+
+/** Markdown の表のセルを壊さないよう、区切りの | を全角にする */
+export function tableCell(value: string): string {
+  return value.replace(/\|/g, '｜');
+}
+
+/**
+ * メニューの節の、LLM が書いた品目の範囲 (最初の `### ` の行から、最初の画像の欄 (画像・プレースホルダー) の手前まで)。
+ * LLM が品目を書いていなければ、最初の画像の欄の手前 (無ければ節の末尾) の空の範囲
  */
 function llmItemRange(lines: string[]): { from: number; to: number } {
   const isImage = (line: string) => IMAGE_LINE.test(line);
@@ -175,7 +221,8 @@ export interface MenuTableConfig {
 /**
  * メニューの表 (品目に写真が 1 枚も付かないとき、品目の見出しの代わりに画像の下に置く。2026-10-15 BOSS 決定)。
  * 行の見出し (th) はキャラクター名 (無ければ no_character)、セル (td) は品名と価格。名前は外部のページから読んだ値なので
- * MDX の式・JSX として評価されないようにする
+ * MDX の式・JSX として評価されないようにする。HTML で書いた表には MDX の components (横スクロールの枠) が当たらないので、
+ * 枠 (`article-table-scroll`、Frontend の globals.css) も自分で付ける
  */
 export function renderMenuTable(items: ExtractionMenuItem[], config: MenuTableConfig): string {
   const rows = items.map((item) => {
@@ -187,12 +234,14 @@ export function renderMenuTable(items: ExtractionMenuItem[], config: MenuTableCo
     return `<tr><th scope="row">${character}</th><td>${menu}</td></tr>`;
   });
   return [
+    '<div className="article-table-scroll">',
     '<table>',
     `<thead><tr><th scope="col">${config.head_character}</th><th scope="col">${config.head_menu}</th></tr></thead>`,
     '<tbody>',
     ...rows,
     '</tbody>',
     '</table>',
+    '</div>',
   ].join('\n');
 }
 
@@ -206,22 +255,40 @@ export function replaceMenuItemsWithTable(content: string, table: string): strin
 
   const lines = content.slice(range.start, range.end).split('\n');
   const { from, to } = llmItemRange(lines);
-  const kept = [...lines.slice(0, from), ...lines.slice(to)].join('\n').replace(/\s+$/, '');
-  // 次の節が続くなら、表の後に空行を入れる (MDX で表の直後の見出しが表の一部と読まれないように)
-  const tail = range.end < content.length ? '\n\n' : '\n';
-  return replaceSectionBody(content, range, `${kept.replace(/\n{3,}/g, '\n\n')}\n\n${table}${tail}`);
+  const kept = [...lines.slice(0, from), ...lines.slice(to)].join('\n').replace(/\n{3,}/g, '\n\n');
+  return appendToSection(content.slice(0, range.start) + kept + content.slice(range.end), MENU_SECTION, table);
+}
+
+/** 会場の一覧の書き方 (`sections/05-summary.yaml` の `rendered`) */
+export interface VenueListConfig {
+  venue_list_item: string;
+  venue_list_separator: string;
 }
 
 /**
- * まとめの表の、`label` の行のセルを `value` で置き換える (最初の 1 行だけ)。本文の LLM が `{{会場一覧表記}}` を残さず
- * 自分で書いた場所 (「東京・愛知・大阪・北海道の各会場」など) を、コードが組み立てた会場の一覧にするため (2026-10-15)。
- * 区切りの `|` は全角にする。行が無い、または値が空ならそのまま
+ * まとめの表の「開催場所」のセル。会場が 2 つ以上なら 1 会場ずつ venue_list_item で書いて venue_list_separator でつなぎ、
+ * 1 つなら名前だけ (2026-10-15 BOSS 決定)。会場名は外部のページから読んだ値なので、MDX の式・JSX として評価されないようにし、
+ * 表の区切りの | も全角にする (区切りの <br /> はそのまま)
+ */
+export function renderVenueList(venues: readonly string[], config: VenueListConfig): string {
+  const safe = venues.map((venue) => tableCell(escapeMdxText(venue)));
+  if (safe.length <= 1) return safe[0] ?? '';
+  return safe.map((venue) => fillTemplate(config.venue_list_item, { venue })).join(config.venue_list_separator);
+}
+
+/**
+ * まとめの表の、`label` の行のセルを `value` で置き換える。本文の LLM が `{{会場一覧表記}}` を残さず自分で書いた場所
+ * (「東京・愛知・大阪・北海道の各会場」など) を、コードが組み立てた会場の一覧にするため (2026-10-15)。
+ * まとめの表は記事の最後にあるので、最後の行を置き換える (前の節の表に同じ名前の行があっても触らない)。
+ * 行の末尾の | は無くてもよい。行が無い、または値が空ならそのまま
  */
 export function replaceSummaryRowValue(content: string, label: string, value: string): string {
   if (!label || !value) return content;
   const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const row = new RegExp(`^\\|[ \\t]*${escapedLabel}[ \\t]*\\|.*\\|[ \\t]*$`, 'm');
-  return content.replace(row, () => `| ${label} | ${value.replace(/\|/g, '｜')} |`);
+  const rows = [...content.matchAll(new RegExp(`^\\|[ \\t]*${escapedLabel}[ \\t]*\\|.*$`, 'gm'))];
+  const last = rows.at(-1);
+  if (!last || last.index === undefined) return content;
+  return `${content.slice(0, last.index)}| ${label} | ${value} |${content.slice(last.index + last[0].length)}`;
 }
 
 /**

@@ -18,6 +18,8 @@ import {
   replaceMenuItems,
   replaceMenuItemsWithTable,
   replaceSummaryRowValue,
+  renderVenueList,
+  loadRendered,
   replaceNoveltySentence,
 } from '@/lib/services/section-renderers';
 
@@ -132,6 +134,16 @@ describe('replaceMenuItems', () => {
   });
 });
 
+describe('replaceMenuItems と残したプレースホルダー', () => {
+  it('プレースホルダーが品目の範囲の終わりの目印になり、その後ろの LLM の文は消さない (品目ごとの形のメニュー)', () => {
+    const article = ['## カフェのメニュー', '', '導入文', '', '### LLM の品目', '', '{ここにメニューの画像を入れる}', '', '※画像はイメージです', ''].join('\n');
+
+    expect(replaceMenuItems(article, ['### マルゲリータ'])).toBe(
+      ['## カフェのメニュー', '', '導入文', '', '### マルゲリータ', '', '{ここにメニューの画像を入れる}', '', '※画像はイメージです', ''].join('\n')
+    );
+  });
+});
+
 describe('replaceMenuItems と <ArticleImage>', () => {
   it('節の末尾の <ArticleImage> は画像の欄として残す (品目の範囲に含めない)', () => {
     const tail = '<ArticleImage src="https://images.example.com/r.webp" alt="メニュー1" width="800" height="600" />';
@@ -175,6 +187,7 @@ describe('renderMenuTable', () => {
     expect(
       renderMenuTable([item('バジルクリームとルッコラ', '2,090円(税込)', '緑谷出久'), item('<限定>プレート')], TABLE).split('\n')
     ).toEqual([
+      '<div className="article-table-scroll">',
       '<table>',
       '<thead><tr><th scope="col">キャラクター名</th><th scope="col">メニュー名(値段)</th></tr></thead>',
       '<tbody>',
@@ -182,6 +195,7 @@ describe('renderMenuTable', () => {
       '<tr><th scope="row">その他</th><td>&#60;限定&#62;プレート</td></tr>',
       '</tbody>',
       '</table>',
+      '</div>',
     ]);
   });
 });
@@ -245,15 +259,43 @@ describe('appendToNoveltySection', () => {
 describe('replaceSummaryRowValue', () => {
   const TABLE = ['| 項目 | 内容 |', '|------|------|', '| 開催場所 | 東京・愛知・大阪・北海道の各会場 |', '| 開催期間 | 2026年10月16日〜 |'].join('\n');
 
-  it('LLM が書いた「開催場所」のセルを、会場の一覧で置き換える (区切りの | は全角)', () => {
-    expect(replaceSummaryRowValue(TABLE, '開催場所', '・A店<br />・B|C店')).toBe(
-      ['| 項目 | 内容 |', '|------|------|', '| 開催場所 | ・A店<br />・B｜C店 |', '| 開催期間 | 2026年10月16日〜 |'].join('\n')
+  it('LLM が書いた「開催場所」のセルを置き換える', () => {
+    expect(replaceSummaryRowValue(TABLE, '開催場所', '・A店<br />・B店')).toBe(
+      ['| 項目 | 内容 |', '|------|------|', '| 開催場所 | ・A店<br />・B店 |', '| 開催期間 | 2026年10月16日〜 |'].join('\n')
+    );
+  });
+
+  it('同じ名前の行が前の節の表にもあれば、最後の行 (まとめの表) だけを置き換える。行の末尾の | が無くてもよい', () => {
+    const article = ['| 開催場所 | 前の節の表 |', '', '## まとめ', '', '| 開催場所 | 東京の各会場'].join('\n');
+    expect(replaceSummaryRowValue(article, '開催場所', 'A店')).toBe(
+      ['| 開催場所 | 前の節の表 |', '', '## まとめ', '', '| 開催場所 | A店 |'].join('\n')
     );
   });
 
   it('値が空、または行が無ければそのまま (会場のデータが無いときは LLM の文を残す)', () => {
     expect(replaceSummaryRowValue(TABLE, '開催場所', '')).toBe(TABLE);
     expect(replaceSummaryRowValue(TABLE, '会場', 'x')).toBe(TABLE);
+  });
+});
+
+describe('renderVenueList', () => {
+  const CONFIG = { venue_list_item: '・{{venue}}', venue_list_separator: '<br />' };
+
+  it('2 会場以上は「・」を付けて <br /> でつなぎ、1 会場は名前だけ。名前の { < | は文字参照・全角にする', () => {
+    expect(renderVenueList(['A店', 'カフェ{ROOM}|渋谷'], CONFIG)).toBe('・A店<br />・カフェ&#123;ROOM&#125;｜渋谷');
+    expect(renderVenueList(['<特設>会場'], CONFIG)).toBe('&#60;特設&#62;会場');
+    expect(renderVenueList([], CONFIG)).toBe('');
+  });
+});
+
+describe('loadRendered', () => {
+  it('rendered にキーが無ければ、名前を挙げて止める', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rendered-'));
+    fs.writeFileSync(path.join(dir, 'x.yaml'), 'rendered:\n  a: "1"\n');
+    expect(loadRendered<{ a: string }>('x.yaml', ['a'], dir)).toEqual({ a: '1' });
+    expect(() => loadRendered<{ a: string; b: string; c: string }>('x.yaml', ['a', 'b', 'c'], dir)).toThrow(
+      'x.yaml の rendered に b / c がありません'
+    );
   });
 });
 

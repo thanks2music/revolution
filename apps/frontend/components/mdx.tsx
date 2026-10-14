@@ -106,10 +106,10 @@ const components = {
   hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
     <hr className="my-8 border-gray-300 dark:border-gray-700" {...props} />
   ),
-  // テーブル: 見た目は styles/globals.css の .article-content (AI Writer が HTML で書く表と揃えるため)。
-  // 幅の狭い画面では、はみ出した分だけ横にスクロールできるようにする
+  // テーブル: 見た目と横スクロールの枠 (article-table-scroll) は styles/globals.css の .article-content
+  // (AI Writer が HTML で書く表も同じ枠を自分で付ける。見た目を揃えるため)
   table: (props: React.TableHTMLAttributes<HTMLTableElement>) => (
-    <div className="overflow-x-auto">
+    <div className="article-table-scroll">
       <table {...props} />
     </div>
   ),

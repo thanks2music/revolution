@@ -82,6 +82,8 @@ import {
 } from './category-image-extractor.service';
 import {
   getImagePlaceholderReplacerService,
+  PLACEHOLDERS,
+  removePlaceholderBlock,
   type CategoryR2Images,
   type PlaceholderReplacementResult,
 } from './image-placeholder-replacer.service';
@@ -119,18 +121,23 @@ import {
   renderGoodsList,
 } from './goods-list';
 import {
-  fillTemplate,
-  loadSectionYaml,
+  appendToMenuSection,
   appendToNoveltySection,
+  fillTemplate,
   hasMenuSection,
   hasNoveltySection,
+  loadRendered,
+  otherImagesBlock,
+  renderItemHeadings,
   renderMenuItems,
   renderMenuTable,
+  renderVenueList,
   replaceMenuItems,
-  replaceSummaryRowValue,
   replaceMenuItemsWithTable,
-  type MenuTableConfig,
   replaceNoveltySentence,
+  replaceSummaryRowValue,
+  type MenuTableConfig,
+  type VenueListConfig,
 } from './section-renderers';
 import type {
   VisionExtractionResult,
@@ -1226,7 +1233,9 @@ export class ArticleGenerationMdxService {
       // 表にする (画像は節の末尾の欄のまま、表はその下。2026-10-15 BOSS 決定)
       const menuPerItem = menuItemImages.matched > 0;
       const menuAsTable = menuNames.length > 0 && !menuPerItem;
+      // 品目ごとの形のメニューは、プレースホルダーを残し (品目の範囲の終わりの目印)、名前を差し込んだ後に置き換える
       const menuTrailingImages = menuPerItem ? restImageTags(menuItemImages.rest, 'コラボメニュー') : '';
+      const deferredPlaceholders = new Set<ImageCategory>(menuPerItem ? ['menu'] : []);
       const goodsPerItem = goodsItemImages.matched > 0;
       const goodsTrailingImages = goodsPerItem ? restImageTags(goodsItemImages.rest, 'グッズ') : '';
       const noveltyPerItem = noveltyNames.length > 0;
@@ -1262,7 +1271,8 @@ export class ArticleGenerationMdxService {
           contentGeneration.content,
           uploadedCategoryR2Images,
           titleResult.title,
-          keepSections
+          keepSections,
+          deferredPlaceholders
         );
         finalContent = placeholderReplacement.content;
 
@@ -1341,14 +1351,23 @@ export class ArticleGenerationMdxService {
           itemImages: menuItemImages.tags,
           trailingImages: menuTrailingImages,
           asTable: menuAsTable,
+          deferred: menuPerItem,
         }, {
           itemImages: noveltyItemImages.tags,
           trailingImages: noveltyTrailingImages,
         });
 
         // まとめの表の「開催場所」は、LLM が書いた文ではなく会場の一覧にする (会場のデータがあるときだけ。2026-10-15 BOSS 決定)
-        const { venue_row_label } = loadSectionYaml<{ venue_row_label: string }>('05-summary.yaml', 'rendered');
-        finalContent = replaceSummaryRowValue(finalContent, venue_row_label, storeContext.会場一覧表記);
+        const summary = loadRendered<{ venue_row_label: string } & VenueListConfig>('05-summary.yaml', [
+          'venue_row_label',
+          'venue_list_item',
+          'venue_list_separator',
+        ]);
+        finalContent = replaceSummaryRowValue(
+          finalContent,
+          summary.venue_row_label,
+          renderVenueList(storeContext.会場一覧, summary),
+        );
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
@@ -1686,7 +1705,12 @@ export class ArticleGenerationMdxService {
   private renderExtractedNames(
     content: string,
     extraction: ExtractionResult,
-    menu: { itemImages: string[]; trailingImages: string; asTable: boolean } = { itemImages: [], trailingImages: '', asTable: false },
+    menu: { itemImages: string[]; trailingImages: string; asTable: boolean; deferred: boolean } = {
+      itemImages: [],
+      trailingImages: '',
+      asTable: false,
+      deferred: false,
+    },
     novelty: { itemImages: string[]; trailingImages: string } = { itemImages: [], trailingImages: '' },
   ): string {
     const ctx = getStepContext('text-placeholder-replacement', '名前の差し込み');
@@ -1694,24 +1718,33 @@ export class ArticleGenerationMdxService {
 
     const menuItems = menuItemsOf(extraction);
     if (menuItems.length > 0) {
-      const rendered = loadSectionYaml<{ item_line: string; other_images_heading: string; table: MenuTableConfig }>(
+      const rendered = loadRendered<{ item_line: string; other_images_heading: string; table: MenuTableConfig }>(
         '02-menu.yaml',
-        'rendered',
+        ['item_line', 'other_images_heading', 'table'],
       );
       if (menu.asTable) {
         // 品目に写真が 1 枚も付かない (縦長のメニュー表 1 枚にまとまっているなど): 画像の下に表で並べる
         result = replaceMenuItemsWithTable(result, renderMenuTable(menuItems, rendered.table));
       } else {
-        const lines = renderMenuItems(menuItems, rendered.item_line, menu.itemImages);
-        if (menu.trailingImages) lines.push(`${rendered.other_images_heading}\n\n${menu.trailingImages}`);
-        result = replaceMenuItems(result, lines);
+        result = replaceMenuItems(result, renderMenuItems(menuItems, rendered.item_line, menu.itemImages));
+        if (menu.deferred) {
+          // 残しておいたプレースホルダー (品目の後ろ) を、照合できなかった画像に置き換える。無ければ消す
+          const other = otherImagesBlock(rendered.other_images_heading, menu.trailingImages);
+          if (result.includes(PLACEHOLDERS.menu)) {
+            result = other
+              ? result.replace(PLACEHOLDERS.menu, () => other)
+              : removePlaceholderBlock(result, PLACEHOLDERS.menu);
+          } else {
+            result = appendToMenuSection(result, other);
+          }
+        }
       }
     }
 
     if (!isEmptyList(extraction.ノベルティ名)) {
-      const rendered = loadSectionYaml<{ sentence: string; item_line: string; other_images_heading: string }>(
+      const rendered = loadRendered<{ sentence: string; item_line: string; other_images_heading: string }>(
         '03-novelty.yaml',
-        'rendered',
+        ['sentence', 'item_line', 'other_images_heading'],
       );
       result = replaceNoveltySentence(
         result,
@@ -1721,12 +1754,9 @@ export class ArticleGenerationMdxService {
         }),
       );
       // 導入の文の下に、ノベルティ名ごとの見出し (照合できた画像はその下) と、照合できなかった画像を並べる
-      const blocks = extraction.ノベルティ名!.map((name, index) => {
-        const heading = fillTemplate(rendered.item_line, { name: escapeMdxText(name) });
-        return novelty.itemImages[index] ? `${heading}\n\n${novelty.itemImages[index]}` : heading;
-      });
-      if (novelty.trailingImages) blocks.push(`${rendered.other_images_heading}\n\n${novelty.trailingImages}`);
-      result = appendToNoveltySection(result, blocks.join('\n\n'));
+      const blocks = renderItemHeadings(extraction.ノベルティ名!, rendered.item_line, novelty.itemImages);
+      const other = otherImagesBlock(rendered.other_images_heading, novelty.trailingImages);
+      result = appendToNoveltySection(result, [...blocks, other].filter(Boolean).join('\n\n'));
     }
 
     if (result !== content) {
