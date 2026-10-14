@@ -10,11 +10,13 @@ interface ArticleImageProps {
   /** 記事の冒頭のアイキャッチなど、最初の画面に出る画像 */
   priority?: boolean;
   /** 縦長の画像を分割した片 (AI Writer が付ける)。片の間に余白を入れず、1 枚に見えるようにつなげる */
-  part?: string;
+  part?: ArticleImagePart;
 }
 
+type ArticleImagePart = 'first' | 'middle' | 'last';
+
 /** 上下の余白。分割した片は、つなぎ目の側の余白を 0 にする */
-const MARGINS: Record<string, string> = {
+const MARGINS: Record<ArticleImagePart, string> = {
   first: 'mt-6 mb-0',
   middle: 'my-0',
   last: 'mt-0 mb-6',

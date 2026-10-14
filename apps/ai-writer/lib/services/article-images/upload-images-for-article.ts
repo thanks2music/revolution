@@ -6,7 +6,8 @@
  * - アイキャッチは og:image → 本文の最初の横長の画像 (幅 / 高さ ≥ `eyecatch_landscape_ratio`) → 本文の最初の画像。
  *   候補を上げられなければ次の候補へ進む。og:image は元のまま、本文の画像から作るときは縮めた JPEG にする
  *   (`uploadEyecatchImage`)
- * - 複数のカテゴリに同じ画像があれば、先のカテゴリ (メニュー → ノベルティ → グッズ) にだけ載せる
+ * - 複数のカテゴリに同じ画像があれば、先のカテゴリ (メニュー → ノベルティ → グッズ) にだけ載せる。重なりは URL で
+ *   判定する (クエリだけ違う同じ画像は 2 回載りうるが、R2 には中身のハッシュで 1 つしか置かれない)
  * - 品目ごとの画像 (代替テキストと品名の照合) を見出しの下に並べる形の MDX にする (`itemImageTags`)
  */
 import type { ImageExtractionConfig } from '@/lib/types/subpage-detection';

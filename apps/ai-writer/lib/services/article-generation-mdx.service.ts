@@ -1116,6 +1116,7 @@ export class ArticleGenerationMdxService {
       if (categoryImages || officialOgImage) {
         try {
           const imageConfig = (await getConfigLoaderService().loadStoreUrlPatterns()).image_extraction;
+          const imageStepStartedAt = Date.now();
           imagesUpload = await uploadImagesForArticle(
             {
               ogImage: officialOgImage,
@@ -1160,7 +1161,10 @@ export class ArticleGenerationMdxService {
               });
             }
           }
-          console.log(`${getStepContext('image-upload-r2')} R2 に新しく置いた画像: ${imagesUpload.newObjects} 件 (既にあった画像は上げない)`);
+          console.log(
+            `${getStepContext('image-upload-r2')} R2 に新しく置いた画像: ${imagesUpload.newObjects} 件 (既にあった画像は上げない)。` +
+              `${((Date.now() - imageStepStartedAt) / 1000).toFixed(1)} 秒`,
+          );
         } catch (imageError) {
           console.error('❌ 画像アップロードエラー:', imageError);
           console.log('⚠️ デフォルトOG画像を使用します');

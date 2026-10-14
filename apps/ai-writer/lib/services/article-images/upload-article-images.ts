@@ -78,14 +78,27 @@ export interface FolderWriter {
  */
 export function folderWriter(store: ImageStore | null, folder: string): FolderWriter {
   let existing: Promise<Set<string>> | undefined;
+  /** 上げている途中のキー (同じ中身の片を並列に上げても、R2 に置くのは 1 回にする) */
+  const inFlight = new Map<string, Promise<void>>();
   return {
     async put(buffer, ext, contentType) {
       const key = contentKey(folder, buffer, ext);
       if (!store) return { url: `[DRY RUN] ${process.env.R2_PUBLIC_URL ?? ''}/${key}`, uploaded: false };
       existing ??= store.listKeys(`${folder}/`).then((keys) => new Set(keys));
       const keys = await existing;
+      const pending = inFlight.get(key);
+      if (pending) {
+        await pending;
+        return { url: store.publicUrlFor(key), uploaded: false };
+      }
       if (keys.has(key)) return { url: store.publicUrlFor(key), uploaded: false };
-      await store.put(key, buffer, contentType);
+      const upload = store.put(key, buffer, contentType);
+      inFlight.set(key, upload);
+      try {
+        await upload;
+      } finally {
+        inFlight.delete(key);
+      }
       keys.add(key);
       return { url: store.publicUrlFor(key), uploaded: true };
     },

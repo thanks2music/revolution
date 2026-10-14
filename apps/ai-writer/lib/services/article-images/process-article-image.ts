@@ -63,7 +63,9 @@ export async function readImageInfo(buffer: Buffer): Promise<{ width: number; he
   const { width, height } = metadata.autoOrient ?? metadata;
   if (!width || !height || !metadata.format) throw new Error('画像の大きさを読めない');
   if (width * height > MAX_INPUT_PIXELS) throw new Error(`画像が大きすぎる (${width}×${height})`);
-  return { width, height, format: metadata.format };
+  // sharp は AVIF も HEIC も heif と報告する。ブラウザで読めない HEIC を AVIF と取り違えないよう分ける
+  const format = metadata.format === 'heif' && metadata.compression !== 'av1' ? 'heic' : metadata.format;
+  return { width, height, format };
 }
 
 /**

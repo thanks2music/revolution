@@ -81,6 +81,17 @@ describe('folderWriter', () => {
     expect(old.url).toBe(`https://images.example.com/${existingKey}`);
   });
 
+  it('同じ中身を並列に上げても、R2 に置くのは 1 回 (同じ画像の中の同じ片など)', async () => {
+    const store = memoryStore();
+    const writer = folderWriter(store, 'f');
+
+    const results = await Promise.all([1, 2, 3].map(() => writer.put(Buffer.from('same'), 'webp', 'image/webp')));
+
+    expect(store.put).toHaveBeenCalledTimes(1);
+    expect(results.filter((result) => result.uploaded)).toHaveLength(1);
+    expect(new Set(results.map((result) => result.url)).size).toBe(1);
+  });
+
   it('store が null なら dry-run (R2 に触らず、URL を [DRY RUN] にする)', async () => {
     const result = await folderWriter(null, 'f').put(Buffer.from('a'), 'webp', 'image/webp');
     expect(result).toEqual({ url: expect.stringMatching(/^\[DRY RUN\] .*\/f\/[0-9a-f]{32}\.webp$/), uploaded: false });
