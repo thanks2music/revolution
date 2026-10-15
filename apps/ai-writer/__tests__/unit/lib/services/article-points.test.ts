@@ -6,6 +6,7 @@ import {
   countGoods,
   formatPeriod,
   formatPlace,
+  joinArticleParts,
   noveltyContextMentionsRedrawn,
   renderArticlePoints,
   type PointsFactsInput,
@@ -170,6 +171,26 @@ describe('cleanFeatures', () => {
       '番号付き',
       '複数 行',
     ]);
+  });
+});
+
+describe('cleanFeatures (MDX と重複)', () => {
+  it('{ } < > [ ] を文字参照にし、__ は名前の一部として残す。同じ行は 1 つにする', () => {
+    expect(cleanFeatures(['<script>{x}</script>', '__init__ という名前', '同じ行', '同じ行'])).toEqual([
+      '&#60;script&#62;&#123;x&#125;&#60;/script&#62;',
+      '__init__ という名前',
+      '同じ行',
+    ]);
+  });
+});
+
+describe('joinArticleParts', () => {
+  it('リード文 → 枠 → 本文の順に空行 1 つでつなぎ、空の部分は飛ばす (余分な空行を作らない)', () => {
+    expect(joinArticleParts('リード文。', '<ArticlePoints>…</ArticlePoints>', '## メニュー')).toBe(
+      'リード文。\n\n<ArticlePoints>…</ArticlePoints>\n\n## メニュー'
+    );
+    expect(joinArticleParts('リード文。', '', '## メニュー')).toBe('リード文。\n\n## メニュー');
+    expect(joinArticleParts('', '  ', '## メニュー')).toBe('## メニュー');
   });
 });
 

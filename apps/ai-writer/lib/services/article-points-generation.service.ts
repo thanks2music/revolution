@@ -54,6 +54,20 @@ export function parseArticlePointsResponse(content: string): string[] {
   return ArticlePointsResponseSchema.parse(parseJson(content)).features.filter((feature) => feature.trim() !== '');
 }
 
+/**
+ * 応答は返ったが読めなかった (形が違う・途中で切れた)。トークンは使っているので、コストを記録できるよう usage を持つ
+ */
+export class ArticlePointsParseError extends Error {
+  constructor(
+    readonly model: string,
+    readonly usage: TokenUsage | undefined,
+    cause: unknown
+  ) {
+    super(`本イベントの特徴の応答を読めない: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = 'ArticlePointsParseError';
+  }
+}
+
 export class ArticlePointsGenerationService {
   private readonly templateId = 'collabo-cafe';
   private readonly pipelineId = '4.5-article-points';
@@ -66,7 +80,8 @@ export class ArticlePointsGenerationService {
   }
 
   /**
-   * @throws プロンプトが無いとき、LLM の呼び出しや応答の解析に失敗したとき (呼び出し側は事実の行だけで続ける)
+   * @throws プロンプトが無いとき、LLM の呼び出しに失敗したとき。応答を読めなければ {@link ArticlePointsParseError} (usage 付き)。
+   *   呼び出し側は事実の行だけで続ける
    */
   async generate(request: ArticlePointsRequest): Promise<ArticlePointsResult> {
     const template = await this.templateLoader.loadModularTemplate(this.templateId, this.pipelineId, {
@@ -93,6 +108,12 @@ export class ArticlePointsGenerationService {
       responseSchema: ARTICLE_POINTS_OPENAI_SCHEMA,
       recordContext: { pageUrls: request.pages.map((page) => page.url) },
     });
-    return { features: parseArticlePointsResponse(response.content), model: response.model, usage: response.usage };
+    let features: string[];
+    try {
+      features = parseArticlePointsResponse(response.content);
+    } catch (error) {
+      throw new ArticlePointsParseError(response.model, response.usage, error);
+    }
+    return { features, model: response.model, usage: response.usage };
   }
 }

@@ -106,6 +106,7 @@ function goodsChannels(details: PointsFactsInput['goodsDetails'], format: Points
  * グッズの品目の数。詳細 (下層ページの品名・価格・販売方法。オンライン限定を含む) とグッズ名 (トップにしか無い品目を含む) を、
  * 品名の表記の揺れを無視して合わせた数 (どちらか片方だけでは、本文のグッズの節と数が合わないことがある)
  */
+// 表記の揺れは itemNameKey の範囲だけ吸収する。詳細とグッズ名で略称が違うような大きな違いは別の品目として数える (既知の限界)
 export function countGoods(names: PointsFactsInput['goodsNames'], details: PointsFactsInput['goodsDetails']): number {
   const keys = new Set([...(details ?? []).map((item) => item.name), ...(names ?? [])].map(itemNameKey).filter(Boolean));
   return keys.size;
@@ -161,7 +162,8 @@ export function cleanFeatures(features: readonly string[]): string[] {
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-        .replace(/\*\*|__|`/g, '')
+        // 強調とコードの記号だけを外す (__ は名前の一部のことがあるので残す。単独の * _ は描画に影響が小さいので残す)
+        .replace(/\*\*|`/g, '')
         // URL は書かせない (プロンプトで禁止)。残っていれば外す (GFM の自動リンクにならないように)
         .replace(/https?:\/\/\S+/g, '')
         .replace(/\s{2,}/g, ' ')
@@ -170,7 +172,7 @@ export function cleanFeatures(features: readonly string[]): string[] {
         .replace(/^(?:[-*+・●○◆◇■□]\s*|\d+(?:[.)]\s+|．\s*))/, '')
         .trim()
     )
-    .filter(Boolean)
+    .filter((feature, index, all) => feature !== '' && all.indexOf(feature) === index)
     .map(escapeMdxText);
 }
 
@@ -178,4 +180,9 @@ export function cleanFeatures(features: readonly string[]): string[] {
 export function renderArticlePoints(lines: readonly string[]): string {
   if (lines.length === 0) return '';
   return ['<ArticlePoints>', '', ...lines.map((line) => `- ${line}`), '', '</ArticlePoints>'].join('\n');
+}
+
+/** 記事の本文の並び (リード文 → この記事のポイント → 本文)。空の部分は飛ばし、余分な空行を作らない */
+export function joinArticleParts(...parts: string[]): string {
+  return parts.filter((part) => part.trim() !== '').join('\n\n');
 }

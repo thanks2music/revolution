@@ -113,10 +113,11 @@ import {
   cleanFeatures,
   loadPointsFormat,
   noveltyContextMentionsRedrawn,
+  joinArticleParts,
   renderArticlePoints,
   type PointsFormat,
 } from './article-points';
-import { ArticlePointsGenerationService } from './article-points-generation.service';
+import { ArticlePointsGenerationService, ArticlePointsParseError } from './article-points-generation.service';
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
@@ -268,6 +269,20 @@ interface VisionStepResult {
   merged: boolean;
   /** 埋めた内容 */
   mergeChanges?: string[];
+}
+
+/** この記事のポイントの組み立てに使う値 (`runArticlePoints`) */
+interface ArticlePointsInput {
+  extraction: ExtractionResult;
+  categoryImages: CategoryImages | undefined;
+  subpageFacts: SubpageFacts[];
+  storeContext: StoreContext;
+  会場表現: string;
+  officialHtml: string | undefined;
+  primaryOfficialUrl: string | null | undefined;
+  occurrences: EventDataOccurrence[] | undefined;
+  pointsFormat: PointsFormat;
+  costTracker: CostTrackerService;
 }
 
 /**
@@ -1145,7 +1160,7 @@ export class ArticleGenerationMdxService {
       // リード文 → この記事のポイント → 本文 (Sprint C-β P11 以降、リード文は LeadGeneratorService が書く)
       contentGeneration = {
         ...contentGeneration,
-        content: [leadResult.leadMdx, pointsBlock, contentGeneration.content].filter(Boolean).join('\n\n'),
+        content: joinArticleParts(leadResult.leadMdx, pointsBlock, contentGeneration.content),
       };
 
       // image-upload-r2 step: 記事の画像を R2 に上げ、アイキャッチを選ぶ (2026-10-13 BOSS 決定)
@@ -1791,20 +1806,25 @@ export class ArticleGenerationMdxService {
   /**
    * この記事のポイントの枠 (MDX) を作る (`article-points` step)。事実の行はコードが抽出結果から組み立て
    * (書式は sections/01b-points.yaml)、「本イベントの特徴」は LLM が書く (pipeline/4.5-article-points.yaml)。
-   * 特徴が書けなくても記事は止めず、事実の行だけで枠を作る。行が 1 つも無ければ空文字
+   * 特徴が書けなくても記事は止めず、事実の行だけで枠を作る。枠は無くても記事が成り立つので、組み立ての途中の想定外の例外でも
+   * 記事は止めず、枠を出さない (有料の本文生成の後で記事全体を止めないため)。行が 1 つも無ければ空文字
    */
-  private async runArticlePoints(input: {
-    extraction: ExtractionResult;
-    categoryImages: CategoryImages | undefined;
-    subpageFacts: SubpageFacts[];
-    storeContext: StoreContext;
-    会場表現: string;
-    officialHtml: string | undefined;
-    primaryOfficialUrl: string | null | undefined;
-    occurrences: EventDataOccurrence[] | undefined;
-    pointsFormat: PointsFormat;
-    costTracker: CostTrackerService;
-  }): Promise<string> {
+  private async runArticlePoints(input: ArticlePointsInput): Promise<string> {
+    try {
+      return await this.buildArticlePoints(input);
+    } catch (error) {
+      console.warn(`${getStepContext('article-points')} ⚠️ この記事のポイントを組み立てられなかったため、枠を出さない:`, error);
+      Sentry.addBreadcrumb({
+        category: 'article-points',
+        level: 'warning',
+        message: 'この記事のポイントの組み立てに失敗',
+        data: { error: error instanceof Error ? error.message : String(error) },
+      });
+      return '';
+    }
+  }
+
+  private async buildArticlePoints(input: ArticlePointsInput): Promise<string> {
     const { extraction, storeContext } = input;
     const pages = input.categoryImages?.pages ?? [];
     // ノベルティの文脈 = ノベルティの下層ページと、ノベルティ名が読めた会場のページ (ノベルティの画像を選ぶのと同じ基準)
@@ -1843,7 +1863,7 @@ export class ArticleGenerationMdxService {
 
   /** 「本イベントの特徴」(整えて MDX として安全にした行)。失敗したら空 (記事は止めない) */
   private async generateFeatures(
-    input: Parameters<ArticleGenerationMdxService['runArticlePoints']>[0],
+    input: ArticlePointsInput,
     factLines: string[],
     pages: SubpageText[],
   ): Promise<string[]> {
@@ -1864,6 +1884,10 @@ export class ArticleGenerationMdxService {
       if (points.usage) input.costTracker.recordUsage('article-points', points.model, points.usage);
       return cleanFeatures(points.features);
     } catch (pointsError) {
+      // 応答は返ったが読めなかったときも、使ったトークンのコストは記録する
+      if (pointsError instanceof ArticlePointsParseError && pointsError.usage) {
+        input.costTracker.recordUsage('article-points', pointsError.model, pointsError.usage);
+      }
       // 特徴が無くても記事は成り立つ (事実の行は出る)。記事を止めるほどではないので breadcrumb に留める
       console.warn(`${getStepContext('article-points')} ⚠️ 本イベントの特徴を書けなかったため、事実の行だけを出す:`, pointsError);
       Sentry.addBreadcrumb({

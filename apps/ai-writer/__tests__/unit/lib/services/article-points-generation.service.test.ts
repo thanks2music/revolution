@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import {
   ArticlePointsGenerationService,
+  ArticlePointsParseError,
   parseArticlePointsResponse,
   summarizeExtraction,
 } from '@/lib/services/article-points-generation.service';
@@ -108,6 +109,14 @@ describe('ArticlePointsGenerationService', () => {
     await expect(service.generate({ 作品名: null, factLines: [], extraction: EXTRACTION, pages: [] })).rejects.toThrow(
       'prompts.write_features'
     );
+  });
+
+  it('応答を読めなければ、usage を持った ArticlePointsParseError を投げる (呼び出し側がコストを記録できるように)', async () => {
+    const { service } = build('{"features": ["途中で切れ');
+
+    const error = await service.generate({ 作品名: null, factLines: [], extraction: EXTRACTION, pages: [] }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ArticlePointsParseError);
+    expect(error).toMatchObject({ model: 'test-model', usage: { totalTokens: 15 } });
   });
 
   it('LLM の失敗はそのまま投げる (呼び出し側が事実の行だけで続ける)', async () => {
