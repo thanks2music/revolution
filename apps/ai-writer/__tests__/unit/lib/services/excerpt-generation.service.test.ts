@@ -81,6 +81,8 @@ describe('normalizeExcerpt', () => {
     expect(normalizeExcerpt('  "港町レトロ"をテーマに\nした カフェ  ', 150)).toBe('「港町レトロ」をテーマに した カフェ');
     expect(normalizeExcerpt('“港町レトロ”とGirls’ Band', 150)).toBe('「港町レトロ」とGirls’ Band');
     expect(normalizeExcerpt('閉じない“引用', 150)).toBe('閉じない引用');
+    // 奇数個の二重引用符: 対になる分だけ「」にし、残りは消す
+    expect(normalizeExcerpt('"A"B"', 150)).toBe('「A」B');
   });
 
   it('字数はコードポイントで数え、サロゲートペアの途中で切らない', () => {
@@ -119,6 +121,10 @@ describe('fallbackExcerpt (境界)', () => {
     expect(fallbackExcerpt("人気グループ「モーニング娘。'26」のコラボカフェが開催される。次の文。", 't')).toBe(
       "人気グループ「モーニング娘。'26」のコラボカフェが開催される。"
     );
+  });
+
+  it('括弧が閉じていなければ、全文を上限まで使う', () => {
+    expect(fallbackExcerpt('「閉じない括弧。の中の文。', 't', 160)).toBe('「閉じない括弧。の中の文。');
   });
 
   it('リード文が空ならタイトルを使う (抜粋は空にできない)', () => {
