@@ -158,13 +158,9 @@ describe('noveltyContextMentionsRedrawn', () => {
 
 describe('cleanFeatures', () => {
   it('Markdown の書式 (見出し・強調・リンク・コード) を外して地の文にする', () => {
-    expect(cleanFeatures(['# 見出し', '**限定**の演出', '[公式](https://example.com)で発表', '`code`', '1.5倍のサイズ'])).toEqual([
-      '見出し',
-      '限定の演出',
-      '公式で発表',
-      'code',
-      '1.5倍のサイズ',
-    ]);
+    expect(
+      cleanFeatures(['# 見出し', '**限定**の演出', '[公式](https://example.com)で発表', '`code`', '1.5倍のサイズ', '詳細は https://example.com/a で', '[残った括弧]'])
+    ).toEqual(['見出し', '限定の演出', '公式で発表', 'code', '1.5倍のサイズ', '詳細は で', '&#91;残った括弧&#93;']);
   });
 
   it('先頭の箇条書きの記号と改行を除き、MDX として安全にする。空は捨てる', () => {
