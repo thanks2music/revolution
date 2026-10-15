@@ -115,6 +115,30 @@ describe('LeadGeneratorService - 単一作品 - 原作者あり (3 pattern)', ()
     expect(result.fallbackReason).toBeUndefined();
   });
 
+  it('グッズの文は、公式の語 (描き下ろし表記) があるときだけ「〇〇イラストを使用した」と書き、無ければイラストの種類に触れない', async () => {
+    const base = {
+      メディアタイプ: 'manga',
+      原作タイプ: 'manga_based',
+      原作者有無: true,
+      原作者名: '芥見下々先生',
+      キャラクター名: ['五条悟', '虎杖悠仁'],
+      テーマ名: '呪術師の日常',
+      グッズ名: ['アクリルスタンド'],
+      works: [{ title: '呪術廻戦', is_primary: true }],
+      store: { name: 'BOX cafe&space' },
+    };
+
+    const withWord = await service.generate(makeInput({ ...base, 描き下ろし表記: '描き起こし' }));
+    expect(withWord.usedTemplate).toBe('lead_author_with_theme_and_characters');
+    expect(withWord.leadMdx).toContain('人気キャラクター達の描き起こしイラストを使用した「アクリルスタンド」');
+    expect(withWord.leadMdx).not.toContain('描き下ろ');
+
+    const withoutWord = await service.generate(makeInput({ ...base, 描き下ろし表記: null }));
+    expect(withoutWord.leadMdx).toContain('人気キャラクター達の「アクリルスタンド」');
+    expect(withoutWord.leadMdx).not.toMatch(/描き下ろ|描き起こ|新規イラスト/);
+    expect(withoutWord.leadMdx).not.toContain('{{');
+  });
+
   it('lead_author_with_characters: 原作者 + キャラクター名 (テーマ名なし) で match', async () => {
     const result = await service.generate(
       makeInput({

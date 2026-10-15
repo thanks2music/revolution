@@ -7,7 +7,9 @@
  * 事実の行の順 (BOSS 決定): ① 開催期間と会場 → ② 描き下ろし・描き起こし → ③ グッズ → ④ メニュー → ⑤ ノベルティ
  * - ① 会場ごとに期間が違っても、全体の期間 (最も早い開始〜最も遅い終了) と会場の数の 1 行にする
  * - ② 公式のページに語があるときだけ
- * - ③ ④ 種類と数だけ (中身は特徴と本文に任せる)
+ * - ③ グッズの文脈に語があり、3 点以上のときだけ。数はふんわり書く (抽出で点数が実行ごとに揺れるため。10 点以上は十の位で
+ *   切り捨てた数、3〜9 点は数を書かない)
+ * - ④ メニューは品数 (中身は特徴と本文に任せる)
  * - ⑤ 名前を並べる。ただしノベルティの文脈に「描き下ろし」「描き起こし」があるときだけ
  *
  * 書式は Templates の `sections/01b-points.yaml` の `rendered` (YAML が SoT)。差し込む値は外部のページから読んだものなので、
@@ -29,7 +31,8 @@ const POINTS_FORMAT_KEYS = [
   'place_multi_count_only',
   'schedule_line',
   'redrawn_line',
-  'goods_line',
+  'goods_line_many',
+  'goods_line_few',
   'goods_channel_store',
   'goods_channel_online',
   'menu_line',
@@ -58,6 +61,8 @@ export interface PointsFactsInput {
   cities: readonly string[];
   /** 公式のページにあった語 (無ければ null) */
   redrawnWord: RedrawnWord | null;
+  /** グッズの文脈の語 (`deriveRedrawnWords` の goods。無ければグッズの行を出さない) */
+  goodsRedrawnWord: RedrawnWord | null;
   goodsNames: readonly string[] | null | undefined;
   goodsDetails: readonly SubpageGoodsItem[] | null | undefined;
   menuCount: number;
@@ -103,13 +108,29 @@ function goodsChannels(details: PointsFactsInput['goodsDetails'], format: Points
 }
 
 /**
- * グッズの品目の数。詳細 (下層ページの品名・価格・販売方法。オンライン限定を含む) とグッズ名 (トップにしか無い品目を含む) を、
- * 品名の表記の揺れを無視して合わせた数 (どちらか片方だけでは、本文のグッズの節と数が合わないことがある)。
- * 既知の限界: 表記の揺れは itemNameKey の範囲だけ吸収する。詳細とグッズ名で略称が違うような大きな違いは別の品目として数える
+ * グッズの品目の数の下限。詳細 (下層ページの品名・価格・販売方法。オンライン限定を含む) とグッズ名 (トップにしか無い品目を含む) の
+ * それぞれで、品名の表記の揺れを無視して数え、多い方を返す。行は「N0点以上」と書くので、和集合 (略称の違いで同じ品目を 2 回数える
+ * ことがある) ではなく、確実に言える下限を使う
  */
 export function countGoods(names: PointsFactsInput['goodsNames'], details: PointsFactsInput['goodsDetails']): number {
-  const keys = new Set([...(details ?? []).map((item) => item.name), ...(names ?? [])].map(itemNameKey).filter(Boolean));
-  return keys.size;
+  const unique = (values: readonly string[]) => new Set(values.map(itemNameKey).filter(Boolean)).size;
+  return Math.max(unique((details ?? []).map((item) => item.name)), unique(names ?? []));
+}
+
+/** グッズの数の区切り。これ以上は十の位で切り捨てた数を書き、未満は数を書かない */
+const GOODS_COUNT_STEP = 10;
+/** グッズの行を出す最小の点数 (1〜2 点で「多数登場」は言い過ぎになるため、2026-10-15 BOSS 決定) */
+const MIN_GOODS_COUNT = 3;
+
+/**
+ * グッズの行。点数は抽出で実行ごとに揺れる (コナンで 43 / 46 点) ので、正確な数は書かない (2026-10-15 BOSS 決定):
+ * 10 点以上は十の位で切り捨てた数 (43 → 40)、3〜9 点は数を書かない。2 点以下なら行を出さない
+ */
+export function formatGoodsLine(count: number, channels: string[], format: PointsFormat): string | null {
+  if (count < MIN_GOODS_COUNT) return null;
+  if (count < GOODS_COUNT_STEP) return fillTemplate(format.goods_line_few, { channels });
+  const floored = Math.floor(count / GOODS_COUNT_STEP) * GOODS_COUNT_STEP;
+  return fillTemplate(format.goods_line_many, { count: String(floored), channels });
 }
 
 /** 事実の行 (箇条書きの記号は付けない)。値の無い行は出さない */
@@ -124,9 +145,10 @@ export function buildFactLines(input: PointsFactsInput, format: PointsFormat): s
 
   if (input.redrawnWord) lines.push(fillTemplate(format.redrawn_line, { word: input.redrawnWord }));
 
-  const goodsCount = countGoods(input.goodsNames, input.goodsDetails);
-  if (goodsCount > 0) {
-    lines.push(fillTemplate(format.goods_line, { count: String(goodsCount), channels: goodsChannels(input.goodsDetails, format) }));
+  // グッズの行は、グッズの文脈に「描き下ろし」「描き起こし」があるときだけ (2026-10-15 BOSS 決定。数ではなく語で選ぶ)
+  if (input.goodsRedrawnWord) {
+    const goodsLine = formatGoodsLine(countGoods(input.goodsNames, input.goodsDetails), goodsChannels(input.goodsDetails, format), format);
+    if (goodsLine) lines.push(goodsLine);
   }
 
   if (input.menuCount > 0) lines.push(fillTemplate(format.menu_line, { count: String(input.menuCount) }));

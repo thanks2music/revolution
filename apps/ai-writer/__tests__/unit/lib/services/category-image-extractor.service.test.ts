@@ -87,6 +87,8 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     expect(result.mentionsRedrawnIllustration).toBe(true);
     // 「この記事のポイント」の行に書く語も、切り詰める前の本文ブロックから記録する
     expect(result.redrawnWord).toBe('描き下ろし');
+    // グッズのページなので、グッズの文脈の語にもなる (切り詰める前の本文で調べる)
+    expect(result.redrawnPages).toEqual([{ kind: 'goods', redrawn: { page: '描き下ろし', goods: '描き下ろし' } }]);
   });
 
   it('通常の HTML の下層ページはこれまでどおり <img> から拾う', async () => {
