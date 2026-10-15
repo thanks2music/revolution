@@ -107,7 +107,7 @@ import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { selectFallbackLevel, validateBusinessRules } from '@/lib/utils/vision-api-utils';
 import { determineVisionTargets, type VisionTargets } from './vision-api/vision-targets';
 import { menuItemsOf, mergeVisionIntoExtraction } from './vision-api/merge-vision-into-extraction';
-import { mentionsRedrawnIllustration, redrawnIllustrationWord } from '@/lib/utils/redrawn-illustration';
+import { deriveRedrawnWords, mentionsRedrawnIllustration, type RedrawnWord } from '@/lib/utils/redrawn-illustration';
 import {
   buildFactLines,
   cleanFeatures,
@@ -281,6 +281,8 @@ interface ArticlePointsInput {
   officialHtml: string | undefined;
   primaryOfficialUrl: string | null | undefined;
   occurrences: EventDataOccurrence[] | undefined;
+  /** 公式のページ全体の「描き下ろし」「描き起こし」の語 (リード文・本文はグッズの文脈の語を使う) */
+  ページの描き下ろし表記: RedrawnWord | null;
   pointsFormat: PointsFormat;
   costTracker: CostTrackerService;
 }
@@ -1051,6 +1053,15 @@ export class ArticleGenerationMdxService {
       //   決定表が何も作れなかった場合のみ抽出結果へ退避する。
       const 会場表現 = storeContext.会場表現 || detailedExtraction.店舗名;
 
+      // 公式のページの「描き下ろし」「描き起こし」の語 (どちらも無ければ、記事はイラストの種類に触れない。2026-10-15 BOSS 決定)。
+      // ページ全体の語はこの記事のポイントの行に、グッズの文脈の語はリード文・本文・テキストの置換に使う
+      const 描き下ろし = deriveRedrawnWords({
+        officialHtml,
+        subpages: categoryImages?.redrawnPages ?? [],
+        goodsNames: [...(detailedExtraction.グッズ名 ?? []), ...(detailedExtraction.グッズ詳細リスト ?? []).map((item) => item.name)],
+      });
+      const 描き下ろし表記 = 描き下ろし.goods;
+
       const leadResult = await leadGenerator.generate({
         works: detailedExtraction.works ?? [],
         store: detailedExtraction.store ?? { name: detailedExtraction.店舗名 },
@@ -1061,6 +1072,7 @@ export class ArticleGenerationMdxService {
         原作者名: detailedExtraction.原作者名,
         キャラクター名: detailedExtraction.キャラクター名,
         テーマ名: detailedExtraction.テーマ名,
+        描き下ろし表記,
         ノベルティ名: detailedExtraction.ノベルティ名,
         // 文に並べるのは先頭の数件だけ (全件はグッズの節の一覧に書く)
         グッズ名: proseGoodsNames,
@@ -1108,6 +1120,8 @@ export class ArticleGenerationMdxService {
           },
           generatedTitle: titleResult.title,
           officialHtml: officialHtml, // detail-extraction step で取得済みのHTMLを再利用
+          // 本文の LLM は、この語があるときだけ「描き下ろし」「描き起こし」と書く (4-content.yaml)
+          描き下ろし表記,
           categoryImages: categoryImages ? {
             menu: categoryImages.menu,
             novelty: categoryImages.novelty,
@@ -1154,6 +1168,7 @@ export class ArticleGenerationMdxService {
         officialHtml,
         primaryOfficialUrl: selectionResult.primary_official_url,
         occurrences: parsedEventDataResult?.occurrences,
+        ページの描き下ろし表記: 描き下ろし.page,
         pointsFormat,
         costTracker,
       });
@@ -1358,6 +1373,7 @@ export class ArticleGenerationMdxService {
             : undefined,
           キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
           テーマ名: detailedExtraction.テーマ名 ?? undefined,
+          描き下ろし表記,
           ノベルティ名: detailedExtraction.ノベルティ名 ?? undefined,
           グッズ名: proseGoodsNames ?? undefined,
           開催期間: detailedExtraction.開催期間,
@@ -1843,8 +1859,7 @@ export class ArticleGenerationMdxService {
         // 会場の一覧が無ければ (event_data が無い記事)、本文と同じ会場の表記を 1 つだけ使う
         venues: storeContext.会場一覧.length > 0 ? storeContext.会場一覧 : [input.会場表現].filter(Boolean),
         cities: storeContext.都市一覧,
-        // officialHtml は本文ブロックだけ (extractContentHtml が selectMainContent で切り出したもの。ナビ・関連ニュースを含まない)
-        redrawnWord: redrawnIllustrationWord([input.officialHtml]) ?? input.categoryImages?.redrawnWord ?? null,
+        redrawnWord: input.ページの描き下ろし表記,
         goodsNames: extraction.グッズ名,
         goodsDetails: extraction.グッズ詳細リスト,
         menuCount: menuItemsOf(extraction).length,

@@ -16,6 +16,7 @@
 // v1.4.0: Type Guard & Media Type Mapper imports
 import { formatAuthorName, hasMultipleAuthors } from '../utils/author-formatter';
 import { getMediaTypeMapperService } from './media-type-mapper.service';
+import type { RedrawnWord } from '@/lib/utils/redrawn-illustration';
 
 /**
  * 開催期間の型定義
@@ -82,6 +83,8 @@ export interface TextPlaceholderData {
    */
   メンバー名?: string[] | null;
   テーマ名?: string | null;
+  /** グッズの文脈の語 (「描き下ろし」か「描き起こし」)。無ければ null (テンプレートは {{#if 描き下ろし表記}} で使う) */
+  描き下ろし表記?: RedrawnWord | null;
   /** ノベルティ名の一覧。`{{ノベルティ名}}` は「、」で、`{{ノベルティ名|join:'…'}}` は指定の区切りでつなぐ */
   ノベルティ名?: string[] | null;
   グッズ名?: string[] | null;
@@ -382,6 +385,7 @@ export class TextPlaceholderReplacerService {
       開催回数: data.開催回数 ?? undefined,
       公式サイトURL: data.公式サイトURL ?? undefined,
       テーマ名: data.テーマ名 ?? undefined,
+      描き下ろし表記: data.描き下ろし表記 ?? undefined,
       ノベルティ名: data.ノベルティ名?.length ? data.ノベルティ名.join('、') : undefined,
       コラボ作品名: data.コラボ作品名,
 

@@ -18,6 +18,7 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate, SectionTemplate } from '@/lib/types/modular-template';
 import type { ExtractionResult } from './extraction.service';
+import type { RedrawnWord } from '@/lib/utils/redrawn-illustration';
 // Sprint C-β P11 (2026-07-19): §6.2 メディア形態表記マップの解決 + 日本語対訳注入
 import { getMediaFormResolverService } from './media-form-resolver.service';
 import { getMediaTypeMapperService } from './media-type-mapper.service';
@@ -57,6 +58,11 @@ export interface ContentGenerationRequest {
   officialHtml?: string;
   /** カテゴリ別画像情報（category-image-extraction step で抽出） */
   categoryImages?: CategoryImages;
+  /**
+   * グッズの文脈の「描き下ろし」「描き起こし」の語 (Revolution が公式のページから決める。LLM は抽出しない)。
+   * 本文の LLM は、この語があるときだけその語で書く (4-content.yaml)
+   */
+  描き下ろし表記?: RedrawnWord | null;
 }
 
 /**
@@ -200,7 +206,10 @@ export class ContentGenerationService {
     // Sprint C-β P11: lead セクションを除外して sections プロンプトを組み立てる
     const sectionsSection = this.buildSectionsSection(template);
     // Sprint C-β P11: extractedData に日本語対訳の派生変数を注入 (Bug 1 対策)
-    const enrichedExtractedData = this.enrichExtractedDataForPrompt(request.extractedData);
+    const enrichedExtractedData = {
+      ...this.enrichExtractedDataForPrompt(request.extractedData),
+      描き下ろし表記: request.描き下ろし表記 ?? null,
+    };
 
     // 最終プロンプトを構築
     return `${template.prompts.generate_content}
