@@ -180,6 +180,13 @@ describe('ExcerptGenerationService', () => {
     }
   });
 
+  it('値を持たないキー ({{constructor}} など) は置き換えずに残す', async () => {
+    const { service, sendMessage } = build('{"excerpt": "抜粋"}', { prompts: { write_excerpt: '{{constructor}} {{title}}' } });
+    await service.generate({ title: 't', 作品名: null, leadMdx: LEAD, pointsBlock: '' });
+    const [prompt] = sendMessage.mock.calls[0] as unknown as [string];
+    expect(prompt).toBe('{{constructor}} t');
+  });
+
   it('プロンプトが無ければ、キー名を挙げて ExcerptPromptMissingError (呼び出し側が通知する)', async () => {
     const { service } = build('{"excerpt": "x"}', { prompts: {} });
     const error = await service.generate({ title: 't', 作品名: null, leadMdx: LEAD, pointsBlock: '' }).catch((e: unknown) => e);

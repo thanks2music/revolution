@@ -1816,7 +1816,7 @@ export class ArticleGenerationMdxService {
     try {
       const result = await new ExcerptGenerationService().generate(request);
       if (result.usage) costTracker.recordUsage('excerpt-generation', result.model, result.usage);
-      console.log(`${getStepContext('excerpt-generation')} 抜粋 (${result.excerpt.length} 字): ${result.excerpt}`);
+      console.log(`${getStepContext('excerpt-generation')} 抜粋 (${Array.from(result.excerpt).length} 字): ${result.excerpt}`);
       return result.excerpt;
     } catch (error) {
       if (error instanceof ExcerptParseError && error.usage) {

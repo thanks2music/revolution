@@ -179,7 +179,9 @@ export class ExcerptGenerationService {
       points: points.length > 0 ? points.map((line) => `- ${line}`).join('\n') : '(なし)',
       max_length: String(EXCERPT_MAX_LENGTH - PROMPT_LENGTH_MARGIN),
     };
-    const prompt = instruction.replace(/\{\{([^{}]+)\}\}/g, (match, key: string) => values[key] ?? match);
+    const prompt = instruction.replace(/\{\{([^{}]+)\}\}/g, (match, key: string) =>
+      Object.hasOwn(values, key) ? values[key] : match
+    );
     const response = await this.aiProvider.sendMessage(prompt, {
       stepId: 'excerpt-generation',
       maxTokens: MAX_OUTPUT_TOKENS,
