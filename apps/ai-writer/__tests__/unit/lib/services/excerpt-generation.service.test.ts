@@ -18,6 +18,8 @@ import type { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loa
 const LEAD = [
   '人気作品「名探偵コナン」× 東京・神奈川・愛知・大阪・宮城・北海道の各会場にて2026年4月10日〜8月2日までコラボカフェが開催される。',
   '',
+  '「名探偵コナン」コラボカフェでは、コラボメニューがお楽しみいただける他、ノベルティー「招待状（ランダム7種）」も用意されている。',
+  '',
   'さらに"港町レトロ"をテーマに江戸川コナンら人気キャラクター達の描き下ろしイラストを使用した「缶バッジ」などのコラボグッズも発売!',
 ].join('\n');
 
@@ -82,7 +84,13 @@ describe('normalizeExcerpt', () => {
 });
 
 describe('fallbackExcerpt', () => {
-  it('リード文の先頭から作る (確定値で書いてあるので、事実と食い違わない)', () => {
+  it('リード文の最初の 1 文だけを使う (2 文目以降のノベルティ名を入れない)', () => {
+    expect(fallbackExcerpt(LEAD)).toBe(
+      '人気作品「名探偵コナン」× 東京・神奈川・愛知・大阪・宮城・北海道の各会場にて2026年4月10日〜8月2日までコラボカフェが開催される。'
+    );
+  });
+
+  it('最初の 1 文が上限を超えれば切り詰める', () => {
     const result = fallbackExcerpt(LEAD, 60);
     expect(result).toHaveLength(60);
     expect(result.startsWith('人気作品「名探偵コナン」× 東京・神奈川')).toBe(true);
@@ -111,7 +119,8 @@ describe('ExcerptGenerationService', () => {
     expect(prompt).toContain('作品=名探偵コナン');
     expect(prompt).toContain('L=人気作品「名探偵コナン」× 東京');
     expect(prompt).toContain('- 2026年4月10日〜8月2日、東京・神奈川・愛知・大阪・宮城・北海道の10会場\n- 描き下ろしイラストを使用');
-    expect(prompt).toContain('上限=120');
+    // 上限は実際より 20 字少なく伝える (LLM が字数を数え違えても、切り詰めずに済むように)
+    expect(prompt).toContain('上限=100');
     expect(options).toMatchObject({ stepId: 'excerpt-generation', responseFormat: 'json' });
   });
 
@@ -124,7 +133,8 @@ describe('ExcerptGenerationService', () => {
     expect(prompt).toContain('L=本文に {{points}} とある');
     expect(prompt).toContain('作品=(不明)');
     expect(prompt).toContain('P=\n(なし)');
-    expect(prompt).toContain('上限=150');
+    // 既定の上限は 160 字 (constraints.yaml)。プロンプトには 140 字と伝える
+    expect(prompt).toContain('上限=140');
   });
 
   it('応答を読めない・空なら、usage 付きの ExcerptParseError (コストを記録できる)', async () => {

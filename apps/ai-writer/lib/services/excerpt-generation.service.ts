@@ -22,6 +22,17 @@ const EXCERPT_OPENAI_SCHEMA = zodToOpenAiSchema(ExcerptResponseSchema, 'ExcerptR
 /** 応答の上限。抜粋は 150 字ほどだが、Gemini は思考のトークンもここに含めて数えるので余裕を持たせる */
 const MAX_OUTPUT_TOKENS = 4_000;
 
+/**
+ * 抜粋の字数の上限 (Templates の `shared/constraints.yaml` の meta_description.length.max)。これを超えたときだけ切り詰める
+ */
+export const EXCERPT_MAX_LENGTH = 160;
+
+/**
+ * プロンプトに伝える上限は、実際の上限よりこの字数だけ少なくする (推奨の 120〜150 字に収まる 140 字)。LLM は日本語の字数を
+ * 数え違える (上限 150 で 152 字、140 で 151 字を返し、切り詰めで「…発売され…」と文の途中で切れた。2026-10-16 の dry-run)
+ */
+const PROMPT_LENGTH_MARGIN = 20;
+
 export interface ExcerptRequest {
   title: string;
   作品名: string | null;
@@ -29,7 +40,7 @@ export interface ExcerptRequest {
   leadMdx: string;
   /** 「この記事のポイント」の枠 (MDX、`renderArticlePoints` の出力)。空なら枠なし */
   pointsBlock: string;
-  /** 字数の上限 (既定は `METADATA_DEFAULTS.MAX_EXCERPT_LENGTH`) */
+  /** 字数の上限 (既定は {@link EXCERPT_MAX_LENGTH}) */
   maxLength?: number;
 }
 
@@ -95,10 +106,13 @@ export class ExcerptParseError extends Error {
 }
 
 /**
- * LLM が書けなかったときの抜粋。リード文の先頭の文を上限まで使う (リード文は確定値で書いてあるので、事実と食い違わない)
+ * LLM が書けなかったときの抜粋。リード文の最初の 1 文 (「。」まで) を使う (リード文は確定値で書いてあるので、事実と食い違わない)。
+ * 2 文目以降にはノベルティの名前が並ぶことがあり、抜粋には書かない方針なので使わない (プロンプト評価 r1 の指摘)
  */
-export function fallbackExcerpt(leadMdx: string, maxLength: number = METADATA_DEFAULTS.MAX_EXCERPT_LENGTH): string {
-  return normalizeExcerpt(mdxToPlainText(leadMdx), maxLength);
+export function fallbackExcerpt(leadMdx: string, maxLength: number = EXCERPT_MAX_LENGTH): string {
+  const text = mdxToPlainText(leadMdx);
+  const end = text.indexOf('。');
+  return normalizeExcerpt(end === -1 ? text : text.slice(0, end + 1), maxLength);
 }
 
 export class ExcerptGenerationService {
@@ -117,7 +131,7 @@ export class ExcerptGenerationService {
    *   呼び出し側は {@link fallbackExcerpt} で続ける
    */
   async generate(request: ExcerptRequest): Promise<ExcerptResult> {
-    const maxLength = request.maxLength ?? METADATA_DEFAULTS.MAX_EXCERPT_LENGTH;
+    const maxLength = request.maxLength ?? EXCERPT_MAX_LENGTH;
     const template = await this.templateLoader.loadModularTemplate(this.templateId, this.pipelineId, {
       includeSections: false,
       includeShared: false,
@@ -133,7 +147,7 @@ export class ExcerptGenerationService {
       作品名: request.作品名 ?? '(不明)',
       lead: mdxToPlainText(request.leadMdx) || '(なし)',
       points: points.length > 0 ? points.map((line) => `- ${line}`).join('\n') : '(なし)',
-      max_length: String(maxLength),
+      max_length: String(maxLength - PROMPT_LENGTH_MARGIN),
     };
     const prompt = instruction.replace(/\{\{(title|作品名|lead|points|max_length)\}\}/g, (_, key: keyof typeof values) => values[key]);
     const response = await this.aiProvider.sendMessage(prompt, {
