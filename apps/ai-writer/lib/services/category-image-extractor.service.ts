@@ -23,7 +23,7 @@ import type { CategoryUrls } from '@/lib/types/subpage-detection';
 import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
 import { selectMainContent } from '@/lib/utils/html-extractor';
 import { compactHtmlForLlm, truncateForLlm } from '@/lib/utils/compact-html';
-import { pageRedrawnWords, type PageRedrawnWords, type RedrawnWord } from '@/lib/utils/redrawn-illustration';
+import { pageRedrawnWords, type PageRedrawnWords } from '@/lib/utils/redrawn-illustration';
 import { pageUrlKey } from '@/lib/utils/url';
 import { fetchPageSafely } from '@/lib/utils/safe-image-fetch';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
@@ -74,8 +74,6 @@ export interface CategoryImages {
    * そのまま調べ、追加の通信はしない。HTML 自体は結果に残さない)
    */
   mentionsRedrawnIllustration: boolean;
-  /** 最初に見つかった語 (「この記事のポイント」の行に書く。`mentionsRedrawnIllustration` と同じ本文ブロックから) */
-  redrawnWord: RedrawnWord | null;
   /**
    * ページごとの語 (ページ全体とグッズの文脈。切り詰める前の本文ブロックで調べる)。記事で使う語は `deriveRedrawnWords` が決める
    */
@@ -196,7 +194,6 @@ export class CategoryImageExtractorService {
       sources: {},
       all: [],
       mentionsRedrawnIllustration: false,
-      redrawnWord: null,
       redrawnPages: [],
       pages: [],
       venueNoveltyImages: [],
@@ -345,8 +342,7 @@ export class CategoryImageExtractorService {
     // 切り詰める前の本文ブロック全体で調べる (pages の text は 1 ページ 20,000 字までに切り詰める)
     const redrawn = pageRedrawnWords(mainHtml, kind === 'goods');
     result.redrawnPages.push({ kind, redrawn });
-    result.redrawnWord ??= redrawn.page;
-    result.mentionsRedrawnIllustration = result.redrawnWord !== null;
+    result.mentionsRedrawnIllustration ||= redrawn.page !== null;
     const { text } = truncateForLlm(compactHtmlForLlm(mainHtml).html, SUBPAGE_TEXT_BUDGET_CHARS);
     result.pages.push({ url, kind, text });
     return mainHtml;

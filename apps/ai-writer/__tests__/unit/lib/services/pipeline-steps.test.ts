@@ -27,6 +27,9 @@ describe('pipeline-steps — Layer 1 contracts', () => {
     expect(getStepIndex('rss-extraction')).toBeLessThan(getStepIndex('detail-extraction'));
     expect(getStepIndex('vision-api')).toBeLessThan(getStepIndex('slug-generation'));
     expect(getStepIndex('content-generation')).toBeLessThan(getStepIndex('mdx-assembly'));
+    // 抜粋は完成した記事の冒頭 (リード文とこの記事のポイント) から書くので、article-points の後
+    expect(getStepIndex('article-points')).toBeLessThan(getStepIndex('excerpt-generation'));
+    expect(getStepIndex('excerpt-generation')).toBeLessThan(getStepIndex('mdx-assembly'));
   });
 
   it('case B: getStepDisplay embeds id and uses live index/length (no hardcoded position)', () => {
@@ -102,6 +105,7 @@ describe('pipeline-steps — Layer 1 contracts', () => {
       'lead-generation', // Sprint C-β P11 (2026-07-19)
       'content-generation',
       'article-points', // 2026-10-15 (この記事のポイント)
+      'excerpt-generation', // 2026-10-16 (抜粋をリード文とポイントから)
       'image-upload-r2',
       'image-placeholder-replacement',
       'text-placeholder-replacement',
