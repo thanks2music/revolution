@@ -42,6 +42,7 @@ const BASE: PointsFactsInput = {
   venues: [],
   cities: [],
   redrawnWord: null,
+  goodsRedrawnWord: null,
   goodsNames: null,
   goodsDetails: null,
   menuCount: 0,
@@ -93,9 +94,11 @@ describe('buildFactLines', () => {
         venues: ['a', 'b'],
         cities: ['東京', '大阪'],
         redrawnWord: '描き下ろし',
+        goodsRedrawnWord: '描き下ろし',
         goodsDetails: [
           { name: '缶バッジ', price: null, sales: 'store_and_online' },
           { name: 'アクスタ', price: null, sales: 'store' },
+          { name: '巾着', price: null, sales: 'store' },
         ],
         menuCount: 19,
         noveltyNames: ['コースター', 'ステッカー'],
@@ -128,10 +131,23 @@ describe('buildFactLines', () => {
   });
 
   it('グッズの販売方法は詳細から。詳細が無ければ書かない', () => {
-    expect(buildFactLines({ ...BASE, goodsDetails: [{ name: 'A', price: null, sales: 'online_only' }] }, FORMAT)).toEqual([
-      'GOODS_FEW(オンライン)',
-    ]);
-    expect(buildFactLines({ ...BASE, goodsNames: ['B', 'C'] }, FORMAT)).toEqual(['GOODS_FEW']);
+    const online = (name: string) => ({ name, price: null, sales: 'online_only' as const });
+    expect(
+      buildFactLines({ ...BASE, goodsRedrawnWord: '描き起こし', goodsDetails: [online('A'), online('B'), online('C')] }, FORMAT)
+    ).toEqual(['GOODS_FEW(オンライン)']);
+    expect(buildFactLines({ ...BASE, goodsRedrawnWord: '描き起こし', goodsNames: ['B', 'C', 'D'] }, FORMAT)).toEqual(['GOODS_FEW']);
+  });
+
+  it('グッズの行は、グッズの文脈に語があるときだけ (数ではなく語で選ぶ)', () => {
+    const names = Array.from({ length: 46 }, (_, i) => `グッズ${i}`);
+    expect(buildFactLines({ ...BASE, goodsNames: names }, FORMAT)).toEqual([]);
+    // ページ全体に語があっても、グッズの文脈に無ければ出さない (ノベルティだけが描き下ろしのイベント)
+    expect(buildFactLines({ ...BASE, redrawnWord: '描き下ろし', goodsNames: names }, FORMAT)).toEqual(['描き下ろしイラストを使用']);
+    expect(buildFactLines({ ...BASE, goodsRedrawnWord: '描き下ろし', goodsNames: names }, FORMAT)).toEqual(['GOODS_MANY:40']);
+  });
+
+  it('グッズが 2 点以下なら、語があってもグッズの行を出さない', () => {
+    expect(buildFactLines({ ...BASE, goodsRedrawnWord: '描き下ろし', goodsNames: ['A', 'B'] }, FORMAT)).toEqual([]);
   });
 
   it('ノベルティ名は MDX として安全にする', () => {
@@ -141,13 +157,16 @@ describe('buildFactLines', () => {
 });
 
 describe('formatGoodsLine', () => {
-  it('10 点以上は十の位で切り捨てて「N0点以上」、10 点未満は数を書かない、0 点は行を出さない', () => {
+  it('10 点以上は十の位で切り捨てて「N0点以上」、3〜9 点は数を書かない、2 点以下は行を出さない', () => {
     expect(formatGoodsLine(43, ['店舗', 'オンライン'], FORMAT)).toBe('GOODS_MANY:40(店舗/オンライン)');
     expect(formatGoodsLine(46, [], FORMAT)).toBe('GOODS_MANY:40');
     expect(formatGoodsLine(10, [], FORMAT)).toBe('GOODS_MANY:10');
     expect(formatGoodsLine(13, [], FORMAT)).toBe('GOODS_MANY:10');
     expect(formatGoodsLine(9, ['店舗'], FORMAT)).toBe('GOODS_FEW(店舗)');
     expect(formatGoodsLine(7, [], FORMAT)).toBe('GOODS_FEW');
+    expect(formatGoodsLine(3, [], FORMAT)).toBe('GOODS_FEW');
+    expect(formatGoodsLine(2, ['店舗'], FORMAT)).toBeNull();
+    expect(formatGoodsLine(1, [], FORMAT)).toBeNull();
     expect(formatGoodsLine(0, ['店舗'], FORMAT)).toBeNull();
   });
 });

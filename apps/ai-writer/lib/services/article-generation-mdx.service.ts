@@ -283,6 +283,8 @@ interface ArticlePointsInput {
   occurrences: EventDataOccurrence[] | undefined;
   /** 公式のページ全体の「描き下ろし」「描き起こし」の語 (リード文・本文はグッズの文脈の語を使う) */
   ページの描き下ろし表記: RedrawnWord | null;
+  /** グッズの文脈の語 (グッズの行を出すかを決める) */
+  描き下ろし表記: RedrawnWord | null;
   pointsFormat: PointsFormat;
   costTracker: CostTrackerService;
 }
@@ -1169,6 +1171,7 @@ export class ArticleGenerationMdxService {
         primaryOfficialUrl: selectionResult.primary_official_url,
         occurrences: parsedEventDataResult?.occurrences,
         ページの描き下ろし表記: 描き下ろし.page,
+        描き下ろし表記,
         pointsFormat,
         costTracker,
       });
@@ -1860,6 +1863,7 @@ export class ArticleGenerationMdxService {
         venues: storeContext.会場一覧.length > 0 ? storeContext.会場一覧 : [input.会場表現].filter(Boolean),
         cities: storeContext.都市一覧,
         redrawnWord: input.ページの描き下ろし表記,
+        goodsRedrawnWord: input.描き下ろし表記,
         goodsNames: extraction.グッズ名,
         goodsDetails: extraction.グッズ詳細リスト,
         menuCount: menuItemsOf(extraction).length,
