@@ -10,16 +10,19 @@ import type { CategoryImages, VenueNoveltyImages } from '@/lib/services/category
 import type { SubpageFacts } from '@/lib/services/subpage-extraction.service';
 import { pageUrlKey } from '@/lib/utils/url';
 
+/** ノベルティ名が読めた会場のページの URL (照合用のキー)。ノベルティの画像と「この記事のポイント」のノベルティの行が同じ基準で使う */
+export function venueUrlsWithNovelties(pages: readonly SubpageFacts[]): Set<string> {
+  return new Set(
+    pages.filter((page) => page.kind === 'venue' && (page.ノベルティ名?.length ?? 0) > 0).map((page) => pageUrlKey(page.url))
+  );
+}
+
 /** ノベルティ名が読めた会場のページのうち、画像の候補がある最初のページ。無ければ null */
 export function pickNoveltyImages(
   candidates: readonly VenueNoveltyImages[],
   pages: readonly SubpageFacts[]
 ): VenueNoveltyImages | null {
-  const withNovelties = new Set(
-    pages
-      .filter((page) => page.kind === 'venue' && (page.ノベルティ名?.length ?? 0) > 0)
-      .map((page) => pageUrlKey(page.url))
-  );
+  const withNovelties = venueUrlsWithNovelties(pages);
   return candidates.find((candidate) => candidate.images.length > 0 && withNovelties.has(pageUrlKey(candidate.url))) ?? null;
 }
 

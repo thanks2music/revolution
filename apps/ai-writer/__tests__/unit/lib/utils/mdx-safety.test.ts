@@ -101,4 +101,9 @@ describe('escapeMdxText', () => {
   it('{ } < > を文字参照にし、他の文字はそのまま', () => {
     expect(escapeMdxText('缶バッジ <限定> {全12種} 605円')).toBe('缶バッジ &#60;限定&#62; &#123;全12種&#125; 605円');
   });
+
+  it('[ ] も文字参照にし、Markdown のリンク・画像の記法にならないようにする', () => {
+    expect(escapeMdxText('[公式](javascript:alert(1))')).toBe('&#91;公式&#93;(javascript:alert(1))');
+    expect(escapeMdxText('![画像](https://example.com/a.png)')).toBe('!&#91;画像&#93;(https://example.com/a.png)');
+  });
 });

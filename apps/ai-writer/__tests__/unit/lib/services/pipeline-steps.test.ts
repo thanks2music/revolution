@@ -101,6 +101,7 @@ describe('pipeline-steps — Layer 1 contracts', () => {
       'title-generation',
       'lead-generation', // Sprint C-β P11 (2026-07-19)
       'content-generation',
+      'article-points', // 2026-10-15 (この記事のポイント)
       'image-upload-r2',
       'image-placeholder-replacement',
       'text-placeholder-replacement',

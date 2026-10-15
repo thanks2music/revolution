@@ -2,7 +2,7 @@
  * Layer 1: ノベルティの画像を、ノベルティ名が読めた会場の案内ページから選ぶ (`pick-novelty-images.ts`、2026-10-13)。
  */
 import type { CategoryImages } from '@/lib/services/category-image-extractor.service';
-import { pickNoveltyImages, withNoveltyImagesFromVenues } from '@/lib/services/pick-novelty-images';
+import { pickNoveltyImages, venueUrlsWithNovelties, withNoveltyImagesFromVenues } from '@/lib/services/pick-novelty-images';
 import type { SubpageFacts } from '@/lib/services/subpage-extraction.service';
 
 const facts = (url: string, kind: SubpageFacts['kind'], ノベルティ名: string[] | null): SubpageFacts => ({
@@ -13,6 +13,17 @@ const facts = (url: string, kind: SubpageFacts['kind'], ノベルティ名: stri
   グッズ詳細リスト: null,
   ノベルティ名,
   キャラクター名: null,
+});
+
+describe('venueUrlsWithNovelties', () => {
+  it('ノベルティ名が読めた会場のページだけを、末尾の / を無視したキーで返す (下層ページ・名前の無いページは含めない)', () => {
+    const urls = venueUrlsWithNovelties([
+      facts('https://example.com/lp/s004/', 'venue', ['ステッカー']),
+      facts('https://example.com/lp/guide', 'venue', null),
+      facts('https://example.com/novelty', 'novelty', ['ステッカー']),
+    ]);
+    expect([...urls]).toEqual(['https://example.com/lp/s004']);
+  });
 });
 
 describe('pickNoveltyImages', () => {
@@ -55,6 +66,7 @@ describe('withNoveltyImagesFromVenues', () => {
     sources: { menu: 'https://example.com/menu' },
     all: ['https://example.com/menu.jpg'],
     mentionsRedrawnIllustration: false,
+    redrawnWord: null,
     pages: [],
     venueNoveltyImages: [{ url: TOKYO, images: ['https://example.com/tokuten.jpg'] }],
   });

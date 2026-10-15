@@ -8,6 +8,7 @@
     "./mdx-frontmatter": "./mdx-frontmatter.ts",
     "./extraction-response": "./extraction-response.ts",
     "./subpage-extraction-response": "./subpage-extraction-response.ts",
+    "./article-points-response": "./article-points-response.ts",
     "./ai-provider-response": "./ai-provider-response.ts",
     "./article-index": "./article-index.ts",
     "./vision-api-extraction": "./vision-api-extraction.ts",

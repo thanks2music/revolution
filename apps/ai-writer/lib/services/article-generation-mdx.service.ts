@@ -31,17 +31,17 @@ import {
   runVenueCompletenessGate,
   type VenueGateVerdict,
 } from '../utils/venue-completeness-gate';
-import { deriveStoreContext } from '../utils/store-derivation';
+import { deriveStoreContext, type StoreContext } from '../utils/store-derivation';
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
-import { stripUtmFromUrl } from '../utils/url';
+import { pageUrlKey, stripUtmFromUrl } from '../utils/url';
 import { escapeMdxText, selfCloseVoidElements } from '../utils/mdx-safety';
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import {
   findUnreplacedPlaceholders,
   removeImagePlaceholderLines,
 } from '../utils/placeholder-residue';
-import { type EventData } from '@revolution/schemas/mdx-frontmatter';
+import { type EventData, type EventDataOccurrence } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
 import { getStepDisplay, getStepContext } from './pipeline-steps';
 import {
@@ -78,6 +78,7 @@ import {
 import {
   getCategoryImageExtractorService,
   type CategoryImages,
+  type SubpageText,
 } from './category-image-extractor.service';
 import {
   getImagePlaceholderReplacerService,
@@ -106,11 +107,21 @@ import { YamlTemplateLoaderService } from './yaml-template-loader.service';
 import { selectFallbackLevel, validateBusinessRules } from '@/lib/utils/vision-api-utils';
 import { determineVisionTargets, type VisionTargets } from './vision-api/vision-targets';
 import { menuItemsOf, mergeVisionIntoExtraction } from './vision-api/merge-vision-into-extraction';
-import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
+import { mentionsRedrawnIllustration, redrawnIllustrationWord } from '@/lib/utils/redrawn-illustration';
+import {
+  buildFactLines,
+  cleanFeatures,
+  loadPointsFormat,
+  noveltyContextMentionsRedrawn,
+  joinArticleParts,
+  renderArticlePoints,
+  type PointsFormat,
+} from './article-points';
+import { ArticlePointsGenerationService, ArticlePointsParseError } from './article-points-generation.service';
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
-import { withNoveltyImagesFromVenues } from './pick-novelty-images';
+import { venueUrlsWithNovelties, withNoveltyImagesFromVenues } from './pick-novelty-images';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
 import {
   goodsNamesForProse,
@@ -258,6 +269,20 @@ interface VisionStepResult {
   merged: boolean;
   /** 埋めた内容 */
   mergeChanges?: string[];
+}
+
+/** この記事のポイントの組み立てに使う値 (`runArticlePoints`) */
+interface ArticlePointsInput {
+  extraction: ExtractionResult;
+  categoryImages: CategoryImages | undefined;
+  subpageFacts: SubpageFacts[];
+  storeContext: StoreContext;
+  会場表現: string;
+  officialHtml: string | undefined;
+  primaryOfficialUrl: string | null | undefined;
+  occurrences: EventDataOccurrence[] | undefined;
+  pointsFormat: PointsFormat;
+  costTracker: CostTrackerService;
 }
 
 /**
@@ -624,9 +649,12 @@ export class ArticleGenerationMdxService {
 
       // subpage-extraction step: 下層ページと会場の案内ページの文字から、メニュー・グッズ・ノベルティ・キャラクターを読む
       console.log(`\n${getStepDisplay('subpage-extraction')} 下層ページの文字からメニュー/グッズ/ノベルティを抽出...`);
+      // 読めたページの事実 (この記事のポイントで、ノベルティ名が読めた会場のページを探すのにも使う)
+      let subpageFacts: SubpageFacts[] = [];
       if (detailedExtraction && categoryImages && categoryImages.pages.length > 0) {
         const subpageStep = await this.runSubpageExtraction(detailedExtraction, categoryImages, costTracker);
         detailedExtraction = subpageStep.extraction;
+        subpageFacts = subpageStep.pages;
         // ノベルティの下層ページが無ければ、ノベルティ名が読めた会場の案内ページの特典の画像を使う
         const noveltyStep = withNoveltyImagesFromVenues(categoryImages, subpageStep.pages);
         categoryImages = noveltyStep.categoryImages;
@@ -986,6 +1014,8 @@ export class ArticleGenerationMdxService {
 
       // グッズの一覧の書式と、文に並べるグッズ名 (先頭の数件。Templates の sections/04-goods.yaml)
       const goodsListConfig = loadGoodsListConfig();
+      // この記事のポイントの書式 (Templates の sections/01b-points.yaml)。本文の生成 (有料の LLM) より前に読み、Templates が古ければ先に止める
+      const pointsFormat = loadPointsFormat();
       const proseGoodsNames = goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig);
 
       // ========================================================================
@@ -1085,18 +1115,12 @@ export class ArticleGenerationMdxService {
           } : undefined,
         });
 
-        // Sprint C-β P11: LeadGenerator 出力を content の先頭に concat
-        // (contentGeneration.content は menu/novelty/goods/summary の 4 セクション、
-        //  4-content.yaml v2.5.0 で lead 除外済み)
-        contentGeneration = {
-          ...contentGeneration,
-          content: `${leadResult.leadMdx}\n\n${contentGeneration.content}`,
-        };
+        // contentGeneration.content は menu/novelty/goods/summary の 4 セクション (4-content.yaml v2.5.0 で lead 除外済み)。
+        // リード文とこの記事のポイントは、次の article-points step の後で先頭につなぐ
 
         console.log('コンテンツ生成完了:', {
-          contentLength: contentGeneration.content.length,
           leadLength: leadResult.leadMdx.length,
-          bodyLength: contentGeneration.content.length - leadResult.leadMdx.length - 2,
+          bodyLength: contentGeneration.content.length,
           generatedSections: contentGeneration.generatedSections,
           skippedSections: contentGeneration.skippedSections,
         });
@@ -1118,6 +1142,26 @@ export class ArticleGenerationMdxService {
           detailedExtraction,
         };
       }
+
+      // article-points step: この記事のポイント (リード文の直後の枠、2026-10-15 BOSS 決定)
+      console.log(`\n${getStepDisplay('article-points')} 組み立て...`);
+      const pointsBlock = await this.runArticlePoints({
+        extraction: detailedExtraction,
+        categoryImages,
+        subpageFacts,
+        storeContext,
+        会場表現,
+        officialHtml,
+        primaryOfficialUrl: selectionResult.primary_official_url,
+        occurrences: parsedEventDataResult?.occurrences,
+        pointsFormat,
+        costTracker,
+      });
+      // リード文 → この記事のポイント → 本文 (Sprint C-β P11 以降、リード文は LeadGeneratorService が書く)
+      contentGeneration = {
+        ...contentGeneration,
+        content: joinArticleParts(leadResult.leadMdx, pointsBlock, contentGeneration.content),
+      };
 
       // image-upload-r2 step: 記事の画像を R2 に上げ、アイキャッチを選ぶ (2026-10-13 BOSS 決定)
       // 枚数の上限なし。短辺の下限・縮小・WebP・縦長の分割・中身のハッシュのキーは article-images/ 配下
@@ -1757,6 +1801,104 @@ export class ArticleGenerationMdxService {
       console.log(`${ctx} メニュー ${menuItems.length} 品・ノベルティ ${extraction.ノベルティ名?.length ?? 0} 件を抽出結果のまま差し込んだ`);
     }
     return result;
+  }
+
+  /**
+   * この記事のポイントの枠 (MDX) を作る (`article-points` step)。事実の行はコードが抽出結果から組み立て
+   * (書式は sections/01b-points.yaml)、「本イベントの特徴」は LLM が書く (pipeline/4.5-article-points.yaml)。
+   * 特徴が書けなくても記事は止めず、事実の行だけで枠を作る。枠は無くても記事が成り立つので、組み立ての途中の想定外の例外でも
+   * 記事は止めず、枠を出さない (有料の本文生成の後で記事全体を止めないため)。行が 1 つも無ければ空文字
+   */
+  private async runArticlePoints(input: ArticlePointsInput): Promise<string> {
+    try {
+      return await this.buildArticlePoints(input);
+    } catch (error) {
+      console.warn(`${getStepContext('article-points')} ⚠️ この記事のポイントを組み立てられなかったため、枠を出さない:`, error);
+      Sentry.addBreadcrumb({
+        category: 'article-points',
+        level: 'warning',
+        message: 'この記事のポイントの組み立てに失敗',
+        data: { error: error instanceof Error ? error.message : String(error) },
+      });
+      return '';
+    }
+  }
+
+  private async buildArticlePoints(input: ArticlePointsInput): Promise<string> {
+    const { extraction, storeContext } = input;
+    const pages = input.categoryImages?.pages ?? [];
+    // ノベルティの文脈 = ノベルティの下層ページと、ノベルティ名が読めた会場のページ (ノベルティの画像を選ぶのと同じ基準)
+    const noveltyVenueUrls = venueUrlsWithNovelties(input.subpageFacts);
+    const noveltyPageTexts = pages
+      .filter((page) => page.kind === 'novelty' || (page.kind === 'venue' && noveltyVenueUrls.has(pageUrlKey(page.url))))
+      .map((page) => page.text);
+    // 期間はまとめの表・frontmatter と同じ値 (全会場の和集合。event_data が無ければ抽出結果の開催期間)
+    const { event_start_date: start, event_end_date: end } = extractEventFactCardFields({
+      eventDataOccurrences: input.occurrences,
+      extractionPeriod: extraction.開催期間,
+    });
+    const factLines = buildFactLines(
+      {
+        period: { start, end },
+        // 会場の一覧が無ければ (event_data が無い記事)、本文と同じ会場の表記を 1 つだけ使う
+        venues: storeContext.会場一覧.length > 0 ? storeContext.会場一覧 : [input.会場表現].filter(Boolean),
+        cities: storeContext.都市一覧,
+        // officialHtml は本文ブロックだけ (extractContentHtml が selectMainContent で切り出したもの。ナビ・関連ニュースを含まない)
+        redrawnWord: redrawnIllustrationWord([input.officialHtml]) ?? input.categoryImages?.redrawnWord ?? null,
+        goodsNames: extraction.グッズ名,
+        goodsDetails: extraction.グッズ詳細リスト,
+        menuCount: menuItemsOf(extraction).length,
+        noveltyNames: extraction.ノベルティ名,
+        noveltyRedrawn: noveltyContextMentionsRedrawn(extraction.ノベルティ名, noveltyPageTexts),
+      },
+      input.pointsFormat,
+    );
+
+    const featureLines = await this.generateFeatures(input, factLines, pages);
+    console.log(`${getStepContext('article-points')} 事実の行 ${factLines.length} 件・特徴 ${featureLines.length} 件`, {
+      facts: factLines,
+      features: featureLines,
+    });
+    return renderArticlePoints([...factLines, ...featureLines]);
+  }
+
+  /** 「本イベントの特徴」(整えて MDX として安全にした行)。失敗したら空 (記事は止めない) */
+  private async generateFeatures(
+    input: ArticlePointsInput,
+    factLines: string[],
+    pages: SubpageText[],
+  ): Promise<string[]> {
+    try {
+      const points = await new ArticlePointsGenerationService().generate({
+        作品名: input.extraction.作品名,
+        factLines,
+        extraction: input.extraction,
+        // 予算を超えると後ろのページから切り詰められる。pages は下層ページ (メニュー・ノベルティ・グッズ) → 会場の案内ページの順
+        // (category-image-extractor が作る順)。その前にトップを置く
+        pages: [
+          ...(input.officialHtml && input.primaryOfficialUrl
+            ? [{ url: input.primaryOfficialUrl, kind: 'top' as const, text: input.officialHtml }]
+            : []),
+          ...pages,
+        ],
+      });
+      if (points.usage) input.costTracker.recordUsage('article-points', points.model, points.usage);
+      return cleanFeatures(points.features);
+    } catch (pointsError) {
+      // 応答は返ったが読めなかったときも、使ったトークンのコストは記録する
+      if (pointsError instanceof ArticlePointsParseError && pointsError.usage) {
+        input.costTracker.recordUsage('article-points', pointsError.model, pointsError.usage);
+      }
+      // 特徴が無くても記事は成り立つ (事実の行は出る)。記事を止めるほどではないので breadcrumb に留める
+      console.warn(`${getStepContext('article-points')} ⚠️ 本イベントの特徴を書けなかったため、事実の行だけを出す:`, pointsError);
+      Sentry.addBreadcrumb({
+        category: 'article-points',
+        level: 'warning',
+        message: '本イベントの特徴の生成に失敗',
+        data: { error: pointsError instanceof Error ? pointsError.message : String(pointsError) },
+      });
+      return [];
+    }
   }
 
   /**
