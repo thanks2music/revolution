@@ -4,6 +4,7 @@ import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import {
   ExcerptGenerationService,
   ExcerptParseError,
+  ExcerptPromptMissingError,
   fallbackExcerpt,
   mdxToPlainText,
   normalizeExcerpt,
@@ -20,7 +21,7 @@ const LEAD = [
   '',
   '「名探偵コナン」コラボカフェでは、コラボメニューがお楽しみいただける他、ノベルティー「招待状（ランダム7種）」も用意されている。',
   '',
-  'さらに"港町レトロ"をテーマに江戸川コナンら人気キャラクター達の描き下ろしイラストを使用した「缶バッジ」などのコラボグッズも発売!',
+  'さらに「港町レトロ」をテーマに江戸川コナンら人気キャラクター達の描き下ろしイラストを使用した「缶バッジ」などのコラボグッズも発売!',
 ].join('\n');
 
 const POINTS = [
@@ -55,6 +56,12 @@ describe('mdxToPlainText', () => {
   });
 });
 
+describe('mdxToPlainText (数値文字参照)', () => {
+  it('Unicode の範囲外の数値文字参照は戻さずに残す (例外にしない)', () => {
+    expect(mdxToPlainText('a&#99999999;b')).toBe('a&#99999999;b');
+  });
+});
+
 describe('pointsLinesOf', () => {
   it('枠の箇条書きの行だけを取り出し、数値文字参照を文字に戻す', () => {
     expect(pointsLinesOf(POINTS)).toEqual([
@@ -76,6 +83,12 @@ describe('normalizeExcerpt', () => {
     expect(normalizeExcerpt('閉じない“引用', 150)).toBe('閉じない引用');
   });
 
+  it('字数はコードポイントで数え、サロゲートペアの途中で切らない', () => {
+    const result = normalizeExcerpt('𩸽'.repeat(10), 5);
+    expect(Array.from(result)).toHaveLength(5);
+    expect(result).toBe('𩸽𩸽𩸽𩸽…');
+  });
+
   it('上限を超えたら切り詰めて「…」を付ける (上限の字数に収める)', () => {
     const result = normalizeExcerpt('あ'.repeat(200), 150);
     expect(result).toHaveLength(150);
@@ -85,15 +98,27 @@ describe('normalizeExcerpt', () => {
 
 describe('fallbackExcerpt', () => {
   it('リード文の最初の 1 文だけを使う (2 文目以降のノベルティ名を入れない)', () => {
-    expect(fallbackExcerpt(LEAD)).toBe(
+    expect(fallbackExcerpt(LEAD, 'タイトル')).toBe(
       '人気作品「名探偵コナン」× 東京・神奈川・愛知・大阪・宮城・北海道の各会場にて2026年4月10日〜8月2日までコラボカフェが開催される。'
     );
   });
 
   it('最初の 1 文が上限を超えれば切り詰める', () => {
-    const result = fallbackExcerpt(LEAD, 60);
+    const result = fallbackExcerpt(LEAD, 'タイトル', 60);
     expect(result).toHaveLength(60);
     expect(result.startsWith('人気作品「名探偵コナン」× 東京・神奈川')).toBe(true);
+  });
+});
+
+describe('fallbackExcerpt (境界)', () => {
+  it('括弧の中の「。」では切らない (「モーニング娘。」など)', () => {
+    expect(fallbackExcerpt("人気グループ「モーニング娘。'26」のコラボカフェが開催される。次の文。", 't')).toBe(
+      "人気グループ「モーニング娘。'26」のコラボカフェが開催される。"
+    );
+  });
+
+  it('リード文が空ならタイトルを使う (抜粋は空にできない)', () => {
+    expect(fallbackExcerpt('<moreads></moreads>', '名探偵コナン カフェ')).toBe('名探偵コナン カフェ');
   });
 });
 
@@ -106,7 +131,6 @@ describe('ExcerptGenerationService', () => {
       作品名: '名探偵コナン',
       leadMdx: LEAD,
       pointsBlock: POINTS,
-      maxLength: 120,
     });
 
     expect(result).toEqual({
@@ -119,8 +143,8 @@ describe('ExcerptGenerationService', () => {
     expect(prompt).toContain('作品=名探偵コナン');
     expect(prompt).toContain('L=人気作品「名探偵コナン」× 東京');
     expect(prompt).toContain('- 2026年4月10日〜8月2日、東京・神奈川・愛知・大阪・宮城・北海道の10会場\n- 描き下ろしイラストを使用');
-    // 上限は実際より 20 字少なく伝える (LLM が字数を数え違えても、切り詰めずに済むように)
-    expect(prompt).toContain('上限=100');
+    // 上限 160 字を、20 字少なく伝える (LLM が字数を数え違えても、切り詰めずに済むように)
+    expect(prompt).toContain('上限=140');
     expect(options).toMatchObject({ stepId: 'excerpt-generation', responseFormat: 'json' });
   });
 
@@ -146,10 +170,10 @@ describe('ExcerptGenerationService', () => {
     }
   });
 
-  it('プロンプトが無ければ、キー名を挙げて例外', async () => {
+  it('プロンプトが無ければ、キー名を挙げて ExcerptPromptMissingError (呼び出し側が通知する)', async () => {
     const { service } = build('{"excerpt": "x"}', { prompts: {} });
-    await expect(service.generate({ title: 't', 作品名: null, leadMdx: LEAD, pointsBlock: '' })).rejects.toThrow(
-      '6-meta-description.yaml に prompts.write_excerpt がありません'
-    );
+    const error = await service.generate({ title: 't', 作品名: null, leadMdx: LEAD, pointsBlock: '' }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ExcerptPromptMissingError);
+    expect((error as Error).message).toContain('6-meta-description.yaml に prompts.write_excerpt がありません');
   });
 });

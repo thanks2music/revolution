@@ -40,8 +40,6 @@ export interface ExcerptRequest {
   leadMdx: string;
   /** 「この記事のポイント」の枠 (MDX、`renderArticlePoints` の出力)。空なら枠なし */
   pointsBlock: string;
-  /** 字数の上限 (既定は {@link EXCERPT_MAX_LENGTH}) */
-  maxLength?: number;
 }
 
 export interface ExcerptResult {
@@ -52,7 +50,11 @@ export interface ExcerptResult {
 
 /** `escapeMdxText` などが書いた数値文字参照を文字に戻す (プロンプトと抜粋は MDX ではないため) */
 function decodeNumericEntities(text: string): string {
-  return text.replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)));
+  return text.replace(/&#(\d+);/g, (entity, code: string) => {
+    const value = Number(code);
+    // Unicode の範囲外 (fromCodePoint が RangeError を投げる) はそのまま残す
+    return value <= 0x10ffff ? String.fromCodePoint(value) : entity;
+  });
 }
 
 /** リード文の MDX を地の文にする (タグ・Markdown の記号を外し、段落を空白 1 つでつなぐ) */
@@ -89,8 +91,18 @@ export function normalizeExcerpt(text: string, maxLength: number): string {
     .trim()
     .replace(/["“]([^"“”]*)["”]/g, '「$1」')
     .replace(/["“”]/g, '');
-  if (oneLine.length <= maxLength) return oneLine;
-  return `${oneLine.slice(0, maxLength - 1).trimEnd()}…`;
+  // 字数はコードポイントで数える (サロゲートペアの途中で切らない)
+  const chars = Array.from(oneLine);
+  if (chars.length <= maxLength) return oneLine;
+  return `${chars.slice(0, maxLength - 1).join('').trimEnd()}…`;
+}
+
+/** プロンプトが無い (Templates の同期漏れ)。LLM の一時的な失敗と違い、直すまで全記事が代替の抜粋になるので通知する */
+export class ExcerptPromptMissingError extends Error {
+  constructor(pipelineId: string) {
+    super(`${pipelineId}.yaml に prompts.write_excerpt がありません。pnpm sync:templates で Templates を同期してください`);
+    this.name = 'ExcerptPromptMissingError';
+  }
 }
 
 /** 応答は返ったが読めなかった (形が違う・空)。トークンは使っているので、コストを記録できるよう usage を持つ */
@@ -109,10 +121,24 @@ export class ExcerptParseError extends Error {
  * LLM が書けなかったときの抜粋。リード文の最初の 1 文 (「。」まで) を使う (リード文は確定値で書いてあるので、事実と食い違わない)。
  * 2 文目以降にはノベルティの名前が並ぶことがあり、抜粋には書かない方針なので使わない (プロンプト評価 r1 の指摘)
  */
-export function fallbackExcerpt(leadMdx: string, maxLength: number = EXCERPT_MAX_LENGTH): string {
+export function fallbackExcerpt(leadMdx: string, title: string, maxLength: number = EXCERPT_MAX_LENGTH): string {
   const text = mdxToPlainText(leadMdx);
-  const end = text.indexOf('。');
-  return normalizeExcerpt(end === -1 ? text : text.slice(0, end + 1), maxLength);
+  const end = firstSentenceEnd(text);
+  const excerpt = normalizeExcerpt(end === -1 ? text : text.slice(0, end + 1), maxLength);
+  // リード文が空なら記事のタイトル (frontmatter の excerpt は空にできない)
+  return excerpt !== '' ? excerpt : normalizeExcerpt(title, maxLength);
+}
+
+/** 括弧 (「」『』) の外にある最初の「。」の位置。無ければ -1 (「モーニング娘。」のような名前の中の「。」で切らない) */
+function firstSentenceEnd(text: string): number {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '「' || char === '『') depth++;
+    else if ((char === '」' || char === '』') && depth > 0) depth--;
+    else if (char === '。' && depth === 0) return i;
+  }
+  return -1;
 }
 
 export class ExcerptGenerationService {
@@ -127,19 +153,17 @@ export class ExcerptGenerationService {
   }
 
   /**
-   * @throws プロンプトが無いとき、LLM の呼び出しに失敗したとき。応答を読めなければ {@link ExcerptParseError} (usage 付き)。
+   * @throws プロンプトが無ければ {@link ExcerptPromptMissingError}。LLM の呼び出しに失敗したとき。応答を読めなければ {@link ExcerptParseError} (usage 付き)。
    *   呼び出し側は {@link fallbackExcerpt} で続ける
    */
   async generate(request: ExcerptRequest): Promise<ExcerptResult> {
-    const maxLength = request.maxLength ?? EXCERPT_MAX_LENGTH;
+    const maxLength = EXCERPT_MAX_LENGTH;
     const template = await this.templateLoader.loadModularTemplate(this.templateId, this.pipelineId, {
       includeSections: false,
       includeShared: false,
     });
     const instruction = template.prompts.write_excerpt;
-    if (!instruction) {
-      throw new Error(`${this.pipelineId}.yaml に prompts.write_excerpt がありません。pnpm sync:templates で Templates を同期してください`);
-    }
+    if (!instruction) throw new ExcerptPromptMissingError(this.pipelineId);
     const points = pointsLinesOf(request.pointsBlock);
     // 1 回で置き換える (リード文などに `{{points}}` の文字列が含まれていても、そこへ展開しない)
     const values: Record<'title' | '作品名' | 'lead' | 'points' | 'max_length', string> = {

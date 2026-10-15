@@ -116,7 +116,12 @@ import {
   renderArticlePoints,
   type PointsFormat,
 } from './article-points';
-import { ExcerptGenerationService, ExcerptParseError, fallbackExcerpt } from './excerpt-generation.service';
+import {
+  ExcerptGenerationService,
+  ExcerptParseError,
+  ExcerptPromptMissingError,
+  fallbackExcerpt,
+} from './excerpt-generation.service';
 import { ArticlePointsGenerationService, ArticlePointsParseError } from './article-points-generation.service';
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
@@ -1835,14 +1840,19 @@ export class ArticleGenerationMdxService {
       if (error instanceof ExcerptParseError && error.usage) {
         costTracker.recordUsage('excerpt-generation', error.model, error.usage);
       }
-      console.warn(`${getStepContext('excerpt-generation')} ⚠️ 抜粋を LLM で書けなかったため、リード文の先頭から作る:`, error);
-      Sentry.addBreadcrumb({
-        category: 'excerpt-generation',
-        level: 'warning',
-        message: '抜粋の生成に失敗',
-        data: { error: error instanceof Error ? error.message : String(error) },
-      });
-      return fallbackExcerpt(input.leadMdx);
+      console.warn(`${getStepContext('excerpt-generation')} ⚠️ 抜粋を LLM で書けなかったため、リード文の最初の 1 文から作る:`, error);
+      if (error instanceof ExcerptPromptMissingError) {
+        // 設定の誤り (Templates の同期漏れ)。直すまで全記事が代替の抜粋になるので、breadcrumb ではなく通知する
+        Sentry.captureException(error, { tags: { pipeline: 'mdx', step: 'excerpt-generation' } });
+      } else {
+        Sentry.addBreadcrumb({
+          category: 'excerpt-generation',
+          level: 'warning',
+          message: '抜粋の生成に失敗',
+          data: { error: error instanceof Error ? error.message : String(error) },
+        });
+      }
+      return fallbackExcerpt(input.leadMdx, input.title);
     }
   }
 
