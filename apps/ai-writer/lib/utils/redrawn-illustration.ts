@@ -55,7 +55,10 @@ export function redrawnWordInGoodsSentences(html: string | null | undefined): Re
 export interface PageRedrawnWords {
   /** ページ全体で最初に見つかった語 */
   page: RedrawnWord | null;
-  /** グッズの文脈の語。グッズのページは特典・ノベルティの文を除いたページ全体の語、それ以外は「グッズ」を含む文の語 */
+  /**
+   * グッズの文脈の語。グッズのページは特典・ノベルティの文を除いたページ全体の語、それ以外は「グッズ」を含む文の語。
+   * 既知の限界: グッズのページに会場の装飾・展示の「描き下ろし」があると、それもグッズの語になる (グッズのページはグッズの文脈として扱う)
+   */
   goods: RedrawnWord | null;
 }
 

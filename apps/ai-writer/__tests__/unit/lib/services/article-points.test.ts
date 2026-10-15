@@ -162,6 +162,8 @@ describe('formatGoodsLine', () => {
     expect(formatGoodsLine(46, [], FORMAT)).toBe('GOODS_MANY:40');
     expect(formatGoodsLine(10, [], FORMAT)).toBe('GOODS_MANY:10');
     expect(formatGoodsLine(13, [], FORMAT)).toBe('GOODS_MANY:10');
+    expect(formatGoodsLine(19, [], FORMAT)).toBe('GOODS_MANY:10');
+    expect(formatGoodsLine(20, [], FORMAT)).toBe('GOODS_MANY:20');
     expect(formatGoodsLine(9, ['店舗'], FORMAT)).toBe('GOODS_FEW(店舗)');
     expect(formatGoodsLine(7, [], FORMAT)).toBe('GOODS_FEW');
     expect(formatGoodsLine(3, [], FORMAT)).toBe('GOODS_FEW');
