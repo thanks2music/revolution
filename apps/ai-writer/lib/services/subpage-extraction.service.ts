@@ -100,11 +100,14 @@ export function sumUsage(usages: Array<TokenUsage | undefined>): TokenUsage | un
   };
 }
 
+/** プロンプトに並べるページ (下層・会場のページと、「この記事のポイント」が使う公式サイトのトップ) */
+export type PromptPage = Pick<SubpageText, 'url' | 'text'> & { kind: SubpageKind | 'top' };
+
 /**
  * ページの本文をプロンプトに並べる。全体を {@link LLM_INPUT_BUDGET_CHARS} に収める
  * (先のページから順に予算を使い、足りなくなったページは切り詰める。通常は {@link batchPages} で分けてから呼ぶ)。
  */
-export function formatPagesForPrompt(pages: SubpageText[], budget = LLM_INPUT_BUDGET_CHARS): string {
+export function formatPagesForPrompt(pages: readonly PromptPage[], budget = LLM_INPUT_BUDGET_CHARS): string {
   let remaining = budget;
   return pages
     .map((page, index) => {
@@ -137,7 +140,8 @@ export function toGoodsItems(value: unknown): SubpageGoodsItem[] | null {
   return items.length > 0 ? items : null;
 }
 
-function parseJson(content: string): unknown {
+/** LLM の応答の JSON を読む (前後の説明やコードブロックが付いていても読む)。読めなければ例外 */
+export function parseJson(content: string): unknown {
   // 応答は JSON を指定して受けているので、まずそのまま読む (本文に ``` や { } が混ざっても取り違えない)
   try {
     return JSON.parse(content);

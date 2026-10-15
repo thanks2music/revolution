@@ -71,6 +71,7 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     expect(result.sources.goods).toBe('https://heroaca-cafe.ltr-online.com/lp/goods');
     // HTML 自体は残さず、「描き下ろし」の記載の有無だけを返す
     expect(result.mentionsRedrawnIllustration).toBe(false);
+    expect(result.redrawnWord).toBeNull();
   });
 
   it('下層ページの本文ブロックに「描き下ろし」があれば mentionsRedrawnIllustration を立てる', async () => {
@@ -84,6 +85,8 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     });
 
     expect(result.mentionsRedrawnIllustration).toBe(true);
+    // 「この記事のポイント」の行に書く語も、切り詰める前の本文ブロックから記録する
+    expect(result.redrawnWord).toBe('描き下ろし');
   });
 
   it('通常の HTML の下層ページはこれまでどおり <img> から拾う', async () => {

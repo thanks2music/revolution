@@ -23,7 +23,7 @@ import type { CategoryUrls } from '@/lib/types/subpage-detection';
 import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
 import { selectMainContent } from '@/lib/utils/html-extractor';
 import { compactHtmlForLlm, truncateForLlm } from '@/lib/utils/compact-html';
-import { mentionsRedrawnIllustration } from '@/lib/utils/redrawn-illustration';
+import { redrawnIllustrationWord, type RedrawnWord } from '@/lib/utils/redrawn-illustration';
 import { pageUrlKey } from '@/lib/utils/url';
 import { fetchPageSafely } from '@/lib/utils/safe-image-fetch';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
@@ -74,6 +74,8 @@ export interface CategoryImages {
    * そのまま調べ、追加の通信はしない。HTML 自体は結果に残さない)
    */
   mentionsRedrawnIllustration: boolean;
+  /** 最初に見つかった語 (「この記事のポイント」の行に書く。`mentionsRedrawnIllustration` と同じ本文ブロックから) */
+  redrawnWord: RedrawnWord | null;
   /** 取得した下層ページと会場の案内ページの本文 (取得に失敗したページは含まない) */
   pages: SubpageText[];
   /**
@@ -190,6 +192,7 @@ export class CategoryImageExtractorService {
       sources: {},
       all: [],
       mentionsRedrawnIllustration: false,
+      redrawnWord: null,
       pages: [],
       venueNoveltyImages: [],
       imageAlts: {},
@@ -334,7 +337,9 @@ export class CategoryImageExtractorService {
   private addPageText(result: CategoryImages, url: string, kind: SubpageKind, html: string): string {
     // ナビ・フッター・関連ニュースの欄を除いた本文ブロックだけを使う
     const mainHtml = selectMainContent(cheerio.load(html)).html;
-    result.mentionsRedrawnIllustration ||= mentionsRedrawnIllustration(mainHtml);
+    // 切り詰める前の本文ブロック全体で調べる (pages の text は 1 ページ 20,000 字までに切り詰める)
+    result.redrawnWord ??= redrawnIllustrationWord([mainHtml]);
+    result.mentionsRedrawnIllustration = result.redrawnWord !== null;
     const { text } = truncateForLlm(compactHtmlForLlm(mainHtml).html, SUBPAGE_TEXT_BUDGET_CHARS);
     result.pages.push({ url, kind, text });
     return mainHtml;
