@@ -104,9 +104,9 @@ function goodsChannels(details: PointsFactsInput['goodsDetails'], format: Points
 
 /**
  * グッズの品目の数。詳細 (下層ページの品名・価格・販売方法。オンライン限定を含む) とグッズ名 (トップにしか無い品目を含む) を、
- * 品名の表記の揺れを無視して合わせた数 (どちらか片方だけでは、本文のグッズの節と数が合わないことがある)
+ * 品名の表記の揺れを無視して合わせた数 (どちらか片方だけでは、本文のグッズの節と数が合わないことがある)。
+ * 既知の限界: 表記の揺れは itemNameKey の範囲だけ吸収する。詳細とグッズ名で略称が違うような大きな違いは別の品目として数える
  */
-// 表記の揺れは itemNameKey の範囲だけ吸収する。詳細とグッズ名で略称が違うような大きな違いは別の品目として数える (既知の限界)
 export function countGoods(names: PointsFactsInput['goodsNames'], details: PointsFactsInput['goodsDetails']): number {
   const keys = new Set([...(details ?? []).map((item) => item.name), ...(names ?? [])].map(itemNameKey).filter(Boolean));
   return keys.size;

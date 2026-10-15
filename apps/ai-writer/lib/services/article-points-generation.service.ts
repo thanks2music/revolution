@@ -93,13 +93,13 @@ export class ArticlePointsGenerationService {
       throw new Error(`${this.pipelineId}.yaml に prompts.write_features がありません。pnpm sync:templates で Templates を同期してください`);
     }
     // 1 回で置き換える (作品名などに `{{pages}}` の文字列が含まれていても、そこへ展開しない)
-    const values: Record<string, string> = {
+    const values: Record<'作品名' | 'facts' | 'extraction' | 'pages', string> = {
       作品名: request.作品名 ?? '(不明)',
       facts: request.factLines.length > 0 ? request.factLines.map((line) => `- ${line}`).join('\n') : '(なし)',
       extraction: JSON.stringify(summarizeExtraction(request.extraction), null, 2),
       pages: request.pages.length > 0 ? formatPagesForPrompt(request.pages) : '(なし)',
     };
-    const prompt = instruction.replace(/\{\{(作品名|facts|extraction|pages)\}\}/g, (_, key: string) => values[key]);
+    const prompt = instruction.replace(/\{\{(作品名|facts|extraction|pages)\}\}/g, (_, key: keyof typeof values) => values[key]);
     const response = await this.aiProvider.sendMessage(prompt, {
       stepId: 'article-points',
       maxTokens: MAX_OUTPUT_TOKENS,
