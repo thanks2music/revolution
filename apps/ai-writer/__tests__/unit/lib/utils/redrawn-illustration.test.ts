@@ -36,11 +36,21 @@ describe('redrawnWordInGoodsSentences', () => {
     expect(redrawnWordInGoodsSentences('<p>今回のために<strong>描き起こし</strong>ミニキャラのグッズも登場！</p>')).toBe('描き起こし');
     expect(redrawnWordInGoodsSentences('<p>描き下ろしミニキャラのコースターをプレゼント。</p><p>グッズも販売します。</p>')).toBeNull();
   });
+
+  it('「グッズ」を含んでも、特典・ノベルティの文は除く', () => {
+    expect(redrawnWordInGoodsSentences('<p>グッズ購入特典に描き下ろしコースターを配布。</p>')).toBeNull();
+    expect(redrawnWordInGoodsSentences('<p>グッズを買うと描き下ろしステッカーをプレゼント！</p>')).toBeNull();
+    expect(redrawnWordInGoodsSentences('<p>グッズのノベルティは描き下ろし。</p>')).toBeNull();
+  });
 });
 
 describe('pageRedrawnWords', () => {
-  it('グッズのページは、ページ全体の語をグッズの文脈の語にする', () => {
+  it('グッズのページは、特典・ノベルティの文を除いたページ全体の語をグッズの文脈の語にする', () => {
     expect(pageRedrawnWords('<p>描き下ろしイラストの缶バッジ</p>', true)).toEqual({ page: '描き下ろし', goods: '描き下ろし' });
+    expect(pageRedrawnWords('<p>購入特典は描き下ろしステッカー。</p><p>缶バッジ</p>', true)).toEqual({
+      page: '描き下ろし',
+      goods: null,
+    });
   });
 
   it('ほかのページは、「グッズ」を含む文の語だけをグッズの文脈の語にする', () => {
@@ -52,7 +62,7 @@ describe('pageRedrawnWords', () => {
 describe('deriveRedrawnWords', () => {
   const none = { page: null, goods: null };
 
-  it('グッズの文脈の語は、グッズのページ → グッズ名 → トップの「グッズ」を含む文 → ほかのページの順', () => {
+  it('グッズの文脈の語は、グッズのページ → グッズ名 → トップ → ほかのページの順', () => {
     expect(
       deriveRedrawnWords({
         officialHtml: '<p>描き起こしミニキャラのグッズ</p>',
@@ -67,6 +77,23 @@ describe('deriveRedrawnWords', () => {
     expect(
       deriveRedrawnWords({ officialHtml: '<p>今回のために描き起こしミニキャラのグッズも登場！</p>', subpages: [], goodsNames: [] })
     ).toEqual({ page: '描き起こし', goods: '描き起こし' });
+  });
+
+  it('グッズの下層ページがあるサイトは、トップのページ全体の語をグッズの文脈に数える (特典・ノベルティの文を除く)', () => {
+    const goodsPage = { kind: 'goods', redrawn: none };
+    expect(
+      deriveRedrawnWords({ officialHtml: '<p>描き起こしイラストを使用！</p>', subpages: [goodsPage], goodsNames: [] })
+    ).toEqual({ page: '描き起こし', goods: '描き起こし' });
+    expect(
+      deriveRedrawnWords({ officialHtml: '<p>来店特典は描き下ろしコースター。</p>', subpages: [goodsPage], goodsNames: [] })
+    ).toEqual({ page: '描き下ろし', goods: null });
+  });
+
+  it('グッズの下層ページが無いサイト (トップ 1 ページ) は、トップの「グッズ」を含む文だけを見る', () => {
+    expect(deriveRedrawnWords({ officialHtml: '<p>描き起こしイラストを使用！</p>', subpages: [], goodsNames: [] })).toEqual({
+      page: '描き起こし',
+      goods: null,
+    });
   });
 
   it('ノベルティだけが描き下ろしなら、ページ全体の語だけがあり、グッズの文脈の語は null', () => {

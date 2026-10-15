@@ -31,21 +31,31 @@ export function redrawnIllustrationWord(texts: ReadonlyArray<string | null | und
 const BLOCK_TAG = /<\/?(?:p|div|li|ul|ol|dl|dt|dd|h[1-6]|br|tr|td|th|table|section|article|header|footer|figure|figcaption)\b[^>]*>/gi;
 const SENTENCE_BREAK = /[。！!？?\n]/;
 
-/** 「グッズ」を含む文 (ブロックのタグと句点・感嘆符・疑問符・改行で区切る) から見つかった語。無ければ null */
+/** 特典・ノベルティの文 (「グッズ購入特典」のように「グッズ」を含んでも、グッズの文脈には数えない) */
+const NOVELTY_SENTENCE = /特典|ノベルティ|プレゼント/;
+
+/** ブロックのタグと句点・感嘆符・疑問符・改行で文に分ける (インラインのタグは外す) */
+function sentencesOf(html: string | null | undefined): string[] {
+  return (html ?? '').replace(BLOCK_TAG, '\n').replace(/<[^>]*>/g, '').split(SENTENCE_BREAK);
+}
+
+/** 特典・ノベルティの文を除いた文から見つかった語。無ければ null */
+export function redrawnWordOutsideNoveltySentences(html: string | null | undefined): RedrawnWord | null {
+  return redrawnIllustrationWord(sentencesOf(html).filter((sentence) => !NOVELTY_SENTENCE.test(sentence)));
+}
+
+/** 「グッズ」を含む文 (特典・ノベルティの文を除く) から見つかった語。無ければ null */
 export function redrawnWordInGoodsSentences(html: string | null | undefined): RedrawnWord | null {
-  const sentences = (html ?? '')
-    .replace(BLOCK_TAG, '\n')
-    .replace(/<[^>]*>/g, '')
-    .split(SENTENCE_BREAK)
-    .filter((sentence) => sentence.includes('グッズ'));
-  return redrawnIllustrationWord(sentences);
+  return redrawnIllustrationWord(
+    sentencesOf(html).filter((sentence) => sentence.includes('グッズ') && !NOVELTY_SENTENCE.test(sentence)),
+  );
 }
 
 /** 1 ページの本文ブロックから調べた語 (`category-image-extractor` が切り詰める前の本文で記録する) */
 export interface PageRedrawnWords {
   /** ページ全体で最初に見つかった語 */
   page: RedrawnWord | null;
-  /** グッズの文脈の語。グッズのページはページ全体の語、それ以外は「グッズ」を含む文の語 */
+  /** グッズの文脈の語。グッズのページは特典・ノベルティの文を除いたページ全体の語、それ以外は「グッズ」を含む文の語 */
   goods: RedrawnWord | null;
 }
 
@@ -53,7 +63,7 @@ export interface PageRedrawnWords {
 export function pageRedrawnWords(html: string | null | undefined, isGoodsPage: boolean): PageRedrawnWords {
   const page = redrawnIllustrationWord([html]);
   if (page === null) return { page, goods: null };
-  return { page, goods: isGoodsPage ? page : redrawnWordInGoodsSentences(html) };
+  return { page, goods: isGoodsPage ? redrawnWordOutsideNoveltySentences(html) : redrawnWordInGoodsSentences(html) };
 }
 
 /** 記事で使う 2 つの語 */
@@ -67,7 +77,9 @@ export interface RedrawnWords {
 /**
  * 記事で使う語を決める (2026-10-15 BOSS 決定)。どちらの語も無ければ、記事はイラストの種類に触れない。
  * ページ全体の語をグッズに結び付けると、ノベルティだけが描き下ろしのイベントで「グッズに描き下ろし」と書いてしまうため、
- * グッズの文脈の語は別に取る。順は (1) グッズのページとグッズ名 (2) トップ・ほかのページの「グッズ」を含む文
+ * グッズの文脈の語は別に取る。順は (1) グッズのページとグッズ名 (2) トップ (3) ほかのページの「グッズ」を含む文。
+ * トップは、グッズの下層ページがあるサイト (複数ページの構成) ならページ全体、無ければ「グッズ」を含む文だけを見る
+ * (どちらも特典・ノベルティの文は除く)。複数ページのサイトのトップは告知の要約で、語はグッズを指すことが多いため (2026-10-15 BOSS 決定)
  *
  * @param officialHtml トップの本文ブロック (detail-extraction の `selectMainContent` で切り出したもの)
  * @param subpages 下層・会場のページごとに記録した語 (切り詰める前の本文で調べたもの)
@@ -80,12 +92,13 @@ export function deriveRedrawnWords(input: {
   const top = pageRedrawnWords(input.officialHtml, false);
   const goodsPages = input.subpages.filter((page) => page.kind === 'goods');
   const otherPages = input.subpages.filter((page) => page.kind !== 'goods');
+  const topGoods = goodsPages.length > 0 ? redrawnWordOutsideNoveltySentences(input.officialHtml) : top.goods;
   return {
     page: top.page ?? input.subpages.find((page) => page.redrawn.page !== null)?.redrawn.page ?? null,
     goods:
       goodsPages.find((page) => page.redrawn.goods !== null)?.redrawn.goods ??
       redrawnIllustrationWord(input.goodsNames) ??
-      top.goods ??
+      topGoods ??
       otherPages.find((page) => page.redrawn.goods !== null)?.redrawn.goods ??
       null,
   };
