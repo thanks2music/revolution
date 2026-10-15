@@ -5,6 +5,7 @@ import {
   cleanFeatures,
   countGoods,
   formatPeriod,
+  formatGoodsLine,
   formatPlace,
   joinArticleParts,
   noveltyContextMentionsRedrawn,
@@ -27,7 +28,9 @@ const FORMAT: PointsFormat = {
   place_multi_count_only: '全{{count}}会場',
   schedule_line: '{{#if period}}{{period}}{{/if}}{{#if both}}、{{/if}}{{#if place}}{{place}}{{/if}}',
   redrawn_line: '{{word}}イラストを使用',
-  goods_line: "コラボグッズ{{count}}点{{#if channels}}（{{channels|join:'・'}}）{{/if}}",
+  // グッズの行の文面は Templates が持つ (public な revolution には書かない)。ここでは差し込む値だけを確かめる
+  goods_line_many: "GOODS_MANY:{{count}}{{#if channels}}({{channels|join:'/'}}){{/if}}",
+  goods_line_few: "GOODS_FEW{{#if channels}}({{channels|join:'/'}}){{/if}}",
   goods_channel_store: '店舗',
   goods_channel_online: 'オンライン',
   menu_line: 'コラボメニュー全{{count}}品',
@@ -104,7 +107,7 @@ describe('buildFactLines', () => {
     expect(lines).toEqual([
       '2026年10月16日〜12月20日、東京・大阪の2会場',
       '描き下ろしイラストを使用',
-      'コラボグッズ2点（店舗・オンライン）',
+      'GOODS_FEW(店舗/オンライン)',
       'コラボメニュー全19品',
       'ノベルティ：コースター、ステッカー',
     ]);
@@ -126,9 +129,9 @@ describe('buildFactLines', () => {
 
   it('グッズの販売方法は詳細から。詳細が無ければ書かない', () => {
     expect(buildFactLines({ ...BASE, goodsDetails: [{ name: 'A', price: null, sales: 'online_only' }] }, FORMAT)).toEqual([
-      'コラボグッズ1点（オンライン）',
+      'GOODS_FEW(オンライン)',
     ]);
-    expect(buildFactLines({ ...BASE, goodsNames: ['B', 'C'] }, FORMAT)).toEqual(['コラボグッズ2点']);
+    expect(buildFactLines({ ...BASE, goodsNames: ['B', 'C'] }, FORMAT)).toEqual(['GOODS_FEW']);
   });
 
   it('ノベルティ名は MDX として安全にする', () => {
@@ -137,13 +140,27 @@ describe('buildFactLines', () => {
   });
 });
 
+describe('formatGoodsLine', () => {
+  it('10 点以上は十の位で切り捨てて「N0点以上」、10 点未満は数を書かない、0 点は行を出さない', () => {
+    expect(formatGoodsLine(43, ['店舗', 'オンライン'], FORMAT)).toBe('GOODS_MANY:40(店舗/オンライン)');
+    expect(formatGoodsLine(46, [], FORMAT)).toBe('GOODS_MANY:40');
+    expect(formatGoodsLine(10, [], FORMAT)).toBe('GOODS_MANY:10');
+    expect(formatGoodsLine(13, [], FORMAT)).toBe('GOODS_MANY:10');
+    expect(formatGoodsLine(9, ['店舗'], FORMAT)).toBe('GOODS_FEW(店舗)');
+    expect(formatGoodsLine(7, [], FORMAT)).toBe('GOODS_FEW');
+    expect(formatGoodsLine(0, ['店舗'], FORMAT)).toBeNull();
+  });
+});
+
 describe('countGoods', () => {
-  it('詳細 (オンライン限定を含む) とグッズ名 (トップにしか無い品目を含む) を、表記の揺れを無視して合わせて数える', () => {
+  it('詳細とグッズ名をそれぞれ表記の揺れを無視して数え、多い方 (確実に言える下限) を返す', () => {
     const details = [
       { name: '缶バッジ（ランダム7種）', price: null, sales: 'store' as const },
       { name: 'Tシャツ', price: null, sales: 'online_only' as const },
     ];
-    expect(countGoods(['缶バッジ (ランダム7種)', 'アクリルスタンド'], details)).toBe(3);
+    expect(countGoods(['缶バッジ (ランダム7種)', 'アクリルスタンド'], details)).toBe(2);
+    expect(countGoods(['A', 'B', 'C'], details)).toBe(3);
+    expect(countGoods(['缶バッジ（ランダム7種）', '缶バッジ (ランダム7種)'], null)).toBe(1);
     expect(countGoods(null, null)).toBe(0);
   });
 });
