@@ -1843,6 +1843,7 @@ export class ArticleGenerationMdxService {
         // 会場の一覧が無ければ (event_data が無い記事)、本文と同じ会場の表記を 1 つだけ使う
         venues: storeContext.会場一覧.length > 0 ? storeContext.会場一覧 : [input.会場表現].filter(Boolean),
         cities: storeContext.都市一覧,
+        // officialHtml は本文ブロックだけ (extractContentHtml が selectMainContent で切り出したもの。ナビ・関連ニュースを含まない)
         redrawnWord: redrawnIllustrationWord([input.officialHtml]) ?? input.categoryImages?.redrawnWord ?? null,
         goodsNames: extraction.グッズ名,
         goodsDetails: extraction.グッズ詳細リスト,
