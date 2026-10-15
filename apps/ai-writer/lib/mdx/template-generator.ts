@@ -215,9 +215,9 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
   lines.push(`work_slug: "${frontmatter.work_slug}"`);
   lines.push(`slug: "${frontmatter.slug}"`);
 
-  // Escape quotes in title and excerpt
-  const escapedTitle = frontmatter.title.replace(/"/g, '\\"');
-  const escapedExcerpt = frontmatter.excerpt.replace(/"/g, '\\"');
+  // Escape quotes and backslashes in title and excerpt (LLM の出力。バックスラッシュも YAML の二重引用符の中ではエスケープが要る)
+  const escapedTitle = escapeYamlDoubleQuoted(frontmatter.title);
+  const escapedExcerpt = escapeYamlDoubleQuoted(frontmatter.excerpt);
 
   lines.push(`title: "${escapedTitle}"`);
   lines.push(`date: "${frontmatter.date}"`);

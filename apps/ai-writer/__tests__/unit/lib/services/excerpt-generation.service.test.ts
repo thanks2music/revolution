@@ -89,7 +89,11 @@ describe('normalizeExcerpt', () => {
     expect(result).toBe('𩸽𩸽𩸽𩸽…');
   });
 
-  it('上限を超えたら切り詰めて「…」を付ける (上限の字数に収める)', () => {
+  it('上限を超えたら、最後の「。」までで大半が残るならそこで切る', () => {
+    expect(normalizeExcerpt(`${'あ'.repeat(99)}。${'い'.repeat(60)}`, 150)).toBe(`${'あ'.repeat(99)}。`);
+  });
+
+  it('上限を超え、「。」で切ると短くなりすぎるなら、文の途中で切って「…」を付ける (上限の字数に収める)', () => {
     const result = normalizeExcerpt('あ'.repeat(200), 150);
     expect(result).toHaveLength(150);
     expect(result.endsWith('…')).toBe(true);

@@ -19,7 +19,6 @@ import {
 import { DuplicateSlugError } from '../errors/github';
 import { getPrStatusByCanonicalKey } from '../github/pr-status';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
-import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { extractArticleHtml, extractContentHtml, extractOgImageUrl, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
@@ -121,6 +120,7 @@ import {
   ExcerptParseError,
   ExcerptPromptMissingError,
   fallbackExcerpt,
+  type ExcerptRequest,
 } from './excerpt-generation.service';
 import { ArticlePointsGenerationService, ArticlePointsParseError } from './article-points-generation.service';
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
@@ -314,14 +314,7 @@ export class ArticleGenerationMdxService {
    * @param request MDX生成リクエスト
    * @returns MDX生成結果
    *
-   * 処理フローの完全な定義・順序は `./pipeline-steps.ts` の `PIPELINE_STEPS` を参照。
-   * 主要 step (id):
-   *  - article-selection / rss-extraction / detail-extraction
-   *  - subpage-detection / category-image-extraction / vision-api
-   *  - slug-generation / duplication-check
-   *  - metadata-generation / title-generation / content-generation
-   *  - image-upload-r2 / image-placeholder-replacement / text-placeholder-replacement / footer-placeholder-cleanup
-   *  - mdx-assembly / github-pr-creation / firestore-status-update
+   * 処理フローの step の id と順序は `./pipeline-steps.ts` の `PIPELINE_STEPS` を参照 (ここに一覧を写さない)。
    *
    * @description
    * マルチプロバイダー対応済み（2025-12-07）
@@ -821,8 +814,6 @@ export class ArticleGenerationMdxService {
       // metadata-generation step: カテゴリと開催都道府県を決定論的に構築
       // 抜粋は完成した記事の冒頭から書くので、本文の後の excerpt-generation step で生成する (2026-10-16、記事の改善 PR-4c)
       // @see notes/archive/category-improvement-research-2025-12-16.md
-      console.log(`\n${getStepDisplay('metadata-generation')} カテゴリと開催都道府県を構築...`);
-
       // categories は buildCategories() で決定論的に構築（2件固定）
       // taxonomy.yaml v1.1 の category_rules に準拠
       // Note: prefectures は categories に含めず、別フィールドで管理
@@ -830,11 +821,7 @@ export class ArticleGenerationMdxService {
         workTitle: extraction.workTitle,
         eventTitle: extraction.eventTypeName,
       });
-
-      console.log('メタデータ生成完了:', {
-        categories: categories, // 決定論的に構築
-        categoriesSource: 'buildCategories (taxonomy.yaml rules)',
-      });
+      console.log(`\n${getStepDisplay('metadata-generation')} カテゴリを構築 (taxonomy.yaml のルール):`, categories);
 
       // metadata-generation step: 開催都道府県を解決（taxonomy.yaml v1.1 areas軸対応）
       let prefectures: string[] = [];
@@ -1170,13 +1157,15 @@ export class ArticleGenerationMdxService {
 
       // excerpt-generation step: 抜粋を完成した記事の冒頭 (リード文とこの記事のポイント) から書く (2026-10-16 BOSS 決定)
       console.log(`\n${getStepDisplay('excerpt-generation')} AI API (${providerDisplayName}) で抜粋を生成...`);
-      const excerpt = await this.runExcerptGeneration({
-        title: titleResult.title,
-        作品名: detailedExtraction?.作品名 ?? canonicalWorkTitle ?? null,
-        leadMdx: leadResult.leadMdx,
-        pointsBlock,
-        costTracker,
-      });
+      const excerpt = await this.runExcerptGeneration(
+        {
+          title: titleResult.title,
+          作品名: detailedExtraction?.作品名 ?? canonicalWorkTitle ?? null,
+          leadMdx: leadResult.leadMdx,
+          pointsBlock,
+        },
+        costTracker
+      );
 
       // image-upload-r2 step: 記事の画像を R2 に上げ、アイキャッチを選ぶ (2026-10-13 BOSS 決定)
       // 枚数の上限なし。短辺の下限・縮小・WebP・縦長の分割・中身のハッシュのキーは article-images/ 配下
@@ -1821,16 +1810,9 @@ export class ArticleGenerationMdxService {
 
   /**
    * 抜粋を書く (`excerpt-generation` step)。LLM が書けなければ (呼び出しの失敗・応答を読めない・プロンプトが無い)、
-   * リード文の先頭から作った抜粋で続ける (リード文は確定値で書いてあるので、事実と食い違わない。有料の本文生成の後で記事を止めないため)
+   * リード文の最初の 1 文から作った抜粋で続ける (有料の本文生成の後で記事を止めないため)
    */
-  private async runExcerptGeneration(input: {
-    title: string;
-    作品名: string | null;
-    leadMdx: string;
-    pointsBlock: string;
-    costTracker: CostTrackerService;
-  }): Promise<string> {
-    const { costTracker, ...request } = input;
+  private async runExcerptGeneration(request: ExcerptRequest, costTracker: CostTrackerService): Promise<string> {
     try {
       const result = await new ExcerptGenerationService().generate(request);
       if (result.usage) costTracker.recordUsage('excerpt-generation', result.model, result.usage);
@@ -1852,7 +1834,7 @@ export class ArticleGenerationMdxService {
           data: { error: error instanceof Error ? error.message : String(error) },
         });
       }
-      return fallbackExcerpt(input.leadMdx, input.title);
+      return fallbackExcerpt(request.leadMdx, request.title);
     }
   }
 

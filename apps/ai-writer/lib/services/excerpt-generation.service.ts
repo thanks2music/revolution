@@ -12,7 +12,6 @@ import { ExcerptResponseSchema } from '@revolution/schemas/excerpt-response';
 import type { TokenUsage } from '@revolution/schemas/ai-provider-response';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import { createAiProvider } from '@/lib/ai/factory/ai-factory';
-import { METADATA_DEFAULTS } from '@/lib/claude/types';
 import { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
 import { parseJson } from '@/lib/services/subpage-extraction.service';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
@@ -21,6 +20,7 @@ const EXCERPT_OPENAI_SCHEMA = zodToOpenAiSchema(ExcerptResponseSchema, 'ExcerptR
 
 /** 応答の上限。抜粋は 150 字ほどだが、Gemini は思考のトークンもここに含めて数えるので余裕を持たせる */
 const MAX_OUTPUT_TOKENS = 4_000;
+const TEMPERATURE = 0.5;
 
 /**
  * 抜粋の字数の上限 (Templates の `shared/constraints.yaml` の meta_description.length.max)。これを超えたときだけ切り詰める
@@ -32,6 +32,9 @@ export const EXCERPT_MAX_LENGTH = 160;
  * 数え違える (上限 150 で 152 字、140 で 151 字を返し、切り詰めで「…発売され…」と文の途中で切れた。2026-10-16 の dry-run)
  */
 const PROMPT_LENGTH_MARGIN = 20;
+
+/** 上限を超えたとき、最後の「。」で切ってもこの割合以上が残るなら、文の途中ではなくそこで切る */
+const SENTENCE_CUT_MIN_RATIO = 0.6;
 
 export interface ExcerptRequest {
   title: string;
@@ -80,9 +83,10 @@ export function pointsLinesOf(pointsBlock: string): string[] {
 }
 
 /**
- * 応答の抜粋を 1 段落にそろえ、上限を超えたら切り詰める (末尾に「…」)。
- * 二重引用符 (半角の " と全角の “ ”) はかぎ括弧に置き換える (プロンプトでも禁じているが、Gemini が “港町レトロ” と書いた。
- * 半角の " は frontmatter の値を壊すことがある)。対にならない二重引用符は消す。
+ * 応答の抜粋を 1 段落にそろえ、上限を超えたら切り詰める。切り詰めは、最後の「。」までで本文の大半が残るならそこで切り、
+ * そうでなければ文の途中で切って「…」を付ける。
+ * 二重引用符 (半角の " と全角の “ ”) はかぎ括弧に置き換える (表記の規則。プロンプトでも禁じているが、Gemini が “港町レトロ” と
+ * 書いた。frontmatter のエスケープは serializeFrontmatter が行う)。対にならない二重引用符は消す。
  * 一重引用符 (' ‘ ’) は名前のアポストロフィのことがあるので触らない
  */
 export function normalizeExcerpt(text: string, maxLength: number): string {
@@ -94,6 +98,9 @@ export function normalizeExcerpt(text: string, maxLength: number): string {
   // 字数はコードポイントで数える (サロゲートペアの途中で切らない)
   const chars = Array.from(oneLine);
   if (chars.length <= maxLength) return oneLine;
+  const head = chars.slice(0, maxLength);
+  const lastStop = head.lastIndexOf('。');
+  if (lastStop + 1 >= maxLength * SENTENCE_CUT_MIN_RATIO) return head.slice(0, lastStop + 1).join('');
   return `${chars.slice(0, maxLength - 1).join('').trimEnd()}…`;
 }
 
@@ -157,7 +164,6 @@ export class ExcerptGenerationService {
    *   呼び出し側は {@link fallbackExcerpt} で続ける
    */
   async generate(request: ExcerptRequest): Promise<ExcerptResult> {
-    const maxLength = EXCERPT_MAX_LENGTH;
     const template = await this.templateLoader.loadModularTemplate(this.templateId, this.pipelineId, {
       includeSections: false,
       includeShared: false,
@@ -166,24 +172,24 @@ export class ExcerptGenerationService {
     if (!instruction) throw new ExcerptPromptMissingError(this.pipelineId);
     const points = pointsLinesOf(request.pointsBlock);
     // 1 回で置き換える (リード文などに `{{points}}` の文字列が含まれていても、そこへ展開しない)
-    const values: Record<'title' | '作品名' | 'lead' | 'points' | 'max_length', string> = {
+    const values: Record<string, string> = {
       title: request.title,
       作品名: request.作品名 ?? '(不明)',
       lead: mdxToPlainText(request.leadMdx) || '(なし)',
       points: points.length > 0 ? points.map((line) => `- ${line}`).join('\n') : '(なし)',
-      max_length: String(maxLength - PROMPT_LENGTH_MARGIN),
+      max_length: String(EXCERPT_MAX_LENGTH - PROMPT_LENGTH_MARGIN),
     };
-    const prompt = instruction.replace(/\{\{(title|作品名|lead|points|max_length)\}\}/g, (_, key: keyof typeof values) => values[key]);
+    const prompt = instruction.replace(/\{\{([^{}]+)\}\}/g, (match, key: string) => values[key] ?? match);
     const response = await this.aiProvider.sendMessage(prompt, {
       stepId: 'excerpt-generation',
       maxTokens: MAX_OUTPUT_TOKENS,
-      temperature: METADATA_DEFAULTS.TEMPERATURE,
+      temperature: TEMPERATURE,
       responseFormat: 'json',
       responseSchema: EXCERPT_OPENAI_SCHEMA,
     });
     let excerpt: string;
     try {
-      excerpt = normalizeExcerpt(ExcerptResponseSchema.parse(parseJson(response.content)).excerpt, maxLength);
+      excerpt = normalizeExcerpt(ExcerptResponseSchema.parse(parseJson(response.content)).excerpt, EXCERPT_MAX_LENGTH);
       if (excerpt === '') throw new Error('抜粋が空');
     } catch (error) {
       throw new ExcerptParseError(response.model, response.usage, error);
