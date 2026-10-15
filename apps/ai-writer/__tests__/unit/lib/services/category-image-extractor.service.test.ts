@@ -71,7 +71,6 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     expect(result.sources.goods).toBe('https://heroaca-cafe.ltr-online.com/lp/goods');
     // HTML 自体は残さず、「描き下ろし」の記載の有無だけを返す
     expect(result.mentionsRedrawnIllustration).toBe(false);
-    expect(result.redrawnWord).toBeNull();
   });
 
   it('下層ページの本文ブロックに「描き下ろし」があれば mentionsRedrawnIllustration を立てる', async () => {
@@ -85,10 +84,22 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
     });
 
     expect(result.mentionsRedrawnIllustration).toBe(true);
-    // 「この記事のポイント」の行に書く語も、切り詰める前の本文ブロックから記録する
-    expect(result.redrawnWord).toBe('描き下ろし');
     // グッズのページなので、グッズの文脈の語にもなる (切り詰める前の本文で調べる)
     expect(result.redrawnPages).toEqual([{ kind: 'goods', redrawn: { page: '描き下ろし', goods: '描き下ろし' } }]);
+  });
+
+  it('グッズ以外の下層ページは、「グッズ」を含む文の語だけをグッズの文脈の語にする', async () => {
+    mockFetchHtml(
+      '<html><body><main><h2>ノベルティ</h2><p>描き下ろしミニキャラのコースターを配布。</p><img src="/images/novelty-1.jpg"></main></body></html>'
+    );
+    const service = new CategoryImageExtractorService(configLoader);
+
+    const result = await service.extractCategoryImages('https://example.com/', null, {
+      novelty: ['https://example.com/novelty/'],
+    });
+
+    expect(result.mentionsRedrawnIllustration).toBe(true);
+    expect(result.redrawnPages).toEqual([{ kind: 'novelty', redrawn: { page: '描き下ろし', goods: null } }]);
   });
 
   it('通常の HTML の下層ページはこれまでどおり <img> から拾う', async () => {

@@ -66,7 +66,6 @@ describe('withNoveltyImagesFromVenues', () => {
     sources: { menu: 'https://example.com/menu' },
     all: ['https://example.com/menu.jpg'],
     mentionsRedrawnIllustration: false,
-    redrawnWord: null,
     redrawnPages: [],
     pages: [],
     venueNoveltyImages: [{ url: TOKYO, images: ['https://example.com/tokuten.jpg'] }],
