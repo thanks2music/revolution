@@ -35,21 +35,31 @@ const SECTION_HEADINGS: Record<Exclude<CountKey, 'venues'>, RegExp> = {
 };
 
 /**
- * 品目ではない `###` の見出し。今の書式の「その他参考画像」「グッズ一覧」と、
- * 古い記事の「メニューラインナップ」「メニュー注文特典」「ノベルティー」など
+ * 品目ではない `###` の見出し。今の書式の「その他参考画像」「グッズ一覧」と、公開中の古い記事にある見出し。
+ * 完全一致にする (「来店特典」のような名前のノベルティを品目から落とさないため)
  */
-const STRUCTURAL_HEADING = /^(?:その他参考画像|グッズ一覧|ノベルティー?|.*ラインナップ|.*特典)$/;
+const STRUCTURAL_HEADINGS = new Set([
+  'その他参考画像',
+  'グッズ一覧',
+  'ノベルティ',
+  'ノベルティー',
+  'メニューラインナップ',
+  'グッズラインナップ',
+  'メニュー注文特典',
+]);
 
 /** Markdown の表の区切りの行 (`|------|------|`) */
 const TABLE_DIVIDER = /^\|[\s:|-]+\|$/;
 
-/** 節の本文の行 (見出しの次の行から、次の `## ` の手前まで) */
+/** 見出しに当たるすべての節の本文の行 (見出しの次の行から、次の `## ` の手前まで) */
 function sectionLines(body: string[], heading: RegExp): string[] {
-  const start = body.findIndex((line) => heading.test(line));
-  if (start === -1) return [];
-  const rest = body.slice(start + 1);
-  const end = rest.findIndex((line) => line.startsWith('## '));
-  return end === -1 ? rest : rest.slice(0, end);
+  const lines: string[] = [];
+  let inSection = false;
+  for (const line of body) {
+    if (line.startsWith('## ')) inSection = heading.test(line);
+    else if (inSection) lines.push(line);
+  }
+  return lines;
 }
 
 /** 節の品目の数 */
@@ -60,10 +70,11 @@ export function countSectionItems(lines: readonly string[]): number {
   for (const raw of lines) {
     const line = raw.trim();
     if (line.startsWith('### ')) {
-      if (!STRUCTURAL_HEADING.test(line.slice(4).trim())) items++;
+      if (!STRUCTURAL_HEADINGS.has(line.slice(4).trim())) items++;
     } else if (line.startsWith('<tr><th scope="row">')) {
       items++;
-    } else if (line.startsWith('- ')) {
+    } else if (line.startsWith('- ') && !line.startsWith('- ※')) {
+      // 「- ※価格は税込」のような注意書きは品目ではない
       items++;
     } else if (line.startsWith('|')) {
       if (TABLE_DIVIDER.test(line)) dividers++;

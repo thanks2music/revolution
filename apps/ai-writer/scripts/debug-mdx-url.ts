@@ -514,8 +514,11 @@ async function main() {
     if (result.skipped) {
       console.log('\n⚠️  記事生成をスキップしました');
       console.log(`理由: ${result.skipReason}`);
-      // 記事の更新では、スキップ = 更新できなかった (公式サイトを取得できないなど)
-      if (updateTarget) process.exitCode = 1;
+      // 記事の更新では、スキップ = 更新できなかった (公式サイトを取得できないなど)。通知も失敗として送る
+      if (updateTarget) {
+        process.exitCode = 1;
+        notification = { ...notifyContext, outcome: 'failure', error: `記事を更新できませんでした: ${result.skipReason}` };
+      }
       console.log();
       console.log('='.repeat(80));
       console.log('💡 デバッグヒント:');

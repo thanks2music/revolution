@@ -91,6 +91,11 @@ describe('countArticleItems', () => {
     expect(countArticleItems(`${frontmatter(0)}\n## 作品のメニュー\n### パスタ\n`).venues).toBe(0);
   });
 
+  it('同じ種類の節が 2 つあれば両方を数える', () => {
+    const two = `${frontmatter(1)}\n## フードメニュー\n### パスタ\n### カレー\n## ドリンクメニュー\n### ソーダ\n## 作品のグッズ\n- 缶バッジ\n`;
+    expect(countArticleItems(two)).toEqual({ venues: 1, menu: 3, goods: 1, novelty: 0 });
+  });
+
   it('節が無ければ 0 (別の節の品目を数えない)', () => {
     const onlyMenu = `${frontmatter(1)}\n## 作品のメニュー\n### パスタ\n## 作品 開催概要\n- 箇条書き\n`;
     expect(countArticleItems(onlyMenu)).toEqual({ venues: 1, menu: 1, goods: 0, novelty: 0 });
@@ -123,6 +128,10 @@ describe('countSectionItems', () => {
       '| アクスタ | 990円 | 店舗 |',
     ];
     expect(countSectionItems(lines)).toBe(3);
+  });
+
+  it('名前が「特典」で終わるノベルティは品目として数える。注意書きの箇条書きは数えない', () => {
+    expect(countSectionItems(['### 来店特典', '### ノベルティー', '- 缶バッジ', '- ※価格は税込'])).toBe(2);
   });
 
   it('品目ごとの形のグッズは見出しを数え、販売の行は数えない', () => {

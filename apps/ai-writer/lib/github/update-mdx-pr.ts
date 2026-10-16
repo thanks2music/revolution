@@ -114,6 +114,8 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
   console.log(`  Branch: ${branchName}`);
   console.log(`  File: ${filePath}`);
 
+  // ブランチを作った後に失敗したら、ブランチが残っていることを知らせる (片付けは人が行う)
+  let branchCreated = false;
   try {
     const octokit = await createGitHubClient();
 
@@ -121,6 +123,7 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
 
     try {
       await octokit.git.createRef({ owner, repo, ref: `refs/heads/${branchName}`, sha: baseRef.object.sha });
+      branchCreated = true;
     } catch (error) {
       const e = error as { status?: number; message?: string };
       if (e.status === 422 && e.message?.includes('Reference already exists')) {
@@ -146,7 +149,7 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
     } catch (error) {
       if ((error as { status?: number }).status === 409) {
         throw new Error(
-          `記事を読んだ後に main の ${filePath} が変わりました (上書きしません)。もう一度実行してください。ブランチ ${branchName} は残っています`,
+          `記事を読んだ後に main の ${filePath} が変わりました (上書きしません)。もう一度実行してください`,
         );
       }
       throw error;
@@ -158,6 +161,9 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
     return { prNumber: pr.number, prUrl: pr.html_url, branchName, commitSha };
   } catch (error) {
     console.error('[Update MDX PR] ❌ 記事の更新の PR を作れませんでした:', error);
+    if (branchCreated) {
+      console.error(`[Update MDX PR] ブランチ ${branchName} が残っています (不要なら削除してください)`);
+    }
     if (isAuthError(error)) {
       throw new GitHubAuthError('GitHub authentication failed', error instanceof Error ? error : undefined);
     }
