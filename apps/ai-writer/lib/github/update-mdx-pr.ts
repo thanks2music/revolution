@@ -125,7 +125,8 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
   try {
     const octokit = await createGitHubClient();
 
-    // 同じ記事の更新の PR が開いていれば止める (ブランチ名は日時付きなので、頭の部分で照合する)
+    // 同じ記事の更新の PR が開いていれば止める (ブランチ名は日時付きなので、頭の部分で照合する)。
+    // ベストエフォート: ほぼ同時に 2 回実行すると両方とも通る (手で 1 回ずつ実行する CLI のため、これで足りる)
     const prefix = updateBranchPrefix(branchName);
     const openPulls = await octokit.paginate(octokit.pulls.list, { owner, repo, state: 'open', base: baseBranch, per_page: 100 });
     const existing = openPulls.find((pull) => pull.head.ref.startsWith(prefix));
@@ -165,7 +166,7 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
       const e = error as { status?: number; message?: string };
       if (e.status === 409 || (e.status === 422 && /sha/i.test(e.message ?? ''))) {
         throw new Error(
-          `記事を読んだ後に main の ${filePath} が変わりました (上書きしません)。もう一度実行してください`,
+          `記事を読んだ後に main の ${filePath} が変わりました (上書きしません)。もう一度実行してください (GitHub: ${e.status} ${e.message ?? ''})`,
         );
       }
       throw error;
