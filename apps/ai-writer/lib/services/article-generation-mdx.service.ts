@@ -783,14 +783,14 @@ export class ArticleGenerationMdxService {
         console.log(`\n${getStepDisplay('duplication-check')} Firestore重複チェック（${modeLabel}のためスキップ）...`);
 
         // ダミーの postId を生成（タイムスタンプベース）。記事の更新では既存の post_id
-        const dryRunPostId = update?.fields.postId ?? `dry-run-${Date.now()}`;
+        const postIdForRun = update?.fields.postId ?? `dry-run-${Date.now()}`;
         // 表示用 (保存しない)。記事の更新では、登録済みの canonicalKey (作った年・店舗の slug) と違うことがある
         const dryRunCanonicalKey = `${workSlug}:${storeSlug}:${eventType}:${year}`;
 
         // ドライラン用のダミーレコード（Firestoreには保存しないため、Timestamp の代わりに null を使用）
         eventRecord = {
           canonicalKey: dryRunCanonicalKey,
-          postId: dryRunPostId,
+          postId: postIdForRun,
           workSlug,
           storeSlug,
           eventType,

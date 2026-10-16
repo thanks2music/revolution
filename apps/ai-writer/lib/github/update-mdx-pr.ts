@@ -88,6 +88,11 @@ export async function fetchArticleFromMain(postId: string): Promise<ArticleOnMai
   }
 }
 
+/** 同じ記事の更新の PR のブランチ名の頭 (`updateBranchName` と対) */
+function updateBranchPrefix(branchName: string): string {
+  return branchName.replace(/\d{8}-\d{6}$/, '');
+}
+
 export interface CreateUpdateMdxPrParams {
   mdxContent: string;
   /** 上書きする記事のパス (`fetchArticleFromMain` の path) */
@@ -103,6 +108,7 @@ export interface CreateUpdateMdxPrParams {
 /**
  * 新しいブランチで記事を上書きし、PR を作る。
  *
+ * @throws 同じ記事の更新の PR が開いているとき (2 本目を作ると、1 本目をマージした後に衝突する)
  * @throws {BranchConflictError} 同じ名前のブランチがあるとき
  * @throws 読んだ後に main の記事が変わっていたとき (409。上書きしない)
  */
@@ -118,6 +124,14 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
   let branchCreated = false;
   try {
     const octokit = await createGitHubClient();
+
+    // 同じ記事の更新の PR が開いていれば止める (ブランチ名は日時付きなので、頭の部分で照合する)
+    const prefix = updateBranchPrefix(branchName);
+    const { data: openPulls } = await octokit.pulls.list({ owner, repo, state: 'open', base: baseBranch, per_page: 100 });
+    const existing = openPulls.find((pull) => pull.head.ref.startsWith(prefix));
+    if (existing) {
+      throw new Error(`この記事の更新の PR がすでに開いています: ${existing.html_url} (マージかクローズの後に実行してください)`);
+    }
 
     const { data: baseRef } = await octokit.git.getRef({ owner, repo, ref: `heads/${baseBranch}` });
 
@@ -167,8 +181,9 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
     if (isAuthError(error)) {
       throw new GitHubAuthError('GitHub authentication failed', error instanceof Error ? error : undefined);
     }
+    // status を持たないのは、ここで作ったエラー (409 の説明・開いた PR・ブランチの衝突)。そのまま投げる。
+    // status を持つ GitHub のエラーは、新規の記事 (`create-mdx-pr.ts`) と同じくネットワークのエラーに包む
     if (error instanceof BranchConflictError || !(error as { status?: number }).status) {
-      // こちらで作ったエラー (409 の説明・ブランチの衝突) はそのまま投げる
       throw error;
     }
     wrapNetworkError(error);

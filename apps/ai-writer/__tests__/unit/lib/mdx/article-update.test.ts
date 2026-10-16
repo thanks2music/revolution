@@ -48,6 +48,12 @@ describe('readExistingArticleFields', () => {
     expect(() => readExistingArticleFields('本文だけ')).toThrow('frontmatter がありません');
   });
 
+  it('文字列の値が文字列でなければ例外', () => {
+    expect(() => readExistingArticleFields(article.replace('date: "2026-10-12T21:26:06.709Z"', 'date: 20261012'))).toThrow(
+      'date が文字列ではありません',
+    );
+  });
+
   it('year が数でなければ例外 (画像のフォルダに使う)', () => {
     expect(() => readExistingArticleFields(article.replace('year: 2026', 'year: "2026年"'))).toThrow('year が整数ではありません');
   });

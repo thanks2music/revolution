@@ -43,6 +43,10 @@ export function readExistingArticleFields(content: string): ExistingArticleField
   if (!Number.isInteger(frontmatter.year)) {
     throw new Error(`記事の frontmatter の year が整数ではありません: ${String(frontmatter.year)}`);
   }
+  const notString = INHERITED_KEYS.filter((key) => key !== 'year' && typeof frontmatter[key] !== 'string');
+  if (notString.length > 0) {
+    throw new Error(`記事の frontmatter の ${notString.join(', ')} が文字列ではありません`);
+  }
 
   return {
     postId: frontmatter.post_id,

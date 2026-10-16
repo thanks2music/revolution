@@ -45,6 +45,7 @@ function fakeOctokit() {
         .mockResolvedValue({ data: { commit: { sha: 'commit-sha' } } }),
     },
     pulls: {
+      list: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: [] }),
       create: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: { number: 400, html_url: 'https://github.com/owner/repo/pull/400' } }),
     },
   };
@@ -145,6 +146,25 @@ describe('createUpdateMdxPr', () => {
       branchName: params.branchName,
       commitSha: 'commit-sha',
     });
+  });
+
+  it('同じ記事の更新の PR が開いていれば、ブランチを作らずに止める', async () => {
+    octokit.pulls.list.mockResolvedValueOnce({
+      data: [
+        { head: { ref: 'ai-writer/update-collabo-cafe-01m02zcdrevxhcj4-20261016-010101' }, html_url: 'https://github.com/owner/repo/pull/1' },
+        { head: { ref: 'ai-writer/update-collabo-cafe-01m4s065g1hchh9d-20261016-120000' }, html_url: 'https://github.com/owner/repo/pull/2' },
+      ],
+    });
+
+    await expect(createUpdateMdxPr(params)).rejects.toThrow('すでに開いています: https://github.com/owner/repo/pull/2');
+    expect(octokit.git.createRef).not.toHaveBeenCalled();
+  });
+
+  it('別の記事の更新の PR が開いていても止めない', async () => {
+    octokit.pulls.list.mockResolvedValueOnce({
+      data: [{ head: { ref: 'ai-writer/update-collabo-cafe-01m02zcdrevxhcj4-20261016-010101' }, html_url: 'x' }],
+    });
+    await expect(createUpdateMdxPr(params)).resolves.toMatchObject({ prNumber: 400 });
   });
 
   it('読んだ後に main の記事が変わっていたら (409) 上書きせず、PR を作らない', async () => {
