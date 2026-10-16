@@ -138,6 +138,19 @@ export function checkShrink(before: ArticleCounts, after: ArticleCounts): Shrink
   return { comparisons, shrunk: comparisons.some((c) => c.shrunk) };
 }
 
+/**
+ * 減っていて、--allow-shrink が無ければ、PR を作らない理由 (作ってよければ null)。
+ * 画像は数える前 (MDX を組み立てる前) に R2 に上がっている
+ */
+export function shrinkStopMessage(check: ShrinkCheck, allowShrink: boolean): string | null {
+  if (!check.shrunk || allowShrink) return null;
+  const shrunk = describeShrinkCheck(check).filter((_, i) => check.comparisons[i].shrunk);
+  return (
+    `更新後の記事で減った項目があるため、PR を作りませんでした (${shrunk.join(' / ')})。` +
+    '続けるには --allow-shrink を付ける (画像は R2 にアップロード済み。作り直すと同じものを使う)'
+  );
+}
+
 /** ログと PR 本文に載せる 1 行ずつの説明 */
 export function describeShrinkCheck(check: ShrinkCheck): string[] {
   return check.comparisons.map(({ label, before, after, comparable, shrunk }) => {

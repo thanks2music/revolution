@@ -4,6 +4,7 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   checkShrink,
+  shrinkStopMessage,
   countArticleItems,
   countSectionItems,
   describeShrinkCheck,
@@ -156,6 +157,16 @@ describe('checkShrink', () => {
 
   it('数えられた項目が 0 になったら減ったとみなす', () => {
     expect(checkShrink(before, { venues: 4, menu: 19, goods: 0, novelty: 0 }).shrunk).toBe(true);
+  });
+
+  it('減っていれば PR を作らない理由を返し、--allow-shrink なら null (PR を作る)', () => {
+    const check = checkShrink(before, { venues: 3, menu: 19, goods: 7, novelty: 0 });
+    expect(shrinkStopMessage(check, false)).toContain('PR を作りませんでした (会場: 4 → 3 (減った))');
+    expect(shrinkStopMessage(check, true)).toBeNull();
+  });
+
+  it('減っていなければ null', () => {
+    expect(shrinkStopMessage(checkShrink(before, before), false)).toBeNull();
   });
 
   it('説明の行', () => {

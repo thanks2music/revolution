@@ -127,7 +127,7 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
 
     // 同じ記事の更新の PR が開いていれば止める (ブランチ名は日時付きなので、頭の部分で照合する)
     const prefix = updateBranchPrefix(branchName);
-    const { data: openPulls } = await octokit.pulls.list({ owner, repo, state: 'open', base: baseBranch, per_page: 100 });
+    const openPulls = await octokit.paginate(octokit.pulls.list, { owner, repo, state: 'open', base: baseBranch, per_page: 100 });
     const existing = openPulls.find((pull) => pull.head.ref.startsWith(prefix));
     if (existing) {
       throw new Error(`この記事の更新の PR がすでに開いています: ${existing.html_url} (マージかクローズの後に実行してください)`);
@@ -161,7 +161,9 @@ export async function createUpdateMdxPr(params: CreateUpdateMdxPrParams): Promis
       });
       commitSha = commitData.commit.sha!;
     } catch (error) {
-      if ((error as { status?: number }).status === 409) {
+      // sha が古いと 409。422 で sha の不一致を返すこともある
+      const e = error as { status?: number; message?: string };
+      if (e.status === 409 || (e.status === 422 && /sha/i.test(e.message ?? ''))) {
         throw new Error(
           `記事を読んだ後に main の ${filePath} が変わりました (上書きしません)。もう一度実行してください`,
         );

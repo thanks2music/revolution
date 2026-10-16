@@ -22,6 +22,8 @@ const MDX = '---\npost_id: "01m4s065g1hchh9d"\n---\n本文\n';
 
 function fakeOctokit() {
   return {
+    // ページをたどる関数 (テストでは 1 ページだけ)
+    paginate: jest.fn(async (fn: (params: unknown) => Promise<{ data: unknown[] }>, params: unknown) => (await fn(params)).data),
     git: {
       getTree: jest.fn<() => Promise<unknown>>().mockResolvedValue({
         data: {
@@ -170,6 +172,14 @@ describe('createUpdateMdxPr', () => {
   it('読んだ後に main の記事が変わっていたら (409) 上書きせず、PR を作らない', async () => {
     octokit.repos.createOrUpdateFileContents.mockRejectedValueOnce(Object.assign(new Error('conflict'), { status: 409 }));
 
+    await expect(createUpdateMdxPr(params)).rejects.toThrow('main の');
+    expect(octokit.pulls.create).not.toHaveBeenCalled();
+  });
+
+  it('422 で sha の不一致が返っても、上書きせずに同じ案内を出す', async () => {
+    octokit.repos.createOrUpdateFileContents.mockRejectedValueOnce(
+      Object.assign(new Error('sha does not match'), { status: 422 }),
+    );
     await expect(createUpdateMdxPr(params)).rejects.toThrow('main の');
     expect(octokit.pulls.create).not.toHaveBeenCalled();
   });

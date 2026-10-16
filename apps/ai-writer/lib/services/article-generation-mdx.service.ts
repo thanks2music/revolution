@@ -9,7 +9,13 @@ import {
   updatePrTitle,
   type ExistingArticleFields,
 } from '../mdx/article-update';
-import { checkShrink, countArticleItems, describeShrinkCheck, type ShrinkCheck } from '../mdx/article-counts';
+import {
+  checkShrink,
+  countArticleItems,
+  describeShrinkCheck,
+  shrinkStopMessage,
+  type ShrinkCheck,
+} from '../mdx/article-counts';
 import {
   checkEventDuplication,
   registerNewEvent,
@@ -1702,9 +1708,8 @@ export class ArticleGenerationMdxService {
         // 記事の更新: 既存のファイルを sha 付きで上書きする PR
         console.log(`\n${getStepDisplay('github-pr-creation')} 記事の更新の PR を作成...`);
 
-        if (shrinkCheck.shrunk && !update.allowShrink) {
-          const shrunk = describeShrinkCheck(shrinkCheck).filter((_, i) => shrinkCheck.comparisons[i].shrunk);
-          const message = `更新後の記事で減った項目があるため、PR を作りませんでした (${shrunk.join(' / ')})。続けるには --allow-shrink を付ける`;
+        const message = shrinkStopMessage(shrinkCheck, update.allowShrink);
+        if (message) {
           console.error(`❌ ${message}`);
           if (costTracker.hasUsage()) costTracker.logSummary();
           return { success: false, error: message, mdxArticle, update: { shrinkCheck } };
