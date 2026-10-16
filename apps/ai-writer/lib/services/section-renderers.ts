@@ -121,8 +121,10 @@ export function renderMenuItems(items: ExtractionMenuItem[], itemLine: string, i
   });
 }
 
-const MENU_SECTION = /^## .*メニュー[ \t]*$/m;
-const NOVELTY_SECTION = /^## .*ノベルティー?[ \t]*$/m;
+/** メニューの節の見出し (記事の更新の減少チェック `lib/mdx/article-counts.ts` も使う) */
+export const MENU_SECTION = /^## .*メニュー[ \t]*$/m;
+/** ノベルティの節の見出し (同上) */
+export const NOVELTY_SECTION = /^## .*ノベルティー?[ \t]*$/m;
 
 /**
  * 画像の欄の行 (Markdown の画像・画像のプレースホルダー・`<ArticleImage>`)。名前を差し込むとき、

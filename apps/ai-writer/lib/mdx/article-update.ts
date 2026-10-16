@@ -19,6 +19,9 @@ export interface ExistingArticleFields {
   officialUrl: string;
 }
 
+/** 引き継ぐ値の frontmatter のキー */
+const INHERITED_KEYS = ['post_id', 'year', 'event_type', 'work_slug', 'title', 'date', 'official_url'] as const;
+
 /**
  * 既存の記事の frontmatter から、引き継ぐ値を読む。
  *
@@ -30,34 +33,26 @@ export function readExistingArticleFields(content: string): ExistingArticleField
     throw new Error('記事に frontmatter がありません');
   }
 
-  const fields = {
+  const missing = INHERITED_KEYS.filter((key) => {
+    const value = frontmatter[key];
+    return value === undefined || value === null || value === '';
+  });
+  if (missing.length > 0) {
+    throw new Error(`記事の frontmatter に ${missing.join(', ')} がありません`);
+  }
+  if (!Number.isInteger(frontmatter.year)) {
+    throw new Error(`記事の frontmatter の year が整数ではありません: ${String(frontmatter.year)}`);
+  }
+
+  return {
     postId: frontmatter.post_id,
     year: frontmatter.year,
     eventType: frontmatter.event_type,
     workSlug: frontmatter.work_slug,
     title: frontmatter.title,
     date: frontmatter.date,
-    officialUrl: frontmatter.official_url,
+    officialUrl: frontmatter.official_url!,
   };
-  const missing = Object.entries({
-    post_id: fields.postId,
-    year: fields.year,
-    event_type: fields.eventType,
-    work_slug: fields.workSlug,
-    title: fields.title,
-    date: fields.date,
-    official_url: fields.officialUrl,
-  })
-    .filter(([, value]) => value === undefined || value === null || value === '')
-    .map(([key]) => key);
-  if (missing.length > 0) {
-    throw new Error(`記事の frontmatter に ${missing.join(', ')} がありません`);
-  }
-  if (typeof fields.year !== 'number' || !Number.isInteger(fields.year)) {
-    throw new Error(`記事の frontmatter の year が整数ではありません: ${String(fields.year)}`);
-  }
-
-  return fields as ExistingArticleFields;
 }
 
 /**

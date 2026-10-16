@@ -111,7 +111,8 @@ export function renderGoodsList(
   return lines.join('\n');
 }
 
-const GOODS_SECTION = /^## .*グッズ[ \t]*$/m;
+/** グッズの節の見出し (記事の更新の減少チェック `lib/mdx/article-counts.ts` も使う) */
+export const GOODS_SECTION = /^## .*グッズ[ \t]*$/m;
 
 /** グッズの節があるか (品目ごとの画像は、節が無いと差し込めない) */
 export function hasGoodsSection(content: string): boolean {

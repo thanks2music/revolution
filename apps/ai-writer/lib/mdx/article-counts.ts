@@ -13,6 +13,8 @@
  * 更新前の数が 0 の項目は「比べられない」として止めない (BOSS 決定 2026-10-17。減ったかは差分で人が確かめる)。
  */
 import { parseFrontmatter } from './parse-frontmatter';
+import { MENU_SECTION, NOVELTY_SECTION } from '../services/section-renderers';
+import { GOODS_SECTION } from '../services/goods-list';
 
 export type CountKey = 'venues' | 'menu' | 'goods' | 'novelty';
 
@@ -27,11 +29,11 @@ export const COUNT_LABELS: Record<CountKey, string> = {
 
 const COUNT_KEYS: readonly CountKey[] = ['venues', 'menu', 'goods', 'novelty'];
 
-/** 節の見出し。`lib/services/section-renderers.ts` / `goods-list.ts` の節の判定と同じ */
+/** 節の見出し。記事を書く側 (`section-renderers.ts` / `goods-list.ts`) と同じ正規表現を使う (1 行ずつ test する) */
 const SECTION_HEADINGS: Record<Exclude<CountKey, 'venues'>, RegExp> = {
-  menu: /^## .*メニュー[ \t]*$/,
-  goods: /^## .*グッズ[ \t]*$/,
-  novelty: /^## .*ノベルティー?[ \t]*$/,
+  menu: MENU_SECTION,
+  goods: GOODS_SECTION,
+  novelty: NOVELTY_SECTION,
 };
 
 /**

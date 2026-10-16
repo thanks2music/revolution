@@ -279,10 +279,8 @@ export interface MdxGenerationResult {
   textPlaceholderReplacement?: TextPlaceholderReplacementResult;
   // Vision API 統合結果（vision-api step）
   visionApiResult?: VisionStepResult;
-  // 公開中の記事の更新のときだけ: 更新前の記事と、会場・品目の数の比較
+  // 公開中の記事の更新のときだけ: 会場・品目の数の更新の前後の比較
   update?: {
-    path: string;
-    before: string;
     shrinkCheck: ShrinkCheck;
   };
 }
@@ -360,6 +358,8 @@ export class ArticleGenerationMdxService {
     // skipImageUpload: 画像アップロードをスキップ（dryRunのみ、localOnlyでは実行）
     const skipExternalOps = dryRun || localOnly;
     const skipImageUpload = dryRun && !localOnly;
+    // 記事の更新は記事が登録済みなので、Firestore には触れない
+    const skipFirestore = skipExternalOps || update !== undefined;
 
     // Get configured AI provider for logging
     const providerName = getConfiguredProvider();
@@ -776,28 +776,15 @@ export class ArticleGenerationMdxService {
       // duplication-check step: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
 
-      if (update) {
-        // 記事の更新: 記事は登録済み。重複チェックも登録もしない (Firestore の記録は generated のまま)
-        console.log(`\n${getStepDisplay('duplication-check')} Firestore重複チェック（記事の更新のためスキップ）...`);
-        eventRecord = {
-          // 記録には使わない (表示用)。登録済みの canonicalKey は作った年のもので、今の店舗の slug とは違うことがある
-          canonicalKey: `${workSlug}:${storeSlug}:${eventType}:${year}`,
-          postId: update.fields.postId,
-          workSlug,
-          storeSlug,
-          eventType,
-          year,
-          status: 'generated',
-          createdAt: null as any, // 更新では使わない
-          updatedAt: null as any,
-        };
-      } else if (skipExternalOps) {
-        // ドライラン/ローカル保存モード: 重複チェック・登録をスキップ
-        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
+      if (skipFirestore) {
+        // ドライラン/ローカル保存/記事の更新: 重複チェック・登録をスキップ
+        // (記事の更新では記事は登録済みで、Firestore の記録は generated のまま)
+        const modeLabel = update ? '記事の更新' : localOnly ? 'ローカル保存' : 'ドライラン';
         console.log(`\n${getStepDisplay('duplication-check')} Firestore重複チェック（${modeLabel}のためスキップ）...`);
 
-        // ダミーの postId を生成（タイムスタンプベース）
-        const dryRunPostId = `dry-run-${Date.now()}`;
+        // ダミーの postId を生成（タイムスタンプベース）。記事の更新では既存の post_id
+        const dryRunPostId = update?.fields.postId ?? `dry-run-${Date.now()}`;
+        // 表示用 (保存しない)。記事の更新では、登録済みの canonicalKey (作った年・店舗の slug) と違うことがある
         const dryRunCanonicalKey = `${workSlug}:${storeSlug}:${eventType}:${year}`;
 
         // ドライラン用のダミーレコード（Firestoreには保存しないため、Timestamp の代わりに null を使用）
@@ -808,13 +795,13 @@ export class ArticleGenerationMdxService {
           storeSlug,
           eventType,
           year,
-          status: 'pending', // ドライランでも valid な status を使用
+          status: update ? 'generated' : 'pending', // ドライランでも valid な status を使用
           createdAt: null as any, // ドライラン用ダミー値
           updatedAt: null as any, // ドライラン用ダミー値
         };
 
-        const modeEmoji = localOnly ? '💾' : '🧪';
-        const modeName = localOnly ? 'ローカル保存' : 'ドライラン';
+        const modeEmoji = update ? '♻️' : localOnly ? '💾' : '🧪';
+        const modeName = modeLabel;
         console.log(`${modeEmoji} ${modeName}: ダミーイベントレコード生成:`, {
           canonicalKey: eventRecord.canonicalKey,
           postId: eventRecord.postId,
@@ -1688,16 +1675,12 @@ export class ArticleGenerationMdxService {
       });
 
       // 記事の更新: 会場・品目の数を更新の前後で比べる (減っていれば、--allow-shrink が無い限り PR を作らない)
-      const updateResult = update
-        ? {
-            path: update.article.path,
-            before: update.article.content,
-            shrinkCheck: checkShrink(countArticleItems(update.article.content), countArticleItems(mdxArticle.content)),
-          }
+      const shrinkCheck = update
+        ? checkShrink(countArticleItems(update.article.content), countArticleItems(mdxArticle.content))
         : undefined;
-      if (updateResult) {
+      if (shrinkCheck) {
         const ctx = getStepContext('github-pr-creation', '更新の前後の数');
-        for (const line of describeShrinkCheck(updateResult.shrinkCheck)) console.log(`${ctx} ${line}`);
+        for (const line of describeShrinkCheck(shrinkCheck)) console.log(`${ctx} ${line}`);
       }
 
       // github-pr-creation step: Create GitHub PR
@@ -1715,19 +1698,16 @@ export class ArticleGenerationMdxService {
         console.log('-'.repeat(60));
         console.log(mdxArticle.content);
         console.log('-'.repeat(60));
-      } else if (update && updateResult) {
+      } else if (update && shrinkCheck) {
         // 記事の更新: 既存のファイルを sha 付きで上書きする PR
         console.log(`\n${getStepDisplay('github-pr-creation')} 記事の更新の PR を作成...`);
 
-        if (updateResult.shrinkCheck.shrunk && !update.allowShrink) {
-          const shrunk = describeShrinkCheck({
-            ...updateResult.shrinkCheck,
-            comparisons: updateResult.shrinkCheck.comparisons.filter((c) => c.shrunk),
-          });
+        if (shrinkCheck.shrunk && !update.allowShrink) {
+          const shrunk = describeShrinkCheck(shrinkCheck).filter((_, i) => shrinkCheck.comparisons[i].shrunk);
           const message = `更新後の記事で減った項目があるため、PR を作りませんでした (${shrunk.join(' / ')})。続けるには --allow-shrink を付ける`;
           console.error(`❌ ${message}`);
           if (costTracker.hasUsage()) costTracker.logSummary();
-          return { success: false, error: message, mdxArticle, update: updateResult };
+          return { success: false, error: message, mdxArticle, update: { shrinkCheck } };
         }
 
         prResult = await createUpdateMdxPr({
@@ -1739,7 +1719,7 @@ export class ArticleGenerationMdxService {
             path: update.article.path,
             fields: update.fields,
             updated: mdxArticle.frontmatter.updated ?? '',
-            shrinkCheck: updateResult.shrinkCheck,
+            shrinkCheck,
             allowShrink: update.allowShrink,
             extraction,
             metadata: { categories, excerpt },
@@ -1790,12 +1770,10 @@ export class ArticleGenerationMdxService {
       }
 
       // firestore-status-update step: Update Firestore status to 'generated'
-      if (update) {
-        console.log(`\n${getStepDisplay('firestore-status-update')} Firestoreステータス更新（記事の更新のためスキップ）...`);
-      } else if (skipExternalOps) {
-        // ドライラン/ローカル保存モード: ステータス更新をスキップ
-        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
-        const modeEmoji = localOnly ? '💾' : '🧪';
+      if (skipFirestore) {
+        // ドライラン/ローカル保存/記事の更新: ステータス更新をスキップ
+        const modeLabel = update ? '記事の更新' : localOnly ? 'ローカル保存' : 'ドライラン';
+        const modeEmoji = update ? '♻️' : localOnly ? '💾' : '🧪';
         console.log(`\n${getStepDisplay('firestore-status-update')} Firestoreステータス更新（${modeLabel}のためスキップ）...`);
         console.log(`${modeEmoji} ${modeLabel}: ステータス更新をスキップしました`);
       } else {
@@ -1838,7 +1816,7 @@ export class ArticleGenerationMdxService {
         placeholderReplacement,
         textPlaceholderReplacement,
         visionApiResult, // vision-api step Vision API integration result
-        update: updateResult,
+        update: shrinkCheck ? { shrinkCheck } : undefined,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');

@@ -74,7 +74,6 @@ import type { MdxGenerationRequest, ArticleUpdateTarget } from '../lib/services/
 import { fetchArticleFromMain } from '../lib/github/update-mdx-pr';
 import { GitHubAuthError } from '../lib/errors/github';
 import { readExistingArticleFields } from '../lib/mdx/article-update';
-import { describeShrinkCheck } from '../lib/mdx/article-counts';
 
 // Slack 通知 (SLACK_BOT_TOKEN / SLACK_CHANNEL_ID が無ければ何もしない)
 import {
@@ -499,15 +498,11 @@ async function main() {
     console.log('📊 生成結果');
     console.log('='.repeat(80));
 
-    // 記事の更新: 会場・品目の数の比較と、既存の記事との差分 (dry-run と、減って止まったとき)
-    if (result.update && result.mdxArticle) {
-      console.log('\n🔢 会場・品目の数 (更新前 → 更新後):');
-      for (const line of describeShrinkCheck(result.update.shrinkCheck)) console.log(`  ${line}`);
-      if (dryRun) {
-        await printArticleDiff(result.update.before, result.mdxArticle.content, updateTarget!.fields.postId);
-        if (result.update.shrinkCheck.shrunk && !allowShrink) {
-          console.log('\n⚠️  減った項目があります。本実行では PR を作らずに止まります (続けるには --allow-shrink)');
-        }
+    // 記事の更新の dry-run: 既存の記事との差分 (会場・品目の数はパイプラインのログに出ている)
+    if (dryRun && updateTarget && result.update && result.mdxArticle) {
+      await printArticleDiff(updateTarget.article.content, result.mdxArticle.content, updateTarget.fields.postId);
+      if (result.update.shrinkCheck.shrunk && !allowShrink) {
+        console.log('\n⚠️  減った項目があります。本実行では PR を作らずに止まります (続けるには --allow-shrink)');
       }
     }
 
