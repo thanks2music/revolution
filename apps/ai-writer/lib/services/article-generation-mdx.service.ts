@@ -2,6 +2,14 @@ import { Sentry } from '@/lib/observability/sentry';
 import { generateMdxArticle } from '../mdx/template-generator';
 import { type MdxArticle } from '../mdx/types';
 import { createMdxPr, type CreateMdxPrResult } from '../github/create-mdx-pr';
+import { createUpdateMdxPr, type ArticleOnMain } from '../github/update-mdx-pr';
+import {
+  findSlugChanges,
+  updateBranchName,
+  updatePrTitle,
+  type ExistingArticleFields,
+} from '../mdx/article-update';
+import { checkShrink, countArticleItems, describeShrinkCheck, type ShrinkCheck } from '../mdx/article-counts';
 import {
   checkEventDuplication,
   registerNewEvent,
@@ -215,6 +223,22 @@ export interface MdxGenerationRequest {
    * デバッグ時に画像アップロードをテストしつつ、PRは作成しない場合に使用
    */
   localOnly?: boolean;
+  /**
+   * 公開中の記事の更新 (`pnpm debug:mdx --update <post_id>`)。
+   * 同じ post_id・URL のまま全体を作り直し、既存のファイルを上書きする PR を作る (dryRun なら PR を作らない)。
+   * Firestore には触れない (登録済みで `generated` のまま)。タイトルは作り直さない
+   */
+  update?: ArticleUpdateTarget;
+}
+
+/** 更新する記事 */
+export interface ArticleUpdateTarget {
+  /** main の記事 (中身と blob の sha) */
+  article: ArticleOnMain;
+  /** 既存の記事から引き継ぐ値 */
+  fields: ExistingArticleFields;
+  /** 会場・品目が減っても PR を作る (`--allow-shrink`) */
+  allowShrink: boolean;
 }
 
 /**
@@ -255,6 +279,12 @@ export interface MdxGenerationResult {
   textPlaceholderReplacement?: TextPlaceholderReplacementResult;
   // Vision API 統合結果（vision-api step）
   visionApiResult?: VisionStepResult;
+  // 公開中の記事の更新のときだけ: 更新前の記事と、会場・品目の数の比較
+  update?: {
+    path: string;
+    before: string;
+    shrinkCheck: ShrinkCheck;
+  };
 }
 
 /**
@@ -321,8 +351,9 @@ export class ArticleGenerationMdxService {
    * AI_PROVIDER環境変数でプロバイダーを切り替え可能
    */
   async generateMdxFromRSS(request: MdxGenerationRequest): Promise<MdxGenerationResult> {
-    const { rssItem, dryRun = false, localOnly = false } = request;
-    const year = new Date().getFullYear();
+    const { rssItem, dryRun = false, localOnly = false, update } = request;
+    // 更新のときは既存の記事の年 (画像のフォルダ `{event_type}/{year}/{post_id}` に入る) を引き継ぐ
+    const year = update?.fields.year ?? new Date().getFullYear();
 
     // モード判定用のヘルパー変数
     // skipExternalOps: Firestore/GitHub操作をスキップ（dryRun OR localOnly）
@@ -345,6 +376,11 @@ export class ArticleGenerationMdxService {
     } else if (localOnly) {
       console.log('💾 ローカル保存モード: Firestore登録・GitHub PR作成をスキップ（画像アップロードは実行）');
     }
+    if (update) {
+      console.log(
+        `♻️ 記事の更新: ${update.article.path} (post_id ${update.fields.postId}。タイトル・公開日・年を引き継ぎ、Firestore には触れない)`,
+      );
+    }
     console.log('RSS記事:', { title: rssItem.title, link: rssItem.link });
 
     // コストトラッカーを初期化（記事ごとに新規作成）
@@ -362,11 +398,20 @@ export class ArticleGenerationMdxService {
       console.log('記事HTML取得完了:', articleHtml.length, 'bytes');
 
       const selectionService = new ArticleSelectionService();
-      const selectionResult = await selectionService.shouldGenerateArticle({
+      const selected = await selectionService.shouldGenerateArticle({
         rss_title: rssItem.title,
         rss_content: articleHtml,
         site_domain: new URL(rssItem.link).hostname,
       });
+      // 更新のときは、既存の記事と同じ公式サイトから作り直す (選別が別の URL を選んでも使わない)
+      const selectionResult = update
+        ? { ...selected, primary_official_url: update.fields.officialUrl }
+        : selected;
+      if (update && selected.primary_official_url !== update.fields.officialUrl) {
+        console.warn(
+          `${getStepContext('article-selection')} 更新のため、選別した公式URL (${selected.primary_official_url ?? 'なし'}) ではなく既存の記事の official_url を使う: ${update.fields.officialUrl}`,
+        );
+      }
 
       // 公式URLが見つからない場合はスキップ
       if (!selectionResult.should_generate) {
@@ -715,13 +760,38 @@ export class ArticleGenerationMdxService {
         );
       }
 
+      // 更新のとき: 記事のパスと URL が変わるので、slug が既存の記事と違えば止める
+      if (update) {
+        const slugChanges = findSlugChanges(update.fields, { workSlug, eventType });
+        if (slugChanges.length > 0) {
+          const message = `既存の記事と slug が違うため、更新を止めました: ${slugChanges.join(' / ')}`;
+          console.error(`❌ ${message}`);
+          return { success: false, error: message };
+        }
+      }
+
       // Create resolved slugs object to pass to subsequent functions
       const resolvedSlugs = { workSlug, storeSlug, eventType };
 
       // duplication-check step: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
 
-      if (skipExternalOps) {
+      if (update) {
+        // 記事の更新: 記事は登録済み。重複チェックも登録もしない (Firestore の記録は generated のまま)
+        console.log(`\n${getStepDisplay('duplication-check')} Firestore重複チェック（記事の更新のためスキップ）...`);
+        eventRecord = {
+          // 記録には使わない (表示用)。登録済みの canonicalKey は作った年のもので、今の店舗の slug とは違うことがある
+          canonicalKey: `${workSlug}:${storeSlug}:${eventType}:${year}`,
+          postId: update.fields.postId,
+          workSlug,
+          storeSlug,
+          eventType,
+          year,
+          status: 'generated',
+          createdAt: null as any, // 更新では使わない
+          updatedAt: null as any,
+        };
+      } else if (skipExternalOps) {
         // ドライラン/ローカル保存モード: 重複チェック・登録をスキップ
         const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
         console.log(`\n${getStepDisplay('duplication-check')} Firestore重複チェック（${modeLabel}のためスキップ）...`);
@@ -927,7 +997,11 @@ export class ArticleGenerationMdxService {
       });
 
       // title-generation step: Generate title using YAML template
-      console.log(`\n${getStepDisplay('title-generation')} AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
+      console.log(
+        update
+          ? `\n${getStepDisplay('title-generation')} タイトルは既存の記事のまま（記事の更新）: ${update.fields.title}`
+          : `\n${getStepDisplay('title-generation')} AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`,
+      );
 
       // ★ 記事タイトル用の作品名。正式名称が長い場合は辞書の短縮名へ丸める。
       //   `getShortTitle` は完全一致 → alias → **最長前方一致** の順に引く。
@@ -947,39 +1021,41 @@ export class ArticleGenerationMdxService {
         );
       }
 
-      const titleService = new TitleGenerationService();
-      const titleResult = await titleService.generateTitle({
-        rss_title: rssItem.title,
-        rss_content: rawContent,
-        rss_link: rssItem.link,
-        // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
-        extractedPeriod: detailedExtraction?.開催期間,
-        // ★ S1-d Phase 3: 店舗名も**決定表の結果**を渡す (claude[bot] 指摘 2026-08-09)。
-        //   都市だけ決定表の値にして店舗名を生値のまま残していたため、実測で
-        //   「H2 は BOX cafe&space なのにタイトルには OH MY CAFE が『確定』として渡る」
-        //   という食い違いが起きていた (くまのプーさん)。本 PR が潰したはずの形。
-        //
-        //   多ブランドで代表が決まらない場合 (`cities`) は代表店舗名が空になる。
-        //   その場合は店舗名を渡さない — 開催地は `extractedCityLabel` が担うため、
-        //   どれか 1 会場を「確定」として渡すと他会場を落とす原因になる。
-        extractedStoreName: storeContext.代表店舗名 || undefined,
-        // ★ S1-d Phase 3: 開催都市を構造化データで渡す。H2 と同じ決定表が情報源。
-        extractedCityLabel: storeContext.都市表記タイトル用 || undefined,
-        // ★ S1-d Phase 3 (2026-08-09): 作品名は**取得時点で**短縮を判定する。
-        //
-        //   従来は「タイトルが 40 字を超える場合のみ略称を使う」という条件付き指示を
-        //   プロンプトに書いていたが、LLM が守らず実測で 45 / 57 字のタイトルが出ていた
-        //   (「スター・ウォーズ／マンダロリアン・アンド・グローグー」がそのまま入る)。
-        //
-        //   条件をパイプラインの途中 (生成後の文字数) に置くと漏れる。作品名を
-        //   取得した時点で決めれば決定的になる (BOSS 判断 2026-08-09)。
-        //
-        //   ★ 短縮の理由は文字数だけではない。タイトルでユーザーが検索するのは
-        //     「スター・ウォーズ」「Nissy」であって副題・企画名ではない (BOSS)。
-        extractedWorkName: titleWorkName,
-        // v2.3.0: 開催回数（第N弾形式）
-        extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
-      });
+      // 記事の更新では、タイトルは作り直さない (BOSS 決定 2026-10-16)
+      const titleResult: TitleGenerationResult = update
+        ? { title: update.fields.title, length: [...update.fields.title].length, is_valid: true }
+        : await new TitleGenerationService().generateTitle({
+            rss_title: rssItem.title,
+            rss_content: rawContent,
+            rss_link: rssItem.link,
+            // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
+            extractedPeriod: detailedExtraction?.開催期間,
+            // ★ S1-d Phase 3: 店舗名も**決定表の結果**を渡す (claude[bot] 指摘 2026-08-09)。
+            //   都市だけ決定表の値にして店舗名を生値のまま残していたため、実測で
+            //   「H2 は BOX cafe&space なのにタイトルには OH MY CAFE が『確定』として渡る」
+            //   という食い違いが起きていた (くまのプーさん)。本 PR が潰したはずの形。
+            //
+            //   多ブランドで代表が決まらない場合 (`cities`) は代表店舗名が空になる。
+            //   その場合は店舗名を渡さない — 開催地は `extractedCityLabel` が担うため、
+            //   どれか 1 会場を「確定」として渡すと他会場を落とす原因になる。
+            extractedStoreName: storeContext.代表店舗名 || undefined,
+            // ★ S1-d Phase 3: 開催都市を構造化データで渡す。H2 と同じ決定表が情報源。
+            extractedCityLabel: storeContext.都市表記タイトル用 || undefined,
+            // ★ S1-d Phase 3 (2026-08-09): 作品名は**取得時点で**短縮を判定する。
+            //
+            //   従来は「タイトルが 40 字を超える場合のみ略称を使う」という条件付き指示を
+            //   プロンプトに書いていたが、LLM が守らず実測で 45 / 57 字のタイトルが出ていた
+            //   (「スター・ウォーズ／マンダロリアン・アンド・グローグー」がそのまま入る)。
+            //
+            //   条件をパイプラインの途中 (生成後の文字数) に置くと漏れる。作品名を
+            //   取得した時点で決めれば決定的になる (BOSS 判断 2026-08-09)。
+            //
+            //   ★ 短縮の理由は文字数だけではない。タイトルでユーザーが検索するのは
+            //     「スター・ウォーズ」「Nissy」であって副題・企画名ではない (BOSS)。
+            extractedWorkName: titleWorkName,
+            // v2.3.0: 開催回数（第N弾形式）
+            extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
+          });
 
       // コストを記録
       if (titleResult.model && titleResult.usage) {
@@ -1582,7 +1658,9 @@ export class ArticleGenerationMdxService {
           title: titleResult.title, // YAMLテンプレートで生成されたタイトルを使用
           categories: categories, // buildCategories() で決定論的に構築
           excerpt,
-          date: toIsoMsDate(rssItem.pubDate),
+          // 記事の更新では公開日 (date) を変えず、更新日時を updated に書く
+          date: update ? update.fields.date : toIsoMsDate(rssItem.pubDate),
+          updated: update ? new Date().toISOString() : undefined,
           author: 'thanks2music',
           ogImage: ogImageUrl, // R2にアップロードしたOG画像URL
           // Phase 1+ 対応: 開催都道府県（taxonomy.yaml v1.1 areas軸）
@@ -1609,6 +1687,19 @@ export class ArticleGenerationMdxService {
         prefectureSlugs: prefectureSlugs.length > 0 ? prefectureSlugs : 'なし',
       });
 
+      // 記事の更新: 会場・品目の数を更新の前後で比べる (減っていれば、--allow-shrink が無い限り PR を作らない)
+      const updateResult = update
+        ? {
+            path: update.article.path,
+            before: update.article.content,
+            shrinkCheck: checkShrink(countArticleItems(update.article.content), countArticleItems(mdxArticle.content)),
+          }
+        : undefined;
+      if (updateResult) {
+        const ctx = getStepContext('github-pr-creation', '更新の前後の数');
+        for (const line of describeShrinkCheck(updateResult.shrinkCheck)) console.log(`${ctx} ${line}`);
+      }
+
       // github-pr-creation step: Create GitHub PR
       let prResult: CreateMdxPrResult | undefined;
 
@@ -1624,6 +1715,40 @@ export class ArticleGenerationMdxService {
         console.log('-'.repeat(60));
         console.log(mdxArticle.content);
         console.log('-'.repeat(60));
+      } else if (update && updateResult) {
+        // 記事の更新: 既存のファイルを sha 付きで上書きする PR
+        console.log(`\n${getStepDisplay('github-pr-creation')} 記事の更新の PR を作成...`);
+
+        if (updateResult.shrinkCheck.shrunk && !update.allowShrink) {
+          const shrunk = describeShrinkCheck({
+            ...updateResult.shrinkCheck,
+            comparisons: updateResult.shrinkCheck.comparisons.filter((c) => c.shrunk),
+          });
+          const message = `更新後の記事で減った項目があるため、PR を作りませんでした (${shrunk.join(' / ')})。続けるには --allow-shrink を付ける`;
+          console.error(`❌ ${message}`);
+          if (costTracker.hasUsage()) costTracker.logSummary();
+          return { success: false, error: message, mdxArticle, update: updateResult };
+        }
+
+        prResult = await createUpdateMdxPr({
+          mdxContent: mdxArticle.content,
+          filePath: update.article.path,
+          sha: update.article.sha,
+          title: updatePrTitle(eventType, update.fields.postId),
+          body: this.generateUpdatePrBody({
+            path: update.article.path,
+            fields: update.fields,
+            updated: mdxArticle.frontmatter.updated ?? '',
+            shrinkCheck: updateResult.shrinkCheck,
+            allowShrink: update.allowShrink,
+            extraction,
+            metadata: { categories, excerpt },
+          }),
+          branchName: updateBranchName(eventType, update.fields.postId, new Date()),
+          commitMessage: `♻️ Update article: ${titleResult.title}\n\nGenerated by Revolution AI Writer\nPost ID: ${update.fields.postId}`,
+        });
+
+        console.log('記事の更新の PR 作成完了:', { prNumber: prResult.prNumber, prUrl: prResult.prUrl });
       } else {
         // 通常モード: GitHub PR作成
         console.log(`\n${getStepDisplay('github-pr-creation')} GitHub PRを作成...`);
@@ -1665,7 +1790,9 @@ export class ArticleGenerationMdxService {
       }
 
       // firestore-status-update step: Update Firestore status to 'generated'
-      if (skipExternalOps) {
+      if (update) {
+        console.log(`\n${getStepDisplay('firestore-status-update')} Firestoreステータス更新（記事の更新のためスキップ）...`);
+      } else if (skipExternalOps) {
         // ドライラン/ローカル保存モード: ステータス更新をスキップ
         const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
         const modeEmoji = localOnly ? '💾' : '🧪';
@@ -1686,7 +1813,7 @@ export class ArticleGenerationMdxService {
       }
 
       // 完了メッセージ
-      const completionLabel = dryRun ? 'ドライラン' : localOnly ? 'ローカル保存' : '記事生成';
+      const completionLabel = dryRun ? 'ドライラン' : localOnly ? 'ローカル保存' : update ? '記事の更新' : '記事生成';
       console.log(`========== MDXパイプライン: ${completionLabel}完了 ==========\n`);
 
       return {
@@ -1711,6 +1838,7 @@ export class ArticleGenerationMdxService {
         placeholderReplacement,
         textPlaceholderReplacement,
         visionApiResult, // vision-api step Vision API integration result
+        update: updateResult,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -2142,6 +2270,55 @@ export class ArticleGenerationMdxService {
 - [ ] カテゴリが適切か確認
 - [ ] 抜粋が適切か確認
 - [ ] 画像が適切か確認（ある場合）
+
+---
+
+🤖 このPRは [AI Writer](https://github.com/thanks2music/revolution/tree/main/apps/ai-writer) によって自動生成されました。
+`;
+  }
+
+  /**
+   * 記事の更新の PR の説明文
+   */
+  private generateUpdatePrBody(params: {
+    path: string;
+    fields: ExistingArticleFields;
+    updated: string;
+    shrinkCheck: ShrinkCheck;
+    allowShrink: boolean;
+    extraction: { workTitle: string; storeName: string; eventTypeName: string };
+    metadata: { categories: string[]; excerpt: string };
+  }): string {
+    const { path, fields, updated, shrinkCheck, allowShrink, extraction, metadata } = params;
+    const counts = describeShrinkCheck(shrinkCheck).map((line) => `- ${line}`).join('\n');
+
+    return `## ♻️ 記事の更新
+
+公開中の記事を、同じ公式サイトから作り直しました (URL・タイトル・公開日は変えていません)。
+
+- **ファイル:** \`${path}\`
+- **Post ID:** \`${fields.postId}\`
+- **タイトル:** ${fields.title}
+- **公開日 (date):** ${fields.date} (変えていない)
+- **更新日時 (updated):** ${updated}
+
+## 🔢 会場・品目の数 (更新前 → 更新後)
+
+${counts}
+${shrinkCheck.shrunk && allowShrink ? '\n⚠️ 減った項目がありますが、`--allow-shrink` で PR を作りました。\n' : ''}
+## 🎯 抽出情報
+
+- **作品名:** ${extraction.workTitle}
+- **店舗名:** ${extraction.storeName}
+- **イベント種別:** ${extraction.eventTypeName}
+- **カテゴリ:** ${metadata.categories.join(', ')}
+- **抜粋:** ${metadata.excerpt}
+
+## ✅ チェックリスト
+
+- [ ] 差分で、記事の内容が正確か確認
+- [ ] 公開後に手で直した箇所が消えていないか確認 (消えていれば、このブランチで戻す)
+- [ ] 画像が適切か確認
 
 ---
 

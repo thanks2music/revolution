@@ -30,6 +30,14 @@ export const REPO_CONFIG = {
 } as const;
 
 /**
+ * 記事のコミットの committer / author (新規の記事も、記事の更新も同じ)
+ */
+export const SERVICE_ACCOUNT_COMMITTER = {
+  name: 'Revolution AI Writer',
+  email: 'ai-writer@revolution.example.com',
+};
+
+/**
  * PAT キャッシュ
  */
 let cachedPat: string | null = null;
