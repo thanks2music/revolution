@@ -105,6 +105,7 @@ import {
 } from './text-placeholder-replacer.service';
 // Sprint C-β P11 (2026-07-19): rule-driven リード文生成
 import { getLeadGeneratorService } from './lead-generator.service';
+import { applySummaryRows, SUMMARY_ROWS_KEYS, type SummaryRowsConfig } from './summary-table';
 import { getMediaFormResolverService } from './media-form-resolver.service';
 import { getMediaTypeMapperService } from './media-type-mapper.service';
 import {
@@ -1473,10 +1474,11 @@ export class ArticleGenerationMdxService {
         );
 
         // まとめの表の「開催場所」は、LLM が書いた文ではなく会場の一覧にする (会場のデータがあるときだけ。2026-10-15 BOSS 決定)
-        const summary = loadRendered<{ venue_row_label: string } & VenueListConfig>('05-summary.yaml', [
+        const summary = loadRendered<{ venue_row_label: string } & VenueListConfig & SummaryRowsConfig>('05-summary.yaml', [
           'venue_row_label',
           'venue_list_item',
           'venue_list_separator',
+          ...SUMMARY_ROWS_KEYS,
         ]);
         const venueList = renderVenueList(storeContext.会場一覧, summary);
         const withVenues = replaceSummaryRowValue(finalContent, summary.venue_row_label, venueList);
@@ -1486,6 +1488,28 @@ export class ArticleGenerationMdxService {
           );
         }
         finalContent = withVenues;
+
+        // 「開催期間」と「お問い合わせ」も、LLM が書いた文ではなく会場のデータから組み立てる (2026-10-17 BOSS 決定)。
+        // LLM は代表店舗名が決まらないとお問い合わせに 1 店舗の X を入れ、会場ごとに日程が違うことを書かなかった (ヒロアカ)
+        const occurrences = parsedEventDataResult?.occurrences ?? [];
+        const { event_start_date: periodStart, event_end_date: periodEnd } = extractEventFactCardFields({
+          eventDataOccurrences: occurrences,
+          extractionPeriod: detailedExtraction.開催期間,
+        });
+        const summaryRows = applySummaryRows(finalContent, {
+          period: { start: periodStart, end: periodEnd },
+          occurrences,
+          representative: storeContext.代表店舗名,
+          venues: storeContext.会場一覧,
+          pointsFormat,
+          config: summary,
+        });
+        for (const label of summaryRows.missing) {
+          console.warn(
+            `${getStepContext('text-placeholder-replacement', label)} ⚠️ まとめの表に「${label}」の行も、その前に来る行も無いため、書けなかった`,
+          );
+        }
+        finalContent = summaryRows.content;
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
