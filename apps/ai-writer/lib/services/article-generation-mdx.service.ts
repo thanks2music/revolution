@@ -105,7 +105,7 @@ import {
 } from './text-placeholder-replacer.service';
 // Sprint C-β P11 (2026-07-19): rule-driven リード文生成
 import { getLeadGeneratorService } from './lead-generator.service';
-import { renderSummaryContact, renderSummaryPeriod, SUMMARY_ROWS_KEYS, type SummaryRowsConfig } from './summary-table';
+import { applySummaryRows, SUMMARY_ROWS_KEYS, type SummaryRowsConfig } from './summary-table';
 import { getMediaFormResolverService } from './media-form-resolver.service';
 import { getMediaTypeMapperService } from './media-type-mapper.service';
 import {
@@ -167,7 +167,6 @@ import {
   replaceNoveltySentence,
   replacePlaceholderLine,
   replaceSummaryRowValue,
-  upsertSummaryRow,
   type MenuTableConfig,
   type VenueListConfig,
 } from './section-renderers';
@@ -1497,31 +1496,20 @@ export class ArticleGenerationMdxService {
           eventDataOccurrences: occurrences,
           extractionPeriod: detailedExtraction.開催期間,
         });
-        // [行の名前, 値, 行が無いときに足す位置 (先に見つかった行の後ろ。雛形の行の順: 開催場所 → 開催期間 → 地図 → お問い合わせ)]
-        const summaryRows: Array<[label: string, value: string | null, after: string[]]> = [
-          [
-            summary.period_row_label,
-            // event_data が無ければ抽出した開催期間 (この記事のポイントと同じ値)。開始日が分からなければ LLM の行のまま
-            renderSummaryPeriod({ start: periodStart, end: periodEnd }, occurrences, pointsFormat, summary),
-            [summary.venue_row_label],
-          ],
-          [
-            summary.contact_row_label,
-            // 会場のデータも代表店舗名も無ければ、どちらの文言か決められないので LLM の行のまま
-            renderSummaryContact(storeContext.代表店舗名, storeContext.会場一覧, summary),
-            [summary.map_row_label, summary.period_row_label],
-          ],
-        ];
-        for (const [label, value, after] of summaryRows) {
-          if (!value) continue;
-          const result = upsertSummaryRow(finalContent, label, value, after);
-          if (result.status === 'missing') {
-            console.warn(
-              `${getStepContext('text-placeholder-replacement', label)} ⚠️ まとめの表に「${label}」の行も「${after.join('」「')}」の行も無いため、書けなかった`,
-            );
-          }
-          finalContent = result.content;
+        const summaryRows = applySummaryRows(finalContent, {
+          period: { start: periodStart, end: periodEnd },
+          occurrences,
+          representative: storeContext.代表店舗名,
+          venues: storeContext.会場一覧,
+          pointsFormat,
+          config: summary,
+        });
+        for (const label of summaryRows.missing) {
+          console.warn(
+            `${getStepContext('text-placeholder-replacement', label)} ⚠️ まとめの表に「${label}」の行も、その前に来る行も無いため、書けなかった`,
+          );
         }
+        finalContent = summaryRows.content;
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,

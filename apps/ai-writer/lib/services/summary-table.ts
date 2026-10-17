@@ -5,12 +5,13 @@
  * - お問い合わせ: 運営元の違う会場がまざると代表店舗名が決まらず、LLM が抽出した TwitterURL (1 店舗の X) を入れた
  * - 開催期間: 会場ごとに日程が違うことを書かなかった
  *
- * 「開催場所」(`renderVenueList`、2026-10-15) と同じく、LLM が書いた行を `replaceSummaryRowValue` で置き換える。
+ * 「開催場所」(`renderVenueList`、2026-10-15) と同じく、LLM が書いた行を置き換える。LLM が行を書かなかったときは、
+ * 雛形の行の順で 1 つ前の行の後ろに足す (`applySummaryRows` → `upsertSummaryRow`)。
  * 文言は Templates の `05-summary.yaml` の `rendered` (YAML が SoT)。ここは組み立てだけを行う。
  */
 import type { EventDataOccurrence } from '@revolution/schemas/mdx-frontmatter';
 import { escapeMdxText } from '@/lib/utils/mdx-safety';
-import { fillTemplate, tableCell } from './section-renderers';
+import { fillTemplate, tableCell, upsertSummaryRow } from './section-renderers';
 import { formatPeriod, type PointsFormat } from './article-points';
 
 /** `sections/05-summary.yaml` の `rendered` のうち、開催期間とお問い合わせの行の文言 */
@@ -35,14 +36,17 @@ type OccurrencePeriod = Pick<EventDataOccurrence, 'venue_label' | 'starts_on' | 
 export function periodsDiffer(occurrences: readonly OccurrencePeriod[]): boolean {
   const byVenue = new Map<string, { starts: Set<string>; ends: Set<string> }>();
   for (const o of occurrences) {
-    const venue = byVenue.get(o.venue_label ?? '') ?? { starts: new Set<string>(), ends: new Set<string>() };
+    const label = o.venue_label ?? '';
+    if (!byVenue.has(label)) byVenue.set(label, { starts: new Set(), ends: new Set() });
+    const venue = byVenue.get(label)!;
     if (o.starts_on) venue.starts.add(o.starts_on);
     if (o.ends_on) venue.ends.add(o.ends_on);
-    byVenue.set(o.venue_label ?? '', venue);
   }
-  const key = (dates: Set<string>) => [...dates].sort().join(',');
-  const differ = (pick: 'starts' | 'ends') =>
-    new Set([...byVenue.values()].filter((v) => v[pick].size > 0).map((v) => key(v[pick]))).size > 1;
+  // 会場ごとの日付の組 (分かっている日付だけ) が 2 通り以上あれば、違う
+  const differ = (pick: 'starts' | 'ends') => {
+    const known = [...byVenue.values()].filter((v) => v[pick].size > 0);
+    return new Set(known.map((v) => [...v[pick]].sort().join(','))).size > 1;
+  };
   return differ('starts') || differ('ends');
 }
 
@@ -75,4 +79,42 @@ export function renderSummaryContact(
   const store = representative.trim() || (venues.length === 1 ? venues[0] : '');
   if (store) return fillTemplate(config.contact_single, { 代表店舗名: tableCell(escapeMdxText(store)) });
   return venues.length >= 2 ? config.contact_multi : null;
+}
+
+export interface SummaryRowsInput {
+  /** 全体の開催期間 (`extractEventFactCardFields` の値) */
+  period: { start?: string; end?: string };
+  occurrences: readonly OccurrencePeriod[];
+  /** `storeContext.代表店舗名` */
+  representative: string;
+  /** `storeContext.会場一覧` */
+  venues: readonly string[];
+  pointsFormat: PointsFormat;
+  config: SummaryRowsConfig & { venue_row_label: string };
+}
+
+/**
+ * まとめの表の「開催期間」と「お問い合わせ」を書く。値が作れない行は LLM の行のまま。
+ * 行が無ければ、雛形の行の順 (開催場所 → 開催期間 → 地図 → お問い合わせ) で前にある行のうち、最も近い行の後ろに足す。
+ * 書けなかった行の名前を `missing` に返す (前の行も無かったとき)
+ */
+export function applySummaryRows(content: string, input: SummaryRowsInput): { content: string; missing: string[] } {
+  const { config } = input;
+  const order = [config.venue_row_label, config.period_row_label, config.map_row_label, config.contact_row_label];
+  const rows: Array<[label: string, value: string | null]> = [
+    // event_data が無ければ抽出した開催期間 (この記事のポイントと同じ値)。開始日が分からなければ LLM の行のまま
+    [config.period_row_label, renderSummaryPeriod(input.period, input.occurrences, input.pointsFormat, config)],
+    // 会場のデータも代表店舗名も無ければ、どちらの文言か決められないので LLM の行のまま
+    [config.contact_row_label, renderSummaryContact(input.representative, input.venues, config)],
+  ];
+  let result = content;
+  const missing: string[] = [];
+  for (const [label, value] of rows) {
+    if (!value) continue;
+    const after = order.slice(0, order.indexOf(label)).reverse();
+    const upserted = upsertSummaryRow(result, label, value, after);
+    if (upserted.status === 'missing') missing.push(label);
+    result = upserted.content;
+  }
+  return { content: result, missing };
 }

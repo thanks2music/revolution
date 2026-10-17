@@ -304,7 +304,7 @@ export function replaceSummaryRowValue(content: string, label: string, value: st
   if (!label || !value) return content;
   const last = summaryRowMatches(content, label).at(-1);
   if (!last || last.index === undefined) return content;
-  return `${content.slice(0, last.index)}| ${label} | ${value} |${content.slice(last.index + last[0].length)}`;
+  return `${content.slice(0, last.index)}${summaryRow(label, value)}${content.slice(last.index + last[0].length)}`;
 }
 
 /**
@@ -318,22 +318,24 @@ export function upsertSummaryRow(
   value: string,
   after: readonly string[],
 ): { content: string; status: 'replaced' | 'inserted' | 'missing' } {
-  const sections = [...content.matchAll(/^## /gm)];
-  const start = sections.at(-1)?.index ?? 0;
+  const start = [...content.matchAll(/^## /gm)].at(-1)?.index ?? 0;
   const head = content.slice(0, start);
   const section = content.slice(start);
-  const row = summaryRowMatches(section, label).at(-1);
-  if (row?.index !== undefined) {
-    const end = row.index + row[0].length;
-    return { content: `${head}${section.slice(0, row.index)}| ${label} | ${value} |${section.slice(end)}`, status: 'replaced' };
+  if (summaryRowMatches(section, label).length > 0) {
+    return { content: head + replaceSummaryRowValue(section, label, value), status: 'replaced' };
   }
   for (const name of after) {
     const anchor = summaryRowMatches(section, name).at(-1);
     if (anchor?.index === undefined) continue;
     const end = anchor.index + anchor[0].length;
-    return { content: `${head}${section.slice(0, end)}\n| ${label} | ${value} |${section.slice(end)}`, status: 'inserted' };
+    return { content: `${head}${section.slice(0, end)}\n${summaryRow(label, value)}${section.slice(end)}`, status: 'inserted' };
   }
   return { content, status: 'missing' };
+}
+
+/** 表の 1 行 */
+function summaryRow(label: string, value: string): string {
+  return `| ${label} | ${value} |`;
 }
 
 /** 表の `label` の行 (行の末尾の | は無くてもよい) */

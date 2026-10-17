@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from '@jest/globals';
 import {
+  applySummaryRows,
   periodsDiffer,
   renderSummaryContact,
   renderSummaryPeriod,
@@ -140,5 +141,51 @@ describe('renderSummaryContact', () => {
     const cell = renderSummaryContact('カフェ{A}|B', [], config) ?? '';
     expect(cell).not.toContain('|');
     expect(cell).not.toMatch(/(^|[^\\])\{A\}/);
+  });
+});
+
+describe('applySummaryRows', () => {
+  const input = {
+    period: { start: '2026-10-16', end: '2026-12-20' },
+    occurrences: heroaca,
+    representative: '',
+    venues: ['原宿', '名古屋', '札幌', '大阪'],
+    pointsFormat,
+    config: { ...config, venue_row_label: '開催場所' },
+  };
+  const table = (rows: string[]) => ['## まとめ', '', '| 項目 | 内容 |', '|------|------|', ...rows].join('\n');
+
+  it('LLM が書いた開催期間を置き換え、書かなかったお問い合わせを開催期間の後ろに足す (ヒロアカ)', () => {
+    const content = table(['| 開催場所 | ・原宿<br />・名古屋 |', '| 開催期間 | 2026年10月16日〜12月20日 |']);
+    expect(applySummaryRows(content, input)).toEqual({
+      content: table([
+        '| 開催場所 | ・原宿<br />・名古屋 |',
+        '| 開催期間 | 2026年10月16日〜12月20日（会場により異なる） |',
+        '| お問い合わせ | 各開催店舗にお問い合わせください |',
+      ]),
+      missing: [],
+    });
+  });
+
+  it('LLM のお問い合わせ (X のリンク) を置き換える', () => {
+    const content = table(['| 開催期間 | x |', '| お問い合わせ | [公式X(旧Twitter)](https://twitter.com/example) |']);
+    expect(applySummaryRows(content, input).content).toContain('| お問い合わせ | 各開催店舗にお問い合わせください |');
+    expect(applySummaryRows(content, input).content).not.toContain('twitter.com');
+  });
+
+  it('開催期間の行も無ければ、開催場所の後ろに足す', () => {
+    const content = table(['| 開催場所 | A |']);
+    expect(applySummaryRows(content, input).content).toBe(
+      table([
+        '| 開催場所 | A |',
+        '| 開催期間 | 2026年10月16日〜12月20日（会場により異なる） |',
+        '| お問い合わせ | 各開催店舗にお問い合わせください |',
+      ]),
+    );
+  });
+
+  it('前に来る行が 1 つも無ければ missing に返す', () => {
+    const content = table(['| 公式サイト | x |']);
+    expect(applySummaryRows(content, input)).toEqual({ content, missing: ['開催期間', 'お問い合わせ'] });
   });
 });
