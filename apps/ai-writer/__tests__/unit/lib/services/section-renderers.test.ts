@@ -313,7 +313,7 @@ describe('upsertSummaryRow', () => {
     expect(upsertSummaryRow(withMap, 'お問い合わせ', 'x', ['地図', '開催期間']).content).toBe(`${withMap}\n| お問い合わせ | x |`);
   });
 
-  it('まとめの節 (記事の最後の節) の外の表には触らない', () => {
+  it('それより前の表 (前の節) の同じ名前の行には触らない', () => {
     const article = ['## メニュー', '', '| お問い合わせ | 前の節 |', '| 開催期間 | 前の節 |', '', TABLE].join('\n');
     const result = upsertSummaryRow(article, 'お問い合わせ', 'x', ['開催期間']);
     expect(result.status).toBe('inserted');
