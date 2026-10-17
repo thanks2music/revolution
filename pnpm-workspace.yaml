@@ -2,6 +2,11 @@ packages:
   - 'apps/*'
   - 'shared/*'
 
+# minimumReleaseAge は既定 (1440 分 = 1 日) のまま。公開から 1 日未満の版は
+# frozen install でも拒否される。脆弱性の修正などを急いで入れる時だけ、
+# minimumReleaseAgeExclude に `- <パッケージ名>` を足して個別に外し、入れたら戻す
+# (https://pnpm.io/settings/dependency-resolution#minimumreleaseageexclude)
+
 # 脆弱な版を推移的な依存から締め出すための下限。pnpm 11 以降は package.json の
 # "pnpm" フィールドを読まないため、ここに置く (https://pnpm.io/settings/dependency-resolution#overrides)
 overrides:

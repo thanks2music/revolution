@@ -49,6 +49,8 @@ pnpm --filter @revolution/ai-writer debug:vision
 
 ## 環境セットアップ
 
+pnpm は `package.json` の `packageManager` で 12 系に固定しています。pnpm 11 以上が入っていれば固定の版へ自動で切り替わります。pnpm 10 からは切り替えられないので、pnpm 11 以上にするか `corepack enable` を使ってください。
+
 ```bash
 pnpm install              # 依存関係インストール
 pnpm sync:templates       # private templates リポジトリから YAML 同期
