@@ -1,16 +1,19 @@
-# Stage 1: 依存関係のインストール
-FROM node:24-alpine AS deps
+# Stage 0: pnpm の準備 (deps / builder で共有)
+# corepack install はルート package.json の packageManager の版を入れる。
+# 版をここに書かないのは、Renovate が packageManager しか更新しないため。
+# pnpm 12 は最初の実行で native binary を取得するので、`pnpm --version` で
+# ここで 1 回だけ取得しておく
+FROM node:24-alpine AS base
 WORKDIR /app
+COPY package.json ./
+RUN corepack enable && corepack install && pnpm --version
 
-# pnpm インストール
-# バージョンはルート package.json の packageManager と一致させること
-# (corepack 公式: packageManager フィールドが install の決定性を担保する)
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+# Stage 1: 依存関係のインストール
+FROM base AS deps
 
-# モノレポ対応: ルートとワークスペース設定をコピー
+# モノレポ対応: ワークスペース設定と lockfile をコピー
 COPY pnpm-workspace.yaml ./
 COPY pnpm-lock.yaml ./
-COPY package.json ./
 
 # ai-writerのpackage.jsonをコピー
 COPY apps/ai-writer/package.json ./apps/ai-writer/
@@ -27,13 +30,13 @@ ENV PNPM_NODE_LINKER=hoisted
 RUN pnpm install --frozen-lockfile --filter=@revolution/ai-writer...
 
 # Stage 2: ビルド
-FROM node:24-alpine AS builder
-WORKDIR /app
+FROM base AS builder
 
-# pnpm インストール
-# バージョンはルート package.json の packageManager と一致させること
-# (corepack 公式: packageManager フィールドが install の決定性を担保する)
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+# このステージには pnpm-lock.yaml が無く、node_modules は deps ステージから持ってくる。
+# pnpm 11 以降は既定の verifyDepsBeforeRun: install により `pnpm build` の前に
+# install をやり直してしまうため、pnpm 10 と同じく確認しない
+# (https://pnpm.io/settings/build#verifydepsbeforerun)
+ENV pnpm_config_verify_deps_before_run=false
 
 # 依存関係をコピー
 COPY --from=deps /app/node_modules ./node_modules
@@ -45,9 +48,8 @@ COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
 # deps ステージの COPY shared/schemas/package.json と対で維持すること
 COPY --from=deps /app/shared/schemas/node_modules ./shared/schemas/node_modules
 
-# ルート設定ファイルをコピー
+# ルート設定ファイルをコピー (package.json は base ステージでコピー済み)
 COPY pnpm-workspace.yaml ./
-COPY package.json ./
 
 # shared/schemas の実体をコピー。exports が .ts を直接指しており、
 # ai-writer の next.config.ts が transpilePackages: ['@revolution/schemas'] で
