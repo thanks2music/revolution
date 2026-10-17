@@ -365,11 +365,8 @@ AI_PROVIDER=google pnpm tsx scripts/test-send-message.ts
 # R2 ストレージ接続テスト
 pnpm tsx scripts/test-r2-connection.ts
 
-# OG 画像アップロードテスト
-pnpm tsx scripts/test-og-image-upload.ts
-
-# 記事画像アップロードテスト
-pnpm tsx scripts/test-article-image-upload.ts
+# 記事の画像を R2 に実際に上げて確かめる (Firestore / GitHub には触らない。記事はローカルに保存)
+pnpm debug:mdx:raw --upload-images <URL>
 
 # スラッグ生成テスト
 pnpm tsx scripts/test-slug-generation.ts

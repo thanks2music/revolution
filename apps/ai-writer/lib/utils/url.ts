@@ -49,3 +49,11 @@ export function stripUtmFromUrl(url: string | null | undefined): string {
   parsed.search = remainingSearch ? '?' + remainingSearch : '';
   return parsed.toString();
 }
+
+/**
+ * 同じページかどうかを比べるための URL のキー。`#` 以降と末尾の `/` を落とす
+ * (トップのリンク・下層ページ・LLM の応答で表記が揺れるため)。
+ */
+export function pageUrlKey(url: string): string {
+  return url.replace(/#.*$/, '').replace(/\/+$/, '');
+}

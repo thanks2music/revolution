@@ -90,10 +90,14 @@ const EventPeriodSchema = z.object({
   }),
 });
 
+/**
+ * HTML から抽出したメニューの 1 品。価格が書かれていない品目も載せる (2026-10-11 の方針) ため
+ * `price` は nullable。税込・税抜は公式に書かれているときだけ付ける (例: "1,650円(税込)" / "1,650円")。
+ */
 const MenuItemSchema = z.object({
   character: z.string().nullable(),
   name: z.string(),
-  price: z.string(),
+  price: z.string().nullable(),
   imageUrl: z.string().nullable(),
   copyright: z.string().nullable(),
 });
@@ -163,7 +167,8 @@ export const ExtractionResponseSchema = z.object({
    * `output.schema` に未追加だった穴を Zod 側で明示 declare する。
    */
   開催回数: z.string().nullable(),
-  ノベルティ名: z.string().nullable(),
+  /** ノベルティの名前の一覧 (2026-10-11 に文字列から配列へ。配布条件は含めない) */
+  ノベルティ名: z.array(z.string()).nullable(),
   ノベルティ種類数: z.string().nullable(),
   メニュー種類数: z.string().nullable(),
   グッズ名: z.array(z.string()).nullable(),
@@ -179,6 +184,7 @@ export const ExtractionResponseSchema = z.object({
 });
 
 export type ExtractionResponse = z.infer<typeof ExtractionResponseSchema>;
+export type ExtractionMenuItem = z.infer<typeof MenuItemSchema>;
 
 /** Zod SoT から derive、hand-maintained TS union / interface との drift を排除。 */
 export type MediaType = z.infer<typeof MediaTypeEnum>;

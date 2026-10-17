@@ -9,7 +9,7 @@
  *
  * Advantages over OpenAI:
  * - No explicit Japanese language limitations
- * - Native URL image input (no base64 needed)
+ * - 画像は `prepareVisionImages` が取得・分割した base64 で受け取る (3 社共通)
  * - Max 100 images per request
  *
  * @package revolution
@@ -23,30 +23,16 @@ import type {
   IVisionApiService,
   VisionApiCallOptions,
   VisionExtractionResult,
+  VisionImage,
   VisionProvider,
   TokenCalculationResult,
-  MenuItem,
-  GoodsItem,
-  NoveltyItem,
 } from '@/lib/types/vision-api';
-import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
+import { normalizeVisionResponse } from './normalize-vision-response';
 import { createAnthropicClient } from '@/lib/ai/anthropic-client';
 import { ClaudeIncompleteResponseError, readClaudeText } from '@/lib/ai/claude-response';
 import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
 import { CLAUDE_THINKING_SETTINGS, DEFAULT_CLAUDE_MODEL, claudeMaxTokens } from '@/lib/config/claude-models';
-import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 
-interface RawClaudeResponse {
-  confidence?: number;
-  menuItems?: Array<Record<string, unknown>>;
-  goodsItems?: Array<Record<string, unknown>>;
-  noveltyItems?: Array<Record<string, unknown>>;
-  metadata?: {
-    imageQuality?: string;
-    hasComingSoonNotice?: boolean;
-    extractionDifficulty?: string;
-  };
-}
 
 export class ClaudeVisionService implements IVisionApiService {
   private client: Anthropic;
@@ -132,19 +118,15 @@ export class ClaudeVisionService implements IVisionApiService {
     options: VisionApiCallOptions
   ): Promise<VisionExtractionResult> {
     const {
-      imageUrls,
+      images,
       prompt,
       category,
       maxRetries = 3,
       timeout = 30000,
     } = options;
 
-    // Defense-in-depth: reject non-http(s) URLs (file://, data:, etc.) before
-    // they reach the Anthropic API to avoid opaque errors and unintended fetches.
-    assertHttpImageUrls(imageUrls);
-
     console.log(
-      `[ClaudeVisionService] Extracting ${category} from ${imageUrls.length} images`
+      `[ClaudeVisionService] Extracting ${category} from ${images.length} images`
     );
 
     let lastError: Error | null = null;
@@ -153,7 +135,7 @@ export class ClaudeVisionService implements IVisionApiService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const result = await this.callClaudeVisionApiWithTimeout(
-          imageUrls,
+          images,
           prompt,
           category,
           timeout
@@ -203,7 +185,7 @@ export class ClaudeVisionService implements IVisionApiService {
    * Call Claude Vision API with timeout
    */
   private async callClaudeVisionApiWithTimeout(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string,
     timeoutMs: number
@@ -218,7 +200,7 @@ export class ClaudeVisionService implements IVisionApiService {
       }, timeoutMs);
     });
 
-    const apiPromise = this.callClaudeVisionApi(imageUrls, prompt, category, controller.signal);
+    const apiPromise = this.callClaudeVisionApi(images, prompt, category, controller.signal);
 
     try {
       return await Promise.race([apiPromise, timeoutPromise]);
@@ -231,7 +213,7 @@ export class ClaudeVisionService implements IVisionApiService {
    * Call Claude Vision API
    */
   private async callClaudeVisionApi(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string,
     signal: AbortSignal
@@ -250,18 +232,20 @@ export class ClaudeVisionService implements IVisionApiService {
     ];
 
     // Add all images after the cached prompt block
-    for (const imageUrl of imageUrls) {
+    for (const image of images) {
       content.push({
         type: 'image',
         source: {
-          type: 'url',
-          url: imageUrl,
+          type: 'base64',
+          // prepareVisionImages は JPEG に揃えて返す
+          media_type: image.mimeType,
+          data: image.data,
         },
       });
     }
 
     console.log(
-      `[ClaudeVisionService] Calling Claude Vision API with ${imageUrls.length} images`
+      `[ClaudeVisionService] Calling Claude Vision API with ${images.length} images`
     );
 
     const isDebug = process.env.DEBUG_VISION_API === 'true';
@@ -325,22 +309,19 @@ export class ClaudeVisionService implements IVisionApiService {
     }
 
     // Parse JSON response
-    let rawJson: RawClaudeResponse;
+    let rawJson: unknown;
     try {
       // Claude may return markdown code blocks, extract JSON
       const jsonMatch = messageContent.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
       const jsonText = jsonMatch ? jsonMatch[1] : messageContent;
 
-      rawJson = JSON.parse(jsonText) as RawClaudeResponse;
+      rawJson = JSON.parse(jsonText);
     } catch (error) {
       console.error('[ClaudeVisionService] Failed to parse JSON:', messageContent);
       throw new Error(
         `Invalid JSON response from Claude Vision API: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
-
-    // Save debug log with cost information
-    await this.saveLogToFile(imageUrls, prompt, category, response, rawJson, cost);
 
     // Capture actual token usage from the API response (used by upstream cost tracking).
     // totalTokens follows Anthropic's official definition: input + output + cache_creation + cache_read
@@ -358,227 +339,20 @@ export class ClaudeVisionService implements IVisionApiService {
     };
 
     // Convert raw response to typed VisionExtractionResult
-    const result = this.convertToVisionExtractionResult(
-      rawJson,
-      category,
-      imageUrls.length,
-      tokensUsed
-    );
+    const result = normalizeVisionResponse(rawJson, {
+      provider: 'anthropic',
+      totalImagesAnalyzed: images.length,
+      tokensUsed,
+    });
+
+    // Save debug log with cost information
+    await this.saveLogToFile(images.map((image) => image.source), prompt, category, response, rawJson, result, cost);
 
     console.log(
       `[ClaudeVisionService] Extracted ${category}: confidence=${result.visionExtraction.confidence}`
     );
 
     return result;
-  }
-
-  /**
-   * Convert raw JSON response to VisionExtractionResult
-   */
-  private convertToVisionExtractionResult(
-    raw: RawClaudeResponse,
-    category: string,
-    totalImagesAnalyzed: number,
-    tokensUsed: { promptTokens: number; completionTokens: number; totalTokens: number }
-  ): VisionExtractionResult {
-    // Convert raw items to typed arrays
-    const menuItems: MenuItem[] = (raw.menuItems ?? []).map((item) =>
-      this.convertToMenuItem(item)
-    );
-
-    const goodsItems: GoodsItem[] = (raw.goodsItems ?? []).map((item) =>
-      this.convertToGoodsItem(item)
-    );
-
-    const noveltyItems: NoveltyItem[] = (raw.noveltyItems ?? []).map((item) =>
-      this.convertToNoveltyItem(item)
-    );
-
-    // Calculate overall confidence from individual item confidences (all 3 categories per v1.2)
-    const confidence = this.calculateOverallConfidence(raw, menuItems, goodsItems, noveltyItems);
-
-    const result: VisionExtractionResult = {
-      visionExtraction: {
-        confidence,
-        provider: 'anthropic',
-        timestamp: new Date().toISOString(),
-        menuItems,
-        goodsItems,
-        noveltyItems,
-        metadata: {
-          hasComingSoonNotice: raw.metadata?.hasComingSoonNotice ?? false,
-          totalImagesAnalyzed,
-          tokensUsed,
-        },
-      },
-    };
-
-    // Layer 2 contract validation (Schema-SDD Phase 3): throw on shape drift
-    // so that LLM output regressions surface immediately rather than silently
-    // propagating downstream. The caller's retry loop in `extractFromImages`
-    // re-throws ZodError without retry (deterministic shape failure, not a
-    // transient network issue), surfacing the bug immediately.
-    return VisionExtractionResultSchema.parse(result);
-  }
-
-  /**
-   * Calculate overall confidence score
-   *
-   * @description
-   * Strategy:
-   * 1. If raw response has top-level confidence, use it
-   * 2. Otherwise, calculate average from individual item confidences
-   * 3. Default to 0.5 if no confidence data available
-   */
-  private calculateOverallConfidence(
-    raw: RawClaudeResponse,
-    menuItems: MenuItem[],
-    goodsItems: GoodsItem[],
-    noveltyItems: NoveltyItem[]
-  ): number {
-    // Strategy 1: Use top-level confidence if available
-    if (raw.confidence !== undefined && raw.confidence !== null) {
-      return raw.confidence;
-    }
-
-    // Strategy 2: Calculate average from individual items across all 3 categories
-    // (Templates v1.2 added confidence to GoodsItem and NoveltyItem; previously
-    // only menu items contributed.)
-    const allConfidences: number[] = [];
-
-    for (const item of menuItems) {
-      if (item.confidence !== undefined && item.confidence !== null) {
-        allConfidences.push(item.confidence);
-      }
-    }
-
-    for (const item of goodsItems) {
-      if (item.confidence !== undefined && item.confidence !== null) {
-        allConfidences.push(item.confidence);
-      }
-    }
-
-    for (const item of noveltyItems) {
-      if (item.confidence !== undefined && item.confidence !== null) {
-        allConfidences.push(item.confidence);
-      }
-    }
-
-    // Calculate average
-    if (allConfidences.length > 0) {
-      const average = allConfidences.reduce((sum, conf) => sum + conf, 0) / allConfidences.length;
-      return Math.round(average * 100) / 100; // Round to 2 decimal places
-    }
-
-    // Strategy 3: Default to 0.5 if no confidence data
-    return 0.5;
-  }
-
-  /**
-   * Convert raw object to MenuItem
-   */
-  private convertToMenuItem(raw: Record<string, unknown>): MenuItem {
-    return {
-      name: String(raw.name || ''),
-      price: typeof raw.price === 'number' ? raw.price : undefined,
-      characterName: this.parseCharacterNameArray(raw.characterName, raw.name),
-      hasNovelty: typeof raw.hasNovelty === 'boolean' ? raw.hasNovelty : false,
-      noveltyCondition: raw.noveltyCondition ? String(raw.noveltyCondition) : undefined,
-      bonus: raw.bonus ? String(raw.bonus) : undefined,
-      description: raw.description ? String(raw.description) : undefined,
-      notes: raw.notes ? String(raw.notes) : undefined,
-      remarks: raw.remarks ? String(raw.remarks) : undefined,
-      confidence: typeof raw.confidence === 'number' ? raw.confidence : undefined,
-    };
-  }
-
-  /**
-   * Parse characterName field to string array
-   *
-   * @description
-   * Expects array format from LLM. Applies minimal cleaning for robustness.
-   * Legacy string format is NOT supported (development phase only).
-   *
-   * @param value - Raw characterName value from LLM response
-   * @param itemName - Item name (menu/goods/novelty) for logging purposes
-   * @returns Cleaned character names array (empty array if no characters)
-   */
-  private parseCharacterNameArray(value: unknown, itemName: unknown): string[] {
-    // Case 1: Array (expected)
-    if (Array.isArray(value)) {
-      return value
-        .map(v => this.cleanCharacterName(String(v)))
-        .filter(v => v.length > 0);
-    }
-
-    // Case 2: Unexpected string format (should not happen in new implementation)
-    if (typeof value === 'string' && value.length > 0) {
-      console.warn(
-        `[ClaudeVisionService] Unexpected string format for characterName: "${value}". ` +
-        `Expected array format. Item name: "${itemName || 'unknown'}". ` +
-        `Returning empty array.`
-      );
-      return [];
-    }
-
-    // Case 3: No character name or invalid
-    return [];
-  }
-
-  /**
-   * Clean character name (minimal decorations removal)
-   *
-   * @description
-   * Removes common decorative symbols and parentheses.
-   * Note: Assumes character names appear outside parentheses in menu names.
-   *
-   * Examples:
-   * - "場地（制服ver）" → "場地"
-   * - "千冬★" → "千冬"
-   * - "マイキー♡" → "マイキー"
-   *
-   * @param name - Character name string
-   * @returns Cleaned character name
-   */
-  private cleanCharacterName(name: string): string {
-    return name
-      // Remove decorative symbols
-      .replace(/[★☆♪♡【】]/g, '')
-      // Remove parentheses and their contents (e.g., "場地（制服ver）" → "場地")
-      .replace(/[（(][^）)]*[）)]/g, '')
-      // Trim whitespace
-      .trim();
-  }
-
-  /**
-   * Convert raw object to GoodsItem
-   */
-  private convertToGoodsItem(raw: Record<string, unknown>): GoodsItem {
-    return {
-      name: String(raw.name || ''),
-      price: typeof raw.price === 'number' ? raw.price : undefined,
-      variantCount: typeof raw.variantCount === 'number' ? raw.variantCount : undefined,
-      variantDetails: raw.variantDetails ? String(raw.variantDetails) : undefined,
-      characterName: this.parseCharacterNameArray(raw.characterName, raw.name),
-      isRandomSale: typeof raw.isRandomSale === 'boolean' ? raw.isRandomSale : false,
-      confidence: typeof raw.confidence === 'number' ? raw.confidence : undefined,
-    };
-  }
-
-  /**
-   * Convert raw object to NoveltyItem
-   */
-  private convertToNoveltyItem(raw: Record<string, unknown>): NoveltyItem {
-    return {
-      name: String(raw.name || ''),
-      condition: raw.condition ? String(raw.condition) : undefined,
-      variantCount: typeof raw.variantCount === 'number' ? raw.variantCount : undefined,
-      characterName: this.parseCharacterNameArray(raw.characterName, raw.name),
-      isRandom: typeof raw.isRandom === 'boolean' ? raw.isRandom : false,
-      confidence: typeof raw.confidence === 'number' ? raw.confidence : undefined,
-      notes: raw.notes ? String(raw.notes) : undefined,
-      remarks: raw.remarks ? String(raw.remarks) : undefined,
-    };
   }
 
   /**
@@ -610,7 +384,8 @@ export class ClaudeVisionService implements IVisionApiService {
     prompt: string,
     category: string,
     response: Anthropic.Messages.Message,
-    rawJson: RawClaudeResponse,
+    rawJson: unknown,
+    result: VisionExtractionResult,
     cost: CostResult
   ): Promise<void> {
     // Skip file logging in production (Cloud Run has ephemeral filesystem;
@@ -678,11 +453,11 @@ export class ClaudeVisionService implements IVisionApiService {
       '-'.repeat(80),
       '',
       '## Extracted Items Summary',
-      `Menu Items: ${rawJson.menuItems?.length || 0}`,
-      `Goods Items: ${rawJson.goodsItems?.length || 0}`,
-      `Novelty Items: ${rawJson.noveltyItems?.length || 0}`,
-      `Confidence: ${rawJson.confidence ?? 0.5}`,
-      `Has Coming Soon Notice: ${rawJson.metadata?.hasComingSoonNotice ?? false}`,
+      `Menu Items: ${result.visionExtraction.menuItems.length}`,
+      `Goods Items: ${result.visionExtraction.goodsItems.length}`,
+      `Novelty Items: ${result.visionExtraction.noveltyItems.length}`,
+      `Confidence: ${result.visionExtraction.confidence}`,
+      `Has Coming Soon Notice: ${result.visionExtraction.metadata?.hasComingSoonNotice ?? false}`,
       '',
       '='.repeat(80),
     ].join('\n');

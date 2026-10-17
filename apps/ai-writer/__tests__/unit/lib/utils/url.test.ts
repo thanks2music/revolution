@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { stripUtmFromUrl } from '../../../../lib/utils/url';
+import { pageUrlKey, stripUtmFromUrl } from '../../../../lib/utils/url';
 
 describe('stripUtmFromUrl', () => {
   describe('utm パラメータの除去', () => {
@@ -93,5 +93,13 @@ describe('stripUtmFromUrl', () => {
     it('空文字は空文字を返す', () => {
       expect(stripUtmFromUrl('')).toBe('');
     });
+  });
+});
+
+describe('pageUrlKey', () => {
+  it('# 以降と末尾の / を落とし、クエリは残す', () => {
+    expect(pageUrlKey('https://example.com/menu/#top')).toBe('https://example.com/menu');
+    expect(pageUrlKey('https://example.com/menu//')).toBe('https://example.com/menu');
+    expect(pageUrlKey('https://example.com/menu?page=2')).toBe('https://example.com/menu?page=2');
   });
 });

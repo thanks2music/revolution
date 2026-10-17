@@ -77,6 +77,11 @@ export interface GenerateMdxFrontmatterInput {
   date?: string;
 
   /**
+   * Optional: 公開済みの記事を更新したときの日時 (`pnpm debug:mdx --update`)。date (公開日) は変えない
+   */
+  updated?: string;
+
+  /**
    * Optional: Author name (defaults to "thanks2music")
    */
   author?: string;

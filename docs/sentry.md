@@ -91,7 +91,7 @@ SDK v10 の `flushIfServerless` は `K_SERVICE` で Cloud Run を検出し App R
 |---|---|
 | cron (Cloud Scheduler) | route の catch (`tags: entrypoint=cron`) |
 | SSE (管理 UI) | service の catch (`tags: pipeline=mdx`) |
-| CLI (`pnpm debug:mdx`) | ⚠️ **実質なし**。tsx で動かすと `@sentry/nextjs` の `captureException` などが `undefined` になり、service の catch で TypeError が起きて本当のエラーが隠れる (2026-10-03 確認、未修正)。Jest は手動 mock に解決されるので、テストでは検出できない |
+| CLI (`pnpm debug:mdx`) | service の catch (送信はしない。CLI では `Sentry.init` を呼ばない)。tsx では `@sentry/nextjs` の CJS 版が読まれ、`captureException` などが名前付きの export として見えないため、業務コードは `import * as Sentry from '@sentry/nextjs'` ではなく **`lib/observability/sentry.ts` の `Sentry`** を使う (名前空間に無ければ `default` を使う。2026-10-15 修正、以前は catch で TypeError が起きて本当のエラーが隠れていた)。Jest は手動 mock に解決されるので、tsx での壊れ方はテストでは検出できない |
 
 **片方にだけ入れると、もう片方が観測ゼロになる。** 計装を足すときは必ず両方を確認すること。
 

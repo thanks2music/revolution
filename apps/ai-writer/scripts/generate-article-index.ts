@@ -67,6 +67,7 @@ interface ArticleIndexItem {
 
   // オプショナルフィールド（OG / FactCard）
   ogImage: string | null;    // OG画像URL（.mjs から追加）
+  updated?: string;          // 更新日 (公開済みの記事を更新したとき。ISO 日時)。無ければ key ごと省略
   // EventFactCard 黄色「あと N 日」バッジ点灯のための optional フィールド (Sprint 5)。
   // undefined はそのまま伝搬し、JSON.stringify が key 自体を省略する (ogImage の null 化と異なる)。
   event_start_date?: string;  // YYYY-MM-DD
@@ -213,6 +214,11 @@ async function processmdxFile(
 
       // オプショナルフィールド
       ogImage: frontmatter.ogImage || null,  // .mjs から追加
+      // date と同じく ISO の ms 付きにそろえる。読めない値は捨てる (toIsoMsDate は読めないと現在時刻を返すため)
+      updated:
+        frontmatter.updated && !Number.isNaN(Date.parse(frontmatter.updated))
+          ? toIsoMsDate(frontmatter.updated)
+          : undefined,
 
       // EventFactCard 用 optional フィールド (Sprint 5)
       // undefined のまま渡し、JSON.stringify で key 自体が省略される。

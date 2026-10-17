@@ -88,20 +88,27 @@ export type GeminiModel = (typeof GEMINI_MODELS)[keyof typeof GEMINI_MODELS];
 export const DEFAULT_GEMINI_THINKING_LEVEL = ThinkingLevel.LOW;
 
 /**
+ * 公式サイトから事実を抜き出す step (detail-extraction / subpage-extraction) の思考の深さ。
+ * 2026-10-12 に試す: LOW では、ノベルティの除外の条件 (メニューの付属品・有料の予約プランに付く物) を
+ * Gemini が守らなかった。Gemini だけが使い、他の provider は無視する (`SendMessageOptions.thinkingLevel`)
+ */
+export const EXTRACTION_THINKING_LEVEL = 'medium' as const;
+
+/**
  * Vision の画像解像度の既定値
  *
- * `MEDIA_RESOLUTION_LOW` を既定にする理由: **未指定時の Gemini の既定は HIGH 相当**で、
- * 画像 1 枚あたり 1,083 入力トークンかかる (2026-08-16 実測)。LOW なら 252 トークンで、
- * OpenAI Vision 側の既定 (`VISION_API_DETAIL=low`) ともコスト感が揃う。
+ * `MEDIA_RESOLUTION_HIGH` (公式の画像の推奨)。2026-10-12 に LOW から上げた。LOW では、縦に長い
+ * メニュー表 (1920×28,300) の品名を 26 品中 1〜4 品読み違えた。縦に長い画像は
+ * `prepareVisionImages` が分割するので、1 片あたり 1,083 トークンで小さな文字まで読める
+ * (https://ai.google.dev/gemini-api/docs/media-resolution)。
  *
  * 実測 (`gemini-3.6-flash`、画像 1 枚あたりの入力トークン):
  * - 未指定 = 1,083 / LOW = 252 / MEDIUM = 520 / HIGH = 1,083
  * - **画像のバイト数を変えてもトークンは動かず、本設定だけで決まる**
  *
- * ⚠️ メニュー画像の文字読み取り精度が不足する場合は
- * `VISION_API_MEDIA_RESOLUTION=MEDIUM` 等で引き上げる (コストは比例して増える)。
+ * 費用を下げたいときは `VISION_API_MEDIA_RESOLUTION` で下げられるが、品名の誤読が増える。
  */
-export const DEFAULT_GEMINI_MEDIA_RESOLUTION = MediaResolution.MEDIA_RESOLUTION_LOW;
+export const DEFAULT_GEMINI_MEDIA_RESOLUTION = MediaResolution.MEDIA_RESOLUTION_HIGH;
 
 const THINKING_LEVEL_BY_INPUT: Record<string, ThinkingLevel> = {
   minimal: ThinkingLevel.MINIMAL,
@@ -192,13 +199,18 @@ export function normalizeMediaResolution(value?: string): MediaResolution {
  * すると thoughts は 92 → 273 へ)。したがって余裕枠を広げるほど thinking のコストも
  * 増えうる。**コストを絞る正しいレバーは `maxOutputTokens` ではなく `thinkingLevel`**
  * であり、余裕枠は「切り詰めを防ぐための安全側の値」として置く。
+ *
+ * MEDIUM / HIGH は 2026-10-12 に広げた (旧 2,048 / 4,096)。抽出の step を MEDIUM にしたところ、
+ * detail-extraction で思考 3,934 + 出力 2,099 (上限 4,000 + 2,048 で MAX_TOKENS)、
+ * subpage-extraction で思考約 9,600 を実測した。余裕枠そのものは課金されないが、上の注記のとおり
+ * 思考の量は予算に比例して増えうるので、MEDIUM を使うのは抽出の step だけにしている
  */
 const THINKING_HEADROOM_TOKENS: Record<ThinkingLevel, number> = {
   [ThinkingLevel.THINKING_LEVEL_UNSPECIFIED]: 1024,
   [ThinkingLevel.MINIMAL]: 0,
   [ThinkingLevel.LOW]: 1024,
-  [ThinkingLevel.MEDIUM]: 2048,
-  [ThinkingLevel.HIGH]: 4096,
+  [ThinkingLevel.MEDIUM]: 8192,
+  [ThinkingLevel.HIGH]: 16384,
 };
 
 /**

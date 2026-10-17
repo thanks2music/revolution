@@ -4,10 +4,32 @@
  * ここに置くのは「Sentry SDK の設定ファイルからも、業務コードからも使いたい」ものだけ。
  * 汎用ロガーやラッパー API をここに増やさないこと (YAGNI)。
  */
-import * as Sentry from '@sentry/nextjs';
+import * as SentryNamespace from '@sentry/nextjs';
 import type { ErrorEvent, EventHint } from '@sentry/nextjs';
 
 import { DuplicateSlugError, GitHubError } from '@/lib/errors/github';
+
+/**
+ * 名前空間の import に関数が無ければ `default` を使う (Layer 1)。
+ *
+ * @description
+ * ai-writer は ESM (`"type": "module"`)。tsx (`pnpm debug:mdx`) で `@sentry/nextjs` を読むと、Node は CJS 版
+ * (`build/cjs/index.server.js`) を読み込み、`@sentry/node` から再 export された関数 (`captureException` /
+ * `addBreadcrumb` など) を名前付きの export として検出できない (`default` = `module.exports` にだけある)。
+ * そのため `Sentry.captureException` が undefined になり、catch の中で TypeError を投げて本当のエラーを隠していた。
+ * Next.js (Cloud Run) と Jest では名前空間に関数があるので、名前空間をそのまま使う (計装は変わらない)。
+ */
+export function resolveSentrySdk<T extends object>(namespace: T): T {
+  const candidate = namespace as T & { captureException?: unknown; default?: T };
+  if (typeof candidate.captureException === 'function') return namespace;
+  return candidate.default ?? namespace;
+}
+
+/**
+ * 業務コードが使う Sentry の SDK。`import * as Sentry from '@sentry/nextjs'` の代わりにこれを使う
+ * (CLI でも Next.js でも同じ関数が呼べる)。CLI では `Sentry.init` を呼ばないので、送信はされない
+ */
+export const Sentry = resolveSentrySdk(SentryNamespace);
 
 /**
  * Cloud Run 上でイベントを取りこぼさないための明示 flush。

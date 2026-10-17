@@ -44,6 +44,7 @@ import { zodToOpenAiSchema } from '../utils/zod-to-openai-schema';
 
 import type { MediaFormResolverService } from './media-form-resolver.service';
 import type { MediaTypeMapperService } from './media-type-mapper.service';
+import type { RedrawnWord } from '@/lib/utils/redrawn-illustration';
 import type {
   EventPeriod,
   StoreInfo,
@@ -77,7 +78,9 @@ export interface LeadGeneratorInput {
   監督名?: string | null;
   シリーズ名?: string | null;
   テーマ名?: string | null;
-  ノベルティ名?: string | null;
+  /** グッズの文脈の語 (「描き下ろし」か「描き起こし」、`goodsRedrawnWord`)。無ければ null (イラストの種類に触れない) */
+  描き下ろし表記?: RedrawnWord | null;
+  ノベルティ名?: string[] | null;
   グッズ名?: string[] | null;
 
   // 後方互換用 (省略可、内部で作品名/店舗名として使用)

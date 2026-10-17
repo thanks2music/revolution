@@ -171,6 +171,8 @@ export interface StoreContext {
   会場一覧: string[];
   /** 表示用の連結。会場がなければ空文字 */
   会場一覧表記: string;
+  /** 開催地 (都道府県を短くして重複を畳んだもの、出現順)。丸めない (「この記事のポイント」の行に使う) */
+  都市一覧: string[];
   /** 決定表で選ばれたブランド (出現順、重複なし)。判定の可視化用 */
   ブランド一覧: string[];
   /** 見出しをどの形で組み立てたか */
@@ -399,6 +401,7 @@ export function deriveStoreContext(input: DeriveStoreContextInput): StoreContext
     is_multi_venue: 会場一覧.length >= 2,
     会場一覧,
     会場一覧表記: 会場一覧.join(VENUE_JOIN),
+    都市一覧,
     ブランド一覧,
     都市表記タイトル用: buildCityLabel(都市一覧, CITY_JOIN_TITLE, CITY_LIST_MAX_TITLE),
   };

@@ -16,8 +16,8 @@
  * `fileData.fileUri` に公開 HTTPS URL を渡すと **429 RESOURCE_EXHAUSTED が恒常的に
  * 返る** (2026-08-16 に 2 回実測、直後の inlineData 呼び出しは成功するのでアカウントの
  * quota ではない)。公式のリモート画像の例も「fetch して base64 にしてから `inlineData`」
- * であり、URL を渡す例は存在しない。よって本サービスは**画像を自前でダウンロードして
- * base64 で送る**。OpenAI (`image_url`) / Claude (`source.type: 'url'`) と異なる唯一の点。
+ * であり、URL を渡す例は存在しない。2026-10-12 からは 3 社とも、`prepareVisionImages` が
+ * 取得・分割した画像を base64 で受け取る。
  *
  * @package revolution
  * @module services/vision-api/gemini-vision
@@ -32,16 +32,13 @@ import { ZodError } from 'zod';
 import type {
   IVisionApiService,
   VisionExtractionResult,
-  MenuItem,
-  GoodsItem,
-  NoveltyItem,
   VisionApiCallOptions,
+  VisionImage,
   VisionProvider,
   TokenCalculationResult,
 } from '@/lib/types/vision-api';
-import { VisionExtractionResultSchema } from '@revolution/schemas/vision-api-extraction';
+import { normalizeVisionResponse } from './normalize-vision-response';
 import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
-import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 import {
   DEFAULT_GEMINI_MEDIA_RESOLUTION,
   DEFAULT_GEMINI_MODEL,
@@ -53,64 +50,7 @@ import {
   GeminiTruncatedResponseError,
   readGeminiText,
 } from '@/lib/ai/gemini-response';
-import { fetchImageSafely } from '@/lib/utils/safe-image-fetch';
 
-/** LLM が「値なし」を null で返した文字列を undefined に揃える (schema の `optional()` は null を通さない)。 */
-function optionalString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-/**
- * Raw Vision API Response (Internal Type)
- *
- * @description
- * Mirrors Templates v1.2 `output_schema.visionExtraction.{menu,goods,novelty}Items[]`.
- *
- * ⚠️ 本型は `openai-vision.service.ts` / `claude-vision.service.ts` にも同型の定義があり、
- * 本ファイルで 3 つ目になる (開発原則の「3 つで抽象化」の閾値に到達)。**本 PR では
- * 統合しない** — 既存 2 つは許容する optional フィールドが微妙に異なる可能性があり、
- * 突き合わせて 1 本化するのは回帰リスクを伴う独立したリファクタになるため。
- * 統合は別タスクで扱う。
- */
-interface RawVisionResponse {
-  menuItems?: Array<{
-    name: string;
-    price?: number;
-    characterName?: string[] | string;
-    hasNovelty?: boolean;
-    noveltyCondition?: string;
-    bonus?: string;
-    description?: string;
-    notes?: string;
-    remarks?: string;
-    confidence?: number;
-  }>;
-  noveltyItems?: Array<{
-    name: string;
-    condition?: string;
-    variantCount?: number;
-    characterName?: string[] | string;
-    isRandom?: boolean;
-    confidence?: number;
-    notes?: string;
-    remarks?: string;
-  }>;
-  goodsItems?: Array<{
-    name: string;
-    price?: number;
-    variantCount?: number;
-    variantDetails?: string;
-    characterName?: string[] | string;
-    isRandomSale?: boolean;
-    confidence?: number;
-  }>;
-  metadata?: {
-    imageQuality?: string;
-    hasComingSoonNotice?: boolean;
-    extractionDifficulty?: string;
-    totalImagesAnalyzed?: number;
-  };
-}
 
 /**
  * 画像 1 枚あたりの入力トークン (mediaResolution 別、2026-08-16 実測)
@@ -138,9 +78,6 @@ const ESTIMATED_PROMPT_TOKENS = 2000;
 /** Vision の出力上限 (他 2 provider と揃える) */
 const MAX_OUTPUT_TOKENS = 4096;
 
-/** 画像ダウンロードのタイムアウト (ms、1 枚あたり) */
-const IMAGE_FETCH_TIMEOUT_MS = 15000;
-
 /**
  * Gemini Vision API Configuration
  */
@@ -156,13 +93,6 @@ interface GeminiVisionConfig {
 
   /** Thinking level (default: {@link DEFAULT_GEMINI_THINKING_LEVEL}) */
   thinkingLevel?: ThinkingLevel;
-}
-
-/** ダウンロード済み画像 */
-interface FetchedImage {
-  url: string;
-  data: string;
-  mimeType: string;
 }
 
 /**
@@ -270,13 +200,10 @@ export class GeminiVisionService implements IVisionApiService {
    * @returns Vision extraction result with menu/goods/novelty items
    */
   async extractFromImages(options: VisionApiCallOptions): Promise<VisionExtractionResult> {
-    const { imageUrls, prompt, category, maxRetries = 3, timeout = 30000 } = options;
-
-    // Defense-in-depth: reject non-http(s) URLs (file://, data:, etc.) before we fetch them.
-    assertHttpImageUrls(imageUrls);
+    const { images, prompt, category, maxRetries = 3, timeout = 30000 } = options;
 
     console.log(
-      `[GeminiVisionService] Extracting ${category} from ${imageUrls.length} images ` +
+      `[GeminiVisionService] Extracting ${category} from ${images.length} images ` +
         `(mediaResolution: ${this.mediaResolution})`
     );
 
@@ -289,13 +216,17 @@ export class GeminiVisionService implements IVisionApiService {
         );
 
         const { raw: rawResponse, usage } = await this.callVisionApiWithTimeout(
-          imageUrls,
+          images,
           prompt,
           category,
           timeout
         );
 
-        const result = this.convertToVisionExtractionResult(rawResponse, imageUrls.length, usage);
+        const result = normalizeVisionResponse(rawResponse, {
+          provider: 'google',
+          totalImagesAnalyzed: images.length,
+          tokensUsed: usage,
+        });
 
         console.log(
           `[GeminiVisionService] ✅ Extraction successful: ${result.visionExtraction.menuItems.length} menu items, ${result.visionExtraction.noveltyItems.length} novelty items, ${result.visionExtraction.goodsItems.length} goods items`
@@ -349,12 +280,12 @@ export class GeminiVisionService implements IVisionApiService {
    * Call Vision API with timeout
    */
   private async callVisionApiWithTimeout(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string,
     timeout: number
   ): Promise<{
-    raw: RawVisionResponse;
+    raw: unknown;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
   }> {
     let timerId: ReturnType<typeof setTimeout> | undefined;
@@ -366,7 +297,7 @@ export class GeminiVisionService implements IVisionApiService {
     });
     try {
       return await Promise.race([
-        this.callVisionApi(imageUrls, prompt, category),
+        this.callVisionApi(images, prompt, category),
         timeoutPromise,
       ]);
     } finally {
@@ -378,16 +309,14 @@ export class GeminiVisionService implements IVisionApiService {
    * Call Gemini Vision API
    */
   private async callVisionApi(
-    imageUrls: string[],
+    images: VisionImage[],
     prompt: string,
     category: string
   ): Promise<{
-    raw: RawVisionResponse;
+    raw: unknown;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
   }> {
     const startTime = Date.now();
-
-    const images = await this.fetchImages(imageUrls);
 
     // Use the caller-provided prompt as-is (per IVisionApiService contract).
     // The prompt itself lives in the Templates YAML — never hardcode it here.
@@ -397,7 +326,7 @@ export class GeminiVisionService implements IVisionApiService {
     }
 
     console.log(
-      `[GeminiVisionService] Calling Gemini Vision API with ${images.length}/${imageUrls.length} images ` +
+      `[GeminiVisionService] Calling Gemini Vision API with ${images.length} images ` +
         `(mediaResolution: ${this.mediaResolution})`
     );
 
@@ -421,12 +350,11 @@ export class GeminiVisionService implements IVisionApiService {
     const cost = calculateCost(this.modelName, usage);
     console.log(`[GeminiVisionService] 💰 Cost: ${formatCost(cost)}`);
 
-    const domain = this.extractDomain(imageUrls[0]);
+    const domain = this.extractDomain(images[0]?.source ?? '');
     await this.saveLogToFile(
       domain,
       category,
-      imageUrls,
-      images.length,
+      images.map((image) => image.source),
       prompt,
       rawContent,
       response,
@@ -438,7 +366,7 @@ export class GeminiVisionService implements IVisionApiService {
       `[GeminiVisionService] ✅ API call completed in ${elapsedTime}ms (tokens: ${usage.totalTokens})`
     );
 
-    let parsed: RawVisionResponse;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(rawContent);
     } catch {
@@ -447,75 +375,6 @@ export class GeminiVisionService implements IVisionApiService {
     }
 
     return { raw: parsed, usage };
-  }
-
-  /**
-   * 画像をダウンロードして base64 へ変換する
-   *
-   * 🔴 Gemini は URL 直渡しができないためここで自前取得する (ファイル冒頭の注記参照)。
-   *
-   * 取得に失敗した画像は**警告して除外する**。全滅した場合も例外にはせず 0 枚で続行する
-   * — 「到達不能・無効な画像でも 200 + 空配列を返す」のが Vision の既存契約で
-   * (`shared/schemas/vision-api-extraction.ts`)、ここだけ throw に変えると
-   * 呼び出し側のハルシネーション判定の前提が provider によって変わってしまうため。
-   * ただし**件数は必ず loud に出す**ので、全滅は握り潰されずログに残る。
-   */
-  private async fetchImages(imageUrls: string[]): Promise<FetchedImage[]> {
-    const results = await Promise.all(
-      imageUrls.map(async (url): Promise<FetchedImage | null> => {
-        try {
-          const { buffer, contentType } = await fetchImageSafely(url, {
-            timeoutMs: IMAGE_FETCH_TIMEOUT_MS,
-          });
-          const mimeType = this.resolveMimeType(contentType, url);
-
-          return { url, data: buffer.toString('base64'), mimeType };
-        } catch (error) {
-          console.warn(
-            `[GeminiVisionService] ⚠️ Image fetch failed (${error instanceof Error ? error.message : String(error)}): ${url}`
-          );
-          return null;
-        }
-      })
-    );
-
-    const images = results.filter((image): image is FetchedImage => image !== null);
-
-    if (images.length < imageUrls.length) {
-      console.warn(
-        `[GeminiVisionService] ⚠️ Fetched ${images.length}/${imageUrls.length} images. ` +
-          `Missing images are excluded from the request.`
-      );
-    }
-
-    return images;
-  }
-
-  /**
-   * `Content-Type` ヘッダ (無ければ拡張子) から MIME タイプを決める
-   *
-   * Gemini は `inlineData.mimeType` を必須で要求するため、推測できない場合は
-   * `image/jpeg` へ倒す (Vision で扱う画像の大半が JPEG のため)。
-   */
-  private resolveMimeType(contentType: string | null, url: string): string {
-    const fromHeader = contentType?.split(';')[0]?.trim().toLowerCase();
-    if (fromHeader?.startsWith('image/')) {
-      return fromHeader;
-    }
-
-    const extension = new URL(url).pathname.split('.').pop()?.toLowerCase();
-    switch (extension) {
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      case 'gif':
-        return 'image/gif';
-      case 'heic':
-        return 'image/heic';
-      default:
-        return 'image/jpeg';
-    }
   }
 
   /**
@@ -554,163 +413,6 @@ export class GeminiVisionService implements IVisionApiService {
   }
 
   /**
-   * Convert raw response to VisionExtractionResult
-   */
-  private convertToVisionExtractionResult(
-    raw: RawVisionResponse,
-    totalImages: number,
-    tokensUsed: { promptTokens: number; completionTokens: number; totalTokens: number }
-  ): VisionExtractionResult {
-    const menuItems: MenuItem[] =
-      raw.menuItems?.map((item) => this.convertToMenuItem(item)) || [];
-    const goodsItems: GoodsItem[] =
-      raw.goodsItems?.map((item) => this.convertToGoodsItem(item)) || [];
-    const noveltyItems: NoveltyItem[] =
-      raw.noveltyItems?.map((item) => this.convertToNoveltyItem(item)) || [];
-
-    // Aggregate per-item confidence across all 3 categories (mirrors the other
-    // providers). Items without an LLM-supplied confidence are skipped so they
-    // don't pull the average toward a fabricated default.
-    const allConfidences: number[] = [];
-    for (const item of [...menuItems, ...goodsItems, ...noveltyItems]) {
-      if (item.confidence != null) {
-        allConfidences.push(item.confidence);
-      }
-    }
-    const averageConfidence =
-      allConfidences.length > 0
-        ? allConfidences.reduce((sum, c) => sum + c, 0) / allConfidences.length
-        : 0.5;
-
-    const result: VisionExtractionResult = {
-      visionExtraction: {
-        confidence: averageConfidence,
-        provider: 'google',
-        timestamp: new Date().toISOString(),
-        menuItems,
-        goodsItems,
-        noveltyItems,
-        metadata: {
-          hasComingSoonNotice: raw.metadata?.hasComingSoonNotice || false,
-          totalImagesAnalyzed: totalImages,
-          tokensUsed,
-        },
-      },
-    };
-
-    // Layer 2 contract validation (Schema-SDD): throw on shape drift so that LLM
-    // output regressions surface immediately rather than silently propagating.
-    return VisionExtractionResultSchema.parse(result);
-  }
-
-  /**
-   * Convert raw item to MenuItem.
-   *
-   * Numeric fields (`price`, `confidence`) use `typeof === 'number'` checks
-   * rather than `??` so that LLM-emitted `null` or stringified numbers are
-   * coerced to `undefined` (or the `0.5` confidence default) instead of
-   * propagating to `VisionExtractionResultSchema.parse` and triggering a
-   * deterministic ZodError. Mirrors the other Vision services.
-   * Optional string fields go through `optionalString` for the same reason.
-   */
-  private convertToMenuItem(item: NonNullable<RawVisionResponse['menuItems']>[number]): MenuItem {
-    return {
-      name: item.name,
-      price: typeof item.price === 'number' ? item.price : undefined,
-      characterName: this.parseCharacterNameArray(item.characterName, item.name),
-      hasNovelty: item.hasNovelty ?? false,
-      noveltyCondition: item.noveltyCondition,
-      bonus: optionalString(item.bonus),
-      description: optionalString(item.description),
-      notes: optionalString(item.notes),
-      remarks: optionalString(item.remarks),
-      confidence: typeof item.confidence === 'number' ? item.confidence : 0.5,
-    };
-  }
-
-  /**
-   * Convert raw item to GoodsItem (see `convertToMenuItem` for numeric
-   * coercion rationale).
-   */
-  private convertToGoodsItem(
-    item: NonNullable<RawVisionResponse['goodsItems']>[number]
-  ): GoodsItem {
-    return {
-      name: item.name,
-      price: typeof item.price === 'number' ? item.price : undefined,
-      variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
-      variantDetails: optionalString(item.variantDetails),
-      characterName: this.parseCharacterNameArray(item.characterName, item.name),
-      isRandomSale: item.isRandomSale ?? false,
-      confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
-    };
-  }
-
-  /**
-   * Convert raw item to NoveltyItem (see `convertToMenuItem` for numeric
-   * coercion rationale).
-   */
-  private convertToNoveltyItem(
-    item: NonNullable<RawVisionResponse['noveltyItems']>[number]
-  ): NoveltyItem {
-    return {
-      name: item.name,
-      condition: optionalString(item.condition),
-      variantCount: typeof item.variantCount === 'number' ? item.variantCount : undefined,
-      characterName: this.parseCharacterNameArray(item.characterName, item.name),
-      isRandom: item.isRandom ?? false,
-      confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
-      notes: optionalString(item.notes),
-      remarks: optionalString(item.remarks),
-    };
-  }
-
-  /**
-   * Parse characterName field to string array
-   *
-   * @description
-   * Expects array format from LLM. Applies minimal cleaning for robustness.
-   * Legacy string format is NOT supported (development phase only).
-   */
-  private parseCharacterNameArray(value: unknown, itemName: unknown): string[] {
-    // Case 1: Array (expected)
-    if (Array.isArray(value)) {
-      return value.map((v) => this.cleanCharacterName(String(v))).filter((v) => v.length > 0);
-    }
-
-    // Case 2: Unexpected string format (should not happen in new implementation)
-    if (typeof value === 'string' && value.length > 0) {
-      console.warn(
-        `[GeminiVisionService] Unexpected string format for characterName: "${value}". ` +
-          `Expected array format. Item name: "${itemName || 'unknown'}". ` +
-          `Returning empty array.`
-      );
-      return [];
-    }
-
-    // Case 3: No character name or invalid
-    return [];
-  }
-
-  /**
-   * Clean character name (minimal decorations removal)
-   *
-   * Examples:
-   * - "場地（制服ver）" → "場地"
-   * - "千冬★" → "千冬"
-   */
-  private cleanCharacterName(name: string): string {
-    return (
-      name
-        // Remove decorative symbols
-        .replace(/[★☆♪♡【】]/g, '')
-        // Remove parentheses and their contents
-        .replace(/[（(][^）)]*[）)]/g, '')
-        .trim()
-    );
-  }
-
-  /**
    * Sleep utility
    */
   private sleep(ms: number): Promise<void> {
@@ -735,8 +437,7 @@ export class GeminiVisionService implements IVisionApiService {
   private async saveLogToFile(
     domain: string,
     category: string,
-    imageUrls: string[],
-    fetchedImageCount: number,
+    imageSources: string[],
     prompt: string,
     responseText: string,
     response: GenerateContentResponse,
@@ -776,8 +477,8 @@ Timestamp: ${tsSuffix}
 REQUEST
 =================================================================
 
-Image URLs (${imageUrls.length}, fetched ${fetchedImageCount}):
-${imageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}
+Images (${imageSources.length}):
+${imageSources.map((source, i) => `${i + 1}. ${source}`).join('\n')}
 
 Prompt:
 ${prompt}

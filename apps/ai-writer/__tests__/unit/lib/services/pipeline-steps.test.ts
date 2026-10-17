@@ -27,6 +27,9 @@ describe('pipeline-steps — Layer 1 contracts', () => {
     expect(getStepIndex('rss-extraction')).toBeLessThan(getStepIndex('detail-extraction'));
     expect(getStepIndex('vision-api')).toBeLessThan(getStepIndex('slug-generation'));
     expect(getStepIndex('content-generation')).toBeLessThan(getStepIndex('mdx-assembly'));
+    // 抜粋は完成した記事の冒頭 (リード文とこの記事のポイント) から書くので、article-points の後
+    expect(getStepIndex('article-points')).toBeLessThan(getStepIndex('excerpt-generation'));
+    expect(getStepIndex('excerpt-generation')).toBeLessThan(getStepIndex('mdx-assembly'));
   });
 
   it('case B: getStepDisplay embeds id and uses live index/length (no hardcoded position)', () => {
@@ -93,6 +96,7 @@ describe('pipeline-steps — Layer 1 contracts', () => {
       'detail-extraction',
       'subpage-detection',
       'category-image-extraction',
+      'subpage-extraction', // 2026-10-12 (下層ページの文字を読む)
       'vision-api',
       'slug-generation',
       'duplication-check',
@@ -100,6 +104,8 @@ describe('pipeline-steps — Layer 1 contracts', () => {
       'title-generation',
       'lead-generation', // Sprint C-β P11 (2026-07-19)
       'content-generation',
+      'article-points', // 2026-10-15 (この記事のポイント)
+      'excerpt-generation', // 2026-10-16 (抜粋をリード文とポイントから)
       'image-upload-r2',
       'image-placeholder-replacement',
       'text-placeholder-replacement',
@@ -112,6 +118,11 @@ describe('pipeline-steps — Layer 1 contracts', () => {
     for (const id of expected) {
       expect(actualIds.has(id)).toBe(true);
     }
+  });
+
+  it('subpage-extraction は画像の抽出の後、Vision の前 (下層ページの文字で埋めた後に、欠けた分だけ画像を読む)', () => {
+    expect(getStepIndex('category-image-extraction')).toBeLessThan(getStepIndex('subpage-extraction'));
+    expect(getStepIndex('subpage-extraction')).toBeLessThan(getStepIndex('vision-api'));
   });
 
   it('Sprint C-β P11: lead-generation is placed between title-generation and content-generation', () => {

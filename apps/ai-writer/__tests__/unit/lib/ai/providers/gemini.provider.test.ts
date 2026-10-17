@@ -217,6 +217,16 @@ describe('GeminiProvider', () => {
       expect(lastRequest().config.thinkingConfig?.thinkingLevel).toBe(ThinkingLevel.LOW);
     });
 
+    it('呼び出しごとの thinkingLevel があれば、その呼び出しだけ上書きする (抽出の step で使う)', async () => {
+      const provider = new GeminiProvider('key');
+      await provider.sendMessage('extract', { thinkingLevel: 'medium', maxTokens: 1000 });
+      const overridden = lastRequest().config;
+      await provider.sendMessage('hello', { maxTokens: 1000 });
+
+      expect(overridden.thinkingConfig?.thinkingLevel).toBe(ThinkingLevel.MEDIUM);
+      expect(lastRequest().config.thinkingConfig?.thinkingLevel).toBe(ThinkingLevel.LOW);
+    });
+
     /**
      * 🔴 thinking トークンは出力として課金される。`candidatesTokenCount` とは別建てで
      * 返るため、合算しないと出力コストを過小計上する。

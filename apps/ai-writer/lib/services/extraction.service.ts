@@ -17,6 +17,7 @@ import {
   type MediaType as MediaTypeFromSchema,
   type SourceType as SourceTypeFromSchema,
   type ExtractionReasoning,
+  type ExtractionMenuItem,
 } from '@revolution/schemas/extraction-response';
 
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
@@ -24,12 +25,15 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
+import { EXTRACTION_THINKING_LEVEL } from '@/lib/config/gemini-models';
 import { EXTRACTION_MAX_OUTPUT_TOKENS, truncateForLlm } from '@/lib/utils/compact-html';
 import {
   hashForAiCallRecord,
   shouldSuppressInlinePromptDump,
 } from '@/lib/ai/observability/ai-call-recorder';
 import { getStepContext } from './pipeline-steps';
+import { isRecord, toOptionalString } from '@/lib/utils/llm-values';
+import type { SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
 
 /**
  * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
@@ -42,6 +46,50 @@ const EXTRACTION_RESPONSE_OPENAI_SCHEMA = zodToOpenAiSchema(
   ExtractionResponseSchema,
   'ExtractionResponse'
 );
+
+/**
+ * 文字列の配列にする (空文字と `"null"` は除き、空なら null)。lenient の経路では LLM の応答を
+ * そのまま受けるため
+ */
+export function toStringList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const list = value.map(toOptionalString).filter((v): v is string => v !== undefined);
+  return list.length > 0 ? list : null;
+}
+
+/**
+ * ノベルティ名を配列にそろえる。2026-10-11 に文字列から配列へ変えたため、文字列が来たら
+ * 1 要素の配列にする (区切り文字で分けない。名前に「、」を含むことがあるため)。
+ */
+export function toNoveltyNames(value: unknown): string[] | null {
+  if (typeof value === 'string') {
+    const name = toOptionalString(value);
+    return name ? [name] : null;
+  }
+  return toStringList(value);
+}
+
+/** HTML のメニューの品目をそろえる。name の無い品目は捨て、無い値 (`"null"` を含む) は null にする。 */
+export function toExtractionMenuItems(value: unknown): ExtractionMenuItem[] | null {
+  if (!Array.isArray(value)) return null;
+  // `"null"` という文字列も値なしにする (02-menu の {{#if price}} を通って「null」と書かれないように)
+  const optional = (v: unknown): string | null => toOptionalString(v) ?? null;
+  const items: ExtractionMenuItem[] = [];
+  for (const raw of value) {
+    if (!isRecord(raw)) continue;
+    const record = raw;
+    const name = optional(record.name);
+    if (!name) continue;
+    items.push({
+      character: optional(record.character),
+      name,
+      price: optional(record.price),
+      imageUrl: optional(record.imageUrl),
+      copyright: optional(record.copyright),
+    });
+  }
+  return items.length > 0 ? items : null;
+}
 
 /**
  * 抽出リクエスト
@@ -239,7 +287,7 @@ export interface ExtractionResult {
   複数店舗情報: string | null;
   /** キャラクター名リスト（明示的に記載されているもののみ） */
   キャラクター名: string[] | null;
-  /** 描き下ろしイラストのテーマ名 */
+  /** コラボのテーマ名 (描き下ろし・描き起こしのイラストのテーマのことが多い) */
   テーマ名: string | null;
   /**
    * 開催回数（第N弾形式に統一）
@@ -248,14 +296,34 @@ export interface ExtractionResult {
    * @description Vol.N, Season N 等は全て「第N弾」形式に変換される
    */
   開催回数: string | null;
-  /** 特典ノベルティの名称 */
-  ノベルティ名: string | null;
+  /** 特典ノベルティの名前の一覧 (2026-10-11 に配列へ。配布条件は含めない) */
+  ノベルティ名: string[] | null;
   /** ノベルティ種類数（「全N種」形式） */
   ノベルティ種類数: string | null;
   /** メニュー種類数（「計NN種」形式） */
   メニュー種類数: string | null;
-  /** コラボグッズ名リスト */
+  /**
+   * コラボグッズ名リスト。下層ページを読んだときは、会場で買えるグッズだけ (オンライン限定は除く)。
+   * 本文の文 (リード文・グッズの節の導入文) では先頭の数件だけを使う (`goods-list.ts`)
+   */
   グッズ名: string[] | null;
+  /**
+   * グッズの品名・価格・販売方法 (下層ページの抽出で読めたときだけ。トップページの抽出では null)。
+   * グッズの節の末尾の一覧に使う
+   */
+  グッズ詳細リスト: SubpageGoodsItem[] | null;
+  /** HTML から抽出したメニューの品目 (品目・価格・キャラクター)。Vision で空欄を埋めることがある */
+  メニュー詳細リスト: ExtractionMenuItem[] | null;
+  /** メニュー全体のコンセプトの説明 */
+  メニューテーマ説明: string | null;
+  /** 具体的な料理名の一覧 */
+  具体的なメニュー名リスト: string[] | null;
+  /** アニメ制作スタジオ名 (オリジナルアニメのリード文で使う) */
+  スタジオ名: string | null;
+  /** 監督名 */
+  監督名: string | null;
+  /** シリーズ名 */
+  シリーズ名: string | null;
   /** 店舗の住所（1店舗の場合のみ） */
   店舗の住所: string | null;
   /**
@@ -376,6 +444,7 @@ export class ExtractionService {
         //    この値から導出されるため、ここでリテラルを書くと drift する。
         maxTokens: EXTRACTION_MAX_OUTPUT_TOKENS,
         temperature: 0.2, // 抽出は正確性を重視
+        thinkingLevel: EXTRACTION_THINKING_LEVEL,
         responseFormat: 'json',
         responseSchema: EXTRACTION_RESPONSE_OPENAI_SCHEMA,
         recordContext: {
@@ -707,13 +776,22 @@ ${schemaStr}
         // 将来 YAML `extraction_fields` に新 legacy field を追加する場合は、ここに同パターンの
         // fallback を追加するか、または `ExtractionResponseSchema` にも declare すること。
         複数店舗情報: jsonData.複数店舗情報 || jsonData.store?.multiple_locations || null,
-        キャラクター名: jsonData.キャラクター名 || null,
+        キャラクター名: toStringList(jsonData.キャラクター名),
         テーマ名: jsonData.テーマ名 || null,
         開催回数: jsonData.開催回数 || null,
-        ノベルティ名: jsonData.ノベルティ名 || null,
+        ノベルティ名: toNoveltyNames(jsonData.ノベルティ名),
         ノベルティ種類数: jsonData.ノベルティ種類数 || null,
         メニュー種類数: jsonData.メニュー種類数 || null,
-        グッズ名: jsonData.グッズ名 || null,
+        グッズ名: toStringList(jsonData.グッズ名),
+        // トップページの抽出は品名だけを読む。価格・販売方法は下層ページの抽出が埋める
+        グッズ詳細リスト: null,
+        // 以前は返り値に入れておらず、本文の生成まで届いていなかった (SoT §3.3 の「捨てられている項目」)
+        メニュー詳細リスト: toExtractionMenuItems(jsonData.メニュー詳細リスト),
+        メニューテーマ説明: toOptionalString(jsonData.メニューテーマ説明) ?? null,
+        具体的なメニュー名リスト: toStringList(jsonData.具体的なメニュー名リスト),
+        スタジオ名: toOptionalString(jsonData.スタジオ名) ?? null,
+        監督名: toOptionalString(jsonData.監督名) ?? null,
+        シリーズ名: toOptionalString(jsonData.シリーズ名) ?? null,
         店舗の住所: jsonData.店舗の住所 || null,
         開催都道府県: jsonData.開催都道府県 || null,
         コピーライト: jsonData.コピーライト || null,

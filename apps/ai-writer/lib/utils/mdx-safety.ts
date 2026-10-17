@@ -106,3 +106,17 @@ export function findUnclosedVoidElements(mdx: string): string[] {
 
   return [...new Set(found)];
 }
+
+/**
+ * 外部のページから読んだ文字列を、MDX の地の文 (箇条書き・表のセル) に差し込める形にする。
+ *
+ * MDX は `{...}` を JS の式、`<...>` を JSX として評価するため、公式サイトの商品名などを
+ * そのまま差し込むと、式が実行されたりビルドが落ちたりする (2026-10-12 のセキュリティレビューの指摘)。
+ * `{ } < >` を文字参照にする (CommonMark の文字参照は表示時に元の文字へ戻る)。
+ *
+ * `[ ]` も文字参照にする。`[名前](javascript:…)` のような Markdown のリンク・画像の記法が、外部の値の中から
+ * リンクとして描かれないように (2026-10-15 のセキュリティレビューの指摘)。文字参照はリンクの記法として解釈されない
+ */
+export function escapeMdxText(value: string): string {
+  return value.replace(/[{}<>[\]]/g, (char) => `&#${char.charCodeAt(0)};`);
+}

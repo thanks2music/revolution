@@ -22,6 +22,7 @@ jest.mock('@/lib/utils/html-extractor', () => ({
 // GitHub 系は @octokit/rest (ESM) を引き込み、next/jest の transformIgnorePatterns で
 // 変換されず "Cannot use import statement outside a module" になる。import 評価を止める。
 jest.mock('@/lib/github/create-mdx-pr', () => ({ createMdxPr: jest.fn() }));
+jest.mock('@/lib/github/update-mdx-pr', () => ({ createUpdateMdxPr: jest.fn() }));
 jest.mock('@/lib/github/pr-status', () => ({ getPrStatusByCanonicalKey: jest.fn() }));
 jest.mock('@/lib/firestore/event-deduplication', () => ({
   checkEventDuplication: jest.fn(),
@@ -31,14 +32,6 @@ jest.mock('@/lib/firestore/event-deduplication', () => ({
 
 // 画像アップロード系は uuid@14 (ESM-only) を引き込むため同様に止める
 jest.mock('@/lib/services/r2-storage.service', () => ({ getR2StorageService: jest.fn() }));
-jest.mock('@/lib/services/og-image-upload.service', () => ({
-  uploadOgImageForArticle: jest.fn(),
-  OgImageUploadService: jest.fn(),
-}));
-jest.mock('@/lib/services/article-image-upload.service', () => ({
-  uploadArticleImages: jest.fn(),
-  ArticleImageUploadService: jest.fn(),
-}));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { extractArticleHtml } = require('@/lib/utils/html-extractor') as {

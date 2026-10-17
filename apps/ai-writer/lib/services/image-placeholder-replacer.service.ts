@@ -6,10 +6,16 @@
  * @description
  * MDX記事生成パイプラインのStep 5.7で使用します。
  * - カテゴリ別画像（menu/novelty/goods）のプレースホルダーを置換
- * - 画像がないカテゴリはセクションごと削除
+ * - 画像がないカテゴリはセクションごと削除。ただし keepSections のカテゴリ (品目ごとの画像がある・名前がある) は
+ *   節を残し、プレースホルダーだけ消す (2026-10-13 BOSS 決定。名前はコードが抽出結果から書くので、画像が無くても載せる)
+ * - 画像は `<ArticleImage src alt width height />` で書く (寸法付き。`article-image-tag.ts`。2026-10-13)
  *
  * @see /notes/archive/ai-writer-mdx-image-pipeline-design.md
  */
+
+import { articleImageTag, articleImageTags } from './article-images/article-image-tag';
+import type { ArticleImageRef } from './article-images/upload-article-images';
+import type { ImageCategory } from './article-images/upload-images-for-article';
 
 /**
  * プレースホルダー定義
@@ -25,14 +31,14 @@ export const PLACEHOLDERS = {
  * カテゴリ別R2画像URL
  */
 export interface CategoryR2Images {
-  /** メニュー画像のR2 URL配列 */
-  menu: string[];
-  /** ノベルティ画像のR2 URL配列 */
-  novelty: string[];
-  /** グッズ画像のR2 URL配列 */
-  goods: string[];
-  /** アイキャッチ画像のR2 URL（単一、オプション） */
-  eyecatch?: string;
+  /** 節の末尾に並べるメニューの画像 (1 枚 = 分割した片の並び)。品目ごとの画像は含めない */
+  menu: ArticleImageRef[][];
+  /** 節の末尾に並べるノベルティの画像 */
+  novelty: ArticleImageRef[][];
+  /** 節の末尾に並べるグッズの画像。品目ごとの画像は含めない */
+  goods: ArticleImageRef[][];
+  /** アイキャッチ画像（単一、オプション） */
+  eyecatch?: ArticleImageRef;
 }
 
 /**
@@ -70,7 +76,14 @@ export class ImagePlaceholderReplacerService {
   replaceAll(
     content: string,
     images: CategoryR2Images,
-    articleTitle?: string
+    articleTitle?: string,
+    /** 節の末尾に並べる画像が無くても、節を消さないカテゴリ (品目ごとの画像がある・名前がある) */
+    keepSections: ReadonlySet<ImageCategory> = new Set(),
+    /**
+     * プレースホルダーを残すカテゴリ (後の段で、名前を差し込んだ後に置き換える)。品目ごとの形のメニューは、照合できなかった
+     * 画像を「その他参考画像」として品目の後ろに置く。プレースホルダーが品目の範囲の終わりの目印になるので、ここでは消さない
+     */
+    deferred: ReadonlySet<ImageCategory> = new Set()
   ): PlaceholderReplacementResult {
     let result = content;
     const replacedCount = { menu: 0, novelty: 0, goods: 0, eyecatch: 0, total: 0 };
@@ -83,8 +96,7 @@ export class ImagePlaceholderReplacerService {
       if (result.includes(eyecatchPlaceholder)) {
         // alt属性: 記事タイトルがあれば使用、なければ「アイキャッチ」
         const eyecatchAlt = articleTitle ? `${articleTitle} アイキャッチ` : 'アイキャッチ';
-        const imageMarkdown = `![${eyecatchAlt}](${images.eyecatch})`;
-        result = result.replace(eyecatchPlaceholder, imageMarkdown);
+        result = result.replace(eyecatchPlaceholder, () => articleImageTag(images.eyecatch!, eyecatchAlt));
         replacedCount.eyecatch = 1;
         replacedCount.total += 1;
         console.log(`[ImagePlaceholderReplacer] eyecatch: 画像で置換`);
@@ -94,15 +106,20 @@ export class ImagePlaceholderReplacerService {
     // 各カテゴリのプレースホルダーを置換
     for (const category of ['menu', 'novelty', 'goods'] as const) {
       const placeholder = PLACEHOLDERS[category];
-      const urls = images[category];
+      const categoryImages = images[category];
+      if (deferred.has(category)) continue;
 
-      if (urls.length > 0) {
-        // 画像がある場合: マークダウン画像に置換
-        const imageMarkdown = this.generateImageMarkdown(urls, category, articleTitle);
-        result = result.replace(placeholder, imageMarkdown);
-        replacedCount[category] = urls.length;
-        replacedCount.total += urls.length;
-        console.log(`[ImagePlaceholderReplacer] ${category}: ${urls.length}件の画像で置換`);
+      if (categoryImages.length > 0) {
+        // 画像がある場合: 寸法付きの画像に置換
+        const imageMarkdown = categoryImagesMarkdown(categoryImages, category, articleTitle);
+        result = result.replace(placeholder, () => imageMarkdown);
+        replacedCount[category] = categoryImages.length;
+        replacedCount.total += categoryImages.length;
+        console.log(`[ImagePlaceholderReplacer] ${category}: ${categoryImages.length}件の画像で置換`);
+      } else if (keepSections.has(category)) {
+        // 節は残し、プレースホルダー (と、それだけを受ける見出し) を消す
+        result = removePlaceholderBlock(result, placeholder);
+        console.log(`[ImagePlaceholderReplacer] ${category}: 節の末尾に並べる画像が無いため、画像の欄だけを削除 (節は残す)`);
       } else {
         // 画像がない場合: セクションごと削除
         const sectionRemoved = this.removeSectionContaining(result, placeholder, category);
@@ -119,7 +136,8 @@ export class ImagePlaceholderReplacerService {
     }
 
     // 未置換プレースホルダーの検出（{{...}} 形式）
-    const remainingPlaceholders = result.match(/\{[^{}]+\}/g) || [];
+    const deferredPlaceholders = new Set<string>([...deferred].map((category) => PLACEHOLDERS[category]));
+    const remainingPlaceholders = (result.match(/\{[^{}]+\}/g) || []).filter((p) => !deferredPlaceholders.has(p));
     const imagePlaceholders = remainingPlaceholders.filter((p) =>
       p.includes('画像') || p.includes('ここに')
     );
@@ -133,50 +151,6 @@ export class ImagePlaceholderReplacerService {
       removedSections,
       unreplacedPlaceholders,
     };
-  }
-
-  /**
-   * 画像URLからマークダウン形式の画像リストを生成
-   *
-   * @param urls 画像URL配列
-   * @param category カテゴリ名
-   * @param articleTitle 記事タイトル（alt属性に使用）
-   * @returns マークダウン形式の画像
-   */
-  private generateImageMarkdown(
-    urls: string[],
-    category: string,
-    articleTitle?: string
-  ): string {
-    const categoryLabel = this.getCategoryLabel(category);
-
-    // 複数画像の場合は縦に並べる
-    // alt属性形式: 「{記事タイトル} {カテゴリラベル}{番号}」
-    // 例: 「機動戦士ガンダム 鉄血のオルフェンズ コラボメニュー1」
-    return urls
-      .map((url, index) => {
-        const altText = articleTitle
-          ? `${articleTitle} ${categoryLabel}${index + 1}`
-          : `${categoryLabel}${index + 1}`;
-        return `![${altText}](${url})`;
-      })
-      .join('\n\n');
-  }
-
-  /**
-   * カテゴリに応じたラベルを取得
-   */
-  private getCategoryLabel(category: string): string {
-    switch (category) {
-      case 'menu':
-        return 'コラボメニュー';
-      case 'novelty':
-        return 'ノベルティ';
-      case 'goods':
-        return 'グッズ';
-      default:
-        return '画像';
-    }
   }
 
   /**
@@ -240,6 +214,51 @@ export class ImagePlaceholderReplacerService {
 
     return { content: cleanedContent, removed: true };
   }
+}
+
+/** 画像の代替テキストに使うカテゴリの名前 */
+const CATEGORY_LABELS: Record<ImageCategory, string> = {
+  menu: 'コラボメニュー',
+  novelty: 'ノベルティ',
+  goods: 'グッズ',
+};
+
+/**
+ * カテゴリの画像を縦に並べた MDX (分割した縦長の画像は、片を続けて 1 枚に見せる)。
+ * 代替テキストは「{記事タイトル} {カテゴリ}{番号}」(例: 「機動戦士ガンダム 鉄血のオルフェンズ コラボメニュー1」)。
+ * 節の末尾の欄と「その他参考画像」の両方で使い、代替テキストを揃える
+ */
+export function categoryImagesMarkdown(
+  categoryImages: readonly ArticleImageRef[][],
+  category: ImageCategory,
+  articleTitle?: string
+): string {
+  const label = CATEGORY_LABELS[category];
+  return categoryImages
+    .map((segments, index) =>
+      articleImageTags(segments, articleTitle ? `${articleTitle} ${label}${index + 1}` : `${label}${index + 1}`)
+    )
+    .join('\n\n');
+}
+
+/**
+ * プレースホルダーの行を消す。直前の見出し (`### …`) がプレースホルダーだけを受けているなら、見出しも消す
+ * (「### グッズラインナップ」の下が空になるのを防ぐ)
+ */
+export function removePlaceholderBlock(content: string, placeholder: string): string {
+  const lines = content.split('\n');
+  const index = lines.findIndex((line) => line.includes(placeholder));
+  if (index === -1) return content;
+  let start = index;
+  let previous = index - 1;
+  while (previous >= 0 && lines[previous].trim() === '') previous--;
+  let next = index + 1;
+  while (next < lines.length && lines[next].trim() === '') next++;
+  const headingOnlyForPlaceholder =
+    previous >= 0 && lines[previous].startsWith('### ') && (next >= lines.length || /^#{2,3} /.test(lines[next]));
+  if (headingOnlyForPlaceholder) start = previous;
+  lines.splice(start, index - start + 1);
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 /**

@@ -288,27 +288,6 @@ export interface MonitoringMetric {
 export type FallbackLevelType = 'A' | 'B' | 'C';
 
 /**
- * Cross-Check Result
- */
-export interface CrossCheckResult {
-  /** Whether cross-check passed */
-  passed: boolean;
-
-  /** Issues detected (empty if passed) */
-  issues: string[];
-
-  /** Cross-check details */
-  details: {
-    htmlMenuCount: number;
-    visionMenuCount: number;
-    htmlPriceCount: number;
-    visionPriceCount: number;
-    hasComingSoonNotice: boolean;
-    confidenceScore: number;
-  };
-}
-
-/**
  * Hallucination Detection Result
  */
 export interface HallucinationDetectionResult {
@@ -316,7 +295,7 @@ export interface HallucinationDetectionResult {
   detected: boolean;
 
   /** Hallucination type (if detected) */
-  type?: 'coming_soon_fabrication' | 'excessive_detail_without_html' | 'confidence_inconsistency';
+  type?: 'coming_soon_fabrication';
 
   /** Detection reason */
   reason?: string;
@@ -402,8 +381,9 @@ export interface TokenCalculationResult {
  * @example
  * ```typescript
  * const service: IVisionApiService = VisionApiServiceFactory.create('openai');
+ * const images = await prepareVisionImages(['https://example.com/menu.jpg']);
  * const result = await service.extractFromImages({
- *   imageUrls: ['https://example.com/menu.jpg'],
+ *   images,
  *   prompt: 'Extract menu items',
  *   category: 'menu'
  * });
@@ -444,6 +424,16 @@ export interface IVisionApiService {
   calculateTokens(imageUrls: string[]): Promise<TokenCalculationResult>;
 }
 
+/** Vision に渡す 1 枚 (縦に長い画像を分割したものは 1 片)。`prepareVisionImages` が作る */
+export interface VisionImage {
+  /** 元の画像の URL。分割したものは `#slice=2/10` を付ける (ログ用) */
+  source: string;
+  /** base64 */
+  data: string;
+  /** `prepareVisionImages` は JPEG に再エンコードする */
+  mimeType: 'image/jpeg';
+}
+
 /**
  * Vision API Call Options (Extended)
  *
@@ -451,8 +441,10 @@ export interface IVisionApiService {
  * Extended options for Vision API calls with provider-specific parameters.
  */
 export interface VisionApiCallOptions {
-  /** Image URLs to analyze */
-  imageUrls: string[];
+  /**
+   * 読む画像。`prepareVisionImages` で取得・分割・縮小したもの (3 社とも base64 で同じ画像を受け取る)
+   */
+  images: VisionImage[];
 
   /** Prompt for extraction */
   prompt: string;

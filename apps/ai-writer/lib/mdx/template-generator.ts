@@ -56,6 +56,7 @@ export function generateMdxFrontmatter(
     excerpt,
     categories,
     date = new Date().toISOString(), // ISO 8601 ms (Schema-SDD MdxFrontmatterSchema 適合)
+    updated,
     author = MDX_DEFAULTS.AUTHOR,
     ogImage = MDX_DEFAULTS.OG_IMAGE,
     // AI metadata (optional)
@@ -97,6 +98,7 @@ export function generateMdxFrontmatter(
     slug,
     title,
     date: toIsoMsDate(date),
+    ...(updated ? { updated: toIsoMsDate(updated) } : {}),
     categories,
     excerpt,
     author,
@@ -215,12 +217,15 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
   lines.push(`work_slug: "${frontmatter.work_slug}"`);
   lines.push(`slug: "${frontmatter.slug}"`);
 
-  // Escape quotes in title and excerpt
-  const escapedTitle = frontmatter.title.replace(/"/g, '\\"');
-  const escapedExcerpt = frontmatter.excerpt.replace(/"/g, '\\"');
+  // Escape quotes and backslashes in title and excerpt (LLM の出力。バックスラッシュも YAML の二重引用符の中ではエスケープが要る)
+  const escapedTitle = escapeYamlDoubleQuoted(frontmatter.title);
+  const escapedExcerpt = escapeYamlDoubleQuoted(frontmatter.excerpt);
 
   lines.push(`title: "${escapedTitle}"`);
   lines.push(`date: "${frontmatter.date}"`);
+  if (frontmatter.updated) {
+    lines.push(`updated: "${frontmatter.updated}"`);
+  }
 
   // Categories array
   const categoriesYaml = frontmatter.categories

@@ -16,6 +16,7 @@
 // v1.4.0: Type Guard & Media Type Mapper imports
 import { formatAuthorName, hasMultipleAuthors } from '../utils/author-formatter';
 import { getMediaTypeMapperService } from './media-type-mapper.service';
+import type { RedrawnWord } from '@/lib/utils/redrawn-illustration';
 
 /**
  * 開催期間の型定義
@@ -82,7 +83,10 @@ export interface TextPlaceholderData {
    */
   メンバー名?: string[] | null;
   テーマ名?: string | null;
-  ノベルティ名?: string | null;
+  /** グッズの文脈の語 (「描き下ろし」か「描き起こし」)。無ければ null (テンプレートは {{#if 描き下ろし表記}} で使う) */
+  描き下ろし表記?: RedrawnWord | null;
+  /** ノベルティ名の一覧。`{{ノベルティ名}}` は「、」で、`{{ノベルティ名|join:'…'}}` は指定の区切りでつなぐ */
+  ノベルティ名?: string[] | null;
   グッズ名?: string[] | null;
 
   // Sprint C-β P11 追加 (2026-07-19、LeadGeneratorService から派生):
@@ -207,6 +211,13 @@ export interface TextPlaceholderReplacementResult {
 /**
  * テキストプレースホルダー置換サービス
  */
+/** {{#if}} の中身: 別の {{#if}} / {{else}} / {{/if}} を含まない任意の文字 (改行を含む) */
+const CONDITIONAL_BODY = '((?:(?!\\{\\{(?:#if\\s|else\\}\\}|\\/if\\}\\}))[\\s\\S])*)';
+/** `{{#if 条件}}中身{{/if}}` または `{{#if 条件}}中身{{else}}中身{{/if}}` (入れ子の一番内側だけに当たる) */
+const CONDITIONAL_BLOCK_PATTERN = new RegExp(
+  `\\{\\{#if\\s+([^\\}]+)\\}\\}${CONDITIONAL_BODY}(?:\\{\\{else\\}\\}${CONDITIONAL_BODY})?\\{\\{\\/if\\}\\}`
+);
+
 export class TextPlaceholderReplacerService {
   /**
    * テキストプレースホルダーを実データで置換
@@ -374,7 +385,8 @@ export class TextPlaceholderReplacerService {
       開催回数: data.開催回数 ?? undefined,
       公式サイトURL: data.公式サイトURL ?? undefined,
       テーマ名: data.テーマ名 ?? undefined,
-      ノベルティ名: data.ノベルティ名 ?? undefined,
+      描き下ろし表記: data.描き下ろし表記 ?? undefined,
+      ノベルティ名: data.ノベルティ名?.length ? data.ノベルティ名.join('、') : undefined,
       コラボ作品名: data.コラボ作品名,
 
       // Sprint C-β P11 追加 (2026-07-19、LeadGeneratorService から派生):
@@ -433,48 +445,31 @@ export class TextPlaceholderReplacerService {
 
     // 配列のjoin処理: {{配列名|join:'・'}} or {{配列名|join:member_separator}}
     // v1.4.0: 動的セパレーター対応（リテラル文字列とデータフィールドの両方をサポート）
-    if (data.キャラクター名 && data.キャラクター名.length > 0) {
+    const joinableLists: Array<[string, string[] | null | undefined]> = [
+      ['キャラクター名', data.キャラクター名],
+      ['グッズ名', data.グッズ名],
+      ['ノベルティ名', data.ノベルティ名],
+    ];
+    for (const [listName, list] of joinableLists) {
+      if (!list || list.length === 0) continue;
+
       // パターン1: リテラルセパレーター {{キャラクター名|join:'・'}}
-      const literalPattern = /\{\{キャラクター名\|join:'([^']+)'\}\}/g;
+      const literalPattern = new RegExp(`\\{\\{${listName}\\|join:'([^']+)'\\}\\}`, 'g');
       result = result.replace(literalPattern, (match, separator) => {
-        const value = data.キャラクター名!.join(separator);
+        const value = list.join(separator);
         count++;
         log.push({ placeholder: match, value });
         return value;
       });
 
       // パターン2: 動的セパレーター {{キャラクター名|join:member_separator}}
-      const dynamicPattern = /\{\{キャラクター名\|join:([a-zA-Z_]\w*)\}\}/g;
+      const dynamicPattern = new RegExp(`\\{\\{${listName}\\|join:([a-zA-Z_]\\w*)\\}\\}`, 'g');
       result = result.replace(dynamicPattern, (match, separatorKey) => {
-        // データから動的セパレーターを取得（フォールバック: '・'）
+        // データから動的セパレーターを取得
         const rawSeparator = (data as any)[separatorKey];
         // Sprint C-β P11 §6.1 準拠: fallback default "・" → "、" に統一
         const separator = typeof rawSeparator === 'string' ? rawSeparator : '、';
-        const value = data.キャラクター名!.join(separator);
-        count++;
-        log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
-        return value;
-      });
-    }
-
-    if (data.グッズ名 && data.グッズ名.length > 0) {
-      // パターン1: リテラルセパレーター {{グッズ名|join:'・'}}
-      const literalPattern = /\{\{グッズ名\|join:'([^']+)'\}\}/g;
-      result = result.replace(literalPattern, (match, separator) => {
-        const value = data.グッズ名!.join(separator);
-        count++;
-        log.push({ placeholder: match, value });
-        return value;
-      });
-
-      // パターン2: 動的セパレーター {{グッズ名|join:member_separator}}
-      const dynamicPattern = /\{\{グッズ名\|join:([a-zA-Z_]\w*)\}\}/g;
-      result = result.replace(dynamicPattern, (match, separatorKey) => {
-        // データから動的セパレーターを取得（フォールバック: '・'）
-        const rawSeparator = (data as any)[separatorKey];
-        // Sprint C-β P11 §6.1 準拠: fallback default "・" → "、" に統一
-        const separator = typeof rawSeparator === 'string' ? rawSeparator : '、';
-        const value = data.グッズ名!.join(separator);
+        const value = list.join(separator);
         count++;
         log.push({ placeholder: match, value: `${value} (sep: ${separator})` });
         return value;
@@ -594,26 +589,24 @@ export class TextPlaceholderReplacerService {
   ): string {
     let result = content;
 
-    // {{#if condition}}...{{else}}...{{/if}} パターン
-    const ifElsePattern =
-      /\{\{#if\s+([^\}]+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g;
-
-    result = result.replace(ifElsePattern, (match, condition, ifBlock, elseBlock) => {
-      const conditionResult = this.evaluateCondition(condition.trim(), data);
-      const value = conditionResult ? ifBlock : elseBlock;
-      log.push({ placeholder: `{{#if ${condition}}}`, value: `→ ${conditionResult}` });
-      return value;
-    });
-
-    // {{#if condition}}...{{/if}} パターン（elseなし）
-    const ifOnlyPattern = /\{\{#if\s+([^\}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
-
-    result = result.replace(ifOnlyPattern, (match, condition, ifBlock) => {
-      const conditionResult = this.evaluateCondition(condition.trim(), data);
-      const value = conditionResult ? ifBlock : '';
-      log.push({ placeholder: `{{#if ${condition}}}`, value: `→ ${conditionResult}` });
-      return value;
-    });
+    // {{#if condition}}...{{/if}} / {{#if condition}}...{{else}}...{{/if}}
+    // 中身に別の {{#if}} / {{else}} / {{/if}} を含まないものだけを 1 回で置き換え、内側から順に繰り返す。
+    // 以前は if-else を先に「最初の {{#if}} から最初の {{else}} まで」で取っていたため、1 行に条件が 2 つあると
+    // ({{#if 原作者名}}…{{/if}}…{{#if 開催期間.終了.未定}}…{{else}}…{{/if}})、前の条件の {{/if}} をまたいで壊れた (2026-10-13)
+    const conditionalPattern = new RegExp(CONDITIONAL_BLOCK_PATTERN.source, 'g');
+    // 入れ子の深さの上限 (1 回の繰り返しで 1 段ずつ内側から解く)。超えた分は {{...}} が残り、未置換として検知される
+    for (let pass = 0; pass < 10; pass++) {
+      const next = result.replace(
+        conditionalPattern,
+        (_match, condition: string, ifBlock: string, elseBlock: string | undefined) => {
+          const conditionResult = this.evaluateCondition(condition.trim(), data);
+          log.push({ placeholder: `{{#if ${condition}}}`, value: `→ ${conditionResult}` });
+          return conditionResult ? ifBlock : (elseBlock ?? '');
+        }
+      );
+      if (next === result) break;
+      result = next;
+    }
 
     // {{#unless condition}}...{{/unless}} パターン
     const unlessPattern = /\{\{#unless\s+([^\}]+)\}\}([\s\S]*?)\{\{\/unless\}\}/g;

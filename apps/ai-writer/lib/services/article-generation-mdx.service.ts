@@ -1,7 +1,21 @@
-import * as Sentry from '@sentry/nextjs';
+import { Sentry } from '@/lib/observability/sentry';
 import { generateMdxArticle } from '../mdx/template-generator';
 import { type MdxArticle } from '../mdx/types';
 import { createMdxPr, type CreateMdxPrResult } from '../github/create-mdx-pr';
+import { createUpdateMdxPr, type ArticleOnMain } from '../github/update-mdx-pr';
+import {
+  findSlugChanges,
+  updateBranchName,
+  updatePrTitle,
+  type ExistingArticleFields,
+} from '../mdx/article-update';
+import {
+  checkShrink,
+  countArticleItems,
+  describeShrinkCheck,
+  shrinkStopMessage,
+  type ShrinkCheck,
+} from '../mdx/article-counts';
 import {
   checkEventDuplication,
   registerNewEvent,
@@ -19,10 +33,8 @@ import {
 import { DuplicateSlugError } from '../errors/github';
 import { getPrStatusByCanonicalKey } from '../github/pr-status';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
-import { generateArticleMetadata } from '../claude/metadata-generator';
-import { type ArticleMetadata } from '../claude/types';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
-import { extractArticleHtml, extractContentHtml, extractPageLinks } from '../utils/html-extractor';
+import { extractArticleHtml, extractContentHtml, extractOgImageUrl, extractPageLinks } from '../utils/html-extractor';
 import { toIsoMsDate } from '../utils/date';
 import { recordPipelineEvent } from '../ai/observability/ai-call-recorder';
 import { parseAndNormalizeEventData } from '../utils/event-data-normalization';
@@ -31,16 +43,17 @@ import {
   runVenueCompletenessGate,
   type VenueGateVerdict,
 } from '../utils/venue-completeness-gate';
-import { deriveStoreContext } from '../utils/store-derivation';
+import { deriveStoreContext, type StoreContext } from '../utils/store-derivation';
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
-import { stripUtmFromUrl } from '../utils/url';
-import { selfCloseVoidElements } from '../utils/mdx-safety';
+import { pageUrlKey, stripUtmFromUrl } from '../utils/url';
+import { escapeMdxText, selfCloseVoidElements } from '../utils/mdx-safety';
+import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import {
   findUnreplacedPlaceholders,
   removeImagePlaceholderLines,
 } from '../utils/placeholder-residue';
-import { type EventData } from '@revolution/schemas/mdx-frontmatter';
+import { type EventData, type EventDataOccurrence } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
 import { getStepDisplay, getStepContext } from './pipeline-steps';
 import {
@@ -60,15 +73,16 @@ import {
   ContentGenerationService,
   type ContentGenerationResult,
 } from './content-generation.service';
-import {
-  getOgImageUploadService,
-  type OgImageUploadResult,
-} from './og-image-upload.service';
-import {
-  getArticleImageUploadService,
-  type ArticleImageUploadResult,
-} from './article-image-upload.service';
 import { getR2StorageService } from './r2-storage.service';
+import { getConfigLoaderService } from './config-loader.service';
+import { r2ImageStore } from './article-images/upload-article-images';
+import {
+  IMAGE_CATEGORIES,
+  itemImageTags,
+  uploadImagesForArticle,
+  type ArticleImagesUpload,
+  type ImageCategory,
+} from './article-images/upload-images-for-article';
 import {
   getSubpageDetectorService,
   type SubpageDetectionResult,
@@ -76,9 +90,12 @@ import {
 import {
   getCategoryImageExtractorService,
   type CategoryImages,
+  type SubpageText,
 } from './category-image-extractor.service';
 import {
   getImagePlaceholderReplacerService,
+  categoryImagesMarkdown,
+  PLACEHOLDERS,
   type CategoryR2Images,
   type PlaceholderReplacementResult,
 } from './image-placeholder-replacer.service';
@@ -99,14 +116,59 @@ import { validateStoreName } from '@/lib/utils/store-name-validator';
 import { VisionApiServiceFactory } from './vision-api/vision-api-service.factory';
 import { callVisionApiForAllCategories } from './vision-api/multi-category-vision.service';
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
+import { selectFallbackLevel, validateBusinessRules } from '@/lib/utils/vision-api-utils';
+import { determineVisionTargets, type VisionTargets } from './vision-api/vision-targets';
+import { menuItemsOf, mergeVisionIntoExtraction } from './vision-api/merge-vision-into-extraction';
+import { deriveRedrawnWords, mentionsRedrawnIllustration, type RedrawnWord } from '@/lib/utils/redrawn-illustration';
 import {
-  crossCheckVisionResult,
-  detectHallucination,
-  selectFallbackLevel,
-  validateBusinessRules,
-  type HtmlExtractionData,
-} from '@/lib/utils/vision-api-utils';
-import { checkExtractionSufficiency } from '@/lib/config/vision-api-thresholds';
+  buildFactLines,
+  cleanFeatures,
+  loadPointsFormat,
+  noveltyContextMentionsRedrawn,
+  joinArticleParts,
+  renderArticlePoints,
+  type PointsFormat,
+} from './article-points';
+import {
+  ExcerptGenerationService,
+  ExcerptParseError,
+  ExcerptPromptMissingError,
+  fallbackExcerpt,
+  type ExcerptRequest,
+} from './excerpt-generation.service';
+import { ArticlePointsGenerationService, ArticlePointsParseError } from './article-points-generation.service';
+import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
+import { isEmptyList } from '@/lib/utils/llm-values';
+import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
+import { venueUrlsWithNovelties, withNoveltyImagesFromVenues } from './pick-novelty-images';
+import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
+import {
+  goodsNamesForProse,
+  hasGoodsSection,
+  insertIntoGoodsSection,
+  loadGoodsListConfig,
+  renderGoodsList,
+} from './goods-list';
+import {
+  appendToMenuSection,
+  appendToNoveltySection,
+  fillTemplate,
+  hasMenuSection,
+  hasNoveltySection,
+  loadRendered,
+  otherImagesBlock,
+  renderItemHeadings,
+  renderMenuItems,
+  renderMenuTable,
+  renderVenueList,
+  replaceMenuItems,
+  replaceMenuItemsWithTable,
+  replaceNoveltySentence,
+  replacePlaceholderLine,
+  replaceSummaryRowValue,
+  type MenuTableConfig,
+  type VenueListConfig,
+} from './section-renderers';
 import type {
   VisionExtractionResult,
   FallbackLevelType,
@@ -130,6 +192,12 @@ import type {
  *   本閾値は**作品名という最も支配的な要因を先に潰す**ためのもの。
  */
 const WORK_TITLE_SHORTEN_THRESHOLD = 10;
+
+/**
+ * Vision の 1 カテゴリあたりの時間切れ (ms)。縦に長い画像は分割して 10〜20 片を高い解像度で
+ * 読むため、以前の 30 秒では足りない (2026-10-12)
+ */
+const VISION_TIMEOUT_MS = 120_000;
 
 /**
  * RSS記事からMDX記事を生成するためのリクエスト
@@ -161,6 +229,22 @@ export interface MdxGenerationRequest {
    * デバッグ時に画像アップロードをテストしつつ、PRは作成しない場合に使用
    */
   localOnly?: boolean;
+  /**
+   * 公開中の記事の更新 (`pnpm debug:mdx --update <post_id>`)。
+   * 同じ post_id・URL のまま全体を作り直し、既存のファイルを上書きする PR を作る (dryRun なら PR を作らない)。
+   * Firestore には触れない (登録済みで `generated` のまま)。タイトルは作り直さない
+   */
+  update?: ArticleUpdateTarget;
+}
+
+/** 更新する記事 */
+export interface ArticleUpdateTarget {
+  /** main の記事 (中身と blob の sha) */
+  article: ArticleOnMain;
+  /** 既存の記事から引き継ぐ値 */
+  fields: ExistingArticleFields;
+  /** 会場・品目が減っても PR を作る (`--allow-shrink`) */
+  allowShrink: boolean;
 }
 
 /**
@@ -187,10 +271,8 @@ export interface MdxGenerationResult {
   detailedExtraction?: ExtractionResult;
   // コンテンツ生成結果（content-generation step）
   contentGeneration?: ContentGenerationResult;
-  // OG画像アップロード結果（image-upload-r2 step）
-  ogImageUpload?: OgImageUploadResult;
-  // 本文画像アップロード結果（image-upload-r2 step）
-  bodyImagesUpload?: ArticleImageUploadResult;
+  // 記事の画像のアップロード結果 (image-upload-r2 step。上げた画像・アイキャッチ・飛ばした画像)
+  imagesUpload?: ArticleImagesUpload;
   // 下層ページ検出結果（subpage-detection step）
   subpageDetection?: SubpageDetectionResult;
   // カテゴリ別画像抽出結果（category-image-extraction step）
@@ -202,14 +284,48 @@ export interface MdxGenerationResult {
   // テキストプレースホルダー置換結果（text-placeholder-replacement step）
   textPlaceholderReplacement?: TextPlaceholderReplacementResult;
   // Vision API 統合結果（vision-api step）
-  visionApiResult?: {
-    called: boolean;
-    htmlSufficiencyCheck?: HtmlExtractionData;
-    visionExtraction?: VisionExtractionResult;
-    fallbackLevel?: FallbackLevelType;
-    hallucinationDetected?: boolean;
-    crossCheckPassed?: boolean;
+  visionApiResult?: VisionStepResult;
+  // 公開中の記事の更新のときだけ: 会場・品目の数の更新の前後の比較
+  update?: {
+    shrinkCheck: ShrinkCheck;
   };
+}
+
+/**
+ * vision-api step の結果。Vision の結果を本文に使ったかは `merged` で分かる。
+ */
+interface VisionStepResult {
+  /** Vision を呼んだか */
+  called: boolean;
+  /** HTML から書けなかった項目と、読んだカテゴリ */
+  targets?: VisionTargets;
+  /** Vision の結果 (業務ルールの減点を反映した確信度) */
+  visionExtraction?: VisionExtractionResult;
+  fallbackLevel?: FallbackLevelType;
+  /** Coming Soon の画像から品目を作ったカテゴリがあり、その結果を捨てたか */
+  hallucinationDetected?: boolean;
+  /** Vision の結果で抽出結果を埋めたか (レベル A のときだけ) */
+  merged: boolean;
+  /** 埋めた内容 */
+  mergeChanges?: string[];
+}
+
+/** この記事のポイントの組み立てに使う値 (`runArticlePoints`) */
+interface ArticlePointsInput {
+  extraction: ExtractionResult;
+  categoryImages: CategoryImages | undefined;
+  subpageFacts: SubpageFacts[];
+  storeContext: StoreContext;
+  会場表現: string;
+  officialHtml: string | undefined;
+  primaryOfficialUrl: string | null | undefined;
+  occurrences: EventDataOccurrence[] | undefined;
+  /** 公式のページ全体の「描き下ろし」「描き起こし」の語 (リード文・本文はグッズの文脈の語を使う) */
+  ページの描き下ろし表記: RedrawnWord | null;
+  /** グッズの文脈の語 (グッズの行を出すかを決める。リード文・本文に渡す `描き下ろし表記` と同じ値) */
+  グッズの描き下ろし表記: RedrawnWord | null;
+  pointsFormat: PointsFormat;
+  costTracker: CostTrackerService;
 }
 
 /**
@@ -232,28 +348,24 @@ export class ArticleGenerationMdxService {
    * @param request MDX生成リクエスト
    * @returns MDX生成結果
    *
-   * 処理フローの完全な定義・順序は `./pipeline-steps.ts` の `PIPELINE_STEPS` を参照。
-   * 主要 step (id):
-   *  - article-selection / rss-extraction / detail-extraction
-   *  - subpage-detection / category-image-extraction / vision-api
-   *  - slug-generation / duplication-check
-   *  - metadata-generation / title-generation / content-generation
-   *  - image-upload-r2 / image-placeholder-replacement / text-placeholder-replacement / footer-placeholder-cleanup
-   *  - mdx-assembly / github-pr-creation / firestore-status-update
+   * 処理フローの step の id と順序は `./pipeline-steps.ts` の `PIPELINE_STEPS` を参照 (ここに一覧を写さない)。
    *
    * @description
    * マルチプロバイダー対応済み（2025-12-07）
    * AI_PROVIDER環境変数でプロバイダーを切り替え可能
    */
   async generateMdxFromRSS(request: MdxGenerationRequest): Promise<MdxGenerationResult> {
-    const { rssItem, dryRun = false, localOnly = false } = request;
-    const year = new Date().getFullYear();
+    const { rssItem, dryRun = false, localOnly = false, update } = request;
+    // 更新のときは既存の記事の年 (画像のフォルダ `{event_type}/{year}/{post_id}` に入る) を引き継ぐ
+    const year = update?.fields.year ?? new Date().getFullYear();
 
     // モード判定用のヘルパー変数
     // skipExternalOps: Firestore/GitHub操作をスキップ（dryRun OR localOnly）
     // skipImageUpload: 画像アップロードをスキップ（dryRunのみ、localOnlyでは実行）
     const skipExternalOps = dryRun || localOnly;
     const skipImageUpload = dryRun && !localOnly;
+    // 記事の更新は記事が登録済みなので、Firestore には触れない
+    const skipFirestore = skipExternalOps || update !== undefined;
 
     // Get configured AI provider for logging
     const providerName = getConfiguredProvider();
@@ -269,6 +381,11 @@ export class ArticleGenerationMdxService {
       console.log('🧪 ドライランモード: Firestore登録・GitHub PR作成・画像アップロードをスキップします');
     } else if (localOnly) {
       console.log('💾 ローカル保存モード: Firestore登録・GitHub PR作成をスキップ（画像アップロードは実行）');
+    }
+    if (update) {
+      console.log(
+        `♻️ 記事の更新: ${update.article.path} (post_id ${update.fields.postId}。タイトル・公開日・年を引き継ぎ、Firestore には触れない)`,
+      );
     }
     console.log('RSS記事:', { title: rssItem.title, link: rssItem.link });
 
@@ -287,11 +404,20 @@ export class ArticleGenerationMdxService {
       console.log('記事HTML取得完了:', articleHtml.length, 'bytes');
 
       const selectionService = new ArticleSelectionService();
-      const selectionResult = await selectionService.shouldGenerateArticle({
+      const selected = await selectionService.shouldGenerateArticle({
         rss_title: rssItem.title,
         rss_content: articleHtml,
         site_domain: new URL(rssItem.link).hostname,
       });
+      // 更新のときは、既存の記事と同じ公式サイトから作り直す (選別が別の URL を選んでも使わない)
+      const selectionResult = update
+        ? { ...selected, primary_official_url: update.fields.officialUrl }
+        : selected;
+      if (update && selected.primary_official_url !== update.fields.officialUrl) {
+        console.warn(
+          `${getStepContext('article-selection')} 更新のため、選別した公式URL (${selected.primary_official_url ?? 'なし'}) ではなく既存の記事の official_url を使う: ${update.fields.officialUrl}`,
+        );
+      }
 
       // 公式URLが見つからない場合はスキップ
       if (!selectionResult.should_generate) {
@@ -357,6 +483,8 @@ export class ArticleGenerationMdxService {
       let detailedExtraction: ExtractionResult | undefined;
       // 公式サイトのHTMLを保持（content-generation step と image-upload-r2 step で再利用）
       let officialHtml: string | undefined;
+      // 公式サイトのトップページの og:image (アイキャッチの第 1 候補。image-upload-r2 step で使う)
+      let officialOgImage: string | null = null;
 
       if (selectionResult.primary_official_url) {
         try {
@@ -366,6 +494,8 @@ export class ArticleGenerationMdxService {
           //    (圧縮は class 属性を全て落とすため、raw でないと会場ブロックを認識できない)。
           const contentHtml = await extractContentHtml(selectionResult.primary_official_url);
           officialHtml = contentHtml.compacted;
+          // og:image は <head> にある。compacted は本文のブロックだけのことがある (meta が無い) ので、ここで読む
+          officialOgImage = extractOgImageUrl(contentHtml.raw, selectionResult.primary_official_url);
           console.log(
             '公式サイトHTML取得完了:',
             officialHtml.length,
@@ -548,11 +678,15 @@ export class ArticleGenerationMdxService {
           categoryImages = await categoryImageService.extractCategoryImages(
             selectionResult.primary_official_url,
             officialHtml,
-            subpageDetection.categoryUrls
+            subpageDetection.categoryUrls,
+            // 記事選別の公式 URL を先に、トップページのリンクを後に (上限は画像の抽出の側で 10 件)
+            sameSiteOfficialUrls(selectionResult.primary_official_url, [
+              ...(selectionResult.official_urls ?? []),
+              ...pageLinks,
+            ])
           );
 
           console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {
-            eyecatch: categoryImages.eyecatch ? '取得済み' : 'なし',
             menu: categoryImages.menu.length,
             novelty: categoryImages.novelty.length,
             goods: categoryImages.goods.length,
@@ -560,197 +694,53 @@ export class ArticleGenerationMdxService {
           });
         } catch (subpageError) {
           console.warn('⚠️ 下層ページ検出/画像抽出に失敗（処理は続行）:', subpageError);
-          // エラーが発生しても処理は続行（既存のトップページ画像抽出にフォールバック）
+          // エラーが発生しても処理は続行 (本文の画像は無し。アイキャッチは og:image があれば使う)
         }
       } else {
         console.log(`[subpage-detection/category-image-extraction] 公式サイトHTMLがないため、下層ページ検出をスキップ`);
       }
 
-      // vision-api step: Vision API Integration (conditional)
-      console.log(`\n${getStepDisplay('vision-api')} Vision API統合（HTML充足性チェック + 条件付き呼び出し）...`);
+      // subpage-extraction step: 下層ページと会場の案内ページの文字から、メニュー・グッズ・ノベルティ・キャラクターを読む
+      console.log(`\n${getStepDisplay('subpage-extraction')} 下層ページの文字からメニュー/グッズ/ノベルティを抽出...`);
+      // 読めたページの事実 (この記事のポイントで、ノベルティ名が読めた会場のページを探すのにも使う)
+      let subpageFacts: SubpageFacts[] = [];
+      if (detailedExtraction && categoryImages && categoryImages.pages.length > 0) {
+        const subpageStep = await this.runSubpageExtraction(detailedExtraction, categoryImages, costTracker);
+        detailedExtraction = subpageStep.extraction;
+        subpageFacts = subpageStep.pages;
+        // ノベルティの下層ページが無ければ、ノベルティ名が読めた会場の案内ページの特典の画像を使う
+        const noveltyStep = withNoveltyImagesFromVenues(categoryImages, subpageStep.pages);
+        categoryImages = noveltyStep.categoryImages;
+        if (noveltyStep.picked) {
+          console.log(
+            `${getStepContext('subpage-extraction')} ノベルティの画像: ノベルティ名が読めた会場のページ ${noveltyStep.picked.url} から ${noveltyStep.picked.images.length}枚`,
+            `(候補のある会場のページ ${categoryImages.venueNoveltyImages.length} 件)`,
+          );
+        }
+      } else {
+        console.log(`${getStepContext('subpage-extraction')} 読む下層ページが無いため、スキップ`);
+      }
 
-      let visionApiResult: {
-        called: boolean;
-        htmlSufficiencyCheck?: HtmlExtractionData;
-        visionExtraction?: VisionExtractionResult;
-        fallbackLevel?: FallbackLevelType;
-        hallucinationDetected?: boolean;
-        crossCheckPassed?: boolean;
-      } = { called: false };
+      // vision-api step: HTML から書けなかった項目の画像だけを読み、レベル A なら抽出結果を埋める
+      console.log(`\n${getStepDisplay('vision-api')} Vision API統合（HTML で書けない項目の画像だけを読む）...`);
 
+      let visionApiResult: VisionStepResult = { called: false, merged: false };
       if (!detailedExtraction) {
         console.log(`${getStepContext('vision-api')} detailedExtraction がないため、Vision API をスキップ`);
       } else {
-        // HTML充足性チェック
-        const htmlSufficiency: HtmlExtractionData = this.calculateHtmlSufficiency(detailedExtraction);
-        visionApiResult.htmlSufficiencyCheck = htmlSufficiency;
+        const visionStep = await this.runVisionStep(detailedExtraction, categoryImages, officialHtml, costTracker);
+        detailedExtraction = visionStep.extraction;
+        visionApiResult = visionStep.result;
+      }
 
-        console.log(`${getStepContext('vision-api')} HTML充足性チェック結果:`, {
-          menuItemCount: htmlSufficiency.menuItemCount,
-          priceCount: htmlSufficiency.priceCount,
-          sufficiencyRate: `${(htmlSufficiency.htmlSufficiencyRate * 100).toFixed(1)}%`,
-        });
-
-        // 充足性判定（閾値は VISION_API_THRESHOLDS に集約、checkExtractionSufficiency() を使用）
-        const sufficiencyResult = checkExtractionSufficiency(
-          htmlSufficiency.menuItemCount,
-          htmlSufficiency.priceCount,
-          htmlSufficiency.htmlSufficiencyRate,
+      // ノベルティ名が書けないときは、画像があってもノベルティの節を書かせない。本文の LLM は画像の数で
+      // 節を書くかを決めるため、名前の無いまま「来店特典のノベルティー」のような根拠の無い文を書いた
+      // (2026-10-12、ヒロアカで AI が利用ガイドのページをノベルティのページと判定したとき)
+      if (categoryImages && categoryImages.novelty.length > 0 && isEmptyList(detailedExtraction?.ノベルティ名)) {
+        console.log(
+          `${getStepContext('vision-api')} ノベルティ名が無いため、ノベルティの画像 ${categoryImages.novelty.length} 枚を使わない (節を書かない)`,
         );
-
-        if (sufficiencyResult.isSufficient) {
-          console.log(`${getStepContext('vision-api')} ✅ HTML充足 → Vision API をスキップ`, { reason: sufficiencyResult.reason });
-        } else {
-          console.log(`${getStepContext('vision-api')} ❌ HTML不足 → Vision API を呼び出し`, { reason: sufficiencyResult.reason });
-          visionApiResult.called = true;
-
-          try {
-            // 各カテゴリに 1 件以上の画像があるかチェック
-            const hasAnyImages =
-              !!categoryImages &&
-              (categoryImages.menu.length > 0 ||
-                categoryImages.goods.length > 0 ||
-                categoryImages.novelty.length > 0);
-
-            if (!hasAnyImages) {
-              console.warn(`${getStepContext('vision-api')} ⚠️ カテゴリ別画像なし、Vision API をスキップ`);
-            } else {
-              // Vision API サービス + Templates v1.2 YAML loader を初期化
-              const visionService = VisionApiServiceFactory.create();
-              const yamlLoader = new YamlTemplateLoaderService();
-              const visionTemplate = await yamlLoader.loadVisionApiTemplate('collabo-cafe');
-
-              console.log(`${getStepContext('vision-api')} Vision API 並列呼び出し開始 (menu/goods/novelty)...`);
-
-              const { result: visionExtraction, perCategory } =
-                await callVisionApiForAllCategories(
-                  visionService,
-                  visionTemplate,
-                  {
-                    menu: categoryImages!.menu,
-                    goods: categoryImages!.goods,
-                    novelty: categoryImages!.novelty,
-                  },
-                  { maxRetries: 3, timeout: 30000 },
-                );
-
-              visionApiResult.visionExtraction = visionExtraction;
-
-              console.log(`${getStepContext('vision-api')} menu/goods/novelty 並列呼び出し完了:`, {
-                confidence: visionExtraction.visionExtraction.confidence,
-                menuItems: visionExtraction.visionExtraction.menuItems.length,
-                goodsItems: visionExtraction.visionExtraction.goodsItems.length,
-                noveltyItems: visionExtraction.visionExtraction.noveltyItems.length,
-                perCategory,
-              });
-
-              // Cost tracking — record under one aggregate key (`vision-api`).
-              // The merger's `metadata.tokensUsed` is the sum across successful calls
-              // and is optional (undefined when no call surfaced usage). Per-category
-              // breakdown intentionally stays out of cost-tracker for now; recording it
-              // requires a merger signature change and is deferred to a later sprint.
-              const provider = visionService.getProviderName();
-              const modelName = visionService.getModelName();
-              const actualUsage = visionExtraction.visionExtraction.metadata?.tokensUsed;
-
-              if (actualUsage) {
-                const costResult = costTracker.recordUsage(
-                  'vision-api',
-                  modelName,
-                  actualUsage,
-                );
-                console.log(`${getStepContext('vision-api')} Vision API コスト追跡:`, {
-                  provider,
-                  model: modelName,
-                  promptTokens: actualUsage.promptTokens,
-                  completionTokens: actualUsage.completionTokens,
-                  totalTokens: actualUsage.totalTokens,
-                  ...(actualUsage.cacheCreationTokens
-                    ? { cacheCreationTokens: actualUsage.cacheCreationTokens }
-                    : {}),
-                  ...(actualUsage.cachedTokens
-                    ? { cachedTokens: actualUsage.cachedTokens }
-                    : {}),
-                  cost: `$${costResult.usd.toFixed(6)} (¥${costResult.jpy.toFixed(2)})`,
-                });
-              } else {
-                console.log(
-                  `${getStepContext('vision-api')} Vision API コスト追跡: tokensUsed 不在のためスキップ (全 call が usage を返さず)`,
-                );
-              }
-
-              // Cross-check (HTML vs merged Vision API result)
-              const crossCheckResult = crossCheckVisionResult(visionExtraction, htmlSufficiency);
-              visionApiResult.crossCheckPassed = crossCheckResult.passed;
-
-              console.log(`${getStepContext('vision-api')} Cross-check 結果:`, {
-                passed: crossCheckResult.passed,
-                issues: crossCheckResult.issues,
-              });
-
-              if (!crossCheckResult.passed) {
-                console.warn(`${getStepContext('vision-api')} ⚠️ Cross-check 失敗:`, crossCheckResult.issues);
-              }
-
-              // Hallucination detection (covers menu+goods+novelty per Templates v1.2)
-              const hallucinationResult = detectHallucination(visionExtraction, htmlSufficiency);
-              visionApiResult.hallucinationDetected = hallucinationResult.detected;
-
-              if (hallucinationResult.detected) {
-                console.error(`${getStepContext('vision-api')} 🚨 Hallucination 検出:`, {
-                  type: hallucinationResult.type,
-                  reason: hallucinationResult.reason,
-                });
-
-                // Hallucination が検出された場合は記事生成を中止
-                return {
-                  success: false,
-                  skipped: true,
-                  skipReason: `Vision API でハルシネーション検出: ${hallucinationResult.reason}`,
-                  detailedExtraction,
-                  visionApiResult,
-                };
-              }
-
-              console.log(`${getStepContext('vision-api')} ✅ Hallucination なし`);
-
-              // Fallback level selection (novelty-aware per step 3 utils 拡張)
-              const fallbackLevel = selectFallbackLevel(visionExtraction);
-              visionApiResult.fallbackLevel = fallbackLevel;
-
-              console.log(`${getStepContext('vision-api')} Fallback レベル:`, fallbackLevel);
-
-              // Business rules validation
-              const businessValidation = validateBusinessRules(visionExtraction);
-
-              if (businessValidation.issues.length > 0) {
-                console.warn(`${getStepContext('vision-api')} ⚠️ Business rules 違反:`, businessValidation.issues);
-
-                // 信頼度を調整: 元の `visionExtraction` オブジェクトは mutate せず、
-                // visionApiResult.visionExtraction だけを spread copy で差し替える。
-                // これにより、API 結果（unchanged）と記録用結果（adjusted）が分離される。
-                const originalConfidence = visionExtraction.visionExtraction.confidence;
-                visionApiResult.visionExtraction = {
-                  ...visionExtraction,
-                  visionExtraction: {
-                    ...visionExtraction.visionExtraction,
-                    confidence: businessValidation.adjustedConfidence,
-                  },
-                };
-
-                console.log(`${getStepContext('vision-api')} 信頼度調整:`, {
-                  original: originalConfidence,
-                  adjusted: businessValidation.adjustedConfidence,
-                });
-              }
-
-              console.log(`${getStepContext('vision-api')} ✅ Vision API 統合完了 (3 カテゴリ並列)`);
-            }
-          } catch (visionError) {
-            console.error(`${getStepContext('vision-api')} ❌ Vision API 呼び出し失敗:`, visionError);
-            console.log(`${getStepContext('vision-api')} HTML抽出結果のみで記事生成を続行`);
-          }
-        }
+        categoryImages = { ...categoryImages, novelty: [] };
       }
 
       // slug-generation step: Resolve slugs (YAML config → AI API → ASCII fallback)
@@ -776,36 +766,48 @@ export class ArticleGenerationMdxService {
         );
       }
 
+      // 更新のとき: 記事のパスと URL が変わるので、slug が既存の記事と違えば止める
+      if (update) {
+        const slugChanges = findSlugChanges(update.fields, { workSlug, eventType });
+        if (slugChanges.length > 0) {
+          const message = `既存の記事と slug が違うため、更新を止めました: ${slugChanges.join(' / ')}`;
+          console.error(`❌ ${message}`);
+          return { success: false, error: message };
+        }
+      }
+
       // Create resolved slugs object to pass to subsequent functions
       const resolvedSlugs = { workSlug, storeSlug, eventType };
 
       // duplication-check step: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
 
-      if (skipExternalOps) {
-        // ドライラン/ローカル保存モード: 重複チェック・登録をスキップ
-        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
+      if (skipFirestore) {
+        // ドライラン/ローカル保存/記事の更新: 重複チェック・登録をスキップ
+        // (記事の更新では記事は登録済みで、Firestore の記録は generated のまま)
+        const modeLabel = update ? '記事の更新' : localOnly ? 'ローカル保存' : 'ドライラン';
         console.log(`\n${getStepDisplay('duplication-check')} Firestore重複チェック（${modeLabel}のためスキップ）...`);
 
-        // ダミーの postId を生成（タイムスタンプベース）
-        const dryRunPostId = `dry-run-${Date.now()}`;
+        // ダミーの postId を生成（タイムスタンプベース）。記事の更新では既存の post_id
+        const postIdForRun = update?.fields.postId ?? `dry-run-${Date.now()}`;
+        // 表示用 (保存しない)。記事の更新では、登録済みの canonicalKey (作った年・店舗の slug) と違うことがある
         const dryRunCanonicalKey = `${workSlug}:${storeSlug}:${eventType}:${year}`;
 
         // ドライラン用のダミーレコード（Firestoreには保存しないため、Timestamp の代わりに null を使用）
         eventRecord = {
           canonicalKey: dryRunCanonicalKey,
-          postId: dryRunPostId,
+          postId: postIdForRun,
           workSlug,
           storeSlug,
           eventType,
           year,
-          status: 'pending', // ドライランでも valid な status を使用
+          status: update ? 'generated' : 'pending', // ドライランでも valid な status を使用
           createdAt: null as any, // ドライラン用ダミー値
           updatedAt: null as any, // ドライラン用ダミー値
         };
 
-        const modeEmoji = localOnly ? '💾' : '🧪';
-        const modeName = localOnly ? 'ローカル保存' : 'ドライラン';
+        const modeEmoji = update ? '♻️' : localOnly ? '💾' : '🧪';
+        const modeName = modeLabel;
         console.log(`${modeEmoji} ${modeName}: ダミーイベントレコード生成:`, {
           canonicalKey: eventRecord.canonicalKey,
           postId: eventRecord.postId,
@@ -872,32 +874,17 @@ export class ArticleGenerationMdxService {
         });
       }
 
-      // metadata-generation step: Generate excerpt using AI API + build categories deterministically
-      // Note: categories は AI 生成ではなく、taxonomy.yaml ルールに従って決定論的に構築
+      // metadata-generation step: カテゴリと開催都道府県を決定論的に構築
+      // 抜粋は完成した記事の冒頭から書くので、本文の後の excerpt-generation step で生成する (2026-10-16、記事の改善 PR-4c)
       // @see notes/archive/category-improvement-research-2025-12-16.md
-      console.log(`\n${getStepDisplay('metadata-generation')} AI API (${providerDisplayName}) で抜粋を生成 + カテゴリを構築...`);
-
-      // 4a: AI API で excerpt のみ生成（categories は使用しない）
-      const metadata = await generateArticleMetadata({
-        content: rssItem.content || rssItem.contentSnippet || '',
-        title: rssItem.title,
-        workTitle: extraction.workTitle,
-        eventType: extraction.eventTypeName,
-      });
-
-      // 4b: categories は buildCategories() で決定論的に構築（2件固定）
+      // categories は buildCategories() で決定論的に構築（2件固定）
       // taxonomy.yaml v1.1 の category_rules に準拠
       // Note: prefectures は categories に含めず、別フィールドで管理
       const categories = buildCategories({
         workTitle: extraction.workTitle,
         eventTitle: extraction.eventTypeName,
       });
-
-      console.log('メタデータ生成完了:', {
-        categories: categories, // 決定論的に構築
-        categoriesSource: 'buildCategories (taxonomy.yaml rules)',
-        excerptLength: metadata.excerpt.length,
-      });
+      console.log(`\n${getStepDisplay('metadata-generation')} カテゴリを構築 (taxonomy.yaml のルール):`, categories);
 
       // metadata-generation step: 開催都道府県を解決（taxonomy.yaml v1.1 areas軸対応）
       let prefectures: string[] = [];
@@ -915,15 +902,6 @@ export class ArticleGenerationMdxService {
         });
       } else {
         console.log(`${getStepContext('metadata-generation', '開催都道府県')} 開催都道府県: なし（抽出されていない or null）`);
-      }
-
-      // コストを記録（metadata-generation step: MetadataGeneration）
-      if (metadata.model && metadata.usage) {
-        costTracker.recordUsage(
-          'metadata-generation',
-          metadata.model,
-          metadata.usage
-        );
       }
 
       // ========================================================================
@@ -1012,7 +990,11 @@ export class ArticleGenerationMdxService {
       });
 
       // title-generation step: Generate title using YAML template
-      console.log(`\n${getStepDisplay('title-generation')} AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`);
+      console.log(
+        update
+          ? `\n${getStepDisplay('title-generation')} タイトルは既存の記事のまま（記事の更新）: ${update.fields.title}`
+          : `\n${getStepDisplay('title-generation')} AI API (${providerDisplayName}) でタイトルを生成（YAMLテンプレート使用）...`,
+      );
 
       // ★ 記事タイトル用の作品名。正式名称が長い場合は辞書の短縮名へ丸める。
       //   `getShortTitle` は完全一致 → alias → **最長前方一致** の順に引く。
@@ -1032,39 +1014,41 @@ export class ArticleGenerationMdxService {
         );
       }
 
-      const titleService = new TitleGenerationService();
-      const titleResult = await titleService.generateTitle({
-        rss_title: rssItem.title,
-        rss_content: rawContent,
-        rss_link: rssItem.link,
-        // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
-        extractedPeriod: detailedExtraction?.開催期間,
-        // ★ S1-d Phase 3: 店舗名も**決定表の結果**を渡す (claude[bot] 指摘 2026-08-09)。
-        //   都市だけ決定表の値にして店舗名を生値のまま残していたため、実測で
-        //   「H2 は BOX cafe&space なのにタイトルには OH MY CAFE が『確定』として渡る」
-        //   という食い違いが起きていた (くまのプーさん)。本 PR が潰したはずの形。
-        //
-        //   多ブランドで代表が決まらない場合 (`cities`) は代表店舗名が空になる。
-        //   その場合は店舗名を渡さない — 開催地は `extractedCityLabel` が担うため、
-        //   どれか 1 会場を「確定」として渡すと他会場を落とす原因になる。
-        extractedStoreName: storeContext.代表店舗名 || undefined,
-        // ★ S1-d Phase 3: 開催都市を構造化データで渡す。H2 と同じ決定表が情報源。
-        extractedCityLabel: storeContext.都市表記タイトル用 || undefined,
-        // ★ S1-d Phase 3 (2026-08-09): 作品名は**取得時点で**短縮を判定する。
-        //
-        //   従来は「タイトルが 40 字を超える場合のみ略称を使う」という条件付き指示を
-        //   プロンプトに書いていたが、LLM が守らず実測で 45 / 57 字のタイトルが出ていた
-        //   (「スター・ウォーズ／マンダロリアン・アンド・グローグー」がそのまま入る)。
-        //
-        //   条件をパイプラインの途中 (生成後の文字数) に置くと漏れる。作品名を
-        //   取得した時点で決めれば決定的になる (BOSS 判断 2026-08-09)。
-        //
-        //   ★ 短縮の理由は文字数だけではない。タイトルでユーザーが検索するのは
-        //     「スター・ウォーズ」「Nissy」であって副題・企画名ではない (BOSS)。
-        extractedWorkName: titleWorkName,
-        // v2.3.0: 開催回数（第N弾形式）
-        extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
-      });
+      // 記事の更新では、タイトルは作り直さない (BOSS 決定 2026-10-16)
+      const titleResult: TitleGenerationResult = update
+        ? { title: update.fields.title, length: [...update.fields.title].length, is_valid: true }
+        : await new TitleGenerationService().generateTitle({
+            rss_title: rssItem.title,
+            rss_content: rawContent,
+            rss_link: rssItem.link,
+            // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
+            extractedPeriod: detailedExtraction?.開催期間,
+            // ★ S1-d Phase 3: 店舗名も**決定表の結果**を渡す (claude[bot] 指摘 2026-08-09)。
+            //   都市だけ決定表の値にして店舗名を生値のまま残していたため、実測で
+            //   「H2 は BOX cafe&space なのにタイトルには OH MY CAFE が『確定』として渡る」
+            //   という食い違いが起きていた (くまのプーさん)。本 PR が潰したはずの形。
+            //
+            //   多ブランドで代表が決まらない場合 (`cities`) は代表店舗名が空になる。
+            //   その場合は店舗名を渡さない — 開催地は `extractedCityLabel` が担うため、
+            //   どれか 1 会場を「確定」として渡すと他会場を落とす原因になる。
+            extractedStoreName: storeContext.代表店舗名 || undefined,
+            // ★ S1-d Phase 3: 開催都市を構造化データで渡す。H2 と同じ決定表が情報源。
+            extractedCityLabel: storeContext.都市表記タイトル用 || undefined,
+            // ★ S1-d Phase 3 (2026-08-09): 作品名は**取得時点で**短縮を判定する。
+            //
+            //   従来は「タイトルが 40 字を超える場合のみ略称を使う」という条件付き指示を
+            //   プロンプトに書いていたが、LLM が守らず実測で 45 / 57 字のタイトルが出ていた
+            //   (「スター・ウォーズ／マンダロリアン・アンド・グローグー」がそのまま入る)。
+            //
+            //   条件をパイプラインの途中 (生成後の文字数) に置くと漏れる。作品名を
+            //   取得した時点で決めれば決定的になる (BOSS 判断 2026-08-09)。
+            //
+            //   ★ 短縮の理由は文字数だけではない。タイトルでユーザーが検索するのは
+            //     「スター・ウォーズ」「Nissy」であって副題・企画名ではない (BOSS)。
+            extractedWorkName: titleWorkName,
+            // v2.3.0: 開催回数（第N弾形式）
+            extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
+          });
 
       // コストを記録
       if (titleResult.model && titleResult.usage) {
@@ -1074,6 +1058,12 @@ export class ArticleGenerationMdxService {
           titleResult.usage
         );
       }
+
+      // グッズの一覧の書式と、文に並べるグッズ名 (先頭の数件。Templates の sections/04-goods.yaml)
+      const goodsListConfig = loadGoodsListConfig();
+      // この記事のポイントの書式 (Templates の sections/01b-points.yaml)。本文の生成 (有料の LLM) より前に読み、Templates が古ければ先に止める
+      const pointsFormat = loadPointsFormat();
+      const proseGoodsNames = goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig);
 
       // ========================================================================
       // lead-generation step (Sprint C-β P11): rule-driven リード文生成
@@ -1108,6 +1098,15 @@ export class ArticleGenerationMdxService {
       //   決定表が何も作れなかった場合のみ抽出結果へ退避する。
       const 会場表現 = storeContext.会場表現 || detailedExtraction.店舗名;
 
+      // 公式のページの「描き下ろし」「描き起こし」の語 (どちらも無ければ、記事はイラストの種類に触れない。2026-10-15 BOSS 決定)。
+      // ページ全体の語はこの記事のポイントの行に、グッズの文脈の語はリード文・本文・テキストの置換に使う
+      const 描き下ろし = deriveRedrawnWords({
+        officialHtml,
+        subpages: categoryImages?.redrawnPages ?? [],
+        goodsNames: [...(detailedExtraction.グッズ名 ?? []), ...(detailedExtraction.グッズ詳細リスト ?? []).map((item) => item.name)],
+      });
+      const 描き下ろし表記 = 描き下ろし.goods;
+
       const leadResult = await leadGenerator.generate({
         works: detailedExtraction.works ?? [],
         store: detailedExtraction.store ?? { name: detailedExtraction.店舗名 },
@@ -1118,16 +1117,17 @@ export class ArticleGenerationMdxService {
         原作者名: detailedExtraction.原作者名,
         キャラクター名: detailedExtraction.キャラクター名,
         テーマ名: detailedExtraction.テーマ名,
+        描き下ろし表記,
         ノベルティ名: detailedExtraction.ノベルティ名,
-        グッズ名: detailedExtraction.グッズ名,
+        // 文に並べるのは先頭の数件だけ (全件はグッズの節の一覧に書く)
+        グッズ名: proseGoodsNames,
         作品名: detailedExtraction.作品名,
         店舗名: 会場表現,
         略称: detailedExtraction.略称,
         公式サイトURL: detailedExtraction.公式サイトURL,
-        // NOTE: スタジオ名/監督名/シリーズ名 は現状 ExtractionResult に未定義
-        // (Sprint C-β P11 スコープ外、別 Sprint で 2-extraction.yaml v3.2.0 の
-        // TS interface 反映と併せて対応予定)。undefined のため studio 系 template
-        // は発火せず、has_studio_name === false に評価される。
+        スタジオ名: detailedExtraction.スタジオ名,
+        監督名: detailedExtraction.監督名,
+        シリーズ名: detailedExtraction.シリーズ名,
       });
 
       console.log('✅ リード文生成完了:', {
@@ -1154,9 +1154,19 @@ export class ArticleGenerationMdxService {
         // detail-extraction step で取得した officialHtml を再利用（再取得不要）
         // categoryImages を渡して、画像有無でセクションスキップを判断させる
         contentGeneration = await contentService.generateContent({
-          extractedData: detailedExtraction,
+          // グッズの節の導入文に並べるのは先頭の数件だけ (全件は一覧に書く)。詳細は一覧をコードで差し込むので渡さない
+          extractedData: {
+            ...detailedExtraction,
+            // ★ リード文・テキストの置換と同じ会場の表記 (`会場表現`)。抽出結果の `店舗名` は主催のブランド名で、
+            //   会場ごとにブランドが違うと「BOX cafe&space にて開催」のように一部の会場を落とす (ヒロアカの北海道)
+            店舗名: 会場表現,
+            グッズ名: proseGoodsNames,
+            グッズ詳細リスト: null,
+          },
           generatedTitle: titleResult.title,
           officialHtml: officialHtml, // detail-extraction step で取得済みのHTMLを再利用
+          // 本文の LLM は、この語があるときだけ「描き下ろし」「描き起こし」と書く (4-content.yaml)
+          描き下ろし表記,
           categoryImages: categoryImages ? {
             menu: categoryImages.menu,
             novelty: categoryImages.novelty,
@@ -1164,18 +1174,12 @@ export class ArticleGenerationMdxService {
           } : undefined,
         });
 
-        // Sprint C-β P11: LeadGenerator 出力を content の先頭に concat
-        // (contentGeneration.content は menu/novelty/goods/summary の 4 セクション、
-        //  4-content.yaml v2.5.0 で lead 除外済み)
-        contentGeneration = {
-          ...contentGeneration,
-          content: `${leadResult.leadMdx}\n\n${contentGeneration.content}`,
-        };
+        // contentGeneration.content は menu/novelty/goods/summary の 4 セクション (4-content.yaml v2.5.0 で lead 除外済み)。
+        // リード文とこの記事のポイントは、次の article-points step の後で先頭につなぐ
 
         console.log('コンテンツ生成完了:', {
-          contentLength: contentGeneration.content.length,
           leadLength: leadResult.leadMdx.length,
-          bodyLength: contentGeneration.content.length - leadResult.leadMdx.length - 2,
+          bodyLength: contentGeneration.content.length,
           generatedSections: contentGeneration.generatedSections,
           skippedSections: contentGeneration.skippedSections,
         });
@@ -1198,115 +1202,99 @@ export class ArticleGenerationMdxService {
         };
       }
 
-      // image-upload-r2 step: Upload OG image and body images to R2
-      console.log(`\n${getStepDisplay('image-upload-r2')} 画像をR2にアップロード（OG画像 + 本文画像）...`);
-
-      let ogImageUpload: OgImageUploadResult | undefined;
-      let bodyImagesUpload: ArticleImageUploadResult | undefined;
-      let ogImageUrl = '/images/og-image-compressed.png'; // デフォルト画像
-
-      // カテゴリ別R2 URLを追跡（image-placeholder-replacement step で使用するためスコープを外に出す）
-      const uploadedCategoryR2Images: CategoryR2Images = {
-        menu: [],
-        novelty: [],
-        goods: [],
-        eyecatch: undefined, // OG画像アップロード後に設定
+      // article-points step: この記事のポイント (リード文の直後の枠、2026-10-15 BOSS 決定)
+      console.log(`\n${getStepDisplay('article-points')} 組み立て...`);
+      const pointsBlock = await this.runArticlePoints({
+        extraction: detailedExtraction,
+        categoryImages,
+        subpageFacts,
+        storeContext,
+        会場表現,
+        officialHtml,
+        primaryOfficialUrl: selectionResult.primary_official_url,
+        occurrences: parsedEventDataResult?.occurrences,
+        ページの描き下ろし表記: 描き下ろし.page,
+        グッズの描き下ろし表記: 描き下ろし表記,
+        pointsFormat,
+        costTracker,
+      });
+      // リード文 → この記事のポイント → 本文 (Sprint C-β P11 以降、リード文は LeadGeneratorService が書く)
+      contentGeneration = {
+        ...contentGeneration,
+        content: joinArticleParts(leadResult.leadMdx, pointsBlock, contentGeneration.content),
       };
 
-      if (selectionResult.primary_official_url) {
+      // excerpt-generation step: 抜粋を完成した記事の冒頭 (リード文とこの記事のポイント) から書く (2026-10-16 BOSS 決定)
+      console.log(`\n${getStepDisplay('excerpt-generation')} AI API (${providerDisplayName}) で抜粋を生成...`);
+      const excerpt = await this.runExcerptGeneration(
+        {
+          title: titleResult.title,
+          作品名: detailedExtraction?.作品名 ?? canonicalWorkTitle ?? null,
+          leadMdx: leadResult.leadMdx,
+          pointsBlock,
+        },
+        costTracker
+      );
+
+      // image-upload-r2 step: 記事の画像を R2 に上げ、アイキャッチを選ぶ (2026-10-13 BOSS 決定)
+      // 枚数の上限なし。短辺の下限・縮小・WebP・縦長の分割・中身のハッシュのキーは article-images/ 配下
+      console.log(`\n${getStepDisplay('image-upload-r2')} 画像をR2にアップロード（本文の画像 + アイキャッチ）...`);
+
+      let imagesUpload: ArticleImagesUpload | undefined;
+      let ogImageUrl = '/images/og-image-compressed.png'; // デフォルト画像
+
+      if (categoryImages || officialOgImage) {
         try {
-          // 5.5a: OG画像のアップロード
-          console.log(`\n${getStepContext('image-upload-r2', 'OG')} OG画像をアップロード...`);
-          const ogService = getOgImageUploadService();
-          ogImageUpload = await ogService.uploadFromPageUrl(
-            selectionResult.primary_official_url,
+          const imageConfig = (await getConfigLoaderService().loadStoreUrlPatterns()).image_extraction;
+          const imageStepStartedAt = Date.now();
+          imagesUpload = await uploadImagesForArticle(
+            {
+              ogImage: officialOgImage,
+              menu: categoryImages?.menu ?? [],
+              novelty: categoryImages?.novelty ?? [],
+              goods: categoryImages?.goods ?? [],
+              imageAlts: categoryImages?.imageAlts ?? {},
+            },
             {
               folder: `${eventType}/${year}/${eventRecord.postId}`,
-              articleSlug: eventRecord.postId,
-              dryRun: skipImageUpload, // localOnlyモードでは実際にアップロード
-            }
+              config: imageConfig,
+              store: skipImageUpload ? null : r2ImageStore(getR2StorageService()),
+            },
           );
 
-          if (ogImageUpload.success && ogImageUpload.r2Url) {
-            ogImageUrl = ogImageUpload.r2Url;
-            // image-placeholder-replacement step でアイキャッチプレースホルダー置換に使用
-            uploadedCategoryR2Images.eyecatch = ogImageUpload.r2Url;
-            console.log(`✅ OG画像アップロード完了: ${ogImageUrl}`);
-          } else {
-            console.log(`⚠️ OG画像アップロード失敗、デフォルト画像を使用: ${ogImageUpload.error || '不明なエラー'}`);
-          }
-
-          // 5.5b: カテゴリ別画像のアップロード
-          console.log(`\n${getStepContext('image-upload-r2', 'カテゴリ別')} カテゴリ別画像をアップロード...`);
-
-          if (categoryImages) {
-            // categoryImagesが存在する場合は、カテゴリ別にアップロード
-            const r2Service = getR2StorageService();
-            const baseFolder = `${eventType}/${year}/${eventRecord.postId}`;
-
-            for (const category of ['menu', 'novelty', 'goods'] as const) {
-              const sourceUrls = categoryImages[category];
-              if (sourceUrls.length === 0) {
-                console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: 画像なし`);
-                continue;
-              }
-
-              console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${sourceUrls.length}件の画像をアップロード中...`);
-
-              for (const sourceUrl of sourceUrls) {
-                try {
-                  if (skipImageUpload) {
-                    const dryRunUrl = `[DRY RUN] ${process.env.R2_PUBLIC_URL}/${baseFolder}/${category}/${Date.now()}.jpg`;
-                    uploadedCategoryR2Images[category].push(dryRunUrl);
-                    console.log(`  🔍 [DRY RUN] ${sourceUrl}`);
-                  } else {
-                    const uploadResult = await r2Service.uploadFromUrl(
-                      sourceUrl,
-                      `${baseFolder}/${category}`
-                    );
-                    uploadedCategoryR2Images[category].push(uploadResult.url);
-                    console.log(`  ✅ ${sourceUrl} → ${uploadResult.url}`);
-                  }
-                } catch (error) {
-                  console.warn(`  ⚠️ ${category} 画像アップロード失敗: ${sourceUrl}`, error);
-
-                  // 個別 Issue にはしない。1 記事で複数枚が同時に失敗するのが典型で、
-                  // 4 箇所を個別に captureException すると無料枠を食ううえ
-                  // 「同じ 1 回の実行で起きた」相関が失われる。
-                  // 頂点の captureException (本 service 全体 catch) に breadcrumb として
-                  // 全部乗せたほうが原因究明の情報量が多い。
-                  Sentry.addBreadcrumb({
-                    category: 'image-upload',
-                    level: 'warning',
-                    message: `カテゴリ画像アップロード失敗: ${category}`,
-                    data: { sourceUrl, error: error instanceof Error ? error.message : String(error) },
-                  });
-                }
-              }
-
-              console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${uploadedCategoryR2Images[category].length}件アップロード完了`);
-            }
-          } else if (officialHtml) {
-            // フォールバック: categoryImagesがない場合は従来のHTML抽出を使用
-            console.log(`${getStepContext('image-upload-r2', 'カテゴリ別')} categoryImagesがないため、HTML抽出にフォールバック`);
-            const articleImageService = getArticleImageUploadService();
-            bodyImagesUpload = await articleImageService.uploadFromHtml(
-              officialHtml, // detail-extraction step で取得済みのHTMLを再利用
-              selectionResult.primary_official_url,
-              {
-                articleSlug: eventRecord.postId,
-                eventType,
-                year,
-                dryRun: skipImageUpload, // localOnlyモードでは実際にアップロード
-                uploadOgImage: false, // OG画像は既にアップロード済み
-                uploadBodyImages: true,
-              }
+          for (const category of IMAGE_CATEGORIES) {
+            const uploaded = imagesUpload.categories[category];
+            const segments = uploaded.reduce((sum, image) => sum + image.segments.length, 0);
+            console.log(
+              `${getStepContext('image-upload-r2', 'カテゴリ別')} ${category}: ${uploaded.length}/${categoryImages?.[category].length ?? 0} 枚` +
+                (segments > uploaded.length ? ` (縦長の画像を分割して ${segments} 片)` : ''),
             );
-
-            console.log(`✅ 本文画像アップロード完了: ${bodyImagesUpload.stats.successCount}件成功, ${bodyImagesUpload.stats.failureCount}件失敗, ${bodyImagesUpload.stats.skippedCount}件スキップ`);
-          } else {
-            console.log('⚠️ 公式サイトHTMLがないため、本文画像アップロードをスキップ');
           }
+          if (imagesUpload.eyecatch) {
+            ogImageUrl = imagesUpload.eyecatch.url;
+            console.log(
+              `${getStepContext('image-upload-r2', 'アイキャッチ')} ${imagesUpload.eyecatch.origin}: ${imagesUpload.eyecatch.sourceUrl} → ${ogImageUrl} (${imagesUpload.eyecatch.width}×${imagesUpload.eyecatch.height})`,
+            );
+          } else {
+            console.log(`${getStepContext('image-upload-r2', 'アイキャッチ')} 候補が無いため、デフォルト画像を使用`);
+          }
+          for (const skipped of imagesUpload.skipped) {
+            console.log(`  ⏭️ ${skipped.sourceUrl}: ${skipped.reason}`);
+            // 短辺の下限で落とすのは日常 (アイコンなど)。失敗だけを、頂点の captureException の手がかりに残す。
+            // 個別 Issue にはしない (1 記事で複数枚が同時に失敗するのが典型で、無料枠を食い、相関も失われる)
+            if (skipped.kind === 'failed') {
+              Sentry.addBreadcrumb({
+                category: 'image-upload',
+                level: 'warning',
+                message: '記事の画像のアップロード失敗',
+                data: { sourceUrl: skipped.sourceUrl, error: skipped.reason },
+              });
+            }
+          }
+          console.log(
+            `${getStepContext('image-upload-r2')} R2 に新しく置いた画像: ${imagesUpload.newObjects} 件 (既にあった画像は上げない)。` +
+              `${((Date.now() - imageStepStartedAt) / 1000).toFixed(1)} 秒`,
+          );
         } catch (imageError) {
           console.error('❌ 画像アップロードエラー:', imageError);
           console.log('⚠️ デフォルトOG画像を使用します');
@@ -1322,8 +1310,61 @@ export class ArticleGenerationMdxService {
           });
         }
       } else {
-        console.log('⚠️ 公式サイトURLがないため、画像アップロードをスキップします');
+        console.log('⚠️ 公式サイトの画像も og:image も無いため、画像アップロードをスキップします');
       }
+
+      // 品目ごとの画像 (代替テキストと品名の照合)。照合できなかった画像は、節の末尾に並べる。
+      // 品目の画像は節の見出しを頼りに差し込むので、節が無ければ照合しない (画像は節の末尾の欄に回す)
+      const menuNames = detailedExtraction ? menuItemsOf(detailedExtraction).map((item) => item.name) : [];
+      const goodsNames = detailedExtraction?.グッズ名 ?? [];
+      const menuSectionFound = hasMenuSection(contentGeneration.content);
+      const goodsSectionFound = hasGoodsSection(contentGeneration.content);
+      for (const [label, names, found] of [['メニュー', menuNames, menuSectionFound], ['グッズ', goodsNames, goodsSectionFound]] as const) {
+        if (names.length > 0 && !found) {
+          console.warn(`${getStepContext('image-upload-r2', '品目ごと')} ⚠️ ${label}の節の見出しが見つからないため、品目ごとの画像を付けない`);
+        }
+      }
+      const menuItemImages = itemImageTags(menuSectionFound ? menuNames : [], imagesUpload?.categories.menu ?? []);
+      // ノベルティは名前ごとの見出しを導入の文の下に並べる (グッズと同じ形)。画像は品名と照合できたものだけ見出しの下に入れる
+      const noveltyNames = hasNoveltySection(contentGeneration.content) ? (detailedExtraction?.ノベルティ名 ?? []) : [];
+      const noveltyItemImages = itemImageTags(noveltyNames, imagesUpload?.categories.novelty ?? []);
+      const goodsItemImages = itemImageTags(goodsSectionFound ? goodsNames : [], imagesUpload?.categories.goods ?? []);
+      if (menuItemImages.matched > 0 || goodsItemImages.matched > 0) {
+        console.log(
+          `${getStepContext('image-upload-r2', '品目ごと')} メニュー ${menuItemImages.matched} 枚・グッズ ${goodsItemImages.matched} 枚を品目に付けた`,
+        );
+      }
+
+      // 名前のあるカテゴリは、画像が 0 枚でも節を残す (名前はコードが抽出結果から書く。2026-10-13 BOSS 決定)
+      const keepSections = new Set<ImageCategory>();
+      if (menuNames.length > 0) keepSections.add('menu');
+      if (!isEmptyList(detailedExtraction?.ノベルティ名)) keepSections.add('novelty');
+      if (!isEmptyList(detailedExtraction?.グッズ名)) keepSections.add('goods');
+
+      // 品目ごとの形の節 (品目に写真が付いた・ノベルティ) は、照合できなかった画像を品目の後ろに「その他参考画像」の見出しを
+      // 付けて並べる (節の末尾の欄には並べない)。それ以外の節は、これまでどおり節の末尾の欄に並べる。
+      // メニューは品目に写真が 1 枚も付かなければ表にする (画像は節の末尾の欄のまま、表はその下。2026-10-15 BOSS 決定)
+      const splitRest = (item: ReturnType<typeof itemImageTags>, category: ImageCategory, perItem: boolean) => {
+        const rest = item.rest.map((image) => image.segments);
+        return perItem
+          ? { trailing: categoryImagesMarkdown(rest, category, titleResult.title), atPlaceholder: [] }
+          : { trailing: '', atPlaceholder: rest };
+      };
+      const menuPerItem = menuItemImages.matched > 0;
+      const menuRest = splitRest(menuItemImages, 'menu', menuPerItem);
+      const goodsRest = splitRest(goodsItemImages, 'goods', goodsItemImages.matched > 0);
+      const noveltyRest = splitRest(noveltyItemImages, 'novelty', noveltyNames.length > 0);
+      // 品目ごとの形のメニューは、プレースホルダーを残し (LLM が書いた品目の範囲の終わりの目印。その後ろの文を消さないため)、
+      // 名前を差し込んだ後に「その他参考画像」へ置き換える
+      const deferredPlaceholders = new Set<ImageCategory>(menuPerItem ? ['menu'] : []);
+
+      // カテゴリ別R2画像（image-placeholder-replacement step で使用）
+      const uploadedCategoryR2Images: CategoryR2Images = {
+        menu: menuRest.atPlaceholder,
+        novelty: noveltyRest.atPlaceholder,
+        goods: goodsRest.atPlaceholder,
+        eyecatch: imagesUpload?.eyecatch,
+      };
 
       // image-placeholder-replacement step: プレースホルダー置換
       console.log(`\n${getStepDisplay('image-placeholder-replacement')} プレースホルダー置換...`);
@@ -1337,7 +1378,8 @@ export class ArticleGenerationMdxService {
         uploadedCategoryR2Images.menu.length > 0 ||
         uploadedCategoryR2Images.novelty.length > 0 ||
         uploadedCategoryR2Images.goods.length > 0 ||
-        !!uploadedCategoryR2Images.eyecatch;
+        !!uploadedCategoryR2Images.eyecatch ||
+        keepSections.size > 0;
 
       if (hasR2Images) {
         const placeholderReplacer = getImagePlaceholderReplacerService();
@@ -1345,7 +1387,9 @@ export class ArticleGenerationMdxService {
         placeholderReplacement = placeholderReplacer.replaceAll(
           contentGeneration.content,
           uploadedCategoryR2Images,
-          titleResult.title
+          titleResult.title,
+          keepSections,
+          deferredPlaceholders
         );
         finalContent = placeholderReplacement.content;
 
@@ -1387,8 +1431,9 @@ export class ArticleGenerationMdxService {
             : undefined,
           キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
           テーマ名: detailedExtraction.テーマ名 ?? undefined,
+          描き下ろし表記,
           ノベルティ名: detailedExtraction.ノベルティ名 ?? undefined,
-          グッズ名: detailedExtraction.グッズ名 ?? undefined,
+          グッズ名: proseGoodsNames ?? undefined,
           開催期間: detailedExtraction.開催期間,
           works: detailedExtraction.works || [],
           store: detailedExtraction.store || { name: detailedExtraction.店舗名 },
@@ -1402,6 +1447,45 @@ export class ArticleGenerationMdxService {
         });
 
         finalContent = textPlaceholderReplacement.content;
+
+        // グッズの節の末尾に、会場で買えるグッズの一覧を差し込む (全件。文に並べた数件の残りもここに書く)
+        const goodsList = renderGoodsList(
+          detailedExtraction.グッズ名,
+          detailedExtraction.グッズ詳細リスト,
+          goodsListConfig,
+          goodsItemImages.tags,
+          goodsRest.trailing,
+        );
+        const withGoodsList = insertIntoGoodsSection(finalContent, goodsList);
+        if (withGoodsList !== finalContent) {
+          console.log(
+            `${getStepContext('text-placeholder-replacement', 'グッズ一覧')} グッズの節に一覧を差し込んだ (${detailedExtraction.グッズ名?.length ?? 0} 件)`,
+          );
+          finalContent = withGoodsList;
+        }
+
+        // 名前の入る部分は抽出結果から組み立て、本文の LLM が書いたものと置き換える (打ち直しの誤字を防ぐ)
+        finalContent = this.renderExtractedNames(
+          finalContent,
+          detailedExtraction,
+          { itemImages: menuItemImages.tags, trailingImages: menuRest.trailing },
+          { itemImages: noveltyItemImages.tags, trailingImages: noveltyRest.trailing },
+        );
+
+        // まとめの表の「開催場所」は、LLM が書いた文ではなく会場の一覧にする (会場のデータがあるときだけ。2026-10-15 BOSS 決定)
+        const summary = loadRendered<{ venue_row_label: string } & VenueListConfig>('05-summary.yaml', [
+          'venue_row_label',
+          'venue_list_item',
+          'venue_list_separator',
+        ]);
+        const venueList = renderVenueList(storeContext.会場一覧, summary);
+        const withVenues = replaceSummaryRowValue(finalContent, summary.venue_row_label, venueList);
+        if (venueList && withVenues === finalContent) {
+          console.warn(
+            `${getStepContext('text-placeholder-replacement', '開催場所')} ⚠️ まとめの表に「${summary.venue_row_label}」の行が無いため、会場の一覧を書けなかった`,
+          );
+        }
+        finalContent = withVenues;
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
@@ -1566,8 +1650,10 @@ export class ArticleGenerationMdxService {
           workSlug,
           title: titleResult.title, // YAMLテンプレートで生成されたタイトルを使用
           categories: categories, // buildCategories() で決定論的に構築
-          excerpt: metadata.excerpt,
-          date: toIsoMsDate(rssItem.pubDate),
+          excerpt,
+          // 記事の更新では公開日 (date) を変えず、更新日時を updated に書く
+          date: update ? update.fields.date : toIsoMsDate(rssItem.pubDate),
+          updated: update ? new Date().toISOString() : undefined,
           author: 'thanks2music',
           ogImage: ogImageUrl, // R2にアップロードしたOG画像URL
           // Phase 1+ 対応: 開催都道府県（taxonomy.yaml v1.1 areas軸）
@@ -1594,6 +1680,15 @@ export class ArticleGenerationMdxService {
         prefectureSlugs: prefectureSlugs.length > 0 ? prefectureSlugs : 'なし',
       });
 
+      // 記事の更新: 会場・品目の数を更新の前後で比べる (減っていれば、--allow-shrink が無い限り PR を作らない)
+      const shrinkCheck = update
+        ? checkShrink(countArticleItems(update.article.content), countArticleItems(mdxArticle.content))
+        : undefined;
+      if (shrinkCheck) {
+        const ctx = getStepContext('github-pr-creation', '更新の前後の数');
+        for (const line of describeShrinkCheck(shrinkCheck)) console.log(`${ctx} ${line}`);
+      }
+
       // github-pr-creation step: Create GitHub PR
       let prResult: CreateMdxPrResult | undefined;
 
@@ -1609,6 +1704,36 @@ export class ArticleGenerationMdxService {
         console.log('-'.repeat(60));
         console.log(mdxArticle.content);
         console.log('-'.repeat(60));
+      } else if (update && shrinkCheck) {
+        // 記事の更新: 既存のファイルを sha 付きで上書きする PR
+        console.log(`\n${getStepDisplay('github-pr-creation')} 記事の更新の PR を作成...`);
+
+        const message = shrinkStopMessage(shrinkCheck, update.allowShrink);
+        if (message) {
+          console.error(`❌ ${message}`);
+          if (costTracker.hasUsage()) costTracker.logSummary();
+          return { success: false, error: message, mdxArticle, update: { shrinkCheck } };
+        }
+
+        prResult = await createUpdateMdxPr({
+          mdxContent: mdxArticle.content,
+          filePath: update.article.path,
+          sha: update.article.sha,
+          title: updatePrTitle(eventType, update.fields.postId),
+          body: this.generateUpdatePrBody({
+            path: update.article.path,
+            fields: update.fields,
+            updated: mdxArticle.frontmatter.updated ?? '',
+            shrinkCheck,
+            allowShrink: update.allowShrink,
+            extraction,
+            metadata: { categories, excerpt },
+          }),
+          branchName: updateBranchName(eventType, update.fields.postId, new Date()),
+          commitMessage: `♻️ Update article: ${titleResult.title}\n\nGenerated by Revolution AI Writer\nPost ID: ${update.fields.postId}`,
+        });
+
+        console.log('記事の更新の PR 作成完了:', { prNumber: prResult.prNumber, prUrl: prResult.prUrl });
       } else {
         // 通常モード: GitHub PR作成
         console.log(`\n${getStepDisplay('github-pr-creation')} GitHub PRを作成...`);
@@ -1618,7 +1743,7 @@ export class ArticleGenerationMdxService {
         const prBody = this.generatePrBody({
           rssItem,
           extraction,
-          metadata: { categories, excerpt: metadata.excerpt }, // 決定論的に構築した categories を使用
+          metadata: { categories, excerpt }, // 決定論的に構築した categories を使用
           eventRecord,
           workSlug,
           storeSlug,
@@ -1650,10 +1775,10 @@ export class ArticleGenerationMdxService {
       }
 
       // firestore-status-update step: Update Firestore status to 'generated'
-      if (skipExternalOps) {
-        // ドライラン/ローカル保存モード: ステータス更新をスキップ
-        const modeLabel = localOnly ? 'ローカル保存' : 'ドライラン';
-        const modeEmoji = localOnly ? '💾' : '🧪';
+      if (skipFirestore) {
+        // ドライラン/ローカル保存/記事の更新: ステータス更新をスキップ
+        const modeLabel = update ? '記事の更新' : localOnly ? 'ローカル保存' : 'ドライラン';
+        const modeEmoji = update ? '♻️' : localOnly ? '💾' : '🧪';
         console.log(`\n${getStepDisplay('firestore-status-update')} Firestoreステータス更新（${modeLabel}のためスキップ）...`);
         console.log(`${modeEmoji} ${modeLabel}: ステータス更新をスキップしました`);
       } else {
@@ -1671,7 +1796,7 @@ export class ArticleGenerationMdxService {
       }
 
       // 完了メッセージ
-      const completionLabel = dryRun ? 'ドライラン' : localOnly ? 'ローカル保存' : '記事生成';
+      const completionLabel = dryRun ? 'ドライラン' : localOnly ? 'ローカル保存' : update ? '記事の更新' : '記事生成';
       console.log(`========== MDXパイプライン: ${completionLabel}完了 ==========\n`);
 
       return {
@@ -1689,14 +1814,14 @@ export class ArticleGenerationMdxService {
         },
         detailedExtraction,
         contentGeneration,
-        ogImageUpload,
-        bodyImagesUpload,
+        imagesUpload,
         subpageDetection,
         categoryImages,
         categoryR2Images: uploadedCategoryR2Images,
         placeholderReplacement,
         textPlaceholderReplacement,
         visionApiResult, // vision-api step Vision API integration result
+        update: shrinkCheck ? { shrinkCheck } : undefined,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -1730,6 +1855,357 @@ export class ArticleGenerationMdxService {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
+    }
+  }
+
+  /**
+   * メニューの品目とノベルティの文を、抽出結果からコードで組み立てて差し替える (書式と文面は Templates の YAML)。
+   * 本文の LLM が名前を書き写すと誤字が混ざるため (2026-10-12、「招待状（ランダム7种）」)。
+   */
+  /**
+   * `menu` / `novelty` の `itemImages[i]` は i 番目の品目の画像 (書き出し済みの MDX)、`trailingImages` は照合できなかった画像。
+   * メニューは品目の画像が 1 枚でもあれば品目ごとの見出し、無ければ表にする
+   */
+  private renderExtractedNames(
+    content: string,
+    extraction: ExtractionResult,
+    menu: { itemImages: string[]; trailingImages: string },
+    novelty: { itemImages: string[]; trailingImages: string },
+  ): string {
+    const ctx = getStepContext('text-placeholder-replacement', '名前の差し込み');
+    let result = content;
+
+    const menuItems = menuItemsOf(extraction);
+    if (menuItems.length > 0) {
+      const rendered = loadRendered<{ item_line: string; other_images_heading: string; table: MenuTableConfig }>(
+        '02-menu.yaml',
+        ['item_line', 'other_images_heading', 'table'],
+      );
+      if (!menu.itemImages.some(Boolean)) {
+        // 品目に写真が 1 枚も付かない (縦長のメニュー表 1 枚にまとまっているなど): 画像の下に表で並べる
+        result = replaceMenuItemsWithTable(result, renderMenuTable(menuItems, rendered.table));
+      } else {
+        // 品目ごとの見出し。残しておいたプレースホルダー (品目の後ろ) の行を、照合できなかった画像に置き換える (無ければ行ごと消す)。
+        // removePlaceholderBlock は使わない: 直前の見出しを「プレースホルダーだけの見出し」とみなして、最後の品目の見出しを消すため
+        result = replaceMenuItems(result, renderMenuItems(menuItems, rendered.item_line, menu.itemImages));
+        const other = otherImagesBlock(rendered.other_images_heading, menu.trailingImages);
+        result = result.includes(PLACEHOLDERS.menu)
+          ? replacePlaceholderLine(result, PLACEHOLDERS.menu, other)
+          : appendToMenuSection(result, other);
+      }
+    }
+
+    if (!isEmptyList(extraction.ノベルティ名)) {
+      const rendered = loadRendered<{ sentence: string; item_line: string; other_images_heading: string }>(
+        '03-novelty.yaml',
+        ['sentence', 'item_line', 'other_images_heading'],
+      );
+      result = replaceNoveltySentence(
+        result,
+        fillTemplate(rendered.sentence, {
+          作品名: escapeMdxText(extraction.作品名 ?? ''),
+          ノベルティ名: extraction.ノベルティ名!.map(escapeMdxText),
+        }),
+      );
+      // 導入の文の下に、ノベルティ名ごとの見出し (照合できた画像はその下) と、照合できなかった画像を並べる
+      const blocks = renderItemHeadings(extraction.ノベルティ名!, rendered.item_line, novelty.itemImages);
+      const other = otherImagesBlock(rendered.other_images_heading, novelty.trailingImages);
+      result = appendToNoveltySection(result, [...blocks, other].filter(Boolean).join('\n\n'));
+    }
+
+    if (result !== content) {
+      console.log(`${ctx} メニュー ${menuItems.length} 品・ノベルティ ${extraction.ノベルティ名?.length ?? 0} 件を抽出結果のまま差し込んだ`);
+    }
+    return result;
+  }
+
+  /**
+   * 抜粋を書く (`excerpt-generation` step)。LLM が書けなければ (呼び出しの失敗・応答を読めない・プロンプトが無い)、
+   * リード文の最初の 1 文から作った抜粋で続ける (有料の本文生成の後で記事を止めないため)
+   */
+  private async runExcerptGeneration(request: ExcerptRequest, costTracker: CostTrackerService): Promise<string> {
+    try {
+      const result = await new ExcerptGenerationService().generate(request);
+      if (result.usage) costTracker.recordUsage('excerpt-generation', result.model, result.usage);
+      console.log(`${getStepContext('excerpt-generation')} 抜粋 (${Array.from(result.excerpt).length} 字): ${result.excerpt}`);
+      return result.excerpt;
+    } catch (error) {
+      if (error instanceof ExcerptParseError && error.usage) {
+        costTracker.recordUsage('excerpt-generation', error.model, error.usage);
+      }
+      console.warn(`${getStepContext('excerpt-generation')} ⚠️ 抜粋を LLM で書けなかったため、リード文の最初の 1 文から作る:`, error);
+      if (error instanceof ExcerptPromptMissingError) {
+        // 設定の誤り (Templates の同期漏れ)。直すまで全記事が代替の抜粋になるので、breadcrumb ではなく通知する
+        Sentry.captureException(error, { tags: { pipeline: 'mdx', step: 'excerpt-generation' } });
+      } else {
+        Sentry.addBreadcrumb({
+          category: 'excerpt-generation',
+          level: 'warning',
+          message: '抜粋の生成に失敗',
+          data: { error: error instanceof Error ? error.message : String(error) },
+        });
+      }
+      return fallbackExcerpt(request.leadMdx, request.title);
+    }
+  }
+
+  /**
+   * この記事のポイントの枠 (MDX) を作る (`article-points` step)。事実の行はコードが抽出結果から組み立て
+   * (書式は sections/01b-points.yaml)、「本イベントの特徴」は LLM が書く (pipeline/4.5-article-points.yaml)。
+   * 特徴が書けなくても記事は止めず、事実の行だけで枠を作る。枠は無くても記事が成り立つので、組み立ての途中の想定外の例外でも
+   * 記事は止めず、枠を出さない (有料の本文生成の後で記事全体を止めないため)。行が 1 つも無ければ空文字
+   */
+  private async runArticlePoints(input: ArticlePointsInput): Promise<string> {
+    try {
+      return await this.buildArticlePoints(input);
+    } catch (error) {
+      console.warn(`${getStepContext('article-points')} ⚠️ この記事のポイントを組み立てられなかったため、枠を出さない:`, error);
+      Sentry.addBreadcrumb({
+        category: 'article-points',
+        level: 'warning',
+        message: 'この記事のポイントの組み立てに失敗',
+        data: { error: error instanceof Error ? error.message : String(error) },
+      });
+      return '';
+    }
+  }
+
+  private async buildArticlePoints(input: ArticlePointsInput): Promise<string> {
+    const { extraction, storeContext } = input;
+    const pages = input.categoryImages?.pages ?? [];
+    // ノベルティの文脈 = ノベルティの下層ページと、ノベルティ名が読めた会場のページ (ノベルティの画像を選ぶのと同じ基準)
+    const noveltyVenueUrls = venueUrlsWithNovelties(input.subpageFacts);
+    const noveltyPageTexts = pages
+      .filter((page) => page.kind === 'novelty' || (page.kind === 'venue' && noveltyVenueUrls.has(pageUrlKey(page.url))))
+      .map((page) => page.text);
+    // 期間はまとめの表・frontmatter と同じ値 (全会場の和集合。event_data が無ければ抽出結果の開催期間)
+    const { event_start_date: start, event_end_date: end } = extractEventFactCardFields({
+      eventDataOccurrences: input.occurrences,
+      extractionPeriod: extraction.開催期間,
+    });
+    const factLines = buildFactLines(
+      {
+        period: { start, end },
+        // 会場の一覧が無ければ (event_data が無い記事)、本文と同じ会場の表記を 1 つだけ使う
+        venues: storeContext.会場一覧.length > 0 ? storeContext.会場一覧 : [input.会場表現].filter(Boolean),
+        cities: storeContext.都市一覧,
+        redrawnWord: input.ページの描き下ろし表記,
+        goodsRedrawnWord: input.グッズの描き下ろし表記,
+        goodsNames: extraction.グッズ名,
+        goodsDetails: extraction.グッズ詳細リスト,
+        menuCount: menuItemsOf(extraction).length,
+        noveltyNames: extraction.ノベルティ名,
+        noveltyRedrawn: noveltyContextMentionsRedrawn(extraction.ノベルティ名, noveltyPageTexts),
+      },
+      input.pointsFormat,
+    );
+
+    const featureLines = await this.generateFeatures(input, factLines, pages);
+    console.log(`${getStepContext('article-points')} 事実の行 ${factLines.length} 件・特徴 ${featureLines.length} 件`, {
+      facts: factLines,
+      features: featureLines,
+    });
+    return renderArticlePoints([...factLines, ...featureLines]);
+  }
+
+  /** 「本イベントの特徴」(整えて MDX として安全にした行)。失敗したら空 (記事は止めない) */
+  private async generateFeatures(
+    input: ArticlePointsInput,
+    factLines: string[],
+    pages: SubpageText[],
+  ): Promise<string[]> {
+    try {
+      const points = await new ArticlePointsGenerationService().generate({
+        作品名: input.extraction.作品名,
+        factLines,
+        extraction: input.extraction,
+        // 予算を超えると後ろのページから切り詰められる。pages は下層ページ (メニュー・ノベルティ・グッズ) → 会場の案内ページの順
+        // (category-image-extractor が作る順)。その前にトップを置く
+        pages: [
+          ...(input.officialHtml && input.primaryOfficialUrl
+            ? [{ url: input.primaryOfficialUrl, kind: 'top' as const, text: input.officialHtml }]
+            : []),
+          ...pages,
+        ],
+      });
+      if (points.usage) input.costTracker.recordUsage('article-points', points.model, points.usage);
+      return cleanFeatures(points.features);
+    } catch (pointsError) {
+      // 応答は返ったが読めなかったときも、使ったトークンのコストは記録する
+      if (pointsError instanceof ArticlePointsParseError && pointsError.usage) {
+        input.costTracker.recordUsage('article-points', pointsError.model, pointsError.usage);
+      }
+      // 特徴が無くても記事は成り立つ (事実の行は出る)。記事を止めるほどではないので breadcrumb に留める
+      console.warn(`${getStepContext('article-points')} ⚠️ 本イベントの特徴を書けなかったため、事実の行だけを出す:`, pointsError);
+      Sentry.addBreadcrumb({
+        category: 'article-points',
+        level: 'warning',
+        message: '本イベントの特徴の生成に失敗',
+        data: { error: pointsError instanceof Error ? pointsError.message : String(pointsError) },
+      });
+      return [];
+    }
+  }
+
+  /**
+   * subpage-extraction step。下層ページの抽出に失敗しても記事は止めない (トップページの抽出のまま続ける)。
+   */
+  private async runSubpageExtraction(
+    extraction: ExtractionResult,
+    categoryImages: CategoryImages,
+    costTracker: CostTrackerService,
+  ): Promise<{ extraction: ExtractionResult; pages: SubpageFacts[] }> {
+    const ctx = getStepContext('subpage-extraction');
+    console.log(
+      `${ctx} 読むページ:`,
+      categoryImages.pages.map((page) => `${page.kind} ${page.url} (${page.text.length.toLocaleString()} 字)`),
+    );
+    try {
+      const result = await new SubpageExtractionService().extract({
+        作品名: extraction.作品名,
+        pages: categoryImages.pages,
+      });
+      if (!result) return { extraction, pages: [] };
+      if (result.usage) costTracker.recordUsage('subpage-extraction', result.model, result.usage);
+      console.log(
+        `${ctx} ページごとの結果:`,
+        result.pages.map((page) => ({
+          url: page.url,
+          area: page.area,
+          メニュー: page.メニュー詳細リスト?.length ?? 0,
+          グッズ: page.グッズ詳細リスト?.length ?? 0,
+          ノベルティ: page.ノベルティ名,
+          キャラクター: page.キャラクター名?.length ?? 0,
+        })),
+      );
+      const merged = mergeSubpagesIntoExtraction(extraction, result.pages);
+      console.log(`${ctx} ${merged.changes.length > 0 ? '✅ 抽出結果を補った:' : '補う項目なし'}`, merged.changes);
+      return { extraction: merged.extraction, pages: result.pages };
+    } catch (error) {
+      console.error(`${ctx} ❌ 下層ページの抽出に失敗 (トップページの抽出のまま続行):`, error);
+      return { extraction, pages: [] };
+    }
+  }
+
+  /**
+   * vision-api step。HTML から書けなかった項目のカテゴリの画像だけを Vision で読み、
+   * 確信度がレベル A のときだけ抽出結果を埋める (Vision の失敗は記事を止めない)。
+   */
+  private async runVisionStep(
+    extraction: ExtractionResult,
+    categoryImages: CategoryImages | undefined,
+    officialHtml: string | undefined,
+    costTracker: CostTrackerService,
+  ): Promise<{ extraction: ExtractionResult; result: VisionStepResult }> {
+    const ctx = getStepContext('vision-api');
+    const targets = determineVisionTargets(extraction);
+    const result: VisionStepResult = { called: false, merged: false, targets };
+    const unchanged = { extraction, result };
+
+    // 読むカテゴリのうち、画像があるもの (無いカテゴリは orchestrator が "no images" で飛ばす)
+    const withImages = targets.categories.filter((category) => (categoryImages?.[category].length ?? 0) > 0);
+    console.log(`${ctx} HTML で書けない項目:`, {
+      missingFields: targets.missingFields,
+      categories: targets.categories,
+      withImages,
+    });
+
+    if (targets.categories.length === 0) {
+      console.log(`${ctx} ✅ HTML で 4 項目とも書ける → Vision API をスキップ`);
+      return unchanged;
+    }
+    if (!categoryImages || withImages.length === 0) {
+      console.warn(`${ctx} ⚠️ 読むカテゴリに画像なし、Vision API をスキップ`);
+      return unchanged;
+    }
+
+    result.called = true;
+    try {
+      const visionService = VisionApiServiceFactory.create();
+      const visionTemplate = await new YamlTemplateLoaderService().loadVisionApiTemplate('collabo-cafe');
+
+      console.log(`${ctx} Vision API 並列呼び出し開始 (${withImages.join('/')})...`);
+      const { result: visionExtraction, perCategory } = await callVisionApiForAllCategories(
+        visionService,
+        visionTemplate,
+        { menu: categoryImages.menu, goods: categoryImages.goods, novelty: categoryImages.novelty },
+        { maxRetries: 3, timeout: VISION_TIMEOUT_MS, categories: targets.categories },
+      );
+
+      console.log(`${ctx} 並列呼び出し完了:`, {
+        confidence: visionExtraction.visionExtraction.confidence,
+        menuItems: visionExtraction.visionExtraction.menuItems.length,
+        goodsItems: visionExtraction.visionExtraction.goodsItems.length,
+        noveltyItems: visionExtraction.visionExtraction.noveltyItems.length,
+        perCategory,
+      });
+
+      // Cost tracking — record under one aggregate key (`vision-api`).
+      // `metadata.tokensUsed` is the sum across successful calls and is optional.
+      const modelName = visionService.getModelName();
+      const actualUsage = visionExtraction.visionExtraction.metadata?.tokensUsed;
+      if (actualUsage) {
+        const costResult = costTracker.recordUsage('vision-api', modelName, actualUsage);
+        console.log(`${ctx} Vision API コスト追跡:`, {
+          provider: visionService.getProviderName(),
+          model: modelName,
+          promptTokens: actualUsage.promptTokens,
+          completionTokens: actualUsage.completionTokens,
+          totalTokens: actualUsage.totalTokens,
+          ...(actualUsage.cacheCreationTokens ? { cacheCreationTokens: actualUsage.cacheCreationTokens } : {}),
+          ...(actualUsage.cachedTokens ? { cachedTokens: actualUsage.cachedTokens } : {}),
+          cost: `$${costResult.usd.toFixed(6)} (¥${costResult.jpy.toFixed(2)})`,
+        });
+      } else {
+        console.log(`${ctx} Vision API コスト追跡: tokensUsed 不在のためスキップ (全 call が usage を返さず)`);
+      }
+
+      // 「Coming Soon」の画像から品目を作ったカテゴリは、そのカテゴリの結果だけを捨てた
+      // (callVisionApiForAllCategories)。記事は続け、他のカテゴリの結果は使う
+      const discarded = Object.entries(perCategory).filter(([, status]) => status.discarded);
+      result.hallucinationDetected = discarded.length > 0;
+      if (discarded.length > 0) {
+        console.warn(`${ctx} 🚨 Hallucination 検出、そのカテゴリの結果は使わない:`, Object.fromEntries(discarded));
+      }
+
+      // 業務ルールの減点を、レベルを決める前にかける
+      const businessValidation = validateBusinessRules(visionExtraction);
+      if (businessValidation.issues.length > 0) {
+        console.warn(`${ctx} ⚠️ Business rules 違反、信頼度を調整:`, {
+          issues: businessValidation.issues,
+          original: visionExtraction.visionExtraction.confidence,
+          adjusted: businessValidation.adjustedConfidence,
+        });
+      }
+      const adjusted: VisionExtractionResult = {
+        ...visionExtraction,
+        visionExtraction: { ...visionExtraction.visionExtraction, confidence: businessValidation.adjustedConfidence },
+      };
+      result.visionExtraction = adjusted;
+      result.fallbackLevel = selectFallbackLevel(adjusted);
+
+      if (result.fallbackLevel !== 'A') {
+        console.log(`${ctx} Fallback レベル ${result.fallbackLevel} → Vision の結果は使わない (A のときだけ使う)`);
+        return { extraction, result };
+      }
+
+      // トップページは本文ブロック (`officialHtml`)、下層ページは画像の抽出で調べた結果を使う
+      const hasRedrawnIllustrations =
+        mentionsRedrawnIllustration(officialHtml) || categoryImages.mentionsRedrawnIllustration;
+      const merged = mergeVisionIntoExtraction(extraction, adjusted.visionExtraction, { hasRedrawnIllustrations });
+      if (merged.changes.length === 0) {
+        console.log(`${ctx} Fallback レベル A だが、埋める欄が無い`);
+        return { extraction, result };
+      }
+
+      result.merged = true;
+      result.mergeChanges = merged.changes;
+      console.log(`${ctx} ✅ Fallback レベル A → 抽出結果を埋めた:`, { hasRedrawnIllustrations, changes: merged.changes });
+      return { extraction: merged.extraction, result };
+    } catch (visionError) {
+      console.error(`${ctx} ❌ Vision API 呼び出し失敗:`, visionError);
+      console.log(`${ctx} HTML抽出結果のみで記事生成を続行`);
+      return { extraction, result };
     }
   }
 
@@ -1785,6 +2261,55 @@ export class ArticleGenerationMdxService {
   }
 
   /**
+   * 記事の更新の PR の説明文
+   */
+  private generateUpdatePrBody(params: {
+    path: string;
+    fields: ExistingArticleFields;
+    updated: string;
+    shrinkCheck: ShrinkCheck;
+    allowShrink: boolean;
+    extraction: { workTitle: string; storeName: string; eventTypeName: string };
+    metadata: { categories: string[]; excerpt: string };
+  }): string {
+    const { path, fields, updated, shrinkCheck, allowShrink, extraction, metadata } = params;
+    const counts = describeShrinkCheck(shrinkCheck).map((line) => `- ${line}`).join('\n');
+
+    return `## ♻️ 記事の更新
+
+公開中の記事を、同じ公式サイトから作り直しました (URL・タイトル・公開日は変えていません)。
+
+- **ファイル:** \`${path}\`
+- **Post ID:** \`${fields.postId}\`
+- **タイトル:** ${fields.title}
+- **公開日 (date):** ${fields.date} (変えていない)
+- **更新日時 (updated):** ${updated}
+
+## 🔢 会場・品目の数 (更新前 → 更新後)
+
+${counts}
+${shrinkCheck.shrunk && allowShrink ? '\n⚠️ 減った項目がありますが、`--allow-shrink` で PR を作りました。\n' : ''}
+## 🎯 抽出情報
+
+- **作品名:** ${extraction.workTitle}
+- **店舗名:** ${extraction.storeName}
+- **イベント種別:** ${extraction.eventTypeName}
+- **カテゴリ:** ${metadata.categories.join(', ')}
+- **抜粋:** ${metadata.excerpt}
+
+## ✅ チェックリスト
+
+- [ ] 差分で、記事の内容が正確か確認
+- [ ] 公開後に手で直した箇所が消えていないか確認 (消えていれば、このブランチで戻す)
+- [ ] 画像が適切か確認
+
+---
+
+🤖 このPRは [AI Writer](https://github.com/thanks2music/revolution/tree/main/apps/ai-writer) によって自動生成されました。
+`;
+  }
+
+  /**
    * 記事末尾ナビゲーションプレースホルダーを削除
    *
    * @param content MDXコンテンツ
@@ -1818,91 +2343,6 @@ export class ArticleGenerationMdxService {
     result = result.replace(/\n{3,}/g, '\n\n');
 
     return result;
-  }
-
-  /**
-   * HTML充足性を計算
-   *
-   * @param extraction AI拡張された抽出結果
-   * @returns HTML抽出データ（menuItemCount, priceCount, htmlSufficiencyRate）
-   *
-   * @description
-   * ExtractionResultから利用可能なデータポイントをカウントし、
-   * HTML充足性を推定します。実際のHTML解析ではなく、
-   * AI抽出結果に含まれるデータの充実度を評価します。
-   *
-   * 評価基準:
-   * - キャラクター名の有無とカウント
-   * - メニュー種類数の有無
-   * - グッズ名の有無とカウント
-   * - ノベルティ名の有無
-   *
-   * 充足率計算:
-   * - 期待データポイント数: 10
-   *   - キャラクター名配列 (最大3ポイント)
-   *   - メニュー種類数 (1ポイント)
-   *   - グッズ名配列 (最大3ポイント)
-   *   - ノベルティ名 (1ポイント)
-   *   - テーマ名 (1ポイント)
-   *   - 開催回数 (1ポイント)
-   * - 実際のポイント数 / 期待ポイント数 = 充足率
-   *
-   * @private
-   */
-  private calculateHtmlSufficiency(extraction: ExtractionResult): HtmlExtractionData {
-    // メニューアイテム数（キャラクター名を代用）
-    const characterNames = extraction.キャラクター名 || [];
-    const menuItemCount = characterNames.length;
-
-    // 価格カウント（メニュー種類数から推定）
-    let priceCount = 0;
-    if (extraction.メニュー種類数) {
-      // "計10種" → 10 を抽出
-      const match = extraction.メニュー種類数.match(/\d+/);
-      if (match) {
-        priceCount = parseInt(match[0], 10);
-      }
-    }
-
-    // データポイントカウント（充足率計算用）
-    let actualPoints = 0;
-    const expectedPoints = 10;
-
-    // キャラクター名（最大3ポイント）
-    actualPoints += Math.min(characterNames.length, 3);
-
-    // メニュー種類数（1ポイント）
-    if (extraction.メニュー種類数) {
-      actualPoints += 1;
-    }
-
-    // グッズ名（最大3ポイント）
-    const goodsNames = extraction.グッズ名 || [];
-    actualPoints += Math.min(goodsNames.length, 3);
-
-    // ノベルティ名（1ポイント）
-    if (extraction.ノベルティ名) {
-      actualPoints += 1;
-    }
-
-    // テーマ名（1ポイント）
-    if (extraction.テーマ名) {
-      actualPoints += 1;
-    }
-
-    // 開催回数（1ポイント）
-    if (extraction.開催回数) {
-      actualPoints += 1;
-    }
-
-    // 充足率計算
-    const htmlSufficiencyRate = actualPoints / expectedPoints;
-
-    return {
-      menuItemCount,
-      priceCount,
-      htmlSufficiencyRate,
-    };
   }
 
   /**

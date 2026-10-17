@@ -3,6 +3,7 @@ import { ImageResponse } from 'next/og';
 import articleIndex from '@/lib/mdx/article-index.json';
 import type { ArticlePageParams } from '@/types/page-props';
 import { siteConfig } from '@/lib/metadata';
+import { formatJstDate } from '@/lib/date';
 
 // Image metadata
 export const alt = 'Article OG Image';
@@ -60,11 +61,7 @@ export default async function Image({
   }
 
   // Format date
-  const formattedDate = new Date(article.date).toLocaleDateString('ja-JP', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const formattedDate = formatJstDate(article.date);
 
   // Truncate title if too long
   const displayTitle =

@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { MDXRemote, MDXRemoteProps } from 'next-mdx-remote/rsc';
 import remarkGfm from 'remark-gfm';
+import { ArticleImage } from '@/components/molecules/ArticleImage';
+import { ArticlePoints } from '@/components/molecules/ArticlePoints';
 
 /**
  * カスタムリンクコンポーネント
@@ -23,34 +24,6 @@ function CustomLink(props: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
   }
 
   return <a target="_blank" rel="noopener noreferrer" {...props} />;
-}
-
-/**
- * カスタム画像コンポーネント
- * Next.js Imageを使用して最適化
- */
-function CustomImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
-  if (!props.src) {
-    return null;
-  }
-
-  // 外部画像の場合はfillモードを使用
-  if (typeof props.src === 'string' && props.src.startsWith('http')) {
-    return (
-      <span className="relative block w-full" style={{ minHeight: '400px' }}>
-        <Image
-          src={props.src}
-          alt={props.alt || ''}
-          fill
-          className="object-contain"
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        />
-      </span>
-    );
-  }
-
-  // ローカル画像の場合は通常のimgタグ
-  return <img {...props} alt={props.alt || ''} />;
 }
 
 /**
@@ -91,7 +64,11 @@ function Pre({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) {
  */
 const components = {
   a: CustomLink,
-  img: CustomImage,
+  // 画像: Markdown の `![alt](src)` は img、AI Writer が寸法を書く画像は `<ArticleImage>`。
+  // MDX の components は JSX で直接書いた小文字の `<img>` には効かないため、寸法付きの画像は大文字の部品で書く
+  img: ArticleImage,
+  ArticleImage,
+  ArticlePoints,
   code: Code,
   pre: Pre,
   // 見出し
@@ -129,26 +106,12 @@ const components = {
   hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
     <hr className="my-8 border-gray-300 dark:border-gray-700" {...props} />
   ),
-  // テーブル
+  // テーブル: 見た目と横スクロールの枠 (article-table-scroll) は styles/globals.css の .article-content
+  // (AI Writer が HTML で書く表も同じ枠を自分で付ける。見た目を揃えるため)
   table: (props: React.TableHTMLAttributes<HTMLTableElement>) => (
-    <div className="my-4 overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" {...props} />
+    <div className="article-table-scroll">
+      <table {...props} />
     </div>
-  ),
-  thead: (props: React.HTMLAttributes<HTMLTableSectionElement>) => (
-    <thead className="bg-gray-50 dark:bg-gray-800" {...props} />
-  ),
-  tbody: (props: React.HTMLAttributes<HTMLTableSectionElement>) => (
-    <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700" {...props} />
-  ),
-  tr: (props: React.HTMLAttributes<HTMLTableRowElement>) => (
-    <tr {...props} />
-  ),
-  th: (props: React.ThHTMLAttributes<HTMLTableCellElement>) => (
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" {...props} />
-  ),
-  td: (props: React.TdHTMLAttributes<HTMLTableCellElement>) => (
-    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100" {...props} />
   ),
 };
 
@@ -161,6 +124,7 @@ const components = {
  *   だったにもかかわらず plugin が未配線で、AI Writer が出力する「まとめテーブル」
  *   (| 項目 | 内容 | 形式) が 1 行のパイプ文字列としてそのまま表示されていた。
  *   GFM は表のほかに打ち消し線・タスクリスト・自動リンクも有効にする。
+ *   (2026-10-15: 表の見た目は components から styles/globals.css の .article-content へ移した)
  */
 export function CustomMDX(props: MDXRemoteProps) {
   return (

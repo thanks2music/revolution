@@ -4,23 +4,24 @@
  *
  * - Category-attached: only each category's own array is adopted.
  *   Cross-category leakage from an LLM is logged and discarded.
- * - Confidence: item-count-weighted across all successful calls.
+ * - Confidence: 採用した品目 (各カテゴリ自身の配列) の confidence の平均。値の無い品目は
+ *   除き、品目が 0 なら 0 (`averageItemConfidence`。1 回の呼び出しの確信度と同じ規則)。
  * - Metadata: `tokensUsed` summed (only when at least one call reports it),
  *   `hasComingSoonNotice` OR-combined, `totalImagesAnalyzed` summed.
- * - `provider` / `timestamp`: from the first non-undefined call in
- *   menu → goods → novelty order.
+ * - `provider`: 呼び出し側が渡す (全カテゴリが失敗しても実際の provider を書く)。
+ * - `timestamp`: from the first non-undefined call in menu → goods → novelty order.
  */
 import type {
   VisionExtractionCategory,
   VisionExtractionResult,
+  VisionProvider,
 } from '@/lib/types/vision-api';
 import { VISION_CATEGORIES } from './category-prompt-resolver';
+import { averageItemConfidence } from './normalize-vision-response';
 
 export type CategoryResults = Partial<
   Record<VisionExtractionCategory, VisionExtractionResult>
 >;
-
-const FALLBACK_CONFIDENCE = 0.5;
 
 const ITEMS_FIELD = {
   menu: 'menuItems',
@@ -28,7 +29,10 @@ const ITEMS_FIELD = {
   novelty: 'noveltyItems',
 } as const satisfies Record<VisionExtractionCategory, keyof VisionExtractionResult['visionExtraction']>;
 
-export function mergeVisionResults(results: CategoryResults): VisionExtractionResult {
+export function mergeVisionResults(
+  results: CategoryResults,
+  provider: VisionProvider,
+): VisionExtractionResult {
   const menuItems = results.menu?.visionExtraction.menuItems ?? [];
   const goodsItems = results.goods?.visionExtraction.goodsItems ?? [];
   const noveltyItems = results.novelty?.visionExtraction.noveltyItems ?? [];
@@ -39,7 +43,7 @@ export function mergeVisionResults(results: CategoryResults): VisionExtractionRe
     .map((c) => results[c])
     .filter((r): r is VisionExtractionResult => r !== undefined);
 
-  const confidence = computeWeightedConfidence(results);
+  const confidence = averageItemConfidence([...menuItems, ...goodsItems, ...noveltyItems]);
 
   const metadata = mergeMetadata(allCalls);
 
@@ -47,7 +51,7 @@ export function mergeVisionResults(results: CategoryResults): VisionExtractionRe
   return {
     visionExtraction: {
       confidence,
-      provider: first?.visionExtraction.provider ?? 'openai',
+      provider,
       timestamp: first?.visionExtraction.timestamp ?? new Date().toISOString(),
       menuItems,
       goodsItems,
@@ -55,34 +59,6 @@ export function mergeVisionResults(results: CategoryResults): VisionExtractionRe
       metadata,
     },
   };
-}
-
-function computeWeightedConfidence(results: CategoryResults): number {
-  // Weight each call's confidence by the count of items it contributed in
-  // its OWN category only — leaked cross-category items are discarded by
-  // the merger (`warnOnCrossCategoryLeakage`) so weighting by them would
-  // skew the merged confidence in proportion to noise that never reaches
-  // the consumer.
-  let totalItems = 0;
-  let weighted = 0;
-  let firstResult: VisionExtractionResult | undefined;
-  for (const cat of VISION_CATEGORIES) {
-    const r = results[cat];
-    if (!r) continue;
-    if (!firstResult) firstResult = r;
-    const ownItems = (r.visionExtraction[ITEMS_FIELD[cat]] as unknown[]).length;
-    totalItems += ownItems;
-    weighted += r.visionExtraction.confidence * ownItems;
-  }
-  if (!firstResult) {
-    return FALLBACK_CONFIDENCE;
-  }
-  if (totalItems === 0) {
-    // Fall back to the first call's own confidence so that a uniformly
-    // low-quality extraction is not masked by FALLBACK_CONFIDENCE (0.5).
-    return firstResult.visionExtraction.confidence ?? FALLBACK_CONFIDENCE;
-  }
-  return weighted / totalItems;
 }
 
 function mergeMetadata(

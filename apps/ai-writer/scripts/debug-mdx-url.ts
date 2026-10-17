@@ -12,6 +12,8 @@
  *   pnpm debug:mdx --dry-run --log https://animeanime.jp/article/2025/11/24/94010.html
  *   pnpm debug:mdx --local https://animeanime.jp/article/2025/11/24/94010.html
  *   pnpm debug:mdx --upload-images https://animeanime.jp/article/2025/11/24/94010.html
+ *   pnpm debug:mdx --update 01m4s065g1hchh9d --dry-run
+ *   pnpm debug:mdx --update 01m4s065g1hchh9d
  *
  * オプション:
  *   --dry-run        Firestore登録、GitHub PR作成、画像アップロードをすべてスキップ（AI処理のみ実行）
@@ -22,9 +24,15 @@
  *                    保存先: apps/ai-writer/content/{eventType}/{workSlug}/{postId}.mdx
  *   --upload-images  画像をR2にアップロードしつつローカル保存（--local + R2アップロード）
  *                    Firestore登録とGitHub PR作成はスキップ
+ *   --update <post_id>
+ *                    公開中の記事を、同じ post_id・URL のまま作り直す。main の記事を読み、その official_url から作り直して、
+ *                    既存のファイルを上書きする PR を作る (タイトル・公開日・年は引き継ぎ、updated を書く。Firestore には触れない)。
+ *                    URL は指定しない。--dry-run と併用すると PR を作らず、既存の記事との差分を表示する。
+ *                    作品の slug が変わったとき、公式サイトを取得できないとき、会場・品目が減ったときは止まる
+ *   --allow-shrink   --update で会場・品目が減っても PR を作る
  *
  * 前提条件:
- *   - .env.local に GITHUB_PAT を設定（--dry-run/--local/--upload-images時は不要）
+ *   - .env.local に GITHUB_PAT を設定（--dry-run/--local/--upload-images時は不要。--update は --dry-run でも必要 (main の記事を読む)）
  *   - .env.local に AI_PROVIDER に応じたキーを設定 (Claude は ant auth login のプロファイルでキー不要)
  *   - .env.local に R2_* 環境変数を設定（--upload-images時に必要）
  *   - Firebase Admin SDK の認証情報を設定（--dry-run/--local/--upload-images時は不要）
@@ -33,8 +41,10 @@
 import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, relative, resolve } from 'path';
-import { mkdir, writeFile, readdir } from 'fs/promises';
+import { mkdir, writeFile, readdir, mkdtemp } from 'fs/promises';
 import { existsSync, createWriteStream, type WriteStream } from 'fs';
+import { tmpdir } from 'os';
+import { spawnSync } from 'child_process';
 
 // ES Module で __dirname を取得
 const __filename = fileURLToPath(import.meta.url);
@@ -58,7 +68,12 @@ import {
 
 // MDX生成サービス
 import { ArticleGenerationMdxService } from '../lib/services/article-generation-mdx.service';
-import type { MdxGenerationRequest } from '../lib/services/article-generation-mdx.service';
+import type { MdxGenerationRequest, ArticleUpdateTarget } from '../lib/services/article-generation-mdx.service';
+
+// 公開中の記事の更新 (--update)
+import { fetchArticleFromMain } from '../lib/github/update-mdx-pr';
+import { GitHubAuthError } from '../lib/errors/github';
+import { readExistingArticleFields } from '../lib/mdx/article-update';
 
 // Slack 通知 (SLACK_BOT_TOKEN / SLACK_CHANNEL_ID が無ければ何もしない)
 import {
@@ -71,15 +86,32 @@ import {
 /**
  * コマンドライン引数をパース
  */
-function parseArgs(): { url: string; dryRun: boolean; local: boolean; uploadImages: boolean; log: boolean } {
+interface CliArgs {
+  url: string;
+  dryRun: boolean;
+  local: boolean;
+  uploadImages: boolean;
+  log: boolean;
+  /** --update の post_id */
+  update?: string;
+  allowShrink: boolean;
+  /** 引数の組み合わせの誤り */
+  argError?: string;
+}
+
+function parseArgs(): CliArgs {
   const args = process.argv.slice(2);
   let dryRun = false;
   let local = false;
   let uploadImages = false;
   let log = false;
   let url = '';
+  let update: string | undefined;
+  let allowShrink = false;
+  let argError: string | undefined;
 
-  for (const arg of args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
     if (arg === '--dry-run') {
       dryRun = true;
     } else if (arg === '--local') {
@@ -88,9 +120,26 @@ function parseArgs(): { url: string; dryRun: boolean; local: boolean; uploadImag
       uploadImages = true;
     } else if (arg === '--log') {
       log = true;
+    } else if (arg === '--update') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('-')) {
+        argError = '--update には post_id を指定してください (例: --update 01m4s065g1hchh9d)';
+      } else {
+        update = value;
+        i++;
+      }
+    } else if (arg === '--allow-shrink') {
+      allowShrink = true;
     } else if (!arg.startsWith('-')) {
       url = arg;
     }
+  }
+
+  if (update !== undefined) {
+    if (url) argError = '--update では URL を指定しません (既存の記事の official_url から作り直します)';
+    else if (local || uploadImages) argError = '--update は --local / --upload-images と併用できません';
+  } else if (allowShrink && !argError) {
+    argError = '--allow-shrink は --update と一緒に使います';
   }
 
   // --local は --dry-run を自動的に有効化（Firestore/GitHub操作をスキップ、画像アップロードもスキップ）
@@ -105,7 +154,30 @@ function parseArgs(): { url: string; dryRun: boolean; local: boolean; uploadImag
     dryRun = false; // dryRunをfalseにしてR2アップロードを有効化
   }
 
-  return { url, dryRun, local, uploadImages, log };
+  return { url, dryRun, local, uploadImages, log, update, allowShrink, argError };
+}
+
+/**
+ * 更新前と更新後の記事の差分を表示する (git diff --no-index)。2 つのファイルは一時フォルダに残す
+ */
+async function printArticleDiff(before: string, after: string, postId: string): Promise<void> {
+  const dir = await mkdtemp(resolve(tmpdir(), `ai-writer-update-${postId}-`));
+  const beforePath = resolve(dir, 'before.mdx');
+  const afterPath = resolve(dir, 'after.mdx');
+  await writeFile(beforePath, before, 'utf-8');
+  await writeFile(afterPath, after, 'utf-8');
+
+  console.log('\n📑 既存の記事との差分 (main → 作り直した記事):');
+  console.log('-'.repeat(60));
+  const diff = spawnSync('git', ['diff', '--no-index', '--no-color', beforePath, afterPath], { encoding: 'utf-8' });
+  if (diff.error) {
+    console.warn(`差分を表示できませんでした (git が見つからない?): ${diff.error.message}`);
+  } else {
+    console.log(diff.stdout || '(差分なし)');
+  }
+  console.log('-'.repeat(60));
+  console.log(`  更新前: ${beforePath}`);
+  console.log(`  更新後: ${afterPath}`);
 }
 
 /**
@@ -225,7 +297,40 @@ function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
  */
 async function main() {
   // コマンドライン引数をパース
-  const { url, dryRun, local, uploadImages, log } = parseArgs();
+  const parsed = parseArgs();
+  const { dryRun, local, uploadImages, log, allowShrink } = parsed;
+
+  if (parsed.argError) {
+    console.error(`\n❌ エラー: ${parsed.argError}\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // --update: main の記事を読み、その official_url から作り直す
+  let updateTarget: ArticleUpdateTarget | undefined;
+  if (parsed.update) {
+    try {
+      console.log(`♻️ main の記事を読んでいます: post_id ${parsed.update}`);
+      const article = await fetchArticleFromMain(parsed.update);
+      const fields = readExistingArticleFields(article.content);
+      if (fields.postId !== parsed.update) {
+        throw new Error(`${article.path} の post_id が ${fields.postId} です (指定は ${parsed.update})`);
+      }
+      updateTarget = { article, fields, allowShrink };
+      console.log(`✅ ${article.path} (タイトル: ${fields.title})`);
+      console.log(`✅ 作り直しに使う公式サイト: ${fields.officialUrl}\n`);
+    } catch (error) {
+      console.error('\n❌ 更新する記事を読めませんでした:', error instanceof Error ? error.message : error);
+      if (error instanceof GitHubAuthError) {
+        console.error('  GITHUB_PAT が要ります (--dry-run でも main の記事を読むため)。例: GITHUB_PAT="$(gh auth token)" pnpm debug:mdx --update <post_id> --dry-run');
+      }
+      process.exitCode = 1;
+      return;
+    }
+  }
+  const url = updateTarget ? updateTarget.fields.officialUrl : parsed.url;
+  /** 本実行の案内に出すコマンドの引数 */
+  const rerunArgs = updateTarget ? `--update ${updateTarget.fields.postId}` : url;
 
   if (!url) {
     console.error('\n❌ エラー: URLが指定されていません\n');
@@ -245,13 +350,17 @@ async function main() {
     console.log('  --local          ローカル環境にMDXファイルを保存（--dry-runを自動有効化）');
     console.log('                   保存先: apps/ai-writer/content/{eventType}/{workSlug}/{postId}.mdx');
     console.log('  --upload-images  画像をR2にアップロードしつつローカル保存');
-    console.log('                   Firestore登録とGitHub PR作成はスキップ\n');
+    console.log('                   Firestore登録とGitHub PR作成はスキップ');
+    console.log('  --update <post_id>  公開中の記事を同じ post_id・URL のまま作り直し、上書きする PR を作る (URL は指定しない)');
+    console.log('                   --dry-run と併用すると PR を作らず、既存の記事との差分を表示する');
+    console.log('  --allow-shrink   --update で会場・品目が減っても PR を作る\n');
     console.log('例:');
     console.log('  pnpm debug:mdx https://animeanime.jp/article/2025/11/24/94010.html');
     console.log('  pnpm debug:mdx --dry-run https://animeanime.jp/article/2025/11/24/94010.html');
     console.log('  pnpm debug:mdx --dry-run --log https://animeanime.jp/article/2025/11/24/94010.html');
     console.log('  pnpm debug:mdx --local https://animeanime.jp/article/2025/11/24/94010.html');
-    console.log('  pnpm debug:mdx --upload-images https://animeanime.jp/article/2025/11/24/94010.html\n');
+    console.log('  pnpm debug:mdx --upload-images https://animeanime.jp/article/2025/11/24/94010.html');
+    console.log('  pnpm debug:mdx --update 01m4s065g1hchh9d --dry-run\n');
     process.exitCode = 1;
     return;
   }
@@ -302,11 +411,16 @@ async function main() {
     console.log('💾 ローカル保存モード（Firestore/GitHub/R2 すべてスキップ + ファイル保存）');
   } else if (dryRun) {
     console.log('🧪 ドライランモード（Firestore/GitHub/R2 すべてスキップ）');
+  } else if (updateTarget) {
+    console.log('♻️ 記事の更新モード（既存のファイルを上書きする PR を作成）');
   } else {
     console.log('URL指定デバッグモード');
   }
   console.log('='.repeat(80));
   console.log(`URL: ${url}`);
+  if (updateTarget) {
+    console.log(`更新する記事: ${updateTarget.article.path}${dryRun ? ' (--dry-run のため PR は作らない)' : ''}`);
+  }
   if (uploadImages) {
     console.log('モード: --upload-images（R2に画像をアップロード + ローカルにMDXファイルを保存）');
   } else if (local) {
@@ -370,6 +484,7 @@ async function main() {
       dryRun, // ドライランモードをサービスに渡す
       // --upload-images モード: localOnly=true を渡すことで、Firestore/GitHub はスキップしつつ R2 アップロードを実行
       localOnly: uploadImages,
+      update: updateTarget,
     };
 
     const result = await service.generateMdxFromRSS(request);
@@ -383,9 +498,22 @@ async function main() {
     console.log('📊 生成結果');
     console.log('='.repeat(80));
 
+    // 記事の更新の dry-run: 既存の記事との差分 (会場・品目の数はパイプラインのログに出ている)
+    if (dryRun && updateTarget && result.update && result.mdxArticle) {
+      await printArticleDiff(updateTarget.article.content, result.mdxArticle.content, updateTarget.fields.postId);
+      if (result.update.shrinkCheck.shrunk && !allowShrink) {
+        console.log('\n⚠️  減った項目があります。本実行では PR を作らずに止まります (続けるには --allow-shrink)');
+      }
+    }
+
     if (result.skipped) {
       console.log('\n⚠️  記事生成をスキップしました');
       console.log(`理由: ${result.skipReason}`);
+      // 記事の更新では、スキップ = 更新できなかった (公式サイトを取得できないなど)。通知も失敗として送る
+      if (updateTarget) {
+        process.exitCode = 1;
+        notification = { ...notifyContext, outcome: 'failure', error: `記事を更新できませんでした: ${result.skipReason}` };
+      }
       console.log();
       console.log('='.repeat(80));
       console.log('💡 デバッグヒント:');
@@ -531,7 +659,7 @@ async function main() {
       console.log('  - GitHub PR作成: スキップ');
       console.log();
       console.log('💡 本番実行するには --dry-run を外して実行してください:');
-      console.log(`  pnpm debug:mdx ${url}`);
+      console.log(`  pnpm debug:mdx ${rerunArgs}`);
       console.log();
     } else if (result.prResult?.prUrl) {
       console.log('📊 次のステップ:');

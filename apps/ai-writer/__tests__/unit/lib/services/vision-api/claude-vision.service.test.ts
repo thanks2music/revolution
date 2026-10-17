@@ -11,6 +11,12 @@ import type Anthropic from '@anthropic-ai/sdk';
 
 import { createAnthropicClient } from '@/lib/ai/anthropic-client';
 import { ClaudeVisionService } from '@/lib/services/vision-api/claude-vision.service';
+import type { VisionImage } from '@/lib/types/vision-api';
+
+/** prepareVisionImages の出力を模した 1 枚 (中身は使わない) */
+function testImage(source: string): VisionImage {
+  return { source, data: 'aW1n', mimeType: 'image/jpeg' };
+}
 
 // 認証 (ID フェデレーション / プロファイル) は anthropic-client.test.ts で固定する。ここでは差し替える
 jest.mock('@/lib/ai/anthropic-client', () => ({ createAnthropicClient: jest.fn() }));
@@ -82,7 +88,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/menu.webp'],
+        images: [testImage('https://example.com/menu.webp')],
         prompt: 'menu prompt',
         category: 'menu',
         maxRetries: 1,
@@ -111,7 +117,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/menu.webp'],
+        images: [testImage('https://example.com/menu.webp')],
         prompt: 'menu prompt',
         category: 'menu',
         maxRetries: 1,
@@ -141,7 +147,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/goods.webp'],
+        images: [testImage('https://example.com/goods.webp')],
         prompt: 'goods prompt',
         category: 'goods',
         maxRetries: 1,
@@ -167,7 +173,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/goods.webp'],
+        images: [testImage('https://example.com/goods.webp')],
         prompt: 'goods prompt',
         category: 'goods',
         maxRetries: 1,
@@ -197,7 +203,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/novelty.webp'],
+        images: [testImage('https://example.com/novelty.webp')],
         prompt: 'novelty prompt',
         category: 'novelty',
         maxRetries: 1,
@@ -224,7 +230,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/novelty.webp'],
+        images: [testImage('https://example.com/novelty.webp')],
         prompt: 'novelty prompt',
         category: 'novelty',
         maxRetries: 1,
@@ -255,7 +261,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         );
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/menu.webp'],
+        images: [testImage('https://example.com/menu.webp')],
         prompt: 'menu prompt',
         category: 'menu',
         maxRetries: 2,
@@ -270,7 +276,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
 
       await expect(
         service.extractFromImages({
-          imageUrls: ['https://example.com/menu.webp'],
+          images: [testImage('https://example.com/menu.webp')],
           prompt: 'menu prompt',
           category: 'menu',
           maxRetries: 2,
@@ -280,9 +286,8 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       expect(mockMessagesCreate).toHaveBeenCalledTimes(2);
     });
 
-    it('rethrows ZodError immediately without retry (deterministic shape failure)', async () => {
-      // confidence: 999 violates z.number().min(0).max(1). Note: name omission alone
-      // won't fail because Claude's convertToMenuItem defaults name to '' (line 461).
+    it('範囲外の confidence は値なしにして通す (形の崩れで失敗させず、リトライもしない)', async () => {
+      // 2026-10-11: 変換を normalizeVisionResponse にまとめ、0〜1 以外の confidence は「値なし」にした
       mockMessagesCreate.mockResolvedValue(
         buildClaudeMessage({
           menuItems: [
@@ -296,16 +301,15 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         }),
       );
 
-      await expect(
-        service.extractFromImages({
-          imageUrls: ['https://example.com/menu.webp'],
-          prompt: 'menu prompt',
-          category: 'menu',
-          maxRetries: 3,
-        }),
-      ).rejects.toThrow();
+      const result = await service.extractFromImages({
+        images: [testImage('https://example.com/menu.webp')],
+        prompt: 'menu prompt',
+        category: 'menu',
+        maxRetries: 3,
+      });
 
-      // ZodError は deterministic shape failure としてリトライせず即 rethrow
+      expect(result.visionExtraction.menuItems[0].confidence).toBeUndefined();
+      expect(result.visionExtraction.confidence).toBe(0);
       expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
     });
   });
@@ -316,7 +320,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       mockMessagesCreate.mockResolvedValueOnce(buildClaudeMessage({ menuItems: [] }));
 
       await service.extractFromImages({
-        imageUrls: ['https://example.com/img1.webp'],
+        images: [testImage('https://example.com/img1.webp')],
         prompt: 'extract',
         category: 'menu',
         maxRetries: 1,
@@ -339,7 +343,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
 
       await expect(
         service.extractFromImages({
-          imageUrls: ['https://example.com/img1.webp'],
+          images: [testImage('https://example.com/img1.webp')],
           prompt: 'extract',
           category: 'menu',
           maxRetries: 3,
@@ -356,7 +360,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
 
       await expect(
         service.extractFromImages({
-          imageUrls: ['https://example.com/img1.webp'],
+          images: [testImage('https://example.com/img1.webp')],
           prompt: 'extract',
           category: 'menu',
           maxRetries: 3,
@@ -374,7 +378,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
 
       await expect(
         service.extractFromImages({
-          imageUrls: ['https://example.com/img1.webp'],
+          images: [testImage('https://example.com/img1.webp')],
           prompt: 'extract',
           category: 'menu',
           maxRetries: 1,
@@ -394,7 +398,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       });
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/img1.webp'],
+        images: [testImage('https://example.com/img1.webp')],
         prompt: 'extract',
         category: 'menu',
         maxRetries: 1,
@@ -415,7 +419,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       await service.extractFromImages({
-        imageUrls: ['https://example.com/img1.webp'],
+        images: [testImage('https://example.com/img1.webp')],
         prompt: 'extract menu',
         category: 'menu',
         maxRetries: 1,
@@ -440,9 +444,9 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       );
 
       await service.extractFromImages({
-        imageUrls: [
-          'https://example.com/img1.webp',
-          'https://example.com/img2.webp',
+        images: [
+          { source: 'https://example.com/img1.webp', data: 'aW1nMQ==', mimeType: 'image/jpeg' },
+          { source: 'https://example.com/img2.webp', data: 'aW1nMg==', mimeType: 'image/jpeg' },
         ],
         prompt: 'extract',
         category: 'menu',
@@ -454,13 +458,14 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       }).messages[0].content;
       expect(content).toHaveLength(3);
       expect(content[0].type).toBe('text');
+      // 画像は prepareVisionImages が用意した base64 をそのまま送る (URL は渡さない)
       expect(content[1]).toMatchObject({
         type: 'image',
-        source: { type: 'url', url: 'https://example.com/img1.webp' },
+        source: { type: 'base64', media_type: 'image/jpeg', data: 'aW1nMQ==' },
       });
       expect(content[2]).toMatchObject({
         type: 'image',
-        source: { type: 'url', url: 'https://example.com/img2.webp' },
+        source: { type: 'base64', media_type: 'image/jpeg', data: 'aW1nMg==' },
       });
     });
 
@@ -495,7 +500,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       });
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/img1.webp'],
+        images: [testImage('https://example.com/img1.webp')],
         prompt: 'extract',
         category: 'menu',
         maxRetries: 1,
@@ -532,7 +537,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       });
 
       const result = await service.extractFromImages({
-        imageUrls: ['https://example.com/img1.webp'],
+        images: [testImage('https://example.com/img1.webp')],
         prompt: 'extract',
         category: 'menu',
         maxRetries: 1,
@@ -579,7 +584,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
       });
 
       await service.extractFromImages({
-        imageUrls: ['https://example.com/img1.webp'],
+        images: [testImage('https://example.com/img1.webp')],
         prompt: 'extract',
         category: 'menu',
         maxRetries: 1,
@@ -615,7 +620,7 @@ describe('ClaudeVisionService — Layer 2 contract (Templates v1.2 fields)', () 
         client: { messages: { create } } as unknown as Anthropic,
       });
       await injected.extractFromImages({
-        imageUrls: ['https://example.com/img1.webp'],
+        images: [testImage('https://example.com/img1.webp')],
         prompt: 'extract',
         category: 'menu',
         maxRetries: 1,
