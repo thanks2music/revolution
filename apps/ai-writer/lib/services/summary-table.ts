@@ -112,7 +112,9 @@ export function applySummaryRows(content: string, input: SummaryRowsInput): { co
   const missing: string[] = [];
   for (const [label, value] of rows) {
     if (!value) continue;
-    const after = order.slice(0, order.indexOf(label)).reverse();
+    // 行の名前が順の一覧に無い (設定の誤り) ときは足さない (置き換えだけ)
+    const at = order.indexOf(label);
+    const after = at > 0 ? order.slice(0, at).reverse() : [];
     const upserted = upsertSummaryRow(result, label, value, after);
     if (upserted.status === 'missing') missing.push(label);
     result = upserted.content;
