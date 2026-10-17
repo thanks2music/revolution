@@ -18,6 +18,7 @@ import {
   replaceMenuItems,
   replaceMenuItemsWithTable,
   replaceSummaryRowValue,
+  upsertSummaryRow,
   replacePlaceholderLine,
   renderVenueList,
   loadRendered,
@@ -286,6 +287,56 @@ describe('replaceSummaryRowValue', () => {
   it('値が空、または行が無ければそのまま (会場のデータが無いときは LLM の文を残す)', () => {
     expect(replaceSummaryRowValue(TABLE, '開催場所', '')).toBe(TABLE);
     expect(replaceSummaryRowValue(TABLE, '会場', 'x')).toBe(TABLE);
+  });
+});
+
+describe('upsertSummaryRow', () => {
+  const TABLE = ['## まとめ', '', '| 項目 | 内容 |', '|------|------|', '| 開催場所 | A店 |', '| 開催期間 | 2026年10月16日〜12月20日 |'].join('\n');
+
+  it('行があれば置き換える', () => {
+    expect(upsertSummaryRow(TABLE, '開催期間', '2026年10月16日〜12月20日（会場により異なる）', ['開催場所'])).toEqual({
+      content: TABLE.replace('| 2026年10月16日〜12月20日 |', '| 2026年10月16日〜12月20日（会場により異なる） |'),
+      status: 'replaced',
+    });
+  });
+
+  it('行が無ければ、after の行の直後に足す (LLM が「お問い合わせ」の行を書かなかったとき)', () => {
+    const article = `${TABLE}\n\n本文`;
+    expect(upsertSummaryRow(article, 'お問い合わせ', '各開催店舗にお問い合わせください', ['地図', '開催期間'])).toEqual({
+      content: `${TABLE}\n| お問い合わせ | 各開催店舗にお問い合わせください |\n\n本文`,
+      status: 'inserted',
+    });
+  });
+
+  it('after は先に並べた行を優先する (「地図」があればその後ろ)', () => {
+    const withMap = `${TABLE}\n| 地図 | 住所 |`;
+    expect(upsertSummaryRow(withMap, 'お問い合わせ', 'x', ['地図', '開催期間']).content).toBe(`${withMap}\n| お問い合わせ | x |`);
+  });
+
+  it('それより前の表 (前の節) の同じ名前の行には触らない', () => {
+    const article = ['## メニュー', '', '| お問い合わせ | 前の節 |', '| 開催期間 | 前の節 |', '', TABLE].join('\n');
+    const result = upsertSummaryRow(article, 'お問い合わせ', 'x', ['開催期間']);
+    expect(result.status).toBe('inserted');
+    expect(result.content).toBe(`${article}\n| お問い合わせ | x |`);
+  });
+
+  it('まとめの後ろに節があっても、まとめの表に書く', () => {
+    const article = `${TABLE}\n\n## 関連情報\n\n本文`;
+    expect(upsertSummaryRow(article, 'お問い合わせ', 'x', ['開催期間']).content).toBe(
+      `${TABLE}\n| お問い合わせ | x |\n\n## 関連情報\n\n本文`,
+    );
+  });
+
+  it('まとめの後ろのコードブロックに行頭の ## があっても影響を受けない', () => {
+    const article = `${TABLE}\n\n\`\`\`\n## コード\n\`\`\``;
+    expect(upsertSummaryRow(article, '開催期間', 'y', ['開催場所'])).toEqual({
+      content: article.replace('| 2026年10月16日〜12月20日 |', '| y |'),
+      status: 'replaced',
+    });
+  });
+
+  it('行も after の行も無ければ missing', () => {
+    expect(upsertSummaryRow(TABLE, 'お問い合わせ', 'x', ['地図'])).toEqual({ content: TABLE, status: 'missing' });
   });
 });
 

@@ -206,10 +206,13 @@ export class ContentGenerationService {
     // Sprint C-β P11: lead セクションを除外して sections プロンプトを組み立てる
     const sectionsSection = this.buildSectionsSection(template);
     // Sprint C-β P11: extractedData に日本語対訳の派生変数を注入 (Bug 1 対策)
-    const enrichedExtractedData = {
+    // 抽出の TwitterURL は記事に使わないので、本文の LLM に渡さない (2026-10-17 BOSS 決定。1 店舗の X をまとめの表の
+    // お問い合わせに書いていた)。抽出結果には残す (X を元に記事を作るパイプラインで使う予定)
+    const enrichedExtractedData: Record<string, unknown> = {
       ...this.enrichExtractedDataForPrompt(request.extractedData),
       描き下ろし表記: request.描き下ろし表記 ?? null,
     };
+    delete enrichedExtractedData.TwitterURL;
 
     // 最終プロンプトを構築
     return `${template.prompts.generate_content}

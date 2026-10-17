@@ -302,11 +302,66 @@ export function renderVenueList(venues: readonly string[], config: VenueListConf
  */
 export function replaceSummaryRowValue(content: string, label: string, value: string): string {
   if (!label || !value) return content;
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const rows = [...content.matchAll(new RegExp(`^\\|[ \\t]*${escapedLabel}[ \\t]*\\|.*$`, 'gm'))];
-  const last = rows.at(-1);
+  const last = summaryRowMatches(content, label).at(-1);
   if (!last || last.index === undefined) return content;
-  return `${content.slice(0, last.index)}| ${label} | ${value} |${content.slice(last.index + last[0].length)}`;
+  return `${content.slice(0, last.index)}${summaryRow(label, value)}${content.slice(last.index + last[0].length)}`;
+}
+
+/**
+ * まとめの表の `label` の行を `value` にする。行が無ければ、`after` に並べた行のうち最初に見つかった行の直後に足す
+ * (本文の LLM が行ごと書かないことがあるため。2026-10-17、ヒロアカ・コナンで「お問い合わせ」が無かった)。
+ * まとめの表は「`label` か `after` の名前の行を含む、記事の最後の表」(行頭が `|` の行の連なり) とし、その表の中だけを書き換える
+ * (それより前の表の同じ名前の行には触らない。後ろに節やコードブロックの `## ` があっても影響を受けない)。
+ * まとめの後ろに、同じ名前の行を持つ表があればそちらを書き換える。今の雛形ではまとめが最後の節で、ほかの節にこれらの行は無い
+ */
+export function upsertSummaryRow(
+  content: string,
+  label: string,
+  value: string,
+  after: readonly string[],
+): { content: string; status: 'replaced' | 'inserted' | 'missing' } {
+  const lines = content.split('\n');
+  const names = [label, ...after].filter(Boolean);
+  const hit = lines.findLastIndex((line) => names.some((name) => isSummaryRow(line, name)));
+  if (hit === -1) return { content, status: 'missing' };
+  let top = hit;
+  while (top > 0 && lines[top - 1].startsWith('|')) top--;
+  let bottom = hit;
+  while (bottom < lines.length - 1 && lines[bottom + 1].startsWith('|')) bottom++;
+
+  const table = lines.slice(top, bottom + 1);
+  const join = (rows: string[]) => [...lines.slice(0, top), ...rows, ...lines.slice(bottom + 1)].join('\n');
+  const own = table.findLastIndex((line) => isSummaryRow(line, label));
+  if (own !== -1) {
+    table[own] = summaryRow(label, value);
+    return { content: join(table), status: 'replaced' };
+  }
+  for (const name of after) {
+    const anchor = table.findLastIndex((line) => isSummaryRow(line, name));
+    if (anchor === -1) continue;
+    table.splice(anchor + 1, 0, summaryRow(label, value));
+    return { content: join(table), status: 'inserted' };
+  }
+  return { content, status: 'missing' };
+}
+
+/** 表の `label` の行か (行の末尾の | は無くてもよい) */
+function isSummaryRow(line: string, label: string): boolean {
+  return new RegExp(`^\\|[ \\t]*${escapeRegExp(label)}[ \\t]*\\|`).test(line);
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** 表の 1 行 */
+function summaryRow(label: string, value: string): string {
+  return `| ${label} | ${value} |`;
+}
+
+/** 表の `label` の行 (行の末尾の | は無くてもよい) */
+function summaryRowMatches(content: string, label: string): RegExpMatchArray[] {
+  return [...content.matchAll(new RegExp(`^\\|[ \\t]*${escapeRegExp(label)}[ \\t]*\\|.*$`, 'gm'))];
 }
 
 /**
