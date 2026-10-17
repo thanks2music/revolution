@@ -67,6 +67,15 @@ describe('periodsDiffer', () => {
     ).toBe(false);
   });
 
+  it('会場名の無い会場どうしは 1 つにまとめる (日程が違っても、どの会場か分からないので注記を付けない)', () => {
+    expect(
+      periodsDiffer([
+        { venue_label: null, starts_on: '2026-10-16', ends_on: '2026-12-20' },
+        { venue_label: null, starts_on: '2026-10-22', ends_on: '2026-12-06' },
+      ]),
+    ).toBe(false);
+  });
+
   it('日付の分からない会場は比べない (分からないことを「違う」とは言わない)', () => {
     expect(
       periodsDiffer([

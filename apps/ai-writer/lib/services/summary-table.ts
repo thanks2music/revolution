@@ -82,6 +82,11 @@ export function renderSummaryContact(
   return venues.length >= 2 ? config.contact_multi : null;
 }
 
+/** 表のセルとして安全にする (文言は YAML の固定文と日付だが、YAML に | が入っても表を壊さない) */
+function cellOrNull(value: string | null): string | null {
+  return value === null ? null : tableCell(value);
+}
+
 export interface SummaryRowsInput {
   /** 全体の開催期間 (`extractEventFactCardFields` の値) */
   period: { start?: string; end?: string };
@@ -104,14 +109,14 @@ export function applySummaryRows(content: string, input: SummaryRowsInput): { co
   const order = [config.venue_row_label, config.period_row_label, config.map_row_label, config.contact_row_label];
   const rows: Array<[label: string, value: string | null]> = [
     // event_data が無ければ抽出した開催期間 (この記事のポイントと同じ値)。開始日が分からなければ LLM の行のまま
-    [config.period_row_label, renderSummaryPeriod(input.period, input.occurrences, input.pointsFormat, config)],
+    [config.period_row_label, cellOrNull(renderSummaryPeriod(input.period, input.occurrences, input.pointsFormat, config))],
     // 会場のデータも代表店舗名も無ければ、どちらの文言か決められないので LLM の行のまま
-    [config.contact_row_label, renderSummaryContact(input.representative, input.venues, config)],
+    [config.contact_row_label, cellOrNull(renderSummaryContact(input.representative, input.venues, config))],
   ];
   let result = content;
   const missing: string[] = [];
   for (const [label, value] of rows) {
-    if (!value) continue;
+    if (!label || !value) continue;
     // 行の名前が順の一覧に無い (設定の誤り) ときは足さない (置き換えだけ)
     const at = order.indexOf(label);
     const after = at > 0 ? order.slice(0, at).reverse() : [];

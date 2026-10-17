@@ -310,9 +310,8 @@ export function replaceSummaryRowValue(content: string, label: string, value: st
 /**
  * まとめの表の `label` の行を `value` にする。行が無ければ、`after` に並べた行のうち最初に見つかった行の直後に足す
  * (本文の LLM が行ごと書かないことがあるため。2026-10-17、ヒロアカ・コナンで「お問い合わせ」が無かった)。
- * 見るのは記事の最後の節 (まとめ) の中だけ (前の節の表の同じ名前の行には触らない)。まとめは雛形で最後の節
- * (`05-summary.yaml` の order。記事末尾のナビゲーションは footer-placeholder-cleanup で消してあり、Frontend が出す)。
- * 本文は LF (パイプラインが組み立てた文字列)。
+ * まとめの表は「`label` か `after` の名前の行を含む、記事の最後の表」(行頭が `|` の行の連なり) とし、その表の中だけを書き換える
+ * (前の節の表の同じ名前の行には触らない。まとめの後ろに節があっても、コードブロックに `## ` があっても影響を受けない)
  */
 export function upsertSummaryRow(
   content: string,
@@ -320,19 +319,38 @@ export function upsertSummaryRow(
   value: string,
   after: readonly string[],
 ): { content: string; status: 'replaced' | 'inserted' | 'missing' } {
-  const start = [...content.matchAll(/^## /gm)].at(-1)?.index ?? 0;
-  const head = content.slice(0, start);
-  const section = content.slice(start);
-  if (summaryRowMatches(section, label).length > 0) {
-    return { content: head + replaceSummaryRowValue(section, label, value), status: 'replaced' };
+  const lines = content.split('\n');
+  const names = [label, ...after].filter(Boolean);
+  const hit = lines.findLastIndex((line) => names.some((name) => isSummaryRow(line, name)));
+  if (hit === -1) return { content, status: 'missing' };
+  let top = hit;
+  while (top > 0 && lines[top - 1].startsWith('|')) top--;
+  let bottom = hit;
+  while (bottom < lines.length - 1 && lines[bottom + 1].startsWith('|')) bottom++;
+
+  const table = lines.slice(top, bottom + 1);
+  const join = (rows: string[]) => [...lines.slice(0, top), ...rows, ...lines.slice(bottom + 1)].join('\n');
+  const own = table.findLastIndex((line) => isSummaryRow(line, label));
+  if (own !== -1) {
+    table[own] = summaryRow(label, value);
+    return { content: join(table), status: 'replaced' };
   }
   for (const name of after) {
-    const anchor = summaryRowMatches(section, name).at(-1);
-    if (anchor?.index === undefined) continue;
-    const end = anchor.index + anchor[0].length;
-    return { content: `${head}${section.slice(0, end)}\n${summaryRow(label, value)}${section.slice(end)}`, status: 'inserted' };
+    const anchor = table.findLastIndex((line) => isSummaryRow(line, name));
+    if (anchor === -1) continue;
+    table.splice(anchor + 1, 0, summaryRow(label, value));
+    return { content: join(table), status: 'inserted' };
   }
   return { content, status: 'missing' };
+}
+
+/** 表の `label` の行か (行の末尾の | は無くてもよい) */
+function isSummaryRow(line: string, label: string): boolean {
+  return new RegExp(`^\\|[ \\t]*${escapeRegExp(label)}[ \\t]*\\|`).test(line);
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** 表の 1 行 */
@@ -342,8 +360,7 @@ function summaryRow(label: string, value: string): string {
 
 /** 表の `label` の行 (行の末尾の | は無くてもよい) */
 function summaryRowMatches(content: string, label: string): RegExpMatchArray[] {
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return [...content.matchAll(new RegExp(`^\\|[ \\t]*${escapedLabel}[ \\t]*\\|.*$`, 'gm'))];
+  return [...content.matchAll(new RegExp(`^\\|[ \\t]*${escapeRegExp(label)}[ \\t]*\\|.*$`, 'gm'))];
 }
 
 /**

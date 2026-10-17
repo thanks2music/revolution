@@ -320,6 +320,21 @@ describe('upsertSummaryRow', () => {
     expect(result.content).toBe(`${article}\n| お問い合わせ | x |`);
   });
 
+  it('まとめの後ろに節があっても、まとめの表に書く', () => {
+    const article = `${TABLE}\n\n## 関連情報\n\n本文`;
+    expect(upsertSummaryRow(article, 'お問い合わせ', 'x', ['開催期間']).content).toBe(
+      `${TABLE}\n| お問い合わせ | x |\n\n## 関連情報\n\n本文`,
+    );
+  });
+
+  it('まとめの後ろのコードブロックに行頭の ## があっても影響を受けない', () => {
+    const article = `${TABLE}\n\n\`\`\`\n## コード\n\`\`\``;
+    expect(upsertSummaryRow(article, '開催期間', 'y', ['開催場所'])).toEqual({
+      content: article.replace('| 2026年10月16日〜12月20日 |', '| y |'),
+      status: 'replaced',
+    });
+  });
+
   it('行も after の行も無ければ missing', () => {
     expect(upsertSummaryRow(TABLE, 'お問い合わせ', 'x', ['地図'])).toEqual({ content: TABLE, status: 'missing' });
   });
