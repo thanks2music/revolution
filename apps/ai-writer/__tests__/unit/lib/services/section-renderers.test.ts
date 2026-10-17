@@ -18,6 +18,7 @@ import {
   replaceMenuItems,
   replaceMenuItemsWithTable,
   replaceSummaryRowValue,
+  upsertSummaryRow,
   replacePlaceholderLine,
   renderVenueList,
   loadRendered,
@@ -286,6 +287,35 @@ describe('replaceSummaryRowValue', () => {
   it('値が空、または行が無ければそのまま (会場のデータが無いときは LLM の文を残す)', () => {
     expect(replaceSummaryRowValue(TABLE, '開催場所', '')).toBe(TABLE);
     expect(replaceSummaryRowValue(TABLE, '会場', 'x')).toBe(TABLE);
+  });
+});
+
+describe('upsertSummaryRow', () => {
+  const TABLE = ['| 項目 | 内容 |', '|------|------|', '| 開催場所 | A店 |', '| 開催期間 | 2026年10月16日〜12月20日 |'].join('\n');
+
+  it('行があれば置き換える', () => {
+    expect(upsertSummaryRow(TABLE, '開催期間', '2026年10月16日〜12月20日（会場により異なる）', '開催場所')).toBe(
+      ['| 項目 | 内容 |', '|------|------|', '| 開催場所 | A店 |', '| 開催期間 | 2026年10月16日〜12月20日（会場により異なる） |'].join('\n')
+    );
+  });
+
+  it('行が無ければ、after の行の直後に足す (LLM が「お問い合わせ」の行を書かなかったとき)', () => {
+    const article = `${TABLE}\n\n本文`;
+    expect(upsertSummaryRow(article, 'お問い合わせ', '各開催店舗にお問い合わせください', '開催期間')).toBe(
+      `${TABLE}\n| お問い合わせ | 各開催店舗にお問い合わせください |\n\n本文`
+    );
+  });
+
+  it('after の行が前の節の表にもあれば、最後の行 (まとめの表) の後ろに足す', () => {
+    const article = ['| 開催期間 | 前の節 |', '', '## まとめ', '', '| 開催期間 | 10月16日〜 |'].join('\n');
+    expect(upsertSummaryRow(article, 'お問い合わせ', 'x', '開催期間')).toBe(
+      ['| 開催期間 | 前の節 |', '', '## まとめ', '', '| 開催期間 | 10月16日〜 |', '| お問い合わせ | x |'].join('\n')
+    );
+  });
+
+  it('行も after の行も無い、または値が空ならそのまま', () => {
+    expect(upsertSummaryRow(TABLE, 'お問い合わせ', 'x', '地図')).toBe(TABLE);
+    expect(upsertSummaryRow(TABLE, 'お問い合わせ', '', '開催期間')).toBe(TABLE);
   });
 });
 

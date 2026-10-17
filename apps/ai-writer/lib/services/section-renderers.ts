@@ -302,11 +302,29 @@ export function renderVenueList(venues: readonly string[], config: VenueListConf
  */
 export function replaceSummaryRowValue(content: string, label: string, value: string): string {
   if (!label || !value) return content;
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const rows = [...content.matchAll(new RegExp(`^\\|[ \\t]*${escapedLabel}[ \\t]*\\|.*$`, 'gm'))];
-  const last = rows.at(-1);
+  const last = summaryRowMatches(content, label).at(-1);
   if (!last || last.index === undefined) return content;
   return `${content.slice(0, last.index)}| ${label} | ${value} |${content.slice(last.index + last[0].length)}`;
+}
+
+/**
+ * まとめの表の `label` の行を `value` にする。行が無ければ、`after` の行の直後に足す (本文の LLM が行ごと書かないことがあるため。
+ * 2026-10-17、ヒロアカ・コナンで「お問い合わせ」が無かった)。`after` の行も無ければそのまま。
+ * `replaceSummaryRowValue` と同じく、まとめの表 (記事の最後の、その名前の行) だけを見る
+ */
+export function upsertSummaryRow(content: string, label: string, value: string, after: string): string {
+  if (!label || !value) return content;
+  if (summaryRowMatches(content, label).length > 0) return replaceSummaryRowValue(content, label, value);
+  const anchor = summaryRowMatches(content, after).at(-1);
+  if (!after || !anchor || anchor.index === undefined) return content;
+  const end = anchor.index + anchor[0].length;
+  return `${content.slice(0, end)}\n| ${label} | ${value} |${content.slice(end)}`;
+}
+
+/** 表の `label` の行 (行の末尾の | は無くてもよい) */
+function summaryRowMatches(content: string, label: string): RegExpMatchArray[] {
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [...content.matchAll(new RegExp(`^\\|[ \\t]*${escapedLabel}[ \\t]*\\|.*$`, 'gm'))];
 }
 
 /**
