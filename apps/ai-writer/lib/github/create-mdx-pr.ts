@@ -13,7 +13,7 @@
  * @see {@link /notes/archive/super-mvp-scope.md} Task 6
  */
 
-import { createGitHubClient, REPO_CONFIG, wrapNetworkError } from './client';
+import { createGitHubClient, REPO_CONFIG, SERVICE_ACCOUNT_COMMITTER, wrapNetworkError } from './client';
 import { checkEventDuplication, updateEventStatus } from '../firestore';
 import {
   GitHubAuthError,
@@ -97,14 +97,6 @@ export interface CreateMdxPrResult {
    */
   commitSha: string;
 }
-
-/**
- * Service Account Committer情報
- */
-const SERVICE_ACCOUNT_COMMITTER = {
-  name: 'Revolution AI Writer',
-  email: 'ai-writer@revolution.example.com',
-};
 
 /**
  * GitHub Open PRの重複チェック

@@ -56,6 +56,7 @@ export function generateMdxFrontmatter(
     excerpt,
     categories,
     date = new Date().toISOString(), // ISO 8601 ms (Schema-SDD MdxFrontmatterSchema 適合)
+    updated,
     author = MDX_DEFAULTS.AUTHOR,
     ogImage = MDX_DEFAULTS.OG_IMAGE,
     // AI metadata (optional)
@@ -97,6 +98,7 @@ export function generateMdxFrontmatter(
     slug,
     title,
     date: toIsoMsDate(date),
+    ...(updated ? { updated: toIsoMsDate(updated) } : {}),
     categories,
     excerpt,
     author,
@@ -221,6 +223,9 @@ export function serializeFrontmatter(frontmatter: MdxFrontmatter): string {
 
   lines.push(`title: "${escapedTitle}"`);
   lines.push(`date: "${frontmatter.date}"`);
+  if (frontmatter.updated) {
+    lines.push(`updated: "${frontmatter.updated}"`);
+  }
 
   // Categories array
   const categoriesYaml = frontmatter.categories

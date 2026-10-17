@@ -164,6 +164,31 @@ describe('serializeFrontmatter', () => {
     expect(lines[lines.length - 1]).toBe(''); // Second empty line
   });
 
+  it('updated (記事の更新日時) は date の次の行に出し、date は変えない', () => {
+    const updatedFrontmatter = generateMdxFrontmatter({
+      postId: '01jcxy4567',
+      year: 2025,
+      eventType: 'collabo-cafe',
+      eventTitle: 'コラボカフェ',
+      workTitle: '作品名',
+      workSlug: 'sample-work',
+      title: '作品名×店舗名2025',
+      excerpt: 'テスト記事の概要です。',
+      categories: ['作品名', 'コラボカフェ'],
+      date: '2025-11-19T01:02:03.456Z',
+      updated: '2026-10-17T09:00:00.000Z',
+    });
+
+    const yaml = serializeFrontmatter(updatedFrontmatter);
+
+    expect(yaml).toContain('date: "2025-11-19T01:02:03.456Z"\nupdated: "2026-10-17T09:00:00.000Z"\n');
+    expect(isValidMdxFrontmatter(updatedFrontmatter)).toBe(true);
+  });
+
+  it('updated が無ければ出さない', () => {
+    expect(serializeFrontmatter(frontmatter)).not.toContain('updated:');
+  });
+
   it('should include optional venues fields if present', () => {
     const frontmatterWithVenues = {
       ...frontmatter,
