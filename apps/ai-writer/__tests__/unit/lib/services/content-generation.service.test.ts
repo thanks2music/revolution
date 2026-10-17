@@ -261,4 +261,21 @@ describe('ContentGenerationService', () => {
       });
     });
   });
+
+  describe('本文の LLM に渡す抽出結果', () => {
+    it('TwitterURL は渡さない (記事に使わない。抽出結果には残す。2026-10-17 BOSS 決定)', () => {
+      const service = new ContentGenerationService(createMockTemplateLoader() as any, createMockAiProvider());
+      const extractedData = { 作品名: '作品', TwitterURL: 'https://twitter.com/store_account' };
+      const prompt: string = (service as any).buildPrompt(createMockTemplate(), {
+        extractedData,
+        generatedTitle: 'タイトル',
+      });
+
+      expect(prompt).toContain('"作品名": "作品"');
+      expect(prompt).not.toContain('TwitterURL');
+      expect(prompt).not.toContain('twitter.com/store_account');
+      // 呼び出し元の抽出結果からは消さない
+      expect(extractedData.TwitterURL).toBe('https://twitter.com/store_account');
+    });
+  });
 });
