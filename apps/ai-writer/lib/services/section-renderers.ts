@@ -310,7 +310,9 @@ export function replaceSummaryRowValue(content: string, label: string, value: st
 /**
  * まとめの表の `label` の行を `value` にする。行が無ければ、`after` に並べた行のうち最初に見つかった行の直後に足す
  * (本文の LLM が行ごと書かないことがあるため。2026-10-17、ヒロアカ・コナンで「お問い合わせ」が無かった)。
- * 見るのは記事の最後の節 (まとめ) の中だけ (前の節の表の同じ名前の行には触らない)。
+ * 見るのは記事の最後の節 (まとめ) の中だけ (前の節の表の同じ名前の行には触らない)。まとめは雛形で最後の節
+ * (`05-summary.yaml` の order。記事末尾のナビゲーションは footer-placeholder-cleanup で消してあり、Frontend が出す)。
+ * 本文は LF (パイプラインが組み立てた文字列)。
  */
 export function upsertSummaryRow(
   content: string,

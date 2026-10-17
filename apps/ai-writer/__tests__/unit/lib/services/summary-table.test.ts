@@ -137,10 +137,10 @@ describe('renderSummaryContact', () => {
     expect(renderSummaryContact('', [], config)).toBeNull();
   });
 
-  it('店舗名の { と | は MDX と表を壊さないようにする', () => {
-    const cell = renderSummaryContact('カフェ{A}|B', [], config) ?? '';
-    expect(cell).not.toContain('|');
-    expect(cell).not.toMatch(/(^|[^\\])\{A\}/);
+  it('店舗名の { } < > と | は MDX と表を壊さないようにする (前後の空白も落とす)', () => {
+    expect(renderSummaryContact('', [' カフェ{A}<B>|C '], config)).toBe(
+      'カフェ&#123;A&#125;&#60;B&#62;｜Cにお問い合わせください',
+    );
   });
 });
 

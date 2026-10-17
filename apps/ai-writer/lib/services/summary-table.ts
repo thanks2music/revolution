@@ -31,7 +31,8 @@ type OccurrencePeriod = Pick<EventDataOccurrence, 'venue_label' | 'starts_on' | 
 
 /**
  * 会場ごとに開始日か終了日が違うか。会場ごとの日程 (同じ会場の前期・後期はまとめて 1 つ) を比べる。
- * 日付の分からない会場・日付は比べない (分からないことを「違う」とは言えないため)
+ * 日付の分からない会場・日付は比べない (分からないことを「違う」とは言えないため)。会場名の無い会場どうしも 1 つにまとめる (同じ理由)。
+ * 見るのは event_data だけ。期間を抽出の開催期間で補ったときも、注記は event_data で日程の違いが分かったときだけ付ける
  */
 export function periodsDiffer(occurrences: readonly OccurrencePeriod[]): boolean {
   const byVenue = new Map<string, { starts: Set<string>; ends: Set<string> }>();
@@ -76,7 +77,7 @@ export function renderSummaryContact(
   venues: readonly string[],
   config: SummaryRowsConfig,
 ): string | null {
-  const store = representative.trim() || (venues.length === 1 ? venues[0] : '');
+  const store = representative.trim() || (venues.length === 1 ? venues[0].trim() : '');
   if (store) return fillTemplate(config.contact_single, { 代表店舗名: tableCell(escapeMdxText(store)) });
   return venues.length >= 2 ? config.contact_multi : null;
 }
