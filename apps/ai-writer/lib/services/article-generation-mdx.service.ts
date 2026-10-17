@@ -1497,31 +1497,30 @@ export class ArticleGenerationMdxService {
           eventDataOccurrences: occurrences,
           extractionPeriod: detailedExtraction.開催期間,
         });
-        // [行の名前, 値, 行が無いときに足す位置 (この行の後ろ)]
-        const summaryRows: Array<[label: string, value: string | null, after: string]> = [
+        // [行の名前, 値, 行が無いときに足す位置 (先に見つかった行の後ろ。雛形の行の順: 開催場所 → 開催期間 → 地図 → お問い合わせ)]
+        const summaryRows: Array<[label: string, value: string | null, after: string[]]> = [
           [
             summary.period_row_label,
-            // 会場のデータが無ければ、抽出した開催期間を書いた LLM の行のままにする
-            occurrences.length > 0
-              ? renderSummaryPeriod({ start: periodStart, end: periodEnd }, occurrences, pointsFormat, summary)
-              : null,
-            summary.venue_row_label,
+            // event_data が無ければ抽出した開催期間 (この記事のポイントと同じ値)。開始日が分からなければ LLM の行のまま
+            renderSummaryPeriod({ start: periodStart, end: periodEnd }, occurrences, pointsFormat, summary),
+            [summary.venue_row_label],
           ],
           [
             summary.contact_row_label,
+            // 会場のデータも代表店舗名も無ければ、どちらの文言か決められないので LLM の行のまま
             renderSummaryContact(storeContext.代表店舗名, storeContext.会場一覧, summary),
-            summary.period_row_label,
+            [summary.map_row_label, summary.period_row_label],
           ],
         ];
         for (const [label, value, after] of summaryRows) {
           if (!value) continue;
-          const updated = upsertSummaryRow(finalContent, label, value, after);
-          if (updated === finalContent && !finalContent.includes(`| ${label} | ${value} |`)) {
+          const result = upsertSummaryRow(finalContent, label, value, after);
+          if (result.status === 'missing') {
             console.warn(
-              `${getStepContext('text-placeholder-replacement', label)} ⚠️ まとめの表に「${label}」の行も「${after}」の行も無いため、書けなかった`,
+              `${getStepContext('text-placeholder-replacement', label)} ⚠️ まとめの表に「${label}」の行も「${after.join('」「')}」の行も無いため、書けなかった`,
             );
           }
-          finalContent = updated;
+          finalContent = result.content;
         }
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {

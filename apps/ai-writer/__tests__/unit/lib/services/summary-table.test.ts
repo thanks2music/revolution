@@ -14,6 +14,7 @@ const config: SummaryRowsConfig = {
   period_row_label: '開催期間',
   period_open: '{{start}}より',
   period_varies_note: '（会場により異なる）',
+  map_row_label: '地図',
   contact_row_label: 'お問い合わせ',
   contact_single: '{{代表店舗名}}にお問い合わせください',
   contact_multi: '各開催店舗にお問い合わせください',
@@ -29,26 +30,55 @@ const pointsFormat = {
 
 /** ヒロアカ (2026-10-17 の dry-run の event_data) */
 const heroaca = [
-  { starts_on: '2026-10-16', ends_on: '2026-12-20' },
-  { starts_on: '2026-10-16', ends_on: '2026-11-29' },
-  { starts_on: '2026-10-16', ends_on: '2026-11-29' },
-  { starts_on: '2026-10-22', ends_on: '2026-12-06' },
+  { venue_label: '原宿', starts_on: '2026-10-16', ends_on: '2026-12-20' },
+  { venue_label: '名古屋', starts_on: '2026-10-16', ends_on: '2026-11-29' },
+  { venue_label: '札幌', starts_on: '2026-10-16', ends_on: '2026-11-29' },
+  { venue_label: '大阪', starts_on: '2026-10-22', ends_on: '2026-12-06' },
 ];
 
 describe('periodsDiffer', () => {
   it('開始日か終了日が会場で違えば true', () => {
     expect(periodsDiffer(heroaca)).toBe(true);
-    expect(periodsDiffer([{ starts_on: '2026-10-16', ends_on: '2026-12-20' }, { starts_on: '2026-10-22', ends_on: '2026-12-20' }])).toBe(true);
-    expect(periodsDiffer([{ starts_on: '2026-10-16', ends_on: '2026-12-20' }, { starts_on: '2026-10-16', ends_on: '2026-11-29' }])).toBe(true);
+    expect(
+      periodsDiffer([
+        { venue_label: 'A', starts_on: '2026-10-16', ends_on: '2026-12-20' },
+        { venue_label: 'B', starts_on: '2026-10-22', ends_on: '2026-12-20' },
+      ]),
+    ).toBe(true);
   });
 
   it('全会場が同じ日程、または会場が 1 つなら false', () => {
-    expect(periodsDiffer([{ starts_on: '2026-10-16', ends_on: '2026-12-20' }, { starts_on: '2026-10-16', ends_on: '2026-12-20' }])).toBe(false);
-    expect(periodsDiffer([{ starts_on: '2026-10-16', ends_on: '2026-12-20' }])).toBe(false);
+    expect(
+      periodsDiffer([
+        { venue_label: 'A', starts_on: '2026-10-16', ends_on: '2026-12-20' },
+        { venue_label: 'B', starts_on: '2026-10-16', ends_on: '2026-12-20' },
+      ]),
+    ).toBe(false);
+    expect(periodsDiffer([{ venue_label: 'A', starts_on: '2026-10-16', ends_on: '2026-12-20' }])).toBe(false);
   });
 
-  it('終了日の分からない会場があれば、分かる会場とは違う日程とみなす', () => {
-    expect(periodsDiffer([{ starts_on: '2026-10-16', ends_on: null }, { starts_on: '2026-10-16', ends_on: '2026-12-20' }])).toBe(true);
+  it('同じ会場の前期・後期は 1 つの会場の日程として扱う (会場が 1 つなら false)', () => {
+    expect(
+      periodsDiffer([
+        { venue_label: 'A', starts_on: '2026-10-01', ends_on: '2026-10-31' },
+        { venue_label: 'A', starts_on: '2026-11-05', ends_on: '2026-11-30' },
+      ]),
+    ).toBe(false);
+  });
+
+  it('日付の分からない会場は比べない (分からないことを「違う」とは言わない)', () => {
+    expect(
+      periodsDiffer([
+        { venue_label: 'A', starts_on: '2026-10-16', ends_on: '2026-12-20' },
+        { venue_label: 'B', starts_on: null, ends_on: null },
+      ]),
+    ).toBe(false);
+    expect(
+      periodsDiffer([
+        { venue_label: 'A', starts_on: '2026-10-16', ends_on: null },
+        { venue_label: 'B', starts_on: '2026-10-16', ends_on: '2026-12-20' },
+      ]),
+    ).toBe(false);
   });
 });
 
@@ -60,24 +90,28 @@ describe('renderSummaryPeriod', () => {
   });
 
   it('全会場が同じ日程なら付けない', () => {
-    const same = [{ starts_on: '2026-08-20', ends_on: '2026-09-20' }];
+    const same = [{ venue_label: 'A', starts_on: '2026-08-20', ends_on: '2026-09-20' }];
     expect(renderSummaryPeriod({ start: '2026-08-20', end: '2026-09-20' }, same, pointsFormat, config)).toBe('2026年8月20日〜9月20日');
   });
 
   it('年をまたぐなら終了日にも年を書く', () => {
-    const across = [{ starts_on: '2026-12-10', ends_on: '2027-01-31' }];
+    const across = [{ venue_label: 'A', starts_on: '2026-12-10', ends_on: '2027-01-31' }];
     expect(renderSummaryPeriod({ start: '2026-12-10', end: '2027-01-31' }, across, pointsFormat, config)).toBe(
       '2026年12月10日〜2027年1月31日',
     );
   });
 
   it('終了日が分からなければ「より」で書く (この記事のポイントの「〜」とは別の文言)', () => {
-    const open = [{ starts_on: '2026-10-16', ends_on: null }];
+    const open = [{ venue_label: 'A', starts_on: '2026-10-16', ends_on: null }];
     expect(renderSummaryPeriod({ start: '2026-10-16' }, open, pointsFormat, config)).toBe('2026年10月16日より');
   });
 
   it('開始日が無ければ null (LLM の行を残す)', () => {
-    expect(renderSummaryPeriod({}, [{ starts_on: null, ends_on: null }], pointsFormat, config)).toBeNull();
+    expect(renderSummaryPeriod({}, [{ venue_label: 'A', starts_on: null, ends_on: null }], pointsFormat, config)).toBeNull();
+  });
+
+  it('event_data が無ければ、抽出した開催期間を注記なしで書く', () => {
+    expect(renderSummaryPeriod({ start: '2026-10-16', end: '2026-12-20' }, [], pointsFormat, config)).toBe('2026年10月16日〜12月20日');
   });
 });
 

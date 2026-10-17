@@ -308,17 +308,32 @@ export function replaceSummaryRowValue(content: string, label: string, value: st
 }
 
 /**
- * まとめの表の `label` の行を `value` にする。行が無ければ、`after` の行の直後に足す (本文の LLM が行ごと書かないことがあるため。
- * 2026-10-17、ヒロアカ・コナンで「お問い合わせ」が無かった)。`after` の行も無ければそのまま。
- * `replaceSummaryRowValue` と同じく、まとめの表 (記事の最後の、その名前の行) だけを見る
+ * まとめの表の `label` の行を `value` にする。行が無ければ、`after` に並べた行のうち最初に見つかった行の直後に足す
+ * (本文の LLM が行ごと書かないことがあるため。2026-10-17、ヒロアカ・コナンで「お問い合わせ」が無かった)。
+ * 見るのは記事の最後の節 (まとめ) の中だけ (前の節の表の同じ名前の行には触らない)。
  */
-export function upsertSummaryRow(content: string, label: string, value: string, after: string): string {
-  if (!label || !value) return content;
-  if (summaryRowMatches(content, label).length > 0) return replaceSummaryRowValue(content, label, value);
-  const anchor = summaryRowMatches(content, after).at(-1);
-  if (!after || !anchor || anchor.index === undefined) return content;
-  const end = anchor.index + anchor[0].length;
-  return `${content.slice(0, end)}\n| ${label} | ${value} |${content.slice(end)}`;
+export function upsertSummaryRow(
+  content: string,
+  label: string,
+  value: string,
+  after: readonly string[],
+): { content: string; status: 'replaced' | 'inserted' | 'missing' } {
+  const sections = [...content.matchAll(/^## /gm)];
+  const start = sections.at(-1)?.index ?? 0;
+  const head = content.slice(0, start);
+  const section = content.slice(start);
+  const row = summaryRowMatches(section, label).at(-1);
+  if (row?.index !== undefined) {
+    const end = row.index + row[0].length;
+    return { content: `${head}${section.slice(0, row.index)}| ${label} | ${value} |${section.slice(end)}`, status: 'replaced' };
+  }
+  for (const name of after) {
+    const anchor = summaryRowMatches(section, name).at(-1);
+    if (anchor?.index === undefined) continue;
+    const end = anchor.index + anchor[0].length;
+    return { content: `${head}${section.slice(0, end)}\n| ${label} | ${value} |${section.slice(end)}`, status: 'inserted' };
+  }
+  return { content, status: 'missing' };
 }
 
 /** 表の `label` の行 (行の末尾の | は無くてもよい) */

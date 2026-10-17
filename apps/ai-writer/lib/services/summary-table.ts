@@ -18,6 +18,7 @@ export const SUMMARY_ROWS_KEYS = [
   'period_row_label',
   'period_open',
   'period_varies_note',
+  'map_row_label',
   'contact_row_label',
   'contact_single',
   'contact_multi',
@@ -25,11 +26,24 @@ export const SUMMARY_ROWS_KEYS = [
 
 export type SummaryRowsConfig = Record<(typeof SUMMARY_ROWS_KEYS)[number], string>;
 
-/** 会場ごとに開始日か終了日が違うか (日付の分からない会場は、分からないという値として比べる) */
-export function periodsDiffer(occurrences: readonly Pick<EventDataOccurrence, 'starts_on' | 'ends_on'>[]): boolean {
-  const starts = new Set(occurrences.map((o) => o.starts_on ?? null));
-  const ends = new Set(occurrences.map((o) => o.ends_on ?? null));
-  return starts.size > 1 || ends.size > 1;
+type OccurrencePeriod = Pick<EventDataOccurrence, 'venue_label' | 'starts_on' | 'ends_on'>;
+
+/**
+ * 会場ごとに開始日か終了日が違うか。会場ごとの日程 (同じ会場の前期・後期はまとめて 1 つ) を比べる。
+ * 日付の分からない会場・日付は比べない (分からないことを「違う」とは言えないため)
+ */
+export function periodsDiffer(occurrences: readonly OccurrencePeriod[]): boolean {
+  const byVenue = new Map<string, { starts: Set<string>; ends: Set<string> }>();
+  for (const o of occurrences) {
+    const venue = byVenue.get(o.venue_label ?? '') ?? { starts: new Set<string>(), ends: new Set<string>() };
+    if (o.starts_on) venue.starts.add(o.starts_on);
+    if (o.ends_on) venue.ends.add(o.ends_on);
+    byVenue.set(o.venue_label ?? '', venue);
+  }
+  const key = (dates: Set<string>) => [...dates].sort().join(',');
+  const differ = (pick: 'starts' | 'ends') =>
+    new Set([...byVenue.values()].filter((v) => v[pick].size > 0).map((v) => key(v[pick]))).size > 1;
+  return differ('starts') || differ('ends');
 }
 
 /**
@@ -39,7 +53,7 @@ export function periodsDiffer(occurrences: readonly Pick<EventDataOccurrence, 's
  */
 export function renderSummaryPeriod(
   period: { start?: string; end?: string },
-  occurrences: readonly Pick<EventDataOccurrence, 'starts_on' | 'ends_on'>[],
+  occurrences: readonly OccurrencePeriod[],
   pointsFormat: PointsFormat,
   config: SummaryRowsConfig,
 ): string | null {
