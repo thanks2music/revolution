@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from '@jest/globals';
 import {
+  describeEventKeys,
   findSlugChanges,
   inheritEventKeys,
   readExistingArticleFields,
@@ -179,5 +180,31 @@ describe('inheritEventKeys', () => {
     expect(inheritEventKeys(empty, { title_slugs: ['my-hero-academia'] }).changes).toEqual([
       'title_slugs: (なし) → my-hero-academia (既存の記事の値に戻した)',
     ]);
+  });
+});
+
+describe('describeEventKeys', () => {
+  it('引き継いで、戻した項目があれば並べる', () => {
+    expect(
+      describeEventKeys({ kept: ['event_slug', 'title_slugs'], changes: ['title_slugs: a → b (既存の記事の値に戻した)'], rejected: null }),
+    ).toBe('- 引き継いだ項目: event_slug / title_slugs\n- title_slugs: a → b (既存の記事の値に戻した)');
+  });
+
+  it('引き継いで、作り直した値も同じなら、そう書く', () => {
+    expect(describeEventKeys({ kept: ['event_slug'], changes: [], rejected: null })).toBe(
+      '- 引き継いだ項目: event_slug\n- 作り直した値も既存の記事と同じだった',
+    );
+  });
+
+  it('既存の記事に項目が無ければ、作り直した値を使ったと書く', () => {
+    expect(describeEventKeys({ kept: [], changes: [], rejected: null })).toBe(
+      '- 既存の記事にこれらの項目が無いため、作り直した値を使っている',
+    );
+  });
+
+  it('引き継がなかったときは理由を書く', () => {
+    expect(describeEventKeys({ kept: [], changes: [], rejected: '既存の記事の値が今の形式に合わない (event_slug)' })).toContain(
+      '引き継がなかった: 既存の記事の値が今の形式に合わない (event_slug)',
+    );
   });
 });

@@ -72,7 +72,11 @@ export function readExistingArticleFields(content: string): ExistingArticleField
   };
 }
 
-/** 既存の記事の event_data から、企画を決める項目を読む (空の値と、配列でない title_slugs は読まない) */
+/**
+ * 既存の記事の event_data から、企画を決める項目を読む (空の値と、配列でない title_slugs は読まない)。
+ * title_slugs だけここで項目ごと落とすのは、配列でない値 (古い書き方の 1 つの文字列) をそのまま戻すと、
+ * 1 文字ずつの配列に化けたり、スキーマで全項目の引き継ぎが止まったりするため。ほかの項目の形はスキーマで確かめる
+ */
 function readEventKeys(eventData: Partial<EventData> | undefined): EventKeys {
   const keys: Record<string, unknown> = {};
   if (!eventData) return keys;
@@ -113,14 +117,13 @@ export function inheritEventKeys(eventData: EventData | undefined, keys: EventKe
   const kept = EVENT_KEY_NAMES.filter((name) => keys[name] !== undefined);
   if (!eventData || kept.length === 0) return { eventData, kept: [], changes: [], rejected: null };
 
-  const merged: EventData = { ...eventData };
+  // keys には既存の記事にあった項目だけが入っている (readEventKeys)
+  const merged: EventData = { ...eventData, ...keys };
   const changes: string[] = [];
   for (const name of kept) {
-    const value = keys[name]!;
-    if (show(eventData[name]) !== show(value)) {
-      changes.push(`${name}: ${show(eventData[name])} → ${show(value)} (既存の記事の値に戻した)`);
-    }
-    Object.assign(merged, { [name]: Array.isArray(value) ? [...value] : value });
+    const before = show(eventData[name]);
+    const after = show(keys[name]);
+    if (before !== after) changes.push(`${name}: ${before} → ${after} (既存の記事の値に戻した)`);
   }
   if (merged.supplementary_category_slugs?.includes(merged.primary_category_slug)) {
     merged.supplementary_category_slugs = merged.supplementary_category_slugs.filter(
@@ -165,4 +168,14 @@ export function updateBranchName(eventType: string, postId: string, now: Date): 
 
 export function updatePrTitle(eventType: string, postId: string): string {
   return `♻️ Update article (AI Writer): ${eventType}/${postId}`;
+}
+
+/** 更新の PR 本文の「企画を決める項目」の行 */
+export function describeEventKeys(report: Omit<InheritedEventKeys, 'eventData'>): string {
+  if (report.rejected) return `- ⚠️ 引き継がなかった: ${report.rejected}。作り直した値を使っている (差分で確かめる)`;
+  if (report.kept.length === 0) return '- 既存の記事にこれらの項目が無いため、作り直した値を使っている';
+  const lines = [`- 引き継いだ項目: ${report.kept.join(' / ')}`];
+  if (report.changes.length === 0) lines.push('- 作り直した値も既存の記事と同じだった');
+  else lines.push(...report.changes.map((change) => `- ${change}`));
+  return lines.join('\n');
 }

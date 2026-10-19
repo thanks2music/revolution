@@ -5,8 +5,10 @@ import { createMdxPr, type CreateMdxPrResult } from '../github/create-mdx-pr';
 import { createUpdateMdxPr, type ArticleOnMain } from '../github/update-mdx-pr';
 import {
   findSlugChanges,
+  describeEventKeys,
   inheritEventKeys,
   updateBranchName,
+  type InheritedEventKeys,
   updatePrTitle,
   type ExistingArticleFields,
 } from '../mdx/article-update';
@@ -291,7 +293,7 @@ export interface MdxGenerationResult {
   update?: {
     shrinkCheck: ShrinkCheck;
     /** event_data の企画を決める項目の引き継ぎ */
-    eventKeys: EventKeysReport;
+    eventKeys: Omit<InheritedEventKeys, 'eventData'>;
   };
 }
 
@@ -330,23 +332,6 @@ interface ArticlePointsInput {
   グッズの描き下ろし表記: RedrawnWord | null;
   pointsFormat: PointsFormat;
   costTracker: CostTrackerService;
-}
-
-/** 記事の更新で、event_data の企画を決める項目をどう引き継いだか */
-interface EventKeysReport {
-  kept: string[];
-  changes: string[];
-  rejected: string | null;
-}
-
-/** 更新の PR 本文の「企画を決める項目」の行 */
-function describeEventKeys(report: EventKeysReport): string {
-  if (report.rejected) return `- ⚠️ 引き継がなかった: ${report.rejected}。作り直した値を使っている (差分で確かめる)`;
-  if (report.kept.length === 0) return '- 既存の記事にこれらの項目が無いため、作り直した値を使っている';
-  const lines = [`- 引き継いだ項目: ${report.kept.join(' / ')}`];
-  if (report.changes.length === 0) lines.push('- 作り直した値も既存の記事と同じだった');
-  else lines.push(...report.changes.map((change) => `- ${change}`));
-  return lines.join('\n');
 }
 
 /**
@@ -1613,15 +1598,17 @@ export class ArticleGenerationMdxService {
       //   ここでは**その結果を再利用する**（同じ入力で 2 回走らせると、警告ログが
       //   二重に出るうえ、将来どちらかだけ直して挙動が割れる余地を残す）。
       // 記事の更新では、企画を決める項目 (event_slug など) を既存の記事の値に戻す (抽出の LLM が揺れるため。2026-10-19 BOSS 決定)
-      const inherited = update ? inheritEventKeys(parsedEventDataResult, update.fields.eventKeys) : null;
-      for (const change of inherited?.changes ?? []) {
+      // (記事の更新でなければ keys が空なので、作り直した値のまま)
+      const { eventData: parsedEventData, ...eventKeys } = inheritEventKeys(
+        parsedEventDataResult,
+        update?.fields.eventKeys ?? {},
+      );
+      for (const change of eventKeys.changes) {
         console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ ${change}`);
       }
-      if (inherited?.rejected) {
-        console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ 企画の項目を引き継がなかった: ${inherited.rejected}`);
+      if (eventKeys.rejected) {
+        console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ 企画の項目を引き継がなかった: ${eventKeys.rejected}`);
       }
-      const eventKeys = inherited && { kept: inherited.kept, changes: inherited.changes, rejected: inherited.rejected };
-      const parsedEventData: EventData | undefined = inherited ? inherited.eventData : parsedEventDataResult;
 
       // fallback 経路の start/end date の存在有無を先に判定して、helper 呼び出しの副作用を
       // 予測可能にする (droppedFields observability の判定精度向上、Sprint C-α PR #268 R1 対応)。
@@ -1769,7 +1756,7 @@ export class ArticleGenerationMdxService {
             success: false,
             error: message,
             mdxArticle,
-            update: { shrinkCheck, eventKeys: eventKeys! },
+            update: { shrinkCheck, eventKeys },
           };
         }
 
@@ -1784,7 +1771,7 @@ export class ArticleGenerationMdxService {
             updated: mdxArticle.frontmatter.updated ?? '',
             shrinkCheck,
             allowShrink: update.allowShrink,
-            eventKeys: eventKeys!,
+            eventKeys,
             extraction,
             metadata: { categories, excerpt },
           }),
@@ -1880,7 +1867,7 @@ export class ArticleGenerationMdxService {
         placeholderReplacement,
         textPlaceholderReplacement,
         visionApiResult, // vision-api step Vision API integration result
-        update: shrinkCheck && eventKeys ? { shrinkCheck, eventKeys } : undefined,
+        update: shrinkCheck ? { shrinkCheck, eventKeys } : undefined,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -2328,7 +2315,7 @@ export class ArticleGenerationMdxService {
     updated: string;
     shrinkCheck: ShrinkCheck;
     allowShrink: boolean;
-    eventKeys: EventKeysReport;
+    eventKeys: Omit<InheritedEventKeys, 'eventData'>;
     extraction: { workTitle: string; storeName: string; eventTypeName: string };
     metadata: { categories: string[]; excerpt: string };
   }): string {
