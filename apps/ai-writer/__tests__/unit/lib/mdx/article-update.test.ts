@@ -158,15 +158,25 @@ describe('inheritEventKeys', () => {
     expect(inheritEventKeys(regenerated, {})).toEqual({ eventData: regenerated, kept: [], changes: [], rejected: null });
   });
 
-  it('作り直した event_data が無ければ undefined のまま', () => {
-    expect(inheritEventKeys(undefined, existingKeys)).toEqual({ eventData: undefined, kept: [], changes: [], rejected: null });
+  it('作り直した event_data が無ければ undefined のまま、その理由を返す', () => {
+    const result = inheritEventKeys(undefined, existingKeys);
+    expect(result).toMatchObject({ eventData: undefined, kept: [], changes: [] });
+    expect(result.rejected).toContain('作り直した event_data が無い');
   });
 
-  it('既存の値が今の形式に合わなければ引き継がず、理由を返す', () => {
+  it('形式に合わない項目だけ引き継がず、ほかの項目は引き継ぐ', () => {
     const result = inheritEventKeys(regenerated, { ...existingKeys, event_slug: 'Bad Slug!' });
-    expect(result.eventData).toEqual(regenerated);
-    expect(result.kept).toEqual([]);
-    expect(result.rejected).toContain('event_slug');
+    expect(result.eventData).toMatchObject({
+      event_slug: 'boku-no-hero-academia-cafe-we-are-hero-holics',
+      title_slugs: ['my-hero-academia'],
+    });
+    expect(result.kept).toEqual(['event_name', 'title_slugs', 'primary_category_slug']);
+    expect(result.rejected).toBe('既存の記事の値が今の形式に合わない項目は引き継がなかった (event_slug)');
+  });
+
+  it('occurrences は作り直した値そのもの (同じオブジェクト) を返す', () => {
+    const result = inheritEventKeys(regenerated, existingKeys);
+    expect((result.eventData as { occurrences: unknown }).occurrences).toBe((regenerated as { occurrences: unknown }).occurrences);
   });
 
   it('戻した主カテゴリが補助のカテゴリにも入っていれば、補助から外す', () => {
@@ -202,9 +212,17 @@ describe('describeEventKeys', () => {
     );
   });
 
-  it('引き継がなかったときは理由を書く', () => {
-    expect(describeEventKeys({ kept: [], changes: [], rejected: '既存の記事の値が今の形式に合わない (event_slug)' })).toContain(
-      '引き継がなかった: 既存の記事の値が今の形式に合わない (event_slug)',
+  it('引き継げなかった項目があれば、引き継いだ項目と並べて理由を書く', () => {
+    expect(
+      describeEventKeys({ kept: ['title_slugs'], changes: [], rejected: '既存の記事の値が今の形式に合わない項目は引き継がなかった (event_slug)' }),
+    ).toBe(
+      '- 引き継いだ項目: title_slugs\n- 作り直した値も既存の記事と同じだった\n- ⚠️ 既存の記事の値が今の形式に合わない項目は引き継がなかった (event_slug)。その項目は作り直した値を使っている (差分で確かめる)',
+    );
+  });
+
+  it('作り直した event_data が無ければ、その理由だけを書く', () => {
+    expect(describeEventKeys({ kept: [], changes: [], rejected: '作り直した event_data が無い (会場の数が 0 になり、減少として止まる)' })).toBe(
+      '- ⚠️ 作り直した event_data が無い (会場の数が 0 になり、減少として止まる)。その項目は作り直した値を使っている (差分で確かめる)',
     );
   });
 });

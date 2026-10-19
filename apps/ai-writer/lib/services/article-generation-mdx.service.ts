@@ -1607,7 +1607,7 @@ export class ArticleGenerationMdxService {
         console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ ${change}`);
       }
       if (eventKeys.rejected) {
-        console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ 企画の項目を引き継がなかった: ${eventKeys.rejected}`);
+        console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ ${eventKeys.rejected}`);
       }
 
       // fallback 経路の start/end date の存在有無を先に判定して、helper 呼び出しの副作用を

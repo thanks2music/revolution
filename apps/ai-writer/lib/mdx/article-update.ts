@@ -93,15 +93,15 @@ function readEventKeys(eventData: Partial<EventData> | undefined): EventKeys {
 
 export interface InheritedEventKeys {
   eventData: EventData | undefined;
-  /** 引き継いだ項目の名前 (既存の記事にあった項目) */
+  /** 引き継いだ項目の名前 */
   kept: string[];
   /** 作り直した値と違ったので、既存の記事の値に戻した項目 */
   changes: string[];
-  /** 既存の記事の値が今の形式に合わず、引き継がなかったとき、その理由 */
+  /** 引き継げなかった項目があるとき、その理由 (形式に合わない値、作り直した event_data が無いなど) */
   rejected: string | null;
 }
 
-/** 比べる・表示するための文字列 (配列は順に並べる。title_slugs の先頭は主の作品なので、順も比べる) */
+/** 表示するための文字列 */
 function show(value: unknown): string {
   if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '(なし)';
   return value === undefined || value === null || value === '' ? '(なし)' : String(value);
@@ -109,21 +109,27 @@ function show(value: unknown): string {
 
 /**
  * 作り直した event_data に、既存の記事の企画の項目を戻す。既存の記事に無い項目は作り直した値のまま。
- * 戻した結果が今のスキーマ (`EventDataSchema`) に合わなければ (古い形式の値など)、引き継がずに作り直した値を使う。
- * 主カテゴリを戻したとき、それが補助のカテゴリにも入っていれば補助から外す (同じカテゴリを 2 回登録しないため)。
- * 作り直した event_data が無ければそのまま (undefined。会場の数の比較で減少として止まる)
+ * 項目ごとに今のスキーマ (`EventDataSchema`) の形を確かめ、合う項目だけ戻す (古い形式の 1 項目のために、ほかの項目まで
+ * 揺れた値にしないため)。主カテゴリを戻したとき、それが補助のカテゴリにも入っていれば補助から外す (同じカテゴリを 2 回登録しないため)。
+ * 返すのは組み立てた値 (スキーマで解析した値ではない。occurrences などを作り直した値のまま変えないため)。
+ * 作り直した event_data が無ければそのまま (undefined。会場の数が 0 になり、減少として止まる)
  */
 export function inheritEventKeys(eventData: EventData | undefined, keys: EventKeys): InheritedEventKeys {
-  const kept = EVENT_KEY_NAMES.filter((name) => keys[name] !== undefined);
-  if (!eventData || kept.length === 0) return { eventData, kept: [], changes: [], rejected: null };
+  const present = EVENT_KEY_NAMES.filter((name) => keys[name] !== undefined);
+  if (present.length === 0) return { eventData, kept: [], changes: [], rejected: null };
+  if (!eventData) {
+    return { eventData, kept: [], changes: [], rejected: '作り直した event_data が無い (会場の数が 0 になり、減少として止まる)' };
+  }
 
-  // keys には既存の記事にあった項目だけが入っている (readEventKeys)
-  const merged: EventData = { ...eventData, ...keys };
+  const kept = present.filter((name) => EventDataSchema.shape[name].safeParse(keys[name]).success);
+  const invalid = present.filter((name) => !kept.includes(name));
+  const merged: EventData = { ...eventData };
   const changes: string[] = [];
   for (const name of kept) {
-    const before = show(eventData[name]);
-    const after = show(keys[name]);
-    if (before !== after) changes.push(`${name}: ${before} → ${after} (既存の記事の値に戻した)`);
+    if (JSON.stringify(eventData[name] ?? null) !== JSON.stringify(keys[name])) {
+      changes.push(`${name}: ${show(eventData[name])} → ${show(keys[name])} (既存の記事の値に戻した)`);
+    }
+    Object.assign(merged, { [name]: keys[name] });
   }
   if (merged.supplementary_category_slugs?.includes(merged.primary_category_slug)) {
     merged.supplementary_category_slugs = merged.supplementary_category_slugs.filter(
@@ -131,12 +137,11 @@ export function inheritEventKeys(eventData: EventData | undefined, keys: EventKe
     );
   }
 
-  const parsed = EventDataSchema.safeParse(merged);
-  if (!parsed.success) {
-    const fields = [...new Set(parsed.error.issues.map((issue) => String(issue.path[0])))].join(', ');
-    return { eventData, kept: [], changes: [], rejected: `既存の記事の値が今の形式に合わない (${fields})` };
+  if (!EventDataSchema.safeParse(merged).success) {
+    return { eventData, kept: [], changes: [], rejected: '引き継ぐと event_data 全体が今の形式に合わなくなる' };
   }
-  return { eventData: parsed.data, kept, changes, rejected: null };
+  const rejected = invalid.length > 0 ? `既存の記事の値が今の形式に合わない項目は引き継がなかった (${invalid.join(', ')})` : null;
+  return { eventData: merged, kept, changes, rejected };
 }
 
 /**
@@ -172,10 +177,14 @@ export function updatePrTitle(eventType: string, postId: string): string {
 
 /** 更新の PR 本文の「企画を決める項目」の行 */
 export function describeEventKeys(report: Omit<InheritedEventKeys, 'eventData'>): string {
-  if (report.rejected) return `- ⚠️ 引き継がなかった: ${report.rejected}。作り直した値を使っている (差分で確かめる)`;
-  if (report.kept.length === 0) return '- 既存の記事にこれらの項目が無いため、作り直した値を使っている';
-  const lines = [`- 引き継いだ項目: ${report.kept.join(' / ')}`];
-  if (report.changes.length === 0) lines.push('- 作り直した値も既存の記事と同じだった');
-  else lines.push(...report.changes.map((change) => `- ${change}`));
+  const lines: string[] = [];
+  if (report.kept.length === 0) {
+    if (!report.rejected) lines.push('- 既存の記事にこれらの項目が無いため、作り直した値を使っている');
+  } else {
+    lines.push(`- 引き継いだ項目: ${report.kept.join(' / ')}`);
+    if (report.changes.length === 0) lines.push('- 作り直した値も既存の記事と同じだった');
+    else lines.push(...report.changes.map((change) => `- ${change}`));
+  }
+  if (report.rejected) lines.push(`- ⚠️ ${report.rejected}。その項目は作り直した値を使っている (差分で確かめる)`);
   return lines.join('\n');
 }
