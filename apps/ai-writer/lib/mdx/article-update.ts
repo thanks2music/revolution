@@ -101,6 +101,9 @@ export interface InheritedEventKeys {
   rejected: string | null;
 }
 
+/** 引き継ぎの結果のうち、ログと PR 本文に出す部分 */
+export type EventKeysReport = Omit<InheritedEventKeys, 'eventData'>;
+
 /** 表示するための文字列 */
 function show(value: unknown): string {
   if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '(なし)';
@@ -137,6 +140,7 @@ export function inheritEventKeys(eventData: EventData | undefined, keys: EventKe
     );
   }
 
+  // 作り直した eventData は parseAndNormalizeEventData で同じスキーマを通っているので、ここで失敗するのは引き継いだ値が原因のときだけ
   if (!EventDataSchema.safeParse(merged).success) {
     return { eventData, kept: [], changes: [], rejected: '引き継ぐと event_data 全体が今の形式に合わなくなる' };
   }
@@ -176,13 +180,13 @@ export function updatePrTitle(eventType: string, postId: string): string {
 }
 
 /** 更新の PR 本文の「企画を決める項目」の行 */
-export function describeEventKeys(report: Omit<InheritedEventKeys, 'eventData'>): string {
+export function describeEventKeys(report: EventKeysReport): string {
   const lines: string[] = [];
   if (report.kept.length === 0) {
     if (!report.rejected) lines.push('- 既存の記事にこれらの項目が無いため、作り直した値を使っている');
   } else {
     lines.push(`- 引き継いだ項目: ${report.kept.join(' / ')}`);
-    if (report.changes.length === 0) lines.push('- 作り直した値も既存の記事と同じだった');
+    if (report.changes.length === 0) lines.push('- 引き継いだ項目は、作り直した値も既存の記事と同じだった');
     else lines.push(...report.changes.map((change) => `- ${change}`));
   }
   if (report.rejected) lines.push(`- ⚠️ ${report.rejected}。その項目は作り直した値を使っている (差分で確かめる)`);

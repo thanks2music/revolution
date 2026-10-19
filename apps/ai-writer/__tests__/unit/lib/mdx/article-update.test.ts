@@ -185,6 +185,13 @@ describe('inheritEventKeys', () => {
     expect(result.eventData).toMatchObject({ primary_category_slug: 'collabo-cafe', supplementary_category_slugs: [] });
   });
 
+  it('title_slugs は順も比べる (先頭が主の作品)', () => {
+    const swapped = { ...(regenerated as object), title_slugs: ['b', 'a'] } as never;
+    expect(inheritEventKeys(swapped, { title_slugs: ['a', 'b'] }).changes).toEqual([
+      'title_slugs: b, a → a, b (既存の記事の値に戻した)',
+    ]);
+  });
+
   it('作り直した値が空の配列なら「(なし)」と表示する', () => {
     const empty = { ...(regenerated as object), title_slugs: [] } as never;
     expect(inheritEventKeys(empty, { title_slugs: ['my-hero-academia'] }).changes).toEqual([
@@ -202,7 +209,7 @@ describe('describeEventKeys', () => {
 
   it('引き継いで、作り直した値も同じなら、そう書く', () => {
     expect(describeEventKeys({ kept: ['event_slug'], changes: [], rejected: null })).toBe(
-      '- 引き継いだ項目: event_slug\n- 作り直した値も既存の記事と同じだった',
+      '- 引き継いだ項目: event_slug\n- 引き継いだ項目は、作り直した値も既存の記事と同じだった',
     );
   });
 
@@ -216,7 +223,7 @@ describe('describeEventKeys', () => {
     expect(
       describeEventKeys({ kept: ['title_slugs'], changes: [], rejected: '既存の記事の値が今の形式に合わない項目は引き継がなかった (event_slug)' }),
     ).toBe(
-      '- 引き継いだ項目: title_slugs\n- 作り直した値も既存の記事と同じだった\n- ⚠️ 既存の記事の値が今の形式に合わない項目は引き継がなかった (event_slug)。その項目は作り直した値を使っている (差分で確かめる)',
+      '- 引き継いだ項目: title_slugs\n- 引き継いだ項目は、作り直した値も既存の記事と同じだった\n- ⚠️ 既存の記事の値が今の形式に合わない項目は引き継がなかった (event_slug)。その項目は作り直した値を使っている (差分で確かめる)',
     );
   });
 

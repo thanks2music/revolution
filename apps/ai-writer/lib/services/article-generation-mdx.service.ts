@@ -8,7 +8,7 @@ import {
   describeEventKeys,
   inheritEventKeys,
   updateBranchName,
-  type InheritedEventKeys,
+  type EventKeysReport,
   updatePrTitle,
   type ExistingArticleFields,
 } from '../mdx/article-update';
@@ -293,7 +293,7 @@ export interface MdxGenerationResult {
   update?: {
     shrinkCheck: ShrinkCheck;
     /** event_data の企画を決める項目の引き継ぎ */
-    eventKeys: Omit<InheritedEventKeys, 'eventData'>;
+    eventKeys: EventKeysReport;
   };
 }
 
@@ -2315,7 +2315,7 @@ export class ArticleGenerationMdxService {
     updated: string;
     shrinkCheck: ShrinkCheck;
     allowShrink: boolean;
-    eventKeys: Omit<InheritedEventKeys, 'eventData'>;
+    eventKeys: EventKeysReport;
     extraction: { workTitle: string; storeName: string; eventTypeName: string };
     metadata: { categories: string[]; excerpt: string };
   }): string {
