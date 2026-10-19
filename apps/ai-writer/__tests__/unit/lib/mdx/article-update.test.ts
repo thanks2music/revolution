@@ -4,6 +4,7 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   findSlugChanges,
+  inheritEventKeys,
   readExistingArticleFields,
   updateBranchName,
   updatePrTitle,
@@ -35,6 +36,35 @@ describe('readExistingArticleFields', () => {
       title: 'ヒロアカ カフェ in 4都市 10月16日よりコラボ開催',
       date: '2026-10-12T21:26:06.709Z',
       officialUrl: 'https://example.com/',
+      eventKeys: {},
+    });
+  });
+
+  it('event_data の企画を決める項目を読む (occurrences は読まない)', () => {
+    const withEventData = article.replace(
+      '---\n\n本文',
+      [
+        'event_data:',
+        '  primary_category_slug: "collabo-cafe"',
+        '  title_slugs: ["my-hero-academia"]',
+        '  event_name: "僕のヒーローアカデミアカフェ"',
+        '  event_slug: "my-hero-academia-cafe-we-are-hero-holics"',
+        '  occurrences:',
+        '    - venue_slug: null',
+        '      venue_label: "原宿"',
+        '      starts_on: "2026-10-16"',
+        '      ends_on: "2026-12-20"',
+        '      official_url: "https://example.com/"',
+        '---',
+        '',
+        '本文',
+      ].join('\n'),
+    );
+    expect(readExistingArticleFields(withEventData).eventKeys).toEqual({
+      event_slug: 'my-hero-academia-cafe-we-are-hero-holics',
+      event_name: '僕のヒーローアカデミアカフェ',
+      title_slugs: ['my-hero-academia'],
+      primary_category_slug: 'collabo-cafe',
     });
   });
 
@@ -85,5 +115,43 @@ describe('更新の PR の名前', () => {
     expect(updatePrTitle('collabo-cafe', '01m4s065g1hchh9d')).toBe(
       '♻️ Update article (AI Writer): collabo-cafe/01m4s065g1hchh9d',
     );
+  });
+});
+
+describe('inheritEventKeys', () => {
+  const regenerated = {
+    primary_category_slug: 'collabo-cafe',
+    title_slugs: ['boku-no-hero-academia'],
+    event_name: '僕のヒーローアカデミアカフェ',
+    event_slug: 'boku-no-hero-academia-cafe-we-are-hero-holics',
+    occurrences: [{ venue_slug: null, venue_label: '原宿', starts_on: '2026-10-16', ends_on: '2026-12-20', official_url: null }],
+  } as never;
+
+  it('既存の記事の値に戻し、違った項目を返す。occurrences は作り直した値のまま (ヒロアカ、2026-10-19)', () => {
+    const { eventData, changes } = inheritEventKeys(regenerated, {
+      event_slug: 'my-hero-academia-cafe-we-are-hero-holics',
+      event_name: '僕のヒーローアカデミアカフェ',
+      title_slugs: ['my-hero-academia'],
+      primary_category_slug: 'collabo-cafe',
+    });
+    expect(eventData).toMatchObject({
+      title_slugs: ['my-hero-academia'],
+      event_slug: 'my-hero-academia-cafe-we-are-hero-holics',
+      occurrences: [{ venue_label: '原宿' }],
+    });
+    expect(changes).toEqual([
+      'event_slug: boku-no-hero-academia-cafe-we-are-hero-holics → my-hero-academia-cafe-we-are-hero-holics (既存の記事の値に戻した)',
+      'title_slugs: boku-no-hero-academia → my-hero-academia (既存の記事の値に戻した)',
+    ]);
+  });
+
+  it('既存の記事に無い項目は作り直した値のまま', () => {
+    const { eventData, changes } = inheritEventKeys(regenerated, {});
+    expect(eventData).toEqual(regenerated);
+    expect(changes).toEqual([]);
+  });
+
+  it('作り直した event_data が無ければ undefined のまま', () => {
+    expect(inheritEventKeys(undefined, { event_slug: 'x' })).toEqual({ eventData: undefined, changes: [] });
   });
 });
