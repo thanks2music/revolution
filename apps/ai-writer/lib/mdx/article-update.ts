@@ -7,7 +7,7 @@
  * - date (公開日。更新日時は updated に書く)
  * - official_url (作り直しの入力。同じ公式サイトから作る)
  */
-import type { EventData } from '@revolution/schemas/mdx-frontmatter';
+import { EventDataSchema, type EventData } from '@revolution/schemas/mdx-frontmatter';
 import { parseFrontmatter } from './parse-frontmatter';
 
 export interface ExistingArticleFields {
@@ -72,37 +72,68 @@ export function readExistingArticleFields(content: string): ExistingArticleField
   };
 }
 
+/** 既存の記事の event_data から、企画を決める項目を読む (空の値と、配列でない title_slugs は読まない) */
 function readEventKeys(eventData: Partial<EventData> | undefined): EventKeys {
-  const keys: EventKeys = {};
+  const keys: Record<string, unknown> = {};
   if (!eventData) return keys;
-  if (eventData.event_slug) keys.event_slug = eventData.event_slug;
-  if (eventData.event_name) keys.event_name = eventData.event_name;
-  if (eventData.title_slugs && eventData.title_slugs.length > 0) keys.title_slugs = [...eventData.title_slugs];
-  if (eventData.primary_category_slug) keys.primary_category_slug = eventData.primary_category_slug;
-  return keys;
+  for (const name of EVENT_KEY_NAMES) {
+    const value = eventData[name];
+    if (name === 'title_slugs') {
+      if (Array.isArray(value) && value.length > 0) keys[name] = [...value];
+    } else if (typeof value === 'string' && value !== '') {
+      keys[name] = value;
+    }
+  }
+  return keys as EventKeys;
+}
+
+export interface InheritedEventKeys {
+  eventData: EventData | undefined;
+  /** 引き継いだ項目の名前 (既存の記事にあった項目) */
+  kept: string[];
+  /** 作り直した値と違ったので、既存の記事の値に戻した項目 */
+  changes: string[];
+  /** 既存の記事の値が今の形式に合わず、引き継がなかったとき、その理由 */
+  rejected: string | null;
+}
+
+/** 比べる・表示するための文字列 (配列は順に並べる。title_slugs の先頭は主の作品なので、順も比べる) */
+function show(value: unknown): string {
+  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '(なし)';
+  return value === undefined || value === null || value === '' ? '(なし)' : String(value);
 }
 
 /**
  * 作り直した event_data に、既存の記事の企画の項目を戻す。既存の記事に無い項目は作り直した値のまま。
- * 値が違った項目を `changes` に返す (ログと PR 本文に出す)。作り直した event_data が無ければそのまま (undefined)
+ * 戻した結果が今のスキーマ (`EventDataSchema`) に合わなければ (古い形式の値など)、引き継がずに作り直した値を使う。
+ * 主カテゴリを戻したとき、それが補助のカテゴリにも入っていれば補助から外す (同じカテゴリを 2 回登録しないため)。
+ * 作り直した event_data が無ければそのまま (undefined。会場の数の比較で減少として止まる)
  */
-export function inheritEventKeys(
-  eventData: EventData | undefined,
-  keys: EventKeys,
-): { eventData: EventData | undefined; changes: string[] } {
-  if (!eventData) return { eventData, changes: [] };
-  const changes: string[] = [];
+export function inheritEventKeys(eventData: EventData | undefined, keys: EventKeys): InheritedEventKeys {
+  const kept = EVENT_KEY_NAMES.filter((name) => keys[name] !== undefined);
+  if (!eventData || kept.length === 0) return { eventData, kept: [], changes: [], rejected: null };
+
   const merged: EventData = { ...eventData };
-  for (const name of EVENT_KEY_NAMES) {
-    const kept = keys[name];
-    if (kept === undefined) continue;
-    const show = (value: unknown) => (Array.isArray(value) ? value.join(', ') : String(value ?? '(なし)'));
-    if (show(eventData[name]) !== show(kept)) {
-      changes.push(`${name}: ${show(eventData[name])} → ${show(kept)} (既存の記事の値に戻した)`);
+  const changes: string[] = [];
+  for (const name of kept) {
+    const value = keys[name]!;
+    if (show(eventData[name]) !== show(value)) {
+      changes.push(`${name}: ${show(eventData[name])} → ${show(value)} (既存の記事の値に戻した)`);
     }
-    Object.assign(merged, { [name]: Array.isArray(kept) ? [...kept] : kept });
+    Object.assign(merged, { [name]: Array.isArray(value) ? [...value] : value });
   }
-  return { eventData: merged, changes };
+  if (merged.supplementary_category_slugs?.includes(merged.primary_category_slug)) {
+    merged.supplementary_category_slugs = merged.supplementary_category_slugs.filter(
+      (slug) => slug !== merged.primary_category_slug,
+    );
+  }
+
+  const parsed = EventDataSchema.safeParse(merged);
+  if (!parsed.success) {
+    const fields = [...new Set(parsed.error.issues.map((issue) => String(issue.path[0])))].join(', ');
+    return { eventData, kept: [], changes: [], rejected: `既存の記事の値が今の形式に合わない (${fields})` };
+  }
+  return { eventData: parsed.data, kept, changes, rejected: null };
 }
 
 /**

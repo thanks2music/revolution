@@ -290,8 +290,8 @@ export interface MdxGenerationResult {
   // 公開中の記事の更新のときだけ: 会場・品目の数の更新の前後の比較
   update?: {
     shrinkCheck: ShrinkCheck;
-    /** 既存の記事の値に戻した event_data の項目 */
-    eventKeyChanges: string[];
+    /** event_data の企画を決める項目の引き継ぎ */
+    eventKeys: EventKeysReport;
   };
 }
 
@@ -330,6 +330,23 @@ interface ArticlePointsInput {
   グッズの描き下ろし表記: RedrawnWord | null;
   pointsFormat: PointsFormat;
   costTracker: CostTrackerService;
+}
+
+/** 記事の更新で、event_data の企画を決める項目をどう引き継いだか */
+interface EventKeysReport {
+  kept: string[];
+  changes: string[];
+  rejected: string | null;
+}
+
+/** 更新の PR 本文の「企画を決める項目」の行 */
+function describeEventKeys(report: EventKeysReport): string {
+  if (report.rejected) return `- ⚠️ 引き継がなかった: ${report.rejected}。作り直した値を使っている (差分で確かめる)`;
+  if (report.kept.length === 0) return '- 既存の記事にこれらの項目が無いため、作り直した値を使っている';
+  const lines = [`- 引き継いだ項目: ${report.kept.join(' / ')}`];
+  if (report.changes.length === 0) lines.push('- 作り直した値も既存の記事と同じだった');
+  else lines.push(...report.changes.map((change) => `- ${change}`));
+  return lines.join('\n');
 }
 
 /**
@@ -1596,13 +1613,15 @@ export class ArticleGenerationMdxService {
       //   ここでは**その結果を再利用する**（同じ入力で 2 回走らせると、警告ログが
       //   二重に出るうえ、将来どちらかだけ直して挙動が割れる余地を残す）。
       // 記事の更新では、企画を決める項目 (event_slug など) を既存の記事の値に戻す (抽出の LLM が揺れるため。2026-10-19 BOSS 決定)
-      const inherited = update
-        ? inheritEventKeys(parsedEventDataResult, update.fields.eventKeys)
-        : { eventData: parsedEventDataResult, changes: [] };
-      for (const change of inherited.changes) {
+      const inherited = update ? inheritEventKeys(parsedEventDataResult, update.fields.eventKeys) : null;
+      for (const change of inherited?.changes ?? []) {
         console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ ${change}`);
       }
-      const parsedEventData: EventData | undefined = inherited.eventData;
+      if (inherited?.rejected) {
+        console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ 企画の項目を引き継がなかった: ${inherited.rejected}`);
+      }
+      const eventKeys = inherited && { kept: inherited.kept, changes: inherited.changes, rejected: inherited.rejected };
+      const parsedEventData: EventData | undefined = inherited ? inherited.eventData : parsedEventDataResult;
 
       // fallback 経路の start/end date の存在有無を先に判定して、helper 呼び出しの副作用を
       // 予測可能にする (droppedFields observability の判定精度向上、Sprint C-α PR #268 R1 対応)。
@@ -1750,7 +1769,7 @@ export class ArticleGenerationMdxService {
             success: false,
             error: message,
             mdxArticle,
-            update: { shrinkCheck, eventKeyChanges: inherited.changes },
+            update: { shrinkCheck, eventKeys: eventKeys! },
           };
         }
 
@@ -1765,7 +1784,7 @@ export class ArticleGenerationMdxService {
             updated: mdxArticle.frontmatter.updated ?? '',
             shrinkCheck,
             allowShrink: update.allowShrink,
-            eventKeyChanges: inherited.changes,
+            eventKeys: eventKeys!,
             extraction,
             metadata: { categories, excerpt },
           }),
@@ -1861,7 +1880,7 @@ export class ArticleGenerationMdxService {
         placeholderReplacement,
         textPlaceholderReplacement,
         visionApiResult, // vision-api step Vision API integration result
-        update: shrinkCheck ? { shrinkCheck, eventKeyChanges: inherited.changes } : undefined,
+        update: shrinkCheck && eventKeys ? { shrinkCheck, eventKeys } : undefined,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -2309,15 +2328,12 @@ export class ArticleGenerationMdxService {
     updated: string;
     shrinkCheck: ShrinkCheck;
     allowShrink: boolean;
-    eventKeyChanges: string[];
+    eventKeys: EventKeysReport;
     extraction: { workTitle: string; storeName: string; eventTypeName: string };
     metadata: { categories: string[]; excerpt: string };
   }): string {
-    const { path, fields, updated, shrinkCheck, allowShrink, eventKeyChanges, extraction, metadata } = params;
-    const eventKeys =
-      eventKeyChanges.length > 0
-        ? eventKeyChanges.map((line) => `- ${line}`).join('\n')
-        : '- 作り直した値も既存の記事と同じだった';
+    const { path, fields, updated, shrinkCheck, allowShrink, extraction, metadata } = params;
+    const eventKeys = describeEventKeys(params.eventKeys);
     const counts = describeShrinkCheck(shrinkCheck).map((line) => `- ${line}`).join('\n');
 
     return `## ♻️ 記事の更新
@@ -2336,7 +2352,7 @@ ${counts}
 ${shrinkCheck.shrunk && allowShrink ? '\n⚠️ 減った項目がありますが、`--allow-shrink` で PR を作りました。\n' : ''}
 ## 🔑 企画を決める項目 (event_slug / event_name / title_slugs / primary_category_slug)
 
-既存の記事の値を引き継いでいます (取り込みで企画と作品を決めるキーのため)。
+取り込みで企画と作品を決めるキーのため、既存の記事の値を引き継ぎます。
 
 ${eventKeys}
 

@@ -40,6 +40,11 @@ describe('readExistingArticleFields', () => {
     });
   });
 
+  it('title_slugs が配列でなければ読まない (古い形式・手で書いた値)', () => {
+    const scalar = article.replace('---\n\n本文', 'event_data:\n  primary_category_slug: "collabo-cafe"\n  title_slugs: "my-hero-academia"\n---\n\n本文');
+    expect(readExistingArticleFields(scalar).eventKeys).toEqual({ primary_category_slug: 'collabo-cafe' });
+  });
+
   it('event_data の企画を決める項目を読む (occurrences は読まない)', () => {
     const withEventData = article.replace(
       '---\n\n本文',
@@ -126,32 +131,53 @@ describe('inheritEventKeys', () => {
     event_slug: 'boku-no-hero-academia-cafe-we-are-hero-holics',
     occurrences: [{ venue_slug: null, venue_label: '原宿', starts_on: '2026-10-16', ends_on: '2026-12-20', official_url: null }],
   } as never;
+  const existingKeys = {
+    event_slug: 'my-hero-academia-cafe-we-are-hero-holics',
+    event_name: '僕のヒーローアカデミアカフェ',
+    title_slugs: ['my-hero-academia'],
+    primary_category_slug: 'collabo-cafe',
+  };
 
   it('既存の記事の値に戻し、違った項目を返す。occurrences は作り直した値のまま (ヒロアカ、2026-10-19)', () => {
-    const { eventData, changes } = inheritEventKeys(regenerated, {
-      event_slug: 'my-hero-academia-cafe-we-are-hero-holics',
-      event_name: '僕のヒーローアカデミアカフェ',
-      title_slugs: ['my-hero-academia'],
-      primary_category_slug: 'collabo-cafe',
-    });
-    expect(eventData).toMatchObject({
+    const result = inheritEventKeys(regenerated, existingKeys);
+    expect(result.eventData).toMatchObject({
       title_slugs: ['my-hero-academia'],
       event_slug: 'my-hero-academia-cafe-we-are-hero-holics',
       occurrences: [{ venue_label: '原宿' }],
     });
-    expect(changes).toEqual([
+    expect(result.kept).toEqual(['event_slug', 'event_name', 'title_slugs', 'primary_category_slug']);
+    expect(result.changes).toEqual([
       'event_slug: boku-no-hero-academia-cafe-we-are-hero-holics → my-hero-academia-cafe-we-are-hero-holics (既存の記事の値に戻した)',
       'title_slugs: boku-no-hero-academia → my-hero-academia (既存の記事の値に戻した)',
     ]);
+    expect(result.rejected).toBeNull();
   });
 
-  it('既存の記事に無い項目は作り直した値のまま', () => {
-    const { eventData, changes } = inheritEventKeys(regenerated, {});
-    expect(eventData).toEqual(regenerated);
-    expect(changes).toEqual([]);
+  it('既存の記事に項目が無ければ、作り直した値のまま (kept は空)', () => {
+    expect(inheritEventKeys(regenerated, {})).toEqual({ eventData: regenerated, kept: [], changes: [], rejected: null });
   });
 
   it('作り直した event_data が無ければ undefined のまま', () => {
-    expect(inheritEventKeys(undefined, { event_slug: 'x' })).toEqual({ eventData: undefined, changes: [] });
+    expect(inheritEventKeys(undefined, existingKeys)).toEqual({ eventData: undefined, kept: [], changes: [], rejected: null });
+  });
+
+  it('既存の値が今の形式に合わなければ引き継がず、理由を返す', () => {
+    const result = inheritEventKeys(regenerated, { ...existingKeys, event_slug: 'Bad Slug!' });
+    expect(result.eventData).toEqual(regenerated);
+    expect(result.kept).toEqual([]);
+    expect(result.rejected).toContain('event_slug');
+  });
+
+  it('戻した主カテゴリが補助のカテゴリにも入っていれば、補助から外す', () => {
+    const popup = { ...(regenerated as object), primary_category_slug: 'pop-up-store', supplementary_category_slugs: ['collabo-cafe'] } as never;
+    const result = inheritEventKeys(popup, { primary_category_slug: 'collabo-cafe' });
+    expect(result.eventData).toMatchObject({ primary_category_slug: 'collabo-cafe', supplementary_category_slugs: [] });
+  });
+
+  it('作り直した値が空の配列なら「(なし)」と表示する', () => {
+    const empty = { ...(regenerated as object), title_slugs: [] } as never;
+    expect(inheritEventKeys(empty, { title_slugs: ['my-hero-academia'] }).changes).toEqual([
+      'title_slugs: (なし) → my-hero-academia (既存の記事の値に戻した)',
+    ]);
   });
 });
