@@ -5,7 +5,10 @@ import { createMdxPr, type CreateMdxPrResult } from '../github/create-mdx-pr';
 import { createUpdateMdxPr, type ArticleOnMain } from '../github/update-mdx-pr';
 import {
   findSlugChanges,
+  describeEventKeys,
+  inheritEventKeys,
   updateBranchName,
+  type EventKeysReport,
   updatePrTitle,
   type ExistingArticleFields,
 } from '../mdx/article-update';
@@ -289,6 +292,8 @@ export interface MdxGenerationResult {
   // 公開中の記事の更新のときだけ: 会場・品目の数の更新の前後の比較
   update?: {
     shrinkCheck: ShrinkCheck;
+    /** event_data の企画を決める項目の引き継ぎ */
+    eventKeys: EventKeysReport;
   };
 }
 
@@ -1592,7 +1597,18 @@ export class ArticleGenerationMdxService {
       //   リード文と本文の H2 が正規化前の occurrences を見てしまうのを避けるため。
       //   ここでは**その結果を再利用する**（同じ入力で 2 回走らせると、警告ログが
       //   二重に出るうえ、将来どちらかだけ直して挙動が割れる余地を残す）。
-      const parsedEventData: EventData | undefined = parsedEventDataResult;
+      // 記事の更新では、企画を決める項目 (event_slug など) を既存の記事の値に戻す (抽出の LLM が揺れるため。2026-10-19 BOSS 決定)
+      // (記事の更新でなければ keys が空なので、作り直した値のまま)
+      const { eventData: parsedEventData, ...eventKeys } = inheritEventKeys(
+        parsedEventDataResult,
+        update?.fields.eventKeys ?? {},
+      );
+      for (const change of eventKeys.changes) {
+        console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ ${change}`);
+      }
+      if (eventKeys.rejected) {
+        console.warn(`${getStepContext('mdx-assembly', 'event_data')} ⚠️ ${eventKeys.rejected}`);
+      }
 
       // fallback 経路の start/end date の存在有無を先に判定して、helper 呼び出しの副作用を
       // 予測可能にする (droppedFields observability の判定精度向上、Sprint C-α PR #268 R1 対応)。
@@ -1736,7 +1752,12 @@ export class ArticleGenerationMdxService {
         if (message) {
           console.error(`❌ ${message}`);
           if (costTracker.hasUsage()) costTracker.logSummary();
-          return { success: false, error: message, mdxArticle, update: { shrinkCheck } };
+          return {
+            success: false,
+            error: message,
+            mdxArticle,
+            update: { shrinkCheck, eventKeys },
+          };
         }
 
         prResult = await createUpdateMdxPr({
@@ -1750,6 +1771,7 @@ export class ArticleGenerationMdxService {
             updated: mdxArticle.frontmatter.updated ?? '',
             shrinkCheck,
             allowShrink: update.allowShrink,
+            eventKeys,
             extraction,
             metadata: { categories, excerpt },
           }),
@@ -1845,7 +1867,7 @@ export class ArticleGenerationMdxService {
         placeholderReplacement,
         textPlaceholderReplacement,
         visionApiResult, // vision-api step Vision API integration result
-        update: shrinkCheck ? { shrinkCheck } : undefined,
+        update: shrinkCheck ? { shrinkCheck, eventKeys } : undefined,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -2293,10 +2315,12 @@ export class ArticleGenerationMdxService {
     updated: string;
     shrinkCheck: ShrinkCheck;
     allowShrink: boolean;
+    eventKeys: EventKeysReport;
     extraction: { workTitle: string; storeName: string; eventTypeName: string };
     metadata: { categories: string[]; excerpt: string };
   }): string {
     const { path, fields, updated, shrinkCheck, allowShrink, extraction, metadata } = params;
+    const eventKeys = describeEventKeys(params.eventKeys);
     const counts = describeShrinkCheck(shrinkCheck).map((line) => `- ${line}`).join('\n');
 
     return `## ♻️ 記事の更新
@@ -2313,6 +2337,12 @@ export class ArticleGenerationMdxService {
 
 ${counts}
 ${shrinkCheck.shrunk && allowShrink ? '\n⚠️ 減った項目がありますが、`--allow-shrink` で PR を作りました。\n' : ''}
+## 🔑 企画を決める項目 (event_slug / event_name / title_slugs / primary_category_slug)
+
+取り込みで企画と作品を決めるキーのため、既存の記事の値を引き継ぎます。
+
+${eventKeys}
+
 ## 🎯 抽出情報
 
 - **作品名:** ${extraction.workTitle}
