@@ -1,6 +1,7 @@
 # Stage 0: pnpm の準備 (deps / builder で共有)
 # corepack install はルート package.json の packageManager の版を入れる。
-# 版をここに書かないのは、Renovate が packageManager しか更新しないため。
+# pnpm の版をここに書かないのは、Renovate が packageManager しか更新しないため。
+# Node の版 (FROM のタグ) は Renovate の docker manager が更新する
 # pnpm 12 は最初の実行で native binary を取得するので、`pnpm --version` で
 # ここで 1 回だけ取得しておく
 FROM node:24.22.1-alpine AS base
