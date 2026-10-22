@@ -3,7 +3,7 @@
 # 版をここに書かないのは、Renovate が packageManager しか更新しないため。
 # pnpm 12 は最初の実行で native binary を取得するので、`pnpm --version` で
 # ここで 1 回だけ取得しておく
-FROM node:24-alpine AS base
+FROM node:24.22.1-alpine AS base
 WORKDIR /app
 COPY package.json ./
 RUN corepack enable && corepack install && pnpm --version
@@ -101,7 +101,7 @@ WORKDIR /app/apps/ai-writer
 RUN pnpm build
 
 # Stage 3: 本番環境
-FROM node:24-alpine AS runner
+FROM node:24.22.1-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
