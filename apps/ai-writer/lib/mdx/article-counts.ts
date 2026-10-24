@@ -30,7 +30,7 @@ export const COUNT_LABELS: Record<CountKey, string> = {
 const COUNT_KEYS: readonly CountKey[] = ['venues', 'menu', 'goods', 'novelty'];
 
 /** 節の見出し。記事を書く側 (`section-renderers.ts` / `goods-list.ts`) と同じ正規表現を使う (1 行ずつ test する) */
-const SECTION_HEADINGS: Record<Exclude<CountKey, 'venues'>, RegExp> = {
+export const SECTION_HEADINGS: Record<Exclude<CountKey, 'venues'>, RegExp> = {
   menu: MENU_SECTION,
   goods: GOODS_SECTION,
   novelty: NOVELTY_SECTION,
@@ -56,7 +56,7 @@ const STRUCTURAL_HEADINGS = new Set([
 const TABLE_DIVIDER = /^\|[\s:|-]+\|$/;
 
 /** 見出しに当たるすべての節の本文の行 (見出しの次の行から、次の `## ` の手前まで) */
-function sectionLines(body: string[], heading: RegExp): string[] {
+export function sectionLines(body: string[], heading: RegExp): string[] {
   const lines: string[] = [];
   let inSection = false;
   for (const line of body) {
@@ -66,31 +66,46 @@ function sectionLines(body: string[], heading: RegExp): string[] {
   return lines;
 }
 
-/** 節の品目の数 */
-export function countSectionItems(lines: readonly string[]): number {
-  let items = 0;
-  let tableLines = 0;
-  let dividers = 0;
+/**
+ * 節の品目の行 (前後の空白を除いたもの)。品目の見出し (`### …`)、HTML の表の行、箇条書き、Markdown の表の行。
+ * Markdown の表は、区切りの行と、その直前の見出しの行を除く
+ */
+export function sectionItemLines(lines: readonly string[]): string[] {
+  const items: string[] = [];
+  let tableRows: string[] = [];
+  const flushTable = () => {
+    items.push(...tableRows);
+    tableRows = [];
+  };
   for (const raw of lines) {
     const line = raw.trim();
+    if (line.startsWith('|')) {
+      // 区切りの行の直前の 1 行が表の見出しの行
+      if (TABLE_DIVIDER.test(line)) tableRows.pop();
+      else tableRows.push(line);
+      continue;
+    }
+    flushTable();
     if (line.startsWith('### ')) {
-      if (!STRUCTURAL_HEADINGS.has(line.slice(4).trim())) items++;
+      if (!STRUCTURAL_HEADINGS.has(line.slice(4).trim())) items.push(line);
     } else if (line.startsWith('<tr><th scope="row">')) {
-      items++;
+      items.push(line);
     } else if (line.startsWith('- ') && !line.startsWith('- ※')) {
       // 「- ※価格は税込」のような注意書きは品目ではない
-      items++;
-    } else if (line.startsWith('|')) {
-      if (TABLE_DIVIDER.test(line)) dividers++;
-      else tableLines++;
+      items.push(line);
     }
   }
-  // Markdown の表は、区切りの行の直前の 1 行が見出しの行
-  return items + Math.max(0, tableLines - dividers);
+  flushTable();
+  return items;
+}
+
+/** 節の品目の数 */
+export function countSectionItems(lines: readonly string[]): number {
+  return sectionItemLines(lines).length;
 }
 
 /** frontmatter と本文を分ける (frontmatter が無ければ全体を本文とみなす) */
-function splitBody(mdx: string): string[] {
+export function splitBody(mdx: string): string[] {
   const match = mdx.match(/^---\n[\s\S]*?\n---\n?/);
   return (match ? mdx.slice(match[0].length) : mdx).split('\n');
 }
