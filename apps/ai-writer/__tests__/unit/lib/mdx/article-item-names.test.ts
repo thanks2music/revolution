@@ -79,6 +79,12 @@ describe('parseItemLine', () => {
     expect(parseItemLine('| 缶バッジ | 605円 | 店舗 |')).toEqual({ name: '缶バッジ', character: null, price: '605円' });
   });
 
+  it('品名の中の「N円」は価格にしない。¥ の書式も読む', () => {
+    expect(parseItemLine('### 100円ショップの袋 330円')).toEqual({ name: '100円ショップの袋', character: null, price: '330円' });
+    expect(parseItemLine('| 100円ショップの袋 | ¥1,100 |')).toEqual({ name: '100円ショップの袋', character: null, price: '¥1,100' });
+    expect(parseItemLine('- アクスタ ¥1,100（税込）')).toEqual({ name: 'アクスタ', character: null, price: '¥1,100（税込）' });
+  });
+
   it('価格が無ければ null', () => {
     expect(parseItemLine('### ホログラムステッカー')).toEqual({
       name: 'ホログラムステッカー',
@@ -103,6 +109,17 @@ describe('readArticleItems', () => {
     expect(items.goods.map((i) => i.name)).toEqual(['缶バッジ（ランダム7種）', '巾着（全7種）']);
     expect(items.novelty.map((i) => i.name)).toEqual(['ホログラムステッカー']);
   });
+
+  it('同じ節に HTML の表の行と Markdown の表が混ざっても読む (表の見出しの行は読まない)', () => {
+    const mdx = [
+      '## 作品 カフェのメニュー',
+      '<tr><th scope="row">キャラA</th><td>パスタ 2,090円</td></tr>',
+      '| 品名 | 価格 |',
+      '|------|------|',
+      '| ドリンク | 990円 |',
+    ].join('\n');
+    expect(readArticleItems(mdx).menu.map((i) => i.name)).toEqual(['パスタ', 'ドリンク']);
+  });
 });
 
 describe('diffArticleItems', () => {
@@ -126,6 +143,24 @@ describe('diffArticleItems', () => {
     expect(novelty).toMatchObject({ comparable: false, removed: [], added: [], priceChanged: [] });
   });
 
+  it('価格の表記だけの違い (税の注記の有無・括弧の全角半角) は価格の変化にしない', () => {
+    const a = readArticleItems('## メニュー\n### ドリンク 990円\n### パスタ 2,090円(税込)\n### ケーキ 800円(税込)');
+    const b = readArticleItems('## メニュー\n### ドリンク 990円(税込)\n### パスタ 2,090円（税込）\n### ケーキ 800円(税抜)');
+    expect(diffArticleItems(a, b).find((d) => d.key === 'menu')!.priceChanged.map((c) => c.item.name)).toEqual(['ケーキ']);
+  });
+
+  it('同じ品名で価格の違う品目は、並びが変わっても価格の変化にしない', () => {
+    const a = readArticleItems('## メニュー\n### ドリンク 500円\n### ドリンク 700円');
+    const b = readArticleItems('## メニュー\n### ドリンク 700円\n### ドリンク 500円');
+    expect(hasItemChanges(diffArticleItems(a, b))).toBe(false);
+  });
+
+  it('removed は更新前の記事の順', () => {
+    const a = readArticleItems('## メニュー\n### A 1円\n### B 1円\n### A 1円\n### C 1円');
+    const b = readArticleItems('## メニュー\n### C 1円');
+    expect(diffArticleItems(a, b).find((d) => d.key === 'menu')!.removed.map((i) => i.name)).toEqual(['A', 'B', 'A']);
+  });
+
   it('同じ品名が 2 つあれば 2 つまで対応づけ、多い分を出す', () => {
     const one = readArticleItems('## メニュー\n### ドリンク 500円');
     const two = readArticleItems('## メニュー\n### ドリンク 500円\n### ドリンク 500円');
@@ -141,14 +176,14 @@ describe('diffArticleItems', () => {
 });
 
 describe('describeItemNameDiffs', () => {
-  it('節ごとの説明の行 (変化は入れ子の箇条書き)', () => {
+  it('節ごとの Markdown の箇条書きの行 (変化は 1 段下げる)', () => {
     expect(describeItemNameDiffs(diffArticleItems(readArticleItems(before), readArticleItems(after)))).toEqual([
-      'メニュー:',
+      '- メニュー:',
       '  - 更新前にだけある: 【爆豪勝己】バナナカスタードドーナツ 990円(税込)',
       '  - 更新後にだけある: 【爆豪勝己】バナナカスタードアイスドーナツ 990円(税込)',
       '  - 価格が変わった: ラムネホワイトソーダ 990円(税込) → 1,100円(税込)',
-      'グッズ: 変わっていない',
-      'ノベルティ: 比べられない (更新前の記事で品名が読めない)',
+      '- グッズ: 変わっていない',
+      '- ノベルティ: 比べられない (更新前の記事で品名が読めない)',
     ]);
   });
 });

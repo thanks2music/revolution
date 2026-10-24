@@ -25,8 +25,15 @@ export interface ArticleItem {
   price: string | null;
 }
 
-/** 「2,090円」「990円(税込)」「605円（税抜）」 */
-const PRICE = /[\d,]+円(?:\s*[(（](?:税込|税抜)[)）])?/;
+/**
+ * 価格: 「2,090円」「990円(税込)」「605円（税抜）」「¥1,100」。品名の中の「100円ショップ」で切らないよう、
+ * 行の頭か空白の直後にあるものだけを価格とみなす
+ */
+const PRICE = /(?<=^|\s)(?:[\d,]+円|[¥￥][\d,]+)(?:\s*[(（](?:税込|税抜)[)）])?(?=$|\s|[（(])/;
+/** Markdown の表のセルが価格だけか */
+const PRICE_CELL = /^(?:[\d,]+円|[¥￥][\d,]+)(?:\s*[(（](?:税込|税抜)[)）])?$/;
+/** 価格の数字と、税込・税抜の注記 */
+const PRICE_PARTS = /([\d,]+)円?(?:\s*[(（](税込|税抜)[)）])?/;
 /** 見出しの頭の「【キャラ】」 */
 const CHARACTER_PREFIX = /^【([^】]+)】\s*/;
 /** HTML の表の行 (`<tr><th scope="row">キャラ</th><td>品名 価格</td></tr>`) */
@@ -51,8 +58,8 @@ export function parseItemLine(line: string): ArticleItem | null {
   } else if (line.startsWith('|')) {
     // Markdown の表: 価格でない最初のセルを品名、価格のセルを価格とする
     const cells = line.split('|').slice(1, -1).map((cell) => cell.trim());
-    const name = cells.find((cell) => cell && !PRICE.test(cell)) ?? '';
-    const price = cells.find((cell) => PRICE.test(cell));
+    const name = cells.find((cell) => cell && !PRICE_CELL.test(cell)) ?? '';
+    const price = cells.find((cell) => PRICE_CELL.test(cell));
     text = price ? `${name} ${price}` : name;
   } else {
     text = line.replace(/^(?:###|-)\s+/, '');
@@ -97,25 +104,47 @@ export interface ItemNameDiff {
   priceChanged: PriceChange[];
 }
 
-/** 同じ品名が 2 つ以上あっても、その数だけ対応づける (多い分を removed / added にする) */
+/**
+ * 価格が同じか。数字で比べ、税込・税抜の注記は両方に書かれているときだけ比べる
+ * (「990円」と「990円（税込）」のような表記だけの違いを、価格の変化にしない)
+ */
+function samePrice(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b;
+  const [, aDigits, aTax] = a.match(PRICE_PARTS) ?? [];
+  const [, bDigits, bTax] = b.match(PRICE_PARTS) ?? [];
+  if (!aDigits || !bDigits) return a === b;
+  return aDigits.replace(/,/g, '') === bDigits.replace(/,/g, '') && (!aTax || !bTax || aTax === bTax);
+}
+
+/**
+ * 同じ品名が 2 つ以上あっても、その数だけ対応づける (多い分を removed / added にする)。
+ * 先に品名と価格が同じものを対応づけ、残りを品名だけで対応づける (同じ名前で価格の違う品目の並びが変わっても、
+ * 価格の変化にしない)。removed は更新前の記事の順
+ */
 function diffItems(before: readonly ArticleItem[], after: readonly ArticleItem[]) {
-  const remaining = new Map<string, ArticleItem[]>();
-  for (const item of before) {
+  const unmatched = new Set(before);
+  const pairs = new Map<ArticleItem, ArticleItem>();
+  const take = (item: ArticleItem, withPrice: boolean) => {
     const key = itemNameKey(item.name);
-    remaining.set(key, [...(remaining.get(key) ?? []), item]);
-  }
-  const added: ArticleItem[] = [];
-  const priceChanged: PriceChange[] = [];
-  for (const item of after) {
-    const matches = remaining.get(itemNameKey(item.name));
-    const previous = matches?.shift();
-    if (!previous) {
-      added.push(item);
-    } else if (previous.price !== item.price) {
-      priceChanged.push({ item, before: previous.price, after: item.price });
+    const previous = [...unmatched].find(
+      (b) => itemNameKey(b.name) === key && (!withPrice || samePrice(b.price, item.price))
+    );
+    if (previous) {
+      unmatched.delete(previous);
+      pairs.set(item, previous);
     }
-  }
-  return { removed: [...remaining.values()].flat(), added, priceChanged };
+  };
+  for (const item of after) take(item, true);
+  for (const item of after) if (!pairs.has(item)) take(item, false);
+
+  const added = after.filter((item) => !pairs.has(item));
+  const priceChanged = after.flatMap((item): PriceChange[] => {
+    const previous = pairs.get(item);
+    return previous && !samePrice(previous.price, item.price)
+      ? [{ item, before: previous.price, after: item.price }]
+      : [];
+  });
+  return { removed: before.filter((item) => unmatched.has(item)), added, priceChanged };
 }
 
 export function diffArticleItems(before: ArticleItems, after: ArticleItems): ItemNameDiff[] {
@@ -135,15 +164,15 @@ function showItem(item: ArticleItem): string {
   return `${item.character ? `【${item.character}】` : ''}${item.name}${item.price ? ` ${item.price}` : ''}`;
 }
 
-/** ログと PR 本文に載せる行 (箇条書きの入れ子。頭の「- 」は呼び出し側で付ける) */
+/** ログと PR 本文に載せる Markdown の箇条書きの行 (変化は 1 段下げる) */
 export function describeItemNameDiffs(diffs: readonly ItemNameDiff[]): string[] {
   return diffs.flatMap((d) => {
-    if (!d.comparable) return [`${d.label}: 比べられない (更新前の記事で品名が読めない)`];
+    if (!d.comparable) return [`- ${d.label}: 比べられない (更新前の記事で品名が読めない)`];
     if (d.removed.length === 0 && d.added.length === 0 && d.priceChanged.length === 0) {
-      return [`${d.label}: 変わっていない`];
+      return [`- ${d.label}: 変わっていない`];
     }
     return [
-      `${d.label}:`,
+      `- ${d.label}:`,
       ...d.removed.map((item) => `  - 更新前にだけある: ${showItem(item)}`),
       ...d.added.map((item) => `  - 更新後にだけある: ${showItem(item)}`),
       ...d.priceChanged.map(

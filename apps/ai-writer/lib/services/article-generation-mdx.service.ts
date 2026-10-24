@@ -2341,9 +2341,7 @@ export class ArticleGenerationMdxService {
     const { path, fields, updated, shrinkCheck, itemNames, allowShrink, extraction, metadata } = params;
     const eventKeys = describeEventKeys(params.eventKeys);
     const counts = describeShrinkCheck(shrinkCheck).map((line) => `- ${line}`).join('\n');
-    const names = describeItemNameDiffs(itemNames)
-      .map((line) => (line.startsWith('  ') ? line : `- ${line}`))
-      .join('\n');
+    const names = describeItemNameDiffs(itemNames).join('\n');
 
     return `## ♻️ 記事の更新
 
