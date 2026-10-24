@@ -88,6 +88,8 @@ describe('parseItemLine', () => {
   it('空白の後ろの「N円」で終わる語は価格とみなす (品名はその手前まで)', () => {
     expect(parseItemLine('- 缶バッジ 500円 ガチャ')).toEqual({ name: '缶バッジ', character: null, price: '500円' });
     expect(parseItemLine('- 缶バッジ 500円玉風')).toEqual({ name: '缶バッジ 500円玉風', character: null, price: null });
+    expect(parseItemLine('- ガチャ 500円〜')).toEqual({ name: 'ガチャ', character: null, price: '500円' });
+    expect(parseItemLine('- ドリンク S 500円 / L 700円')).toEqual({ name: 'ドリンク S', character: null, price: '500円' });
   });
 
   it('価格が無ければ null', () => {
