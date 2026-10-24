@@ -144,7 +144,7 @@ import { ArticlePointsGenerationService, ArticlePointsParseError } from './artic
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
-import { extractCopyrightNotices, keepSupportedAuthors } from '@/lib/utils/copyright-notices';
+import { applySupportedAuthors, extractCopyrightNotices } from '@/lib/utils/copyright-notices';
 import { venueUrlsWithNovelties, withNoveltyImagesFromVenues } from './pick-novelty-images';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
 import {
@@ -567,16 +567,12 @@ export class ArticleGenerationMdxService {
           detailedExtraction = gateResult.extraction;
 
           // 原作者名は、著作権表記か本文に出てくる名前だけを残す (LLM が知識で補った名前を書かない。2026-10-24 BOSS 決定)
-          const authors = keepSupportedAuthors(detailedExtraction.原作者名, { notices: copyrightNotices, pageText: llmInput });
+          const authors = applySupportedAuthors(detailedExtraction, { notices: copyrightNotices, pageText: llmInput });
+          detailedExtraction = authors.extraction;
           if (authors.dropped.length > 0) {
             console.warn(
               `${getStepContext('detail-extraction', '著作権表記')} ⚠️ 公式サイトに無い原作者名を外した: ${authors.dropped.join(', ')}`
             );
-            detailedExtraction = {
-              ...detailedExtraction,
-              原作者名: authors.原作者名,
-              原作者有無: authors.原作者名 !== null,
-            };
           }
 
           // ★ 判定は必ず 3 経路へ出す。観測ログ (JSONL) は本番では無効なので、

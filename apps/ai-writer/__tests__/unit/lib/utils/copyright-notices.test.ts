@@ -2,7 +2,7 @@
  * Layer 1: 公式サイトの著作権表記と、原作者名の根拠の照合 (`lib/utils/copyright-notices.ts`)
  */
 import { describe, expect, it } from '@jest/globals';
-import { extractCopyrightNotices, keepSupportedAuthors } from '@/lib/utils/copyright-notices';
+import { applySupportedAuthors, extractCopyrightNotices, keepSupportedAuthors } from '@/lib/utils/copyright-notices';
 
 describe('extractCopyrightNotices', () => {
   it('JavaScript の文字列の中の表記を読む (ヒロアカ)', () => {
@@ -19,6 +19,10 @@ describe('extractCopyrightNotices', () => {
     const html =
       '<p>&copy; 芥見下々/集英社</p><p>&#169;芥見下々/集英社</p><script>"\\u00a9 PEACH-PIT/講談社"</script><p>&#xa9;CLAMP/講談社</p><p>&COPY;ONE/集英社</p>';
     expect(extractCopyrightNotices(html)).toEqual(['©芥見下々/集英社', '©PEACH-PIT/講談社', '©CLAMP/講談社', '©ONE/集英社']);
+  });
+
+  it('実体参照の & を文字に戻す', () => {
+    expect(extractCopyrightNotices('<p>©A &amp; B／出版社</p>')).toEqual(['©A & B／出版社']);
   });
 
   it('年だけの表記は名前を持たないので読まない', () => {
@@ -78,8 +82,37 @@ describe('keepSupportedAuthors', () => {
     expect(keepSupportedAuthors('じん先生', { notices: ['©じん／KADOKAWA'], pageText: '' }).dropped).toEqual([]);
   });
 
+  it('本文はタグを外して照合する (タグをまたいだ名前は通し、属性の値では通さない)', () => {
+    expect(keepSupportedAuthors('尾田栄一郎先生', { notices: [], pageText: '<p>原作：<span>尾田</span><span>栄一郎</span></p>' }).dropped).toEqual([]);
+    expect(keepSupportedAuthors('尾田栄一郎先生', { notices: [], pageText: '<img alt="尾田栄一郎">' }).dropped).toEqual(['尾田栄一郎先生']);
+  });
+
   it('null・undefined はそのまま null', () => {
     expect(keepSupportedAuthors(null, { notices, pageText: '' })).toEqual({ 原作者名: null, dropped: [] });
     expect(keepSupportedAuthors(undefined, { notices, pageText: '' })).toEqual({ 原作者名: null, dropped: [] });
+  });
+});
+
+describe('applySupportedAuthors', () => {
+  const base = { 作品名: '作品', 原作者有無: true };
+
+  it('根拠のある名前だけなら、元の結果をそのまま返す', () => {
+    const extraction = { ...base, 原作者名: '堀越耕平先生' };
+    const result = applySupportedAuthors(extraction, { notices: ['©堀越耕平／集英社'], pageText: '' });
+    expect(result).toEqual({ extraction, dropped: [] });
+    expect(result.extraction).toBe(extraction);
+  });
+
+  it('すべて外れたら、原作者名を null、原作者有無を false にする (ほかの項目は変えない)', () => {
+    expect(applySupportedAuthors({ ...base, 原作者名: '堀越耕平先生' }, { notices: [], pageText: '' })).toEqual({
+      extraction: { 作品名: '作品', 原作者有無: false, 原作者名: null },
+      dropped: ['堀越耕平先生'],
+    });
+  });
+
+  it('一部だけ外れたら、残った名前で原作者有無は true のまま', () => {
+    expect(
+      applySupportedAuthors({ ...base, 原作者名: ['CLAMP先生', '新條まゆ先生'] }, { notices: ['©CLAMP／講談社'], pageText: '' })
+    ).toEqual({ extraction: { 作品名: '作品', 原作者有無: true, 原作者名: ['CLAMP先生'] }, dropped: ['新條まゆ先生'] });
   });
 });
