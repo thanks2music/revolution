@@ -12,6 +12,10 @@
  *
  * 本文で代替テキストを探し、そこから次の画像 (`[画像: …]`) までに出てくる品名が 1 つだけなら、その品名を当てる。
  * 推測で結びつけない: 品名が 0 個か 2 個以上なら当てない (呼び出し側で「その他参考画像」に回る)。
+ *
+ * 照合は代替テキストの文字で行い、ページの中の画像の位置は見ない。同じ代替テキストの画像が 2 枚あれば、
+ * 2 枚とも同じ品名になる (LTR では特典ごとに見出しが違うので起きない)。
+ * 段落が長く、品名が代替テキストから SEGMENT_LIMIT 字より後ろにあれば当てない (「その他参考画像」に回るだけ)。
  */
 import { altKeys } from './match-item-images';
 import { itemNameKey } from '@/lib/services/merge-subpage-into-extraction';
@@ -22,11 +26,19 @@ const IMAGE_MARKER = '[画像: ';
 /** 代替テキストの後ろを見る長さの上限 (段落 1 つ分) */
 const SEGMENT_LIMIT = 500;
 
-/** 代替テキストの出現 (画像の印の中は除く) ごとに、その後ろから次の画像の印までの文字 */
+/** 位置が画像の印 (`[画像: …]`) の中か */
+function insideImageMarker(text: string, at: number): boolean {
+  return text.lastIndexOf(IMAGE_MARKER, at) > text.lastIndexOf(']', at - 1);
+}
+
+/**
+ * 代替テキストの出現 (画像の印の中は除く) ごとに、その後ろから次の画像の印までの文字。
+ * 短い代替テキスト (「特典」) が別の印 (`[画像: ドリンク特典]`) の中に当たっても、そこからは探さない
+ */
 function segmentsAfter(alt: string, text: string): string[] {
   const segments: string[] = [];
   for (let at = text.indexOf(alt); at !== -1; at = text.indexOf(alt, at + alt.length)) {
-    if (text.slice(Math.max(0, at - IMAGE_MARKER.length), at) === IMAGE_MARKER) continue;
+    if (insideImageMarker(text, at)) continue;
     const start = at + alt.length;
     const nextImage = text.indexOf(IMAGE_MARKER, start);
     segments.push(text.slice(start, Math.min(nextImage === -1 ? text.length : nextImage, start + SEGMENT_LIMIT)));

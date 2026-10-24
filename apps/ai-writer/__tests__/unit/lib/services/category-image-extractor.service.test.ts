@@ -236,6 +236,19 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
       });
     });
 
+    it('下層ページで先に読んだ代替テキストは、会場のページの代替テキストで上書きしない', async () => {
+      const shared = 'https://heroaca-cafe.ltr-online.com/img/sticker.jpg';
+      mockFetchByUrl({
+        [MENU]: `<html><body><main><img src="${shared}" alt="ホログラムステッカー"></main></body></html>`,
+        [TOKYO]: `<html><body><main><p>「ホログラムステッカー」をプレゼント</p><img src="${shared}" alt="事前予約者限定カフェ利用特典"></main></body></html>`,
+      });
+      const service = new CategoryImageExtractorService(configLoader);
+
+      const result = await service.extractCategoryImages(TOP, null, { menu: [MENU] }, [TOKYO]);
+
+      expect(result.imageAlts[shared]).toBe('ホログラムステッカー');
+    });
+
     it('ノベルティの画像を、画像の抽出の段階では会場のページから選ばない (利用ガイドの画像がノベルティに入った不具合の再発防止)', async () => {
       mockFetchByUrl({ [GUIDE]: guidePage, [TOKYO]: venuePage('TOKYO') });
       const service = new CategoryImageExtractorService(configLoader);

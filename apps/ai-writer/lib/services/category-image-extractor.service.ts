@@ -156,7 +156,7 @@ export function findImagesByAlt(
       const absoluteUrl = new URL(src, sourceUrl).href;
       if (!images.includes(absoluteUrl)) images.push(absoluteUrl);
       // 品目ごとの画像の照合に使う (ノベルティの代替テキストは配布条件の見出しのことがあり、本文から品名を当てる)
-      alts[absoluteUrl] ??= alt;
+      if (alt) alts[absoluteUrl] ??= alt;
     } catch {
       // URL として読めない src は飛ばす
     }

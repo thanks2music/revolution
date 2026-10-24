@@ -45,9 +45,17 @@ describe('nameFromPageText', () => {
     expect(nameFromPageText('特典', names, [a, a])).toBe('ホログラムステッカー');
   });
 
-  it('本文に代替テキストが無ければ、空の代替テキストなら null', () => {
+  it('本文に代替テキストが無ければ null', () => {
     expect(nameFromPageText('ノベルティ1', names, [heroaca])).toBeNull();
+  });
+
+  it('空の代替テキストなら null', () => {
     expect(nameFromPageText(' ', names, [heroaca])).toBeNull();
+  });
+
+  it('短い代替テキストが別の画像の印の中に当たっても、そこからは探さない', () => {
+    const text = '[画像: ドリンク特典]\n<p>「ヒーローカード（ランダム7種）」をプレゼント</p>\n[画像: 物販購入特典]';
+    expect(nameFromPageText('特典', names, [text])).toBeNull();
   });
 });
 
