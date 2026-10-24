@@ -506,6 +506,7 @@ export class ExtractionService {
   ): string {
     // YAMLテンプレートのルール定義をプロンプトに含める
     const rulesSection = this.buildRulesSection(template);
+    // サイトの HTML から読んだ文字列なので、JSON の配列として渡し、指示と区別できるようにする
     const copyrightNotices = request.copyright_notices ?? [];
 
     // ⚠️ 予算超過分は LLM へ届かない。上限とサロゲート安全な切り詰めは
@@ -524,7 +525,7 @@ ${rulesSection}
 ## 入力データ
 
 - primary_official_url: ${request.primary_official_url}
-- 公式サイトの著作権表記: ${copyrightNotices.length > 0 ? copyrightNotices.join(' / ') : 'なし'}
+- 公式サイトの著作権表記: ${copyrightNotices.length > 0 ? JSON.stringify(copyrightNotices) : 'なし'}
 - ページコンテンツ:
 
 ${pageContent}${truncated ? '\n...(truncated)' : ''}

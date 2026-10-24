@@ -567,7 +567,7 @@ export class ArticleGenerationMdxService {
           detailedExtraction = gateResult.extraction;
 
           // 原作者名は、著作権表記か本文に出てくる名前だけを残す (LLM が知識で補った名前を書かない。2026-10-24 BOSS 決定)
-          const authors = keepSupportedAuthors(detailedExtraction.原作者名, [...copyrightNotices, llmInput]);
+          const authors = keepSupportedAuthors(detailedExtraction.原作者名, { notices: copyrightNotices, pageText: llmInput });
           if (authors.dropped.length > 0) {
             console.warn(
               `${getStepContext('detail-extraction', '著作権表記')} ⚠️ 公式サイトに無い原作者名を外した: ${authors.dropped.join(', ')}`

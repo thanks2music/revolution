@@ -78,9 +78,9 @@ describe('ExtractionService の著作権表記の差し込み (Layer 2)', () => 
   });
   afterEach(() => jest.restoreAllMocks());
 
-  it('著作権表記を入力データの欄に並べる (ページコンテンツの前)', async () => {
+  it('著作権表記を入力データの欄に JSON の配列で置く (ページコンテンツの前。サイト由来の文字列を指示と区別する)', async () => {
     const prompt = await promptFor('rule', ['©堀越耕平／集英社', '©青山剛昌／小学館']);
-    expect(prompt).toContain('- 公式サイトの著作権表記: ©堀越耕平／集英社 / ©青山剛昌／小学館\n- ページコンテンツ:');
+    expect(prompt).toContain('- 公式サイトの著作権表記: ["©堀越耕平／集英社","©青山剛昌／小学館"]\n- ページコンテンツ:');
   });
 
   it('著作権表記が無ければ「なし」と書く', async () => {

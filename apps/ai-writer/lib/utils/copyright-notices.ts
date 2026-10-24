@@ -13,8 +13,14 @@
 const COPYRIGHT = /(?:©|&copy;|&#169;|&#xa9;|\\u00a9)\s*([^<>'"`\n\r\\]{2,120})/gi;
 /** 取り出す表記の数の上限 (プロンプトを膨らませない) */
 const MAX_NOTICES = 5;
+/** 権利者を区切る「／」「/」を含む表記 (「©作者／出版社」の形。作品の著作権表記らしいもの) */
+const HOLDER_SEPARATOR = /[/／]/;
 
-/** 圧縮前の HTML から、重複を除いた著作権表記 (「©堀越耕平／集英社・僕のヒーローアカデミア製作委員会」の形) */
+/**
+ * 圧縮前の HTML から、重複を除いた著作権表記 (「©堀越耕平／集英社・僕のヒーローアカデミア製作委員会」の形)。
+ * 全件を集めてから、権利者の区切りを含む表記を先に並べて 5 件に絞る (ヘッダーや埋め込みの © が多くても、
+ * フッターにある作品の表記を落とさない)
+ */
 export function extractCopyrightNotices(rawHtml: string): string[] {
   const notices: string[] = [];
   for (const match of rawHtml.matchAll(COPYRIGHT)) {
@@ -23,22 +29,30 @@ export function extractCopyrightNotices(rawHtml: string): string[] {
     if (!/[^\d\s.,\-–—/／]/.test(body)) continue;
     const notice = `©${body}`;
     if (!notices.includes(notice)) notices.push(notice);
-    if (notices.length >= MAX_NOTICES) break;
   }
-  return notices;
+  const rank = (notice: string) => (HOLDER_SEPARATOR.test(notice) ? 0 : 1);
+  return notices
+    .map((notice, index) => ({ notice, index }))
+    .sort((a, b) => rank(a.notice) - rank(b.notice) || a.index - b.index)
+    .slice(0, MAX_NOTICES)
+    .map(({ notice }) => notice);
 }
 
-/** 照合用に、空白と敬称 (先生・さん・氏) を落とし、NFKC にそろえる */
+/** 照合用に、空白と敬称 (先生・監督・さん・氏) を落とし、NFKC と小文字にそろえる */
 function authorKey(name: string): string {
   return name
     .normalize('NFKC')
-    .replace(/(?:先生|さん|氏)$/, '')
-    .replace(/[\s・･]/g, '');
+    .replace(/\s*(?:先生|監督|さん|氏)$/, '')
+    .replace(/[\s・･]/g, '')
+    .toLowerCase();
 }
 
 function evidenceKey(text: string): string {
-  return text.normalize('NFKC').replace(/[\s・･]/g, '');
+  return text.normalize('NFKC').replace(/[\s・･]/g, '').toLowerCase();
 }
+
+/** これより短い名前は、本文のたまたまの一致を避けるため、著作権表記の中だけで照合する */
+const MIN_PAGE_MATCH_LENGTH = 3;
 
 export interface SupportedAuthors {
   /** 根拠のある名前だけを残した原作者名 (残らなければ null) */
@@ -49,20 +63,24 @@ export interface SupportedAuthors {
 
 /**
  * 原作者名のうち、著作権表記かページの本文に出てくるものだけを残す (推測で埋めない)。
- * 照合は敬称と空白を無視する (「堀越耕平先生」と「©堀越 耕平／集英社」は一致する)
+ * 照合は敬称・空白・大文字小文字を無視する (「堀越耕平先生」と「©堀越 耕平／集英社」は一致する)。
+ * 3 文字未満の名前は、著作権表記の中だけで照合する
  */
 export function keepSupportedAuthors(
   原作者名: string | string[] | null | undefined,
-  evidence: readonly string[]
+  evidence: { notices: readonly string[]; pageText: string }
 ): SupportedAuthors {
   if (原作者名 === null || 原作者名 === undefined) return { 原作者名: null, dropped: [] };
   const names = Array.isArray(原作者名) ? 原作者名 : [原作者名];
-  const haystack = evidence.map(evidenceKey).join('\n');
+  const notices = evidence.notices.map(evidenceKey).join('\n');
+  const page = evidenceKey(evidence.pageText);
   const kept: string[] = [];
   const dropped: string[] = [];
   for (const name of names) {
     const key = authorKey(name);
-    if (key && haystack.includes(key)) kept.push(name);
+    const supported =
+      key.length > 0 && (notices.includes(key) || (key.length >= MIN_PAGE_MATCH_LENGTH && page.includes(key)));
+    if (supported) kept.push(name);
     else dropped.push(name);
   }
   const result = kept.length === 0 ? null : Array.isArray(原作者名) ? kept : kept[0];
