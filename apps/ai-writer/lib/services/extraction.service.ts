@@ -100,6 +100,11 @@ export interface ExtractionRequest {
   /** 公式サイトのHTMLコンテンツまたはテキスト */
   page_content: string;
   /**
+   * 公式サイトの著作権表記 (`extractCopyrightNotices`、圧縮前の HTML から読む)。`page_content` (本文の主要部分) には
+   * 入らないことが多いので、原作者名の根拠として入力データの欄に別に置く (2-extraction.yaml 2.9.6 のルールがこの欄を指す)
+   */
+  copyright_notices?: string[];
+  /**
    * `article-selection` が検出した公式 URL の候補一覧。
    *
    * ⚠️ **プロンプトには渡していない。** 現状の用途は観測ログ (Phase 3.5 F) で
@@ -501,6 +506,7 @@ export class ExtractionService {
   ): string {
     // YAMLテンプレートのルール定義をプロンプトに含める
     const rulesSection = this.buildRulesSection(template);
+    const copyrightNotices = request.copyright_notices ?? [];
 
     // ⚠️ 予算超過分は LLM へ届かない。上限とサロゲート安全な切り詰めは
     //    `compact-html.ts` の `truncateForLlm` が唯一の定義元 (ここでリテラルを
@@ -518,6 +524,7 @@ ${rulesSection}
 ## 入力データ
 
 - primary_official_url: ${request.primary_official_url}
+- 公式サイトの著作権表記: ${copyrightNotices.length > 0 ? copyrightNotices.join(' / ') : 'なし'}
 - ページコンテンツ:
 
 ${pageContent}${truncated ? '\n...(truncated)' : ''}
