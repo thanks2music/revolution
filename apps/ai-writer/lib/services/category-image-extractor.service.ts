@@ -134,26 +134,34 @@ function imageSource(element: { attr(name: string): string | undefined }): strin
 /**
  * 本文ブロックの画像のうち、代替テキストが語のどれかを含むものの絶対 URL (Layer 1)。
  * 除外パターンは当てない (代替テキストが根拠になるため)。短辺の下限は、上げる前に実際の画素数で当てる
- * (代替テキストが「特典」の小さなアイコンはそこで落ちる)。語が無ければ空
+ * (代替テキストが「特典」の小さなアイコンはそこで落ちる)。語が無ければ空。
+ * 画像ごとの代替テキスト (`alts`、URL → 代替テキスト) も返す
  */
-export function findImagesByAlt(html: string, sourceUrl: string, keywords: readonly string[]): string[] {
-  if (keywords.length === 0) return [];
+export function findImagesByAlt(
+  html: string,
+  sourceUrl: string,
+  keywords: readonly string[]
+): { images: string[]; alts: Record<string, string> } {
+  const images: string[] = [];
+  const alts: Record<string, string> = {};
+  if (keywords.length === 0) return { images, alts };
   const $ = cheerio.load(html);
   const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase());
-  const images: string[] = [];
   $('img').each((_, element) => {
-    const alt = ($(element).attr('alt') ?? '').toLowerCase();
-    if (!lowerKeywords.some((keyword) => alt.includes(keyword))) return;
+    const alt = ($(element).attr('alt') ?? '').trim();
+    if (!lowerKeywords.some((keyword) => alt.toLowerCase().includes(keyword))) return;
     const src = imageSource($(element));
     if (!src) return;
     try {
       const absoluteUrl = new URL(src, sourceUrl).href;
       if (!images.includes(absoluteUrl)) images.push(absoluteUrl);
+      // 品目ごとの画像の照合に使う (ノベルティの代替テキストは配布条件の見出しのことがあり、本文から品名を当てる)
+      alts[absoluteUrl] ??= alt;
     } catch {
       // URL として読めない src は飛ばす
     }
   });
-  return images;
+  return { images, alts };
 }
 
 /**
@@ -275,8 +283,12 @@ export class CategoryImageExtractorService {
     for (const venue of venueHtmls) {
       if (!venue) continue;
       const mainHtml = this.addPageText(result, venue.url, 'venue', venue.html);
-      const images = findImagesByAlt(mainHtml, venue.url, imageConfig.novelty_alt_keywords ?? []);
-      if (images.length > 0) result.venueNoveltyImages.push({ url: venue.url, images });
+      const { images, alts } = findImagesByAlt(mainHtml, venue.url, imageConfig.novelty_alt_keywords ?? []);
+      if (images.length > 0) {
+        result.venueNoveltyImages.push({ url: venue.url, images });
+        // 下層ページで先に読んだ代替テキストがあれば、そちらを残す
+        for (const [url, alt] of Object.entries(alts)) result.imageAlts[url] ??= alt;
+      }
     }
     if (venues.length > 0 && (imageConfig.novelty_alt_keywords ?? []).length === 0) {
       // Templates の設定 (store-url-patterns.yaml) が古いと、ノベルティの画像を黙って選ばなくなる

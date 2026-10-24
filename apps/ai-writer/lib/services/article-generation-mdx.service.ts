@@ -145,6 +145,7 @@ import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
 import { venueUrlsWithNovelties, withNoveltyImagesFromVenues } from './pick-novelty-images';
+import { withNamesFromPageText } from './article-images/names-from-page-text';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
 import {
   goodsNamesForProse,
@@ -1333,7 +1334,18 @@ export class ArticleGenerationMdxService {
       const menuItemImages = itemImageTags(menuSectionFound ? menuNames : [], imagesUpload?.categories.menu ?? []);
       // ノベルティは名前ごとの見出しを導入の文の下に並べる (グッズと同じ形)。画像は品名と照合できたものだけ見出しの下に入れる
       const noveltyNames = hasNoveltySection(contentGeneration.content) ? (detailedExtraction?.ノベルティ名 ?? []) : [];
-      const noveltyItemImages = itemImageTags(noveltyNames, imagesUpload?.categories.novelty ?? []);
+      // ノベルティの画像の代替テキストは配布条件の見出し (「ドリンク特典」) のことがあるので、ページの本文から品名を当ててから照合する
+      const noveltyImages = withNamesFromPageText(
+        noveltyNames,
+        imagesUpload?.categories.novelty ?? [],
+        (categoryImages?.pages ?? []).map((page) => page.text)
+      );
+      if (noveltyImages.named > 0) {
+        console.log(
+          `${getStepContext('image-upload-r2', '品目ごと')} ノベルティの画像 ${noveltyImages.named} 枚に、ページの本文から品名を当てた`
+        );
+      }
+      const noveltyItemImages = itemImageTags(noveltyNames, noveltyImages.images);
       const goodsItemImages = itemImageTags(goodsSectionFound ? goodsNames : [], imagesUpload?.categories.goods ?? []);
       if (menuItemImages.matched > 0 || goodsItemImages.matched > 0) {
         console.log(
