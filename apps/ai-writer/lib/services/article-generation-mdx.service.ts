@@ -20,6 +20,13 @@ import {
   type ShrinkCheck,
 } from '../mdx/article-counts';
 import {
+  describeItemNameDiffs,
+  diffArticleItems,
+  hasItemChanges,
+  readArticleItems,
+  type ItemNameDiff,
+} from '../mdx/article-item-names';
+import {
   checkEventDuplication,
   registerNewEvent,
   updateEventStatus,
@@ -292,6 +299,8 @@ export interface MdxGenerationResult {
   // 公開中の記事の更新のときだけ: 会場・品目の数の更新の前後の比較
   update?: {
     shrinkCheck: ShrinkCheck;
+    /** メニュー・グッズ・ノベルティの品名と価格の、更新の前後の違い */
+    itemNames: ItemNameDiff[];
     /** event_data の企画を決める項目の引き継ぎ */
     eventKeys: EventKeysReport;
   };
@@ -1728,6 +1737,14 @@ export class ArticleGenerationMdxService {
         const ctx = getStepContext('github-pr-creation', '更新の前後の数');
         for (const line of describeShrinkCheck(shrinkCheck)) console.log(`${ctx} ${line}`);
       }
+      // 記事の更新: 品名と価格を更新の前後で比べる (数が同じでも、読み違いで品名が変わることがある)
+      const itemNames = update
+        ? diffArticleItems(readArticleItems(update.article.content), readArticleItems(mdxArticle.content))
+        : [];
+      if (update) {
+        const ctx = getStepContext('github-pr-creation', '更新の前後の品名');
+        for (const line of describeItemNameDiffs(itemNames)) console.log(`${ctx} ${line}`);
+      }
 
       // github-pr-creation step: Create GitHub PR
       let prResult: CreateMdxPrResult | undefined;
@@ -1756,7 +1773,7 @@ export class ArticleGenerationMdxService {
             success: false,
             error: message,
             mdxArticle,
-            update: { shrinkCheck, eventKeys },
+            update: { shrinkCheck, itemNames, eventKeys },
           };
         }
 
@@ -1770,6 +1787,7 @@ export class ArticleGenerationMdxService {
             fields: update.fields,
             updated: mdxArticle.frontmatter.updated ?? '',
             shrinkCheck,
+            itemNames,
             allowShrink: update.allowShrink,
             eventKeys,
             extraction,
@@ -1867,7 +1885,7 @@ export class ArticleGenerationMdxService {
         placeholderReplacement,
         textPlaceholderReplacement,
         visionApiResult, // vision-api step Vision API integration result
-        update: shrinkCheck ? { shrinkCheck, eventKeys } : undefined,
+        update: shrinkCheck ? { shrinkCheck, itemNames, eventKeys } : undefined,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -2314,14 +2332,18 @@ export class ArticleGenerationMdxService {
     fields: ExistingArticleFields;
     updated: string;
     shrinkCheck: ShrinkCheck;
+    itemNames: ItemNameDiff[];
     allowShrink: boolean;
     eventKeys: EventKeysReport;
     extraction: { workTitle: string; storeName: string; eventTypeName: string };
     metadata: { categories: string[]; excerpt: string };
   }): string {
-    const { path, fields, updated, shrinkCheck, allowShrink, extraction, metadata } = params;
+    const { path, fields, updated, shrinkCheck, itemNames, allowShrink, extraction, metadata } = params;
     const eventKeys = describeEventKeys(params.eventKeys);
     const counts = describeShrinkCheck(shrinkCheck).map((line) => `- ${line}`).join('\n');
+    const names = describeItemNameDiffs(itemNames)
+      .map((line) => (line.startsWith('  ') ? line : `- ${line}`))
+      .join('\n');
 
     return `## ♻️ 記事の更新
 
@@ -2337,6 +2359,10 @@ export class ArticleGenerationMdxService {
 
 ${counts}
 ${shrinkCheck.shrunk && allowShrink ? '\n⚠️ 減った項目がありますが、`--allow-shrink` で PR を作りました。\n' : ''}
+## 🔤 品名と価格の変化 (更新前 → 更新後)
+
+${hasItemChanges(itemNames) ? '⚠️ 品名か価格が変わった品目があります。公式サイトと照らして、読み違いでないか確かめてください。\n\n' : ''}${names}
+
 ## 🔑 企画を決める項目 (event_slug / event_name / title_slugs / primary_category_slug)
 
 取り込みで企画と作品を決めるキーのため、既存の記事の値を引き継ぎます。
