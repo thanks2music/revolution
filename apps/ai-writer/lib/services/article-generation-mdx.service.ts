@@ -151,6 +151,7 @@ import { ArticlePointsGenerationService, ArticlePointsParseError } from './artic
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
+import { applySupportedAuthors, extractCopyrightNotices } from '@/lib/utils/copyright-notices';
 import { venueUrlsWithNovelties, withNoveltyImagesFromVenues } from './pick-novelty-images';
 import { withNamesFromPageText } from './article-images/names-from-page-text';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
@@ -532,6 +533,11 @@ export class ArticleGenerationMdxService {
           const primaryOfficialUrl = selectionResult.primary_official_url;
           const officialUrls = selectionResult.official_urls;
           const llmInput = officialHtml;
+          // 著作権表記は本文の主要部分に入らないことが多い (JS の文字列・フッター) ので、圧縮前の HTML から読んで別に渡す
+          const copyrightNotices = extractCopyrightNotices(contentHtml.raw);
+          console.log(
+            `${getStepContext('detail-extraction', '著作権表記')} ${copyrightNotices.length > 0 ? copyrightNotices.join(' / ') : 'なし'}`
+          );
 
           const gateResult = await runVenueCompletenessGate({
             rawHtml: contentHtml.raw,
@@ -548,6 +554,7 @@ export class ArticleGenerationMdxService {
               const result = await extractionService.extractFromOfficialSite({
                 primary_official_url: primaryOfficialUrl,
                 page_content: llmInput,
+                copyright_notices: copyrightNotices,
                 official_urls: officialUrls,
                 // ⚠️ 観測ログ専用。プロンプトへは渡らない (自己成就の防止)
                 observationContext: {
@@ -568,6 +575,15 @@ export class ArticleGenerationMdxService {
           });
 
           detailedExtraction = gateResult.extraction;
+
+          // 原作者名は、著作権表記か本文に出てくる名前だけを残す (LLM が知識で補った名前を書かない。2026-10-24 BOSS 決定)
+          const authors = applySupportedAuthors(detailedExtraction, { notices: copyrightNotices, pageText: llmInput });
+          detailedExtraction = authors.extraction;
+          if (authors.dropped.length > 0) {
+            console.warn(
+              `${getStepContext('detail-extraction', '著作権表記')} ⚠️ 公式サイトに無い原作者名を外した: ${authors.dropped.join(', ')}`
+            );
+          }
 
           // ★ 判定は必ず 3 経路へ出す。観測ログ (JSONL) は本番では無効なので、
           //   console と skipReason だけが本番で残る唯一の痕跡になる。
