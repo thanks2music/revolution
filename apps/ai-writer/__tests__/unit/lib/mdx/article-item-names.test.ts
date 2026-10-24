@@ -85,6 +85,11 @@ describe('parseItemLine', () => {
     expect(parseItemLine('- アクスタ ¥1,100（税込）')).toEqual({ name: 'アクスタ', character: null, price: '¥1,100（税込）' });
   });
 
+  it('空白の後ろの「N円」で終わる語は価格とみなす (品名はその手前まで)', () => {
+    expect(parseItemLine('- 缶バッジ 500円 ガチャ')).toEqual({ name: '缶バッジ', character: null, price: '500円' });
+    expect(parseItemLine('- 缶バッジ 500円玉風')).toEqual({ name: '缶バッジ 500円玉風', character: null, price: null });
+  });
+
   it('価格が無ければ null', () => {
     expect(parseItemLine('### ホログラムステッカー')).toEqual({
       name: 'ホログラムステッカー',
@@ -155,6 +160,14 @@ describe('diffArticleItems', () => {
     expect(hasItemChanges(diffArticleItems(a, b))).toBe(false);
   });
 
+  it('品名が同じでキャラクター名が変わったら出す (片方にキャラクター名が無ければ比べない)', () => {
+    const a = readArticleItems('## メニュー\n### 【爆豪勝己】ソーダ 990円\n### 【緑谷出久】パスタ 2,090円\n### カレー 1,000円');
+    const b = readArticleItems('## メニュー\n### 【轟焦凍】ソーダ 990円\n### 【緑谷 出久】パスタ 2,090円\n### 【麗日お茶子】カレー 1,000円');
+    const menu = diffArticleItems(a, b).find((d) => d.key === 'menu')!;
+    expect(menu.characterChanged).toEqual([expect.objectContaining({ before: '爆豪勝己', after: '轟焦凍' })]);
+    expect(describeItemNameDiffs([menu])).toContain('  - キャラクター名が変わった: ソーダ 【爆豪勝己】 → 【轟焦凍】');
+  });
+
   it('removed は更新前の記事の順', () => {
     const a = readArticleItems('## メニュー\n### A 1円\n### B 1円\n### A 1円\n### C 1円');
     const b = readArticleItems('## メニュー\n### C 1円');
@@ -181,7 +194,7 @@ describe('describeItemNameDiffs', () => {
       '- メニュー:',
       '  - 更新前にだけある: 【爆豪勝己】バナナカスタードドーナツ 990円(税込)',
       '  - 更新後にだけある: 【爆豪勝己】バナナカスタードアイスドーナツ 990円(税込)',
-      '  - 価格が変わった: ラムネホワイトソーダ 990円(税込) → 1,100円(税込)',
+      '  - 価格が変わった: 【轟焦凍】ラムネホワイトソーダ 990円(税込) → 1,100円(税込)',
       '- グッズ: 変わっていない',
       '- ノベルティ: 比べられない (更新前の記事で品名が読めない)',
     ]);

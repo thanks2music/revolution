@@ -3,13 +3,14 @@
  *
  * 数の比較 (`article-counts.ts`) だけでは、品名の読み違いが見えない。ヒロアカの更新 (revolution #387) では、
  * Vision が「バナナカスタードドーナツ」を「バナナカスタードアイスドーナツ」と読み、公開後に手で直した品名が
- * 誤りに戻ったが、数は 19 → 19 のままだった。品名と価格の変化を PR の本文に並べ、人が確かめられるようにする。
+ * 誤りに戻ったが、数は 19 → 19 のままだった。品名・価格・キャラクター名の変化を PR の本文に並べ、人が確かめられるようにする。
  *
  * 品目の行は数えるときと同じ規則で拾う (`sectionItemLines`)。品名は表記の揺れと種類数の注記を無視して照合する
  * (`itemNameKey`)。名前の変わった品目を「どれがどれに変わったか」と結びつけることはしない (推測になるため)。
  * 更新前にだけある品名と、更新後にだけある品名を並べる。
  */
 import { itemNameKey } from '@/lib/services/merge-subpage-into-extraction';
+import { characterKey } from '@/lib/services/vision-api/merge-vision-into-extraction';
 import { COUNT_LABELS, SECTION_HEADINGS, sectionItemLines, sectionLines, splitBody, type CountKey } from './article-counts';
 
 type ItemKey = Exclude<CountKey, 'venues'>;
@@ -85,7 +86,8 @@ export function readArticleItems(mdx: string): ArticleItems {
   return { menu: items('menu'), goods: items('goods'), novelty: items('novelty') };
 }
 
-export interface PriceChange {
+/** 品名は同じで、価格かキャラクター名が変わった品目 (`before` / `after` は変わった値) */
+export interface ItemChange {
   item: ArticleItem;
   before: string | null;
   after: string | null;
@@ -101,7 +103,9 @@ export interface ItemNameDiff {
   /** 更新後にだけある品目 */
   added: ArticleItem[];
   /** 品名は同じで、価格が変わった品目 */
-  priceChanged: PriceChange[];
+  priceChanged: ItemChange[];
+  /** 品名は同じで、キャラクター名が変わった品目 (前後の両方にキャラクター名があるときだけ比べる) */
+  characterChanged: ItemChange[];
 }
 
 /**
@@ -116,67 +120,88 @@ function samePrice(a: string | null, b: string | null): boolean {
   return aDigits.replace(/,/g, '') === bDigits.replace(/,/g, '') && (!aTax || !bTax || aTax === bTax);
 }
 
+/** キャラクター名が変わったか (片方に無ければ比べない) */
+function characterChanged(a: string | null, b: string | null): boolean {
+  return a !== null && b !== null && characterKey(a) !== characterKey(b);
+}
+
 /**
  * 同じ品名が 2 つ以上あっても、その数だけ対応づける (多い分を removed / added にする)。
  * 先に品名と価格が同じものを対応づけ、残りを品名だけで対応づける (同じ名前で価格の違う品目の並びが変わっても、
  * 価格の変化にしない)。removed は更新前の記事の順
  */
 function diffItems(before: readonly ArticleItem[], after: readonly ArticleItem[]) {
-  const unmatched = new Set(before);
+  const remaining = new Map<string, ArticleItem[]>();
+  for (const item of before) {
+    const key = itemNameKey(item.name);
+    remaining.set(key, [...(remaining.get(key) ?? []), item]);
+  }
   const pairs = new Map<ArticleItem, ArticleItem>();
   const take = (item: ArticleItem, withPrice: boolean) => {
-    const key = itemNameKey(item.name);
-    const previous = [...unmatched].find(
-      (b) => itemNameKey(b.name) === key && (!withPrice || samePrice(b.price, item.price))
-    );
-    if (previous) {
-      unmatched.delete(previous);
-      pairs.set(item, previous);
-    }
+    const candidates = remaining.get(itemNameKey(item.name)) ?? [];
+    const index = candidates.findIndex((b) => !withPrice || samePrice(b.price, item.price));
+    if (index !== -1) pairs.set(item, candidates.splice(index, 1)[0]);
   };
   for (const item of after) take(item, true);
   for (const item of after) if (!pairs.has(item)) take(item, false);
 
-  const added = after.filter((item) => !pairs.has(item));
-  const priceChanged = after.flatMap((item): PriceChange[] => {
-    const previous = pairs.get(item);
-    return previous && !samePrice(previous.price, item.price)
-      ? [{ item, before: previous.price, after: item.price }]
-      : [];
-  });
-  return { removed: before.filter((item) => unmatched.has(item)), added, priceChanged };
+  const unmatched = new Set([...remaining.values()].flat());
+  const changes = (changed: (a: ArticleItem, b: ArticleItem) => boolean, value: (i: ArticleItem) => string | null) =>
+    after.flatMap((item): ItemChange[] => {
+      const previous = pairs.get(item);
+      return previous && changed(previous, item) ? [{ item, before: value(previous), after: value(item) }] : [];
+    });
+  return {
+    removed: before.filter((item) => unmatched.has(item)),
+    added: after.filter((item) => !pairs.has(item)),
+    priceChanged: changes((a, b) => !samePrice(a.price, b.price), (i) => i.price),
+    characterChanged: changes((a, b) => characterChanged(a.character, b.character), (i) => i.character),
+  };
 }
 
 export function diffArticleItems(before: ArticleItems, after: ArticleItems): ItemNameDiff[] {
   return ITEM_KEYS.map((key) => {
     const comparable = before[key].length > 0;
-    const diff = comparable ? diffItems(before[key], after[key]) : { removed: [], added: [], priceChanged: [] };
+    const diff = comparable
+      ? diffItems(before[key], after[key])
+      : { removed: [], added: [], priceChanged: [], characterChanged: [] };
     return { key, label: COUNT_LABELS[key], comparable, ...diff };
   });
 }
 
-/** 名前・価格の変化が 1 つでもあるか */
+/** 節に名前・価格・キャラクター名の変化が 1 つでもあるか */
+function diffHasChanges(d: ItemNameDiff): boolean {
+  return d.removed.length > 0 || d.added.length > 0 || d.priceChanged.length > 0 || d.characterChanged.length > 0;
+}
+
+/** どれかの節に変化があるか */
 export function hasItemChanges(diffs: readonly ItemNameDiff[]): boolean {
-  return diffs.some((d) => d.removed.length > 0 || d.added.length > 0 || d.priceChanged.length > 0);
+  return diffs.some(diffHasChanges);
+}
+
+/** キャラクター名つきの品名 (価格は付けない) */
+function showName(item: ArticleItem): string {
+  return `${item.character ? `【${item.character}】` : ''}${item.name}`;
 }
 
 function showItem(item: ArticleItem): string {
-  return `${item.character ? `【${item.character}】` : ''}${item.name}${item.price ? ` ${item.price}` : ''}`;
+  return `${showName(item)}${item.price ? ` ${item.price}` : ''}`;
 }
 
 /** ログと PR 本文に載せる Markdown の箇条書きの行 (変化は 1 段下げる) */
 export function describeItemNameDiffs(diffs: readonly ItemNameDiff[]): string[] {
   return diffs.flatMap((d) => {
     if (!d.comparable) return [`- ${d.label}: 比べられない (更新前の記事で品名が読めない)`];
-    if (d.removed.length === 0 && d.added.length === 0 && d.priceChanged.length === 0) {
-      return [`- ${d.label}: 変わっていない`];
-    }
+    if (!diffHasChanges(d)) return [`- ${d.label}: 変わっていない`];
     return [
       `- ${d.label}:`,
       ...d.removed.map((item) => `  - 更新前にだけある: ${showItem(item)}`),
       ...d.added.map((item) => `  - 更新後にだけある: ${showItem(item)}`),
       ...d.priceChanged.map(
-        ({ item, before, after }) => `  - 価格が変わった: ${item.name} ${before ?? '(なし)'} → ${after ?? '(なし)'}`
+        ({ item, before, after }) => `  - 価格が変わった: ${showName(item)} ${before ?? '(なし)'} → ${after ?? '(なし)'}`
+      ),
+      ...d.characterChanged.map(
+        ({ item, before, after }) => `  - キャラクター名が変わった: ${item.name} 【${before}】 → 【${after}】`
       ),
     ];
   });
