@@ -229,6 +229,24 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
         { url: TOKYO, images: ['https://heroaca-cafe.ltr-online.com/img/tokutenbanner-TOKYO.jpg'] },
         { url: OSAKA, images: ['https://heroaca-cafe.ltr-online.com/img/tokutenbanner-OSAKA.jpg'] },
       ]);
+      // 候補の画像の代替テキストも残す (配布条件の見出し。本文から品名を当てるのに使う)
+      expect(result.imageAlts).toMatchObject({
+        'https://heroaca-cafe.ltr-online.com/img/tokutenbanner-TOKYO.jpg': '事前予約者限定カフェ利用特典',
+        'https://heroaca-cafe.ltr-online.com/img/tokutenbanner-OSAKA.jpg': '事前予約者限定カフェ利用特典',
+      });
+    });
+
+    it('下層ページで先に読んだ代替テキストは、会場のページの代替テキストで上書きしない', async () => {
+      const shared = 'https://heroaca-cafe.ltr-online.com/img/sticker.jpg';
+      mockFetchByUrl({
+        [MENU]: `<html><body><main><img src="${shared}" alt="ホログラムステッカー"></main></body></html>`,
+        [TOKYO]: `<html><body><main><p>「ホログラムステッカー」をプレゼント</p><img src="${shared}" alt="事前予約者限定カフェ利用特典"></main></body></html>`,
+      });
+      const service = new CategoryImageExtractorService(configLoader);
+
+      const result = await service.extractCategoryImages(TOP, null, { menu: [MENU] }, [TOKYO]);
+
+      expect(result.imageAlts[shared]).toBe('ホログラムステッカー');
     });
 
     it('ノベルティの画像を、画像の抽出の段階では会場のページから選ばない (利用ガイドの画像がノベルティに入った不具合の再発防止)', async () => {
@@ -284,17 +302,17 @@ describe('findImagesByAlt', () => {
     const html =
       '<img src="/a.jpg" alt="ドリンク特典"><img src="/a.jpg" alt="ドリンク特典"><img src="/b.jpg" alt="NOVELTY"><img src="/c.jpg" alt="MENU"><img alt="特典">';
 
-    expect(findImagesByAlt(html, 'https://example.com/lp/x', ['特典', 'novelty'])).toEqual([
-      'https://example.com/a.jpg',
-      'https://example.com/b.jpg',
-    ]);
+    expect(findImagesByAlt(html, 'https://example.com/lp/x', ['特典', 'novelty'])).toEqual({
+      images: ['https://example.com/a.jpg', 'https://example.com/b.jpg'],
+      alts: { 'https://example.com/a.jpg': 'ドリンク特典', 'https://example.com/b.jpg': 'NOVELTY' },
+    });
   });
 
   it('data-src も読み、URL として読めない src は飛ばす。width / height の属性では落とさない (短辺は取得後に当てる)', () => {
     const html =
       '<img data-src="/lazy.jpg" alt="特典"><img src="http://[bad" alt="特典"><img src="/icon.png" alt="特典" width="40" height="40"><img src="/big.jpg" alt="特典" width="600" height="600">';
 
-    expect(findImagesByAlt(html, 'https://example.com/', ['特典'])).toEqual([
+    expect(findImagesByAlt(html, 'https://example.com/', ['特典']).images).toEqual([
       'https://example.com/lazy.jpg',
       'https://example.com/icon.png',
       'https://example.com/big.jpg',
@@ -305,10 +323,10 @@ describe('findImagesByAlt', () => {
     const html =
       '<img src="data:image/gif;base64,R0lGOD" data-src="/real.jpg" alt="特典"><img src="data:image/png;base64,AAA" alt="特典">';
 
-    expect(findImagesByAlt(html, 'https://example.com/', ['特典'])).toEqual(['https://example.com/real.jpg']);
+    expect(findImagesByAlt(html, 'https://example.com/', ['特典']).images).toEqual(['https://example.com/real.jpg']);
   });
 
   it('語が無ければ何も返さない', () => {
-    expect(findImagesByAlt('<img src="/a.jpg" alt="特典">', 'https://example.com/', [])).toEqual([]);
+    expect(findImagesByAlt('<img src="/a.jpg" alt="特典">', 'https://example.com/', [])).toEqual({ images: [], alts: {} });
   });
 });
