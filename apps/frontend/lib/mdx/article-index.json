@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-10-15T18:06:29.404Z",
+  "generatedAt": "2026-10-19T18:38:44.924Z",
   "totalArticles": 10,
   "articles": [
     {
       "slug": "01m4s065g1hchh9d",
       "title": "ヒロアカ カフェ in 4都市 10月16日よりコラボ開催",
       "date": "2026-10-12T21:26:06.709Z",
-      "excerpt": "アニメ「僕のヒーローアカデミア」のコラボカフェ「WE ARE HERO HOLICS」が2026年10月16日より東京・愛知・大阪・北海道にて順次開催！7種から選べるボックスピザや幼い日のデクたちをイメージしたスイーツ、描き下ろしミニキャラグッズが登場。ヒーローの世界観を存分に楽しめます。",
+      "excerpt": "「僕のヒーローアカデミア」のコラボカフェが、2026年10月16日〜12月20日に東京・愛知・大阪・北海道の4会場で開催されます。「WE ARE HERO HOLICS」をテーマに、描き起こしイラストを使用したコラボグッズが発売されるほか、全19品のコラボメニューを楽しめます。",
       "categories": [
         "僕のヒーローアカデミア",
         "コラボカフェ"
@@ -35,7 +35,8 @@
         "osaka",
         "hokkaido"
       ],
-      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m4s065g1hchh9d/b4552093-8426-4cce-9b97-0f59c849e2ef.jpg",
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m4s065g1hchh9d/80143016d2a9d27740bb4d858a980b23.jpg",
+      "updated": "2026-10-19T18:37:56.073Z",
       "event_start_date": "2026-10-16",
       "event_end_date": "2026-12-20",
       "venue": "BOX cafe&space キュープラザ原宿店",
