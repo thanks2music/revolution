@@ -75,9 +75,8 @@ const config: Config = {
       fontFamily: {
         body: ['var(--font-body)', 'Noto Sans JP', 'sans-serif'],
         display: ['var(--font-display)', 'var(--font-body)', 'Noto Sans JP', 'sans-serif'],
-        numeric: ['var(--font-numeric)', 'var(--font-body)', 'Noto Sans JP', 'sans-serif'],
-        // 記事カードの見出し (Claude Design v6 #17/#18)。読み物としての活字トーン。
-        serif: ['var(--font-serif)', 'Hiragino Mincho ProN', 'YuMincho', 'serif'],
+        // 数字の印 (`tabular-nums` と組で使う)。書体は本文と同じ (2026-10-26、フォントを 2 つに統一)
+        numeric: ['var(--font-body)', 'Noto Sans JP', 'sans-serif'],
       },
       width: {
         main: 'var(--container-main)',

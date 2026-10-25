@@ -1,20 +1,13 @@
 import '@/styles/globals.css';
-// フォントは Fontsource (npm) から配る。next/font/google はビルドのたびに Google から
-// フォントを取得し、その取得の失敗でビルドが落ちていた (2026-10)。Fontsource の CSS は
-// Google Fonts と同じく文字の範囲 (unicode-range) ごとにファイルを分けているので、
-// ブラウザはページに出る文字の分だけ読む。next/font/local は範囲ごとの指定ができず、
-// 日本語フォントを 1 ウェイト丸ごと読ませることになるため使わない。
+// フォントは Noto Sans JP (本文) と Zen Kaku Gothic New (見出し) の 2 つだけにする (2026-10-26 決定)。
+// next/font/google はビルドのたびに Google からフォントを取得し、その失敗でビルドが落ちていたため、
+// Fontsource (npm) から配る。どちらの CSS も文字の範囲 (unicode-range) ごとにファイルが分かれていて、
+// ブラウザはページに出る文字の分だけ読む。next/font/local は範囲ごとの指定ができないので使わない。
+// Noto Sans JP は可変フォント。1 つのファイルで全ウェイトを描くので、太字を足してもファイルは増えない。
+// Zen Kaku Gothic New には可変フォントが無く、ウェイトを足すとファイルの組がもう 1 つ増える。
 // 名前と代わりの字形は styles/globals.css の --font-* と @font-face。
-import '@fontsource/noto-sans-jp/400.css';
-import '@fontsource/noto-sans-jp/500.css';
-import '@fontsource/noto-sans-jp/700.css';
+import '@fontsource-variable/noto-sans-jp';
 import '@fontsource/zen-kaku-gothic-new/900.css';
-// 記事カードの見出し用 (Claude Design v6 #17/#18)
-import '@fontsource/zen-old-mincho/600.css';
-// 残日数バッジ・日付の数字用
-import '@fontsource/inter-tight/600.css';
-import '@fontsource/inter-tight/700.css';
-import '@fontsource/inter-tight/900.css';
 import { generateBasicMetadata, generateWebSiteSchema } from '@/lib/metadata';
 
 export const metadata = generateBasicMetadata();

@@ -127,19 +127,18 @@
   --space-section-sp: 3.5rem;
 
   /*
-   * フォント (Fontsource、`app/layout.tsx` で読み込む)。tailwind.config.ts の
-   * fontFamily がこの 4 つを参照する。後ろの Fallback は下の @font-face。
+   * フォントは本文と見出しの 2 つだけ (Fontsource、`app/layout.tsx` で読み込む)。
+   * tailwind.config.ts の fontFamily がこの 2 つを参照する。後ろの Fallback は下の @font-face。
    */
-  --font-body: 'Noto Sans JP', 'Noto Sans JP Fallback';
+  --font-body: 'Noto Sans JP Variable', 'Noto Sans JP Fallback';
   --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback';
-  --font-serif: 'Zen Old Mincho', 'Zen Old Mincho Fallback';
-  --font-numeric: 'Inter Tight', 'Inter Tight Fallback';
 }
 
 /*
- * フォントが届くまでの代わりの字形 (Arial / Times New Roman) を、本来のフォントの寸法に
- * 合わせる。差し替わる時の表示のずれ (CLS) を抑えるため。値は next/font/google が
- * 生成していたものをそのまま写した (2026-10-25、本番の CSS から取得)。
+ * フォントが届くまでの代わりの字形 (Arial) を、本来のフォントの寸法に合わせる。
+ * 差し替わる時の表示のずれ (CLS) を抑えるため。値は next/font/google が生成していたものを
+ * そのまま写した (2026-10-25、本番の CSS から取得)。next/font と違ってビルドで計算し直さないので、
+ * フォントのファミリーや版を替えたら測り直すこと。
  */
 @font-face {
   font-family: 'Noto Sans JP Fallback';
@@ -157,24 +156,6 @@
   descent-override: 29.05%;
   line-gap-override: 0%;
   size-adjust: 99.15%;
-}
-
-@font-face {
-  font-family: 'Zen Old Mincho Fallback';
-  src: local('Times New Roman');
-  ascent-override: 107.59%;
-  descent-override: 26.71%;
-  line-gap-override: 0%;
-  size-adjust: 107.82%;
-}
-
-@font-face {
-  font-family: 'Inter Tight Fallback';
-  src: local('Arial');
-  ascent-override: 100.51%;
-  descent-override: 25.03%;
-  line-gap-override: 0%;
-  size-adjust: 96.39%;
 }
 
 @layer base {
