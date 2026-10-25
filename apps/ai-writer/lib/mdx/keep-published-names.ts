@@ -6,8 +6,10 @@
  * 人が確かめた値は公開中の記事の中にあるので、更新ではそちらを正にする。
  *
  * 当てるのは、今回読んだ品名と公開中の記事の品名を照合して (`itemNameKey`)、どちらにも対応の無い品目が
- * 「同じキャラクター・同じ価格」の組の中で 1 品どうしだけ残ったときに限る。そのときは公開中の記事の品名を使う。
- * 2 品以上残った組は、どれがどれか決められないので当てない (推測しない)。
+ * 「同じキャラクター・同じ価格」の組の中で 1 品どうしだけ残り、**2 つの名前が似ている** (読み違いらしい) ときに限る。
+ * そのときは公開中の記事の品名を使う。2 品以上残った組は、どれがどれか決められないので当てない (推測しない)。
+ * 名前が似ていなければ、公式が品目を入れ替えた可能性が高いので当てない (キャラクターも価格も無いノベルティなどは、
+ * 無関係な品目どうしが同じ組になるため、この条件が要る)。
  *
  * 当てた品目は呼び出し側がログと PR の本文に出す。公式サイトが本当に品名を変えたときも公開中の記事の品名が
  * 残るので、人が PR で確かめる。キャラクター名と価格は当てない (違いは `article-item-names.ts` が PR の本文に出す)。
@@ -38,9 +40,43 @@ export interface KeptName {
   price: string | null;
 }
 
-/** 価格の数字だけ (無ければ空)。税込・税抜の注記の有無では分けない */
+/** 価格の数字だけ (無ければ空)。税込・税抜の注記の有無では分けない。範囲 (「990円〜1,100円」) は最初の数字で見る */
 function priceDigits(price: string | null): string {
   return price?.match(/[\d,]+/)?.[0].replace(/,/g, '') ?? '';
+}
+
+/** 名前が似ているとみなす、編集距離の上限 (長い方の名前の文字数に対する割合) */
+const MAX_DISTANCE_RATIO = 0.4;
+
+/** 2 つの文字列の編集距離 (挿入・削除・置換を 1 とする) */
+function editDistance(a: string, b: string): number {
+  const x = [...a];
+  const y = [...b];
+  let previous = Array.from({ length: y.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= x.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= y.length; j++) {
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    }
+    previous = current;
+  }
+  return previous[y.length];
+}
+
+/** ひらがなをカタカナにそろえる (「てりマヨ」と「テリヤキ」の違いを、かなの種類で水増ししない) */
+function toKatakana(text: string): string {
+  return text.replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+}
+
+/**
+ * 名前が似ているか (読み違いらしいか)。照合キー (表記の揺れと種類数の注記を除いた形) どうしの編集距離が、
+ * 長い方の 4 割以下なら似ているとみなす (「バナナカスタードドーナツ」と「…アイスドーナツ」は 3 / 15)。ひらがなはカタカナにそろえる
+ */
+export function similarNames(a: string, b: string): boolean {
+  const x = toKatakana(itemNameKey(a));
+  const y = toKatakana(itemNameKey(b));
+  const longer = Math.max([...x].length, [...y].length);
+  return longer > 0 && editDistance(x, y) / longer <= MAX_DISTANCE_RATIO;
 }
 
 /** 「同じキャラクター・同じ価格」の組のキー */
@@ -71,16 +107,19 @@ export function publishedNamesFor(read: readonly ReadItem[], published: readonly
     const key = groupKey(read[index]);
     const readInGroup = unmatchedRead.filter((i) => groupKey(read[i]) === key);
     const publishedInGroup = unmatchedPublished.filter((item) => groupKey(item) === key);
-    if (readInGroup.length === 1 && publishedInGroup.length === 1) result.set(index, publishedInGroup[0]);
+    if (readInGroup.length === 1 && publishedInGroup.length === 1 && similarNames(read[index].name, publishedInGroup[0].name)) {
+      result.set(index, publishedInGroup[0]);
+    }
   }
   return result;
 }
 
-/** 名前の一覧の中で、照合キーが同じ名前を置き換える */
+/** 名前の一覧の中で、照合キーが同じ最初の名前を置き換える (同じ名前が 2 つあっても、対応した 1 つだけ) */
 function renameIn(list: string[] | null, from: string, to: string): string[] | null {
   if (!list) return list;
   const key = itemNameKey(from);
-  return list.map((name) => (itemNameKey(name) === key ? to : name));
+  const index = list.findIndex((name) => itemNameKey(name) === key);
+  return index === -1 ? list : list.map((name, i) => (i === index ? to : name));
 }
 
 type NameFields = Pick<
@@ -114,7 +153,6 @@ export function keepPublishedNames<T extends NameFields>(
   for (const key of ['menu', 'goods', 'novelty'] as const) {
     for (const [index, item] of publishedNamesFor(read[key], published[key])) {
       const from = read[key][index];
-      if (from.name === item.name) continue;
       kept.push({ key, label: COUNT_LABELS[key], read: from.name, published: item.name, character: from.character, price: from.price });
       if (key === 'menu') {
         result = {

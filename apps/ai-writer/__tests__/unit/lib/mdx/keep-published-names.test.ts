@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from '@jest/globals';
 import { readArticleItems } from '../../../../lib/mdx/article-item-names';
-import { describeKeptNames, keepPublishedNames, publishedNamesFor } from '../../../../lib/mdx/keep-published-names';
+import { describeKeptNames, keepPublishedNames, publishedNamesFor, similarNames } from '../../../../lib/mdx/keep-published-names';
 
 /** 公開中の記事 (ヒロアカの爆豪の品目。人が「バナナカスタードドーナツ」に直した後) */
 const published = readArticleItems(
@@ -117,8 +117,28 @@ describe('keepPublishedNames', () => {
   });
 
   it('ノベルティも 1 品どうしなら当てる', () => {
-    const result = keepPublishedNames({ ...extraction, ノベルティ名: ['ホログラムシール'] }, published);
+    const result = keepPublishedNames({ ...extraction, ノベルティ名: ['ホログラムステッガー'] }, published);
     expect(result.extraction.ノベルティ名).toEqual(['ホログラムステッカー']);
+  });
+
+  it('名前が似ていなければ当てない (公式が品目を入れ替えた可能性が高い。キャラクターも価格も無いノベルティでも)', () => {
+    expect(keepPublishedNames({ ...extraction, ノベルティ名: ['アクリルコースター'] }, published).kept.map((k) => k.key)).toEqual(['menu']);
+    const swapped = {
+      ...extraction,
+      メニュー詳細リスト: extraction.メニュー詳細リスト.map((m, i) => (i === 1 ? { ...m, name: 'チョコバナナパフェ' } : m)),
+    };
+    expect(keepPublishedNames(swapped, published).kept).toEqual([]);
+  });
+
+  it('詳細リストが空なら名前の一覧を直す (同じ名前が 2 つあっても、対応した 1 つだけ)', () => {
+    const namesOnly = {
+      ...extraction,
+      グッズ詳細リスト: null,
+      グッズ名: ['缶バッチ（ランダム7種）', '巾着（全7種）'],
+    };
+    const goodsPublished = readArticleItems('## 作品 カフェのグッズ\n- 缶バッジ（ランダム7種）\n- 巾着（全7種）');
+    const result = keepPublishedNames(namesOnly, { ...published, goods: goodsPublished.goods });
+    expect(result.extraction.グッズ名).toEqual(['缶バッジ（ランダム7種）', '巾着（全7種）']);
   });
 
   it('公開中の記事で品名が読めない節 (古い書式) には当てない', () => {
@@ -142,5 +162,14 @@ describe('describeKeptNames', () => {
       '- メニュー (【爆豪勝己】 990円(税込)): 今回読んだ「バナナカスタードアイスドーナツ」ではなく、公開中の記事の「バナナカスタードドーナツ」を使った',
     ]);
     expect(describeKeptNames([])).toEqual(['- なし']);
+  });
+});
+
+describe('similarNames', () => {
+  it('読み違いらしい名前は似ている。別の品目は似ていない', () => {
+    expect(similarNames('バナナカスタードドーナツ', 'バナナカスタードアイスドーナツ')).toBe(true);
+    expect(similarNames('てりマヨチキン', 'テリヤキチキン')).toBe(true);
+    expect(similarNames('オレンジソーダ', 'ピーチソーダ')).toBe(false);
+    expect(similarNames('ホログラムステッカー', 'アクリルコースター')).toBe(false);
   });
 });
