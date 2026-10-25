@@ -51,7 +51,7 @@ const config: Config = {
           soon: 'var(--days-soon)',
           urgent: 'var(--days-urgent)',
         },
-        // 記事カード (クリーム地 + 明朝) と終了開催のアーカイブ地。
+        // 記事カード (クリーム地) と終了開催のアーカイブ地。
         article: {
           DEFAULT: 'var(--bg-article)',
           line: 'var(--line-article)',
@@ -72,12 +72,12 @@ const config: Config = {
         DEFAULT: 'var(--line-soft)',
         strong: 'var(--line-strong)',
       },
+      // 書体の並びは styles/globals.css の --font-* にまとめてある
       fontFamily: {
-        body: ['var(--font-body)', 'Noto Sans JP', 'sans-serif'],
-        display: ['var(--font-display)', 'var(--font-body)', 'Noto Sans JP', 'sans-serif'],
-        numeric: ['var(--font-numeric)', 'var(--font-body)', 'Noto Sans JP', 'sans-serif'],
-        // 記事カードの見出し (Claude Design v6 #17/#18)。読み物としての活字トーン。
-        serif: ['var(--font-serif)', 'Hiragino Mincho ProN', 'YuMincho', 'serif'],
+        body: ['var(--font-body)'],
+        display: ['var(--font-display)'],
+        // 数字の印 (`tabular-nums` と組で使う)。書体は本文と同じ
+        numeric: ['var(--font-body)'],
       },
       width: {
         main: 'var(--container-main)',

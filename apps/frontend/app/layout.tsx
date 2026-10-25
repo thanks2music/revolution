@@ -1,63 +1,22 @@
 import '@/styles/globals.css';
-import {
-  Noto_Sans_JP,
-  Zen_Kaku_Gothic_New,
-  Zen_Old_Mincho,
-  Inter_Tight,
-} from 'next/font/google';
+// フォントは Noto Sans JP (本文) と Zen Kaku Gothic New (見出し) の 2 つだけにする (2026-10-26 決定)。
+// next/font/google はビルドのたびに Google からフォントを取得し、その失敗でビルドが落ちていたため、
+// Fontsource (npm) から配る。どちらの CSS も文字の範囲 (unicode-range) ごとにファイルが分かれていて、
+// ブラウザはページに出る文字の分だけ読む。next/font/local は範囲ごとの指定ができないので使わない。
+// Noto Sans JP は可変フォント。1 つのファイルで全ウェイトを描くので、太字を足してもファイルは増えない。
+// Zen Kaku Gothic New には可変フォントが無く、ウェイトを足すとファイルの組がもう 1 つ増える。
+// 名前と代わりの字形は styles/globals.css の --font-* と @font-face。
+import '@fontsource-variable/noto-sans-jp';
+import '@fontsource/zen-kaku-gothic-new/900.css';
 import { generateBasicMetadata, generateWebSiteSchema } from '@/lib/metadata';
 
 export const metadata = generateBasicMetadata();
-
-// CJK フォントは subset が大きいため preload を切り、初期表示を阻害しない。
-// next/font/google の Noto Sans JP / Zen Kaku Gothic New は `subsets` に
-// 'latin' / 'latin-ext' / 'cyrillic' / 'vietnamese' のみ受け付ける
-// （node_modules/.../@next/font/.../google/font-data.json で型決定済み）。
-// Japanese 文字の描画品質は実機で要検証。代替手段として将来 `<link>` 直挿入
-// を検討する余地あり (issue tracked: 表示確認後に判断)。
-// Inter Tight も LCP には乗らない（残日数バッジ・日付の数字専用）ので同様。
-const notoSansJP = Noto_Sans_JP({
-  weight: ['400', '500', '700'],
-  subsets: ['latin'],
-  variable: '--font-body',
-  display: 'swap',
-  preload: false,
-});
-
-const zenKakuGothicNew = Zen_Kaku_Gothic_New({
-  weight: ['900'],
-  subsets: ['latin'],
-  variable: '--font-display',
-  display: 'swap',
-  preload: false,
-});
-
-// 記事カードの見出し用 (Claude Design v6 #17/#18)。記事カードは fold より下に
-// 出るため preload は不要 — 他の CJK フォントと同じ扱いにする。
-const zenOldMincho = Zen_Old_Mincho({
-  weight: ['600'],
-  subsets: ['latin'],
-  variable: '--font-serif',
-  display: 'swap',
-  preload: false,
-});
-
-const interTight = Inter_Tight({
-  weight: ['600', '700', '900'],
-  subsets: ['latin'],
-  variable: '--font-numeric',
-  display: 'swap',
-  preload: false,
-});
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const webSiteSchema = generateWebSiteSchema();
 
   return (
-    <html
-      lang="ja"
-      className={`${notoSansJP.variable} ${zenKakuGothicNew.variable} ${zenOldMincho.variable} ${interTight.variable}`}
-    >
+    <html lang="ja">
       <head>
         <script
           type="application/ld+json"

@@ -27,6 +27,8 @@
     "deploy:preview": "vercel"
   },
   "dependencies": {
+    "@fontsource-variable/noto-sans-jp": "^5.3.1",
+    "@fontsource/zen-kaku-gothic-new": "^5.3.1",
     "@headlessui/react": "^2.1.2",
     "@heroicons/react": "v1",
     "@revolution/schemas": "workspace:*",
