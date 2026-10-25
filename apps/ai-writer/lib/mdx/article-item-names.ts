@@ -113,7 +113,7 @@ export interface ItemNameDiff {
  * 価格が同じか。数字で比べ、税込・税抜の注記は両方に書かれているときだけ比べる
  * (「990円」と「990円（税込）」のような表記だけの違いを、価格の変化にしない)
  */
-function samePrice(a: string | null, b: string | null): boolean {
+export function samePrice(a: string | null, b: string | null): boolean {
   if (a === null || b === null) return a === b;
   const [, aDigits, aTax] = a.match(PRICE_PARTS) ?? [];
   const [, bDigits, bTax] = b.match(PRICE_PARTS) ?? [];

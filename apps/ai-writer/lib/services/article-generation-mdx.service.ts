@@ -19,6 +19,7 @@ import {
   shrinkStopMessage,
   type ShrinkCheck,
 } from '../mdx/article-counts';
+import { describeKeptNames, keepPublishedNames, type KeptName } from '../mdx/keep-published-names';
 import {
   describeItemNameDiffs,
   diffArticleItems,
@@ -303,6 +304,8 @@ export interface MdxGenerationResult {
     shrinkCheck: ShrinkCheck;
     /** メニュー・グッズ・ノベルティの品名と価格の、更新の前後の違い */
     itemNames: ItemNameDiff[];
+    /** 今回読んだ品名ではなく、公開中の記事の品名を使った品目 */
+    keptNames: KeptName[];
     /** event_data の企画を決める項目の引き継ぎ */
     eventKeys: EventKeysReport;
   };
@@ -773,6 +776,17 @@ export class ArticleGenerationMdxService {
           `${getStepContext('vision-api')} ノベルティ名が無いため、ノベルティの画像 ${categoryImages.novelty.length} 枚を使わない (節を書かない)`,
         );
         categoryImages = { ...categoryImages, novelty: [] };
+      }
+
+      // 記事の更新: 品名は公開中の記事を正にする (Vision や抽出の LLM の読み違いで、人が直した品名を誤りに戻さない。
+      // 2026-10-25 BOSS 決定)。当てるのは、同じキャラクター・同じ価格の組の中で 1 品どうしだけ残った品目
+      let keptNames: KeptName[] = [];
+      if (update && detailedExtraction) {
+        const kept = keepPublishedNames(detailedExtraction, readArticleItems(update.article.content));
+        detailedExtraction = kept.extraction;
+        keptNames = kept.kept;
+        const ctx = getStepContext('vision-api', '公開中の記事の品名');
+        for (const line of describeKeptNames(keptNames)) console.log(`${ctx} ${line}`);
       }
 
       // slug-generation step: Resolve slugs (YAML config → AI API → ASCII fallback)
@@ -1801,7 +1815,7 @@ export class ArticleGenerationMdxService {
             success: false,
             error: message,
             mdxArticle,
-            update: { shrinkCheck, itemNames, eventKeys },
+            update: { shrinkCheck, itemNames, keptNames, eventKeys },
           };
         }
 
@@ -1816,6 +1830,7 @@ export class ArticleGenerationMdxService {
             updated: mdxArticle.frontmatter.updated ?? '',
             shrinkCheck,
             itemNames,
+            keptNames,
             allowShrink: update.allowShrink,
             eventKeys,
             extraction,
@@ -1913,7 +1928,7 @@ export class ArticleGenerationMdxService {
         placeholderReplacement,
         textPlaceholderReplacement,
         visionApiResult, // vision-api step Vision API integration result
-        update: shrinkCheck ? { shrinkCheck, itemNames, eventKeys } : undefined,
+        update: shrinkCheck ? { shrinkCheck, itemNames, keptNames, eventKeys } : undefined,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -2361,12 +2376,13 @@ export class ArticleGenerationMdxService {
     updated: string;
     shrinkCheck: ShrinkCheck;
     itemNames: ItemNameDiff[];
+    keptNames: KeptName[];
     allowShrink: boolean;
     eventKeys: EventKeysReport;
     extraction: { workTitle: string; storeName: string; eventTypeName: string };
     metadata: { categories: string[]; excerpt: string };
   }): string {
-    const { path, fields, updated, shrinkCheck, itemNames, allowShrink, extraction, metadata } = params;
+    const { path, fields, updated, shrinkCheck, itemNames, keptNames, allowShrink, extraction, metadata } = params;
     const eventKeys = describeEventKeys(params.eventKeys);
     const counts = describeShrinkCheck(shrinkCheck).map((line) => `- ${line}`).join('\n');
     const names = describeItemNameDiffs(itemNames).join('\n');
@@ -2388,6 +2404,12 @@ ${shrinkCheck.shrunk && allowShrink ? '\n⚠️ 減った項目があります�
 ## 🔤 品名と価格の変化 (更新前 → 更新後)
 
 ${hasItemChanges(itemNames) ? '⚠️ 品名か価格が変わった品目があります。公式サイトと照らして、読み違いでないか確かめてください。\n\n' : ''}${names}
+
+## 📌 公開中の記事の品名を使った品目
+
+今回読んだ品名が公開中の記事と違い、同じキャラクター・同じ価格の 1 品どうしだったので、公開中の記事 (人が確かめた値) の品名を使いました。公式サイトで品名が本当に変わっていないか確かめてください。
+
+${describeKeptNames(keptNames).join('\n')}
 
 ## 🔑 企画を決める項目 (event_slug / event_name / title_slugs / primary_category_slug)
 
