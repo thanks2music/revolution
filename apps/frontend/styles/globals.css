@@ -125,6 +125,56 @@
   --container-main: clamp(0px, 1050px, 90vw);
   --space-section-pc: 7rem;
   --space-section-sp: 3.5rem;
+
+  /*
+   * フォント (Fontsource、`app/layout.tsx` で読み込む)。tailwind.config.ts の
+   * fontFamily がこの 4 つを参照する。後ろの Fallback は下の @font-face。
+   */
+  --font-body: 'Noto Sans JP', 'Noto Sans JP Fallback';
+  --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback';
+  --font-serif: 'Zen Old Mincho', 'Zen Old Mincho Fallback';
+  --font-numeric: 'Inter Tight', 'Inter Tight Fallback';
+}
+
+/*
+ * フォントが届くまでの代わりの字形 (Arial / Times New Roman) を、本来のフォントの寸法に
+ * 合わせる。差し替わる時の表示のずれ (CLS) を抑えるため。値は next/font/google が
+ * 生成していたものをそのまま写した (2026-10-25、本番の CSS から取得)。
+ */
+@font-face {
+  font-family: 'Noto Sans JP Fallback';
+  src: local('Arial');
+  ascent-override: 110.73%;
+  descent-override: 27.49%;
+  line-gap-override: 0%;
+  size-adjust: 104.76%;
+}
+
+@font-face {
+  font-family: 'Zen Kaku Gothic New Fallback';
+  src: local('Arial');
+  ascent-override: 117%;
+  descent-override: 29.05%;
+  line-gap-override: 0%;
+  size-adjust: 99.15%;
+}
+
+@font-face {
+  font-family: 'Zen Old Mincho Fallback';
+  src: local('Times New Roman');
+  ascent-override: 107.59%;
+  descent-override: 26.71%;
+  line-gap-override: 0%;
+  size-adjust: 107.82%;
+}
+
+@font-face {
+  font-family: 'Inter Tight Fallback';
+  src: local('Arial');
+  ascent-override: 100.51%;
+  descent-override: 25.03%;
+  line-gap-override: 0%;
+  size-adjust: 96.39%;
 }
 
 @layer base {

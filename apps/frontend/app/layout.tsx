@@ -1,63 +1,29 @@
 import '@/styles/globals.css';
-import {
-  Noto_Sans_JP,
-  Zen_Kaku_Gothic_New,
-  Zen_Old_Mincho,
-  Inter_Tight,
-} from 'next/font/google';
+// フォントは Fontsource (npm) から配る。next/font/google はビルドのたびに Google から
+// フォントを取得し、その取得の失敗でビルドが落ちていた (2026-10)。Fontsource の CSS は
+// Google Fonts と同じく文字の範囲 (unicode-range) ごとにファイルを分けているので、
+// ブラウザはページに出る文字の分だけ読む。next/font/local は範囲ごとの指定ができず、
+// 日本語フォントを 1 ウェイト丸ごと読ませることになるため使わない。
+// 名前と代わりの字形は styles/globals.css の --font-* と @font-face。
+import '@fontsource/noto-sans-jp/400.css';
+import '@fontsource/noto-sans-jp/500.css';
+import '@fontsource/noto-sans-jp/700.css';
+import '@fontsource/zen-kaku-gothic-new/900.css';
+// 記事カードの見出し用 (Claude Design v6 #17/#18)
+import '@fontsource/zen-old-mincho/600.css';
+// 残日数バッジ・日付の数字用
+import '@fontsource/inter-tight/600.css';
+import '@fontsource/inter-tight/700.css';
+import '@fontsource/inter-tight/900.css';
 import { generateBasicMetadata, generateWebSiteSchema } from '@/lib/metadata';
 
 export const metadata = generateBasicMetadata();
-
-// CJK フォントは subset が大きいため preload を切り、初期表示を阻害しない。
-// next/font/google の Noto Sans JP / Zen Kaku Gothic New は `subsets` に
-// 'latin' / 'latin-ext' / 'cyrillic' / 'vietnamese' のみ受け付ける
-// （node_modules/.../@next/font/.../google/font-data.json で型決定済み）。
-// Japanese 文字の描画品質は実機で要検証。代替手段として将来 `<link>` 直挿入
-// を検討する余地あり (issue tracked: 表示確認後に判断)。
-// Inter Tight も LCP には乗らない（残日数バッジ・日付の数字専用）ので同様。
-const notoSansJP = Noto_Sans_JP({
-  weight: ['400', '500', '700'],
-  subsets: ['latin'],
-  variable: '--font-body',
-  display: 'swap',
-  preload: false,
-});
-
-const zenKakuGothicNew = Zen_Kaku_Gothic_New({
-  weight: ['900'],
-  subsets: ['latin'],
-  variable: '--font-display',
-  display: 'swap',
-  preload: false,
-});
-
-// 記事カードの見出し用 (Claude Design v6 #17/#18)。記事カードは fold より下に
-// 出るため preload は不要 — 他の CJK フォントと同じ扱いにする。
-const zenOldMincho = Zen_Old_Mincho({
-  weight: ['600'],
-  subsets: ['latin'],
-  variable: '--font-serif',
-  display: 'swap',
-  preload: false,
-});
-
-const interTight = Inter_Tight({
-  weight: ['600', '700', '900'],
-  subsets: ['latin'],
-  variable: '--font-numeric',
-  display: 'swap',
-  preload: false,
-});
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const webSiteSchema = generateWebSiteSchema();
 
   return (
-    <html
-      lang="ja"
-      className={`${notoSansJP.variable} ${zenKakuGothicNew.variable} ${zenOldMincho.variable} ${interTight.variable}`}
-    >
+    <html lang="ja">
       <head>
         <script
           type="application/ld+json"
