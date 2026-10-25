@@ -98,7 +98,8 @@
    *    v5 のこのトーンを一度も採用していなかった** (記事カードは白地 +
    *    サンセリフのまま)。実際には本ブロックが新規追加になる。
    *
-   * 記事は「読み物」として本文と同じ活字トーンを持たせる = クリーム地 + 明朝。
+   * 記事は「読み物」としてクリーム地で示す (見出しの明朝は 2026-10-26 にやめ、本文と同じ
+   * Noto Sans JP の太字にした。フォントを 2 つに統一したため)。
    * アーカイブ (終了した開催) は「もう行けない」を沈んだ地色で示す。
    */
   --bg-article: #fffbf2;
@@ -128,10 +129,11 @@
 
   /*
    * フォントは本文と見出しの 2 つだけ (Fontsource、`app/layout.tsx` で読み込む)。
-   * tailwind.config.ts の fontFamily がこの 2 つを参照する。後ろの Fallback は下の @font-face。
+   * tailwind.config.ts の fontFamily はこの 2 つを参照するだけ。… Fallback は下の @font-face、
+   * 'Noto Sans JP' は端末に入っている Noto Sans JP (配信するのは 'Noto Sans JP Variable')。
    */
-  --font-body: 'Noto Sans JP Variable', 'Noto Sans JP Fallback';
-  --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback';
+  --font-body: 'Noto Sans JP Variable', 'Noto Sans JP Fallback', 'Noto Sans JP', sans-serif;
+  --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback', var(--font-body);
 }
 
 /*

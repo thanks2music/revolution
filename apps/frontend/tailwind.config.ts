@@ -51,7 +51,7 @@ const config: Config = {
           soon: 'var(--days-soon)',
           urgent: 'var(--days-urgent)',
         },
-        // 記事カード (クリーム地 + 明朝) と終了開催のアーカイブ地。
+        // 記事カード (クリーム地) と終了開催のアーカイブ地。
         article: {
           DEFAULT: 'var(--bg-article)',
           line: 'var(--line-article)',
@@ -72,12 +72,12 @@ const config: Config = {
         DEFAULT: 'var(--line-soft)',
         strong: 'var(--line-strong)',
       },
+      // 書体の並びは styles/globals.css の --font-* にまとめてある
       fontFamily: {
-        // 'Noto Sans JP' は端末に入っている Noto Sans JP (配信するのは 'Noto Sans JP Variable')
-        body: ['var(--font-body)', 'Noto Sans JP', 'sans-serif'],
-        display: ['var(--font-display)', 'var(--font-body)', 'Noto Sans JP', 'sans-serif'],
-        // 数字の印 (`tabular-nums` と組で使う)。書体は本文と同じ (2026-10-26、フォントを 2 つに統一)
-        numeric: ['var(--font-body)', 'Noto Sans JP', 'sans-serif'],
+        body: ['var(--font-body)'],
+        display: ['var(--font-display)'],
+        // 数字の印 (`tabular-nums` と組で使う)。書体は本文と同じ
+        numeric: ['var(--font-body)'],
       },
       width: {
         main: 'var(--container-main)',
