@@ -223,8 +223,9 @@ describe('VisionApiServiceFactory — model / Gemini 固有設定の解決', () 
 
   it('VISION_API_THINKING_LEVEL が不正な値なら、Vision の既定 MEDIUM に戻る', () => {
     process.env.VISION_API_THINKING_LEVEL = 'deep';
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const service = VisionApiServiceFactory.create('google', { apiKey: DUMMY_API_KEY });
     expect(geminiInternals(service).thinkingLevel).toBe(ThinkingLevel.MEDIUM);
+    warn.mockRestore();
   });
 });

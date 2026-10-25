@@ -50,11 +50,13 @@ describe('normalizeThinkingLevel', () => {
   });
 
   it('未設定・不正値のときの値を fallback で変えられる (Vision は MEDIUM を渡す)', () => {
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     expect(normalizeThinkingLevel(undefined, ThinkingLevel.MEDIUM)).toBe(ThinkingLevel.MEDIUM);
+    expect(normalizeThinkingLevel('   ', ThinkingLevel.MEDIUM)).toBe(ThinkingLevel.MEDIUM);
     expect(normalizeThinkingLevel('deep', ThinkingLevel.MEDIUM)).toBe(ThinkingLevel.MEDIUM);
     expect(normalizeThinkingLevel('low', ThinkingLevel.MEDIUM)).toBe(ThinkingLevel.LOW);
     expect(DEFAULT_GEMINI_VISION_THINKING_LEVEL).toBe(ThinkingLevel.MEDIUM);
+    warn.mockRestore();
   });
 
   it.each([
