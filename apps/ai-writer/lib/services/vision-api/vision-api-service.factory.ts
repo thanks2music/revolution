@@ -17,6 +17,7 @@ import type {
 import {
   normalizeMediaResolution,
   normalizeThinkingLevel,
+  DEFAULT_GEMINI_VISION_THINKING_LEVEL,
 } from '@/lib/config/gemini-models';
 import { OpenAiVisionService } from './openai-vision.service';
 import { ClaudeVisionService } from './claude-vision.service';
@@ -91,12 +92,15 @@ export class VisionApiServiceFactory {
       case 'google':
         // ⚠️ `VISION_API_MEDIA_RESOLUTION` / `VISION_API_THINKING_LEVEL` は Gemini 専用。
         // 未指定時は media resolution が HIGH (画像 1 枚 1,083 トークン、品名を読むため)、
-        // thinking が low。既定値は `lib/config/gemini-models.ts`。
+        // thinking が medium (Vision 専用の既定。生成側の low とは別。2026-10-25)。既定値は `lib/config/gemini-models.ts`。
         return new GeminiVisionService({
           apiKey: config?.apiKey,
           model: modelName,
           mediaResolution: normalizeMediaResolution(process.env.VISION_API_MEDIA_RESOLUTION),
-          thinkingLevel: normalizeThinkingLevel(process.env.VISION_API_THINKING_LEVEL),
+          thinkingLevel: normalizeThinkingLevel(
+            process.env.VISION_API_THINKING_LEVEL,
+            DEFAULT_GEMINI_VISION_THINKING_LEVEL
+          ),
         });
 
       default:

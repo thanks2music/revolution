@@ -42,7 +42,7 @@ import { calculateCost, formatCost, type CostResult } from '@/lib/ai/cost';
 import {
   DEFAULT_GEMINI_MEDIA_RESOLUTION,
   DEFAULT_GEMINI_MODEL,
-  DEFAULT_GEMINI_THINKING_LEVEL,
+  DEFAULT_GEMINI_VISION_THINKING_LEVEL,
   resolveMaxOutputTokens,
 } from '@/lib/config/gemini-models';
 import {
@@ -91,7 +91,7 @@ interface GeminiVisionConfig {
   /** Media resolution (default: {@link DEFAULT_GEMINI_MEDIA_RESOLUTION}) */
   mediaResolution?: MediaResolution;
 
-  /** Thinking level (default: {@link DEFAULT_GEMINI_THINKING_LEVEL}) */
+  /** Thinking level (default: {@link DEFAULT_GEMINI_VISION_THINKING_LEVEL}) */
   thinkingLevel?: ThinkingLevel;
 }
 
@@ -126,7 +126,7 @@ export class GeminiVisionService implements IVisionApiService {
     this.client = new GoogleGenAI({ apiKey });
     this.modelName = config?.model || DEFAULT_GEMINI_MODEL;
     this.mediaResolution = config?.mediaResolution ?? DEFAULT_GEMINI_MEDIA_RESOLUTION;
-    this.thinkingLevel = config?.thinkingLevel ?? DEFAULT_GEMINI_THINKING_LEVEL;
+    this.thinkingLevel = config?.thinkingLevel ?? DEFAULT_GEMINI_VISION_THINKING_LEVEL;
 
     // Log directory for non-production debug logs only
     // (Cloud Run has ephemeral FS; production relies on console.log → Cloud Logging)

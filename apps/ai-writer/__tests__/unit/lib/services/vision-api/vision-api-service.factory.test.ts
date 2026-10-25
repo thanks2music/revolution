@@ -212,8 +212,20 @@ describe('VisionApiServiceFactory — model / Gemini 固有設定の解決', () 
     expect(geminiInternals(service).thinkingLevel).toBe(ThinkingLevel.MINIMAL);
   });
 
-  it('VISION_API_THINKING_LEVEL 未設定なら LOW を使う', () => {
+  /**
+   * 🔴 Vision の既定は MEDIUM (生成側の LOW とは別)。LOW ではヒロアカのメニューの品名を 31 回中 7 回読み違え、
+   * MEDIUM では 17 回とも正解だった (2026-10-25)
+   */
+  it('VISION_API_THINKING_LEVEL 未設定なら MEDIUM を使う (生成側の既定 LOW とは別)', () => {
     const service = VisionApiServiceFactory.create('google', { apiKey: DUMMY_API_KEY });
-    expect(geminiInternals(service).thinkingLevel).toBe(ThinkingLevel.LOW);
+    expect(geminiInternals(service).thinkingLevel).toBe(ThinkingLevel.MEDIUM);
+  });
+
+  it('VISION_API_THINKING_LEVEL が不正な値なら、Vision の既定 MEDIUM に戻る', () => {
+    process.env.VISION_API_THINKING_LEVEL = 'deep';
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const service = VisionApiServiceFactory.create('google', { apiKey: DUMMY_API_KEY });
+    expect(geminiInternals(service).thinkingLevel).toBe(ThinkingLevel.MEDIUM);
+    warn.mockRestore();
   });
 });

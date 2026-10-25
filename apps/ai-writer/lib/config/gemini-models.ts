@@ -88,6 +88,18 @@ export type GeminiModel = (typeof GEMINI_MODELS)[keyof typeof GEMINI_MODELS];
 export const DEFAULT_GEMINI_THINKING_LEVEL = ThinkingLevel.LOW;
 
 /**
+ * Vision (画像から品名・価格・キャラクター名を読む) の思考の深さの既定値。生成側の
+ * {@link DEFAULT_GEMINI_THINKING_LEVEL} とは別に持つ (`VISION_API_THINKING_LEVEL` で上書きできる)。
+ *
+ * 2026-10-25 に LOW から上げた (ユーザー決定)。ヒロアカのメニュー (正解 19 品) の実測:
+ * - LOW: 31 回中 7 回、1 品を誤読 (「バナナカスタードドーナツ」→「…アイスドーナツ」)。1 回 $0.025・12〜13 秒
+ * - MEDIUM: 17 回とも正解。1 回 $0.032〜0.044・19〜31 秒
+ * - HIGH: 8 回中 1 回、別の誤読。1 回 $0.037〜0.047・24〜34 秒 (精度は MEDIUM と変わらず、遅い)
+ * ⚠️ MEDIUM の 17 回は同じ日の実行で、その日は LOW も 8 回とも正解だった。運用中のログで確かめる
+ */
+export const DEFAULT_GEMINI_VISION_THINKING_LEVEL = ThinkingLevel.MEDIUM;
+
+/**
  * 公式サイトから事実を抜き出す step (detail-extraction / subpage-extraction) の思考の深さ。
  * 2026-10-12 に試す: LOW では、ノベルティの除外の条件 (メニューの付属品・有料の予約プランに付く物) を
  * Gemini が守らなかった。Gemini だけが使い、他の provider は無視する (`SendMessageOptions.thinkingLevel`)
@@ -130,13 +142,17 @@ const MEDIA_RESOLUTION_BY_INPUT: Record<string, MediaResolution> = {
  * SDK enum の値そのまま (`MEDIUM` / `THINKING_LEVEL_MEDIUM` 等) も許容する。
  *
  * @param value - `AI_THINKING_LEVEL` / `VISION_API_THINKING_LEVEL` の生値
- * @returns 対応する `ThinkingLevel`。未設定・不正値は既定値 (`LOW`)
+ * @param fallback - 未設定・不正値のときの値 (既定は生成側の `LOW`。Vision は {@link DEFAULT_GEMINI_VISION_THINKING_LEVEL} を渡す)
+ * @returns 対応する `ThinkingLevel`。未設定・不正値は `fallback`
  */
-export function normalizeThinkingLevel(value?: string): ThinkingLevel {
+export function normalizeThinkingLevel(
+  value?: string,
+  fallback: ThinkingLevel = DEFAULT_GEMINI_THINKING_LEVEL
+): ThinkingLevel {
   const key = value?.trim().toLowerCase().replace(/^thinking_level_/, '');
 
   if (!key) {
-    return DEFAULT_GEMINI_THINKING_LEVEL;
+    return fallback;
   }
 
   const level = THINKING_LEVEL_BY_INPUT[key];
@@ -145,10 +161,10 @@ export function normalizeThinkingLevel(value?: string): ThinkingLevel {
   }
 
   console.warn(
-    `THINKING_LEVEL="${value}" is not valid. Falling back to "${DEFAULT_GEMINI_THINKING_LEVEL}". ` +
+    `THINKING_LEVEL="${value}" is not valid. Falling back to "${fallback}". ` +
       `Valid options: ${Object.keys(THINKING_LEVEL_BY_INPUT).join(', ')}`
   );
-  return DEFAULT_GEMINI_THINKING_LEVEL;
+  return fallback;
 }
 
 /**
