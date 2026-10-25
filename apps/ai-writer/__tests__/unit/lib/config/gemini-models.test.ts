@@ -17,6 +17,7 @@ import {
   GEMINI_MODELS,
   normalizeMediaResolution,
   normalizeThinkingLevel,
+  DEFAULT_GEMINI_VISION_THINKING_LEVEL,
 } from '@/lib/config/gemini-models';
 
 describe('GEMINI_MODELS', () => {
@@ -46,6 +47,14 @@ describe('normalizeThinkingLevel', () => {
     expect(normalizeThinkingLevel('')).toBe(ThinkingLevel.LOW);
     expect(normalizeThinkingLevel('   ')).toBe(ThinkingLevel.LOW);
     expect(DEFAULT_GEMINI_THINKING_LEVEL).toBe(ThinkingLevel.LOW);
+  });
+
+  it('未設定・不正値のときの値を fallback で変えられる (Vision は MEDIUM を渡す)', () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(normalizeThinkingLevel(undefined, ThinkingLevel.MEDIUM)).toBe(ThinkingLevel.MEDIUM);
+    expect(normalizeThinkingLevel('deep', ThinkingLevel.MEDIUM)).toBe(ThinkingLevel.MEDIUM);
+    expect(normalizeThinkingLevel('low', ThinkingLevel.MEDIUM)).toBe(ThinkingLevel.LOW);
+    expect(DEFAULT_GEMINI_VISION_THINKING_LEVEL).toBe(ThinkingLevel.MEDIUM);
   });
 
   it.each([
