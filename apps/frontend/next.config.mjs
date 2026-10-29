@@ -9,6 +9,19 @@ const nextConfig = {
   transpilePackages: ['@revolution/schemas'],
 
   /**
+   * Vercel Functions に sharp を入れない (Vercel の Functions Storage の削減)
+   * - next/og (ImageResponse) は sharp を任意で読み込み、無ければ同梱の resvg で PNG を作る。
+   *   frontend は sharp を直接使っておらず、画像の最適化は Vercel 側で行われる
+   * - next 本体は Vercel 上で sharp をサーバー本体のトレースからしか外さず、OG 画像と記事ページの
+   *   関数には sharp と libvips (約 17MB) が入っていた
+   * - キーは全ルート、値は apps/frontend からの glob (pnpm の実体は ../../node_modules/.pnpm/ にある)
+   * https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats
+   */
+  outputFileTracingExcludes: {
+    '/*': ['../../node_modules/.pnpm/sharp@*/**', '../../node_modules/.pnpm/@img+*/**'],
+  },
+
+  /**
    * 画像最適化設定
    * - AVIF/WebP形式をサポート
    * - リモート画像ホストの許可リスト
