@@ -21,6 +21,16 @@
   prConcurrentLimit: 2,
   prHourlyLimit: 4,
 
+  // main は「最新でないとマージ不可」(strict) なので、既定の rebaseWhen "auto" は
+  // behind-base-branch になり、main に push があるたびに開いている Renovate PR が
+  // すべて作り直されていた (2026-10-13〜29 に各 PR 19 回)。そのたびに Vercel の Preview・CI・
+  // staging への Supabase マイグレーションが走り、Vercel のストレージ (Hobby 10GB) を圧迫した。
+  // "automerging" は automerge する branch だけ main に追従させ、それ以外は Renovate から
+  // 更新しない (新しい版の取り込みもしない)。automerge しない PR は、マージする前に
+  // PR 本文の rebase のチェックボックスで作り直させる。
+  // https://docs.renovatebot.com/configuration-options/#rebasewhen
+  rebaseWhen: "automerging",
+
   // Dependabot cooldown.default-days: 7 を継承 (zero-day 事故の緩和帯)
   minimumReleaseAge: "7 days",
 
