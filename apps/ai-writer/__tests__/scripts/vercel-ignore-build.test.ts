@@ -103,10 +103,13 @@ interface RunOptions {
 }
 
 /** Vercel と同じく branch を depth 10 で clone し、apps/frontend でスクリプトを実行する */
-function runIgnore(branch: string, opts: RunOptions = {}): { status: number | null; stdout: string } {
+function runIgnore(
+  branch: string,
+  opts: RunOptions = {}
+): { status: number | null; stdout: string; clone: string } {
   const clone = join(root, `clone-${cloneCount++}`);
   git(root, 'clone', '-q', '--depth=10', '--branch', branch, `file://${bare}`, clone);
-  return runScriptIn(join(clone, 'apps/frontend'), opts);
+  return { ...runScriptIn(join(clone, 'apps/frontend'), opts), clone };
 }
 
 function runScriptIn(cwd: string, opts: RunOptions): { status: number | null; stdout: string } {
@@ -259,6 +262,19 @@ describe('vercel-ignore-build.sh', () => {
       push('feature');
       const r = runIgnore('feature');
       expect(r.status).toBe(BUILD);
+    });
+
+    it('main を取得しても、ビルドが使う checkout の浅い履歴は短くならない', () => {
+      // main の先頭が clone の範囲 (depth 10) に入る形: main 5 commit + feature 5 commit
+      git(work, 'checkout', '-q', 'main');
+      for (let i = 0; i < 4; i++) commit({ 'docs/readme.md': `# main ${i}\n` });
+      push('main');
+      git(work, 'checkout', '-q', '-B', 'feature', 'main');
+      for (let i = 0; i < 5; i++) commit({ 'apps/ai-writer/lib/pipeline.ts': `export const v = ${i + 20};\n` });
+      push('feature');
+      const r = runIgnore('feature');
+      expect(r.status).toBe(SKIP);
+      expect(git(r.clone, 'rev-list', '--count', 'HEAD')).toBe('10');
     });
 
     it('main を取得できなければビルドする', () => {
