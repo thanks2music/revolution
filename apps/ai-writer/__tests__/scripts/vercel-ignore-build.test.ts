@@ -5,34 +5,38 @@
  * Tests for scripts/vercel-ignore-build.sh (frontend の Vercel の Ignored Build Step)
  *
  * Layer 戦略:
- *   - 一時ディレクトリに bare repo (GitHub 役) と作業用 repo を作り、Vercel と同じ浅い clone
- *     (`git clone --depth=10`) の apps/frontend でスクリプトを実行して、終了コードと理由の行を検証する
+ *   - 一時ディレクトリの作業用 repo (GitHub 役も兼ねる) から、Vercel と同じ浅い clone
+ *     (`git clone --depth=10`) を作り、その apps/frontend でスクリプトを実行して、終了コードと理由の行を検証する
  *   - 終了コードは Vercel の規約で 0 = ビルドしない / 1 = ビルドする
- *   - 浅い clone に無い commit は VERCEL_IGNORE_BUILD_REMOTE (= bare repo) から取得させる。
- *     GitHub と同じく SHA を指定した取得を許すため、bare repo で uploadpack.allowAnySHA1InWant を有効にする
+ *   - スクリプトが組み立てる GitHub の URL は、git の insteadOf で作業用 repo へ向け替える
+ *     (本物の URL の組み立てを通しつつ、ネットワークには出ない)。GitHub と同じく、SHA を指定した取得と
+ *     blob を除いた取得を許す (uploadpack.allowAnySHA1InWant / allowFilter)
  *   - git の設定・hook・署名はテストを動かす人の環境を拾わないよう、env を一から組む
+ *   - 初期状態の repo は beforeAll で 1 回だけ作り、テストごとにコピーする
  *
  * 検証項目:
- *   1. Production は常にビルドする
+ *   1. Preview 以外 (Production / VERCEL_ENV が無い) は常にビルドする
  *   2. Preview は frontend の入力 (apps/frontend / 記事の MDX / shared / ルートの依存の定義) が
  *      変わった時だけビルドする
  *   3. 比べる commit: 前回の成功デプロイ。初回は main の先頭。浅い clone に無ければ取得する
  *   4. 判定できない時 (取得できない / 存在しない / git の外 / 前回と同じ commit) はビルドする
+ *   5. 必須パスの一覧が、frontend の実物の workspace 依存を覆っている
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
 import { spawnSync } from 'child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 
-const SCRIPT = join(__dirname, '../../../../scripts/vercel-ignore-build.sh');
+const REPO_ROOT = join(__dirname, '../../../..');
+const SCRIPT = join(REPO_ROOT, 'scripts/vercel-ignore-build.sh');
+const GITHUB_URL = 'https://github.com/test-owner/test-repo.git';
 
 // 初期状態のファイル。キーはリポジトリのルートからのパス
 const INITIAL_FILES: Record<string, string> = {
   'apps/frontend/vercel.json': '{}\n',
   'apps/frontend/app/page.tsx': 'export default function Page() {}\n',
-  'apps/frontend/lib/mdx/article-index.json': '{"articles":[]}\n',
   'apps/ai-writer/lib/pipeline.ts': 'export const v = 1;\n',
   'apps/ai-writer/content/collabo-cafe/a.mdx': '# a\n',
   'apps/ai-writer/package.json': '{"name":"ai-writer"}\n',
@@ -46,20 +50,22 @@ const INITIAL_FILES: Record<string, string> = {
   'turbo.json': '{}\n',
   'scripts/vercel-ignore-build.sh': '# fixture\n',
 };
+// frontend の入力に当たらない変更
+const IRRELEVANT = { 'apps/ai-writer/lib/pipeline.ts': 'export const v = 2;\n' };
 
+const TMP = realpathSync(tmpdir()); // macOS の tmpdir は symlink (/var → /private/var)
+let template: string;
 let root: string;
-let bare: string;
 let work: string;
-let cloneCount = 0;
 
-function baseEnv(): NodeJS.ProcessEnv {
+function gitEnv(): NodeJS.ProcessEnv {
   return {
     PATH: process.env.PATH,
-    HOME: root,
+    HOME: TMP,
     LANG: 'C.UTF-8',
     GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CEILING_DIRECTORIES: root,
+    GIT_CEILING_DIRECTORIES: TMP,
     GIT_AUTHOR_NAME: 'test',
     GIT_AUTHOR_EMAIL: 'test@example.com',
     GIT_COMMITTER_NAME: 'test',
@@ -68,17 +74,19 @@ function baseEnv(): NodeJS.ProcessEnv {
 }
 
 function git(cwd: string, ...args: string[]): string {
-  const r = spawnSync('git', args, { cwd, env: baseEnv(), encoding: 'utf-8' });
+  const r = spawnSync('git', args, { cwd, env: gitEnv(), encoding: 'utf-8' });
   if (r.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed: ${r.stderr}`);
   }
   return r.stdout.trim();
 }
 
-/** ファイルを書き換えて commit し、SHA を返す。値が null のファイルは削除する */
-function commit(files: Record<string, string | null>, message = 'change'): string {
+const head = (): string => git(work, 'rev-parse', 'HEAD');
+
+/** ファイルを書き換えて commit する。値が null のファイルは削除する */
+function commit(files: Record<string, string | null>, repo = work): void {
   for (const [path, content] of Object.entries(files)) {
-    const abs = join(work, path);
+    const abs = join(repo, path);
     if (content === null) {
       rmSync(abs);
     } else {
@@ -86,36 +94,31 @@ function commit(files: Record<string, string | null>, message = 'change'): strin
       writeFileSync(abs, content);
     }
   }
-  git(work, 'add', '-A');
-  git(work, 'commit', '-q', '-m', message);
-  return git(work, 'rev-parse', 'HEAD');
+  git(repo, 'add', '-A');
+  git(repo, 'commit', '-q', '-m', 'change');
 }
 
-function push(branch: string): void {
-  git(work, 'push', '-q', '-f', 'origin', `HEAD:refs/heads/${branch}`);
+/** 履歴の深さだけを稼ぐ空の commit */
+function emptyCommits(n: number): void {
+  for (let i = 0; i < n; i++) git(work, 'commit', '-q', '--allow-empty', '-m', `empty ${i}`);
 }
 
 interface RunOptions {
   /** VERCEL_ENV。既定は preview、null なら設定しない */
   env?: string | null;
   previousSha?: string;
-  remote?: string;
-}
-
-/** Vercel と同じく branch を depth 10 で clone し、apps/frontend でスクリプトを実行する */
-function runIgnore(
-  branch: string,
-  opts: RunOptions = {}
-): { status: number | null; stdout: string; clone: string } {
-  const clone = join(root, `clone-${cloneCount++}`);
-  git(root, 'clone', '-q', '--depth=10', '--branch', branch, `file://${bare}`, clone);
-  return { ...runScriptIn(join(clone, 'apps/frontend'), opts), clone };
+  /** GitHub の URL の向け先。既定は作業用 repo */
+  origin?: string;
 }
 
 function runScriptIn(cwd: string, opts: RunOptions): { status: number | null; stdout: string } {
   const env: NodeJS.ProcessEnv = {
-    ...baseEnv(),
-    VERCEL_IGNORE_BUILD_REMOTE: opts.remote ?? `file://${bare}`,
+    ...gitEnv(),
+    VERCEL_GIT_REPO_OWNER: 'test-owner',
+    VERCEL_GIT_REPO_SLUG: 'test-repo',
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: `url.file://${opts.origin ?? work}.insteadOf`,
+    GIT_CONFIG_VALUE_0: GITHUB_URL,
   };
   if (opts.env !== null) env.VERCEL_ENV = opts.env ?? 'preview';
   if (opts.previousSha !== undefined) env.VERCEL_GIT_PREVIOUS_SHA = opts.previousSha;
@@ -123,21 +126,40 @@ function runScriptIn(cwd: string, opts: RunOptions): { status: number | null; st
   return { status: r.status, stdout: r.stdout };
 }
 
+/** Vercel と同じく feature branch を depth 10 で clone し、apps/frontend でスクリプトを実行する */
+function runIgnore(opts: RunOptions = {}): { status: number | null; stdout: string; clone: string } {
+  const clone = join(root, 'clone');
+  git(root, 'clone', '-q', '--depth=10', '--branch', 'feature', `file://${work}`, clone);
+  return { ...runScriptIn(join(clone, 'apps/frontend'), opts), clone };
+}
+
+/** 今の HEAD を前回の成功デプロイとして、files を commit してから判定する */
+function runAfter(files: Record<string, string | null>, opts: RunOptions = {}) {
+  const prev = head();
+  commit(files);
+  return runIgnore({ previousSha: prev, ...opts });
+}
+
 const BUILD = 1;
 const SKIP = 0;
 
+beforeAll(() => {
+  template = mkdtempSync(join(TMP, 'vercel-ignore-build-template-'));
+  git(template, 'init', '-q', '-b', 'main');
+  git(template, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
+  git(template, 'config', 'uploadpack.allowFilter', 'true');
+  commit(INITIAL_FILES, template);
+  git(template, 'checkout', '-q', '-b', 'feature');
+});
+
+afterAll(() => {
+  rmSync(template, { recursive: true, force: true });
+});
+
 beforeEach(() => {
-  // macOS の tmpdir は symlink (/var → /private/var)。git が返すパスと揃えるため実体パスにする
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'vercel-ignore-build-')));
-  bare = join(root, 'origin.git');
+  root = mkdtempSync(join(TMP, 'vercel-ignore-build-'));
   work = join(root, 'work');
-  git(root, 'init', '-q', '--bare', '-b', 'main', bare);
-  git(bare, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
-  git(root, 'init', '-q', '-b', 'main', work);
-  git(work, 'remote', 'add', 'origin', bare);
-  commit(INITIAL_FILES, 'initial');
-  push('main');
-  git(work, 'checkout', '-q', '-b', 'feature');
+  cpSync(template, work, { recursive: true });
 });
 
 afterEach(() => {
@@ -145,29 +167,20 @@ afterEach(() => {
 });
 
 describe('vercel-ignore-build.sh', () => {
-  describe('Production', () => {
-    it('frontend に関係ない変更でもビルドする', () => {
-      const prev = git(work, 'rev-parse', 'HEAD');
-      commit({ 'docs/readme.md': '# changed\n' });
-      push('feature');
-      const r = runIgnore('feature', { env: 'production', previousSha: prev });
+  describe('Preview 以外は常にビルドする', () => {
+    it.each([
+      ['production', 'Production は常にビルドする'],
+      [null, 'Preview ではない'],
+    ])('VERCEL_ENV=%s なら、frontend に関係ない変更でもビルドする', (env, reason) => {
+      const r = runAfter({ 'docs/readme.md': '# changed\n' }, { env });
       expect(r.status).toBe(BUILD);
-      expect(r.stdout).toContain('Production は常にビルドする');
-    });
-
-    it('VERCEL_ENV が無い時もビルドする (Preview と確かめられた時だけ判定に進む)', () => {
-      const prev = git(work, 'rev-parse', 'HEAD');
-      commit({ 'docs/readme.md': '# changed\n' });
-      push('feature');
-      const r = runIgnore('feature', { env: null, previousSha: prev });
-      expect(r.status).toBe(BUILD);
-      expect(r.stdout).toContain('Preview ではない');
+      expect(r.stdout).toContain(reason);
     });
   });
 
   describe('Preview: 前回の成功デプロイと比べる', () => {
     it.each([
-      ['ai-writer の lib', { 'apps/ai-writer/lib/pipeline.ts': 'export const v = 2;\n' }],
+      ['ai-writer の lib', IRRELEVANT],
       ['ai-writer の package.json (ルートの package.json ではない)', { 'apps/ai-writer/package.json': '{"name":"x"}\n' }],
       [
         'docs / apps/docs / .github',
@@ -178,10 +191,7 @@ describe('vercel-ignore-build.sh', () => {
         },
       ],
     ])('%s だけの変更はビルドしない', (_label, files) => {
-      const prev = git(work, 'rev-parse', 'HEAD');
-      commit(files);
-      push('feature');
-      const r = runIgnore('feature', { previousSha: prev });
+      const r = runAfter(files);
       expect(r.status).toBe(SKIP);
       expect(r.stdout).toContain('前回の成功デプロイ');
     });
@@ -200,87 +210,69 @@ describe('vercel-ignore-build.sh', () => {
       ['apps/frontend/vercel.json', 'apps/frontend/vercel.json'],
       ['このスクリプト自身', 'scripts/vercel-ignore-build.sh'],
     ])('%s の変更はビルドし、変わったファイルを出す', (_label, path) => {
-      const prev = git(work, 'rev-parse', 'HEAD');
-      commit({ [path]: 'changed\n' });
-      push('feature');
-      const r = runIgnore('feature', { previousSha: prev });
+      const r = runAfter({ [path]: 'changed\n' });
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain(path);
     });
 
     it('apps/frontend の外へ移したファイルがあればビルドする', () => {
-      const prev = git(work, 'rev-parse', 'HEAD');
+      const prev = head();
       git(work, 'mv', 'apps/frontend/app/page.tsx', 'apps/page.tsx');
       git(work, 'commit', '-q', '-m', 'move');
-      push('feature');
-      const r = runIgnore('feature', { previousSha: prev });
+      const r = runIgnore({ previousSha: prev });
       expect(r.status).toBe(BUILD);
     });
 
     it('前回の成功デプロイが浅い clone の外 (12 commit 前) でも、取得して比べる', () => {
-      const prev = git(work, 'rev-parse', 'HEAD');
-      for (let i = 0; i < 12; i++) {
-        commit({ 'apps/ai-writer/lib/pipeline.ts': `export const v = ${i + 10};\n` });
-      }
-      push('feature');
-      const r = runIgnore('feature', { previousSha: prev });
+      const prev = head();
+      commit(IRRELEVANT);
+      emptyCommits(11);
+      const r = runIgnore({ previousSha: prev });
       expect(r.status).toBe(SKIP);
     });
 
-    it('rebase で前回の commit が祖先でなくなっても、取得して比べる (frontend は変わらない)', () => {
-      const prev = commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 3;\n' });
-      push('feature');
+    it.each([
+      ['frontend は変わらない', {}, SKIP],
+      ['lockfile も変わる', { 'pnpm-lock.yaml': 'changed\n' }, BUILD],
+    ])('rebase で前回の commit が祖先でなくなっても、取得して比べる (%s)', (_label, extra, expected) => {
+      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 3;\n' });
+      const prev = head();
       git(work, 'reset', '-q', '--hard', 'main');
-      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 4;\n' });
-      push('feature');
-      const r = runIgnore('feature', { previousSha: prev });
-      expect(r.status).toBe(SKIP);
-    });
-
-    it('rebase 後に lockfile も変わっていればビルドする', () => {
-      const prev = commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 3;\n' });
-      push('feature');
-      git(work, 'reset', '-q', '--hard', 'main');
-      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 4;\n', 'pnpm-lock.yaml': 'changed\n' });
-      push('feature');
-      const r = runIgnore('feature', { previousSha: prev });
-      expect(r.status).toBe(BUILD);
+      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 4;\n', ...extra });
+      const r = runIgnore({ previousSha: prev });
+      expect(r.status).toBe(expected);
     });
   });
 
   describe('Preview: branch の初回デプロイは main の先頭と比べる', () => {
     it('frontend の入力が main と同じならビルドしない', () => {
-      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 5;\n' });
-      push('feature');
-      const r = runIgnore('feature');
+      commit(IRRELEVANT);
+      const r = runIgnore();
       expect(r.status).toBe(SKIP);
       expect(r.stdout).toContain('main の先頭');
     });
 
     it('frontend の入力を変えていればビルドする', () => {
       commit({ 'apps/frontend/app/page.tsx': 'export default function Page2() {}\n' });
-      push('feature');
-      const r = runIgnore('feature');
+      const r = runIgnore();
       expect(r.status).toBe(BUILD);
     });
 
     it('main を取得しても、ビルドが使う checkout の浅い履歴は短くならない', () => {
       // main の先頭が clone の範囲 (depth 10) に入る形: main 5 commit + feature 5 commit
       git(work, 'checkout', '-q', 'main');
-      for (let i = 0; i < 4; i++) commit({ 'docs/readme.md': `# main ${i}\n` });
-      push('main');
+      emptyCommits(4);
       git(work, 'checkout', '-q', '-B', 'feature', 'main');
-      for (let i = 0; i < 5; i++) commit({ 'apps/ai-writer/lib/pipeline.ts': `export const v = ${i + 20};\n` });
-      push('feature');
-      const r = runIgnore('feature');
+      commit(IRRELEVANT);
+      emptyCommits(4);
+      const r = runIgnore();
       expect(r.status).toBe(SKIP);
       expect(git(r.clone, 'rev-list', '--count', 'HEAD')).toBe('10');
     });
 
     it('main を取得できなければビルドする', () => {
-      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 6;\n' });
-      push('feature');
-      const r = runIgnore('feature', { remote: `file://${join(root, 'missing.git')}` });
+      commit(IRRELEVANT);
+      const r = runIgnore({ origin: join(root, 'missing') });
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain('main を取得できない');
     });
@@ -288,18 +280,15 @@ describe('vercel-ignore-build.sh', () => {
 
   describe('判定できない時はビルドする', () => {
     it('前回と同じ commit (手動の Redeploy)', () => {
-      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 7;\n' });
-      push('feature');
-      const head = git(work, 'rev-parse', 'HEAD');
-      const r = runIgnore('feature', { previousSha: head });
+      commit(IRRELEVANT);
+      const r = runIgnore({ previousSha: head() });
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain('前回と同じ commit');
     });
 
     it('前回の commit がどこにも存在しない', () => {
-      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 8;\n' });
-      push('feature');
-      const r = runIgnore('feature', { previousSha: 'f'.repeat(40) });
+      commit(IRRELEVANT);
+      const r = runIgnore({ previousSha: 'f'.repeat(40) });
       expect(r.status).toBe(BUILD);
     });
 
@@ -310,5 +299,41 @@ describe('vercel-ignore-build.sh', () => {
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain('git の作業ツリーではない');
     });
+  });
+});
+
+describe('必須パスの一覧 (実物の repo と照合)', () => {
+  function mustBuildPaths(): string[] {
+    const body = readFileSync(SCRIPT, 'utf-8').match(/^MUST_BUILD_PATHS=\(\n([\s\S]*?)\n\)/m);
+    if (!body) throw new Error('MUST_BUILD_PATHS が見つからない');
+    return body[1]
+      .split('\n')
+      .map((line) => line.replace(/#.*/, '').trim())
+      .filter(Boolean);
+  }
+
+  it('frontend が依存する workspace パッケージは、すべて必須パスに覆われている', () => {
+    const readJson = (path: string) => JSON.parse(readFileSync(join(REPO_ROOT, path), 'utf-8'));
+    const frontend = readJson('apps/frontend/package.json');
+    const workspaceDeps = Object.entries({ ...frontend.dependencies, ...frontend.devDependencies })
+      .filter(([, version]) => String(version).startsWith('workspace:'))
+      .map(([name]) => name);
+    // pnpm-workspace.yaml の packages (`- 'apps/*'` の形) から、パッケージ名 → ディレクトリを引く
+    const globs = [...readFileSync(join(REPO_ROOT, 'pnpm-workspace.yaml'), 'utf-8').matchAll(/^\s*-\s*'([^']+)\/\*'/gm)];
+    const dirByName = new Map<string, string>();
+    for (const [, parent] of globs) {
+      for (const child of readdirSync(join(REPO_ROOT, parent))) {
+        const dir = `${parent}/${child}`;
+        if (existsSync(join(REPO_ROOT, dir, 'package.json'))) dirByName.set(readJson(`${dir}/package.json`).name, dir);
+      }
+    }
+    const paths = mustBuildPaths();
+    const covered = (dir: string) => paths.some((p) => dir === p || dir.startsWith(`${p}/`));
+
+    expect(workspaceDeps.length).toBeGreaterThan(0);
+    for (const name of workspaceDeps) {
+      const dir = dirByName.get(name);
+      expect({ name, dir, covered: dir !== undefined && covered(dir) }).toEqual({ name, dir, covered: true });
+    }
   });
 });
