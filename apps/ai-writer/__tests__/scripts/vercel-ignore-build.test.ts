@@ -96,7 +96,8 @@ function push(branch: string): void {
 }
 
 interface RunOptions {
-  env?: string;
+  /** VERCEL_ENV。既定は preview、null なら設定しない */
+  env?: string | null;
   previousSha?: string;
   remote?: string;
 }
@@ -111,9 +112,9 @@ function runIgnore(branch: string, opts: RunOptions = {}): { status: number | nu
 function runScriptIn(cwd: string, opts: RunOptions): { status: number | null; stdout: string } {
   const env: NodeJS.ProcessEnv = {
     ...baseEnv(),
-    VERCEL_ENV: opts.env ?? 'preview',
     VERCEL_IGNORE_BUILD_REMOTE: opts.remote ?? `file://${bare}`,
   };
+  if (opts.env !== null) env.VERCEL_ENV = opts.env ?? 'preview';
   if (opts.previousSha !== undefined) env.VERCEL_GIT_PREVIOUS_SHA = opts.previousSha;
   const r = spawnSync('bash', [SCRIPT], { cwd, env, encoding: 'utf-8' });
   return { status: r.status, stdout: r.stdout };
@@ -150,6 +151,15 @@ describe('vercel-ignore-build.sh', () => {
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain('Production は常にビルドする');
     });
+
+    it('VERCEL_ENV が無い時もビルドする (Preview と確かめられた時だけ判定に進む)', () => {
+      const prev = git(work, 'rev-parse', 'HEAD');
+      commit({ 'docs/readme.md': '# changed\n' });
+      push('feature');
+      const r = runIgnore('feature', { env: null, previousSha: prev });
+      expect(r.status).toBe(BUILD);
+      expect(r.stdout).toContain('Preview ではない');
+    });
   });
 
   describe('Preview: 前回の成功デプロイと比べる', () => {
@@ -175,9 +185,15 @@ describe('vercel-ignore-build.sh', () => {
 
     it.each([
       ['記事の MDX', 'apps/ai-writer/content/collabo-cafe/a.mdx'],
+      ['記事の MDX の追加', 'apps/ai-writer/content/collabo-cafe/new.mdx'],
       ['shared', 'shared/schemas/index.ts'],
       ['pnpm-lock.yaml', 'pnpm-lock.yaml'],
+      ['pnpm-workspace.yaml', 'pnpm-workspace.yaml'],
       ['ルートの package.json', 'package.json'],
+      ['turbo.json', 'turbo.json'],
+      ['.npmrc の追加', '.npmrc'],
+      ['.pnpmfile.cjs の追加', '.pnpmfile.cjs'],
+      ['patches の追加', 'patches/next.patch'],
       ['apps/frontend/vercel.json', 'apps/frontend/vercel.json'],
       ['このスクリプト自身', 'scripts/vercel-ignore-build.sh'],
     ])('%s の変更はビルドし、変わったファイルを出す', (_label, path) => {

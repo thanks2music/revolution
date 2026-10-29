@@ -20,7 +20,7 @@ set -euo pipefail
 # 0 と 1 以外で終わったら (想定外のエラー) ビルドする
 trap 'rc=$?; if [ "$rc" -gt 1 ]; then echo "[ignore-build] build: 想定外のエラー (exit $rc)"; exit 1; fi' EXIT
 
-# frontend のビルド結果を変えうるパス (リポジトリのルートからの pathspec。前方一致)。
+# frontend のビルド結果を変えうるパス (リポジトリのルートからの pathspec。ディレクトリならその配下すべてに当たる)。
 # 足すのは自由。消すのは、frontend の build も実行時も読まないと確かめてから
 MUST_BUILD_PATHS=(
   apps/frontend                  # アプリ本体 (vercel.json と lib/mdx/article-index.json を含む)
@@ -40,9 +40,13 @@ BASE_BRANCH=main
 build() { echo "[ignore-build] build: $*"; exit 1; }
 skip() { echo "[ignore-build] skip: $*"; exit 0; }
 
-if [ "${VERCEL_ENV:-}" = "production" ]; then
-  build "Production は常にビルドする"
-fi
+# ビルドしない判定に進むのは Preview だけ。VERCEL_ENV が無い時 (システム環境変数を公開する設定が
+# 外れた時など) もビルドする
+case "${VERCEL_ENV:-}" in
+  preview) ;;
+  production) build "Production は常にビルドする" ;;
+  *) build "Preview ではない (VERCEL_ENV=${VERCEL_ENV:-未設定})" ;;
+esac
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || build "git の作業ツリーではない"
 cd "$root"
@@ -51,7 +55,9 @@ head_sha=$(git rev-parse --verify --quiet 'HEAD^{commit}') || build "HEAD を読
 remote=${VERCEL_IGNORE_BUILD_REMOTE:-"https://github.com/${VERCEL_GIT_REPO_OWNER:-}/${VERCEL_GIT_REPO_SLUG:-}.git"}
 
 # Vercel の clone は浅い (depth 10)。比べる commit が無ければ public の GitHub から取る。
-# 2 つの commit の木を比べるだけなので depth 1 で足りる
+# 2 つの commit の木を比べるだけなので depth 1 で足りる。
+# この取得は、続くビルドが使う checkout の浅い履歴をさらに短くしうる。Production はここまで来ず、
+# Preview のビルドは git の履歴を読まないので影響しない (ビルドで git log などを読むようにしたら見直す)
 fetch_commit() {
   git fetch --quiet --no-tags --depth=1 "$remote" "$1" 2>/dev/null
 }
