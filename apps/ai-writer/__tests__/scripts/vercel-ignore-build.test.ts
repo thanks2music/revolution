@@ -286,6 +286,13 @@ describe('vercel-ignore-build.sh', () => {
       expect(r.stdout).toContain('前回と同じ commit');
     });
 
+    it('前回の SHA が commit の SHA の形ではない (git のオプションとして読まれない)', () => {
+      commit(IRRELEVANT);
+      const r = runIgnore({ previousSha: '--upload-pack=touch-pwned' });
+      expect(r.status).toBe(BUILD);
+      expect(r.stdout).toContain('commit の SHA ではない');
+    });
+
     it('前回の commit がどこにも存在しない', () => {
       commit(IRRELEVANT);
       const r = runIgnore({ previousSha: 'f'.repeat(40) });

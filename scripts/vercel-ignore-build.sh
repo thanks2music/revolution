@@ -6,6 +6,8 @@
 # デプロイ (VERCEL_GIT_PREVIOUS_SHA)。branch の初回デプロイでは main の先頭と比べる。
 # Production は常にビルドする。判定できない時は必ずビルドする
 # (ビルドしないのは「変わっていない」と確かめられた時だけ)。
+# Vercel の環境変数やプロジェクト設定だけを変えた時は commit に差分が出ないので、Preview はビルドしない。
+# Preview に反映するには、Vercel の Redeploy で「Use project's Ignore Build Step」を外す。
 #
 # Usage (apps/frontend/vercel.json の ignoreCommand。Vercel は Root Directory = apps/frontend で実行する):
 #   bash ../../scripts/vercel-ignore-build.sh
@@ -62,6 +64,10 @@ esac
 
 head_sha=$(git rev-parse --verify --quiet 'HEAD^{commit}') || build "git の作業ツリーではない (HEAD を読めない)"
 base=${VERCEL_GIT_PREVIOUS_SHA:-}
+# git の引数に渡すので、commit の SHA (40 桁の 16 進数) でなければビルドする
+if [ -n "$base" ] && ! [[ "$base" =~ ^[0-9a-f]{40}$ ]]; then
+  build "VERCEL_GIT_PREVIOUS_SHA が commit の SHA ではない"
+fi
 [ "$base" != "$head_sha" ] || build "前回と同じ commit (手動の Redeploy)"
 
 # Vercel の clone は浅い (depth 10)。比べる commit が無ければ public の GitHub から取る。
