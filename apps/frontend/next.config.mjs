@@ -14,11 +14,21 @@ const nextConfig = {
    *   frontend は sharp を直接使っておらず、画像の最適化は Vercel 側で行われる
    * - next 本体は Vercel 上で sharp をサーバー本体のトレースからしか外さず、OG 画像と記事ページの
    *   関数には sharp と libvips (約 17MB) が入っていた
-   * - キーは全ルート、値は apps/frontend からの glob (pnpm の実体は ../../node_modules/.pnpm/ にある)
+   * - キーは全ルート。値は apps/frontend からの glob で、`**` は親 (../../node_modules) まで届かない。
+   *   pnpm の実体 (.pnpm/<名前>@<版>) と、そこを指す symlink の両方を外す (symlink だけ残ると、行き先の無い
+   *   symlink が関数に入る)。pnpm の配置を変えたら、ここが効いているか .nft.json で確かめる
+   * - Vercel 以外 (standalone など) で配るなら見直す。そこでは画像の最適化に sharp が要る
    * https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats
    */
   outputFileTracingExcludes: {
-    '/*': ['../../node_modules/.pnpm/sharp@*/**', '../../node_modules/.pnpm/@img+*/**'],
+    '/*': [
+      '../../node_modules/.pnpm/sharp@*/**',
+      '../../node_modules/.pnpm/@img+sharp-*/**',
+      '../../node_modules/.pnpm/node_modules/sharp',
+      '../../node_modules/.pnpm/node_modules/@img/sharp-*',
+      '../../node_modules/.pnpm/*/node_modules/sharp',
+      '../../node_modules/.pnpm/*/node_modules/@img/sharp-*',
+    ],
   },
 
   /**
