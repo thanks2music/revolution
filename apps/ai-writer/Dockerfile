@@ -1,9 +1,10 @@
 # Stage 0: pnpm の準備 (deps / builder で共有)
 # corepack install はルート package.json の packageManager の版を入れる。
-# 版をここに書かないのは、Renovate が packageManager しか更新しないため。
+# pnpm の版をここに書かないのは、Renovate が packageManager しか更新しないため。
+# Node の版 (FROM のタグ) は Renovate の docker manager が更新する
 # pnpm 12 は最初の実行で native binary を取得するので、`pnpm --version` で
 # ここで 1 回だけ取得しておく
-FROM node:24-alpine AS base
+FROM node:24.22.1-alpine AS base
 WORKDIR /app
 COPY package.json ./
 RUN corepack enable && corepack install && pnpm --version
@@ -101,7 +102,7 @@ WORKDIR /app/apps/ai-writer
 RUN pnpm build
 
 # Stage 3: 本番環境
-FROM node:24-alpine AS runner
+FROM node:24.22.1-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

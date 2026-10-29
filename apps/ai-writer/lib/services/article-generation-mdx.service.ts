@@ -19,6 +19,14 @@ import {
   shrinkStopMessage,
   type ShrinkCheck,
 } from '../mdx/article-counts';
+import { describeKeptNames, keepPublishedNames, type KeptName } from '../mdx/keep-published-names';
+import {
+  describeItemNameDiffs,
+  diffArticleItems,
+  hasItemChanges,
+  readArticleItems,
+  type ItemNameDiff,
+} from '../mdx/article-item-names';
 import {
   checkEventDuplication,
   registerNewEvent,
@@ -144,7 +152,9 @@ import { ArticlePointsGenerationService, ArticlePointsParseError } from './artic
 import { sameSiteOfficialUrls } from '@/lib/utils/same-site-official-urls';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { SubpageExtractionService, type SubpageFacts } from './subpage-extraction.service';
+import { applySupportedAuthors, extractCopyrightNotices } from '@/lib/utils/copyright-notices';
 import { venueUrlsWithNovelties, withNoveltyImagesFromVenues } from './pick-novelty-images';
+import { withNamesFromPageText } from './article-images/names-from-page-text';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
 import {
   goodsNamesForProse,
@@ -292,6 +302,10 @@ export interface MdxGenerationResult {
   // 公開中の記事の更新のときだけ: 会場・品目の数の更新の前後の比較
   update?: {
     shrinkCheck: ShrinkCheck;
+    /** メニュー・グッズ・ノベルティの品名と価格の、更新の前後の違い */
+    itemNames: ItemNameDiff[];
+    /** 今回読んだ品名ではなく、公開中の記事の品名を使った品目 */
+    keptNames: KeptName[];
     /** event_data の企画を決める項目の引き継ぎ */
     eventKeys: EventKeysReport;
   };
@@ -522,6 +536,11 @@ export class ArticleGenerationMdxService {
           const primaryOfficialUrl = selectionResult.primary_official_url;
           const officialUrls = selectionResult.official_urls;
           const llmInput = officialHtml;
+          // 著作権表記は本文の主要部分に入らないことが多い (JS の文字列・フッター) ので、圧縮前の HTML から読んで別に渡す
+          const copyrightNotices = extractCopyrightNotices(contentHtml.raw);
+          console.log(
+            `${getStepContext('detail-extraction', '著作権表記')} ${copyrightNotices.length > 0 ? copyrightNotices.join(' / ') : 'なし'}`
+          );
 
           const gateResult = await runVenueCompletenessGate({
             rawHtml: contentHtml.raw,
@@ -538,6 +557,7 @@ export class ArticleGenerationMdxService {
               const result = await extractionService.extractFromOfficialSite({
                 primary_official_url: primaryOfficialUrl,
                 page_content: llmInput,
+                copyright_notices: copyrightNotices,
                 official_urls: officialUrls,
                 // ⚠️ 観測ログ専用。プロンプトへは渡らない (自己成就の防止)
                 observationContext: {
@@ -558,6 +578,15 @@ export class ArticleGenerationMdxService {
           });
 
           detailedExtraction = gateResult.extraction;
+
+          // 原作者名は、著作権表記か本文に出てくる名前だけを残す (LLM が知識で補った名前を書かない。2026-10-24 BOSS 決定)
+          const authors = applySupportedAuthors(detailedExtraction, { notices: copyrightNotices, pageText: llmInput });
+          detailedExtraction = authors.extraction;
+          if (authors.dropped.length > 0) {
+            console.warn(
+              `${getStepContext('detail-extraction', '著作権表記')} ⚠️ 公式サイトに無い原作者名を外した: ${authors.dropped.join(', ')}`
+            );
+          }
 
           // ★ 判定は必ず 3 経路へ出す。観測ログ (JSONL) は本番では無効なので、
           //   console と skipReason だけが本番で残る唯一の痕跡になる。
@@ -747,6 +776,17 @@ export class ArticleGenerationMdxService {
           `${getStepContext('vision-api')} ノベルティ名が無いため、ノベルティの画像 ${categoryImages.novelty.length} 枚を使わない (節を書かない)`,
         );
         categoryImages = { ...categoryImages, novelty: [] };
+      }
+
+      // 記事の更新: 品名は公開中の記事を正にする (Vision や抽出の LLM の読み違いで、人が直した品名を誤りに戻さない。
+      // 2026-10-25 BOSS 決定)。当てるのは、同じキャラクター・同じ価格の組の中で 1 品どうしだけ残った品目
+      let keptNames: KeptName[] = [];
+      if (update && detailedExtraction) {
+        const kept = keepPublishedNames(detailedExtraction, readArticleItems(update.article.content));
+        detailedExtraction = kept.extraction;
+        keptNames = kept.kept;
+        const ctx = getStepContext('vision-api', '公開中の記事の品名');
+        for (const line of describeKeptNames(keptNames)) console.log(`${ctx} ${line}`);
       }
 
       // slug-generation step: Resolve slugs (YAML config → AI API → ASCII fallback)
@@ -1333,7 +1373,18 @@ export class ArticleGenerationMdxService {
       const menuItemImages = itemImageTags(menuSectionFound ? menuNames : [], imagesUpload?.categories.menu ?? []);
       // ノベルティは名前ごとの見出しを導入の文の下に並べる (グッズと同じ形)。画像は品名と照合できたものだけ見出しの下に入れる
       const noveltyNames = hasNoveltySection(contentGeneration.content) ? (detailedExtraction?.ノベルティ名 ?? []) : [];
-      const noveltyItemImages = itemImageTags(noveltyNames, imagesUpload?.categories.novelty ?? []);
+      // ノベルティの画像の代替テキストは配布条件の見出し (「ドリンク特典」) のことがあるので、ページの本文から品名を当ててから照合する
+      const noveltyImages = withNamesFromPageText(
+        noveltyNames,
+        imagesUpload?.categories.novelty ?? [],
+        (categoryImages?.pages ?? []).map((page) => page.text)
+      );
+      if (noveltyImages.named > 0) {
+        console.log(
+          `${getStepContext('image-upload-r2', '品目ごと')} ノベルティの画像 ${noveltyImages.named} 枚に、ページの本文から品名を当てた`
+        );
+      }
+      const noveltyItemImages = itemImageTags(noveltyNames, noveltyImages.images);
       const goodsItemImages = itemImageTags(goodsSectionFound ? goodsNames : [], imagesUpload?.categories.goods ?? []);
       if (menuItemImages.matched > 0 || goodsItemImages.matched > 0) {
         console.log(
@@ -1728,6 +1779,14 @@ export class ArticleGenerationMdxService {
         const ctx = getStepContext('github-pr-creation', '更新の前後の数');
         for (const line of describeShrinkCheck(shrinkCheck)) console.log(`${ctx} ${line}`);
       }
+      // 記事の更新: 品名と価格を更新の前後で比べる (数が同じでも、読み違いで品名が変わることがある)
+      const itemNames = update
+        ? diffArticleItems(readArticleItems(update.article.content), readArticleItems(mdxArticle.content))
+        : [];
+      if (update) {
+        const ctx = getStepContext('github-pr-creation', '更新の前後の品名');
+        for (const line of describeItemNameDiffs(itemNames)) console.log(`${ctx} ${line}`);
+      }
 
       // github-pr-creation step: Create GitHub PR
       let prResult: CreateMdxPrResult | undefined;
@@ -1756,7 +1815,7 @@ export class ArticleGenerationMdxService {
             success: false,
             error: message,
             mdxArticle,
-            update: { shrinkCheck, eventKeys },
+            update: { shrinkCheck, itemNames, keptNames, eventKeys },
           };
         }
 
@@ -1770,6 +1829,8 @@ export class ArticleGenerationMdxService {
             fields: update.fields,
             updated: mdxArticle.frontmatter.updated ?? '',
             shrinkCheck,
+            itemNames,
+            keptNames,
             allowShrink: update.allowShrink,
             eventKeys,
             extraction,
@@ -1867,7 +1928,7 @@ export class ArticleGenerationMdxService {
         placeholderReplacement,
         textPlaceholderReplacement,
         visionApiResult, // vision-api step Vision API integration result
-        update: shrinkCheck ? { shrinkCheck, eventKeys } : undefined,
+        update: shrinkCheck ? { shrinkCheck, itemNames, keptNames, eventKeys } : undefined,
       };
     } catch (error) {
       console.error('========== MDXパイプライン: 記事生成失敗 ==========');
@@ -2314,14 +2375,17 @@ export class ArticleGenerationMdxService {
     fields: ExistingArticleFields;
     updated: string;
     shrinkCheck: ShrinkCheck;
+    itemNames: ItemNameDiff[];
+    keptNames: KeptName[];
     allowShrink: boolean;
     eventKeys: EventKeysReport;
     extraction: { workTitle: string; storeName: string; eventTypeName: string };
     metadata: { categories: string[]; excerpt: string };
   }): string {
-    const { path, fields, updated, shrinkCheck, allowShrink, extraction, metadata } = params;
+    const { path, fields, updated, shrinkCheck, itemNames, keptNames, allowShrink, extraction, metadata } = params;
     const eventKeys = describeEventKeys(params.eventKeys);
     const counts = describeShrinkCheck(shrinkCheck).map((line) => `- ${line}`).join('\n');
+    const names = describeItemNameDiffs(itemNames).join('\n');
 
     return `## ♻️ 記事の更新
 
@@ -2337,6 +2401,16 @@ export class ArticleGenerationMdxService {
 
 ${counts}
 ${shrinkCheck.shrunk && allowShrink ? '\n⚠️ 減った項目がありますが、`--allow-shrink` で PR を作りました。\n' : ''}
+## 🔤 品名と価格の変化 (更新前 → 更新後)
+
+${hasItemChanges(itemNames) ? '⚠️ 品名か価格が変わった品目があります。公式サイトと照らして、読み違いでないか確かめてください。\n\n' : ''}${names}
+
+## 📌 公開中の記事の品名を使った品目
+
+今回読んだ品名が公開中の記事と違い、同じキャラクター・同じ価格の 1 品どうしだったので、公開中の記事 (人が確かめた値) の品名を使いました。公式サイトで品名が本当に変わっていないか確かめてください。
+
+${describeKeptNames(keptNames).join('\n')}
+
 ## 🔑 企画を決める項目 (event_slug / event_name / title_slugs / primary_category_slug)
 
 取り込みで企画と作品を決めるキーのため、既存の記事の値を引き継ぎます。

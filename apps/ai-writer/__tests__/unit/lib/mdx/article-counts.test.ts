@@ -131,6 +131,11 @@ describe('countSectionItems', () => {
     expect(countSectionItems(lines)).toBe(3);
   });
 
+  it('表が 2 つあれば、それぞれの見出しの行を除く', () => {
+    const lines = ['| 品名 | 価格 |', '|---|---|', '| A | 1円 |', '', '| 品名 | 価格 |', '|---|---|', '| B | 1円 |', '| C | 1円 |'];
+    expect(countSectionItems(lines)).toBe(3);
+  });
+
   it('名前が「特典」で終わるノベルティは品目として数える。注意書きの箇条書きは数えない', () => {
     expect(countSectionItems(['### 来店特典', '### ノベルティー', '- 缶バッジ', '- ※価格は税込'])).toBe(2);
   });
