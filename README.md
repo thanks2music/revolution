@@ -13,13 +13,13 @@
 > "Step by step, I can't see any other way of accomplishing anything."<br>
 > — Michael Jordan
 
-![License](https://img.shields.io/badge/license-Personal%20Project-blue)
-![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
-![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
-![pnpm](https://img.shields.io/badge/pnpm-12-f69220?logo=pnpm&logoColor=white)
-![Turborepo](https://img.shields.io/badge/Turborepo-2-ef4444?logo=turborepo&logoColor=white)
+![License: Personal Project](https://img.shields.io/badge/license-Personal%20Project-blue)
+![Node.js 24](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
+![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
+![React 19](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=black)
+![TypeScript 5](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
+![pnpm 12](https://img.shields.io/badge/pnpm-12-f69220?logo=pnpm&logoColor=white)
+![Turborepo 2](https://img.shields.io/badge/Turborepo-2-ef4444?logo=turborepo&logoColor=white)
 
 A next-generation Jamstack web media platform with an LLM-powered AI article generation pipeline. A personal project by [@thanks2music](https://github.com/thanks2music) — a playground for modern web application architecture.
 
@@ -95,7 +95,7 @@ For the detailed table see [`docs/current-stack.md`](./docs/current-stack.md).
 ### Git hooks (Husky)
 
 - **pre-commit**: scans the staged files for secrets with [gitleaks](https://github.com/gitleaks/gitleaks) (skipped with a notice when gitleaks is not installed)
-- **pre-push**: runs the Jest tests related to the changed TS/TSX/JS files in `apps/ai-writer` (about 30–60 seconds)
+- **pre-push**: runs the `apps/ai-writer` Jest tests related to the changed TS/TSX/JS files (about 30–60 seconds)
 - To skip in an emergency: `HUSKY=0 git push`. Otherwise fix the failing tests and push again; the gate is there to stop silent failures
 
 The hook scripts live in [`.husky/`](./.husky/).

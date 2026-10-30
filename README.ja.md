@@ -13,13 +13,13 @@
 > "Step by step, I can't see any other way of accomplishing anything."<br>
 > — Michael Jordan
 
-![License](https://img.shields.io/badge/license-Personal%20Project-blue)
-![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
-![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
-![pnpm](https://img.shields.io/badge/pnpm-12-f69220?logo=pnpm&logoColor=white)
-![Turborepo](https://img.shields.io/badge/Turborepo-2-ef4444?logo=turborepo&logoColor=white)
+![License: Personal Project](https://img.shields.io/badge/license-Personal%20Project-blue)
+![Node.js 24](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
+![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
+![React 19](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=black)
+![TypeScript 5](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
+![pnpm 12](https://img.shields.io/badge/pnpm-12-f69220?logo=pnpm&logoColor=white)
+![Turborepo 2](https://img.shields.io/badge/Turborepo-2-ef4444?logo=turborepo&logoColor=white)
 
 LLM を活用した AI 記事生成パイプラインを備えた、Jamstack 構成の次世代 Web メディアシステムのリポジトリ。[@thanks2music](https://github.com/thanks2music) が個人開発で取り組むモダン Web アプリケーションの実験場です。
 
