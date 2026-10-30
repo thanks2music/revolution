@@ -47,7 +47,7 @@ LLM を活用した AI 記事生成パイプラインを備えた、Jamstack 構
 
 ## Quick Start
 
-前提: Node.js 24 ([`.tool-versions`](./.tool-versions) で固定) と pnpm 12 ([`package.json`](./package.json) の `packageManager` で固定)。
+前提: Node.js 24 ([`.tool-versions`](./.tool-versions)) と pnpm 12 ([`package.json`](./package.json) の `packageManager`)。
 
 ```bash
 # リポジトリのクローン
@@ -72,40 +72,38 @@ pnpm dev:docs                 # ドキュメントサイトのみ (http://localh
 
 > 💡 複数 worktree で同時に dev サーバーを動かす場合は port 衝突を避けるため、`bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` / `bash scripts/worktree-dev.sh docs` を使ってください。`pnpm dev` は常にデフォルト port (4444 / 7777) で起動します。
 
-記事の生成には、LLM の API キーと、private リポジトリのテンプレート (`pnpm sync:templates` でコピー) も要ります。clone しただけではパイプラインは最後まで動きません。
+記事の生成には LLM の API キーと private のテンプレート (`pnpm sync:templates`) も要るため、clone しただけではパイプラインは最後まで動きません。
 
 詳細は [`docs/build.md`](./docs/build.md) を参照してください。
 
 ## Tech Stack
 
-- **Frontend**: Next.js 16 / React 19 / TypeScript 5 / Tailwind CSS / SWR / next-mdx-remote。Vercel で配信 (SSG + ISR)
+- **Frontend**: Next.js / React / TypeScript / Tailwind CSS / SWR / next-mdx-remote。Vercel で配信 (SSG + ISR)
 - **Data & Auth**: Supabase (Postgres + Auth) / Drizzle ORM / Zod スキーマ (`shared/schemas` で共有)
-- **AI Writer**: Next.js 16 を Google Cloud Run で実行 / Claude (Anthropic) ・ Gemini (Google) ・ OpenAI (環境変数で切替) / Firebase (Auth + Firestore) を管理画面とパイプラインの状態管理に使用
+- **AI Writer**: Next.js を Google Cloud Run で実行。Claude (Anthropic) ・ Gemini (Google) ・ OpenAI を環境変数で切替。Firebase (Auth + Firestore) を管理画面とパイプラインの状態管理に使用
 - **Storage**: Cloudflare R2 (記事の画像)
-- **Docs site**: Next.js 16 / Fumadocs。Vercel で配信
+- **Docs site**: Next.js / Fumadocs。Vercel で配信
 - **Observability**: Sentry / Slack 通知
-- **Tooling**: pnpm 12 / Turborepo 2 / Jest 30 / Playwright / ESLint 9 / Prettier 3 / Husky 9
+- **Tooling**: pnpm / Turborepo / Jest / Playwright / ESLint / Prettier / Husky
 
-詳細表は [`docs/current-stack.md`](./docs/current-stack.md) にあります。
+メジャーバージョンは上のバッジに、詳細表は [`docs/current-stack.md`](./docs/current-stack.md) にあります。
 
-## Development tooling
+## Git hooks (Husky)
 
-### Git hooks (Husky)
+フックのスクリプトは [`.husky/`](./.husky/) にあります。
 
 - **pre-commit**: ステージしたファイルを [gitleaks](https://github.com/gitleaks/gitleaks) でシークレットスキャンします (gitleaks が無い環境ではメッセージを出してスキップ)
 - **pre-push**: 変更した TS/TSX/JS ファイルに関連する `apps/ai-writer` の Jest テストを実行します (約 30-60 秒)
 - 緊急時の skip: `HUSKY=0 git push`。それ以外は失敗を直してから push し直してください (silent failure を防ぐゲートのため)
-
-フックのスクリプトは [`.husky/`](./.husky/) にあります。
 
 ## Project Structure
 
 ```text
 revolution/
 ├── apps/
-│   ├── ai-writer/       # AI 記事生成パイプライン + 管理画面（Next.js 16、Cloud Run）
-│   ├── docs/            # ドキュメントサイト（Next.js 16 / Fumadocs）
-│   ├── frontend/        # 公開 Web サイト（Next.js 16、Vercel）+ Supabase の migration
+│   ├── ai-writer/       # AI 記事生成パイプライン + 管理画面（Cloud Run）
+│   ├── docs/            # ドキュメントサイト（Fumadocs）
+│   ├── frontend/        # 公開 Web サイト（Vercel）+ Supabase の migration
 │   └── mcp-gcp-server/  # Model Context Protocol サーバー
 ├── docs/                # 公開ドキュメント
 ├── shared/

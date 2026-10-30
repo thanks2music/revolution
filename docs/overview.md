@@ -40,14 +40,14 @@ flowchart TB
 | 領域 | 役割 | 詳細 |
 |---|---|---|
 | **AI Writer** (`apps/ai-writer/`) | パイプライン本体。LLM 呼び出し / テンプレート展開 / Schema 検証 / MDX 生成 / PR 作成と、管理画面。手元の CLI と Cloud Run で動く | [`apps/ai-writer/README.md`](../apps/ai-writer/README.md) |
-| **Frontend** (`apps/frontend/`) | 公開 Web サイトと会員機能 (Next.js 16、SSG + ISR)。Vercel で配信 | [`current-stack.md`](./current-stack.md) |
-| **Docs site** (`apps/docs/`) | `docs/` 直下のドキュメントを配信 (Fumadocs)。Vercel で配信し、検索エンジンには載せない | [`README.md`](./README.md) |
-| **Supabase** | 構造化データと会員機能 (Postgres + Auth + RLS)。production / staging の 2 プロジェクト。migration は `apps/frontend/supabase/migrations/` | [`current-stack.md`](./current-stack.md) |
-| **Firebase** (Auth + Firestore) | AI Writer の管理画面の認証と、RSS フィードの登録・重複判定などパイプラインの状態 | — |
-| **Cloudflare R2** | 記事の画像の保管と配信 | — |
+| **Frontend** (`apps/frontend/`) | 公開 Web サイトと会員機能 (SSG + ISR)。Vercel で配信 | [`current-stack.md`](./current-stack.md) |
+| **Docs site** (`apps/docs/`) | `docs/` 直下のドキュメントを配信 (Fumadocs) | [`README.md`](./README.md) |
+| **Supabase** | 構造化データと会員機能 (Postgres + Auth + RLS) | [`current-stack.md`](./current-stack.md) |
+| **Firebase** (Auth + Firestore) | AI Writer の管理画面の認証とパイプラインの状態 | [`current-stack.md`](./current-stack.md) |
+| **Cloudflare R2** | 記事の画像の保管と配信 | [`current-stack.md`](./current-stack.md) |
 | **Templates** (別リポジトリ `revolution-templates`) | YAML テンプレート集。プロンプト + 出力スキーマ | (private) |
 | **Cloud Run** | AI Writer のサーバーレス実行環境 (Cloud Scheduler による定期起動は未設定。[`sentry.md`](./sentry.md)) | [`ai-writer-cloud-run.md`](./ai-writer-cloud-run.md) |
-| **GitHub** | MDX ソース管理 + PR ベース公開ワークフロー。Actions で CI / Cloud Run のデプロイ / Supabase の migration / 通知 | [`build.md`](./build.md) |
+| **GitHub** | MDX ソース管理 + PR ベース公開ワークフロー。CI / CD は GitHub Actions | [`current-stack.md`](./current-stack.md) |
 | **Sentry / Slack** | エラー監視と通知 | [`sentry.md`](./sentry.md) / [`slack-notifications.md`](./slack-notifications.md) |
 
 ## 設計原則
