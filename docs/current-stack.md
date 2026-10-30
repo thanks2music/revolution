@@ -4,7 +4,7 @@ title: 現行版 技術スタック
 
 > Revolution は MDX パイプライン + Next.js + Supabase で構成される技術スタック。WordPress 時代の構成は PR #212 で物理削除済 (Git 履歴で参照可能)。
 >
-> バージョンはメジャーまで書く。細かい版は Renovate で頻繁に上がるため、各 `package.json` / `pnpm-lock.yaml` / `.tool-versions` を正とする。
+> バージョンはメジャーまで書く。細かい版は Renovate で頻繁に上がるため、各 `package.json` / `pnpm-lock.yaml` / `.tool-versions` を正とする。repo で版を固定していないツールは「—」とする。
 
 ## フロントエンドアプリケーション
 
@@ -59,7 +59,7 @@ LLM は記事の生成と画像からの抽出に使い、それぞれ環境変�
 | **Turborepo** | 2 | モノレポビルドシステム |
 | **Jest** | 30 | ユニットテスト |
 | **Playwright** | 1 | frontend の E2E |
-| **Firebase Emulator** | Latest | AI Writer のローカル認証 / Firestore テスト |
+| **Firebase Emulator** | 14 (firebase-tools) | AI Writer のローカル認証 / Firestore テスト |
 | **ESLint + Prettier** | 9 / 3 | コード品質 |
 | **Husky** | 9 | Git hooks (`.husky/`) |
 | **GitHub Actions** | — | CI / Cloud Run のデプロイ / Supabase の migration / 監視と通知 |
@@ -68,10 +68,10 @@ LLM は記事の生成と画像からの抽出に使い、それぞれ環境変�
 
 | ツール | バージョン | 開発元 |
 |------|---------|---------|
-| **Claude Code** | Latest | Anthropic |
-| **Codex** | Latest | OpenAI |
-| **Gemini CLI** | Latest | Google |
-| **MCP Server Tools** | Latest | Various |
+| **Claude Code** | — | Anthropic |
+| **Codex** | — | OpenAI |
+| **Gemini CLI** | — | Google |
+| **MCP Server Tools** | — | Various |
 
 ---
 

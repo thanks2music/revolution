@@ -11,7 +11,7 @@
 **Step by step. Commit by commit. The destination shows up in `git log`.**
 
 > "Step by step, I can't see any other way of accomplishing anything."<br>
-> — Michael Jordan
+> — Michael Jordan, *I Can't Accept Not Trying* (1994)
 
 ![License: Personal Project](https://img.shields.io/badge/license-Personal%20Project-blue)
 ![Node.js 24](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
