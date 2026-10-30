@@ -11,7 +11,7 @@ Revolution は、LLM (Claude / OpenAI / Gemini) を活用した **AI 記事生�
 ## システム全体像
 
 ```mermaid
-flowchart LR
+flowchart TB
     SRC[RSS / URL]
     LLM[LLM API<br/>Claude / Gemini / OpenAI]
     AW[AI Writer<br/>CLI / Cloud Run]
@@ -25,8 +25,8 @@ flowchart LR
     AW --> LLM
     AW -->|画像| R2
     AW -->|MDX の PR| GH
-    GH -.merge でビルド.-> WEB
-    GH -.Actions で migration.-> DB
+    GH -.->|merge でビルド| WEB
+    GH -.->|Actions で migration| DB
     WEB -->|ビルド時 + ISR| DB
     USER --> WEB
     USER -->|会員機能| DB
