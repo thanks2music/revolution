@@ -8,6 +8,11 @@
 
 > **Languages**: [🇬🇧 English](README.md) | [🇯🇵 日本語](README.ja.md)
 
+**Step by step. Commit by commit. The destination shows up in `git log`.**
+
+> "Step by step, I can't see any other way of accomplishing anything."<br>
+> — Michael Jordan
+
 ![License](https://img.shields.io/badge/license-Personal%20Project-blue)
 ![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
