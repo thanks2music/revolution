@@ -6,7 +6,7 @@
 
 # Revolution
 
-> **Languages**: [🇯🇵 日本語](README.md) | [🇬🇧 English](README.en.md)
+> **Languages**: [🇬🇧 English](README.md) | [🇯🇵 日本語](README.ja.md)
 
 ![License](https://img.shields.io/badge/license-Personal%20Project-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-16.1-black?logo=next.js)
@@ -14,92 +14,84 @@
 ![pnpm](https://img.shields.io/badge/pnpm-10-f69220?logo=pnpm)
 ![Turbo](https://img.shields.io/badge/Turbo-2.5-00d49a)
 
-LLM を活用した AI 記事生成パイプラインを備えた、Jamstack 構成の次世代 Web メディアシステムのリポジトリ。[@thanks2music](https://github.com/thanks2music) が個人開発で取り組むモダン Web アプリケーションの実験場です。
+A next-generation Jamstack web media platform with an LLM-powered AI article generation pipeline. A personal project by [@thanks2music](https://github.com/thanks2music) — a playground for modern web application architecture.
 
 ## What is Revolution?
 
-これまで手動で 1 万記事以上を作成してきた知見を、LLM とモジュール化された YAML テンプレートに落とし込み、**RSS / URL → N ステップのパイプライン → MDX ファイル → GitHub PR** という形で記事生成から公開までを自動化します。記事はデータベースを持たず、Next.js による静的サイト生成（SSG）で配信されます。
+Built on the experience of manually creating over 10,000 articles, Revolution distills that practical knowledge into LLMs and modular YAML templates. The system automates the full content lifecycle through a pipeline of **RSS / URL → 9-step pipeline → MDX files → GitHub PRs**. Articles are stored as MDX files (no database) and served via Next.js static site generation (SSG).
 
 ## Documentation
 
+> Most detailed docs are written in Japanese.
+
 | Topic | Link |
 |---|---|
-| 全ドキュメント一覧 + ナビゲーション | [`docs/README.md`](./docs/README.md) |
-| プロジェクト概要・ビジョン | [`docs/overview.md`](./docs/overview.md) |
-| 現行版 技術スタック | [`docs/current-stack.md`](./docs/current-stack.md) |
-| AI Writer の MDX パイプライン (概要) | [`apps/ai-writer/README.md`](./apps/ai-writer/README.md) |
-| モノレポ運用 (pnpm + Turborepo) | [`docs/monorepo.md`](./docs/monorepo.md) |
-| 開発・ビルドコマンド | [`docs/build.md`](./docs/build.md) |
-| AI Writer Cloud Run デプロイ | [`docs/ai-writer-cloud-run.md`](./docs/ai-writer-cloud-run.md) |
+| Full document index + navigation | [`docs/README.md`](./docs/README.md) |
+| Project overview & vision | [`docs/overview.md`](./docs/overview.md) |
+| Current tech stack | [`docs/current-stack.md`](./docs/current-stack.md) |
+| AI Writer MDX pipeline (overview) | [`apps/ai-writer/README.md`](./apps/ai-writer/README.md) |
+| Monorepo (pnpm + Turborepo) | [`docs/monorepo.md`](./docs/monorepo.md) |
+| Development & build commands | [`docs/build.md`](./docs/build.md) |
+| AI Writer Cloud Run deploy | [`docs/ai-writer-cloud-run.md`](./docs/ai-writer-cloud-run.md) |
 
-更新履歴は [GitHub Releases](https://github.com/thanks2music/revolution/releases) を参照してください。
+For release notes, see [GitHub Releases](https://github.com/thanks2music/revolution/releases).
 
-`docs/` 直下のドキュメントは [docs.anime-events.com](https://docs.anime-events.com) でもページとして読めます (`apps/docs`、検索エンジンには載せていません)。
+The documents directly under `docs/` are also published as pages at [docs.anime-events.com](https://docs.anime-events.com) (`apps/docs`, not indexed by search engines).
 
 ## Quick Start
 
 ```bash
-# リポジトリのクローン
+# Clone the repository
 git clone https://github.com/thanks2music/revolution.git
 cd revolution
 
-# 依存関係のインストール
+# Install dependencies
 pnpm install
 
-# 環境変数の設定
+# Set up environment variables
 cp apps/ai-writer/.env.sample apps/ai-writer/.env.local
 cp apps/frontend/.env.sample apps/frontend/.env.local
 
-# 開発サーバーの起動（ルートから一括）
-pnpm dev                      # フロントエンド (http://localhost:4444) + AI Writer (http://localhost:7777) を並行起動
+# Start dev servers from the repo root (one shot)
+pnpm dev                      # Frontend (http://localhost:4444) + AI Writer (http://localhost:7777) in parallel
 
-# 個別起動も可能
-pnpm dev:frontend             # 公開フロントエンドのみ
-pnpm dev:ai-writer            # AI Writer のみ
-pnpm dev:docs                 # ドキュメントサイトのみ (http://localhost:3333)
+# Or start them individually
+pnpm dev:frontend             # Public frontend only
+pnpm dev:ai-writer            # AI Writer only
+pnpm dev:docs                 # Documentation site only (http://localhost:3333)
 ```
 
-> 💡 複数 worktree で同時に dev サーバーを動かす場合は port 衝突を避けるため、`bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` / `bash scripts/worktree-dev.sh docs` を使ってください。`pnpm dev` は常にデフォルト port (4444 / 7777) で起動します。
+> 💡 If you run multiple worktrees in parallel, use `bash scripts/worktree-dev.sh frontend` / `bash scripts/worktree-dev.sh ai-writer` / `bash scripts/worktree-dev.sh docs` to avoid port collisions. `pnpm dev` always uses the default ports (4444 / 7777).
 
-詳細は [`docs/build.md`](./docs/build.md) を参照してください。
+See [`docs/build.md`](./docs/build.md) for the full command reference.
 
 ## Tech Stack
 
 - **Frontend**: Next.js 16 / React 19 / TypeScript 5 / Tailwind CSS / SWR
-- **AI Providers**: Claude (Anthropic) ・ Gemini (Google) ・ OpenAI（環境変数で切替）
+- **AI Providers**: Claude (Anthropic) · Gemini (Google) · OpenAI (switchable via env var)
 - **Infra**: Google Cloud Run / Firebase Authentication / Vercel / CloudFlare CDN
-- **Tooling**: pnpm 12 / Turbo 2.5 / Jest 30 / ESLint 9 / Husky 9
+- **Tooling**: pnpm 12 / Turbo 2.5 / Jest 30 / ESLint 9
 
-詳細表は [`docs/current-stack.md`](./docs/current-stack.md) にあります。
-
-## Development tooling
-
-### Husky pre-push hook
-
-`git push` 時に変更ファイル (TS/TSX/JS) に関連する jest テストを自動実行し、silent failure を未然に防ぎます。実行スコープは `apps/ai-writer` のみで、約 30-60 秒で完了する想定です。
-
-- スクリプト本体: [`.husky/pre-push`](./.husky/pre-push)
-- 緊急 skip: `HUSKY=0 git push` (緊急時のみ、原則 push 前に test を pass させてください)
-- test 失敗時の対処: 失敗を修正してから再度 push (silent failure を防ぐゲートのため、bypass は推奨しません)
+For the detailed table see [`docs/current-stack.md`](./docs/current-stack.md).
 
 ## Project Structure
 
 ```text
 revolution/
 ├── apps/
-│   ├── ai-writer/   # AI 記事生成管理アプリ（Next.js 16 / React 19）
-│   ├── docs/        # ドキュメントサイト docs.anime-events.com（Next.js 16 / Fumadocs）
-│   ├── frontend/    # 公開 Web サイト（Next.js 16 / React 19）
-│   └── mcp-gcp-server/  # Model Context Protocol サーバー
-├── docs/            # 公開ドキュメント
-├── shared/          # 型定義・ユーティリティ（ワークスペース共通）
-├── scripts/         # 自動化スクリプト
-└── .github/workflows/  # CI/CD パイプライン
+│   ├── ai-writer/   # AI article generation admin app (Next.js 16 / React 19)
+│   ├── docs/        # Documentation site docs.anime-events.com (Next.js 16 / Fumadocs)
+│   ├── frontend/    # Public web site (Next.js 16 / React 19)
+│   └── mcp-gcp-server/  # Model Context Protocol server
+├── docs/            # Public documentation
+├── shared/          # Type definitions & utilities (workspace-wide)
+├── scripts/         # Automation scripts
+└── .github/workflows/  # CI/CD pipelines
 ```
 
 ## Acknowledgments
 
-[Next.js](https://nextjs.org/) ・ [Anthropic Claude](https://www.anthropic.com/) ・ [Firebase](https://firebase.google.com/) ・ [Google Cloud](https://cloud.google.com/) ・ [Vercel](https://vercel.com/) を使用して構築。
+Built with [Next.js](https://nextjs.org/) · [Anthropic Claude](https://www.anthropic.com/) · [Firebase](https://firebase.google.com/) · [Google Cloud](https://cloud.google.com/) · [Vercel](https://vercel.com/).
 
 ---
 
