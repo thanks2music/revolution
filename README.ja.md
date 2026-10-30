@@ -87,7 +87,7 @@ pnpm dev:docs                 # ドキュメントサイトのみ (http://localh
 - **Observability**: Sentry / Slack 通知
 - **Tooling**: pnpm / Turborepo / Jest / Playwright / ESLint / Prettier / Husky
 
-メジャーバージョンは上のバッジに、詳細表は [`docs/current-stack.md`](./docs/current-stack.md) にあります。
+メジャーバージョンは上のバッジに、詳細表は [`docs/current-stack.md`](./docs/current-stack.md) にあります。細かい版は `package.json` と `.tool-versions` が正です。
 
 ## Git hooks (Husky)
 

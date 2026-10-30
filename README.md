@@ -88,7 +88,7 @@ See [`docs/build.md`](./docs/build.md) for the full command reference.
 - **Observability**: Sentry / Slack notifications
 - **Tooling**: pnpm / Turborepo / Jest / Playwright / ESLint / Prettier / Husky
 
-Major versions are in the badges above; for the detailed table see [`docs/current-stack.md`](./docs/current-stack.md).
+Major versions are in the badges above and the detailed table is in [`docs/current-stack.md`](./docs/current-stack.md); exact versions are pinned in `package.json` and `.tool-versions`.
 
 ## Git hooks (Husky)
 
