@@ -12,6 +12,8 @@ Revolution は、LLM (Claude / OpenAI / Gemini) を活用した **AI 記事生�
 
 ```mermaid
 flowchart TB
+    %% 縦向き (TB) なのは docs サイトの本文の幅 (665px) に収めるため。横向きだと 1240px になる
+    %% ラベル付きの破線は Mermaid 公式の "A-. text .-> B" で書く。空白の無い "-.text.->" は docs サイト (beautiful-mermaid) で辺ごと消える
     SRC[RSS / URL]
     LLM[LLM API<br/>Claude / Gemini / OpenAI]
     AW[AI Writer<br/>CLI / Cloud Run]

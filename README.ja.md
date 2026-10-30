@@ -8,6 +8,7 @@
 
 > **Languages**: [🇬🇧 English](README.md) (正) | [🇯🇵 日本語](README.ja.md)
 
+<!-- キャッチコピーと名言は意図して英語のまま置いている (commit / git log の言葉遊びが訳すと消えるため)。訳さないこと -->
 **Step by step. Commit by commit. The destination shows up in `git log`.**
 
 > "Step by step, I can't see any other way of accomplishing anything."<br>
