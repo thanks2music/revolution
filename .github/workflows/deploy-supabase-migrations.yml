@@ -74,7 +74,7 @@ jobs:
         # 追加に CLI が追従しないと `Failed reading config: Invalid db.major_version: 17` で
         # deploy が壊れるため (本 PR で実証)。CLI は前進する schema 互換性のために latest を
         # 採る公式 example の判断を踏襲。
-        uses: supabase/setup-cli@v2.1.1
+        uses: supabase/setup-cli@v2.1.2
         with:
           version: latest
 
@@ -236,7 +236,7 @@ jobs:
           && (steps.advisor.outputs.has_new == 'false'
               || (steps.advisor.outputs.has_new == 'true' && steps.advisor_notify.outputs.ok == 'true'))
           && !(github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main')
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: advisor-state-staging
           path: current-state.json
@@ -274,7 +274,7 @@ jobs:
       - name: Setup Supabase CLI
         # staging job と整合 (action は v2.1.1 pin / CLI は latest 維持、上の staging job
         # コメント参照)
-        uses: supabase/setup-cli@v2.1.1
+        uses: supabase/setup-cli@v2.1.2
         with:
           version: latest
 
@@ -420,7 +420,7 @@ jobs:
           always() && hashFiles('current-state.json') != ''
           && (steps.advisor.outputs.has_new == 'false'
               || (steps.advisor.outputs.has_new == 'true' && steps.result_notify.outputs.ok == 'true'))
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: advisor-state-production
           path: current-state.json
