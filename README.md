@@ -8,7 +8,7 @@
 
 > **Languages**: [🇬🇧 English](README.md) | [🇯🇵 日本語](README.ja.md)
 
-**Step by step. Commit by commit. The destination shows up in `git log`.**
+**One rep, one commit. The destination shows up in `git log`.**
 
 > "Step by step, I can't see any other way of accomplishing anything."<br>
 > — Michael Jordan, *I Can't Accept Not Trying* (1994)
