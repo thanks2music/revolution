@@ -98,7 +98,9 @@ openai_api_key = "env(OPENAI_API_KEY)"
 
 # Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
 # are monitored, and you can view the emails that would have been sent from the web interface.
-[inbucket]
+# Supabase CLI v3 can no longer read the old name `[inbucket]`; v2.108.0 and later read `[local_smtp]`
+# with the same keys (CLI v3.0.0 release notes, 2026-11-02).
+[local_smtp]
 enabled = true
 # Port to use for the email testing server web interface.
 port = 54324
