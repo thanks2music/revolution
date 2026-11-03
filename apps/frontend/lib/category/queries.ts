@@ -1,4 +1,4 @@
-import { CategorySchema } from '@revolution/schemas/category';
+import { CategorySchema, EVENT_TYPE_SLUGS } from '@revolution/schemas/category';
 import { cache } from 'react';
 import { z } from 'zod';
 
@@ -61,14 +61,49 @@ export async function getCategory(slug: string): Promise<CategoryItem | null> {
 }
 
 /**
+ * DB の種別と、AI Writer が生成できる種別 (`EVENT_TYPE_SLUGS`) の食い違い (Layer 1、純粋関数)。
+ *
+ * - `onlyInDb`: 記事に出てこない種別 (生成側の enum に無い)
+ * - `onlyInCode`: 取り込みで保留になる種別 (DB に無い、G1c)
+ */
+export function diffEventTypes(dbSlugs: readonly string[]): {
+  onlyInDb: string[];
+  onlyInCode: string[];
+} {
+  const code = new Set<string>(EVENT_TYPE_SLUGS);
+  const db = new Set(dbSlugs);
+  return {
+    onlyInDb: dbSlugs.filter((slug) => !code.has(slug)),
+    onlyInCode: EVENT_TYPE_SLUGS.filter((slug) => !db.has(slug)),
+  };
+}
+
+/**
  * `app/[event_type]/page.tsx` (種別の一覧) の `generateStaticParams` 用。
  *
- * 🔴 種別の slug がトップ階層の静的ルート (`titles` など) と重なっていたら **throw してビルドを止める**。
- * 重なった種別のページは静的ルートに負けて黙って届かなくなるため
- * (理由は `lib/category/reserved-segments.ts`)。ビルド時に止めれば、本番は直前のデプロイのまま残る。
+ * 🔴 次のどちらかなら **throw してビルドを止める** (止めれば本番は直前のデプロイのまま残る)。
+ *
+ * - 種別の slug がトップ階層の静的ルート (`titles` など) と重なっている。重なった種別のページは
+ *   静的ルートに負けて黙って届かなくなる (理由は `lib/category/reserved-segments.ts`)
+ * - DB の種別と `EVENT_TYPE_SLUGS` (`@revolution/schemas/category`) が食い違っている。
+ *   種別を足すときは migration・templates・定数の 3 か所を同時に足す約束で、片方だけ足すと
+ *   記事に出てこない種別や、取り込みで保留になる種別が黙って生まれる
+ *
+ * 資格情報が無いビルド (CI) は 0 件なので、食い違いの検査はしない。
  */
 export async function listCategoryParams(): Promise<{ event_type: string }[]> {
   const categories = await listCategories();
+
+  if (categories.length > 0) {
+    const { onlyInDb, onlyInCode } = diffEventTypes(categories.map((category) => category.slug));
+    if (onlyInDb.length > 0 || onlyInCode.length > 0) {
+      throw new Error(
+        'DB の categories と EVENT_TYPE_SLUGS (@revolution/schemas/category) が食い違っています: ' +
+          `DB だけ [${onlyInDb.join(', ')}] / 定数だけ [${onlyInCode.join(', ')}]。` +
+          'migration・templates・定数の 3 か所をそろえてください。',
+      );
+    }
+  }
 
   const reserved = findReservedSlugs(categories.map((category) => category.slug));
   if (reserved.length > 0) {

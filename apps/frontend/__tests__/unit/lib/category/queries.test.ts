@@ -107,12 +107,42 @@ describe('listCategoryParams', () => {
 
   it('stops the build when a slug collides with a static top-level route', async () => {
     // `titles` という種別を作ると `/titles` は作品一覧に当たり、種別のページに届かなくなる。
+    // (食い違いの検査より先に予約語の検査を通すため、定数側にも無い名前で試す)
+    const { findReservedSlugs } = await import('@/lib/category/reserved-segments');
+    expect(findReservedSlugs(['titles'])).toEqual(['titles']);
+  });
+
+  it('stops the build when the DB and EVENT_TYPE_SLUGS disagree', async () => {
+    // 種別を DB にだけ足すと記事に出てこない種別が、定数にだけ足すと取り込みで保留になる種別が生まれる。
     mockHasCredentials.mockReturnValue(true);
     mockCreatePublicClient.mockReturnValue(
-      makeClient({ data: [...FIVE, { slug: 'titles', name: '作品' }], error: null }),
+      makeClient({ data: [...FIVE.slice(0, 4), { slug: 'karaoke', name: 'カラオケ' }], error: null }),
     );
 
     const { listCategoryParams } = await importQueries();
-    await expect(listCategoryParams()).rejects.toThrow(/titles/);
+    await expect(listCategoryParams()).rejects.toThrow(/DB だけ \[karaoke\] \/ 定数だけ \[other\]/);
+  });
+
+  it('skips the drift check when there are no categories (build without credentials)', async () => {
+    mockHasCredentials.mockReturnValue(false);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { listCategoryParams } = await importQueries();
+    await expect(listCategoryParams()).resolves.toEqual([]);
+    warn.mockRestore();
+  });
+});
+
+describe('diffEventTypes', () => {
+  it('reports slugs only in the DB and only in the code', async () => {
+    const { diffEventTypes } = await importQueries();
+    expect(diffEventTypes(['collabo-cafe', 'pop-up-store', 'exhibition', 'chain-store', 'other'])).toEqual({
+      onlyInDb: [],
+      onlyInCode: [],
+    });
+    expect(diffEventTypes(['collabo-cafe', 'karaoke'])).toEqual({
+      onlyInDb: ['karaoke'],
+      onlyInCode: ['pop-up-store', 'exhibition', 'chain-store', 'other'],
+    });
   });
 });
