@@ -72,21 +72,24 @@ export async function listOngoingOccurrences(): Promise<OngoingOccurrence[]> {
     .parse(rows)
     .flatMap(({ events, ...row }) =>
       // 企画が引けない行は種別が分からず URL を作れないので落とす (契約の docstring)。
-      events === null ? [] : [{ ...row, events }],
-    )
-    .map((row) => ({
-      id: row.id,
-      eventId: row.eventId,
-      slug: row.slug,
-      startsOn: row.startsOn,
-      endsOn: row.endsOn,
-      eventName: row.events.name,
-      primaryCategory: row.events.primaryCategory,
-      titles: parseRailTitles(row.events.eventTitles),
-      venueName: row.venues?.name ?? null,
-      // 都道府県・市区は null を取り得る (データ源が無い項目は置かない)。
-      venueRegion: [row.venues?.prefecture, row.venues?.city].filter(Boolean).join(' '),
-    }));
+      events === null
+        ? []
+        : [
+            {
+              id: row.id,
+              eventId: row.eventId,
+              slug: row.slug,
+              startsOn: row.startsOn,
+              endsOn: row.endsOn,
+              eventName: events.name,
+              primaryCategory: events.primaryCategory,
+              titles: parseRailTitles(events.eventTitles),
+              venueName: row.venues?.name ?? null,
+              // 都道府県・市区は null を取り得る (データ源が無い項目は置かない)。
+              venueRegion: [row.venues?.prefecture, row.venues?.city].filter(Boolean).join(' '),
+            },
+          ],
+    );
 }
 
 /** 埋め込みから作品を取り出す。null を落とし、名前順で安定させる。 */
