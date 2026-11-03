@@ -42,7 +42,7 @@ async function statusOf(request: APIRequestContext, path: string) {
     res
       .headersArray()
       .filter(({ name }) => name.toLowerCase() === 'location')
-      .map(({ value }) => new URL(value, 'http://placeholder').pathname)
+      .map(({ value }) => new URL(value, 'http://placeholder').pathname),
   );
   return {
     status: res.status(),
@@ -55,15 +55,15 @@ test.beforeAll(async ({ browser }) => {
   try {
     await page.goto('/events');
     const events = (
-      await page.$$eval('a[href]', anchors => anchors.map(a => a.getAttribute('href') ?? ''))
-    ).filter(href => /^\/[a-z0-9-]+\/\d+$/.test(href));
+      await page.$$eval('a[href]', (anchors) => anchors.map((a) => a.getAttribute('href') ?? ''))
+    ).filter((href) => /^\/[a-z0-9-]+\/\d+$/.test(href));
     expect(events.length, '/events に企画リンクが無い (staging のデータを確認)').toBeGreaterThan(0);
 
     const eventUrl = events[0];
     await page.goto(eventUrl);
     const occurrences = (
-      await page.$$eval('a[href]', anchors => anchors.map(a => a.getAttribute('href') ?? ''))
-    ).filter(href => href.startsWith(`${eventUrl}/`));
+      await page.$$eval('a[href]', (anchors) => anchors.map((a) => a.getAttribute('href') ?? ''))
+    ).filter((href) => href.startsWith(`${eventUrl}/`));
     expect(occurrences.length, `${eventUrl} に開催リンクが無い`).toBeGreaterThan(0);
 
     const [, type, id] = eventUrl.split('/');

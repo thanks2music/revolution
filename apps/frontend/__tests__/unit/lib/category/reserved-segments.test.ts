@@ -27,9 +27,24 @@ function staticDirs(dir: string): string[] {
     .sort();
 }
 
+/**
+ * `app/` の第 1 階層の静的ルート。
+ *
+ * ⚠️ route group `(x)` は URL に現れないので、**`app/(x)/about/` の `about` も第 1 階層**になる。
+ *    group の中まで見ないと、そこに足したルートを一覧に入れ忘れても通ってしまう。
+ */
+function topLevelRoutes(dir = 'app'): string[] {
+  const groups = readdirSync(path.join(FRONTEND_ROOT, dir), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\(.+\)$/.test(entry.name))
+    .map((entry) => path.join(dir, entry.name));
+  return [
+    ...new Set([...staticDirs(dir), ...groups.flatMap((group) => topLevelRoutes(group))]),
+  ].sort();
+}
+
 describe('reserved segments', () => {
-  it('app/ 直下の静的ルートと一致する', () => {
-    expect([...APP_ROUTE_SEGMENTS].sort()).toEqual(staticDirs('app'));
+  it('app/ 直下の静的ルート (route group の中を含む) と一致する', () => {
+    expect([...APP_ROUTE_SEGMENTS].sort()).toEqual(topLevelRoutes());
   });
 
   it('public/ 直下のディレクトリと一致する', () => {

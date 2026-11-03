@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import { EXPLORE_EXCLUDES, isTabActive, isTabCurrent } from '@/components/organisms/BottomTabBar';
+import { APP_ROUTE_SEGMENTS } from '@/lib/category/reserved-segments';
 
 /**
  * 下部タブの現在地判定 (Layer 1、純粋関数)。
@@ -53,6 +54,18 @@ describe('isTabCurrent (探す)', () => {
     ]) {
       expect(isTabCurrent(p, EXPLORE)).toBe(false);
     }
+  });
+
+  it('classifies every top-level route as either explore or excluded', () => {
+    // 判定を反転したので、**新しいルートは何もしなければ「探す」に入る**。`/about` のような
+    // 探す以外のルートを足したときに気づけるよう、全ルートの分類をここで固定する
+    // (`APP_ROUTE_SEGMENTS` は `reserved-segments.test.ts` が `app/` と照合している)。
+    // ルートを足してここが落ちたら、探すなら下の一覧へ、そうでなければ EXPLORE_EXCLUDES へ。
+    const EXPLORE_ROUTES = ['events', 'titles', 'venues'];
+    const unclassified = APP_ROUTE_SEGMENTS.filter(
+      (segment) => EXPLORE_ROUTES.includes(segment) === EXPLORE_EXCLUDES.includes(`/${segment}`),
+    );
+    expect(unclassified).toEqual([]);
   });
 
   it('uses the plain prefix check when excludes is absent (記事 / マイページ)', () => {
