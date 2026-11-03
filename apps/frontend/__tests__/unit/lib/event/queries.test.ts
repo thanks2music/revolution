@@ -71,13 +71,27 @@ function makeClient(
   };
 }
 
+/** 主分類の埋め込み (企画の URL の第 1 階層、2026-11-03)。 */
+const CAFE = { slug: 'collabo-cafe', name: 'コラボカフェ' };
+
 const EVENT_ROW = {
   id: 2,
   slug: 'seed-cafe',
   name: 'シード企画',
   description: null,
   officialUrl: null,
+  primaryCategory: CAFE,
 };
+
+/**
+ * `listOccurrenceParams` が読む `occurrence_view` の 1 行。
+ * 企画の種別を `events!inner(primaryCategory:...)` の埋め込みで持つ。
+ */
+const paramRow = (eventId: number, slug: string, category = CAFE) => ({
+  eventId,
+  slug,
+  events: { primaryCategory: category },
+});
 
 async function importQueries() {
   return await import('@/lib/event/queries');
@@ -113,10 +127,10 @@ describe('listEventParams', () => {
       makeClient({
         occurrence_view: {
           data: [
-            { eventId: 2, slug: 'a' },
-            { eventId: 2, slug: 'b' },
-            { eventId: 3, slug: 'c' },
-            { eventId: 2, slug: 'd' },
+            paramRow(2, 'a'),
+            paramRow(2, 'b'),
+            paramRow(3, 'c'),
+            paramRow(2, 'd'),
           ],
           error: null,
         },
@@ -124,7 +138,10 @@ describe('listEventParams', () => {
     );
 
     const { listEventParams } = await importQueries();
-    await expect(listEventParams()).resolves.toEqual([{ id: '2' }, { id: '3' }]);
+    await expect(listEventParams()).resolves.toEqual([
+      { event_type: 'collabo-cafe', id: '2' },
+      { event_type: 'collabo-cafe', id: '3' },
+    ]);
   });
 
   it('throws when credentials exist but the query fails', async () => {
@@ -146,7 +163,7 @@ describe('listEventListItems', () => {
    * `makeClient` のキューは順に消費されるので、その順で 2 件積む。
    */
   const occurrenceViewReads = (
-    params: { eventId: number; slug: string }[],
+    params: ReturnType<typeof paramRow>[],
     counts: { eventId: number; status: string }[],
   ) => [
     { data: params, error: null },
@@ -161,8 +178,8 @@ describe('listEventListItems', () => {
       makeClient({
         occurrence_view: occurrenceViewReads(
           [
-            { eventId: 2, slug: 'a' },
-            { eventId: 3, slug: 'b' },
+            paramRow(2, 'a'),
+            paramRow(3, 'b'),
           ],
           [
             { eventId: 2, status: 'ongoing' },
@@ -174,13 +191,13 @@ describe('listEventListItems', () => {
             {
               id: 2,
               name: 'シード企画',
-              primaryCategory: { name: 'コラボカフェ' },
+              primaryCategory: CAFE,
               eventTitles: [{ titles: { slug: 'seed', name: 'シード怪獣の日常' } }],
             },
             {
               id: 3,
               name: '別の企画',
-              primaryCategory: { name: '原画展' },
+              primaryCategory: { slug: 'exhibition', name: '原画展・展示会' },
               eventTitles: [],
             },
           ],
@@ -194,7 +211,7 @@ describe('listEventListItems', () => {
       {
         id: 2,
         name: 'シード企画',
-        categoryName: 'コラボカフェ',
+        primaryCategory: CAFE,
         titles: [{ slug: 'seed', name: 'シード怪獣の日常' }],
         occurrenceCount: 1,
         statusCounts: [{ status: 'ongoing', label: '開催中', count: 1 }],
@@ -202,7 +219,7 @@ describe('listEventListItems', () => {
       {
         id: 3,
         name: '別の企画',
-        categoryName: '原画展',
+        primaryCategory: { slug: 'exhibition', name: '原画展・展示会' },
         titles: [],
         occurrenceCount: 1,
         statusCounts: [{ status: 'ended', label: '終了', count: 1 }],
@@ -217,7 +234,7 @@ describe('listEventListItems', () => {
     mockCreatePublicClient.mockReturnValue(
       makeClient({
         occurrence_view: occurrenceViewReads(
-          [{ eventId: 2, slug: 'a' }],
+          [paramRow(2, 'a')],
           [
             // 意図的に表示順とは違う順で返す (並べ直しているのを確かめる)。
             { eventId: 2, status: 'ended' },
@@ -228,7 +245,7 @@ describe('listEventListItems', () => {
           ],
         ),
         events: {
-          data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+          data: [{ id: 2, name: 'シード企画', primaryCategory: CAFE, eventTitles: [] }],
           error: null,
         },
       }),
@@ -245,14 +262,14 @@ describe('listEventListItems', () => {
     ]);
   });
 
-  it('tolerates null embeds and sorts title chips in ja order (not DB order)', async () => {
-    // 埋め込みは FK 先が消えていると `null` を返す。落として描画を壊さない。
+  it('drops null title embeds and sorts title chips in ja order (not DB order)', async () => {
+    // 作品の埋め込みは FK 先が消えていると `null` を返す。落として描画を壊さない。
     // 作品チップの並びは DB 任せにしない (ビルドごとに順序が変わらないように)。
     mockHasCredentials.mockReturnValue(true);
     mockCreatePublicClient.mockReturnValue(
       makeClient({
         occurrence_view: occurrenceViewReads(
-          [{ eventId: 6, slug: 'a' }],
+          [paramRow(6, 'a')],
           [{ eventId: 6, status: 'ongoing' }],
         ),
         events: {
@@ -260,7 +277,7 @@ describe('listEventListItems', () => {
             {
               id: 6,
               name: 'STAR WARS CAFE',
-              primaryCategory: null,
+              primaryCategory: CAFE,
               eventTitles: [
                 { titles: { slug: 'mandalorian', name: 'マンダロリアン' } },
                 { titles: null },
@@ -275,8 +292,29 @@ describe('listEventListItems', () => {
 
     const { listEventListItems } = await importQueries();
     const [item] = await listEventListItems();
-    expect(item.categoryName).toBeNull();
+    expect(item.primaryCategory).toEqual(CAFE);
     expect(item.titles.map((t) => t.name)).toEqual(['スター・ウォーズ', 'マンダロリアン']);
+  });
+
+  it('rejects a null primary category instead of linking to /undefined/{id}', async () => {
+    // 主分類の slug は企画の URL の第 1 階層 (2026-11-03)。null を通すと壊れたリンクを
+    // 黙って作るので、契約 (`PrimaryCategorySchema`) で落として表に出す。
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        occurrence_view: occurrenceViewReads(
+          [paramRow(6, 'a')],
+          [{ eventId: 6, status: 'ongoing' }],
+        ),
+        events: {
+          data: [{ id: 6, name: 'STAR WARS CAFE', primaryCategory: null, eventTitles: [] }],
+          error: null,
+        },
+      }),
+    );
+
+    const { listEventListItems } = await importQueries();
+    await expect(listEventListItems()).rejects.toThrow();
   });
 
   /**
@@ -297,14 +335,14 @@ describe('listEventListItems', () => {
           occurrence_view: occurrenceViewReads(
             // 同じ企画が開催数だけ出てくる → dedupe されて [2, 3] になる。
             [
-              { eventId: 2, slug: 'a' },
-              { eventId: 3, slug: 'b' },
-              { eventId: 2, slug: 'c' },
+              paramRow(2, 'a'),
+              paramRow(3, 'b'),
+              paramRow(2, 'c'),
             ],
             [{ eventId: 2, status: 'ongoing' }],
           ),
           events: {
-            data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+            data: [{ id: 2, name: 'シード企画', primaryCategory: CAFE, eventTitles: [] }],
             error: null,
           },
         },
@@ -330,11 +368,11 @@ describe('listEventListItems', () => {
       makeClient(
         {
           occurrence_view: occurrenceViewReads(
-            [{ eventId: 2, slug: 'a' }],
+            [paramRow(2, 'a')],
             [{ eventId: 2, status: 'ongoing' }],
           ),
           events: {
-            data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+            data: [{ id: 2, name: 'シード企画', primaryCategory: CAFE, eventTitles: [] }],
             error: null,
           },
         },
@@ -366,18 +404,18 @@ describe('listEventListItems', () => {
     const eventPage = Array.from({ length: 500 }, (_, i) => ({
       id: i + 1,
       name: `企画 ${String(i + 1).padStart(4, '0')}`,
-      primaryCategory: null,
+      primaryCategory: CAFE,
       eventTitles: [],
     }));
     mockCreatePublicClient.mockReturnValue(
       makeClient(
         {
-          occurrence_view: occurrenceViewReads([{ eventId: 1, slug: 'a' }], []),
+          occurrence_view: occurrenceViewReads([paramRow(1, 'a')], []),
           events: [
             { data: eventPage, error: null },
             {
               data: [
-                { id: 501, name: '企画 0501', primaryCategory: null, eventTitles: [] },
+                { id: 501, name: '企画 0501', primaryCategory: CAFE, eventTitles: [] },
               ],
               error: null,
             },
@@ -411,11 +449,11 @@ describe('listEventListItems', () => {
       makeClient(
         {
           occurrence_view: occurrenceViewReads(
-            [{ eventId: 2, slug: 'a' }],
+            [paramRow(2, 'a')],
             [{ eventId: 2, status: 'ongoing' }],
           ),
           events: {
-            data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+            data: [{ id: 2, name: 'シード企画', primaryCategory: CAFE, eventTitles: [] }],
             error: null,
           },
         },
@@ -427,10 +465,10 @@ describe('listEventListItems', () => {
     await listEventListItems();
 
     expect(onTable(calls, 'events', 'select').map((c) => c.args[0])).toEqual([
-      'id, name, primaryCategory:categories!primary_category_id(name), eventTitles:event_titles(titles(slug, name))',
+      'id, name, primaryCategory:categories!primary_category_id(slug, name), eventTitles:event_titles(titles(slug, name))',
     ]);
     expect(onTable(calls, 'occurrence_view', 'select').map((c) => c.args[0])).toEqual([
-      'eventId:event_id, slug',
+      'eventId:event_id, slug, events!inner(primaryCategory:categories!primary_category_id(slug, name))',
       'eventId:event_id, status',
     ]);
   });
@@ -439,10 +477,7 @@ describe('listEventListItems', () => {
     // 集計は `occurrence_view` の全件走査。`db.max_rows` は黙って打ち切るため
     // page 化が必要 (#333 で会場ページに入れたのと同じ防御)。
     mockHasCredentials.mockReturnValue(true);
-    const firstPage = Array.from({ length: 500 }, (_, i) => ({
-      eventId: 2,
-      slug: `occ-${i}`,
-    }));
+    const firstPage = Array.from({ length: 500 }, (_, i) => paramRow(2, `occ-${i}`));
     const firstCountPage = Array.from({ length: 500 }, () => ({
       eventId: 2,
       status: 'ended',
@@ -452,13 +487,13 @@ describe('listEventListItems', () => {
         occurrence_view: [
           // listOccurrenceParams: 500 → 1 件で終端
           { data: firstPage, error: null },
-          { data: [{ eventId: 2, slug: 'occ-500' }], error: null },
+          { data: [paramRow(2, 'occ-500')], error: null },
           // countOccurrencesByEvent: 500 → 1 件で終端
           { data: firstCountPage, error: null },
           { data: [{ eventId: 2, status: 'ongoing' }], error: null },
         ],
         events: {
-          data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+          data: [{ id: 2, name: 'シード企画', primaryCategory: CAFE, eventTitles: [] }],
           error: null,
         },
       }),
@@ -496,7 +531,7 @@ describe('listEventListItems', () => {
     mockHasCredentials.mockReturnValue(true);
     mockCreatePublicClient.mockReturnValue(
       makeClient({
-        occurrence_view: occurrenceViewReads([{ eventId: 2, slug: 'a' }], []),
+        occurrence_view: occurrenceViewReads([paramRow(2, 'a')], []),
         events: { data: null, error: { message: 'summaries boom' } },
       }),
     );
@@ -510,11 +545,11 @@ describe('listEventListItems', () => {
     mockCreatePublicClient.mockReturnValue(
       makeClient({
         occurrence_view: [
-          { data: [{ eventId: 2, slug: 'a' }], error: null },
+          { data: [paramRow(2, 'a')], error: null },
           { data: null, error: { message: 'counts boom' } },
         ],
         events: {
-          data: [{ id: 2, name: 'シード企画', primaryCategory: null, eventTitles: [] }],
+          data: [{ id: 2, name: 'シード企画', primaryCategory: CAFE, eventTitles: [] }],
           error: null,
         },
       }),
@@ -592,7 +627,7 @@ describe('findRelatedEvents (via getEventDetail)', () => {
               ],
               error: null,
             },
-            { data: [{ events: { id: 7, name: '関連企画' } }], error: null },
+            { data: [{ events: { id: 7, name: '関連企画', primaryCategory: CAFE } }], error: null },
           ],
           occurrence_view: [
             { data: [], error: null }, // 自分の開催
@@ -618,7 +653,7 @@ describe('findRelatedEvents (via getEventDetail)', () => {
     const limits = calls.filter((c) => c.method === 'limit').map((c) => c.args[0]);
     expect(limits.every((l) => typeof l === 'number' && l > 12)).toBe(true);
 
-    expect(result?.relatedEvents).toEqual([{ id: 7, name: '関連企画' }]);
+    expect(result?.relatedEvents).toEqual([{ id: 7, name: '関連企画', primaryCategory: CAFE }]);
   });
 
   it('drops related events that have no published occurrence (no links to empty pages)', async () => {
@@ -630,8 +665,8 @@ describe('findRelatedEvents (via getEventDetail)', () => {
           { data: [{ titles: { slug: 'w1', name: 'W1' } }], error: null },
           {
             data: [
-              { events: { id: 7, name: '開催あり' } },
-              { events: { id: 8, name: '開催なし' } },
+              { events: { id: 7, name: '開催あり', primaryCategory: CAFE } },
+              { events: { id: 8, name: '開催なし', primaryCategory: CAFE } },
             ],
             error: null,
           },
@@ -646,7 +681,7 @@ describe('findRelatedEvents (via getEventDetail)', () => {
     const { getEventDetail } = await importQueries();
     const result = await getEventDetail('2');
 
-    expect(result?.relatedEvents).toEqual([{ id: 7, name: '開催あり' }]);
+    expect(result?.relatedEvents).toEqual([{ id: 7, name: '開催あり', primaryCategory: CAFE }]);
   });
 
   /**
@@ -670,7 +705,7 @@ describe('findRelatedEvents (via getEventDetail)', () => {
           // ちょうど上限行数を返す = 取りこぼしの疑いがある状態
           {
             data: Array.from({ length: CANDIDATE_ROWS }, (_, i) => ({
-              events: { id: 1000 + i, name: `関連 ${i}` },
+              events: { id: 1000 + i, name: `関連 ${i}`, primaryCategory: CAFE },
             })),
             error: null,
           },
@@ -731,8 +766,8 @@ describe('findRelatedEvents (via getEventDetail)', () => {
           {
             // 同じ企画が 2 作品ぶん重複して返る
             data: [
-              { events: { id: 7, name: '関連企画' } },
-              { events: { id: 7, name: '関連企画' } },
+              { events: { id: 7, name: '関連企画', primaryCategory: CAFE } },
+              { events: { id: 7, name: '関連企画', primaryCategory: CAFE } },
             ],
             error: null,
           },
@@ -746,6 +781,6 @@ describe('findRelatedEvents (via getEventDetail)', () => {
 
     const { getEventDetail } = await importQueries();
     const result = await getEventDetail('2');
-    expect(result?.relatedEvents).toEqual([{ id: 7, name: '関連企画' }]);
+    expect(result?.relatedEvents).toEqual([{ id: 7, name: '関連企画', primaryCategory: CAFE }]);
   });
 });

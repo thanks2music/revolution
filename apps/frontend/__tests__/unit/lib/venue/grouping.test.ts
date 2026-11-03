@@ -20,7 +20,11 @@ function occurrence(overrides: Partial<VenueOccurrence>): VenueOccurrence {
     startsOn: '2026-04-10',
     endsOn: '2026-08-02',
     status: 'ongoing',
-    events: null,
+    events: {
+      id: 1,
+      name: '名探偵コナン カフェ',
+      primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' },
+    },
     eventName: '名探偵コナン カフェ',
     ...overrides,
   };

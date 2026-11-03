@@ -152,7 +152,7 @@ export default async function TitlePage(props: TitlePageProps) {
               >
                 <div className="mb-3 flex flex-wrap items-baseline gap-2">
                   <Link
-                    href={getEventUrl(event.id)}
+                    href={getEventUrl(event)}
                     className="font-display text-lg font-bold text-ink-strong hover:text-primary-700"
                   >
                     {event.name}
@@ -165,7 +165,7 @@ export default async function TitlePage(props: TitlePageProps) {
                 <ul className="grid gap-3 md:grid-cols-2" data-grid-layout="row">
                   {occurrences.map((occurrence) => (
                     <li key={occurrence.id}>
-                      <OccurrenceCard eventId={event.id} occurrence={occurrence} />
+                      <OccurrenceCard event={event} occurrence={occurrence} />
                     </li>
                   ))}
                 </ul>

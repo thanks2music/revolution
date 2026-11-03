@@ -65,7 +65,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   events: {
     id: 8,
     name: '呪術廻戦カフェ2026 5th Anniversary',
-    primaryCategory: { name: 'コラボカフェ' },
+    primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' },
     eventTitles: [{ titles: { slug: 'jujutsu-kaisen', name: '呪術廻戦' } }],
   },
   ...over,
@@ -106,19 +106,20 @@ describe('listOngoingOccurrences', () => {
       startsOn: '2026-07-09',
       endsOn: '2026-08-23',
       eventName: '呪術廻戦カフェ2026 5th Anniversary',
-      categoryName: 'コラボカフェ',
+      primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' },
       titles: [{ slug: 'jujutsu-kaisen', name: '呪術廻戦' }],
       venueName: 'BOX cafe&space グローバルゲート名古屋1号店',
       venueRegion: '愛知県 名古屋市中村区',
     });
   });
 
-  it('tolerates null embeds (会場なし / 企画なし / 作品なし)', async () => {
+  it('tolerates null venue / title embeds (会場なし / 作品なし)', async () => {
     mockHasCredentials.mockReturnValue(true);
+    const base = row();
     mockCreatePublicClient.mockReturnValue(
       makeClient({
         occurrence_view: {
-          data: [row({ venues: null, events: null })],
+          data: [row({ venues: null, events: { ...base.events, eventTitles: [] } })],
           error: null,
         },
       }),
@@ -127,12 +128,25 @@ describe('listOngoingOccurrences', () => {
     const { listOngoingOccurrences } = await importQueries();
     const [card] = await listOngoingOccurrences();
 
-    // 企画名は fallback。会場が無ければ住所行を出さないよう空文字 / null にする。
-    expect(card.eventName).toBe('企画情報なし');
-    expect(card.categoryName).toBeNull();
+    // 会場が無ければ住所行を出さないよう空文字 / null にする。
     expect(card.titles).toEqual([]);
     expect(card.venueName).toBeNull();
     expect(card.venueRegion).toBe('');
+  });
+
+  it('drops rows whose event embed is null (the link needs the event type)', async () => {
+    // 企画が引けない行は種別が分からず、開催ページの URL (`/{種別}/{id}/{slug}`) を
+    // 作れない。種別を URL に入れる前も、企画の無い開催ページは 404 だった。
+    mockHasCredentials.mockReturnValue(true);
+    mockCreatePublicClient.mockReturnValue(
+      makeClient({
+        occurrence_view: { data: [row({ events: null }), row({ id: 23 })], error: null },
+      }),
+    );
+
+    const { listOngoingOccurrences } = await importQueries();
+    const cards = await listOngoingOccurrences();
+    expect(cards.map((card) => card.id)).toEqual([23]);
   });
 
   it('joins only the non-null parts of the region', async () => {
@@ -161,7 +175,7 @@ describe('listOngoingOccurrences', () => {
               events: {
                 id: 6,
                 name: 'STAR WARS CAFE',
-                primaryCategory: null,
+                primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' },
                 eventTitles: [
                   { titles: { slug: 'mandalorian', name: 'マンダロリアン' } },
                   { titles: null },
@@ -238,7 +252,7 @@ describe('pickOngoingTitles', () => {
       startsOn: null,
       endsOn: null,
       eventName: 'e',
-      categoryName: null,
+      primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' },
       titles,
       venueName: null,
       venueRegion: '',

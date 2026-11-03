@@ -9,6 +9,7 @@ import { z } from 'zod';
 import {
   EVENT_COLUMNS,
   EVENT_LIST_COLUMNS,
+  EVENT_SUMMARY_COLUMNS,
   EVENT_TITLES_COLUMNS,
   EventListRowSchema,
   EventSchema,
@@ -67,31 +68,36 @@ export type EventPageData = {
 };
 
 /**
- * `generateStaticParams` 用。開催を 1 件以上持つ企画の ID を列挙する。
+ * `generateStaticParams` 用。開催を 1 件以上持つ企画の (種別, ID) を列挙する。
  *
  * ## 開催の列挙から導出する
  *
  * 「開催を 1 件以上持つ企画」は **`listOccurrenceParams()` の結果を dedupe した
  * もの**そのもの。独立したクエリを持つと、同じ `occurrence_view` の全件走査が
  * 2 周するうえ、**「静的生成対象の企画」という 1 つの定義が 2 箇所に存在**して
- * 片方だけ条件を変えると `/events/{id}` と `/events/{id}/{slug}` の集合がずれる。
+ * 片方だけ条件を変えると `/{種別}/{id}` と `/{種別}/{id}/{slug}` の集合がずれる。
  *
  * 資格情報が無いビルドで 0 件を返す扱い、`db.max_rows` を跨ぐページング、
  * 失敗時の throw もすべて `listOccurrenceParams` に一本化される。
  */
-export async function listEventParams(): Promise<{ id: string }[]> {
+export async function listEventParams(): Promise<{ event_type: string; id: string }[]> {
   const occurrences = await listOccurrenceParams();
-  // Set は挿入順を保つので、列挙側の order がそのまま残る
-  // (ビルドごとにパス順が変わらない)。
-  return [...new Set(occurrences.map((row) => row.id))].map((id) => ({ id }));
+  // Map は挿入順を保つので、列挙側の order がそのまま残る
+  // (ビルドごとにパス順が変わらない)。企画の種別は開催ごとに同じ値なので、
+  // id で畳めば (種別, id) の組も一意になる。
+  const byId = new Map<string, string>();
+  for (const row of occurrences) {
+    byId.set(row.id, row.event_type);
+  }
+  return [...byId].map(([id, event_type]) => ({ event_type, id }));
 }
 
-/** `/events` 一覧カード 1 枚ぶんの表示用データ (Claude Design v6 #14)。 */
+/** `/events` と `/{種別}` の一覧カード 1 枚ぶんの表示用データ (Claude Design v6 #14)。 */
 export type EventListItem = {
   id: number;
   name: string;
-  /** 主分類 (イベントタイプ) の表示名。埋め込みが解決できなければ null。 */
-  categoryName: string | null;
+  /** 主分類 (イベントタイプ)。タグの表示名と、リンク先の URL の第 1 階層に使う。 */
+  primaryCategory: { slug: string; name: string };
   /** この企画に紐づく作品 (名前順)。複数作品コラボがあり得る。 */
   titles: Title[];
   /**
@@ -110,6 +116,9 @@ export type EventListItem = {
  *
  * 対象の定義は `listEventParams` (= 静的生成対象) と同じにして、
  * **一覧に載る企画 = ページが生成される企画**を保つ (リンク先が 404 にならない)。
+ *
+ * 種別の一覧 (`/{種別}`) も本関数の結果を種別で絞って使う。集合の定義を
+ * 2 つ目として作らないため (絞り込み用の別クエリを持たない)。
  *
  * ## v6 で列が増えた経緯 (2026-08-22)
  *
@@ -162,7 +171,7 @@ export async function listEventListItems(): Promise<EventListItem[]> {
       return {
         id: row.id,
         name: row.name,
-        categoryName: row.primaryCategory?.name ?? null,
+        primaryCategory: row.primaryCategory,
         titles: parseEmbeddedEventTitles(row.eventTitles),
         occurrenceCount: Object.values(byStatus).reduce((sum, n) => sum + n, 0),
         statusCounts: summarizeStatusCounts(byStatus),
@@ -333,7 +342,7 @@ async function findRelatedEvents(eventId: number, titleSlugs: string[]): Promise
   const supabase = createPublicClient();
   const { data, error } = await supabase
     .from('event_titles')
-    .select('events!inner(id, name), titles!inner(slug)')
+    .select(`events!inner(${EVENT_SUMMARY_COLUMNS}), titles!inner(slug)`)
     .in('titles.slug', titleSlugs)
     // 自己参照をクエリ側で除く。作品数に応じて余分に取る必要がなくなる。
     .neq('events.id', eventId)

@@ -27,6 +27,26 @@ import { z } from 'zod';
  * **契約 (zod) は shared、クエリの書き方は frontend** という分割にしている。
  */
 
+/**
+ * 企画の主分類 (イベント種別)。**企画の URL の第 1 階層** (`/{slug}/{id}`) になる。
+ *
+ * ⚠️ **non-null で受ける。** slug が無いと URL を組み立てられないため。
+ * `primary_category_id` は NOT NULL FK で、`categories` は anon から全件読める
+ * (RLS の SELECT が全公開) ので、実運用で null にはならない。null が来たら
+ * データ不整合なので、parse で落として表に出す (黙って `/undefined/11` を作らない)。
+ */
+export const PrimaryCategorySchema = CategoryRowSchema.pick({ slug: true, name: true });
+
+/**
+ * 主分類の埋め込み (select 句の断片)。
+ *
+ * 🔴 **`categories(...)` と素朴に書くと 300 PGRST201 で落ちる** (2026-08-22 実測)。
+ * `events` と `categories` の間には関係が **2 経路**ある
+ * (`events.primary_category_id` の FK と、補助タグ用の `event_categories` の M:N)。
+ * PostgREST は曖昧参照を**エラーにする**ので、`!primary_category_id` で経路を明示する。
+ */
+export const PRIMARY_CATEGORY_EMBED = 'primaryCategory:categories!primary_category_id(slug, name)';
+
 /** 企画。ページ表示に使う列だけに絞った契約。 */
 export const EventSchema = EventRowSchema.pick({
   id: true,
@@ -34,12 +54,12 @@ export const EventSchema = EventRowSchema.pick({
   name: true,
   description: true,
   officialUrl: true,
-});
+}).extend({ primaryCategory: PrimaryCategorySchema });
 
 export type Event = z.infer<typeof EventSchema>;
 
 /** 上記に対応する PostgREST の select 句 (別名で camelCase へ揃える)。 */
-export const EVENT_COLUMNS = 'id, slug, name, description, officialUrl:official_url';
+export const EVENT_COLUMNS = `id, slug, name, description, officialUrl:official_url, ${PRIMARY_CATEGORY_EMBED}`;
 
 /** 作品。パンくずと導線に使う列だけ。 */
 export const TitleSchema = TitleRowSchema.pick({ slug: true, name: true });
@@ -63,20 +83,13 @@ export function parseEmbeddedTitles(data: unknown): Title[] {
     .filter((title): title is Title => title !== null);
 }
 
-/**
- * 企画名が解決できないときの表示。
- *
- * ⚠️ **slug で代用しない。** slug は URL 用の識別子であって人が読む名前ではない
- * (`OccurrenceCard.tsx` の `VENUE_NAME_FALLBACK` と同じ規則)。
- *
- * 会場ページ (`lib/venue/contracts.ts` の埋め込み解決) と作品の開催一覧
- * (企画名の逆引きが外れた場合) の**両方**が使うため、企画の契約を持つ
- * 本モジュールに置く。
- */
-export const EVENT_NAME_FALLBACK = '企画情報なし';
+/** 一覧・リンク用の最小の企画情報 (リンクに種別が要るので主分類も持つ)。 */
+export const EventSummarySchema = EventRowSchema.pick({ id: true, name: true }).extend({
+  primaryCategory: PrimaryCategorySchema,
+});
 
-/** 一覧・リンク用の最小の企画情報。 */
-export const EventSummarySchema = EventRowSchema.pick({ id: true, name: true });
+/** 上記に対応する select 句 (`events!inner(...)` などの埋め込みの中身に使う)。 */
+export const EVENT_SUMMARY_COLUMNS = `id, name, ${PRIMARY_CATEGORY_EMBED}`;
 
 export type EventSummary = z.infer<typeof EventSummarySchema>;
 
@@ -98,8 +111,8 @@ export type EventSummary = z.infer<typeof EventSummarySchema>;
  * 取り出し側で落とす (`parseEmbeddedTitles` と同じ防御)。
  */
 export const EventListRowSchema = EventRowSchema.pick({ id: true, name: true }).extend({
-  /** 主分類 (イベントタイプ)。`primary_category_id` は NOT NULL FK なので実運用では非 null。 */
-  primaryCategory: CategoryRowSchema.pick({ name: true }).nullable(),
+  /** 主分類 (イベントタイプ)。タグの表示名とリンク先の種別に使う。null の扱いは `PrimaryCategorySchema`。 */
+  primaryCategory: PrimaryCategorySchema,
   /** この企画に紐づく作品。開催 0 件の企画は一覧に載らないが、作品 0 件はあり得る。 */
   eventTitles: z.array(z.object({ titles: TitleSchema.nullable() })),
 });
@@ -107,21 +120,12 @@ export const EventListRowSchema = EventRowSchema.pick({ id: true, name: true }).
 /**
  * 上記に対応する PostgREST の select 句。
  *
- * 🔴 **`categories(name)` と素朴に書くと 300 PGRST201 で落ちる** (2026-08-22 実測)。
- * `events` と `categories` の間には関係が **2 経路**あるため:
- *
- * | 経路 | 由来 |
- * |---|---|
- * | `events_primary_category_id_categories_id_fk` (many-to-one) | `events.primary_category_id` |
- * | `event_categories` (many-to-many) | 補助タグ用の中間テーブル |
- *
- * PostgREST は曖昧参照を**エラーにする** (黙ってどちらかを選ばない) ので、
- * `!primary_category_id` で経路を明示する。**ここを消すと `/events` が 500 になる。**
+ * 主分類は `PRIMARY_CATEGORY_EMBED` を使う (`!primary_category_id` の経路指定を消すと
+ * PGRST201 で `/events` が 500 になる。理由は `PRIMARY_CATEGORY_EMBED` の docstring)。
  *
  * 補助タグ (`event_categories`) は決定 ⑨ で MVP スコープ外なので読まない。
  */
-export const EVENT_LIST_COLUMNS =
-  'id, name, primaryCategory:categories!primary_category_id(name), eventTitles:event_titles(titles(slug, name))';
+export const EVENT_LIST_COLUMNS = `id, name, ${PRIMARY_CATEGORY_EMBED}, eventTitles:event_titles(titles(slug, name))`;
 
 /**
  * 埋め込み結果から作品名だけを取り出す (Layer 1、純粋関数)。

@@ -1,5 +1,16 @@
 /**
- * 企画ページ `/events/{id}` (S2)
+ * 企画ページ `/{種別}/{id}` (S2、2026-11-03 に `/events/{id}` から移動)
+ *
+ * ## 種別が食い違う URL は正しい URL へ転送する
+ *
+ * 識別子は ID で、種別 (第 1 階層) は分類の接頭辞。主分類は記事の取り込みで
+ * 変わり得る (`execute-ingest.ts` は primary_category_id を記事側の値で毎回同期する)
+ * ので、古い種別の URL も ID で企画を引き、`permanentRedirect` で正しい URL へ送る。
+ * `categories` に無い種別 (旧 `/events/{id}` を含む) は `getCategory` で確かめて 404 にする。
+ *
+ * ⚠️ `dynamicParams = false` はこのルートに置けない。Next.js はルート内の 1 セグメントでも
+ * `false` があるとルート全体を「事前生成以外は 404」にするため、新しい企画がビルドまで
+ * 404 になる (理由と出典は `app/[event_type]/page.tsx`)。
  *
  * ## URL に slug を出さない理由
  *
@@ -18,11 +29,12 @@
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 
 import { OccurrenceCard } from '@/components/molecules/OccurrenceCard';
+import { getCategory } from '@/lib/category/queries';
 import Layout from '@/components/templates/Layout';
-import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
+import { getEventUrl } from '@/lib/event/event-url';
 import { getTitleUrl } from '@/lib/title/title-url';
 import { groupOccurrencesByStatus } from '@/lib/event/grouping';
 import { getEventDetail, listEventParams } from '@/lib/event/queries';
@@ -30,20 +42,18 @@ import { generateContentMetadata } from '@/lib/metadata';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { toBadgeStatus } from '@/lib/occurrence/status';
 import { isSafeHttpUrl } from '@/lib/url-safety';
-import type { PageProps } from '@/types/page-props';
+import type { EventPageProps } from '@/types/page-props';
 
 // 開催詳細ページと揃える (S3 の取り込み直後に反映されてほしい)。
 export const revalidate = 120;
-
-type EventPageProps = PageProps<{ id: string }>;
 
 export async function generateStaticParams() {
   return listEventParams();
 }
 
 export async function generateMetadata(props: EventPageProps): Promise<Metadata> {
-  const { id } = await props.params;
-  const data = await getEventDetail(id);
+  const { event_type, id } = await props.params;
+  const data = (await getCategory(event_type)) ? await getEventDetail(id) : null;
 
   if (!data) {
     return { title: '企画情報が見つかりません' };
@@ -62,15 +72,20 @@ export async function generateMetadata(props: EventPageProps): Promise<Metadata>
   return generateContentMetadata({
     title: data.event.name,
     description,
-    path: getEventUrl(data.event.id),
+    path: getEventUrl(data.event),
   });
 }
 
 export default async function EventPage(props: EventPageProps) {
-  const { id } = await props.params;
+  const { event_type, id } = await props.params;
+  // 未知の種別は 404 (旧 `/events/{id}` もここで 404 になる。2026-11-03 BOSS 確定)。
+  if (!(await getCategory(event_type))) notFound();
   const data = await getEventDetail(id);
 
   if (!data) notFound();
+  if (data.event.primaryCategory.slug !== event_type) {
+    permanentRedirect(getEventUrl(data.event));
+  }
 
   const { event, titles, occurrences, relatedEvents } = data;
   const groups = groupOccurrencesByStatus(occurrences);
@@ -138,7 +153,7 @@ export default async function EventPage(props: EventPageProps) {
               <ul className="grid gap-3 md:grid-cols-2" data-grid-layout="row">
                 {group.items.map((occurrence) => (
                   <li key={occurrence.id}>
-                    <OccurrenceCard eventId={event.id} occurrence={occurrence} />
+                    <OccurrenceCard event={event} occurrence={occurrence} />
                   </li>
                 ))}
               </ul>
@@ -155,7 +170,7 @@ export default async function EventPage(props: EventPageProps) {
               {relatedEvents.map((related) => (
                 <li key={related.id}>
                   <Link
-                    href={getEventUrl(related.id)}
+                    href={getEventUrl(related)}
                     className="block border border-[var(--line-soft)] bg-bg-elevated p-4 font-display text-ink-strong hover:border-[var(--line-strong)]"
                   >
                     {related.name}

@@ -143,7 +143,7 @@ export default async function VenuePage(props: VenuePageProps) {
                       同じ名前が並んで無意味になる (作品の開催一覧では渡す)。
                     */}
                     <EventOccurrenceCard
-                      eventId={occurrence.eventId}
+                      event={occurrence.events}
                       slug={occurrence.slug}
                       eventName={occurrence.eventName}
                       status={occurrence.status}

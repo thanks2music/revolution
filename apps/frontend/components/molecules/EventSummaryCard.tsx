@@ -4,7 +4,7 @@ import { getEventUrl } from '@/lib/event/event-url';
 import type { EventListItem } from '@/lib/event/queries';
 
 /**
- * `/events` 一覧の企画カード (Claude Design v6 #14)。
+ * `/events` と `/{種別}` の一覧の企画カード (Claude Design v6 #14)。
  *
  * 上から **作品チップ + イベントタイプタグ → 企画名 → 会場数と状態別内訳**。
  * 「何の作品の、どんな種類の企画で、今行けるのか」を 3 行で読ませる。
@@ -27,31 +27,27 @@ type Props = {
 
 export const EventSummaryCard = ({ event }: Props) => (
   <Link
-    href={getEventUrl(event.id)}
+    href={getEventUrl(event)}
     className="block rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
   >
     {/*
       作品チップとタイプタグ。**タイプタグは常に 1 個** (`primary_category_id` は
-      NOT NULL FK)、作品は 0 個以上 (複数作品コラボがある)。
-      作品 0 件の企画はチップ行ごと出ない。
+      NOT NULL FK で、契約も non-null)、作品は 0 個以上 (複数作品コラボがある)。
+      タイプタグがあるので、作品 0 件でもこの行は出る。
     */}
-    {(event.titles.length > 0 || event.categoryName) && (
-      <div className="flex flex-wrap items-center gap-1">
-        {event.titles.map((title) => (
-          <span
-            key={title.slug}
-            className="rounded-md bg-bg-tinted px-1.5 py-0.5 font-display text-xs text-primary-700"
-          >
-            {title.name}
-          </span>
-        ))}
-        {event.categoryName && (
-          <span className="rounded-md bg-tag-type px-2 py-0.5 font-display text-xs font-bold text-white">
-            {event.categoryName}
-          </span>
-        )}
-      </div>
-    )}
+    <div className="flex flex-wrap items-center gap-1">
+      {event.titles.map((title) => (
+        <span
+          key={title.slug}
+          className="rounded-md bg-bg-tinted px-1.5 py-0.5 font-display text-xs text-primary-700"
+        >
+          {title.name}
+        </span>
+      ))}
+      <span className="rounded-md bg-tag-type px-2 py-0.5 font-display text-xs font-bold text-white">
+        {event.primaryCategory.name}
+      </span>
+    </div>
 
     <p className="mt-2 font-display font-bold leading-snug text-ink-strong">{event.name}</p>
 

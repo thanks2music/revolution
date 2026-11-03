@@ -76,16 +76,22 @@ async function buildDatabasePages(baseUrl: string): Promise<MetadataRoute.Sitema
       listOccurrenceParams(),
     ]);
 
+    // 静的パラメータ ({ event_type, id }) を URL ヘルパの形へ。
+    const toEvent = (param: { event_type: string; id: string }) => ({
+      id: param.id,
+      primaryCategory: { slug: param.event_type },
+    });
+
     return [
       ...eventParams.map((param) => ({
-        url: `${baseUrl}${getEventUrl(param.id)}`,
+        url: `${baseUrl}${getEventUrl(toEvent(param))}`,
         lastModified: new Date(),
         changeFrequency: 'daily' as const,
         // 企画は開催をまとめる回遊のハブなので記事より少し高く置く。
         priority: 0.9,
       })),
       ...occurrenceParams.map((param) => ({
-        url: `${baseUrl}${getOccurrenceUrl(param.id, param.occurrence_slug)}`,
+        url: `${baseUrl}${getOccurrenceUrl(toEvent(param), param.occurrence_slug)}`,
         lastModified: new Date(),
         // 状態 (開催中 / 終了) が日付で変わるので、記事より更新頻度を高く申告する。
         changeFrequency: 'daily' as const,

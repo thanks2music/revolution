@@ -16,7 +16,13 @@ import { buildTitleEventGroups } from '@/lib/title/grouping';
  */
 
 function event(id: number, name: string): TitleEvent {
-  return { id, slug: `event-${id}`, name, ratingCount: 0 };
+  return {
+    id,
+    slug: `event-${id}`,
+    name,
+    ratingCount: 0,
+    primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' },
+  };
 }
 
 function occ(

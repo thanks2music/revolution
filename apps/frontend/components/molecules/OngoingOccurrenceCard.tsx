@@ -34,7 +34,10 @@ type Props = {
 
 export const OngoingOccurrenceCard = ({ occurrence }: Props) => (
   <Link
-    href={getOccurrenceUrl(occurrence.eventId, occurrence.slug)}
+    href={getOccurrenceUrl(
+      { id: occurrence.eventId, primaryCategory: occurrence.primaryCategory },
+      occurrence.slug,
+    )}
     className="flex w-[17rem] shrink-0 flex-col gap-2 rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
   >
     <div className="flex flex-wrap items-center gap-1">
@@ -68,11 +71,9 @@ export const OngoingOccurrenceCard = ({ occurrence }: Props) => (
       {occurrence.venueName ? `${occurrence.eventName} ${occurrence.venueName}` : occurrence.eventName}
     </p>
 
-    {occurrence.categoryName && (
-      <span className="w-fit rounded-md bg-tag-type px-2 py-0.5 font-display text-xs font-bold text-white">
-        {occurrence.categoryName}
-      </span>
-    )}
+    <span className="w-fit rounded-md bg-tag-type px-2 py-0.5 font-display text-xs font-bold text-white">
+      {occurrence.primaryCategory.name}
+    </span>
 
     <p className="mt-auto text-xs leading-relaxed text-ink-muted">
       {occurrence.venueRegion && (

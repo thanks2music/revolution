@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
 import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
-import { getOccurrenceUrl } from '@/lib/event/event-url';
+import { getOccurrenceUrl, type EventRouteRef } from '@/lib/event/event-url';
 import { formatPeriod, formatPeriodTense } from '@/lib/occurrence/format';
 import { toBadgeStatus } from '@/lib/occurrence/status';
 
@@ -37,8 +37,9 @@ import { toBadgeStatus } from '@/lib/occurrence/status';
  */
 
 type Props = {
-  eventId: number;
-  /** 開催の slug (`/events/{id}/{slug}` のリンク先)。 */
+  /** 開催の属する企画 (リンク先 `/{種別}/{id}/{slug}` の組み立てに使う)。 */
+  event: EventRouteRef;
+  /** 開催の slug。 */
   slug: string;
   /** 主表示。解決済みの企画名を渡す (fallback の判断は呼び出し側の契約層が持つ)。 */
   eventName: string;
@@ -91,7 +92,7 @@ const titleStyle: Record<OccurrenceStatus, string> = {
 };
 
 export const EventOccurrenceCard = ({
-  eventId,
+  event,
   slug,
   eventName,
   status,
@@ -100,7 +101,7 @@ export const EventOccurrenceCard = ({
   venueName,
 }: Props) => (
   <Link
-    href={getOccurrenceUrl(eventId, slug)}
+    href={getOccurrenceUrl(event, slug)}
     className={`block rounded-2xl border p-3 shadow-sm transition-colors hover:border-primary-300 ${surfaceStyle[status]}`}
   >
     <div className="flex flex-wrap items-center gap-1">

@@ -85,7 +85,7 @@ const OCCURRENCE_ROW = {
   startsOn: '2026-07-01',
   endsOn: '2026-09-30',
   status: 'ongoing',
-  events: { id: 5, name: '名探偵コナンカフェ' },
+  events: { id: 5, name: '名探偵コナンカフェ', primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' } },
 };
 
 async function importQueries() {

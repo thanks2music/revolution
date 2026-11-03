@@ -1,9 +1,10 @@
-import { CategorySchema as CategoryRowSchema } from '@revolution/schemas/category';
 import { EventSchema as EventRowSchema } from '@revolution/schemas/event';
 import { OccurrenceViewSchema } from '@revolution/schemas/occurrence';
 import { TitleSchema as TitleRowSchema } from '@revolution/schemas/title';
 import { VenueSchema as VenueRowSchema } from '@revolution/schemas/venue';
 import { z } from 'zod';
+
+import { PRIMARY_CATEGORY_EMBED, PrimaryCategorySchema } from '@/lib/event/contracts';
 
 /**
  * トップページ (`/`) が読む契約と select 句。方針は `lib/event/contracts.ts` と同じ:
@@ -37,7 +38,8 @@ const RailVenueSchema = VenueRowSchema.pick({
 
 /** 同カードに埋め込む企画。タイプタグと作品チップを従える。 */
 const RailEventSchema = EventRowSchema.pick({ id: true, name: true }).extend({
-  primaryCategory: CategoryRowSchema.pick({ name: true }).nullable(),
+  /** タイプタグとリンク先の種別。null の扱いは `PrimaryCategorySchema` を参照。 */
+  primaryCategory: PrimaryCategorySchema,
   eventTitles: z.array(
     z.object({ titles: TitleRowSchema.pick({ slug: true, name: true }).nullable() }),
   ),
@@ -53,7 +55,11 @@ export const OngoingOccurrenceRowSchema = OccurrenceViewSchema.pick({
 }).extend({
   /** 会場マスタを持たない開催 (オンライン / 一時会場) では null。 */
   venues: RailVenueSchema.nullable(),
-  /** `event_id` は NOT NULL FK だが、埋め込みの契約上は null を許して落とす。 */
+  /**
+   * `event_id` は NOT NULL FK だが、埋め込みの契約上は null を許す。
+   * **null の行は rail から落とす** (企画の種別が分からないとリンク先の URL を作れない。
+   * 種別を URL に入れる前も、企画の無い開催ページは 404 だった)。
+   */
   events: RailEventSchema.nullable(),
 });
 
@@ -71,23 +77,22 @@ export const OngoingOccurrenceRowSchema = OccurrenceViewSchema.pick({
 export const ONGOING_OCCURRENCE_COLUMNS =
   'id, eventId:event_id, slug, startsOn:starts_on, endsOn:ends_on, ' +
   'venues(name, prefecture, city), ' +
-  'events(id, name, primaryCategory:categories!primary_category_id(name), eventTitles:event_titles(titles(slug, name)))';
+  `events(id, name, ${PRIMARY_CATEGORY_EMBED}, eventTitles:event_titles(titles(slug, name)))`;
 
 /** 作品チップ 1 個。`lib/event/contracts.ts` の `Title` と同じ形。 */
 export type RailTitle = { slug: string; name: string };
 
 /** 表示用の開催中カード 1 枚。埋め込みの解決を済ませた形。 */
 export type OngoingOccurrence = {
-  /** `/events/{eventId}/{slug}` のリンク用。 */
   id: number;
+  /** 開催ページのリンク用 (`/{primaryCategory.slug}/{eventId}/{slug}`)。 */
   eventId: number;
   slug: string;
   startsOn: string | null;
   endsOn: string | null;
-  /** 企画名。解決できなければ `EVENT_NAME_FALLBACK`。 */
   eventName: string;
-  /** イベントタイプ (主分類)。解決できなければ null。 */
-  categoryName: string | null;
+  /** イベントタイプ (主分類)。タイプタグの表示とリンク先の種別に使う。 */
+  primaryCategory: { slug: string; name: string };
   /** 作品チップ (名前順)。0 件もあり得る。 */
   titles: RailTitle[];
   /** 会場表示名。会場マスタが無ければ null (v5 の住所行ごと出さない)。 */

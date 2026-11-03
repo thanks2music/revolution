@@ -1,5 +1,8 @@
 /**
- * 開催詳細ページ `/events/{id}/{occurrence-slug}` (S2)
+ * 開催詳細ページ `/{種別}/{id}/{occurrence-slug}` (S2、2026-11-03 に `/events/...` から移動)
+ *
+ * 種別が食い違う URL は、企画ページと同じく正しい URL へ `permanentRedirect` する
+ * (理由は `app/[event_type]/[id]/page.tsx`)。
  *
  * ## 位置づけ
  *
@@ -10,12 +13,13 @@
  * 開催はレビューの紐付け先 (S4) でもあるため、S2 の中で最初に作る
  * (`docs/event-review-data-model.md` §7)。
  *
- * ## ルートの衝突は本 PR 内で解消済み
+ * ## 第 1 階層の衝突
  *
- * 設計当初は記事の 3 セグメントルート (`app/[event_type]/[work_slug]/[slug]`) と
- * URL 形が衝突していた (Next.js は静的セグメントを動的セグメントより優先するため
- * `/events/...` は本ルートが受ける、という前提で成立させていた)。
- * **その記事ルートは URL 移行で削除済み**なので、現在この衝突は存在しない。
+ * `[event_type]` はトップ階層の動的セグメント。Next.js は静的セグメントを優先するので
+ * `/titles/...` `/venues/...` などは本ルートに来ない。`categories` に無い種別は
+ * 企画ページと同じく `getCategory` で確かめて 404 にする。
+ * (旧記事ルート `app/[event_type]/[work_slug]/[slug]` は 2026-08-14 の URL 移行で
+ * 削除済み。同じ名前のセグメントを 2026-11-03 から企画が使っている)
  *
  * ## SSG を保つ制約
  *
@@ -26,12 +30,13 @@
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 
 import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
 import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
 import { OccurrenceCard, VENUE_NAME_FALLBACK } from '@/components/molecules/OccurrenceCard';
 import Layout from '@/components/templates/Layout';
+import { getCategory } from '@/lib/category/queries';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { generateContentMetadata } from '@/lib/metadata';
 import { getTitleUrl } from '@/lib/title/title-url';
@@ -50,8 +55,10 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata(props: OccurrencePageProps): Promise<Metadata> {
-  const { id, occurrence_slug } = await props.params;
-  const data = await getOccurrenceDetail(id, occurrence_slug);
+  const { event_type, id, occurrence_slug } = await props.params;
+  const data = (await getCategory(event_type))
+    ? await getOccurrenceDetail(id, occurrence_slug)
+    : null;
 
   if (!data) {
     return { title: '開催情報が見つかりません' };
@@ -63,15 +70,20 @@ export async function generateMetadata(props: OccurrencePageProps): Promise<Meta
   return generateContentMetadata({
     title: `${data.event.name} ${venueName}`,
     description: `${data.event.name} の ${venueName} 開催情報 (${period})`,
-    path: getOccurrenceUrl(data.event.id, data.occurrence.slug),
+    path: getOccurrenceUrl(data.event, data.occurrence.slug),
   });
 }
 
 export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
-  const { id, occurrence_slug } = await props.params;
+  const { event_type, id, occurrence_slug } = await props.params;
+  // 未知の種別は 404 (企画ページと同じ)。
+  if (!(await getCategory(event_type))) notFound();
   const data = await getOccurrenceDetail(id, occurrence_slug);
 
   if (!data) notFound();
+  if (data.event.primaryCategory.slug !== event_type) {
+    permanentRedirect(getOccurrenceUrl(data.event, data.occurrence.slug));
+  }
 
   const { occurrence, event, titles, siblings } = data;
   const venue = occurrence.venues;
@@ -98,7 +110,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             ))}
             <li className="flex items-center gap-2">
               <span aria-hidden="true">/</span>
-              <Link href={getEventUrl(event.id)} className="hover:underline">
+              <Link href={getEventUrl(event)} className="hover:underline">
                 {event.name}
               </Link>
             </li>
@@ -182,7 +194,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             <ul className="grid gap-3 md:grid-cols-2" data-grid-layout="row">
               {siblings.map((sibling) => (
                 <li key={sibling.id}>
-                  <OccurrenceCard eventId={event.id} occurrence={sibling} />
+                  <OccurrenceCard event={event} occurrence={sibling} />
                 </li>
               ))}
             </ul>
