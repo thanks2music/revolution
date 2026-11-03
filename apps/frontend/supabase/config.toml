@@ -216,8 +216,10 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Allow/disallow new user signups via email to your project.
-enable_signup = true
+# Turn the email provider on or off. CLI v3 renamed this from `enable_signup`, which still works
+# until v4. `false` would also stop existing users from signing in by email; to block new sign-ups
+# only, use `enable_signup` under `[auth]`.
+enabled = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
@@ -261,8 +263,9 @@ content_path = "./supabase/templates/magic_link.html"
 # content_path = "./templates/password_changed_notification.html"
 
 [auth.sms]
-# Allow/disallow new user signups via SMS to your project.
-enable_signup = false
+# Turn the phone (SMS) provider on or off (CLI v3 renamed this from `enable_signup`). Sign-in is by
+# email OTP only, so it stays off.
+enabled = false
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false
 # Template for sending OTP to users
