@@ -59,7 +59,7 @@ describe('metadata の title 合成', () => {
     const { siteConfig } = await import('@/lib/metadata');
 
     const pages = [
-      '@/app/articles/page',
+      '@/app/articles/(list)/page',
       '@/app/mypage/page',
       '@/app/login/page',
       '@/app/onboarding/page',
