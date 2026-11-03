@@ -117,8 +117,10 @@ const StrictEventDataSchema = z.object({
   event_name: z.string().min(1),
   event_slug: z.string().regex(EVENT_SLUG_REGEX),
   // 種別は 5 つの enum で縛る (企画の URL の第 1 階層になるため、2026-11-03)。
-  // OpenAI の strict mode / Gemini の responseJsonSchema では生成時点で 5 つ以外を出せず、
-  // スキーマを持たない Anthropic でも parse で落ちる。補助タグに受け皿の `other` は入れない。
+  // OpenAI の strict mode / Gemini の responseJsonSchema では生成時点で 5 つ以外を出せない。
+  // ⚠️ スキーマを渡せない Anthropic は、本 schema の safeParse に落ちても警告を出して緩い解析に
+  //    進む (`extraction.service.ts`)。その場合 5 つ以外の slug は記事まで届き、取り込みで
+  //    `unknown_primary_category` (G1c) として保留になる。補助タグに受け皿の `other` は入れない。
   primary_category_slug: EventTypeSlugSchema,
   title_slugs: z.array(z.string().regex(TITLE_SLUG_REGEX)),
   supplementary_category_slugs: z.array(EventTypeSlugSchema.exclude(['other'])).max(2),

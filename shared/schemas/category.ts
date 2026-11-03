@@ -34,7 +34,7 @@ export const CATEGORY_SLUG_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
  * private の `one-more-time/docs/event-review-data-model.md` §6 と templates の抽出プロンプト。
  *
  * AI Writer の生成側の契約 (`extraction-response.ts` の `StrictEventDataSchema`) がこの集合で
- * 縛るので、ここに無い種別は記事に出てこない。**種別を足すときは migration・templates
+ * 縛るので、OpenAI / Gemini ではここに無い種別は記事に出てこない (Anthropic は取り込みで保留になる)。**種別を足すときは migration・templates
  * (`slug-registry.yaml` / `event-type-slugs.yaml`)・本定数の 3 か所を同時に足す**
  * (frontend のビルドが DB と本定数の食い違いを検知して止める: `apps/frontend/lib/category/queries.ts`)。
  */
