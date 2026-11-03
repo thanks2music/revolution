@@ -76,18 +76,20 @@ export const EventDataOccurrenceSchema = z.object({
  *
  * ## フィールド
  * - `event_name` / `event_slug`: 企画そのもの (→ `events.name` / `events.slug`)。★2026-08-09 追加
- * - `primary_category_slug`: `events.primary_category` 相当 = URL 正準決定 (23 categories seed enum)
+ * - `primary_category_slug`: `events.primary_category` 相当 = 企画の URL の第 1 階層 (`/{slug}/{event_id}`)。
+ *   生成側は 5 種の enum (`EVENT_TYPE_SLUGS`、`extraction-response.ts`)。読み取り側の本 schema は
+ *   既存記事の互換のため形式 (regex) だけを見る (5 種以外は取り込みの G1c で保留になる)
  * - `title_slugs[]`: コラボ複数 title 対応 (event_titles M:N)、`is_primary: true` を配列先頭
  * - `supplementary_category_slugs[]`: 混在イベント補助タグ (event_categories M:N)、maxItems: 2 (Q5=A)
  * - `occurrences[]`: 開催情報配列。**会場が N 個なら N 要素**
  *
  * ## 参照ソース
- * - `CATEGORY_SLUG_REGEX` (`./category`): 23 seed slugs の URL 正準検証 (Sprint A PR #247)
+ * - `CATEGORY_SLUG_REGEX` (`./category`): category slug の形式検証 (Sprint A PR #247)
  * - `TITLE_SLUG_REGEX` (`./title`): title-romaji-mapping.yaml と整合 (Sprint A PR #249)
  * - `VENUE_SLUG_REGEX` (`./venue`): venues master (空 seed、Sprint A PR #251) と整合
  *
  * @see /Users/yoshi/.claude/plans/url-compiled-wigderson.md § Q5=A
- * @see revolution-templates/ai-writer/config/slug-registry.yaml (23 categories canonical、Sprint C-α Step 1a)
+ * @see revolution-templates/ai-writer/config/slug-registry.yaml (categories canonical、2026-11-03 から 5 件)
  * @see revolution-templates/ai-writer/posts/yaml/collabo-cafe/pipeline/2-extraction.yaml (プロンプト output schema、Sprint C-α Step 1c)
  */
 export const EventDataSchema = z.object({

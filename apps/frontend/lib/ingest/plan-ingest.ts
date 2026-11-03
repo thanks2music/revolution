@@ -50,7 +50,7 @@ export interface ArticleEventData {
 
 /** 既知マスタのスナップショット。executor が DB から取得して渡す。 */
 export interface MasterSnapshot {
-  /** categories.slug → id (23 件 seed 済み) */
+  /** categories.slug → id (5 件。2026-11-03 の migration 0017 で 23 → 5) */
   categoryIdBySlug: ReadonlyMap<string, number>;
   /** titles.slug → id */
   titleIdBySlug: ReadonlyMap<string, number>;
