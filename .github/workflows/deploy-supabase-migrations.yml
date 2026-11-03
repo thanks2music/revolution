@@ -108,8 +108,9 @@ jobs:
         # Session pooler (port 5432) 経由で IPv4 接続する。GitHub Actions runner は
         # IPv4 のみ対応 (Supabase 公式: https://supabase.com/docs/guides/troubleshooting/supabase--your-network-ipv4-and-ipv6-compatibility-cHe3BP)、
         # direct DB host (db.<ref>.supabase.co) は Free プランで IPv6 限定のため
-        # v2 の `--linked` は direct 接続を試みて失敗した。v3 の引数なしの `--remote` (link した
-        # project が対象) が pooler を自分で選ぶかは未確認。`--remote=<この URL>` で URL を渡せば link 状態を bypass して確実に Supavisor 経由
+        # v2 の `--linked` は direct 接続を試みて失敗した。
+        # v3 の引数なしの `--remote` (link した project が対象) が pooler を自分で選ぶかは未確認。
+        # `--remote=<この URL>` で URL を渡せば link 状態を bypass して確実に Supavisor 経由
         # (IPv4 互換) で接続できる。session mode (5432) は migration の advisory lock
         # に必要なため、transaction mode (6543) ではなく session mode を使う。
         # pooler host は keep-alive workflow と同一値 (両プロジェクト ap-northeast-1)。
@@ -189,6 +190,8 @@ jobs:
             echo "::error title=Migration pre-flight failed::Could not verify migration history after 2 attempts (5s gap). Possible causes: (a) migration_history inconsistency, (b) persistent connectivity / auth / pooler issue, (c) CLI breaking change. Read the CLI output above first to determine which."
             echo "::error::If (a) migration_history inconsistency: one-more-time/docs/operations/supabase-migration-workflow.md (private) §10 (STAGING ONLY)."
             echo "::error::Hint: do NOT rename or delete a migration file that has already been deployed to a remote. Add a NEW migration to make further changes."
+            # repair の書き方 (version は位置引数、`--status` / `--remote=<url>` / `--yes`) は
+            # 3.0.0 の `supabase migration repair --help` で確認した。版を上げたら確かめ直す。
             echo "::error::If rollback is unavoidable: \`supabase migration repair <version> --status reverted --remote=<pooler URL> --yes\` after manually rolling back the DB objects (see SoP §10)."
             exit 1
           fi
