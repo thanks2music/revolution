@@ -12,7 +12,7 @@ import { toBadgeStatus } from '@/lib/occurrence/status';
  *
  * ## `OccurrenceCard` との違い
  *
- * `OccurrenceCard` は**会場名**が主表示で、企画ページ (`/events/{id}`) と
+ * `OccurrenceCard` は**会場名**が主表示で、企画ページ (`/{種別}/{id}`) と
  * 作品ハブ (`/titles/{slug}`) が使う — どちらも「1 つの企画の中で会場を選ぶ」
  * 画面なので、行ごとに変わるのは会場名だから。
  *

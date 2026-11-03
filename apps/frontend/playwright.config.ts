@@ -11,7 +11,7 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * `.github/workflows/ci.yml` は `SKIP_ENV_VALIDATION: 'true'` でビルドしており
  * **Supabase の資格情報を持たない**。資格情報が無いと `/titles/{slug}` /
- * `/events/{id}` / `/venues/{slug}` の子パスが 1 本も生成されず (本番ビルドが
+ * `/{種別}/{id}` / `/venues/{slug}` の子パスが 1 本も生成されず (本番ビルドが
  * 23/23 になるのと同じ理由)、一覧も空になるため検証の対象そのものが消える。
  *
  * よって本系統は **「レイアウトを触る PR の前に手元で回す規律」であって

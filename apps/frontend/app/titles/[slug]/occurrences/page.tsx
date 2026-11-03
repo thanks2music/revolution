@@ -2,7 +2,7 @@
  * 作品の開催一覧 `/titles/{slug}/occurrences` (集約ビュー、URL 設計 §7)
  *
  * レビュー可能な開催 (= anon に見える `verified = true` の開催) を作品単位で
- * 集約する。各 item の canonical は本拠地 `/events/{id}/{occurrence-slug}`。
+ * 集約する。各 item の canonical は本拠地 `/{種別}/{id}/{occurrence-slug}`。
  *
  * データは DB (`occurrence_view` + venues 埋め込み) 由来。記事 index の
  * `event_data.occurrences[].venue_slug` は実データ全件 null のため使わない。

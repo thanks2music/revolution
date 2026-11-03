@@ -22,7 +22,7 @@ import type { TitleEventSlugPair } from '@/lib/title/article-links';
  * ## 作品ハブは「集約ビュー」(URL 設計 §7)
  *
  * title はコラボ (M:N) のため正準の所有者になれず、一覧に載る item の
- * canonical は本拠地 (`/events/{id}/…` / `/articles/{ULID}`) を指す。
+ * canonical は本拠地 (`/{種別}/{id}/…` / `/articles/{ULID}`) を指す。
  * 本モジュールはその集約に要る DB 読みだけを担い、記事 (fs 由来) との
  * 突き合わせは `lib/title/article-links.ts` (Layer 1) に置く。
  *
