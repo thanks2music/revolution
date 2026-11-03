@@ -14,9 +14,11 @@ type Props = {
   events: EventListItem[];
   /** 0 件のときの文言。 */
   emptyMessage: string;
+  /** カードのタイプタグを出すか。種別の一覧では出さない (`EventSummaryCard`)。 */
+  showTypeTag?: boolean;
 };
 
-export const EventSummaryList = ({ events, emptyMessage }: Props) =>
+export const EventSummaryList = ({ events, emptyMessage, showTypeTag }: Props) =>
   events.length > 0 ? (
     <>
       <p className="mb-6 text-sm text-ink-muted">
@@ -26,7 +28,7 @@ export const EventSummaryList = ({ events, emptyMessage }: Props) =>
       <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3" data-grid-layout="block">
         {events.map((event) => (
           <li key={event.id}>
-            <EventSummaryCard event={event} />
+            <EventSummaryCard event={event} showTypeTag={showTypeTag} />
           </li>
         ))}
       </ul>

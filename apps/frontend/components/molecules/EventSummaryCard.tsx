@@ -23,31 +23,40 @@ import type { EventListItem } from '@/lib/event/queries';
 
 type Props = {
   event: EventListItem;
+  /**
+   * タイプタグを出すか (既定は出す)。種別の一覧 (`/{種別}`) では全カードが見出しと
+   * 同じ種別になり情報を持たないので出さない (2026-11-03 BOSS 確定)。
+   */
+  showTypeTag?: boolean;
 };
 
-export const EventSummaryCard = ({ event }: Props) => (
+export const EventSummaryCard = ({ event, showTypeTag = true }: Props) => (
   <Link
     href={getEventUrl(event)}
     className="block rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
   >
     {/*
-      作品チップとタイプタグ。**タイプタグは常に 1 個** (`primary_category_id` は
+      作品チップとタイプタグ。**タイプタグは 1 個** (`primary_category_id` は
       NOT NULL FK で、契約も non-null)、作品は 0 個以上 (複数作品コラボがある)。
-      タイプタグがあるので、作品 0 件でもこの行は出る。
+      タイプタグを出さず作品も 0 件のときは、空の行を描かない。
     */}
-    <div className="flex flex-wrap items-center gap-1">
-      {event.titles.map((title) => (
-        <span
-          key={title.slug}
-          className="rounded-md bg-bg-tinted px-1.5 py-0.5 font-display text-xs text-primary-700"
-        >
-          {title.name}
-        </span>
-      ))}
-      <span className="rounded-md bg-tag-type px-2 py-0.5 font-display text-xs font-bold text-white">
-        {event.primaryCategory.name}
-      </span>
-    </div>
+    {(showTypeTag || event.titles.length > 0) && (
+      <div className="flex flex-wrap items-center gap-1">
+        {event.titles.map((title) => (
+          <span
+            key={title.slug}
+            className="rounded-md bg-bg-tinted px-1.5 py-0.5 font-display text-xs text-primary-700"
+          >
+            {title.name}
+          </span>
+        ))}
+        {showTypeTag && (
+          <span className="rounded-md bg-tag-type px-2 py-0.5 font-display text-xs font-bold text-white">
+            {event.primaryCategory.name}
+          </span>
+        )}
+      </div>
+    )}
 
     <p className="mt-2 font-display font-bold leading-snug text-ink-strong">{event.name}</p>
 

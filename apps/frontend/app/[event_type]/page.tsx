@@ -92,7 +92,11 @@ export default async function EventTypePage(props: EventTypePageProps) {
           {category.name}
         </h1>
 
-        <EventSummaryList events={items} emptyMessage={`${category.name}の企画はまだ登録されていません。`} />
+        <EventSummaryList
+          events={items}
+          emptyMessage={`${category.name}の企画はまだ登録されていません。`}
+          showTypeTag={false}
+        />
       </div>
     </Layout>
   );
