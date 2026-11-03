@@ -11,7 +11,9 @@ import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase
  *
  * 種別は**企画の URL の第 1 階層** (`/{slug}/{id}`)。2026-11-03 の migration 0017 で
  * 5 件 (collabo-cafe / pop-up-store / exhibition / chain-store / other) に絞った。
- * どの種別があるかは DB が正で、frontend に一覧を書かない (足すときは migration だけ)。
+ * frontend の画面は DB の categories を読み、ページ側に一覧を書かない。種別を足すときは
+ * migration に加えて、生成側の契約 `EVENT_TYPE_SLUGS` (`shared/schemas/category.ts`) と
+ * templates も同時に足す。ずれていればビルドが警告する (`listCategoryParams`)。
  */
 
 /** 種別の一覧ページの見出しと静的パラメータに要る列だけ。 */

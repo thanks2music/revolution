@@ -4,8 +4,8 @@
  * 企画の URL の第 1 階層は種別 (`/{categories.slug}/{id}`、2026-11-03)。Next.js は
  * 静的セグメントを動的セグメントより優先するので、たとえば `titles` という種別を
  * 作ると `/titles` は作品一覧に当たり、その種別の一覧・企画ページに**黙って届かなくなる**。
- * 種別は migration の INSERT だけで足せるため、衝突はビルドで止める
- * (`lib/category/queries.ts` の `listCategoryParams`)。
+ * 種別の slug は DB (migration) が決め、ルートの構成とは別の場所で増えるため、衝突は
+ * ビルドで止める (`lib/category/queries.ts` の `listCategoryParams`)。
  *
  * 一覧が実際の構成とずれないよう、`__tests__/unit/lib/category/reserved-segments.test.ts`
  * が `app/`・`public/`・`next.config.mjs` を読んで照合する (ルートを足したらここも足す)。

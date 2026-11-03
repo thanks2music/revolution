@@ -15,7 +15,7 @@
  * ## URL の形 (2026-11-03 改訂)
  *
  * 第 1 階層はイベント種別 (`events.primary_category_id` が指す `categories.slug`)。
- * 旧形式 `/events/{id}` は、ドメイン名にも含まれる "events" がパスで繰り返されるため移した。
+ * 旧形式 `/events/{id}` から移した (経緯は下記の設計の正本)。
  *
  * | ページ | URL |
  * |---|---|

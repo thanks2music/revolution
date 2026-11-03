@@ -231,8 +231,10 @@ describe('extraction-response schema — cross-schema compatibility', () => {
  * ★ 種別を 5 つに閉じる (2026-11-03)。
  *
  * `primary_category_slug` は企画の URL の第 1 階層になる。生成側の契約 (strict 変種) が
- * 5 つの enum で縛ることで、OpenAI / Gemini では生成時点で 5 つ以外を出せず、Anthropic でも
- * parse で落ちる。旧 23 種の slug (`store-collabo` など) がここで止まることを固定する。
+ * 5 つの enum で縛ることで、OpenAI / Gemini では生成時点で 5 つ以外を出せない。スキーマを
+ * 渡していない今の Anthropic provider では、この schema の safeParse が落ちて警告になり、
+ * 緩い解析に進む (取り込みで G1c 保留)。旧 23 種の slug (`store-collabo` など) が
+ * この schema で弾かれることを固定する。
  */
 describe('extraction-response schema — event types are the five', () => {
   it.each(['collabo-cafe', 'pop-up-store', 'exhibition', 'chain-store', 'other'])(

@@ -5,7 +5,8 @@ import { bigint, check, pgTable, text } from 'drizzle-orm/pg-core';
  * Schema-SDD 真実源 (DB レイヤ): public.categories
  *
  * イベントタイプ master テーブル。AI Writer が記事生成時に出力する正準 slug
- * (`collabo-cafe` / `pop-up-store` / `exhibition` 等 23 種) の真実源。
+ * (`collabo-cafe` / `pop-up-store` / `exhibition` / `chain-store` / `other` の 5 種。
+ * 2026-11-03 の migration 0017 で 23 種から絞った) の真実源。
  *
  * 設計判断 (B-1、旧 MVP §11 データモデル基盤先行統合):
  * - `id` は `bigint generated always as identity` の代理キー。slug は URL に

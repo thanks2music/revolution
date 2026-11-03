@@ -16,7 +16,8 @@
  * `false` があるとルート全体を「事前生成以外は 404」にする
  * (next/src/build/static-paths/app.ts の `segments.every(... !== false)`) ため、
  * 企画・開催のルート (`[id]` 以下) には置けない (新しい企画をビルドなしで出せなくなる)。
- * 種別を足す migration の後は、再デプロイまで新しい種別の一覧が 404 になる。
+ * 種別を足す・改名する migration の後は、再デプロイまで新しい slug の一覧が 404 になる
+ * (Vercel のビルドが migration より先に終わった場合も同じ。そのときは再デプロイする)。
  */
 
 import type { Metadata } from 'next';
