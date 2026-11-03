@@ -54,7 +54,9 @@ concurrency:
 #   (移行ガイドの "Other confirmation changes")。URL 指定の対象で解除まで試みるかは未確認だが、
 #   `--dry-run` があれば何も適用されないので、付けて害はない
 # - 版を上げる時: config.toml の `db.major_version` (今は 17) を読める CLI であること。読めないと
-#   `Failed reading config: Invalid db.major_version` で落ちる (以前 latest にしていた理由)
+#   `Failed reading config: Invalid db.major_version` で落ちる (以前 latest にしていた理由)。
+#   あわせて、production の job の「適用対象なし」の判定 (push.log の `database is up to date`) が
+#   新しい CLI の文言でも一致するかを確かめる (一致しないと、何も適用しない push が「適用あり」と通知される)
 # - 名前を `SUPABASE_` で始めない: CLI v3 は `SUPABASE_*` の環境変数で config.toml を上書きし、
 #   workflow の env は CLI のプロセスにも渡るため
 env:
@@ -385,6 +387,8 @@ jobs:
         # PR #250 review #4 (R2) 採用)。
         # 適用対象が無い時、CLI は "Remote database is up to date." を出す (CLI の版によって
         # 文言が変わり得るため部分一致で見る)。通知の文面を「変更なし」にするために使う
+        # ⚠️ `--yes` で CLI 自身の確認を飛ばすので、本番に入る前の関門は前段の pre-flight (dry-run) だけ。
+        #    production の environment に承認のルールは無い (2026-11-04 確認)。pre-flight を弱めない
         run: |
           set -euo pipefail
           supabase db push --yes --remote="$SESSION_POOLER_URL" 2>&1 | tee push.log
