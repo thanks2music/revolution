@@ -18,13 +18,15 @@ on:
     branches: [main]
     paths:
       - 'apps/frontend/supabase/migrations/**'
-      - 'apps/frontend/supabase/config.toml'  # link / db push が読む (2026-11-03、CLI v3 で壊れた経路)
+      # CLI はどのコマンドでも config.toml を読むので、壊れた config は PR の pre-flight で止める。
+      # push (production) には入れない: production の job は config を remote に送らず、
+      # PR で検証済みの内容を確かめ直すだけになるため
+      - 'apps/frontend/supabase/config.toml'
       - '.github/workflows/deploy-supabase-migrations.yml'
   push:
     branches: [main]
     paths:
       - 'apps/frontend/supabase/migrations/**'
-      - 'apps/frontend/supabase/config.toml'  # link / db push が読む (2026-11-03、CLI v3 で壊れた経路)
       - '.github/workflows/deploy-supabase-migrations.yml'
   workflow_dispatch:
     inputs:
@@ -40,9 +42,16 @@ concurrency:
   group: supabase-deploy-${{ github.event_name == 'push' && 'production' || github.event_name == 'pull_request' && format('staging-pr-{0}', github.event.pull_request.number) || format('manual-{0}', inputs.target) }}
   cancel-in-progress: false
 
-# Supabase CLI の版。staging と production で同じ CLI を使うため 1 か所で決める (理由は staging job の
-# `Setup Supabase CLI` のコメント)。名前を `SUPABASE_` で始めないのは、CLI v3 が `SUPABASE_*` の
-# 環境変数で config.toml を上書きするため (workflow の env は CLI のプロセスにも渡る)。
+# Supabase CLI の版。staging と production で同じ CLI を使うため、ここ 1 か所で決める。
+#
+# - latest にしない: 2026-11-02 の v3.0.0 (破壊的変更あり) を CI が自動で拾い、pre-flight が
+#   `[inbucket] in supabase/config.toml is no longer supported` で落ちた。v3 は `--db-url` を
+#   非推奨にして `--remote` に寄せ、ホストへの変更に確認を求める (CI では `--yes`)。v3 への移行は
+#   続く PR で行う。リリースノート: https://github.com/supabase/cli/releases/tag/v3.0.0
+# - 版を上げる時: config.toml の `db.major_version` (今は 17) を読める CLI であること。読めないと
+#   `Failed reading config: Invalid db.major_version` で落ちる (以前 latest にしていた理由)
+# - 名前を `SUPABASE_` で始めない: CLI v3 は `SUPABASE_*` の環境変数で config.toml を上書きし、
+#   workflow の env は CLI のプロセスにも渡るため
 env:
   PINNED_SUPABASE_CLI_VERSION: 2.122.1
 
@@ -76,18 +85,8 @@ jobs:
           persist-credentials: false
 
       - name: Setup Supabase CLI
-        # Action タグを specific pin (v2.1.1、2026-05-21 release) し、action level の
-        # non-deterministic は解消 (claude[bot] PR #244 review #1 採用)。Supabase CLI 本体
-        # (with: version) は以前 latest にしていた: PostgreSQL 17 など Postgres major version の
-        # 追加に CLI が追従しないと `Failed reading config: Invalid db.major_version: 17` で
-        # deploy が壊れたため。
-        #
-        # ⚠️ 2026-11-03 から v2 系に固定している (版は workflow の env `PINNED_SUPABASE_CLI_VERSION`)。
-        #    2026-11-02 に出た CLI v3.0.0 は破壊的変更を含み、latest のままだと pre-flight が落ちた
-        #    (`[inbucket] in supabase/config.toml is no longer supported`)。v3 は `--db-url` を
-        #    非推奨にして `--remote` に寄せ、ホストへの変更に確認を求める (CI では `--yes`)。
-        #    v3 への移行は続く PR で行う。
-        #    v3.0.0 のリリースノート: https://github.com/supabase/cli/releases/tag/v3.0.0
+        # Action タグは specific pin (v2.1.1、2026-05-21 release。claude[bot] PR #244 review #1 採用)。
+        # CLI 本体の版と固定の理由は workflow の env `PINNED_SUPABASE_CLI_VERSION`。
         uses: supabase/setup-cli@v2.1.1
         with:
           version: ${{ env.PINNED_SUPABASE_CLI_VERSION }}
@@ -153,7 +152,7 @@ jobs:
           # 消えた将来のために clear なエラーを出す (本 step が pre-flight として
           # 機能しなくなる前に止める)。
           if ! supabase db push --help 2>&1 | grep -q -- '--dry-run'; then
-            echo "::error title=Pre-flight gate disabled::supabase CLI does not expose --dry-run flag. The pre-flight guard cannot run. Update this workflow (alternative: pin a compatible CLI version) or open an incident."
+            echo "::error title=Pre-flight gate disabled::supabase CLI does not expose --dry-run flag. The pre-flight guard cannot run. Update this workflow (check PINNED_SUPABASE_CLI_VERSION) or open an incident."
             exit 1
           fi
 
@@ -286,8 +285,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Supabase CLI
-        # staging job と同じ CLI (action は v2.1.1 pin / CLI は env `PINNED_SUPABASE_CLI_VERSION`、
-        # 上の staging job のコメント参照)
+        # staging job と同じ CLI (版と理由は workflow の env `PINNED_SUPABASE_CLI_VERSION`)
         uses: supabase/setup-cli@v2.1.1
         with:
           version: ${{ env.PINNED_SUPABASE_CLI_VERSION }}
