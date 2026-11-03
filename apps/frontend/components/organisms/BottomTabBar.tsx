@@ -29,11 +29,9 @@ import { usePathname } from 'next/navigation';
 type Tab = {
   href: string;
   label: string;
-  /** 現在地とみなすパスの基点。省略時は `href` 自身。 */
-  bases?: string[];
   /**
-   * 指定すると判定を反転し、**この基点の配下以外をすべて現在地**とみなす
-   * (`bases` は無視)。「探す」が使う (理由は `EXPLORE_EXCLUDES`)。
+   * 指定すると判定を反転し、**この基点の配下以外をすべて現在地**とみなす。
+   * 「探す」が使う (理由は `EXPLORE_EXCLUDES`)。省略時は `href` の配下を現在地とする。
    */
   excludes?: string[];
 };
@@ -86,9 +84,9 @@ function currentValue(active: boolean, pathname: string, href: string) {
 export const EXPLORE_EXCLUDES = ['/articles', '/mypage', '/login', '/onboarding', '/auth'];
 
 /** タブが現在地かどうか。`excludes` があれば判定を反転する (Layer 1、純粋関数)。 */
-export function isTabCurrent(pathname: string, tab: Pick<Tab, 'href' | 'bases' | 'excludes'>) {
+export function isTabCurrent(pathname: string, tab: Pick<Tab, 'href' | 'excludes'>) {
   if (tab.excludes) return !isTabActive(pathname, tab.excludes);
-  return isTabActive(pathname, tab.bases ?? [tab.href]);
+  return isTabActive(pathname, [tab.href]);
 }
 
 const TABS: Tab[] = [
