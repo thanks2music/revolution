@@ -81,13 +81,15 @@ export function diffEventTypes(dbSlugs: readonly string[]): {
 /**
  * `app/[event_type]/page.tsx` (種別の一覧) の `generateStaticParams` 用。
  *
- * 🔴 次のどちらかなら **throw してビルドを止める** (止めれば本番は直前のデプロイのまま残る)。
+ * 🔴 種別の slug がトップ階層の静的ルート (`titles` など) と重なっていたら **throw してビルドを止める**。
+ * 重なった種別のページは静的ルートに負けて黙って届かなくなるため
+ * (理由は `lib/category/reserved-segments.ts`)。ビルド時に止めれば、本番は直前のデプロイのまま残る。
  *
- * - 種別の slug がトップ階層の静的ルート (`titles` など) と重なっている。重なった種別のページは
- *   静的ルートに負けて黙って届かなくなる (理由は `lib/category/reserved-segments.ts`)
- * - DB の種別と `EVENT_TYPE_SLUGS` (`@revolution/schemas/category`) が食い違っている。
- *   種別を足すときは migration・templates・定数の 3 か所を同時に足す約束で、片方だけ足すと
- *   記事に出てこない種別や、取り込みで保留になる種別が黙って生まれる
+ * ⚠️ DB の種別と `EVENT_TYPE_SLUGS` (`@revolution/schemas/category`) の食い違いは **警告に留める**
+ *    (止めない)。種別を変える migration と Vercel のビルドはマージ時に並行で走るため、ビルドが
+ *    先だと必ず食い違う。ここで止めると本番のデプロイが落ちる (forward-only ルール:
+ *    `one-more-time/docs/operations/supabase-migration-workflow.md` §5.2。2026-11-03 に staging で実際に落ちた)。
+ *    食い違いの実害は、DB だけの種別 = 空の一覧ページ、定数だけの種別 = 取り込みで保留 (通知あり)。
  *
  * 資格情報が無いビルド (CI) は 0 件なので、食い違いの検査はしない。
  */
@@ -97,10 +99,10 @@ export async function listCategoryParams(): Promise<{ event_type: string }[]> {
   if (categories.length > 0) {
     const { onlyInDb, onlyInCode } = diffEventTypes(categories.map((category) => category.slug));
     if (onlyInDb.length > 0 || onlyInCode.length > 0) {
-      throw new Error(
-        'DB の categories と EVENT_TYPE_SLUGS (@revolution/schemas/category) が食い違っています: ' +
+      console.warn(
+        '[category] DB の categories と EVENT_TYPE_SLUGS (@revolution/schemas/category) が食い違っています: ' +
           `DB だけ [${onlyInDb.join(', ')}] / 定数だけ [${onlyInCode.join(', ')}]。` +
-          'migration・templates・定数の 3 か所をそろえてください。',
+          'migration の適用前なら想定どおり。続くなら migration・templates・定数の 3 か所をそろえてください。',
       );
     }
   }

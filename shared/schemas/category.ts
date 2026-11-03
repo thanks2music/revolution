@@ -36,7 +36,8 @@ export const CATEGORY_SLUG_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
  * AI Writer の生成側の契約 (`extraction-response.ts` の `StrictEventDataSchema`) がこの集合で
  * 縛るので、OpenAI / Gemini ではここに無い種別は記事に出てこない (Anthropic は取り込みで保留になる)。**種別を足すときは migration・templates
  * (`slug-registry.yaml` / `event-type-slugs.yaml`)・本定数の 3 か所を同時に足す**
- * (frontend のビルドが DB と本定数の食い違いを検知して止める: `apps/frontend/lib/category/queries.ts`)。
+ * (frontend のビルドが DB と本定数の食い違いをログに警告する: `apps/frontend/lib/category/queries.ts`。
+ * migration とビルドが並行で走るため、止めはしない)。
  */
 export const EVENT_TYPE_SLUGS = [
   'collabo-cafe',

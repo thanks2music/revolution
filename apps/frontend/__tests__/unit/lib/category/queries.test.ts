@@ -112,15 +112,22 @@ describe('listCategoryParams', () => {
     expect(findReservedSlugs(['titles'])).toEqual(['titles']);
   });
 
-  it('stops the build when the DB and EVENT_TYPE_SLUGS disagree', async () => {
-    // 種別を DB にだけ足すと記事に出てこない種別が、定数にだけ足すと取り込みで保留になる種別が生まれる。
+  it('warns but does not stop the build when the DB and EVENT_TYPE_SLUGS disagree', async () => {
+    // 種別を変える migration と Vercel のビルドはマージ時に並行で走るので、ビルドが先だと
+    // 必ず食い違う。止めると本番のデプロイが落ちる (forward-only)。警告して DB の種別で生成する。
     mockHasCredentials.mockReturnValue(true);
     mockCreatePublicClient.mockReturnValue(
       makeClient({ data: [...FIVE.slice(0, 4), { slug: 'karaoke', name: 'カラオケ' }], error: null }),
     );
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { listCategoryParams } = await importQueries();
-    await expect(listCategoryParams()).rejects.toThrow(/DB だけ \[karaoke\] \/ 定数だけ \[other\]/);
+    await expect(listCategoryParams()).resolves.toEqual([
+      ...FIVE.slice(0, 4).map((category) => ({ event_type: category.slug })),
+      { event_type: 'karaoke' },
+    ]);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/DB だけ \[karaoke\] \/ 定数だけ \[other\]/));
+    warn.mockRestore();
   });
 
   it('skips the drift check when there are no categories (build without credentials)', async () => {
