@@ -47,11 +47,12 @@ concurrency:
 # - latest にしない: 2026-11-02 の v3.0.0 (破壊的変更あり) を CI が自動で拾い、pre-flight が
 #   `[inbucket] in supabase/config.toml is no longer supported` で落ちた (2026-11-03)。メジャーを
 #   上げる時は公式の移行ガイドを先に読む: https://supabase.com/docs/guides/local-development/cli/migrating-to-v3
-# - v3 の書き方 (2026-11-03 に v3 へ移行): DB を対象にするコマンドは既定で手元のスタックを向くので、
+# - v3 の書き方: DB を対象にするコマンドは既定で手元のスタックを向くので、
 #   ホストには `--remote=<url>` を付ける (`--db-url` は v3 で非推奨、v4 で削除)。ホストを変える
 #   `db push` は確認を求め、CI では聞けないので `--yes` を付ける。読み取りだけの dry-run と
-#   `migration list` にも付ける: v3 はネットワーク ban の自動解除にも `--yes` を求めるため
-#   (移行ガイドの "Other confirmation changes")。`--dry-run` があれば何も適用されない
+#   `migration list` にも付ける: v3 はネットワーク ban の自動解除にも `--yes` を求める
+#   (移行ガイドの "Other confirmation changes")。URL 指定の対象で解除まで試みるかは未確認だが、
+#   `--dry-run` があれば何も適用されないので、付けて害はない
 # - 版を上げる時: config.toml の `db.major_version` (今は 17) を読める CLI であること。読めないと
 #   `Failed reading config: Invalid db.major_version` で落ちる (以前 latest にしていた理由)
 # - 名前を `SUPABASE_` で始めない: CLI v3 は `SUPABASE_*` の環境変数で config.toml を上書きし、
@@ -155,15 +156,12 @@ jobs:
           # 存在することを smoke-check する (CLI の版を上げた時の備え)。flag が
           # 消えた将来のために clear なエラーを出す (本 step が pre-flight として
           # 機能しなくなる前に止める)。
-          # v3 で使う `--remote` / `--yes` も同じく確かめる (版を戻したり上げたりした時に、
-          # 未知のフラグで落ちる前にここで分かるように)。
-          HELP=$(supabase db push --help 2>&1)
-          for flag in --dry-run --remote --yes; do
-            if ! grep -q -- "$flag" <<< "$HELP"; then
-              echo "::error title=Pre-flight gate disabled::supabase CLI does not expose the $flag flag. The pre-flight guard cannot run. Update this workflow (check PINNED_SUPABASE_CLI_VERSION) or open an incident."
-              exit 1
-            fi
-          done
+          # `--remote` / `--yes` は確かめない: `--remote` は help の説明文にも出るので grep では
+          # 消えたことを検知できず、無ければ直後の dry-run が `Unrecognized flag` で落ちる。
+          if ! supabase db push --help 2>&1 | grep -q -- '--dry-run'; then
+            echo "::error title=Pre-flight gate disabled::supabase CLI does not expose --dry-run flag. The pre-flight guard cannot run. Update this workflow (check PINNED_SUPABASE_CLI_VERSION) or open an incident."
+            exit 1
+          fi
 
           # claude[bot] PR #250 review #2 (R2) 採用: error title を generic に
           # 統一 (--dry-run は connectivity / auth / pooler 不通でも fail するため、
@@ -189,7 +187,7 @@ jobs:
             echo "::error title=Migration pre-flight failed::Could not verify migration history after 2 attempts (5s gap). Possible causes: (a) migration_history inconsistency, (b) persistent connectivity / auth / pooler issue, (c) CLI breaking change. Read the CLI output above first to determine which."
             echo "::error::If (a) migration_history inconsistency: one-more-time/docs/operations/supabase-migration-workflow.md (private) §10 (STAGING ONLY)."
             echo "::error::Hint: do NOT rename or delete a migration file that has already been deployed to a remote. Add a NEW migration to make further changes."
-            echo "::error::If rollback is unavoidable: \`supabase migration repair <version> --status reverted --remote=<pooler URL> --yes\` (CLI v3) after manually rolling back the DB objects (see SoP §10)."
+            echo "::error::If rollback is unavoidable: \`supabase migration repair <version> --status reverted --remote=<pooler URL> --yes\` after manually rolling back the DB objects (see SoP §10)."
             exit 1
           fi
 
@@ -347,14 +345,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          # smoke-check (R2 #3 採用): staging と同一、使うフラグの存在確認
-          HELP=$(supabase db push --help 2>&1)
-          for flag in --dry-run --remote --yes; do
-            if ! grep -q -- "$flag" <<< "$HELP"; then
-              echo "::error title=Pre-flight gate disabled (PRODUCTION)::supabase CLI does not expose the $flag flag. The pre-flight guard cannot run. Escalate immediately and update this workflow."
-              exit 1
-            fi
-          done
+          # smoke-check (R2 #3 採用): staging と同一、--dry-run flag 存在確認
+          if ! supabase db push --help 2>&1 | grep -q -- '--dry-run'; then
+            echo "::error title=Pre-flight gate disabled (PRODUCTION)::supabase CLI does not expose --dry-run flag. The pre-flight guard cannot run. Escalate immediately and update this workflow."
+            exit 1
+          fi
 
           # claude[bot] PR #250 review R2 #1 採用: production の error annotation は
           # §10 (staging-only) を案内せず、**直接 escalation** を要求する。

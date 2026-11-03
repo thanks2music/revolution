@@ -216,9 +216,9 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Turn the email provider on or off. CLI v3 renamed this from `enable_signup`, which still works
-# until v4. `false` would also stop existing users from signing in by email; to block new sign-ups
-# only, use `enable_signup` under `[auth]`.
+# Turn the email provider on or off (renamed from `enable_signup` in CLI v3). `false` would also
+# stop existing users from signing in by email; to block new sign-ups only, use `enable_signup`
+# under `[auth]`.
 enabled = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
