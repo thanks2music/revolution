@@ -2,6 +2,7 @@ import { CategorySchema } from '@revolution/schemas/category';
 import { cache } from 'react';
 import { z } from 'zod';
 
+import { findReservedSlugs } from '@/lib/category/reserved-segments';
 import { fetchAllRows } from '@/lib/supabase/paginate';
 import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
 
@@ -59,7 +60,23 @@ export async function getCategory(slug: string): Promise<CategoryItem | null> {
   return (await listCategories()).find((category) => category.slug === slug) ?? null;
 }
 
-/** `app/[event_type]/layout.tsx` の `generateStaticParams` 用。 */
+/**
+ * `app/[event_type]/page.tsx` (種別の一覧) の `generateStaticParams` 用。
+ *
+ * 🔴 種別の slug がトップ階層の静的ルート (`titles` など) と重なっていたら **throw してビルドを止める**。
+ * 重なった種別のページは静的ルートに負けて黙って届かなくなるため
+ * (理由は `lib/category/reserved-segments.ts`)。ビルド時に止めれば、本番は直前のデプロイのまま残る。
+ */
 export async function listCategoryParams(): Promise<{ event_type: string }[]> {
-  return (await listCategories()).map((category) => ({ event_type: category.slug }));
+  const categories = await listCategories();
+
+  const reserved = findReservedSlugs(categories.map((category) => category.slug));
+  if (reserved.length > 0) {
+    throw new Error(
+      `イベント種別の slug がトップ階層の静的ルートと重なっています: ${reserved.join(', ')}。` +
+        'categories の slug を変えてください (lib/category/reserved-segments.ts)。',
+    );
+  }
+
+  return categories.map((category) => ({ event_type: category.slug }));
 }

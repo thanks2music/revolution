@@ -148,6 +148,15 @@ describe('metadata の title 合成', () => {
     expect(eventMeta.title as string).not.toContain(siteConfig.name);
     expect(occurrenceMeta.title as string).not.toContain(siteConfig.name);
 
+    // 種別の一覧 (`/{種別}`、2026-11-03 新設) も同じ不変条件。
+    const eventTypePage = (await import('@/app/[event_type]/page')) as {
+      generateMetadata: (p: unknown) => Promise<{ title?: unknown }>;
+    };
+    const eventTypeMeta = await eventTypePage.generateMetadata({
+      params: Promise.resolve({ event_type: 'collabo-cafe' }),
+    });
+    expect(eventTypeMeta.title).toBe('コラボカフェ');
+
     // (b) 見つからない場合の早期 return
     mockGetEventDetail.mockResolvedValue(null);
     mockGetOccurrenceDetail.mockResolvedValue(null);

@@ -1,8 +1,8 @@
 /**
- * 企画一覧 `/events` (S2)
+ * 企画一覧 `/events` (S2)。全種別の企画を並べる。
  *
- * 企画ページ (`/events/{id}`) への入口。対象は `listEventParams` (静的生成対象)
- * と同じ「公開済み開催を 1 件以上持つ企画」なので、リンク先は必ず生成済み
+ * 企画ページ (`/{種別}/{id}`) への入口。種別ごとの一覧は `/{種別}` (`app/[event_type]/page.tsx`)。
+ * 対象は `listEventParams` (静的生成対象) と同じ「公開済み開催を 1 件以上持つ企画」なので、リンク先は必ず生成済み
  * (= 404 しない)。開催を持たない企画は載せない (空ページへリンクしない、
  * `findRelatedEvents` と同じ基準)。
  */
@@ -10,8 +10,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { EmptyState } from '@/components/molecules/EmptyState';
-import { EventSummaryCard } from '@/components/molecules/EventSummaryCard';
+import { EventSummaryList } from '@/components/organisms/EventSummaryList';
 import Layout from '@/components/templates/Layout';
 import { listEventListItems } from '@/lib/event/queries';
 import { generateContentMetadata } from '@/lib/metadata';
@@ -49,23 +48,7 @@ export default async function EventsPage() {
           企画から探す
         </h1>
 
-        {events.length > 0 ? (
-          <>
-            <p className="mb-6 text-sm text-ink-muted">
-              <span className="font-numeric tabular-nums">{events.length}</span> 件
-            </p>
-
-            <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3" data-grid-layout="block">
-              {events.map((event) => (
-                <li key={event.id}>
-                  <EventSummaryCard event={event} />
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : (
-          <EmptyState message="企画はまだ登録されていません。" />
-        )}
+        <EventSummaryList events={events} emptyMessage="企画はまだ登録されていません。" />
       </div>
     </Layout>
   );
