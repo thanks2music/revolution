@@ -41,6 +41,7 @@ import { getEventDetail, listEventParams } from '@/lib/event/queries';
 import { generateContentMetadata } from '@/lib/metadata';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { toBadgeStatus } from '@/lib/occurrence/status';
+import { parseCanonicalId } from '@/lib/route-params';
 import { isSafeHttpUrl } from '@/lib/url-safety';
 import type { EventPageProps } from '@/types/page-props';
 
@@ -51,9 +52,22 @@ export async function generateStaticParams() {
   return listEventParams();
 }
 
+/**
+ * 種別と企画を引く。未知の種別・存在しない企画は null。
+ *
+ * ID が正準形でないパス (`/wp-admin/setup-config.php` のようなスキャナのパスも
+ * 第 2 階層の動的ルートとしてここに来る) は DB に問い合わせずに null を返す。
+ * 種別と企画の取得は互いに依存しないので並行に引く。
+ */
+async function findEvent(eventType: string, id: string) {
+  if (parseCanonicalId(id) === null) return null;
+  const [category, data] = await Promise.all([getCategory(eventType), getEventDetail(id)]);
+  return category ? data : null;
+}
+
 export async function generateMetadata(props: EventPageProps): Promise<Metadata> {
   const { event_type, id } = await props.params;
-  const data = (await getCategory(event_type)) ? await getEventDetail(id) : null;
+  const data = await findEvent(event_type, id);
 
   if (!data) {
     return { title: '企画情報が見つかりません' };
@@ -79,8 +93,7 @@ export async function generateMetadata(props: EventPageProps): Promise<Metadata>
 export default async function EventPage(props: EventPageProps) {
   const { event_type, id } = await props.params;
   // 未知の種別は 404 (旧 `/events/{id}` もここで 404 になる。2026-11-03 BOSS 確定)。
-  if (!(await getCategory(event_type))) notFound();
-  const data = await getEventDetail(id);
+  const data = await findEvent(event_type, id);
 
   if (!data) notFound();
   if (data.event.primaryCategory.slug !== event_type) {
