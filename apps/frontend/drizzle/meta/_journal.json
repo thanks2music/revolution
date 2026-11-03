@@ -120,6 +120,13 @@
       "when": 1786004272842,
       "tag": "0016_occurrences_starts_on_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793698383013,
+      "tag": "0017_categories_reduce_to_five",
+      "breakpoints": true
     }
   ]
 }
