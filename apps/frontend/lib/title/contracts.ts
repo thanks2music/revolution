@@ -2,6 +2,8 @@ import { EventSchema as EventRowSchema } from '@revolution/schemas/event';
 import { TitleSchema as TitleRowSchema, type TITLE_KIND_VALUES } from '@revolution/schemas/title';
 import { z } from 'zod';
 
+import { PRIMARY_CATEGORY_EMBED, PrimaryCategorySchema } from '@/lib/event/contracts';
+
 /**
  * 作品ハブ (`/titles/{slug}`) が `titles` / `event_titles` を読むときの契約と
  * select 句。方針は `lib/event/contracts.ts` と同じ:
@@ -58,6 +60,9 @@ export const TitleEventSchema = EventRowSchema.pick({
   slug: true,
   name: true,
   ratingCount: true,
+}).extend({
+  /** リンク先 (`/{種別}/{id}`) の種別。null の扱いは `PrimaryCategorySchema`。 */
+  primaryCategory: PrimaryCategorySchema,
 });
 
 export type TitleEvent = z.infer<typeof TitleEventSchema>;
@@ -67,8 +72,7 @@ export type TitleEvent = z.infer<typeof TitleEventSchema>;
  * `titles!inner` は `.eq('titles.slug', …)` のフィルタを効かせるためだけに
  * 埋め込む (取り出しには使わない)。
  */
-export const TITLE_EVENT_COLUMNS =
-  'events!inner(id, slug, name, ratingCount:rating_count), titles!inner(slug)';
+export const TITLE_EVENT_COLUMNS = `events!inner(id, slug, name, ratingCount:rating_count, ${PRIMARY_CATEGORY_EMBED}), titles!inner(slug)`;
 
 /**
  * `event_titles` の埋め込み結果から企画だけを取り出す。

@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
 import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
-import { getOccurrenceUrl } from '@/lib/event/event-url';
+import { getOccurrenceUrl, type EventRouteRef } from '@/lib/event/event-url';
 import { formatPeriod, formatPeriodTense } from '@/lib/occurrence/format';
 import { toBadgeStatus } from '@/lib/occurrence/status';
 
@@ -12,7 +12,7 @@ import { toBadgeStatus } from '@/lib/occurrence/status';
  *
  * ## `OccurrenceCard` との違い
  *
- * `OccurrenceCard` は**会場名**が主表示で、企画ページ (`/events/{id}`) と
+ * `OccurrenceCard` は**会場名**が主表示で、企画ページ (`/{種別}/{id}`) と
  * 作品ハブ (`/titles/{slug}`) が使う — どちらも「1 つの企画の中で会場を選ぶ」
  * 画面なので、行ごとに変わるのは会場名だから。
  *
@@ -37,11 +37,10 @@ import { toBadgeStatus } from '@/lib/occurrence/status';
  */
 
 type Props = {
-  eventId: number;
-  /** 開催の slug (`/events/{id}/{slug}` のリンク先)。 */
+  /** 開催の属する企画。名前を主表示に、ID と種別をリンク先 `/{種別}/{id}/{slug}` に使う。 */
+  event: EventRouteRef & { name: string };
+  /** 開催の slug。 */
   slug: string;
-  /** 主表示。解決済みの企画名を渡す (fallback の判断は呼び出し側の契約層が持つ)。 */
-  eventName: string;
   status: OccurrenceStatus;
   startsOn: string | null;
   endsOn: string | null;
@@ -91,16 +90,15 @@ const titleStyle: Record<OccurrenceStatus, string> = {
 };
 
 export const EventOccurrenceCard = ({
-  eventId,
+  event,
   slug,
-  eventName,
   status,
   startsOn,
   endsOn,
   venueName,
 }: Props) => (
   <Link
-    href={getOccurrenceUrl(eventId, slug)}
+    href={getOccurrenceUrl(event, slug)}
     className={`block rounded-2xl border p-3 shadow-sm transition-colors hover:border-primary-300 ${surfaceStyle[status]}`}
   >
     <div className="flex flex-wrap items-center gap-1">
@@ -113,7 +111,7 @@ export const EventOccurrenceCard = ({
       {status === 'ongoing' && <RemainingDaysBadge endsOn={endsOn} />}
     </div>
 
-    <p className={`mt-2 font-display font-bold leading-snug ${titleStyle[status]}`}>{eventName}</p>
+    <p className={`mt-2 font-display font-bold leading-snug ${titleStyle[status]}`}>{event.name}</p>
 
     <p className={`mt-1 text-xs leading-relaxed ${bodyStyle[status]}`}>
       {venueName && (

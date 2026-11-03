@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { EVENT_NAME_FALLBACK } from '@/lib/event/contracts';
 import {
   ONGOING_OCCURRENCE_COLUMNS,
   OngoingOccurrenceRowSchema,
@@ -71,19 +70,26 @@ export async function listOngoingOccurrences(): Promise<OngoingOccurrence[]> {
   return z
     .array(OngoingOccurrenceRowSchema)
     .parse(rows)
-    .map((row) => ({
-      id: row.id,
-      eventId: row.eventId,
-      slug: row.slug,
-      startsOn: row.startsOn,
-      endsOn: row.endsOn,
-      eventName: row.events?.name ?? EVENT_NAME_FALLBACK,
-      categoryName: row.events?.primaryCategory?.name ?? null,
-      titles: parseRailTitles(row.events?.eventTitles ?? []),
-      venueName: row.venues?.name ?? null,
-      // 都道府県・市区は null を取り得る (データ源が無い項目は置かない)。
-      venueRegion: [row.venues?.prefecture, row.venues?.city].filter(Boolean).join(' '),
-    }));
+    .flatMap(({ events, ...row }) =>
+      // 企画が引けない行は種別が分からず URL を作れないので落とす (契約の docstring)。
+      events === null
+        ? []
+        : [
+            {
+              id: row.id,
+              eventId: row.eventId,
+              slug: row.slug,
+              startsOn: row.startsOn,
+              endsOn: row.endsOn,
+              eventName: events.name,
+              primaryCategory: events.primaryCategory,
+              titles: parseRailTitles(events.eventTitles),
+              venueName: row.venues?.name ?? null,
+              // 都道府県・市区は null を取り得る (データ源が無い項目は置かない)。
+              venueRegion: [row.venues?.prefecture, row.venues?.city].filter(Boolean).join(' '),
+            },
+          ],
+    );
 }
 
 /** 埋め込みから作品を取り出す。null を落とし、名前順で安定させる。 */

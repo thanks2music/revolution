@@ -4,7 +4,7 @@
  * ## 集約ビューであって正準の所有者ではない (URL 設計 §7)
  *
  * このページは「その会場の全開催」を企画をまたいで**集約**し、一覧の各 item は
- * 本拠地 (`/events/{id}/{occurrence-slug}`) へ送る。
+ * 本拠地 (`/{種別}/{id}/{occurrence-slug}`) へ送る。
  *
  * ## 出さないもの (2026-08-21 BOSS 確定)
  *
@@ -143,9 +143,8 @@ export default async function VenuePage(props: VenuePageProps) {
                       同じ名前が並んで無意味になる (作品の開催一覧では渡す)。
                     */}
                     <EventOccurrenceCard
-                      eventId={occurrence.eventId}
+                      event={occurrence.events}
                       slug={occurrence.slug}
-                      eventName={occurrence.eventName}
                       status={occurrence.status}
                       startsOn={occurrence.startsOn}
                       endsOn={occurrence.endsOn}

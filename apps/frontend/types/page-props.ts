@@ -34,20 +34,36 @@ export type ArticlePageParams = {
 };
 
 /**
- * Occurrence (開催) detail page params
+ * Event (企画) page params
  *
  * @description
- * Used in /events/[id]/[occurrence_slug] route.
- * `id` is the event (企画) ID; `occurrence_slug` identifies the venue-scoped
- * occurrence within that event. URL 設計は 2026-08-03 確定
+ * Used in /[event_type]/[id] route. `event_type` is the event's primary
+ * category slug (`categories.slug`) and `id` is the event ID. The ID is the
+ * identifier; when `event_type` does not match, the page redirects to the
+ * canonical URL. URL 設計は 2026-11-03 改訂
  * (`docs/event-review-data-model.md` §7)。events.slug は URL に露出しない。
  *
  * @example
- * // URL: /events/2/tokyo-shibuya
- * { id: '2', occurrence_slug: 'tokyo-shibuya' }
+ * // URL: /collabo-cafe/2
+ * { event_type: 'collabo-cafe', id: '2' }
  */
-export type OccurrencePageParams = {
+export type EventPageParams = {
+  event_type: string;
   id: string;
+};
+
+/**
+ * Occurrence (開催) detail page params
+ *
+ * @description
+ * Used in /[event_type]/[id]/[occurrence_slug] route.
+ * `occurrence_slug` identifies the venue-scoped occurrence within that event.
+ *
+ * @example
+ * // URL: /collabo-cafe/2/tokyo-shibuya
+ * { event_type: 'collabo-cafe', id: '2', occurrence_slug: 'tokyo-shibuya' }
+ */
+export type OccurrencePageParams = EventPageParams & {
   occurrence_slug: string;
 };
 
@@ -60,6 +76,9 @@ export type OccurrencePageParams = {
  * (旧 `/[event_type]/[work_slug]/[slug]` は廃止)。
  */
 export type ArticlePageProps = PageProps<ArticlePageParams>;
+
+/** Page props for the event page. */
+export type EventPageProps = PageProps<EventPageParams>;
 
 /** Page props for the occurrence detail page. */
 export type OccurrencePageProps = PageProps<OccurrencePageParams>;

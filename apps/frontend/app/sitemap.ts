@@ -28,7 +28,7 @@
 import * as Sentry from '@sentry/nextjs';
 import { MetadataRoute } from 'next';
 import { env } from '@/lib/env';
-import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
+import { getEventTypeUrl, getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { listEventParams } from '@/lib/event/queries';
 import { getAllArticles, getArticleUrl } from '@/lib/mdx/articles';
 import { listOccurrenceParams } from '@/lib/occurrence/queries';
@@ -64,7 +64,11 @@ function buildArticlePages(baseUrl: string): MetadataRoute.Sitemap {
 }
 
 /**
- * 企画・開催ページ (DB 由来)。
+ * 種別の一覧・企画・開催ページ (DB 由来)。
+ *
+ * 種別の一覧 (`/{種別}`) は**企画が 1 件以上ある種別だけ**載せる。企画 0 件の種別も
+ * ページ自体は空状態で存在するが、中身の無いページを検索エンジンへ送らないため。
+ * 種別の集合は企画の列挙から導出する (別クエリを持たない)。
  *
  * 失敗しても記事の sitemap は返せるよう、ここで閉じて空配列に倒す。
  */
@@ -76,16 +80,31 @@ async function buildDatabasePages(baseUrl: string): Promise<MetadataRoute.Sitema
       listOccurrenceParams(),
     ]);
 
+    // 静的パラメータ ({ event_type, id }) を URL ヘルパの形へ。
+    const toEvent = (param: { event_type: string; id: string }) => ({
+      id: param.id,
+      primaryCategory: { slug: param.event_type },
+    });
+
+    const eventTypes = [...new Set(eventParams.map((param) => param.event_type))];
+
     return [
+      ...eventTypes.map((eventType) => ({
+        url: `${baseUrl}${getEventTypeUrl(eventType)}`,
+        lastModified: new Date(),
+        changeFrequency: 'daily' as const,
+        // `/events` (全種別の一覧) と同じ扱い。
+        priority: 0.8,
+      })),
       ...eventParams.map((param) => ({
-        url: `${baseUrl}${getEventUrl(param.id)}`,
+        url: `${baseUrl}${getEventUrl(toEvent(param))}`,
         lastModified: new Date(),
         changeFrequency: 'daily' as const,
         // 企画は開催をまとめる回遊のハブなので記事より少し高く置く。
         priority: 0.9,
       })),
       ...occurrenceParams.map((param) => ({
-        url: `${baseUrl}${getOccurrenceUrl(param.id, param.occurrence_slug)}`,
+        url: `${baseUrl}${getOccurrenceUrl(toEvent(param), param.occurrence_slug)}`,
         lastModified: new Date(),
         // 状態 (開催中 / 終了) が日付で変わるので、記事より更新頻度を高く申告する。
         changeFrequency: 'daily' as const,
@@ -167,7 +186,7 @@ async function buildVenuePages(baseUrl: string): Promise<MetadataRoute.Sitemap> 
 }
 
 /**
- * S2 ルート群 (`/titles` `/events` `/venues` とその配下) を sitemap に載せるか。
+ * S2 ルート群 (`/titles` `/events` `/venues` `/{種別}` とその配下) を sitemap に載せるか。
  *
  * 🔴 **現在 `false`** — 同ルート群は暫定的に noindex にしている (BOSS 確定 2026-08-25、
  * 理由は `lib/metadata.ts` の `generateContentMetadata` を参照)。
@@ -191,7 +210,7 @@ async function buildVenuePages(baseUrl: string): Promise<MetadataRoute.Sitemap> 
 const INCLUDE_S2_ROUTES: boolean = false;
 
 /**
- * S2 ルート群 (`/titles` `/events` `/venues` の配下) のエントリを列挙する。
+ * S2 ルート群 (`/titles` `/venues` `/{種別}` の配下) のエントリを列挙する。
  *
  * **`INCLUDE_S2_ROUTES` から切り離して export している**のは、noindex 期間中も
  * **列挙ロジック自体の回帰テストを生かし続ける**ため。ここが壊れていることに

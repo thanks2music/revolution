@@ -192,8 +192,9 @@ export function generateContentMetadata({
      *
      * ## 対象がここで過不足なく決まる理由
      *
-     * 本関数の呼び出し元は **S2 の 10 ルートのみ** (`/titles` `/events` `/venues` と
-     * それぞれの配下)。記事詳細は `generateArticleMetadata` を使うため**影響しない**。
+     * 本関数の呼び出し元は **S2 の 11 ルートのみ** (`/titles` `/events` `/venues` と
+     * それぞれの配下、2026-11-03 からは企画・開催の `/{種別}/…` と種別の一覧 `/{種別}`)。
+     * 記事詳細は `generateArticleMetadata` を使うため**影響しない**。
      * よって 1 箇所で正しい範囲を覆える。
      *
      * ## 🔴 解除条件

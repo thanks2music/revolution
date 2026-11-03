@@ -4,7 +4,7 @@
  * `lib/event/event-url.ts` / `lib/mdx/article-url.ts` と同じ慣習で、
  * 正準形の定義を生成側の 1 箇所に集約する。URL 設計は
  * `docs/event-review-data-model.md` §7 (作品ハブは集約ビューで、
- * 一覧に載る item の canonical は本拠地 `/events/…` / `/articles/…` を指す)。
+ * 一覧に載る item の canonical は本拠地 `/{種別}/…` / `/articles/…` を指す)。
  */
 
 /** 作品ハブ。`/titles/{slug}` */

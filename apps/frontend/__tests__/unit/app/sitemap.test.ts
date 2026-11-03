@@ -26,9 +26,9 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 const mockGetAllArticles = jest.fn<() => unknown[]>();
 const mockGetArticleUrl = jest.fn<(a: { slug: string }) => string>();
-const mockListEventParams = jest.fn<() => Promise<{ id: string }[]>>();
+const mockListEventParams = jest.fn<() => Promise<{ event_type: string; id: string }[]>>();
 const mockListOccurrenceParams = jest.fn<
-  () => Promise<{ id: string; occurrence_slug: string }[]>
+  () => Promise<{ event_type: string; id: string; occurrence_slug: string }[]>
 >();
 const mockListTitleParams = jest.fn<() => Promise<{ slug: string }[]>>();
 const mockListVenueParams = jest.fn<() => Promise<{ slug: string }[]>>();
@@ -86,9 +86,16 @@ async function importSentryMock() {
 
 const urls = (entries: { url: string }[]) => entries.map((e) => e.url);
 
-/** S2 に属する URL かどうか (公開ポリシーの検査用)。 */
-const isS2 = (u: string) =>
-  /\/(titles|events|venues)(\/|$)/.test(u.replace('https://example.com', ''));
+/**
+ * S2 に属する URL かどうか (公開ポリシーの検査用)。
+ *
+ * サイトルートと記事 (`/articles`) 以外はすべて S2。企画・開催は `/{種別}/…` で
+ * 第 1 階層が固定でない (2026-11-03) ため、S2 側を列挙せず否定で判定する。
+ */
+const isS2 = (u: string) => {
+  const path = u.replace('https://example.com', '');
+  return path !== '' && !/^\/articles(\/|$)/.test(path);
+};
 
 describe('sitemap (公開ポリシー)', () => {
   it('サイトルートは常に載る', async () => {
@@ -110,8 +117,10 @@ describe('sitemap (公開ポリシー)', () => {
     // 「送信された URL に noindex タグが追加されています」と警告する。
     // データが揃っていても載らないことを固定する。
     mockGetAllArticles.mockReturnValue([{ slug: 'abc', date: '2026-01-01' }]);
-    mockListEventParams.mockResolvedValue([{ id: '2' }]);
-    mockListOccurrenceParams.mockResolvedValue([{ id: '2', occurrence_slug: 'tokyo' }]);
+    mockListEventParams.mockResolvedValue([{ event_type: 'collabo-cafe', id: '2' }]);
+    mockListOccurrenceParams.mockResolvedValue([
+      { event_type: 'collabo-cafe', id: '2', occurrence_slug: 'tokyo' },
+    ]);
     mockListTitleParams.mockResolvedValue([{ slug: 'jujutsu-kaisen' }]);
     mockListVenueParams.mockResolvedValue([{ slug: 'box-cafe-and-space-gems-shibuya' }]);
 
@@ -159,26 +168,47 @@ describe('buildS2Pages (列挙ロジック)', () => {
   const BASE = 'https://example.com';
 
   it('企画ページを listEventParams から列挙する', async () => {
-    mockListEventParams.mockResolvedValue([{ id: '2' }, { id: '7' }]);
-
-    const buildS2Pages = await importBuildS2Pages();
-    const result = urls(await buildS2Pages(BASE));
-
-    expect(result).toContain('https://example.com/events/2');
-    expect(result).toContain('https://example.com/events/7');
-  });
-
-  it('開催ページを listOccurrenceParams から列挙する', async () => {
-    mockListOccurrenceParams.mockResolvedValue([
-      { id: '2', occurrence_slug: 'tokyo-shibuya' },
-      { id: '2', occurrence_slug: 'osaka-umeda' },
+    mockListEventParams.mockResolvedValue([
+      { event_type: 'collabo-cafe', id: '2' },
+      { event_type: 'pop-up-store', id: '7' },
     ]);
 
     const buildS2Pages = await importBuildS2Pages();
     const result = urls(await buildS2Pages(BASE));
 
-    expect(result).toContain('https://example.com/events/2/tokyo-shibuya');
-    expect(result).toContain('https://example.com/events/2/osaka-umeda');
+    expect(result).toContain('https://example.com/collabo-cafe/2');
+    expect(result).toContain('https://example.com/pop-up-store/7');
+  });
+
+  it('種別の一覧を、企画のある種別だけ 1 回ずつ列挙する', async () => {
+    // 企画 0 件の種別は空状態のページなので載せない。種別は企画の列挙から導出する。
+    mockListEventParams.mockResolvedValue([
+      { event_type: 'collabo-cafe', id: '2' },
+      { event_type: 'collabo-cafe', id: '3' },
+      { event_type: 'exhibition', id: '9' },
+    ]);
+
+    const buildS2Pages = await importBuildS2Pages();
+    const result = urls(await buildS2Pages(BASE));
+
+    expect(result.filter((u) => /^https:\/\/example\.com\/[^/]+$/.test(u))).toEqual([
+      'https://example.com/collabo-cafe',
+      'https://example.com/exhibition',
+    ]);
+    expect(result).not.toContain('https://example.com/pop-up-store');
+  });
+
+  it('開催ページを listOccurrenceParams から列挙する', async () => {
+    mockListOccurrenceParams.mockResolvedValue([
+      { event_type: 'collabo-cafe', id: '2', occurrence_slug: 'tokyo-shibuya' },
+      { event_type: 'collabo-cafe', id: '2', occurrence_slug: 'osaka-umeda' },
+    ]);
+
+    const buildS2Pages = await importBuildS2Pages();
+    const result = urls(await buildS2Pages(BASE));
+
+    expect(result).toContain('https://example.com/collabo-cafe/2/tokyo-shibuya');
+    expect(result).toContain('https://example.com/collabo-cafe/2/osaka-umeda');
   });
 
   it('作品ハブと集約ビューを listTitleParams から列挙する', async () => {
@@ -204,18 +234,20 @@ describe('buildS2Pages (列挙ロジック)', () => {
   });
 
   it('全種別をまとめて列挙する', async () => {
-    mockListEventParams.mockResolvedValue([{ id: '2' }]);
-    mockListOccurrenceParams.mockResolvedValue([{ id: '2', occurrence_slug: 'tokyo' }]);
+    mockListEventParams.mockResolvedValue([{ event_type: 'collabo-cafe', id: '2' }]);
+    mockListOccurrenceParams.mockResolvedValue([
+      { event_type: 'collabo-cafe', id: '2', occurrence_slug: 'tokyo' },
+    ]);
     mockListTitleParams.mockResolvedValue([{ slug: 'jujutsu-kaisen' }]);
     mockListVenueParams.mockResolvedValue([{ slug: 'box-cafe-and-space-gems-shibuya' }]);
 
     const buildS2Pages = await importBuildS2Pages();
-    // event 1 + occurrence 1 + title (hub / articles / occurrences) 3 + venue 1
-    expect(await buildS2Pages(BASE)).toHaveLength(6);
+    // type 1 + event 1 + occurrence 1 + title (hub / articles / occurrences) 3 + venue 1
+    expect(await buildS2Pages(BASE)).toHaveLength(7);
   });
 
   it('作品の取得が throw しても他種別は残る (種別ごとの独立 try/catch)', async () => {
-    mockListEventParams.mockResolvedValue([{ id: '2' }]);
+    mockListEventParams.mockResolvedValue([{ event_type: 'collabo-cafe', id: '2' }]);
     mockListVenueParams.mockResolvedValue([{ slug: 'shibuya' }]);
     mockListTitleParams.mockRejectedValue(new Error('db down'));
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -223,7 +255,7 @@ describe('buildS2Pages (列挙ロジック)', () => {
     const buildS2Pages = await importBuildS2Pages();
     const result = urls(await buildS2Pages(BASE));
 
-    expect(result).toContain('https://example.com/events/2');
+    expect(result).toContain('https://example.com/collabo-cafe/2');
     expect(result).toContain('https://example.com/venues/shibuya');
     expect(result.some((u) => u.includes('/titles/'))).toBe(false);
     const sentry = await importSentryMock();
@@ -234,7 +266,7 @@ describe('buildS2Pages (列挙ロジック)', () => {
   });
 
   it('会場の取得が throw しても他種別は残る', async () => {
-    mockListEventParams.mockResolvedValue([{ id: '2' }]);
+    mockListEventParams.mockResolvedValue([{ event_type: 'collabo-cafe', id: '2' }]);
     mockListTitleParams.mockResolvedValue([{ slug: 'jujutsu-kaisen' }]);
     mockListVenueParams.mockRejectedValue(new Error('db down'));
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -242,7 +274,7 @@ describe('buildS2Pages (列挙ロジック)', () => {
     const buildS2Pages = await importBuildS2Pages();
     const result = urls(await buildS2Pages(BASE));
 
-    expect(result).toContain('https://example.com/events/2');
+    expect(result).toContain('https://example.com/collabo-cafe/2');
     expect(result).toContain('https://example.com/titles/jujutsu-kaisen');
     expect(result.some((u) => u.includes('/venues/'))).toBe(false);
     const sentry = await importSentryMock();
@@ -261,7 +293,7 @@ describe('buildS2Pages (列挙ロジック)', () => {
     const result = urls(await buildS2Pages(BASE));
 
     expect(result).toContain('https://example.com/titles/jujutsu-kaisen');
-    expect(result.some((u) => u.includes('/events/'))).toBe(false);
+    expect(result.some((u) => u.includes('/collabo-cafe/'))).toBe(false);
     const sentry = await importSentryMock();
     expect(sentry.captureException).toHaveBeenCalledWith(expect.anything(), {
       tags: { sitemap: 'events' },

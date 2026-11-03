@@ -5,7 +5,7 @@
  *
  * title はコラボ (M:N) のため、企画・開催・記事の正準を持てない。
  * このページは「概要 + 記事 + 開催 + 企画」を**集約**し、一覧の各 item は
- * 本拠地 (`/events/{id}` / `/events/{id}/{slug}` / `/articles/{ULID}`) へ送る。
+ * 本拠地 (`/{種別}/{id}` / `/{種別}/{id}/{slug}` / `/articles/{ULID}`) へ送る。
  *
  * ## 記事の紐付け (2026-08-21 BOSS 確定、案 X)
  *
@@ -152,7 +152,7 @@ export default async function TitlePage(props: TitlePageProps) {
               >
                 <div className="mb-3 flex flex-wrap items-baseline gap-2">
                   <Link
-                    href={getEventUrl(event.id)}
+                    href={getEventUrl(event)}
                     className="font-display text-lg font-bold text-ink-strong hover:text-primary-700"
                   >
                     {event.name}
@@ -165,7 +165,7 @@ export default async function TitlePage(props: TitlePageProps) {
                 <ul className="grid gap-3 md:grid-cols-2" data-grid-layout="row">
                   {occurrences.map((occurrence) => (
                     <li key={occurrence.id}>
-                      <OccurrenceCard eventId={event.id} occurrence={occurrence} />
+                      <OccurrenceCard event={event} occurrence={occurrence} />
                     </li>
                   ))}
                 </ul>

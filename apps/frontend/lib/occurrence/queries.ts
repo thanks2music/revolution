@@ -7,6 +7,8 @@ import {
   EVENT_COLUMNS,
   EVENT_TITLES_COLUMNS,
   EventSchema,
+  PRIMARY_CATEGORY_EMBED,
+  PrimaryCategorySchema,
   parseEmbeddedTitles,
   type Title,
 } from '@/lib/event/contracts';
@@ -118,7 +120,11 @@ export type OccurrencePageData = {
 };
 
 /**
- * `generateStaticParams` 用。公開済み開催の (企画 ID, 開催 slug) を列挙する。
+ * `generateStaticParams` 用。公開済み開催の (種別, 企画 ID, 開催 slug) を列挙する。
+ *
+ * 種別 (URL の第 1 階層) は `occurrence_view` → `events` → `categories` の埋め込みで
+ * 同じクエリの中で取る。`events!inner` は企画が引けない開催を落とす (FK が NOT NULL
+ * なので実運用では起きない)。
  *
  * ## 0 件を「異常」として扱わない
  *
@@ -137,7 +143,9 @@ export type OccurrencePageData = {
  * catch にすると、Vercel 本番ビルドで DB が落ちていても 0 ページで静かに成功し、
  * 「ページが 1 枚も出ない」ことに気づけなくなる。
  */
-export async function listOccurrenceParams(): Promise<{ id: string; occurrence_slug: string }[]> {
+export async function listOccurrenceParams(): Promise<
+  { event_type: string; id: string; occurrence_slug: string }[]
+> {
   if (!hasPublicSupabaseCredentials()) {
     // 黙って 0 件にしない。ビルドログに理由を残す。
     console.warn(
@@ -155,15 +163,25 @@ export async function listOccurrenceParams(): Promise<{ id: string; occurrence_s
     fetchPage: (from, to) =>
       supabase
         .from('occurrence_view')
-        .select('eventId:event_id, slug')
+        .select(`eventId:event_id, slug, events!inner(${PRIMARY_CATEGORY_EMBED})`)
         .order('id', { ascending: true })
         .range(from, to),
   });
 
   return z
-    .array(z.object({ eventId: z.number(), slug: z.string() }))
+    .array(
+      z.object({
+        eventId: z.number(),
+        slug: z.string(),
+        events: z.object({ primaryCategory: PrimaryCategorySchema }),
+      }),
+    )
     .parse(rows)
-    .map((row) => ({ id: String(row.eventId), occurrence_slug: row.slug }));
+    .map((row) => ({
+      event_type: row.events.primaryCategory.slug,
+      id: String(row.eventId),
+      occurrence_slug: row.slug,
+    }));
 }
 
 /**
@@ -177,7 +195,7 @@ export async function listOccurrenceParams(): Promise<{ id: string; occurrence_s
  * 同時に投げられる (往復の深さが 3 段 → 2 段)。
  *
  * `eventId` は URL 由来の文字列なので、**正準形でなければ問い合わせずに** null を
- * 返す (`/events/abc/...` で DB へ無駄に投げない + `/events/2.0` のような
+ * 返す (`/collabo-cafe/abc/...` で DB へ無駄に投げない + `/collabo-cafe/2.0` のような
  * 表記ゆれを 404 にして重複コンテンツを作らない)。
  *
  * ## `React.cache()` でリクエスト内メモ化する

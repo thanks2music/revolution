@@ -112,7 +112,7 @@ export const occurrences = pgTable(
     index('occurrences_venue_idx').on(table.venueId),
     // 状態導出 (開催中 / 予定 / 終了) の範囲検索用。
     index('occurrences_dates_idx').on(table.startsOn, table.endsOn),
-    // 企画内で会場 slug を一意に (/events/{event}/{occurrence-slug} の安定化)。
+    // 企画内で会場 slug を一意に (/{種別}/{event}/{occurrence-slug} の安定化)。
     uniqueIndex('occurrences_event_slug_uniq').on(table.eventId, table.slug),
     // Layer2: DB CHECK。既存 4 テーブルと同正規表現 (BOSS 承認 2026-08-06)。
     check('occurrences_slug_format', sql`${table.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`),

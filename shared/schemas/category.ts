@@ -28,6 +28,30 @@ import { categories } from './db/categories';
 export const CATEGORY_SLUG_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /**
+ * イベント種別の slug (企画の URL の第 1 階層 `/{slug}/{event_id}`)。
+ *
+ * DB の categories と同じ 5 件 (2026-11-03、migration 0017 で 23 → 5)。分類の決め方は
+ * private の `one-more-time/docs/event-review-data-model.md` §6 と templates の抽出プロンプト。
+ *
+ * AI Writer の生成側の契約 (`extraction-response.ts` の `StrictEventDataSchema`) がこの集合で
+ * 縛るので、OpenAI / Gemini ではここに無い種別は記事に出てこない (Anthropic は取り込みで保留になる)。**種別を足すときは migration・templates
+ * (`slug-registry.yaml` / `event-type-slugs.yaml`)・本定数の 3 か所を同時に足す**
+ * (frontend のビルドが DB と本定数の食い違いをログに警告する: `apps/frontend/lib/category/queries.ts`。
+ * migration とビルドが並行で走るため、止めはしない)。
+ */
+export const EVENT_TYPE_SLUGS = [
+  'collabo-cafe',
+  'pop-up-store',
+  'exhibition',
+  'chain-store',
+  'other',
+] as const;
+
+export const EventTypeSlugSchema = z.enum(EVENT_TYPE_SLUGS);
+
+export type EventTypeSlug = z.infer<typeof EventTypeSlugSchema>;
+
+/**
  * categories 行の select スキーマ。DB の NOT NULL 制約 (slug / name) を
  * そのまま zod 側でも保持する。
  */
