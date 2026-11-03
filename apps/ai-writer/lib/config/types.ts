@@ -68,7 +68,8 @@ export interface TitleRomajiMapping {
 /**
  * Brand Slugs Configuration
  *
- * Maps store/brand names to slugs for /store-collabo URLs
+ * Maps store/brand names to slugs (the brand part of venue slugs and the
+ * representative venue; not used as a URL level)
  * Source: /revolution-templates/ai-writer/config/brand-slugs.yaml
  *
  * @example

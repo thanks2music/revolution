@@ -56,43 +56,25 @@ describe('CategoryInsertSchema', () => {
 });
 
 /**
- * Seed 全 23 件の slug 真実源リスト (migration 20260621040633_categories.sql と
- * revolution-templates/ai-writer/config/event-type-slugs.yaml 由来)。
- * regex / seed の整合性回帰検知用。新規 slug 追加時はここにも追加すること。
+ * 現行の全 slug (2026-11-03 の migration 0017 で 23 → 5 件に絞った後)。
+ * 真実源は DB の categories と revolution-templates の slug-registry.yaml。
+ * regex の整合性回帰検知用。新規 slug 追加時はここにも追加すること。
  */
 const ALL_SEED_SLUGS = [
   'collabo-cafe',
   'pop-up-store',
-  'only-shop',
   'exhibition',
-  'exhibition-hall',
-  'karaoke',
-  'escape-game',
-  'mystery-solving',
-  'experience',
-  'store-collabo',
-  'game-collabo',
-  'apps-collabo',
-  'online',
-  'streaming',
-  'fashion',
-  'stay',
-  'theme-park',
-  'hot-spring',
-  'travel',
-  'transportation',
-  'campaign',
-  'stamp-rally',
-  'other-collabo',
+  'chain-store',
+  'other',
 ] as const;
 
 describe('CATEGORY_SLUG_REGEX', () => {
-  it('matches valid slugs (handoff doc 23 件のうち代表)', () => {
+  it('matches valid slugs (現行の 5 件)', () => {
     expect(CATEGORY_SLUG_REGEX.test('collabo-cafe')).toBe(true);
     expect(CATEGORY_SLUG_REGEX.test('pop-up-store')).toBe(true);
     expect(CATEGORY_SLUG_REGEX.test('exhibition')).toBe(true);
-    expect(CATEGORY_SLUG_REGEX.test('only-shop')).toBe(true);
-    expect(CATEGORY_SLUG_REGEX.test('other-collabo')).toBe(true);
+    expect(CATEGORY_SLUG_REGEX.test('chain-store')).toBe(true);
+    expect(CATEGORY_SLUG_REGEX.test('other')).toBe(true);
   });
 
   it('rejects invalid slugs', () => {
@@ -107,8 +89,8 @@ describe('CATEGORY_SLUG_REGEX', () => {
     expect(CATEGORY_SLUG_REGEX.test('---')).toBe(false); // ハイフンのみ
   });
 
-  it('全 23 件の seed slug が regex を通過する (回帰検知)', () => {
-    expect(ALL_SEED_SLUGS).toHaveLength(23);
+  it('現行の全 slug が regex を通過する (回帰検知)', () => {
+    expect(ALL_SEED_SLUGS).toHaveLength(5);
     for (const slug of ALL_SEED_SLUGS) {
       expect(CATEGORY_SLUG_REGEX.test(slug)).toBe(true);
     }
