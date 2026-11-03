@@ -97,12 +97,16 @@ const OCCURRENCE_ROW = {
   venues: null,
 };
 
+/** 主分類の埋め込み (企画の URL の第 1 階層、2026-11-03)。 */
+const CAFE = { slug: 'collabo-cafe', name: 'コラボカフェ' };
+
 const EVENT_ROW = {
   id: 2,
   slug: 'seed-cafe',
   name: 'シード企画',
   description: null,
   officialUrl: null,
+  primaryCategory: CAFE,
 };
 
 async function importQueries() {
@@ -141,24 +145,37 @@ describe('listOccurrenceParams', () => {
     await expect(listOccurrenceParams()).rejects.toThrow(/boom/);
   });
 
-  it('maps rows to route params', async () => {
+  it('maps rows to route params with the event type from the embed', async () => {
     mockHasCredentials.mockReturnValue(true);
+    const calls: { method: string; args: unknown[] }[] = [];
     mockCreatePublicClient.mockReturnValue(
-      makeClient({
-        occurrence_view: {
-          data: [
-            { eventId: 2, slug: 'tokyo-shibuya' },
-            { eventId: 3, slug: 'osaka-umeda' },
-          ],
-          error: null,
+      makeClient(
+        {
+          occurrence_view: {
+            data: [
+              { eventId: 2, slug: 'tokyo-shibuya', events: { primaryCategory: CAFE } },
+              {
+                eventId: 3,
+                slug: 'osaka-umeda',
+                events: { primaryCategory: { slug: 'exhibition', name: '原画展・展示会' } },
+              },
+            ],
+            error: null,
+          },
         },
-      }),
+        calls,
+      ),
     );
 
     const { listOccurrenceParams } = await importQueries();
     await expect(listOccurrenceParams()).resolves.toEqual([
-      { id: '2', occurrence_slug: 'tokyo-shibuya' },
-      { id: '3', occurrence_slug: 'osaka-umeda' },
+      { event_type: 'collabo-cafe', id: '2', occurrence_slug: 'tokyo-shibuya' },
+      { event_type: 'exhibition', id: '3', occurrence_slug: 'osaka-umeda' },
+    ]);
+    // 種別は同じクエリの埋め込みで取る。`!inner` と経路指定 (`!primary_category_id`)
+    // を消すと、企画の無い行が混ざる / PGRST201 で落ちる。
+    expect(calls.filter((c) => c.method === 'select').map((c) => c.args[0])).toEqual([
+      'eventId:event_id, slug, events!inner(primaryCategory:categories!primary_category_id(slug, name))',
     ]);
   });
 

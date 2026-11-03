@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { CATEGORY_SLUG_REGEX } from './category';
+import { EventTypeSlugSchema } from './category';
 import { EVENT_SLUG_REGEX } from './event';
 import { EventDataOccurrenceSchema } from './mdx-frontmatter';
 import { TITLE_SLUG_REGEX } from './title';
@@ -116,9 +116,15 @@ const StrictEventDataSchema = z.object({
   //   (frontmatter 読み取り側の `EventDataSchema` は既存記事互換で optional にしている)。
   event_name: z.string().min(1),
   event_slug: z.string().regex(EVENT_SLUG_REGEX),
-  primary_category_slug: z.string().regex(CATEGORY_SLUG_REGEX),
+  // 種別は 5 つの enum で縛る (企画の URL の第 1 階層になるため、2026-11-03)。
+  // OpenAI の strict mode / Gemini の responseJsonSchema では生成時点で 5 つ以外を出せない。
+  // ⚠️ 今の Anthropic provider は API にスキーマを渡していない (API 自体は structured outputs で
+  //    enum を縛れる。provider への実装は別タスク)。そのため本 schema の safeParse に落ちても
+  //    警告を出して緩い解析に進み (`extraction.service.ts`)、5 つ以外の slug は記事まで届いて、
+  //    取り込みで `unknown_primary_category` (G1c) として保留になる。補助タグに受け皿の `other` は入れない。
+  primary_category_slug: EventTypeSlugSchema,
   title_slugs: z.array(z.string().regex(TITLE_SLUG_REGEX)),
-  supplementary_category_slugs: z.array(z.string().regex(CATEGORY_SLUG_REGEX)).max(2),
+  supplementary_category_slugs: z.array(EventTypeSlugSchema.exclude(['other'])).max(2),
   occurrences: z.array(EventDataOccurrenceSchema),
 });
 

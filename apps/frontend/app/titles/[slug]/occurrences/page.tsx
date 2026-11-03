@@ -2,7 +2,7 @@
  * 作品の開催一覧 `/titles/{slug}/occurrences` (集約ビュー、URL 設計 §7)
  *
  * レビュー可能な開催 (= anon に見える `verified = true` の開催) を作品単位で
- * 集約する。各 item の canonical は本拠地 `/events/{id}/{occurrence-slug}`。
+ * 集約する。各 item の canonical は本拠地 `/{種別}/{id}/{occurrence-slug}`。
  *
  * データは DB (`occurrence_view` + venues 埋め込み) 由来。記事 index の
  * `event_data.occurrences[].venue_slug` は実データ全件 null のため使わない。
@@ -15,7 +15,6 @@ import { notFound } from 'next/navigation';
 import { EmptyState } from '@/components/molecules/EmptyState';
 import { EventOccurrenceCard } from '@/components/molecules/EventOccurrenceCard';
 import Layout from '@/components/templates/Layout';
-import { EVENT_NAME_FALLBACK } from '@/lib/event/contracts';
 import { groupOccurrencesByStatus } from '@/lib/event/grouping';
 import { generateContentMetadata } from '@/lib/metadata';
 import { getTitleHubData, listTitleParams } from '@/lib/title/queries';
@@ -60,8 +59,9 @@ export default async function TitleOccurrencesPage(props: TitleOccurrencesPagePr
 
   const { title, eventGroups } = data;
   const occurrences = eventGroups.flatMap((group) => group.occurrences);
-  // 開催カードに企画名を添えるための逆引き (別企画の開催が同じグループに並ぶため)。
-  const eventNameById = new Map(eventGroups.map(({ event }) => [event.id, event.name]));
+  // 開催カードに企画 (名前とリンク先の種別) を添えるための逆引き
+  // (別企画の開催が同じグループに並ぶため)。
+  const eventById = new Map(eventGroups.map(({ event }) => [event.id, event]));
   const groups = groupOccurrencesByStatus(occurrences);
 
   return (
@@ -106,27 +106,30 @@ export default async function TitleOccurrencesPage(props: TitleOccurrencesPagePr
                   </span>
                 </h2>
                 <ul className="grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3" data-grid-layout="block">
-                  {group.items.map((occurrence) => (
-                    <li key={occurrence.id}>
-                      {/*
-                        この画面は企画も会場も行ごとに変わるので、**企画名を主表示**に
-                        して会場名を従に置く (v6 #16、2026-08-22 BOSS 確定)。
-                        旧実装は共有 `OccurrenceCard` (会場名が主) を使い、企画名を
-                        カード外の小ラベルで補っていた。
-                      */}
-                      <EventOccurrenceCard
-                        eventId={occurrence.eventId}
-                        slug={occurrence.slug}
-                        eventName={
-                          eventNameById.get(occurrence.eventId) ?? EVENT_NAME_FALLBACK
-                        }
-                        status={occurrence.status}
-                        startsOn={occurrence.startsOn}
-                        endsOn={occurrence.endsOn}
-                        venueName={occurrence.venueName}
-                      />
-                    </li>
-                  ))}
+                  {group.items.map((occurrence) => {
+                    // 開催は eventGroups の企画から引いたものなので必ず見つかる。
+                    // 見つからなければリンク先の URL を作れないので描かない。
+                    const event = eventById.get(occurrence.eventId);
+                    if (!event) return null;
+                    return (
+                      <li key={occurrence.id}>
+                        {/*
+                          この画面は企画も会場も行ごとに変わるので、**企画名を主表示**に
+                          して会場名を従に置く (v6 #16、2026-08-22 BOSS 確定)。
+                          旧実装は共有 `OccurrenceCard` (会場名が主) を使い、企画名を
+                          カード外の小ラベルで補っていた。
+                        */}
+                        <EventOccurrenceCard
+                          event={event}
+                          slug={occurrence.slug}
+                          status={occurrence.status}
+                          startsOn={occurrence.startsOn}
+                          endsOn={occurrence.endsOn}
+                          venueName={occurrence.venueName}
+                        />
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             ))}

@@ -31,6 +31,11 @@ jest.mock('@/lib/occurrence/queries', () => ({
   getOccurrenceDetail: () => mockGetOccurrenceDetail(),
   listOccurrenceParams: () => Promise.resolve([]),
 }));
+// 企画・開催のページは URL の種別 (`/{種別}/…`) が実在するかを先に確かめる。
+jest.mock('@/lib/category/queries', () => ({
+  getCategory: () => Promise.resolve({ slug: 'collabo-cafe', name: 'コラボカフェ' }),
+  listCategoryParams: () => Promise.resolve([]),
+}));
 
 jest.mock('@/lib/env', () => ({
   env: {
@@ -54,7 +59,7 @@ describe('metadata の title 合成', () => {
     const { siteConfig } = await import('@/lib/metadata');
 
     const pages = [
-      '@/app/articles/page',
+      '@/app/articles/(list)/page',
       '@/app/mypage/page',
       '@/app/login/page',
       '@/app/onboarding/page',
@@ -98,46 +103,73 @@ describe('metadata の title 合成', () => {
   it('動的 metadata (events 系) の title もサイト名を含まない', async () => {
     const { siteConfig } = await import('@/lib/metadata');
 
-    const eventPage = (await import('@/app/events/[id]/page')) as {
+    const eventPage = (await import('@/app/[event_type]/[id]/page')) as {
       generateMetadata: (p: unknown) => Promise<{ title?: unknown }>;
     };
-    const occurrencePage = (await import('@/app/events/[id]/[occurrence_slug]/page')) as {
+    const occurrencePage = (await import('@/app/[event_type]/[id]/[occurrence_slug]/page')) as {
       generateMetadata: (p: unknown) => Promise<{ title?: unknown }>;
     };
 
     // (a) データが取れた場合
     mockGetEventDetail.mockResolvedValue({
-      event: { id: 'evt_1', name: 'テスト企画', description: null, officialUrl: null },
+      event: {
+        id: 'evt_1',
+        name: 'テスト企画',
+        description: null,
+        officialUrl: null,
+        primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' },
+      },
       titles: [],
       occurrences: [],
       relatedEvents: [],
     });
     mockGetOccurrenceDetail.mockResolvedValue({
-      event: { id: 'evt_1', name: 'テスト企画' },
+      event: {
+        id: 'evt_1',
+        name: 'テスト企画',
+        primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' },
+      },
       occurrence: { slug: 'shibuya', venueName: 'テスト会場', startsOn: null, endsOn: null },
       titles: [],
       siblings: [],
     });
 
     const eventMeta = await eventPage.generateMetadata({
-      params: Promise.resolve({ id: 'evt_1' }),
+      params: Promise.resolve({ event_type: 'collabo-cafe', id: 'evt_1' }),
     });
     const occurrenceMeta = await occurrencePage.generateMetadata({
-      params: Promise.resolve({ id: 'evt_1', occurrence_slug: 'shibuya' }),
+      params: Promise.resolve({
+        event_type: 'collabo-cafe',
+        id: 'evt_1',
+        occurrence_slug: 'shibuya',
+      }),
     });
 
     expect(eventMeta.title as string).not.toContain(siteConfig.name);
     expect(occurrenceMeta.title as string).not.toContain(siteConfig.name);
+
+    // 種別の一覧 (`/{種別}`、2026-11-03 新設) も同じ不変条件。
+    const eventTypePage = (await import('@/app/[event_type]/page')) as {
+      generateMetadata: (p: unknown) => Promise<{ title?: unknown }>;
+    };
+    const eventTypeMeta = await eventTypePage.generateMetadata({
+      params: Promise.resolve({ event_type: 'collabo-cafe' }),
+    });
+    expect(eventTypeMeta.title).toBe('コラボカフェ');
 
     // (b) 見つからない場合の早期 return
     mockGetEventDetail.mockResolvedValue(null);
     mockGetOccurrenceDetail.mockResolvedValue(null);
 
     const eventNotFound = await eventPage.generateMetadata({
-      params: Promise.resolve({ id: 'missing' }),
+      params: Promise.resolve({ event_type: 'collabo-cafe', id: 'missing' }),
     });
     const occurrenceNotFound = await occurrencePage.generateMetadata({
-      params: Promise.resolve({ id: 'missing', occurrence_slug: 'missing' }),
+      params: Promise.resolve({
+        event_type: 'collabo-cafe',
+        id: 'missing',
+        occurrence_slug: 'missing',
+      }),
     });
 
     expect(eventNotFound.title as string).not.toContain(siteConfig.name);

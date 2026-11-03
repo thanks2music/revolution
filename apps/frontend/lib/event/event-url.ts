@@ -12,21 +12,50 @@
  * 「正準形は 1 つだけであるべき」という強い立場を取っているのに、
  * **生成側に正準形の定義が無い**という非対称になっていた。
  *
- * URL 設計の確定内容は `docs/schema/revolution-article-meta.md` §3。
- * `events.slug` は URL に露出しない (企画名は不安定なため ID を正準にする)。
+ * ## URL の形 (2026-11-03 改訂)
+ *
+ * 第 1 階層はイベント種別 (`events.primary_category_id` が指す `categories.slug`)。
+ * 旧形式 `/events/{id}` から移した (経緯は下記の設計の正本)。
+ *
+ * | ページ | URL |
+ * |---|---|
+ * | 種別の企画一覧 | `/{種別}` (例 `/collabo-cafe`) |
+ * | 企画 | `/{種別}/{id}` |
+ * | 開催 | `/{種別}/{id}/{occurrence-slug}` |
+ *
+ * **識別子は今も ID**。種別は分類の接頭辞で、主分類が変わったときはページ側が
+ * 正しい URL へ転送する (`app/[event_type]/[id]/page.tsx`)。`events.slug` は
+ * 今も URL に露出しない (企画名は不安定なため)。
+ * 設計の正本は `one-more-time/docs/event-review-data-model.md` §7。
  */
 
-/** 企画ページ。`/events/{id}` */
-export function getEventUrl(eventId: number | string): string {
-  return `/events/${eventId}`;
+/**
+ * 企画の URL を組み立てるのに要る最小の形。
+ *
+ * PostgREST の埋め込み `primaryCategory:categories!primary_category_id(slug, ...)` の
+ * 結果を**詰め替えずにそのまま渡せる**形にしてある。種別を渡し忘れると型で止まる。
+ */
+export type EventRouteRef = {
+  id: number | string;
+  primaryCategory: { slug: string };
+};
+
+/** 種別の企画一覧。`/{種別}` */
+export function getEventTypeUrl(categorySlug: string): string {
+  return `/${categorySlug}`;
+}
+
+/** 企画ページ。`/{種別}/{id}` */
+export function getEventUrl(event: EventRouteRef): string {
+  return `${getEventTypeUrl(event.primaryCategory.slug)}/${event.id}`;
 }
 
 /**
- * 開催詳細ページ。`/events/{id}/{occurrence-slug}`
+ * 開催詳細ページ。`/{種別}/{id}/{occurrence-slug}`
  *
  * `occurrence_slug` は企画スコープ内で一意 (`unique(event_id, slug)`) なので、
  * 企画 ID と組で初めて開催を特定できる。
  */
-export function getOccurrenceUrl(eventId: number | string, occurrenceSlug: string): string {
-  return `/events/${eventId}/${occurrenceSlug}`;
+export function getOccurrenceUrl(event: EventRouteRef, occurrenceSlug: string): string {
+  return `${getEventUrl(event)}/${occurrenceSlug}`;
 }

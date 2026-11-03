@@ -32,7 +32,7 @@ jest.mock('../../../../lib/config/yaml-loader', () => {
             event_types: {
               'コラボカフェ': 'collabo-cafe',
               'カフェコラボ': 'collabo-cafe',
-              'しまむらコラボ': 'store-collabo',
+              'しまむらコラボ': 'chain-store',
             },
           };
         default:
@@ -179,12 +179,12 @@ describe('generateCanonicalKey', () => {
     const components: CanonicalKeyComponents = {
       workSlug: 'spy-family',
       storeSlug: 'shimamura',
-      eventType: 'store-collabo',
+      eventType: 'chain-store',
       year: 2024,
     };
 
     const key = generateCanonicalKey(components);
-    expect(key).toBe('spy-family:shimamura:store-collabo:2024');
+    expect(key).toBe('spy-family:shimamura:chain-store:2024');
   });
 });
 
@@ -276,7 +276,7 @@ describe('generateCanonicalKeyFromNames', () => {
     expect(result.canonicalKey).toBe('spy-family:shimamura:collabo-cafe:2024');
   });
 
-  it('should handle store-collabo event types', async () => {
+  it('should handle chain-store event types', async () => {
     const result = await generateCanonicalKeyFromNames(
       '呪術廻戦',
       'しまむら',
@@ -285,7 +285,7 @@ describe('generateCanonicalKeyFromNames', () => {
     );
 
     expect(result.canonicalKey).toBe(
-      'jujutsu-kaisen:shimamura:store-collabo:2025'
+      'jujutsu-kaisen:shimamura:chain-store:2025'
     );
   });
 });
@@ -306,13 +306,13 @@ describe('parseCanonicalKey', () => {
 
   it('should parse key with different components', () => {
     const components = parseCanonicalKey(
-      'spy-family:shimamura:store-collabo:2024'
+      'spy-family:shimamura:chain-store:2024'
     );
 
     expect(components).toEqual({
       workSlug: 'spy-family',
       storeSlug: 'shimamura',
-      eventType: 'store-collabo',
+      eventType: 'chain-store',
       year: 2024,
     });
   });
@@ -364,7 +364,7 @@ describe('isValidCanonicalKey', () => {
     expect(
       isValidCanonicalKey('jujutsu-kaisen:avail:collabo-cafe:2025')
     ).toBe(true);
-    expect(isValidCanonicalKey('spy-family:shimamura:store-collabo:2024')).toBe(
+    expect(isValidCanonicalKey('spy-family:shimamura:chain-store:2024')).toBe(
       true
     );
   });

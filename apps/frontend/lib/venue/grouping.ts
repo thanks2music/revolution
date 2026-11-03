@@ -62,7 +62,7 @@ void _assertAllStatusesGrouped;
  */
 function compareWithin(within: WithinOrder) {
   return (a: VenueOccurrence, b: VenueOccurrence): number => {
-    const byName = () => a.eventName.localeCompare(b.eventName, 'ja') || a.id - b.id;
+    const byName = () => a.events.name.localeCompare(b.events.name, 'ja') || a.id - b.id;
 
     if (within === 'name') return byName();
 

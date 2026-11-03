@@ -1,10 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import {
-  EVENT_NAME_FALLBACK,
-  toVenueOccurrences,
-  VenueDetailSchema,
-} from '@/lib/venue/contracts';
+import { toVenueOccurrences, VenueDetailSchema } from '@/lib/venue/contracts';
 
 /**
  * `lib/venue/contracts.ts` (Layer 1)。
@@ -30,7 +26,7 @@ const occurrenceRow = {
   startsOn: '2026-04-10',
   endsOn: '2026-08-02',
   status: 'ongoing',
-  events: { id: 3, name: '名探偵コナン カフェ' },
+  events: { id: 3, name: '名探偵コナン カフェ', primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' } },
 };
 
 describe('VenueDetailSchema', () => {
@@ -43,16 +39,25 @@ describe('VenueDetailSchema', () => {
 });
 
 describe('toVenueOccurrences', () => {
-  it('埋め込んだ企画から eventName を解決する', () => {
+  it('埋め込んだ企画 (名前とリンク先の種別) を解決済みで持つ', () => {
     const [row] = toVenueOccurrences([occurrenceRow]);
-    expect(row?.eventName).toBe('名探偵コナン カフェ');
+    expect(row?.events.name).toBe('名探偵コナン カフェ');
     expect(row?.eventId).toBe(3);
+    expect(row?.events.primaryCategory.slug).toBe('collabo-cafe');
   });
 
-  it('events が null でも落ちず、slug で代用せずフォールバック文言を使う', () => {
-    const [row] = toVenueOccurrences([{ ...occurrenceRow, events: null }]);
-    expect(row?.eventName).toBe(EVENT_NAME_FALLBACK);
-    expect(row?.eventName).not.toBe(occurrenceRow.slug);
+  it('events が null の行は落とす (種別が分からずリンク先の URL を作れない)', () => {
+    // 種別を URL に入れる前も、企画の無い開催ページは 404 だった。
+    const rows = toVenueOccurrences([{ ...occurrenceRow, events: null }, occurrenceRow]);
+    expect(rows.map((row) => row.id)).toEqual([occurrenceRow.id]);
+  });
+
+  it('企画の主分類が null なら parse で落とす (`/undefined/3/…` を作らない)', () => {
+    expect(() =>
+      toVenueOccurrences([
+        { ...occurrenceRow, events: { ...occurrenceRow.events, primaryCategory: null } },
+      ]),
+    ).toThrow();
   });
 
   it('data が undefined なら空配列 (parse で落とさない)', () => {

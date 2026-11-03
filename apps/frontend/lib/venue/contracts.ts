@@ -1,9 +1,8 @@
-import { EventSchema as EventRowSchema } from '@revolution/schemas/event';
 import { OccurrenceViewSchema } from '@revolution/schemas/occurrence';
 import { VenueSchema as VenueRowSchema } from '@revolution/schemas/venue';
 import { z } from 'zod';
 
-import { EVENT_NAME_FALLBACK } from '@/lib/event/contracts';
+import { EVENT_SUMMARY_COLUMNS, EventSummarySchema } from '@/lib/event/contracts';
 
 /**
  * 会場ページ (`/venues/{slug}`) が `venues` / `occurrence_view` を読むときの
@@ -43,15 +42,6 @@ export type VenueDetail = z.infer<typeof VenueDetailSchema>;
 export const VENUE_DETAIL_COLUMNS = 'id, slug, name, prefecture, city, address';
 
 /**
- * 会場ページから見た開催に埋め込む企画。カード表示とリンク先 (`/events/{id}/…`)
- * に要る列だけ。
- */
-const VenueOccurrenceEventSchema = EventRowSchema.pick({
-  id: true,
-  name: true,
-});
-
-/**
  * 会場ページが読む開催の行。`lib/occurrence/queries.ts` の `OccurrenceRowSchema`
  * と対になる形だが、**venues の埋め込みは持たず events を埋め込む** — 会場は
  * ページ自身であり定数、行ごとに要るのは企画名の方だから。`venue_label` も
@@ -68,34 +58,35 @@ export const VenueOccurrenceRowSchema = OccurrenceViewSchema.pick({
   /**
    * 企画の埋め込み。`event_id` は NOT NULL FK + events は anon 公開なので
    * 実運用で null にはならないが、`parseEmbeddedTitleEvents` と同じ防御で
-   * 契約上は null を許す。
+   * 契約上は null を許す。**null の行は `toVenueOccurrences` が落とす**
+   * (企画の種別が分からないとリンク先の URL を作れない)。
    */
-  events: VenueOccurrenceEventSchema.nullable(),
+  events: EventSummarySchema.nullable(),
 });
 
 /** 上記に対応する PostgREST の select 句 (別名で camelCase へ揃える)。 */
 export const VENUE_OCCURRENCE_COLUMNS =
-  'id, eventId:event_id, slug, startsOn:starts_on, endsOn:ends_on, status, events(id, name)';
+  `id, eventId:event_id, slug, startsOn:starts_on, endsOn:ends_on, status, events(${EVENT_SUMMARY_COLUMNS})`;
+
+type VenueOccurrenceRow = z.infer<typeof VenueOccurrenceRowSchema>;
 
 /**
- * 企画名が解決できないときの表示。
- *
- * 定義は `lib/event/contracts.ts` へ移した (作品の開催一覧でも同じ fallback が
- * 必要になり、企画の契約を持つモジュールが持つのが自然だったため)。
- * 既存の import 経路を壊さないよう、ここからも re-export する。
+ * 表示用の開催。企画を解決済み (non-null) で持つ。企画名 (`events.name`) は
+ * カードの主表示と並び替えのタイブレークに使う。
  */
-export { EVENT_NAME_FALLBACK };
-
-/** 表示用の開催。企画名を解決済みで持つ。 */
-export type VenueOccurrence = z.infer<typeof VenueOccurrenceRowSchema> & {
-  /** 解決済みの企画表示名。埋め込みが null なら `EVENT_NAME_FALLBACK`。 */
-  eventName: string;
+export type VenueOccurrence = Omit<VenueOccurrenceRow, 'events'> & {
+  events: NonNullable<VenueOccurrenceRow['events']>;
 };
 
-/** 取得結果を表示用の形へ。企画名の解決を通す唯一の入口。 */
+/**
+ * 取得結果を表示用の形へ。企画の解決を通す唯一の入口。
+ *
+ * 企画が引けない行は落とす。種別が分からないとリンク先の URL を作れないため
+ * (種別を URL に入れる前も、企画の無い開催ページは 404 だった)。
+ */
 export function toVenueOccurrences(data: unknown): VenueOccurrence[] {
   return z
     .array(VenueOccurrenceRowSchema)
     .parse(data ?? [])
-    .map((row) => ({ ...row, eventName: row.events?.name ?? EVENT_NAME_FALLBACK }));
+    .flatMap(({ events, ...row }) => (events === null ? [] : [{ ...row, events }]));
 }

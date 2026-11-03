@@ -21,7 +21,7 @@ import {
  *
  * ## 会場ページは「その会場の全開催」(URL 設計 §7)
  *
- * 一覧に載る開催の canonical は本拠地 (`/events/{id}/{occurrence-slug}`) を指す。
+ * 一覧に載る開催の canonical は本拠地 (`/{種別}/{id}/{occurrence-slug}`) を指す。
  * 開催の絞り込みキーは **`occurrences.venue_id`** — `occurrences.slug` は
  * 「企画内で会場を表すハンドル」であり、値が `venues.slug` と一致する運用
  * (§7 案 B) でも一意性のスコープが違うため使わない。

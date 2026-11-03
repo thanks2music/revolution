@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
 import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
-import { getOccurrenceUrl } from '@/lib/event/event-url';
+import { getOccurrenceUrl, type EventRouteRef } from '@/lib/event/event-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import type { Occurrence } from '@/lib/occurrence/queries';
 import { toBadgeStatus } from '@/lib/occurrence/status';
@@ -44,13 +44,14 @@ import { toBadgeStatus } from '@/lib/occurrence/status';
 export const VENUE_NAME_FALLBACK = '会場未定';
 
 type Props = {
-  eventId: number;
+  /** 開催の属する企画 (リンク先 `/{種別}/{id}/{slug}` の組み立てに使う)。 */
+  event: EventRouteRef;
   occurrence: Occurrence;
 };
 
-export const OccurrenceCard = ({ eventId, occurrence }: Props) => (
+export const OccurrenceCard = ({ event, occurrence }: Props) => (
   <Link
-    href={getOccurrenceUrl(eventId, occurrence.slug)}
+    href={getOccurrenceUrl(event, occurrence.slug)}
     // 器 (角丸・影・hover) は `EventOccurrenceCard` と揃える。揃えないと
     // 「同じ意味の UI が 2 つの見た目を持つ」状態が復活する (本ファイルの
     // docstring が是正した不整合と同型)。違うのは**主表示が会場名か企画名か**だけ。

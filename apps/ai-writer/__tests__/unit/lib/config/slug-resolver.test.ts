@@ -50,9 +50,9 @@ jest.mock('../../../../lib/config/yaml-loader', () => {
               'カフェコラボ': 'collabo-cafe',
               'スペシャルカフェ': 'collabo-cafe',
               'ポップアップストア': 'pop-up-store',
-              'アベイルコラボ': 'store-collabo',
-              'しまむらコラボ': 'store-collabo',
-              'セブン-イレブンコラボ': 'store-collabo',
+              'アベイルコラボ': 'chain-store',
+              'しまむらコラボ': 'chain-store',
+              'セブン-イレブンコラボ': 'chain-store',
             },
           };
         case 'JP_PREFECTURE':
@@ -160,10 +160,10 @@ describe('resolveEventTypeSlug', () => {
     expect(await resolveEventTypeSlug('スペシャルカフェ')).toBe('collabo-cafe');
   });
 
-  it('should handle store-collabo synonyms', async () => {
-    expect(await resolveEventTypeSlug('アベイルコラボ')).toBe('store-collabo');
-    expect(await resolveEventTypeSlug('しまむらコラボ')).toBe('store-collabo');
-    expect(await resolveEventTypeSlug('セブン-イレブンコラボ')).toBe('store-collabo');
+  it('should handle chain-store synonyms', async () => {
+    expect(await resolveEventTypeSlug('アベイルコラボ')).toBe('chain-store');
+    expect(await resolveEventTypeSlug('しまむらコラボ')).toBe('chain-store');
+    expect(await resolveEventTypeSlug('セブン-イレブンコラボ')).toBe('chain-store');
   });
 
   it('should return null for unknown event type (fallback disabled)', async () => {

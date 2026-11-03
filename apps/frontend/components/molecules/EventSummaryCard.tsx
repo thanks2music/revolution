@@ -4,7 +4,7 @@ import { getEventUrl } from '@/lib/event/event-url';
 import type { EventListItem } from '@/lib/event/queries';
 
 /**
- * `/events` 一覧の企画カード (Claude Design v6 #14)。
+ * `/events` と `/{種別}` の一覧の企画カード (Claude Design v6 #14)。
  *
  * 上から **作品チップ + イベントタイプタグ → 企画名 → 会場数と状態別内訳**。
  * 「何の作品の、どんな種類の企画で、今行けるのか」を 3 行で読ませる。
@@ -23,19 +23,24 @@ import type { EventListItem } from '@/lib/event/queries';
 
 type Props = {
   event: EventListItem;
+  /**
+   * タイプタグを出すか (既定は出す)。種別の一覧 (`/{種別}`) では全カードが見出しと
+   * 同じ種別になり情報を持たないので出さない (2026-11-03 BOSS 確定)。
+   */
+  showTypeTag?: boolean;
 };
 
-export const EventSummaryCard = ({ event }: Props) => (
+export const EventSummaryCard = ({ event, showTypeTag = true }: Props) => (
   <Link
-    href={getEventUrl(event.id)}
+    href={getEventUrl(event)}
     className="block rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
   >
     {/*
-      作品チップとタイプタグ。**タイプタグは常に 1 個** (`primary_category_id` は
-      NOT NULL FK)、作品は 0 個以上 (複数作品コラボがある)。
-      作品 0 件の企画はチップ行ごと出ない。
+      作品チップとタイプタグ。**タイプタグは 1 個** (`primary_category_id` は
+      NOT NULL FK で、契約も non-null)、作品は 0 個以上 (複数作品コラボがある)。
+      タイプタグを出さず作品も 0 件のときは、空の行を描かない。
     */}
-    {(event.titles.length > 0 || event.categoryName) && (
+    {(showTypeTag || event.titles.length > 0) && (
       <div className="flex flex-wrap items-center gap-1">
         {event.titles.map((title) => (
           <span
@@ -45,9 +50,9 @@ export const EventSummaryCard = ({ event }: Props) => (
             {title.name}
           </span>
         ))}
-        {event.categoryName && (
+        {showTypeTag && (
           <span className="rounded-md bg-tag-type px-2 py-0.5 font-display text-xs font-bold text-white">
-            {event.categoryName}
+            {event.primaryCategory.name}
           </span>
         )}
       </div>

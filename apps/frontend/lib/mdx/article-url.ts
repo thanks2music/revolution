@@ -12,7 +12,7 @@ import type { ArticleIndexItem } from './article-types';
  * - 記事の識別子は `post_id` (= `slug`、`ai-writer` の `template-generator` で同値)
  * - 後方互換の redirect は**張らない** (2026-08-02 確定 D8)。根拠は「実運用未開始で
  *   影響ゼロ」であり、実測でも記事 5 件は全て `dry-run-*` = 守るべき正準 URL が 1 件もない
- * - 企画・作品・会場は `/events/{id}` `/titles/{slug}` `/venues/{slug}` を持つ。
+ * - 企画・作品・会場は `/{種別}/{id}` `/titles/{slug}` `/venues/{slug}` を持つ。
  *   記事 URL に `event_type` / `work_slug` を含めると、**同じ情報が 2 つの URL 体系に
  *   跨って重複する**
  */

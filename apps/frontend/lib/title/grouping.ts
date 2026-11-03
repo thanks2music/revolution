@@ -16,7 +16,7 @@ import type { TitleEvent } from '@/lib/title/contracts';
  *
  * ## 公開済み開催を持たない企画は落とす
  *
- * `/events/{id}` の静的生成対象 (`listEventParams`) や関連企画
+ * `/{種別}/{id}` の静的生成対象 (`listEventParams`) や関連企画
  * (`findRelatedEvents` の「空ページへリンクしない」) と同じ基準。
  * anon で見える開催 (`verified = true`) が 1 件も無い企画をハブに出すと、
  * リンクを踏んだ先の「会場を選ぶ」が空になる。

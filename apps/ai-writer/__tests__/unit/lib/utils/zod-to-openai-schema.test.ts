@@ -140,14 +140,14 @@ describe('zodToOpenAiSchema', () => {
 
   it('handles enum-typed fields (used by primary_category_slug)', () => {
     const schema = z.object({
-      slug: z.enum(['collabo-cafe', 'pop-up-store', 'other-collabo']),
+      slug: z.enum(['collabo-cafe', 'pop-up-store', 'other']),
     });
     const { schema: json } = zodToOpenAiSchema(schema, 'X');
     const root = json as { properties: { slug: { enum: string[] } } };
     expect(root.properties.slug.enum).toEqual([
       'collabo-cafe',
       'pop-up-store',
-      'other-collabo',
+      'other',
     ]);
   });
 });

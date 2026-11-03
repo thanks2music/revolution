@@ -1,9 +1,11 @@
-import { CategorySchema as CategoryRowSchema } from '@revolution/schemas/category';
-import { EventSchema as EventRowSchema } from '@revolution/schemas/event';
 import { OccurrenceViewSchema } from '@revolution/schemas/occurrence';
-import { TitleSchema as TitleRowSchema } from '@revolution/schemas/title';
 import { VenueSchema as VenueRowSchema } from '@revolution/schemas/venue';
-import { z } from 'zod';
+
+import {
+  EVENT_LIST_COLUMNS,
+  EventListRowSchema,
+  type PrimaryCategory,
+} from '@/lib/event/contracts';
 
 /**
  * トップページ (`/`) が読む契約と select 句。方針は `lib/event/contracts.ts` と同じ:
@@ -35,14 +37,6 @@ const RailVenueSchema = VenueRowSchema.pick({
   city: true,
 });
 
-/** 同カードに埋め込む企画。タイプタグと作品チップを従える。 */
-const RailEventSchema = EventRowSchema.pick({ id: true, name: true }).extend({
-  primaryCategory: CategoryRowSchema.pick({ name: true }).nullable(),
-  eventTitles: z.array(
-    z.object({ titles: TitleRowSchema.pick({ slug: true, name: true }).nullable() }),
-  ),
-});
-
 /** 開催中 rail が読む開催の行。 */
 export const OngoingOccurrenceRowSchema = OccurrenceViewSchema.pick({
   id: true,
@@ -53,17 +47,19 @@ export const OngoingOccurrenceRowSchema = OccurrenceViewSchema.pick({
 }).extend({
   /** 会場マスタを持たない開催 (オンライン / 一時会場) では null。 */
   venues: RailVenueSchema.nullable(),
-  /** `event_id` は NOT NULL FK だが、埋め込みの契約上は null を許して落とす。 */
-  events: RailEventSchema.nullable(),
+  /**
+   * 企画 (タイプタグと作品チップ)。`/events` の一覧と同じ契約 (`EventListRowSchema`)。
+   * `event_id` は NOT NULL FK だが、埋め込みの契約上は null を許す。
+   * **null の行は rail から落とす** (企画の種別が分からないとリンク先の URL を作れない。
+   * 種別を URL に入れる前も、企画の無い開催ページは 404 だった)。
+   */
+  events: EventListRowSchema.nullable(),
 });
 
 /**
- * 上記に対応する PostgREST の select 句。
- *
- * 🔴 `categories(name)` を素朴に書くと `300 PGRST201` (曖昧参照) で落ちる。
- * `events` と `categories` には `primary_category_id` の FK と `event_categories`
- * の M:N で 2 経路あるため、**`!primary_category_id` で経路を明示する**
- * (`lib/event/contracts.ts` の `EVENT_LIST_COLUMNS` と同じ罠)。
+ * 上記に対応する PostgREST の select 句。企画の埋め込みは `EVENT_LIST_COLUMNS` を使う
+ * (主分類は FK を明示して埋め込む。素朴に `categories(...)` と書くと PGRST201 で落ちる罠は
+ * `lib/event/contracts.ts` の `PRIMARY_CATEGORY_EMBED`)。
  *
  * ⚠️ `status` は読まない。**`status = 'ongoing'` で絞った結果しか扱わない**ので
  *    行ごとに持つ意味がなく、契約から外して「読んでいる列 = 検証している列」に揃える。
@@ -71,23 +67,22 @@ export const OngoingOccurrenceRowSchema = OccurrenceViewSchema.pick({
 export const ONGOING_OCCURRENCE_COLUMNS =
   'id, eventId:event_id, slug, startsOn:starts_on, endsOn:ends_on, ' +
   'venues(name, prefecture, city), ' +
-  'events(id, name, primaryCategory:categories!primary_category_id(name), eventTitles:event_titles(titles(slug, name)))';
+  `events(${EVENT_LIST_COLUMNS})`;
 
 /** 作品チップ 1 個。`lib/event/contracts.ts` の `Title` と同じ形。 */
 export type RailTitle = { slug: string; name: string };
 
 /** 表示用の開催中カード 1 枚。埋め込みの解決を済ませた形。 */
 export type OngoingOccurrence = {
-  /** `/events/{eventId}/{slug}` のリンク用。 */
   id: number;
+  /** 開催ページのリンク用 (`/{primaryCategory.slug}/{eventId}/{slug}`)。 */
   eventId: number;
   slug: string;
   startsOn: string | null;
   endsOn: string | null;
-  /** 企画名。解決できなければ `EVENT_NAME_FALLBACK`。 */
   eventName: string;
-  /** イベントタイプ (主分類)。解決できなければ null。 */
-  categoryName: string | null;
+  /** イベントタイプ (主分類)。タイプタグの表示とリンク先の種別に使う。 */
+  primaryCategory: PrimaryCategory;
   /** 作品チップ (名前順)。0 件もあり得る。 */
   titles: RailTitle[];
   /** 会場表示名。会場マスタが無ければ null (v5 の住所行ごと出さない)。 */

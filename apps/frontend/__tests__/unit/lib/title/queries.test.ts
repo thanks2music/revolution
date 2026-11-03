@@ -64,7 +64,7 @@ const TITLE_ROW = {
 
 const EVENT_TITLE_ROWS = [
   {
-    events: { id: 5, slug: 'detective-conan-cafe-2026', name: '名探偵コナンカフェ', ratingCount: 0 },
+    events: { id: 5, slug: 'detective-conan-cafe-2026', name: '名探偵コナンカフェ', ratingCount: 0, primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' } },
     titles: { slug: 'detective-conan' },
   },
 ];
@@ -352,7 +352,7 @@ describe('getTitleHubData', () => {
           data: [
             ...EVENT_TITLE_ROWS,
             {
-              events: { id: 9, slug: 'not-yet-verified', name: '未公開企画', ratingCount: 0 },
+              events: { id: 9, slug: 'not-yet-verified', name: '未公開企画', ratingCount: 0, primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' } },
               titles: { slug: 'detective-conan' },
             },
           ],

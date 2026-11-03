@@ -226,3 +226,42 @@ describe('extraction-response schema — cross-schema compatibility', () => {
     expect(ExtractionResponseSchema.safeParse(payload).success).toBe(false);
   });
 });
+
+/**
+ * ★ 種別を 5 つに閉じる (2026-11-03)。
+ *
+ * `primary_category_slug` は企画の URL の第 1 階層になる。生成側の契約 (strict 変種) が
+ * 5 つの enum で縛ることで、OpenAI / Gemini では生成時点で 5 つ以外を出せない。スキーマを
+ * 渡していない今の Anthropic provider では、この schema の safeParse が落ちて警告になり、
+ * 緩い解析に進む (取り込みで G1c 保留)。旧 23 種の slug (`store-collabo` など) が
+ * この schema で弾かれることを固定する。
+ */
+describe('extraction-response schema — event types are the five', () => {
+  it.each(['collabo-cafe', 'pop-up-store', 'exhibition', 'chain-store', 'other'])(
+    'accepts %p as primary_category_slug',
+    (slug) => {
+      const payload = buildValidExtractionResponse();
+      payload.event_data.primary_category_slug = slug;
+      expect(ExtractionResponseSchema.safeParse(payload).success).toBe(true);
+    },
+  );
+
+  it.each(['store-collabo', 'other-collabo', 'exhibition-hall', 'only-shop', 'karaoke', 'events'])(
+    'rejects %p as primary_category_slug (retired or unknown type)',
+    (slug) => {
+      const payload = buildValidExtractionResponse();
+      payload.event_data.primary_category_slug = slug;
+      expect(ExtractionResponseSchema.safeParse(payload).success).toBe(false);
+    },
+  );
+
+  it('accepts the five except `other` as supplementary tags', () => {
+    const payload = buildValidExtractionResponse();
+    payload.event_data.supplementary_category_slugs = ['pop-up-store', 'exhibition'];
+    expect(ExtractionResponseSchema.safeParse(payload).success).toBe(true);
+
+    // 受け皿の `other` は補助タグとして意味を持たない。
+    payload.event_data.supplementary_category_slugs = ['other'];
+    expect(ExtractionResponseSchema.safeParse(payload).success).toBe(false);
+  });
+});

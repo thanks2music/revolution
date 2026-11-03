@@ -580,7 +580,7 @@ describe('MdxFrontmatterSchema', () => {
           event_data: {
             primary_category_slug: 'collabo-cafe',
             title_slugs: ['work-a', 'work-b'],
-            supplementary_category_slugs: ['pop-up-store', 'store-collabo'],
+            supplementary_category_slugs: ['pop-up-store', 'chain-store'],
           },
         };
         const result = MdxFrontmatterSchema.safeParse(frontmatter);
@@ -595,7 +595,7 @@ describe('MdxFrontmatterSchema', () => {
           event_data: {
             primary_category_slug: 'collabo-cafe',
             title_slugs: ['work-a'],
-            supplementary_category_slugs: ['pop-up-store', 'store-collabo', 'exhibition'],
+            supplementary_category_slugs: ['pop-up-store', 'chain-store', 'exhibition'],
           },
         };
         const result = MdxFrontmatterSchema.safeParse(frontmatter);

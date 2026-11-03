@@ -109,6 +109,7 @@ const GRID = '[data-grid-layout]';
 type RouteKey =
   | 'titles'
   | 'events'
+  | 'eventType'
   | 'venues'
   | 'titleHub'
   | 'titleOccurrences'
@@ -126,6 +127,8 @@ type RouteKey =
 const REQUIRED_LAYOUTS: Record<RouteKey, LayoutKind[]> = {
   titles: ['block'],
   events: ['block'],
+  // 種別の一覧 (`/{種別}`) は `/events` と同じ `EventSummaryList`。
+  eventType: ['block'],
   venues: ['block'],
   // 外側の「この作品の企画」= single、その中の開催リスト = row。
   titleHub: ['single', 'row'],
@@ -187,15 +190,16 @@ async function resolveRoutes(page: Page): Promise<Routes> {
 
   // 企画: **開催 2 件以上**を持つものを選ぶ (開催詳細の「この企画の他の開催」を
   // 検証するため)。1 件だけの企画を掴むと、正常なページなのに落ちる。
+  // 企画の URL は `/{種別}/{id}` (2026-11-03)。種別は固定でないので形で拾う。
   await page.goto('/events');
-  const eventCandidates = await hrefs(page, /^\/events\/\d+$/);
+  const eventCandidates = await hrefs(page, /^\/[a-z0-9-]+\/\d+$/);
   expect(eventCandidates.length, '/events に企画リンクが無い').toBeGreaterThan(0);
 
   let eventDetail = '';
   let occurrenceDetail = '';
   for (const href of eventCandidates.slice(0, RESOLVE_SCAN_LIMIT)) {
     await page.goto(href);
-    const occurrences = await hrefs(page, /^\/events\/\d+\/[^/]+$/);
+    const occurrences = await hrefs(page, /^\/[a-z0-9-]+\/\d+\/[^/]+$/);
     if (occurrences.length >= 2) {
       eventDetail = href;
       occurrenceDetail = occurrences[0];
@@ -226,6 +230,8 @@ async function resolveRoutes(page: Page): Promise<Routes> {
   return {
     titles: '/titles',
     events: '/events',
+    // 選んだ企画の種別の一覧 (`/collabo-cafe/11` → `/collabo-cafe`)。
+    eventType: `/${eventDetail.split('/')[1]}`,
     venues: '/venues',
     titleHub,
     titleOccurrences,
@@ -238,10 +244,13 @@ async function resolveRoutes(page: Page): Promise<Routes> {
 /**
  * ページを開き、**描画完了を待ってから** グリッドを測る。
  *
- * 🔴 待たないと `app/loading.tsx` のフォールバックを測ってしまう。dev は
+ * 🔴 待たないと読み込み中のフォールバックを測ってしまう。dev は
  *    オンデマンドコンパイルなので、初訪問のルートは `goto` の解決後も
  *    Suspense のフォールバックを出している (2026-08-25 実測: スクリーンショットの
  *    初回生成で 3 枚がバイト単位で同一のスピナー画像になった)。
+ *    ※ 当時はルートの `app/loading.tsx` が全ページを包んでいた。2026-11-03 に
+ *    動的ルートだけへ移したので S2 のページにはもう掛からないが、測る前に
+ *    グリッドの表示を待つ手順は残す。
  */
 async function openAndMeasure(
   page: Page,
