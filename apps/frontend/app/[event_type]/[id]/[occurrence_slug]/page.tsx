@@ -43,7 +43,6 @@ import { getTitleUrl } from '@/lib/title/title-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail, listOccurrenceParams } from '@/lib/occurrence/queries';
 import { toBadgeStatus } from '@/lib/occurrence/status';
-import { parseCanonicalId } from '@/lib/route-params';
 import { isSafeHttpUrl } from '@/lib/url-safety';
 import type { OccurrencePageProps } from '@/types/page-props';
 
@@ -55,24 +54,12 @@ export async function generateStaticParams() {
   return listOccurrenceParams();
 }
 
-/**
- * 種別と開催を引く。未知の種別・存在しない開催は null。
- * ID が正準形でなければ DB に問い合わせない (理由は企画ページの `findEvent`)。
- */
-async function findOccurrence(eventType: string, id: string, occurrenceSlug: string) {
-  if (parseCanonicalId(id) === null) return null;
-  const [category, data] = await Promise.all([
-    getCategory(eventType),
-    getOccurrenceDetail(id, occurrenceSlug),
-  ]);
-  return category ? data : null;
-}
-
 export async function generateMetadata(props: OccurrencePageProps): Promise<Metadata> {
   const { event_type, id, occurrence_slug } = await props.params;
-  const data = await findOccurrence(event_type, id, occurrence_slug);
+  const data = await getOccurrenceDetail(id, occurrence_slug);
 
-  if (!data) {
+  // 種別が違う URL は本体が 404 か転送にするので、ここでは開催の情報を出さない。
+  if (!data || data.event.primaryCategory.slug !== event_type) {
     return { title: '開催情報が見つかりません' };
   }
 
@@ -88,11 +75,12 @@ export async function generateMetadata(props: OccurrencePageProps): Promise<Meta
 
 export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
   const { event_type, id, occurrence_slug } = await props.params;
-  // 未知の種別は 404 (企画ページと同じ)。
-  const data = await findOccurrence(event_type, id, occurrence_slug);
+  const data = await getOccurrenceDetail(id, occurrence_slug);
 
   if (!data) notFound();
+  // 未知の種別は 404、実在する別の種別なら転送 (理由は企画ページと同じ)。
   if (data.event.primaryCategory.slug !== event_type) {
+    if (!(await getCategory(event_type))) notFound();
     permanentRedirect(getOccurrenceUrl(data.event, data.occurrence.slug));
   }
 

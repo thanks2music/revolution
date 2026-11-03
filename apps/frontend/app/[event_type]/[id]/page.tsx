@@ -41,7 +41,6 @@ import { getEventDetail, listEventParams } from '@/lib/event/queries';
 import { generateContentMetadata } from '@/lib/metadata';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { toBadgeStatus } from '@/lib/occurrence/status';
-import { parseCanonicalId } from '@/lib/route-params';
 import { isSafeHttpUrl } from '@/lib/url-safety';
 import type { EventPageProps } from '@/types/page-props';
 
@@ -52,24 +51,12 @@ export async function generateStaticParams() {
   return listEventParams();
 }
 
-/**
- * 種別と企画を引く。未知の種別・存在しない企画は null。
- *
- * ID が正準形でないパス (`/wp-admin/setup-config.php` のようなスキャナのパスも
- * 第 2 階層の動的ルートとしてここに来る) は DB に問い合わせずに null を返す。
- * 種別と企画の取得は互いに依存しないので並行に引く。
- */
-async function findEvent(eventType: string, id: string) {
-  if (parseCanonicalId(id) === null) return null;
-  const [category, data] = await Promise.all([getCategory(eventType), getEventDetail(id)]);
-  return category ? data : null;
-}
-
 export async function generateMetadata(props: EventPageProps): Promise<Metadata> {
   const { event_type, id } = await props.params;
-  const data = await findEvent(event_type, id);
+  const data = await getEventDetail(id);
 
-  if (!data) {
+  // 種別が違う URL は本体が 404 か転送にするので、ここでは企画の情報を出さない。
+  if (!data || data.event.primaryCategory.slug !== event_type) {
     return { title: '企画情報が見つかりません' };
   }
 
@@ -92,11 +79,14 @@ export async function generateMetadata(props: EventPageProps): Promise<Metadata>
 
 export default async function EventPage(props: EventPageProps) {
   const { event_type, id } = await props.params;
-  // 未知の種別は 404 (旧 `/events/{id}` もここで 404 になる。2026-11-03 BOSS 確定)。
-  const data = await findEvent(event_type, id);
+  // ID が正準形でなければ DB に問い合わせずに null (スキャナのパスもここに来る)。
+  const data = await getEventDetail(id);
 
   if (!data) notFound();
+  // 種別の DB 確認は食い違うときだけ要る (一致すれば主分類の FK が実在を保証する)。
+  // 未知の種別は 404 (旧 `/events/{id}` もここで 404 になる。2026-11-03 BOSS 確定)。
   if (data.event.primaryCategory.slug !== event_type) {
+    if (!(await getCategory(event_type))) notFound();
     permanentRedirect(getEventUrl(data.event));
   }
 
