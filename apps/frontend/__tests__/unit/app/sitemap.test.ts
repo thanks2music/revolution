@@ -180,6 +180,24 @@ describe('buildS2Pages (列挙ロジック)', () => {
     expect(result).toContain('https://example.com/pop-up-store/7');
   });
 
+  it('種別の一覧を、企画のある種別だけ 1 回ずつ列挙する', async () => {
+    // 企画 0 件の種別は空状態のページなので載せない。種別は企画の列挙から導出する。
+    mockListEventParams.mockResolvedValue([
+      { event_type: 'collabo-cafe', id: '2' },
+      { event_type: 'collabo-cafe', id: '3' },
+      { event_type: 'exhibition', id: '9' },
+    ]);
+
+    const buildS2Pages = await importBuildS2Pages();
+    const result = urls(await buildS2Pages(BASE));
+
+    expect(result.filter((u) => /^https:\/\/example\.com\/[^/]+$/.test(u))).toEqual([
+      'https://example.com/collabo-cafe',
+      'https://example.com/exhibition',
+    ]);
+    expect(result).not.toContain('https://example.com/pop-up-store');
+  });
+
   it('開催ページを listOccurrenceParams から列挙する', async () => {
     mockListOccurrenceParams.mockResolvedValue([
       { event_type: 'collabo-cafe', id: '2', occurrence_slug: 'tokyo-shibuya' },
@@ -224,8 +242,8 @@ describe('buildS2Pages (列挙ロジック)', () => {
     mockListVenueParams.mockResolvedValue([{ slug: 'box-cafe-and-space-gems-shibuya' }]);
 
     const buildS2Pages = await importBuildS2Pages();
-    // event 1 + occurrence 1 + title (hub / articles / occurrences) 3 + venue 1
-    expect(await buildS2Pages(BASE)).toHaveLength(6);
+    // type 1 + event 1 + occurrence 1 + title (hub / articles / occurrences) 3 + venue 1
+    expect(await buildS2Pages(BASE)).toHaveLength(7);
   });
 
   it('作品の取得が throw しても他種別は残る (種別ごとの独立 try/catch)', async () => {

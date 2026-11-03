@@ -31,6 +31,11 @@ type Tab = {
   label: string;
   /** 現在地とみなすパスの基点。省略時は `href` 自身。 */
   bases?: string[];
+  /**
+   * 指定すると判定を反転し、**この基点の配下以外をすべて現在地**とみなす
+   * (`bases` は無視)。「探す」が使う (理由は `EXPLORE_EXCLUDES`)。
+   */
+  excludes?: string[];
 };
 
 /**
@@ -51,7 +56,7 @@ export function isTabActive(pathname: string, bases: string[]): boolean {
  * `aria-current` の値を決める。
  *
  * 🔴 **`aria-current="page"` は「そのリンク先が今いるページ」のときだけ。**
- *    「探す」タブは `/titles` を指すが `/` `/events` `/venues` にいるときも
+ *    「探す」タブは `/titles` を指すが `/` `/events` `/venues` `/{種別}` にいるときも
  *    点灯させるため、一律 `page` にすると**踏むと別のページへ移動するリンクを
  *    支援技術が「現在のページ」と読み上げる** (2026-08-22 `/code-review` 指摘)。
  *
@@ -64,16 +69,30 @@ function currentValue(active: boolean, pathname: string, href: string) {
   return pathname === href ? 'page' : true;
 }
 
+/**
+ * 「探す」を**点灯させない**パスの基点。これ以外はすべて「探す」の区画とみなす。
+ *
+ * ## なぜ反転させたか (2026-11-03)
+ *
+ * 以前は「探す」の基点を列挙していた (`/` `/titles` `/events` `/venues`)。企画・開催の
+ * URL が `/{種別}/{id}` (`/collabo-cafe/11`) になり、第 1 階層が種別ごとに変わるため、
+ * 列挙だと種別を足すたびにここも直す必要がある (種別の一覧は DB が正で、クライアントは
+ * 持っていない)。探すは「記事・マイページ・認証まわり以外のすべて」なので、
+ * そちらを列挙する方が漏れない。
+ *
+ * ⚠️ トップ (`/`) は探すの区画に入る。v5 #1 のホームは「探す」が点灯した状態で
+ *    描かれており、トップ自体が探す導線の入口だから (タブに「ホーム」は無い)。
+ */
+export const EXPLORE_EXCLUDES = ['/articles', '/mypage', '/login', '/onboarding', '/auth'];
+
+/** タブが現在地かどうか。`excludes` があれば判定を反転する (Layer 1、純粋関数)。 */
+export function isTabCurrent(pathname: string, tab: Pick<Tab, 'href' | 'bases' | 'excludes'>) {
+  if (tab.excludes) return !isTabActive(pathname, tab.excludes);
+  return isTabActive(pathname, tab.bases ?? [tab.href]);
+}
+
 const TABS: Tab[] = [
-  {
-    href: '/titles',
-    label: '探す',
-    // 「探す」は 3 つのマスタ一覧を束ねる概念なので、いずれかにいれば点灯させる。
-    // ⚠️ **トップ (`/`) も含める**。v5 #1 のホームは「探す」が点灯した状態で
-    //    描かれており、トップ自体が探す導線の入口だから (タブに「ホーム」は無い)。
-    //    含めないと、トップにいる間どのタブも点灯しない宙ぶらりんな状態になる。
-    bases: ['/', '/titles', '/events', '/venues'],
-  },
+  { href: '/titles', label: '探す', excludes: EXPLORE_EXCLUDES },
   { href: '/articles', label: '記事' },
   { href: '/mypage', label: 'マイページ' },
 ];
@@ -88,7 +107,7 @@ export const BottomTabBar = () => {
     >
       <ul className="flex">
         {TABS.map((tab) => {
-          const active = isTabActive(pathname, tab.bases ?? [tab.href]);
+          const active = isTabCurrent(pathname, tab);
           return (
             <li key={tab.href} className="flex-1">
               <Link
