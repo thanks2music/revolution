@@ -145,7 +145,6 @@ export default async function VenuePage(props: VenuePageProps) {
                     <EventOccurrenceCard
                       event={occurrence.events}
                       slug={occurrence.slug}
-                      eventName={occurrence.eventName}
                       status={occurrence.status}
                       startsOn={occurrence.startsOn}
                       endsOn={occurrence.endsOn}

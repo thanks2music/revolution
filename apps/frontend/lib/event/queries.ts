@@ -17,6 +17,7 @@ import {
   type EventSummary,
   parseEmbeddedEventTitles,
   parseEmbeddedTitles,
+  type PrimaryCategory,
   type Title,
 } from '@/lib/event/contracts';
 import {
@@ -97,7 +98,7 @@ export type EventListItem = {
   id: number;
   name: string;
   /** 主分類 (イベントタイプ)。タグの表示名と、リンク先の URL の第 1 階層に使う。 */
-  primaryCategory: { slug: string; name: string };
+  primaryCategory: PrimaryCategory;
   /** この企画に紐づく作品 (名前順)。複数作品コラボがあり得る。 */
   titles: Title[];
   /**

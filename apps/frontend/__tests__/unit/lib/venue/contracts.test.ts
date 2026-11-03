@@ -39,9 +39,9 @@ describe('VenueDetailSchema', () => {
 });
 
 describe('toVenueOccurrences', () => {
-  it('埋め込んだ企画から eventName とリンク先の種別を解決する', () => {
+  it('埋め込んだ企画 (名前とリンク先の種別) を解決済みで持つ', () => {
     const [row] = toVenueOccurrences([occurrenceRow]);
-    expect(row?.eventName).toBe('名探偵コナン カフェ');
+    expect(row?.events.name).toBe('名探偵コナン カフェ');
     expect(row?.eventId).toBe(3);
     expect(row?.events.primaryCategory.slug).toBe('collabo-cafe');
   });

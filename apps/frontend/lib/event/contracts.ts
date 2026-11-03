@@ -37,6 +37,8 @@ import { z } from 'zod';
  */
 export const PrimaryCategorySchema = CategoryRowSchema.pick({ slug: true, name: true });
 
+export type PrimaryCategory = z.infer<typeof PrimaryCategorySchema>;
+
 /**
  * 主分類の埋め込み (select 句の断片)。
  *

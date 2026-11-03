@@ -435,7 +435,7 @@ describe('getVenueDetail', () => {
     const data = await getVenueDetail('box-cafe-and-space-gems-shibuya');
 
     expect(data?.groups).toHaveLength(1);
-    expect(data?.groups[0]?.items[0]?.eventName).toBe('名探偵コナンカフェ');
+    expect(data?.groups[0]?.items[0]?.events.name).toBe('名探偵コナンカフェ');
 
     // 会場は slug で 1 件引き、開催の絞り込みは venue_id
     // (occurrences.slug は企画内ハンドルなので使わない)。

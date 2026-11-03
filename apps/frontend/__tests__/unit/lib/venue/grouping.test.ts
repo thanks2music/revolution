@@ -12,7 +12,11 @@ import { groupVenueOccurrencesByStatus } from '@/lib/venue/grouping';
 
 let nextId = 1;
 
-function occurrence(overrides: Partial<VenueOccurrence>): VenueOccurrence {
+/** `name` は企画名 (`events.name`)。タイブレークに使う。 */
+function occurrence({
+  name = '名探偵コナン カフェ',
+  ...overrides
+}: Partial<VenueOccurrence> & { name?: string }): VenueOccurrence {
   return {
     id: nextId++,
     eventId: 1,
@@ -22,10 +26,9 @@ function occurrence(overrides: Partial<VenueOccurrence>): VenueOccurrence {
     status: 'ongoing',
     events: {
       id: 1,
-      name: '名探偵コナン カフェ',
+      name,
       primaryCategory: { slug: 'collabo-cafe', name: 'コラボカフェ' },
     },
-    eventName: '名探偵コナン カフェ',
     ...overrides,
   };
 }
@@ -64,37 +67,37 @@ describe('groupVenueOccurrencesByStatus', () => {
 
   it('開催中は終了が近い順、終了日 null (常設) は末尾', () => {
     const groups = groupVenueOccurrencesByStatus([
-      occurrence({ status: 'ongoing', endsOn: null, eventName: '常設' }),
-      occurrence({ status: 'ongoing', endsOn: '2026-12-01', eventName: '遠い' }),
-      occurrence({ status: 'ongoing', endsOn: '2026-09-01', eventName: '近い' }),
+      occurrence({ status: 'ongoing', endsOn: null, name: '常設' }),
+      occurrence({ status: 'ongoing', endsOn: '2026-12-01', name: '遠い' }),
+      occurrence({ status: 'ongoing', endsOn: '2026-09-01', name: '近い' }),
     ]);
 
-    expect(groups[0]?.items.map((item) => item.eventName)).toEqual(['近い', '遠い', '常設']);
+    expect(groups[0]?.items.map((item) => item.events.name)).toEqual(['近い', '遠い', '常設']);
   });
 
   it('開催予定は開始が早い順', () => {
     const groups = groupVenueOccurrencesByStatus([
-      occurrence({ status: 'scheduled', startsOn: '2026-10-01', eventName: '後' }),
-      occurrence({ status: 'scheduled', startsOn: '2026-09-01', eventName: '先' }),
+      occurrence({ status: 'scheduled', startsOn: '2026-10-01', name: '後' }),
+      occurrence({ status: 'scheduled', startsOn: '2026-09-01', name: '先' }),
     ]);
 
-    expect(groups[0]?.items.map((item) => item.eventName)).toEqual(['先', '後']);
+    expect(groups[0]?.items.map((item) => item.events.name)).toEqual(['先', '後']);
   });
 
   it('日程未発表・中止は日付でなく企画名順 (中止が ends_on を持っても無視)', () => {
     const groups = groupVenueOccurrencesByStatus([
-      occurrence({ status: 'cancelled', endsOn: '2026-01-01', eventName: 'ん企画' }),
-      occurrence({ status: 'cancelled', endsOn: '2026-12-31', eventName: 'あ企画' }),
+      occurrence({ status: 'cancelled', endsOn: '2026-01-01', name: 'ん企画' }),
+      occurrence({ status: 'cancelled', endsOn: '2026-12-31', name: 'あ企画' }),
     ]);
 
-    expect(groups[0]?.items.map((item) => item.eventName)).toEqual(['あ企画', 'ん企画']);
+    expect(groups[0]?.items.map((item) => item.events.name)).toEqual(['あ企画', 'ん企画']);
   });
 
   it('同着は企画名 → id でタイブレークする (venueName は使わない)', () => {
     const groups = groupVenueOccurrencesByStatus([
-      occurrence({ id: 20, status: 'ongoing', endsOn: '2026-09-01', eventName: '同名企画' }),
-      occurrence({ id: 10, status: 'ongoing', endsOn: '2026-09-01', eventName: '同名企画' }),
-      occurrence({ id: 30, status: 'ongoing', endsOn: '2026-09-01', eventName: 'あ企画' }),
+      occurrence({ id: 20, status: 'ongoing', endsOn: '2026-09-01', name: '同名企画' }),
+      occurrence({ id: 10, status: 'ongoing', endsOn: '2026-09-01', name: '同名企画' }),
+      occurrence({ id: 30, status: 'ongoing', endsOn: '2026-09-01', name: 'あ企画' }),
     ]);
 
     expect(groups[0]?.items.map((item) => item.id)).toEqual([30, 10, 20]);

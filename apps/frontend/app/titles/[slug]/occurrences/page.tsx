@@ -122,7 +122,6 @@ export default async function TitleOccurrencesPage(props: TitleOccurrencesPagePr
                         <EventOccurrenceCard
                           event={event}
                           slug={occurrence.slug}
-                          eventName={event.name}
                           status={occurrence.status}
                           startsOn={occurrence.startsOn}
                           endsOn={occurrence.endsOn}
