@@ -63,10 +63,12 @@ async function planRenames(
   return planTitleRenames(plan.titleRenameCandidates, new Map(existing.map((r) => [r.slug, r.name])));
 }
 
+const renameLine = (r: TitleRenamePlan['renames'][number]) => `titles の改名: ${r.from} → ${r.to}`;
+
 function printRenames(renames: TitleRenamePlan): void {
   for (const error of renames.errors) console.error(`  - ${error}`);
   if (renames.renames.length === 0) console.log('titles の改名: なし');
-  for (const r of renames.renames) console.log(`titles の改名: ${r.from} → ${r.to}`);
+  for (const r of renames.renames) console.log(renameLine(r));
 }
 
 function fail(message: string): never {
@@ -151,7 +153,7 @@ async function main(): Promise<void> {
       }
       for (const r of renames.renames) {
         await tx.update(titles).set({ slug: r.to }).where(eq(titles.slug, r.from));
-        console.log(`titles の改名: ${r.from} → ${r.to}`);
+        console.log(renameLine(r));
       }
 
       // --- titles (自然キー: slug)。drizzle は values([]) で throw するため空配列を避ける

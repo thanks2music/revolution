@@ -51,7 +51,7 @@ interface TitleIndex {
   aliases: Map<string, string[]>;
 }
 
-const titleIndexCache = new WeakMap<object, { generated: TitleRomajiMapping | null; index: TitleIndex }>();
+let titleIndexCache: { hand: TitleRomajiMapping; generated: TitleRomajiMapping | null; index: TitleIndex } | undefined;
 
 /**
  * Index of the whole title dictionary: the hand-written file plus its generated part, hand-written
@@ -63,15 +63,15 @@ const titleIndexCache = new WeakMap<object, { generated: TitleRomajiMapping | nu
 function titleIndex(): TitleIndex {
   const hand = loadYamlConfig('TITLE_ROMAJI');
   const generated = loadGeneratedTitleMapping();
-  const cached = titleIndexCache.get(hand);
-  if (cached && cached.generated === generated) return cached.index;
+  if (titleIndexCache?.hand === hand && titleIndexCache.generated === generated) return titleIndexCache.index;
 
   const titles = mergeTitleMappings(hand, generated).titles;
   const slugOfTitle = new Map<string, string>();
   const canonical = new Map<string, string>();
   for (const [title, value] of Object.entries(titles)) {
-    slugOfTitle.set(title, extractSlug(value));
-    canonical.set(extractSlug(value), extractSlug(value));
+    const slug = extractSlug(value);
+    slugOfTitle.set(title, slug);
+    canonical.set(slug, slug);
   }
   const claims = new Map<string, Set<string>>(); // slug-shaped alias → slugs that claim it
   for (const value of Object.values(titles)) {
@@ -93,7 +93,7 @@ function titleIndex(): TitleIndex {
   }
 
   const index = { slugOfTitle, canonical, aliases };
-  titleIndexCache.set(hand, { generated, index });
+  titleIndexCache = { hand, generated, index };
   return index;
 }
 

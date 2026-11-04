@@ -317,8 +317,8 @@ export const CONFIG_PATHS = {
 } as const;
 
 /**
- * Generated part of the title dictionary (optional). `loadYamlConfig('TITLE_ROMAJI')` merges it into
- * the hand-written file; a key in the hand-written file wins.
+ * Generated part of the title dictionary (optional). Read by `loadGeneratedTitleMapping`;
+ * `loadYamlConfig('TITLE_ROMAJI')` returns the hand-written file only.
  */
 export const TITLE_ROMAJI_GENERATED_PATH = resolve(CONFIG_DIR, 'title-romaji-mapping.sheet.yaml');
 

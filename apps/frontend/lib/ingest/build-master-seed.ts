@@ -135,14 +135,15 @@ export function buildMasterSeed(
     }
 
     plan.titles.push({ slug: entry.slug, name, kind: entry.kind });
+    const allNames = [name, ...(entry.aliases ?? [])];
     const oldSlugs = (entry.aliases ?? []).filter((alias) => TITLE_SLUG_REGEX.test(alias) && alias !== entry.slug);
     if (oldSlugs.length > 0) {
-      const names = [name, ...(entry.aliases ?? [])].map(normalizeAlias).filter((n) => n !== '');
+      const names = allNames.map(normalizeAlias).filter((n) => n !== '');
       plan.titleRenameCandidates.push({ slug: entry.slug, oldSlugs, names });
     }
 
     const { aliases, collisions } = collectAliases(
-      [name, ...(entry.aliases ?? [])],
+      allNames,
       entry.slug,
       titleAliasToSlug,
     );
@@ -235,8 +236,9 @@ export function planTitleRenames(
       continue;
     }
     const from = present[0];
-    if (!names.includes(normalizeAlias(existing.get(from)!))) {
-      plan.errors.push(`titles: 旧 slug "${from}" の行の作品名「${existing.get(from)}」が、"${slug}" の作品名・別名と違う`);
+    const fromName = existing.get(from)!;
+    if (!names.includes(normalizeAlias(fromName))) {
+      plan.errors.push(`titles: 旧 slug "${from}" の行の作品名「${fromName}」が、"${slug}" の作品名・別名と違う`);
       continue;
     }
     const other = claimed.get(from);

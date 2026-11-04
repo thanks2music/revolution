@@ -20,6 +20,8 @@
 import type { EventData } from '@revolution/schemas/mdx-frontmatter';
 import { EVENT_SLUG_REGEX } from '@revolution/schemas/event';
 
+import { escapeRegExp } from './escape-regexp';
+
 export interface WorkLike {
   title: string;
   is_primary?: boolean;
@@ -45,6 +47,12 @@ export interface AlignEventDataSlugsResult {
 }
 
 /**
+ * event_slug の差し替えに使う辞書の別名の最小の長さ。`86` や `sk` のような短い別名は、作品の部分では
+ * ない区切り (数字・略号) にも当たりうるので使わない。LLM がこの記事で書いた綴り (`replaced`) は長さを問わず使う
+ */
+const MIN_ALIAS_LENGTH_FOR_EVENT_SLUG = 4;
+
+/**
  * slug を区切り (ハイフン) 単位で差し替える。1 回の走査で行うので、差し替えた後の文字列に
  * 別の綴りがもう一度当たることはない。綴りが重なるときは長いものを優先する。
  *
@@ -52,16 +60,10 @@ export interface AlignEventDataSlugsResult {
  * 入っていればそちらが先に当たって消費されるので、その一部分である短い別名には当たらない
  * (例: 辞書の slug `grand-work-dreaming` の別名 `grand-work` が、`grand-work-dreaming-cafe` の中に再び当たらない)。
  */
-/**
- * event_slug の差し替えに使う辞書の別名の最小の長さ。`86` や `sk` のような短い別名は、作品の部分では
- * ない区切り (数字・略号) にも当たりうるので使わない。LLM がこの記事で書いた綴り (`replaced`) は長さを問わず使う
- */
-const MIN_ALIAS_LENGTH_FOR_EVENT_SLUG = 4;
-
 function replaceSegments(value: string, variants: ReadonlyMap<string, string>): string {
   const froms = [...variants.keys()].sort((a, b) => b.length - a.length);
   if (froms.length === 0) return value;
-  const pattern = new RegExp(`(^|-)(${froms.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?=-|$)`, 'g');
+  const pattern = new RegExp(`(^|-)(${froms.map(escapeRegExp).join('|')})(?=-|$)`, 'g');
   return value.replace(pattern, (_, head: string, from: string) => `${head}${variants.get(from)}`);
 }
 
@@ -76,6 +78,8 @@ export function alignEventDataSlugs(params: {
   const warnings: string[] = [];
   const replaced = new Map<string, string>(); // LLM の slug → 辞書の slug
   const isDictionarySlug = (slug: string) => dictionary.canonicalOfSlug(slug) === slug;
+  // 作品が 1 つのときだけ、記事の work_slug (辞書の slug なら) をその作品の slug とみなす
+  const singleWorkSlug = works.length === 1 && isDictionarySlug(workSlug) ? workSlug : null;
 
   // 1. 辞書の slug と slug の形の別名を、辞書の slug に直す
   const slugs = eventData.title_slugs.map((slug) => {
@@ -108,21 +112,14 @@ export function alignEventDataSlugs(params: {
   }
 
   // 3. 作品が 1 つで作品名が辞書に無いときは、記事の work_slug (辞書の slug なら) を使う
-  if (
-    works.length === 1 &&
-    dictionaryOfWork[0].slug === null &&
-    slugs.length === 1 &&
-    !isDictionarySlug(slugs[0]) &&
-    isDictionarySlug(workSlug)
-  ) {
-    replaced.set(slugs[0], workSlug);
-    slugs[0] = workSlug;
+  if (singleWorkSlug !== null && dictionaryOfWork[0].slug === null && slugs.length === 1 && !isDictionarySlug(slugs[0])) {
+    replaced.set(slugs[0], singleWorkSlug);
+    slugs[0] = singleWorkSlug;
   }
 
   // 4. 主作品の辞書の slug を先頭に移し、重複を除く
   const primary = works.find((work) => work.is_primary) ?? works[0];
-  const primarySlug =
-    (primary && dictionary.slugOfTitle(primary.title)) ?? (works.length === 1 && isDictionarySlug(workSlug) ? workSlug : null);
+  const primarySlug = (primary && dictionary.slugOfTitle(primary.title)) ?? singleWorkSlug;
   const ordered = [...new Set(primarySlug !== null && slugs.includes(primarySlug) ? [primarySlug, ...slugs] : slugs)];
 
   if (ordered.join(',') !== eventData.title_slugs.join(',')) {
@@ -137,8 +134,9 @@ export function alignEventDataSlugs(params: {
     for (const [from, to] of replaced) if (!variants.has(from)) variants.set(from, to);
     for (const slug of dictionarySlugs) {
       for (const alias of dictionary.slugAliasesOf(slug)) {
-        // ほかの作品の辞書の slug と同じ別名は使わない (その作品の部分を書き換えてしまう)
+        // 短い別名は使わない (作品の部分ではない区切りに当たりうる)
         if (alias.length < MIN_ALIAS_LENGTH_FOR_EVENT_SLUG) continue;
+        // ほかの作品の辞書の slug と同じ別名は使わない (その作品の部分を書き換えてしまう)
         if (!variants.has(alias) && !isDictionarySlug(alias)) variants.set(alias, slug);
       }
     }

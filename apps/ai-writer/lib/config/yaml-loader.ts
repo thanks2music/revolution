@@ -100,7 +100,8 @@ export function loadYamlConfig<K extends ConfigKey>(
   }
 }
 
-let generatedTitleCache: { mapping: TitleRomajiMapping | null } | undefined;
+/** undefined = not read yet, null = the file is absent */
+let generatedTitleCache: TitleRomajiMapping | null | undefined;
 
 /**
  * Loads the generated part of the title dictionary, or null when the file is absent.
@@ -111,10 +112,10 @@ let generatedTitleCache: { mapping: TitleRomajiMapping | null } | undefined;
  *
  * @throws {Error} naming the generated file when it cannot be parsed or has no `titles` map
  */
-export function loadGeneratedTitleMapping(forceReload = false): TitleRomajiMapping | null {
-  if (!forceReload && generatedTitleCache) return generatedTitleCache.mapping;
+export function loadGeneratedTitleMapping(): TitleRomajiMapping | null {
+  if (generatedTitleCache !== undefined) return generatedTitleCache;
   if (!existsSync(TITLE_ROMAJI_GENERATED_PATH)) {
-    generatedTitleCache = { mapping: null };
+    generatedTitleCache = null;
     return null;
   }
   let parsed: unknown;
@@ -129,8 +130,8 @@ export function loadGeneratedTitleMapping(forceReload = false): TitleRomajiMappi
   if (!titles || typeof titles !== 'object' || Array.isArray(titles)) {
     throw new Error(`Invalid YAML structure in ${TITLE_ROMAJI_GENERATED_PATH}: titles must be a map`);
   }
-  generatedTitleCache = { mapping: parsed as TitleRomajiMapping };
-  return generatedTitleCache.mapping;
+  generatedTitleCache = parsed as TitleRomajiMapping;
+  return generatedTitleCache;
 }
 
 /**
