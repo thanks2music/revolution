@@ -41,6 +41,81 @@ function extractSlug(value: string | TitleEntry): string {
 }
 
 /**
+ * Looks a Japanese title up in the dictionary only (no AI fallback).
+ *
+ * Exact match on the title first, then on an alias.
+ *
+ * @returns the dictionary slug, or null when the title is not in the dictionary
+ */
+export function findDictionaryWorkSlug(japaneseTitle: string): string | null {
+  const config = loadYamlConfig('TITLE_ROMAJI');
+
+  const directMatch = config.titles[japaneseTitle];
+  if (directMatch) return extractSlug(directMatch);
+
+  for (const value of Object.values(config.titles)) {
+    if (isTitleEntry(value) && value.aliases?.includes(japaneseTitle)) return value.slug;
+  }
+  return null;
+}
+
+/** Slug-shaped strings, the same shape as `TITLE_SLUG_REGEX`. */
+const SLUG_SHAPE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+interface SlugIndex {
+  /** dictionary slug → itself, slug-shaped alias → its entry's slug (aliases claimed by two entries are left out) */
+  canonical: Map<string, string>;
+  /** dictionary slug → its slug-shaped aliases */
+  aliases: Map<string, string[]>;
+}
+
+const slugIndexCache = new WeakMap<object, SlugIndex>();
+
+function slugIndex(): SlugIndex {
+  const config = loadYamlConfig('TITLE_ROMAJI');
+  const cached = slugIndexCache.get(config);
+  if (cached) return cached;
+
+  const canonical = new Map<string, string>();
+  const aliases = new Map<string, string[]>();
+  for (const value of Object.values(config.titles)) {
+    canonical.set(extractSlug(value), extractSlug(value));
+  }
+  const ambiguous = new Set<string>();
+  for (const value of Object.values(config.titles)) {
+    if (!isTitleEntry(value)) continue;
+    const own = (value.aliases ?? []).filter((alias) => SLUG_SHAPE.test(alias) && alias !== value.slug);
+    aliases.set(value.slug, own);
+    for (const alias of own) {
+      const owner = canonical.get(alias);
+      if (owner !== undefined && owner !== value.slug) ambiguous.add(alias);
+      else canonical.set(alias, value.slug);
+    }
+  }
+  for (const alias of ambiguous) if (canonical.get(alias) !== alias) canonical.delete(alias);
+
+  const index = { canonical, aliases };
+  slugIndexCache.set(config, index);
+  return index;
+}
+
+/**
+ * Resolves a slug to the dictionary's slug.
+ *
+ * Returns the slug itself when it is a dictionary slug, and the entry's slug when it is a
+ * slug-shaped alias (for example a romanization an LLM wrote). Returns null otherwise, and for an
+ * alias that two entries share.
+ */
+export function resolveCanonicalTitleSlug(slug: string): string | null {
+  return slugIndex().canonical.get(slug) ?? null;
+}
+
+/** The slug-shaped aliases of a dictionary slug (old slugs and romanizations). */
+export function getSlugAliases(slug: string): string[] {
+  return slugIndex().aliases.get(slug) ?? [];
+}
+
+/**
  * Resolves a Japanese anime/manga title to its romaji slug
  *
  * @description
@@ -69,26 +144,11 @@ export async function resolveWorkSlug(
   enableFallback = true,
   costTracker?: CostTrackerService
 ): Promise<string | null> {
-  const config = loadYamlConfig('TITLE_ROMAJI');
-
-  // 1. 直接マッチ（メインタイトル）
-  const directMatch = config.titles[japaneseTitle];
-  if (directMatch) {
-    const slug = extractSlug(directMatch);
-    console.log(
-      `[Slug Resolver] ✅ Work slug found in YAML: "${japaneseTitle}" → "${slug}"`
-    );
-    return slug;
-  }
-
-  // 2. エイリアス検索（表記ゆれ・略称対応）
-  for (const [title, value] of Object.entries(config.titles)) {
-    if (isTitleEntry(value) && value.aliases?.includes(japaneseTitle)) {
-      console.log(
-        `[Slug Resolver] ✅ Work slug found via alias: "${japaneseTitle}" → "${title}" → "${value.slug}"`
-      );
-      return value.slug;
-    }
+  // 1-2. 辞書 (作品名 → 別名の順、完全一致)
+  const dictionarySlug = findDictionaryWorkSlug(japaneseTitle);
+  if (dictionarySlug) {
+    console.log(`[Slug Resolver] ✅ Work slug found in YAML: "${japaneseTitle}" → "${dictionarySlug}"`);
+    return dictionarySlug;
   }
 
   // 3. フォールバック（AI → ASCII slugify）
