@@ -15,7 +15,6 @@ title: 現行版 技術スタック
 | **ドキュメントサイト** (`apps/docs`) | Next.js / Fumadocs | 16 / 16 | `docs/` 直下の配信 (検索エンジン非掲載) |
 | **スタイリング** | Tailwind CSS | 3 (frontend / ai-writer) / 4 (docs) | UI デザイン |
 | **MDX** | next-mdx-remote | 6 | 記事の描画 |
-| **データ取得** | SWR | 2 | クライアントのデータフェッチング |
 | **スキーマ** | Zod | 4 | 入出力の検証 (`shared/schemas`)。frontend の環境変数は `@t3-oss/env-nextjs` |
 
 ## バックエンド & インフラストラクチャ

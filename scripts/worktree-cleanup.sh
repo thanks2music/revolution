@@ -94,7 +94,6 @@ GENERATED_REAL_DIRS=(
 GENERATED_SYMLINKS=(
   "$WORKTREE_PATH/.env.local"
   "$WORKTREE_PATH/apps/ai-writer/.env.local"
-  "$WORKTREE_PATH/apps/ai-writer/.env.deploy"  # 2026-11 以降は作らない。それより前の worktree の symlink を消すために残す
   "$WORKTREE_PATH/apps/frontend/.env.local"
   "$WORKTREE_PATH/apps/frontend/.env.production.local"
 )
