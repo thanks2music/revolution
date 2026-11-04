@@ -10,13 +10,26 @@
  * @see {@link /notes/archive/super-mvp-scope.md} for specification
  */
 
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { load as yamlLoad } from 'js-yaml';
 import {
   CONFIG_PATHS,
+  TITLE_ROMAJI_GENERATED_PATH,
   type ConfigKey,
   type ConfigTypeMap,
+  type TitleRomajiMapping,
 } from './types';
+
+/**
+ * Merges the generated title dictionary into the hand-written one.
+ * A key that exists in both keeps the hand-written entry, and the hand-written entries come first.
+ */
+export function mergeTitleMappings(
+  handWritten: TitleRomajiMapping,
+  generated: Partial<TitleRomajiMapping> | null | undefined,
+): TitleRomajiMapping {
+  return { ...handWritten, titles: { ...(generated?.titles ?? {}), ...handWritten.titles } };
+}
 
 /**
  * In-memory cache for loaded YAML configurations
@@ -61,11 +74,18 @@ export function loadYamlConfig<K extends ConfigKey>(
     const fileContents = readFileSync(filePath, 'utf8');
 
     // Parse YAML
-    const parsedConfig = yamlLoad(fileContents) as ConfigTypeMap[K];
+    let parsedConfig = yamlLoad(fileContents) as ConfigTypeMap[K];
 
     // Validate that parsing returned an object
     if (!parsedConfig || typeof parsedConfig !== 'object') {
       throw new Error(`Invalid YAML structure in ${filePath}`);
+    }
+
+    // The title dictionary has a generated part next to the hand-written file. It is optional:
+    // environments without it keep working with the hand-written entries only.
+    if (configKey === 'TITLE_ROMAJI' && existsSync(TITLE_ROMAJI_GENERATED_PATH)) {
+      const generated = yamlLoad(readFileSync(TITLE_ROMAJI_GENERATED_PATH, 'utf8')) as TitleRomajiMapping | null;
+      parsedConfig = mergeTitleMappings(parsedConfig as TitleRomajiMapping, generated) as ConfigTypeMap[K];
     }
 
     // Cache the result
