@@ -66,12 +66,6 @@ export const env = createEnv({
       message: "NEXT_PUBLIC_SITE_URL must be a valid URL (e.g., https://example.com)"
     }).optional(),
 
-    // 画像最適化で許可するホスト
-    // 本番環境では必須、開発環境ではlocalhostがデフォルト
-    NEXT_PUBLIC_ALLOWED_IMAGE_HOST: z.string().min(1, {
-      message: "NEXT_PUBLIC_ALLOWED_IMAGE_HOST must be set (e.g., 'example.com')"
-    }).optional(),
-
     // サイト名（メタデータで使用）
     // 「Revolution」はリポジトリのコードネームであってサイト名ではない。
     // ユーザーに見える名称は「アニイベ」で、本キーがその単一の真実源。
@@ -104,7 +98,6 @@ export const env = createEnv({
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
-    NEXT_PUBLIC_ALLOWED_IMAGE_HOST: process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST,
     NEXT_PUBLIC_SITE_NAME: process.env.NEXT_PUBLIC_SITE_NAME,
     NEXT_PUBLIC_SITE_DESCRIPTION: process.env.NEXT_PUBLIC_SITE_DESCRIPTION,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,

@@ -24,7 +24,6 @@
       "outputs": [".next/**", "!.next/cache/**", "dist/**", "build/**"],
       "env": [
         "NEXT_PUBLIC_SITE_URL",
-        "NEXT_PUBLIC_ALLOWED_IMAGE_HOST",
         "NEXT_PUBLIC_SITE_NAME",
         "NEXT_PUBLIC_SITE_DESCRIPTION"
       ]
