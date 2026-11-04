@@ -27,7 +27,7 @@
 
 import * as Sentry from '@sentry/nextjs';
 import { MetadataRoute } from 'next';
-import { env } from '@/lib/env';
+import { siteConfig } from '@/lib/metadata';
 import { getEventTypeUrl, getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { listEventParams } from '@/lib/event/queries';
 import { getAllArticles, getArticleUrl } from '@/lib/mdx/articles';
@@ -226,7 +226,7 @@ export async function buildS2Pages(baseUrl: string): Promise<MetadataRoute.Sitem
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = env.NEXT_PUBLIC_SITE_URL || 'https://example.com';
+  const baseUrl = siteConfig.url;
 
   // 静的ページ。取得に失敗する余地が無いので try/catch を持たない。
   // `/titles` / `/events` の一覧ページは中身が DB 由来でも**ページ自体は常に
