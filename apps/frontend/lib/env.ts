@@ -17,9 +17,6 @@ export const env = createEnv({
       .enum(["development", "production", "test"])
       .default("development"),
 
-    // WordPress GraphQL エンドポイント（サーバー側で使用可能）
-    WORDPRESS_GRAPHQL_ENDPOINT: z.string().url().optional(),
-
     // ---------------------------------------------------------------
     // Crescendolls (Supabase 会員機能) — server-only シークレット
     // ---------------------------------------------------------------
@@ -67,17 +64,6 @@ export const env = createEnv({
     // 公開用サイトURL（OGPやサイトマップで使用）
     NEXT_PUBLIC_SITE_URL: z.string().url({
       message: "NEXT_PUBLIC_SITE_URL must be a valid URL (e.g., https://example.com)"
-    }).optional(),
-
-    // WordPress GraphQL エンドポイント（公開用）
-    // MDX専用モードでは任意（WordPress統合時は必須）
-    NEXT_PUBLIC_WP_ENDPOINT: z.string().url({
-      message: "NEXT_PUBLIC_WP_ENDPOINT must be a valid URL (e.g., https://example.com/graphql)"
-    }).optional(),
-
-    // WordPress サイトURL（OGP画像等で使用）
-    NEXT_PUBLIC_WP_URL: z.string().url({
-      message: "NEXT_PUBLIC_WP_URL must be a valid URL (e.g., https://example.com)"
     }).optional(),
 
     // 画像最適化で許可するホスト
@@ -130,7 +116,6 @@ export const env = createEnv({
    */
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
-    WORDPRESS_GRAPHQL_ENDPOINT: process.env.WORDPRESS_GRAPHQL_ENDPOINT,
     SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
     DATABASE_URL: process.env.DATABASE_URL,
     MIGRATION_DATABASE_URL: process.env.MIGRATION_DATABASE_URL,
@@ -138,8 +123,6 @@ export const env = createEnv({
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
-    NEXT_PUBLIC_WP_ENDPOINT: process.env.NEXT_PUBLIC_WP_ENDPOINT,
-    NEXT_PUBLIC_WP_URL: process.env.NEXT_PUBLIC_WP_URL,
     NEXT_PUBLIC_ALLOWED_IMAGE_HOST: process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST,
     NEXT_PUBLIC_SITE_NAME: process.env.NEXT_PUBLIC_SITE_NAME,
     NEXT_PUBLIC_SITE_DESCRIPTION: process.env.NEXT_PUBLIC_SITE_DESCRIPTION,
@@ -174,6 +157,6 @@ export const env = createEnv({
  * import { env } from '@/lib/env';
  *
  * // 型安全にアクセス
- * const endpoint = env.NEXT_PUBLIC_WP_ENDPOINT;
+ * const siteUrl = env.NEXT_PUBLIC_SITE_URL;
  * ```
  */

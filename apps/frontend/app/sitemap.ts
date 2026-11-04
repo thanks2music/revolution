@@ -226,7 +226,7 @@ export async function buildS2Pages(baseUrl: string): Promise<MetadataRoute.Sitem
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com';
+  const baseUrl = env.NEXT_PUBLIC_SITE_URL || 'https://example.com';
 
   // 静的ページ。取得に失敗する余地が無いので try/catch を持たない。
   // `/titles` / `/events` の一覧ページは中身が DB 由来でも**ページ自体は常に

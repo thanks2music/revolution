@@ -51,16 +51,6 @@ const nextConfig = {
         : []),
       // 本番環境: HTTPSのみ
       { protocol: 'https', hostname: process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST ?? 'localhost' },
-      // Google Cloud Storage画像用の設定（pathname制約あり）
-      ...(process.env.NEXT_PUBLIC_GCS_IMAGE_HOST
-        ? [{
-            protocol: 'https',
-            hostname: process.env.NEXT_PUBLIC_GCS_IMAGE_HOST,
-            pathname: process.env.NEXT_PUBLIC_GCS_BUCKET
-              ? `/${process.env.NEXT_PUBLIC_GCS_BUCKET}/**`
-              : '/**',
-          }]
-        : []),
       // Cloudflare R2画像用の設定（ogImage等）
       {
         protocol: 'https',
@@ -95,11 +85,6 @@ const nextConfig = {
    * - X-Frame-Options, X-Content-Type-Options等
    */
   async headers() {
-    // CSP用にWordPressエンドポイントのオリジンを抽出
-    const wpOrigin = process.env.NEXT_PUBLIC_WP_ENDPOINT
-      ? new URL(process.env.NEXT_PUBLIC_WP_ENDPOINT).origin
-      : '';
-
     // CSP connect-src 用に Supabase オリジンを env から動的抽出。
     // Crescendolls 会員機能（Auth / PostgREST / Realtime）のブラウザ実リクエストが
     // CSP でブロックされないために必須。
@@ -148,7 +133,6 @@ const nextConfig = {
     }
     const connectSrc = [
       "'self'",
-      wpOrigin,
       supabaseOrigin,
       supabaseWsOrigin,
       sentryIngestOrigin,

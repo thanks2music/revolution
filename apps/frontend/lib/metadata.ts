@@ -12,7 +12,7 @@ import { env } from './env';
 export const siteConfig = {
   name: env.NEXT_PUBLIC_SITE_NAME,
   description: env.NEXT_PUBLIC_SITE_DESCRIPTION,
-  url: env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com',
+  url: env.NEXT_PUBLIC_SITE_URL || 'https://example.com',
   ogImage: '/og-image.png', // デフォルトのOG画像
   twitterHandle: '@anime_events_X',
   xUrl: 'https://x.com/anime_events_X',
