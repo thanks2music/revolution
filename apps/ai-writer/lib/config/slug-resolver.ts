@@ -695,14 +695,19 @@ export function getShortTitle(japaneseTitle: string): string | null {
   const config = loadYamlConfig('TITLE_ROMAJI');
 
   // 直接マッチ
+  // ★ 作品名が辞書のキーそのものなら、short_title が無ければ縮めない (null を返す)。
+  //   前方一致へ進むと、辞書が増えたときに別の作品のキーに当たって縮んでしまう
+  //   (例:「アイドルマスター シンデレラガールズ」が別の作品「アイドルマスター」になる)。
+  //   alias で当たった場合は従来どおり前方一致へ進む (「鬼滅の刃 無限列車編」→「鬼滅の刃」)
   const directMatch = config.titles[japaneseTitle];
-  if (directMatch && isTitleEntry(directMatch)) {
-    if (directMatch.short_title) {
+  if (directMatch) {
+    if (isTitleEntry(directMatch) && directMatch.short_title) {
       console.log(
         `[Slug Resolver] 📝 Short title found: "${japaneseTitle}" → "${directMatch.short_title}"`
       );
       return directMatch.short_title;
     }
+    return null;
   }
 
   // エイリアスからも検索
