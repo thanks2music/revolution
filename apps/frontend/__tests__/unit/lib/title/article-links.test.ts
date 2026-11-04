@@ -19,6 +19,8 @@ import {
  * fixture は実データ由来: 記事 `01m02zcdrevxhcj4` (名探偵コナン) は
  * `title_slugs: ["meitantei-conan"]` (ゆれ) を持ち、titles マスタの正準は
  * `detective-conan`。`event_slug` 経由でのみ正しく紐づく (2026-08-20 実測)。
+ * 2026-11-05 に公開済みの記事は辞書の slug にそろえたが、fixture は当時の形のまま残す
+ * (ai-writer が辞書に無い作品の slug は LLM の値のまま書くので、ゆれた記事は今後も入りうる)。
  */
 
 function article(overrides: {
@@ -55,7 +57,7 @@ function article(overrides: {
 
 describe('selectTitleArticles', () => {
   it('links a drifted article through the ingested event_slug (案 X の核心)', async () => {
-    // 実データ再現: title_slugs は「meitantei-conan」(ゆれ) だが、
+    // 実データ再現 (2026-08-20 時点): title_slugs は「meitantei-conan」(ゆれ) だが、
     // 取り込みが event_titles に正準 detective-conan を張っている
     // = detective-conan の企画の events.slug に記事の event_slug が含まれる。
     const conan = article({
