@@ -38,11 +38,8 @@ const config = {
   // タイムアウト設定
   testTimeout: 30000,
 
-  // テストファイルのパターン（test-helpersを除外）
-  testMatch: [
-    '**/__tests__/**/*.(test|spec).{js,jsx,ts,tsx}',
-    '!**/__tests__/test-helpers/**',
-  ],
+  // テストファイルのパターン
+  testMatch: ['**/__tests__/**/*.(test|spec).{js,jsx,ts,tsx}'],
 
   // Module resolution aliases — must include `@/` so that
   // `jest --findRelatedTests` can walk the dependency graph past path-aliased
