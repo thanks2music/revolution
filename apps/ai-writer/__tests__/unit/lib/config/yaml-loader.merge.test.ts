@@ -18,6 +18,14 @@ describe('mergeTitleMappings', () => {
     });
   });
 
+  it('手書きの作品を先に並べる (別名を順に探す関数が手書きの作品を先に見つける)', () => {
+    const merged = mergeTitleMappings(
+      { titles: { 作品B: 'hand-b', 作品A: { slug: 'hand-a' } } },
+      { titles: { 作品Z: { slug: 'generated-z' }, 作品A: { slug: 'generated-a' } } },
+    );
+    expect(Object.keys(merged.titles)).toEqual(['作品B', '作品A', '作品Z']);
+  });
+
   it('自動生成の辞書が空・無いときは手書きのまま', () => {
     const hand = { titles: { 作品A: { slug: 'hand-a' } } };
     expect(mergeTitleMappings(hand, null)).toEqual(hand);

@@ -22,13 +22,18 @@ import {
 
 /**
  * Merges the generated title dictionary into the hand-written one.
- * A key that exists in both keeps the hand-written entry, and the hand-written entries come first.
+ * A key that exists in both keeps the hand-written entry, and the hand-written entries come first,
+ * so lookups that scan the entries in order (aliases) find a hand-written entry before a generated one.
  */
 export function mergeTitleMappings(
   handWritten: TitleRomajiMapping,
   generated: Partial<TitleRomajiMapping> | null | undefined,
 ): TitleRomajiMapping {
-  return { ...handWritten, titles: { ...(generated?.titles ?? {}), ...handWritten.titles } };
+  const titles = { ...handWritten.titles };
+  for (const [key, value] of Object.entries(generated?.titles ?? {})) {
+    if (!(key in titles)) titles[key] = value;
+  }
+  return { ...handWritten, titles };
 }
 
 /**
