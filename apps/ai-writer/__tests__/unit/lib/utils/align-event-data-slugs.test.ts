@@ -13,6 +13,8 @@ const ENTRIES: Record<string, { slug: string; aliases: string[] }> = {
   作品A: { slug: 'work-a', aliases: ['alias-a', 'old-work-a'] },
   作品B: { slug: 'work-b', aliases: [] },
   作品W: { slug: 'work-a-x', aliases: ['work'] },
+  // 別名が辞書の slug の先頭・末尾の区切りになっている作品
+  作品G: { slug: 'grand-work-dreaming', aliases: ['grand-work', 'work-dreaming'] },
 };
 
 const dictionary: TitleDictionary = {
@@ -119,6 +121,35 @@ describe('alignEventDataSlugs: 複数作品', () => {
     expect(result.eventData.event_slug).toBe('work-a-x-work-b-cafe');
   });
 
+  it('辞書に無い作品があり、辞書で引けない要素がその作品の slug かもしれないときは置き換えない', () => {
+    // LLM が作品A を書き落とし、辞書に無い作品の slug だけを書いた場合に、それを作品A にしない
+    const input = eventData({ title_slugs: ['other-romaji'], event_slug: 'other-romaji-cafe' });
+    const result = alignEventDataSlugs({
+      eventData: input,
+      works: [
+        { title: '作品A', is_primary: true },
+        { title: '辞書に無い作品', is_primary: false },
+      ],
+      workSlug: 'work-a',
+      dictionary,
+    });
+    expect(result.eventData).toEqual(input);
+    expect(result.warnings).toHaveLength(1);
+  });
+
+  it('辞書に無い作品の slug が辞書の slug として書かれていれば、残りの 1 対 1 は置き換える', () => {
+    const result = alignEventDataSlugs({
+      eventData: eventData({ title_slugs: ['romaji-a', 'work-b'] }),
+      works: [
+        { title: '作品A', is_primary: true },
+        { title: '作品B の別の書き方', is_primary: false },
+      ],
+      workSlug: 'work-a',
+      dictionary,
+    });
+    expect(result.eventData.title_slugs).toEqual(['work-a', 'work-b']);
+  });
+
   it('2 つ以上ずれて対応が決まらなければ置き換えず、警告を返す', () => {
     const input = eventData({ title_slugs: ['romaji-a', 'romaji-b'], event_slug: 'romaji-a-romaji-b-cafe' });
     const result = alignEventDataSlugs({
@@ -156,6 +187,38 @@ describe('alignEventDataSlugs: event_slug の差し替え', () => {
       dictionary,
     });
     expect(result.eventData.event_slug).toBe('work-a-x-cafe');
+  });
+
+  it('すでに辞書の slug を含む event_slug は、その一部分である別名で書き換えない (何度通しても同じ)', () => {
+    const works = [{ title: '作品G', is_primary: true }];
+    const first = alignEventDataSlugs({
+      eventData: eventData({ title_slugs: ['grand-work-dreaming'], event_slug: 'grand-work-dreaming-cafe-2026' }),
+      works,
+      workSlug: 'grand-work-dreaming',
+      dictionary,
+    });
+    expect(first.eventData.event_slug).toBe('grand-work-dreaming-cafe-2026');
+    expect(first.changes).toEqual([]);
+    const second = alignEventDataSlugs({ eventData: first.eventData, works, workSlug: 'grand-work-dreaming', dictionary });
+    expect(second.eventData).toEqual(first.eventData);
+  });
+
+  it('辞書の slug を含まない event_slug の別名 (先頭・末尾の区切り) は辞書の slug にする', () => {
+    const works = [{ title: '作品G', is_primary: true }];
+    const prefix = alignEventDataSlugs({
+      eventData: eventData({ title_slugs: ['grand-work'], event_slug: 'grand-work-cafe' }),
+      works,
+      workSlug: 'grand-work-dreaming',
+      dictionary,
+    });
+    expect(prefix.eventData.event_slug).toBe('grand-work-dreaming-cafe');
+    const suffix = alignEventDataSlugs({
+      eventData: eventData({ title_slugs: ['grand-work-dreaming'], event_slug: 'special-work-dreaming-cafe' }),
+      works,
+      workSlug: 'grand-work-dreaming',
+      dictionary,
+    });
+    expect(suffix.eventData.event_slug).toBe('special-grand-work-dreaming-cafe');
   });
 
   it('event_slug が無ければ足さない', () => {

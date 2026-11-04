@@ -8,7 +8,8 @@
  * 決め方 (2026-11-05):
  * 1. `title_slugs` の各要素を、辞書の slug か辞書の slug の形の別名から、辞書の slug に直す
  * 2. `works[]` の作品名を辞書で引き、まだ無い辞書の slug と、辞書で引けない要素が 1 つずつなら置き換える。
- *    2 つ以上で対応が決まらなければ置き換えず、警告を返す (推測で埋めない)
+ *    2 つ以上ある、または辞書に無い作品の slug がその要素かもしれないときは、対応が決まらないので
+ *    置き換えず、警告を返す (推測で埋めない)
  * 3. 作品が 1 つで、作品名が辞書に無く、記事の work_slug が辞書の slug なら、それを使う
  * 4. 主作品 (is_primary) の辞書の slug を先頭に移す
  * 5. `event_slug` の作品の部分 (区切り単位) を、置き換えた旧い slug と、作品の slug の形の別名から
@@ -46,9 +47,13 @@ export interface AlignEventDataSlugsResult {
 /**
  * slug を区切り (ハイフン) 単位で差し替える。1 回の走査で行うので、差し替えた後の文字列に
  * 別の綴りがもう一度当たることはない。綴りが重なるときは長いものを優先する。
+ *
+ * `variants` には辞書の slug そのもの (自分自身への差し替え) も入れておく。辞書の slug がすでに
+ * 入っていればそちらが先に当たって消費されるので、その一部分である短い別名には当たらない
+ * (例: 辞書の slug `grand-work-dreaming` の別名 `grand-work` が、`grand-work-dreaming-cafe` の中に再び当たらない)。
  */
 function replaceSegments(value: string, variants: ReadonlyMap<string, string>): string {
-  const froms = [...variants.keys()].filter((from) => variants.get(from) !== from).sort((a, b) => b.length - a.length);
+  const froms = [...variants.keys()].sort((a, b) => b.length - a.length);
   if (froms.length === 0) return value;
   const pattern = new RegExp(`(^|-)(${froms.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?=-|$)`, 'g');
   return value.replace(pattern, (_, head: string, from: string) => `${head}${variants.get(from)}`);
@@ -81,7 +86,12 @@ export function alignEventDataSlugs(params: {
     (slug) => !slugs.includes(slug),
   );
   const unresolved = slugs.flatMap((slug, i) => (isDictionarySlug(slug) ? [] : [i]));
-  if (missing.length === 1 && unresolved.length === 1) {
+  // 辞書に無い作品の slug が、辞書で引けない要素のどれかかもしれない。辞書に無い作品の数が、
+  // どの作品にも当たらない辞書の slug の数 (その作品の slug と読める) より多いときは、1 対 1 に決まらない
+  const knownSlugs = new Set(dictionaryOfWork.map((x) => x.slug));
+  const unclaimedDictionarySlugs = slugs.filter((slug) => isDictionarySlug(slug) && !knownSlugs.has(slug)).length;
+  const determined = unknownWorks.length <= unclaimedDictionarySlugs;
+  if (missing.length === 1 && unresolved.length === 1 && determined) {
     const i = unresolved[0];
     replaced.set(slugs[i], missing[0]);
     slugs[i] = missing[0];
@@ -116,10 +126,14 @@ export function alignEventDataSlugs(params: {
   // 5. event_slug の作品の部分を差し替える
   let eventSlug = eventData.event_slug;
   if (eventSlug !== undefined) {
-    const variants = new Map(replaced);
-    for (const slug of ordered) {
-      if (!isDictionarySlug(slug)) continue;
-      for (const alias of dictionary.slugAliasesOf(slug)) if (!variants.has(alias)) variants.set(alias, slug);
+    const dictionarySlugs = ordered.filter(isDictionarySlug);
+    const variants = new Map<string, string>(dictionarySlugs.map((slug) => [slug, slug]));
+    for (const [from, to] of replaced) if (!variants.has(from)) variants.set(from, to);
+    for (const slug of dictionarySlugs) {
+      for (const alias of dictionary.slugAliasesOf(slug)) {
+        // ほかの作品の辞書の slug と同じ別名は使わない (その作品の部分を書き換えてしまう)
+        if (!variants.has(alias) && !isDictionarySlug(alias)) variants.set(alias, slug);
+      }
     }
     const next = replaceSegments(eventSlug, variants);
     if (next !== eventSlug) {
