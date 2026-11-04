@@ -40,7 +40,11 @@ import {
   resolveEventTypeSlug,
   resolvePrefectureSlugs,
   getShortTitle,
+  findDictionaryWorkSlug,
+  resolveCanonicalTitleSlug,
+  getSlugAliases,
 } from '../config/slug-resolver';
+import { alignEventDataSlugs } from '../utils/align-event-data-slugs';
 import { DuplicateSlugError } from '../errors/github';
 import { getPrStatusByCanonicalKey } from '../github/pr-status';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
@@ -994,7 +998,27 @@ export class ArticleGenerationMdxService {
             `${getStepContext('lead-generation', 'event_data')} ⚠️ occurrences 正規化: ${warning}`,
           );
         }
-        return result.eventData;
+
+        // 作品の slug (title_slugs と event_slug の作品の部分) を辞書の slug にそろえる。
+        // 抽出の LLM は実行ごとに違う綴りを書くため (2026-11-05)。記事の更新では、この後の
+        // inheritEventKeys が既存の記事の値に戻す
+        const aligned = alignEventDataSlugs({
+          eventData: result.eventData,
+          works: detailedExtraction?.works ?? [],
+          workSlug,
+          dictionary: {
+            slugOfTitle: findDictionaryWorkSlug,
+            canonicalOfSlug: resolveCanonicalTitleSlug,
+            slugAliasesOf: getSlugAliases,
+          },
+        });
+        const ctx = getStepContext('lead-generation', 'event_data');
+        for (const change of aligned.changes) console.log(`${ctx} 🔁 辞書にそろえた: ${change}`);
+        for (const warning of aligned.warnings) console.warn(`${ctx} ⚠️ ${warning}`);
+        for (const title of aligned.unknownWorks) {
+          console.warn(`${ctx} ⚠️ 辞書に無い作品: ${title} (title_slugs は抽出の値のまま)`);
+        }
+        return aligned.eventData;
       })();
 
       // 種別の見出し表記。**「カフェ」をハードコードしない** — pop-up-store や
