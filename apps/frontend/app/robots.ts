@@ -4,10 +4,10 @@
  */
 
 import { MetadataRoute } from 'next';
-import { env } from '@/lib/env';
+import { siteConfig } from '@/lib/metadata';
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com';
+  const baseUrl = siteConfig.url;
 
   return {
     rules: [

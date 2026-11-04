@@ -80,7 +80,7 @@ See [`docs/build.md`](./docs/build.md) for the full command reference.
 
 ## Tech Stack
 
-- **Frontend**: Next.js / React / TypeScript / Tailwind CSS / SWR / next-mdx-remote, on Vercel (SSG + ISR)
+- **Frontend**: Next.js / React / TypeScript / Tailwind CSS / next-mdx-remote, on Vercel (SSG + ISR)
 - **Data & Auth**: Supabase (Postgres + Auth) / Drizzle ORM / Zod schemas shared in `shared/schemas`
 - **AI Writer**: Next.js on Google Cloud Run; Claude (Anthropic) · Gemini (Google) · OpenAI, switchable via env vars; Firebase (Auth + Firestore) for the admin UI and pipeline state
 - **Storage**: Cloudflare R2 (article images)
@@ -105,8 +105,7 @@ revolution/
 ├── apps/
 │   ├── ai-writer/       # AI article generation pipeline + admin UI (Cloud Run)
 │   ├── docs/            # Documentation site (Fumadocs)
-│   ├── frontend/        # Public web site (Vercel) + Supabase migrations
-│   └── mcp-gcp-server/  # Model Context Protocol server
+│   └── frontend/        # Public web site (Vercel) + Supabase migrations
 ├── docs/                # Public documentation
 ├── shared/
 │   └── schemas/         # Zod schemas and Drizzle table definitions (workspace-wide)

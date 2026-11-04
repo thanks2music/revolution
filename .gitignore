@@ -12,7 +12,6 @@
 .env.production
 .env.staging
 apps/frontend/.env.local
-apps/backend/.env
 
 # 1Password の secret reference (`op run --env-file` 用)。平文は含まないが、
 # 参照先が個人の保管庫で他の開発者にも CI (GitHub Secrets を使う) にも解決できず、
@@ -138,76 +137,6 @@ next-env.d.ts
 
 # Turbo
 .turbo/
-
-# ========================================
-# 🏗️ WordPress関連
-# ========================================
-
-# WordPress コアファイル（バックエンド）
-apps/backend/wp-admin/
-apps/backend/wp-includes/
-apps/backend/*.php
-apps/backend/premium-plugins/
-!apps/backend/wp-config.php
-!apps/backend/wp-config.local.php
-
-# Media Library
-wp-content/uploads/
-**/uploads/
-
-# WordPress設定
-wp-config-local.php
-wp-config-production.php
-**/wp-config*.php
-
-# WordPress キャッシュ
-wp-content/cache/
-wp-content/advanced-cache.php
-wp-content/wp-cache-config.php
-
-# プラグイン開発中の一時ファイル
-wp-content/upgrade/
-wp-content/backup-db/
-apps/backend/wp-content/backups/
-
-# WordPress デフォルトテーマ（Docker起動時に自動生成）
-apps/backend/wp-content/themes/twentytwentythree/
-apps/backend/wp-content/themes/twentytwentyfour/
-apps/backend/wp-content/themes/twentytwentyfive/
-
-# WordPress 自動生成ライセンスガイド
-apps/backend/wp-content/mu-plugins/premium-license-guide.php
-
-# WordPress自動生成ファイル
-.htaccess
-web.config
-
-# WordPress ログファイル
-apps/backend/wp-content/debug.log
-
-# WordPress データベースバックアップ
-apps/backend/*.sql
-apps/backend/*.sql.gz
-apps/backend/backups/
-
-# ========================================
-# 🎵 Composer関連
-# ========================================
-
-# Composer vendor ディレクトリ
-vendor/
-**/vendor/
-
-# for MU-Plugins
-wp-content/mu-plugins/*/vendor/
-apps/backend/wp-content/mu-plugins/*/vendor/
-
-# Composer生成ファイル
-composer.phar
-auth.json
-
-# Composer最適化ファイル
-vendor/composer/autoload_*.php
 
 # ========================================
 # 💾 データベース関連
@@ -388,21 +317,8 @@ ai-config.json
 openai-config.json
 claude-config.json
 
-# WordPress セキュリティ関連
-wp-keys-backup.txt
-**/*wp-keys*
+# シークレットを生成するローカルのスクリプト
 scripts/*secrets*
-scripts/generate-wp-secrets.sh
-
-# WordPress プラグイン・言語ファイル（外部依存）
-apps/backend/wp-content/plugins/wp-graphql/
-**/wp-content/plugins/*
-**/wp-content/languages/
-
-# 有料プラグイン除外
-apps/backend/premium-plugins/*.zip
-# 有料プラグインディレクトリ全体の除外パターン
-**/premium-plugins/*.zip
 
 # Next.js 本番環境設定
 apps/frontend/.env.production.local
@@ -421,10 +337,6 @@ apps/ai-writer/config/*
 # AI Writerテンプレート（プライベートリポジトリから同期）
 apps/ai-writer/templates/
 apps/ai-writer/config/
-
-# GraphQL Code Generator生成ファイル
-# Note: Generated files are committed for CI compatibility
-# apps/ai-writer/src/generated/
 
 ## AI Documents
 CLAUDE.md

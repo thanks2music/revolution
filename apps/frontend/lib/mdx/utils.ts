@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * WordPress互換のメタデータ構造
+ * 記事のメタデータ構造
  * Phase 1で必要な全フィールドを定義
  */
 export interface ArticleMetadata {
@@ -15,7 +15,6 @@ export interface ArticleMetadata {
   excerpt: string;
   author: string;
   ogImage?: string;
-  featuredImage?: string; // WordPress互換
 }
 
 export interface Article {

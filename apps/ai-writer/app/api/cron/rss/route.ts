@@ -95,8 +95,8 @@ function isValidCronKey(expected: string, provided: string | null): boolean {
  *
  * Flow:
  * 1. X-CRON-KEY 認証
- * 2. Pipeline Mode 判定 (MDX or WordPress)
- * 3. 対応するパイプラインを実行
+ * 2. Request body 取得
+ * 3. MDX パイプラインを実行
  *
  * @param request - Next.js Request
  * @returns Next.js Response

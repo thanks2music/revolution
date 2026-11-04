@@ -12,7 +12,7 @@ import { env } from './env';
 export const siteConfig = {
   name: env.NEXT_PUBLIC_SITE_NAME,
   description: env.NEXT_PUBLIC_SITE_DESCRIPTION,
-  url: env.NEXT_PUBLIC_SITE_URL || env.NEXT_PUBLIC_WP_URL || 'https://example.com',
+  url: env.NEXT_PUBLIC_SITE_URL || 'https://example.com',
   ogImage: '/og-image.png', // デフォルトのOG画像
   twitterHandle: '@anime_events_X',
   xUrl: 'https://x.com/anime_events_X',
@@ -224,52 +224,6 @@ export function generateContentMetadata({
 }
 
 /**
- * カテゴリページのメタデータを生成
- */
-export function generateCategoryMetadata({
-  categoryName,
-  description,
-  slug,
-}: {
-  categoryName: string;
-  description?: string;
-  slug: string;
-}): Metadata {
-  const title = `${categoryName}カテゴリの記事一覧`;
-  const desc = description || `${categoryName}に関する記事の一覧ページです。`;
-  const url = `${siteConfig.url}/category/${slug}`;
-
-  return {
-    title,
-    description: desc,
-    openGraph: {
-      type: 'website',
-      locale: 'ja_JP',
-      url,
-      siteName: siteConfig.name,
-      title,
-      description: desc,
-      images: [
-        {
-          url: siteConfig.ogImage,
-          width: 1200,
-          height: 630,
-          alt: title,
-        },
-      ],
-    },
-    twitter: {
-      card: 'summary_large_image',
-      site: siteConfig.twitterHandle,
-      creator: siteConfig.twitterHandle,
-      title,
-      description: desc,
-      images: [siteConfig.ogImage],
-    },
-  };
-}
-
-/**
  * JSON-LD構造化データ: WebSite
  */
 export function generateWebSiteSchema() {
@@ -284,52 +238,5 @@ export function generateWebSiteSchema() {
     // NOTE: SearchAction は意図的に持たない。/search ルートが存在しないため、
     // 宣言すると構造化データが実在しないエンドポイントを主張することになる。
     // 検索機能 (mvp-definition.md C-1-a) の実装時に追加する。
-  };
-}
-
-/**
- * JSON-LD構造化データ: Article
- */
-export function generateArticleSchema({
-  title,
-  description,
-  publishedTime,
-  modifiedTime,
-  imageUrl,
-  authorName,
-  slug,
-}: {
-  title: string;
-  description: string;
-  publishedTime: string;
-  modifiedTime?: string;
-  imageUrl?: string;
-  authorName?: string;
-  slug: string;
-}) {
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'Article',
-    headline: title,
-    description,
-    image: imageUrl || siteConfig.ogImage,
-    datePublished: publishedTime,
-    dateModified: modifiedTime || publishedTime,
-    author: {
-      '@type': 'Person',
-      name: authorName || siteConfig.name,
-    },
-    publisher: {
-      '@type': 'Organization',
-      name: siteConfig.name,
-      logo: {
-        '@type': 'ImageObject',
-        url: `${siteConfig.url}/logo.png`,
-      },
-    },
-    mainEntityOfPage: {
-      '@type': 'WebPage',
-      '@id': `${siteConfig.url}/post/${slug}`,
-    },
   };
 }

@@ -62,7 +62,6 @@ describe('findReservedSlugs', () => {
   it('静的ルートと重なる slug だけを返す', () => {
     expect(findReservedSlugs(['collabo-cafe', 'titles', 'post', 'images'])).toEqual([
       'titles',
-      'post',
       'images',
     ]);
   });

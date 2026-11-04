@@ -47,7 +47,7 @@ jobs:
         run: pnpm type-check
 
       - name: Lint
-        run: pnpm exec turbo run lint --filter='!mcp-gcp-server'
+        run: pnpm exec turbo run lint
 
   # Job 2: Build TypeScript apps
   build:
@@ -106,7 +106,7 @@ jobs:
             echo "✅ No Anthropic API keys found in client bundle"
           fi
 
-          # Check for WordPress auth token patterns (JWT or similar)
+          # Check for JWT patterns in the client bundle
           if grep -rE "eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}" apps/ai-writer/.next/static/ 2>/dev/null; then
             echo "❌ ERROR: JWT tokens found in client bundle!"
             echo "Please ensure all auth tokens are only used in server-side code."

@@ -79,7 +79,7 @@ pnpm dev:docs                 # ドキュメントサイトのみ (http://localh
 
 ## Tech Stack
 
-- **Frontend**: Next.js / React / TypeScript / Tailwind CSS / SWR / next-mdx-remote。Vercel で配信 (SSG + ISR)
+- **Frontend**: Next.js / React / TypeScript / Tailwind CSS / next-mdx-remote。Vercel で配信 (SSG + ISR)
 - **Data & Auth**: Supabase (Postgres + Auth) / Drizzle ORM / Zod スキーマ (`shared/schemas` で共有)
 - **AI Writer**: Next.js を Google Cloud Run で実行。Claude (Anthropic) ・ Gemini (Google) ・ OpenAI を環境変数で切替。Firebase (Auth + Firestore) を管理画面とパイプラインの状態管理に使用
 - **Storage**: Cloudflare R2 (記事の画像)
@@ -104,8 +104,7 @@ revolution/
 ├── apps/
 │   ├── ai-writer/       # AI 記事生成パイプライン + 管理画面（Cloud Run）
 │   ├── docs/            # ドキュメントサイト（Fumadocs）
-│   ├── frontend/        # 公開 Web サイト（Vercel）+ Supabase の migration
-│   └── mcp-gcp-server/  # Model Context Protocol サーバー
+│   └── frontend/        # 公開 Web サイト（Vercel）+ Supabase の migration
 ├── docs/                # 公開ドキュメント
 ├── shared/
 │   └── schemas/         # Zod スキーマと Drizzle のテーブル定義（ワークスペース共通）

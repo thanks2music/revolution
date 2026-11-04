@@ -94,7 +94,6 @@ GENERATED_REAL_DIRS=(
 GENERATED_SYMLINKS=(
   "$WORKTREE_PATH/.env.local"
   "$WORKTREE_PATH/apps/ai-writer/.env.local"
-  "$WORKTREE_PATH/apps/ai-writer/.env.deploy"
   "$WORKTREE_PATH/apps/frontend/.env.local"
   "$WORKTREE_PATH/apps/frontend/.env.production.local"
 )

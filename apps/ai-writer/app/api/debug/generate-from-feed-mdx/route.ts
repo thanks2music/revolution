@@ -5,8 +5,6 @@
  *   - Generate MDX article from RSS feed (for debug/manual testing)
  *   - Create GitHub PR with generated MDX content
  *   - Stream progress updates via Server-Sent Events (SSE)
- *
- * This is the MDX version of `/api/debug/generate-from-feed/route.ts`.
  */
 
 export const dynamic = 'force-dynamic';

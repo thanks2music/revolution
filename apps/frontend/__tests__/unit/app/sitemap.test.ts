@@ -34,7 +34,7 @@ const mockListTitleParams = jest.fn<() => Promise<{ slug: string }[]>>();
 const mockListVenueParams = jest.fn<() => Promise<{ slug: string }[]>>();
 
 jest.mock('@/lib/env', () => ({
-  env: { NEXT_PUBLIC_SITE_URL: 'https://example.com', NEXT_PUBLIC_WP_URL: undefined },
+  env: { NEXT_PUBLIC_SITE_URL: 'https://example.com' },
 }));
 jest.mock('@/lib/mdx/articles', () => ({
   getAllArticles: () => mockGetAllArticles(),

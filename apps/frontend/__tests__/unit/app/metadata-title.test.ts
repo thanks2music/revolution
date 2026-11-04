@@ -42,7 +42,6 @@ jest.mock('@/lib/env', () => ({
     NEXT_PUBLIC_SITE_NAME: 'テストサイト名',
     NEXT_PUBLIC_SITE_DESCRIPTION: 'テスト説明',
     NEXT_PUBLIC_SITE_URL: 'https://example.com',
-    NEXT_PUBLIC_WP_URL: undefined,
   },
 }));
 

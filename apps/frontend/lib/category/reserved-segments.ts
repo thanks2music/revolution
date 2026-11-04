@@ -26,8 +26,12 @@ export const APP_ROUTE_SEGMENTS = [
   'venues',
 ] as const;
 
-/** `next.config.mjs` の `redirects()` が受ける第 1 セグメント。 */
-export const REDIRECT_SEGMENTS = ['category', 'post'] as const;
+/**
+ * `next.config.mjs` の `redirects()` が受ける第 1 セグメント。
+ * 今は無い (WordPress 時代の `/post`・`/category` は公開しておらず、2026-11-04 に削除)。
+ * リダイレクトを足したら、ここにも足す (テストが照合する)。
+ */
+export const REDIRECT_SEGMENTS = [] as const satisfies readonly string[];
 
 /** `public/` 直下のディレクトリ (静的ファイルはルートより先に返る)。 */
 export const PUBLIC_DIR_SEGMENTS = ['images'] as const;

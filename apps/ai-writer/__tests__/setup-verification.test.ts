@@ -17,7 +17,6 @@ describe('Test Environment Verification', () => {
 
   it('should have test API keys configured', () => {
     expect(process.env.CLAUDE_API_KEY).toBe('test-dummy-claude-api-key');
-    expect(process.env.WORDPRESS_AUTH_TOKEN).toBe('test-dummy-wordpress-token');
   });
 
   it('should have mocked fetch function', () => {

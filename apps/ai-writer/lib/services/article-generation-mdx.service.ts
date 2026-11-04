@@ -352,7 +352,6 @@ interface ArticlePointsInput {
  * MDX記事生成サービス
  *
  * このサービスは、RSS記事からMDX形式の記事を生成し、GitHub PRを作成します。
- * WordPress版の `ArticleGenerationService` と対応する機能を提供します。
  *
  * 主な機能:
  * - RSS記事からのMDX生成

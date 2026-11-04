@@ -2,7 +2,7 @@
   "name": "revolution",
   "version": "0.0.1",
   "private": true,
-  "description": "Next.js Headless CMS Platform on Cloud Run Docker",
+  "description": "AI article generation pipeline (RSS/URL to MDX to GitHub PR) and the Next.js site",
   "scripts": {
     "dev": "turbo run dev --filter=frontend-nextjs-headless-cms --filter=@revolution/ai-writer",
     "dev:frontend": "turbo run dev --filter=frontend-nextjs-headless-cms",
@@ -45,9 +45,5 @@
     "node": "24.x",
     "pnpm": ">=12.0.0"
   },
-  "packageManager": "pnpm@12.11.2",
-  "dependencies": {
-    "graphql": "^16.11.0",
-    "graphql-request": "^7.2.0"
-  }
+  "packageManager": "pnpm@12.11.2"
 }

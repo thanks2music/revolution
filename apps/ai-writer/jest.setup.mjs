@@ -24,7 +24,6 @@ global.console = {
 
 // Next.js環境変数のモック
 process.env.NODE_ENV = 'test';
-process.env.NEXT_PUBLIC_WP_ENDPOINT = process.env.NEXT_PUBLIC_WP_ENDPOINT || 'http://localhost:8080/graphql';
 
 // Firebase Admin SDKのモック（テスト中は実際のFirebaseに接続しない）
 jest.mock('firebase-admin', () => ({
