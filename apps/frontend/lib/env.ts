@@ -83,25 +83,6 @@ export const env = createEnv({
       .min(1)
       .default("推し活イベントに行った体験・思い出を記録・レビュー・口コミできるアニイベ。コラボカフェやポップアップなど、アニメ・漫画・映画・音楽のイベント情報も掲載！"),
 
-    // デバッグモード
-    NEXT_PUBLIC_DEBUG: z
-      .enum(["true", "false"])
-      .default("false")
-      .transform((val) => val === "true"),
-
-    // SWR設定（開発環境用）
-    NEXT_PUBLIC_SWR_REFRESH_INTERVAL: z
-      .string()
-      .transform((val) => parseInt(val, 10))
-      .pipe(z.number().positive())
-      .optional(),
-
-    NEXT_PUBLIC_SWR_DEDUPING_INTERVAL: z
-      .string()
-      .transform((val) => parseInt(val, 10))
-      .pipe(z.number().positive())
-      .optional(),
-
     // Sentry の DSN。
     // ⚠️ ここに書くのは **env レジストリとしての記録** が目的で、SDK 初期化側は
     // `process.env` を直読みする (instrumentation-client.ts / sentry.*.config.ts)。
@@ -126,9 +107,6 @@ export const env = createEnv({
     NEXT_PUBLIC_ALLOWED_IMAGE_HOST: process.env.NEXT_PUBLIC_ALLOWED_IMAGE_HOST,
     NEXT_PUBLIC_SITE_NAME: process.env.NEXT_PUBLIC_SITE_NAME,
     NEXT_PUBLIC_SITE_DESCRIPTION: process.env.NEXT_PUBLIC_SITE_DESCRIPTION,
-    NEXT_PUBLIC_DEBUG: process.env.NEXT_PUBLIC_DEBUG,
-    NEXT_PUBLIC_SWR_REFRESH_INTERVAL: process.env.NEXT_PUBLIC_SWR_REFRESH_INTERVAL,
-    NEXT_PUBLIC_SWR_DEDUPING_INTERVAL: process.env.NEXT_PUBLIC_SWR_DEDUPING_INTERVAL,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   },
 
