@@ -121,10 +121,6 @@ export const setupMocksForService = (service: string) => {
       jest.mock('../../lib/services/rss-feed.service');
       break;
 
-    case 'article-generation':
-      jest.mock('../../lib/services/claude-api.service', () => mockClaudeAPI);
-      break;
-
     case 'firebase':
       jest.mock('firebase/firestore', () => mockFirestoreOperations);
       jest.mock('firebase-admin/firestore', () => mockFirestoreOperations);

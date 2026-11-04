@@ -49,7 +49,7 @@ export default function Home() {
           <h2 className="text-2xl font-semibold text-gray-900">Discovery 管理画面</h2>
           <p className="mt-2 text-gray-600">ようこそ、{user?.email} さん</p>
 
-          <h3 className="mt-8 text-xl font-semibold text-gray-700">MDX版 (JAMstack構成)</h3>
+          <h3 className="mt-8 text-xl font-semibold text-gray-700">記事生成</h3>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <a
               href="/rss-feeds"
@@ -62,7 +62,7 @@ export default function Home() {
               href="/debug-rss-mdx"
               className="rounded-lg border border-blue-200 bg-blue-50 p-4 transition-colors hover:bg-blue-100"
             >
-              <h3 className="font-semibold text-blue-900">🔧 手動デバッグ (MDX版)</h3>
+              <h3 className="font-semibold text-blue-900">🔧 手動デバッグ</h3>
               <p className="mt-2 text-sm text-blue-700">
                 RSS → 記事生成 → GitHub PRフローのチェック
               </p>
