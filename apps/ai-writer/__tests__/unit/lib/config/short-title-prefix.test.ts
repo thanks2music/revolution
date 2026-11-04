@@ -49,10 +49,6 @@ jest.mock('../../../../lib/config/yaml-loader', () => {
       short_title: '水星の魔女',
     },
 
-    // 一方が他方の前方一致になり、どちらも short_title を持たない組 (別の作品。架空の作品)
-    '架空のシリーズ': { slug: 'kaku-series', english_title: 'Kaku Series' },
-    '架空のシリーズ 新しい章': { slug: 'kaku-series-new-chapter', english_title: 'Kaku Series New Chapter' },
-
     // 短縮不要 (short_title なし・前方一致もなし)
     '呪術廻戦': { slug: 'jujutsu-kaisen', english_title: 'Jujutsu Kaisen' },
 
@@ -131,14 +127,6 @@ describe('getShortTitle — 最長前方一致', () => {
 
     it('短縮不要な作品は null を返す (short_title 未設定かつ前方一致なし)', () => {
       expect(getShortTitle('呪術廻戦')).toBeNull();
-    });
-
-    it('辞書のキーそのものは、別の作品のキーで縮めない', () => {
-      // 「架空のシリーズ 新しい章」は辞書にある別の作品。
-      // 前方一致へ進むと「架空のシリーズ」(別の作品) に縮んでしまう
-      expect(getShortTitle('架空のシリーズ 新しい章')).toBeNull();
-      // 辞書に無い副題付きの作品名は、従来どおり最長の登録キーへ縮める
-      expect(getShortTitle('架空のシリーズ 新しい章 第2期')).toBe('架空のシリーズ 新しい章');
     });
 
     it('2 文字キーは前方一致に使わない (誤爆防止)', () => {

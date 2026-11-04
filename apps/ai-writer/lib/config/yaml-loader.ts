@@ -79,18 +79,11 @@ export function loadYamlConfig<K extends ConfigKey>(
     const fileContents = readFileSync(filePath, 'utf8');
 
     // Parse YAML
-    let parsedConfig = yamlLoad(fileContents) as ConfigTypeMap[K];
+    const parsedConfig = yamlLoad(fileContents) as ConfigTypeMap[K];
 
     // Validate that parsing returned an object
     if (!parsedConfig || typeof parsedConfig !== 'object') {
       throw new Error(`Invalid YAML structure in ${filePath}`);
-    }
-
-    // The title dictionary has a generated part next to the hand-written file. It is optional:
-    // environments without it keep working with the hand-written entries only.
-    if (configKey === 'TITLE_ROMAJI' && existsSync(TITLE_ROMAJI_GENERATED_PATH)) {
-      const generated = yamlLoad(readFileSync(TITLE_ROMAJI_GENERATED_PATH, 'utf8')) as TitleRomajiMapping | null;
-      parsedConfig = mergeTitleMappings(parsedConfig as TitleRomajiMapping, generated) as ConfigTypeMap[K];
     }
 
     // Cache the result
@@ -105,6 +98,39 @@ export function loadYamlConfig<K extends ConfigKey>(
     }
     throw new Error(`Failed to load YAML config from ${filePath}: Unknown error`);
   }
+}
+
+let generatedTitleCache: { mapping: TitleRomajiMapping | null } | undefined;
+
+/**
+ * Loads the generated part of the title dictionary, or null when the file is absent.
+ *
+ * The file is optional: environments without it work with the hand-written entries only.
+ * `loadYamlConfig('TITLE_ROMAJI')` keeps returning the hand-written file alone; slug lookups merge
+ * the two with `mergeTitleMappings`.
+ *
+ * @throws {Error} naming the generated file when it cannot be parsed or has no `titles` map
+ */
+export function loadGeneratedTitleMapping(forceReload = false): TitleRomajiMapping | null {
+  if (!forceReload && generatedTitleCache) return generatedTitleCache.mapping;
+  if (!existsSync(TITLE_ROMAJI_GENERATED_PATH)) {
+    generatedTitleCache = { mapping: null };
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = yamlLoad(readFileSync(TITLE_ROMAJI_GENERATED_PATH, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `Failed to load YAML config from ${TITLE_ROMAJI_GENERATED_PATH}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const titles = (parsed as { titles?: unknown } | null)?.titles;
+  if (!titles || typeof titles !== 'object' || Array.isArray(titles)) {
+    throw new Error(`Invalid YAML structure in ${TITLE_ROMAJI_GENERATED_PATH}: titles must be a map`);
+  }
+  generatedTitleCache = { mapping: parsed as TitleRomajiMapping };
+  return generatedTitleCache.mapping;
 }
 
 /**
@@ -122,6 +148,7 @@ export function loadYamlConfig<K extends ConfigKey>(
  * ```
  */
 export function clearConfigCache(configKey?: ConfigKey): void {
+  if (configKey === undefined || configKey === 'TITLE_ROMAJI') generatedTitleCache = undefined;
   if (configKey) {
     delete configCache[configKey];
   } else {

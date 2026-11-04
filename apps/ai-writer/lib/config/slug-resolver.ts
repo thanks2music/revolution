@@ -11,7 +11,9 @@
  * @see {@link /notes/archive/super-mvp-scope.md} for specification
  */
 
-import { loadYamlConfig } from './yaml-loader';
+import { TITLE_SLUG_REGEX } from '@revolution/schemas/title';
+
+import { loadGeneratedTitleMapping, loadYamlConfig, mergeTitleMappings } from './yaml-loader';
 import { generateSlugWithFallback } from './slug-generator';
 import type { CostTrackerService } from '@/lib/ai/cost';
 import type { TitleEntry, TitleRomajiMapping } from './types';
@@ -40,63 +42,70 @@ function extractSlug(value: string | TitleEntry): string {
   return isTitleEntry(value) ? value.slug : value;
 }
 
+interface TitleIndex {
+  /** Japanese title (key, then alias; the first entry wins) → dictionary slug */
+  slugOfTitle: Map<string, string>;
+  /** dictionary slug → itself, slug-shaped alias → its entry's slug (aliases claimed by two entries are left out) */
+  canonical: Map<string, string>;
+  /** dictionary slug → its slug-shaped aliases (the ones `canonical` resolves to that slug) */
+  aliases: Map<string, string[]>;
+}
+
+const titleIndexCache = new WeakMap<object, { generated: TitleRomajiMapping | null; index: TitleIndex }>();
+
+/**
+ * Index of the whole title dictionary: the hand-written file plus its generated part, hand-written
+ * entries first. Built once per loaded dictionary.
+ *
+ * Only slug lookups use the generated part. Title shortening (`getShortTitle`) keeps to the
+ * hand-written file, where short titles are curated.
+ */
+function titleIndex(): TitleIndex {
+  const hand = loadYamlConfig('TITLE_ROMAJI');
+  const generated = loadGeneratedTitleMapping();
+  const cached = titleIndexCache.get(hand);
+  if (cached && cached.generated === generated) return cached.index;
+
+  const titles = mergeTitleMappings(hand, generated).titles;
+  const slugOfTitle = new Map<string, string>();
+  const canonical = new Map<string, string>();
+  for (const [title, value] of Object.entries(titles)) {
+    slugOfTitle.set(title, extractSlug(value));
+    canonical.set(extractSlug(value), extractSlug(value));
+  }
+  const claims = new Map<string, Set<string>>(); // slug-shaped alias → slugs that claim it
+  for (const value of Object.values(titles)) {
+    if (!isTitleEntry(value)) continue;
+    for (const alias of value.aliases ?? []) {
+      if (!slugOfTitle.has(alias)) slugOfTitle.set(alias, value.slug);
+      if (TITLE_SLUG_REGEX.test(alias) && alias !== value.slug) {
+        claims.set(alias, (claims.get(alias) ?? new Set()).add(value.slug));
+      }
+    }
+  }
+  const aliases = new Map<string, string[]>();
+  for (const [alias, owners] of claims) {
+    // a dictionary slug stays itself; an alias two works share resolves to nothing
+    if (canonical.has(alias) || owners.size > 1) continue;
+    const [owner] = owners;
+    canonical.set(alias, owner);
+    aliases.set(owner, [...(aliases.get(owner) ?? []), alias]);
+  }
+
+  const index = { slugOfTitle, canonical, aliases };
+  titleIndexCache.set(hand, { generated, index });
+  return index;
+}
+
 /**
  * Looks a Japanese title up in the dictionary only (no AI fallback).
  *
- * Exact match on the title first, then on an alias.
+ * Exact match on a title first, then on an alias, over the hand-written and generated entries.
  *
  * @returns the dictionary slug, or null when the title is not in the dictionary
  */
 export function findDictionaryWorkSlug(japaneseTitle: string): string | null {
-  const config = loadYamlConfig('TITLE_ROMAJI');
-
-  const directMatch = config.titles[japaneseTitle];
-  if (directMatch) return extractSlug(directMatch);
-
-  for (const value of Object.values(config.titles)) {
-    if (isTitleEntry(value) && value.aliases?.includes(japaneseTitle)) return value.slug;
-  }
-  return null;
-}
-
-/** Slug-shaped strings, the same shape as `TITLE_SLUG_REGEX`. */
-const SLUG_SHAPE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-
-interface SlugIndex {
-  /** dictionary slug → itself, slug-shaped alias → its entry's slug (aliases claimed by two entries are left out) */
-  canonical: Map<string, string>;
-  /** dictionary slug → its slug-shaped aliases */
-  aliases: Map<string, string[]>;
-}
-
-const slugIndexCache = new WeakMap<object, SlugIndex>();
-
-function slugIndex(): SlugIndex {
-  const config = loadYamlConfig('TITLE_ROMAJI');
-  const cached = slugIndexCache.get(config);
-  if (cached) return cached;
-
-  const canonical = new Map<string, string>();
-  const aliases = new Map<string, string[]>();
-  for (const value of Object.values(config.titles)) {
-    canonical.set(extractSlug(value), extractSlug(value));
-  }
-  const ambiguous = new Set<string>();
-  for (const value of Object.values(config.titles)) {
-    if (!isTitleEntry(value)) continue;
-    const own = (value.aliases ?? []).filter((alias) => SLUG_SHAPE.test(alias) && alias !== value.slug);
-    aliases.set(value.slug, own);
-    for (const alias of own) {
-      const owner = canonical.get(alias);
-      if (owner !== undefined && owner !== value.slug) ambiguous.add(alias);
-      else canonical.set(alias, value.slug);
-    }
-  }
-  for (const alias of ambiguous) if (canonical.get(alias) !== alias) canonical.delete(alias);
-
-  const index = { canonical, aliases };
-  slugIndexCache.set(config, index);
-  return index;
+  return titleIndex().slugOfTitle.get(japaneseTitle) ?? null;
 }
 
 /**
@@ -107,12 +116,12 @@ function slugIndex(): SlugIndex {
  * alias that two entries share.
  */
 export function resolveCanonicalTitleSlug(slug: string): string | null {
-  return slugIndex().canonical.get(slug) ?? null;
+  return titleIndex().canonical.get(slug) ?? null;
 }
 
-/** The slug-shaped aliases of a dictionary slug (old slugs and romanizations). */
+/** The slug-shaped aliases of a dictionary slug (old slugs and romanizations), the ones that resolve to it. */
 export function getSlugAliases(slug: string): string[] {
-  return slugIndex().aliases.get(slug) ?? [];
+  return titleIndex().aliases.get(slug) ?? [];
 }
 
 /**
@@ -658,9 +667,7 @@ const MIN_PREFIX_TITLE_LENGTH = 4;
  * 別作品の短縮名を当ててしまう。
  *
  * 辞書全 176 件を入力にした検証で、**自分自身以外に誤マッチする組み合わせは 0 件**
- * であることを確認済み (2026-08-09)。辞書は 2026-11-05 に約 4,200 件へ増えたため、
- * 辞書のキーそのものはここへ来ない (`getShortTitle` が完全一致で打ち切る)。ここへ来るのは、
- * alias で当たった作品名と、辞書に無い副題付きの作品名だけ。
+ * であることを確認済み (2026-08-09)。
  */
 function findLongestPrefixTitle(
   japaneseTitle: string,
@@ -697,19 +704,14 @@ export function getShortTitle(japaneseTitle: string): string | null {
   const config = loadYamlConfig('TITLE_ROMAJI');
 
   // 直接マッチ
-  // ★ 作品名が辞書のキーそのものなら、short_title が無ければ縮めない (null を返す)。
-  //   前方一致へ進むと、辞書が増えたときに別の作品のキーに当たって縮んでしまう
-  //   (例:「アイドルマスター シンデレラガールズ」が別の作品「アイドルマスター」になる)。
-  //   alias で当たった場合は従来どおり前方一致へ進む (「鬼滅の刃 無限列車編」→「鬼滅の刃」)
   const directMatch = config.titles[japaneseTitle];
-  if (directMatch) {
-    if (isTitleEntry(directMatch) && directMatch.short_title) {
+  if (directMatch && isTitleEntry(directMatch)) {
+    if (directMatch.short_title) {
       console.log(
         `[Slug Resolver] 📝 Short title found: "${japaneseTitle}" → "${directMatch.short_title}"`
       );
       return directMatch.short_title;
     }
-    return null;
   }
 
   // エイリアスからも検索

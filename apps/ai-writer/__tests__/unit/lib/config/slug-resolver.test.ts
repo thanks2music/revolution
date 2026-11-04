@@ -23,6 +23,8 @@ jest.mock('../../../../lib/config/yaml-loader', () => {
   const actual = jest.requireActual('../../../../lib/config/yaml-loader');
   return {
     ...actual,
+    // 自動生成の辞書は読まない (手元の同期コピーに左右されないように)
+    loadGeneratedTitleMapping: jest.fn(() => null),
     loadYamlConfig: jest.fn((key: string) => {
       switch (key) {
         case 'TITLE_ROMAJI':
