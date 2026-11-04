@@ -15,7 +15,6 @@ export interface ArticleMetadata {
   excerpt: string;
   author: string;
   ogImage?: string;
-  featuredImage?: string;
 }
 
 export interface Article {
