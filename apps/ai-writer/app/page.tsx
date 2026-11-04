@@ -76,22 +76,6 @@ export default function Home() {
               <p className="mt-2 text-sm text-gray-600">システム設定の管理（準備中）</p>
             </div>
           </div>
-
-          <h3 className="mt-8 text-xl font-semibold text-gray-700">
-            Headless WordPress版 (レガシー版)
-          </h3>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <a
-              href="/debug-rss"
-              className="rounded-lg border border-blue-200 bg-blue-50 p-4 transition-colors hover:bg-blue-100"
-            >
-              <h3 className="font-semibold text-blue-900">
-                🔧 手動デバッグ (Headless WordPress版)
-              </h3>
-              <p className="mt-2 text-sm text-blue-700">RSSチェックと記事生成のテスト</p>
-            </a>
-          </div>
         </div>
       </main>
     </div>

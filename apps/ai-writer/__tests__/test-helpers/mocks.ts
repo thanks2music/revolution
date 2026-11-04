@@ -48,31 +48,6 @@ export const mockClaudeAPI = {
   testConnection: jest.fn().mockResolvedValue(true),
 };
 
-// WordPress GraphQL モック
-export const mockWordPressGraphQL = {
-  createPostExtended: jest.fn().mockResolvedValue({
-    id: 'cG9zdDoxMjM=',
-    databaseId: 123,
-    title: 'Created Post',
-    content: '<p>Post content</p>',
-    slug: 'created-post',
-    uri: '/created-post',
-    status: 'draft'
-  }),
-
-  updatePost: jest.fn().mockResolvedValue({
-    id: 'cG9zdDoxMjM=',
-    databaseId: 123,
-    title: 'Updated Post',
-    content: '<p>Updated content</p>',
-    slug: 'updated-post',
-    uri: '/updated-post',
-    status: 'publish'
-  }),
-
-  testConnection: jest.fn().mockResolvedValue(true),
-};
-
 // RSS Parser モック
 export const createMockRSSParser = () => {
   const parseURL = jest.fn();
@@ -148,7 +123,6 @@ export const setupMocksForService = (service: string) => {
 
     case 'article-generation':
       jest.mock('../../lib/services/claude-api.service', () => mockClaudeAPI);
-      jest.mock('../../lib/services/wordpress-graphql.service', () => mockWordPressGraphQL);
       break;
 
     case 'firebase':

@@ -104,24 +104,6 @@ export const createMockClaudeResponse = (overrides = {}) => ({
   ...overrides,
 });
 
-// WordPress GraphQL モックレスポンス
-export const createMockWordPressPost = (overrides = {}) => ({
-  id: 'cG9zdDoxMjM=',
-  databaseId: 123,
-  title: 'Test Post Title',
-  content: '<p>Test post content</p>',
-  slug: 'test-post-slug',
-  uri: '/test-post-slug',
-  status: 'draft',
-  author: {
-    node: {
-      id: 'dXNlcjox',
-      name: 'Test Author',
-    }
-  },
-  ...overrides,
-});
-
 // RSS Parser モックレスポンス
 export const createMockRssParserResponse = (items = []) => ({
   title: 'Test Feed Title',

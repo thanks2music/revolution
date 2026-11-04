@@ -243,7 +243,7 @@ ${content}
 
   /**
    * Generate URL-friendly slug from Japanese title
-   * 日本語タイトルからWordPress用のURLスラッグを生成
+   * 日本語タイトルから記事用のURLスラッグを生成
    */
   async generateSlug(title: string): Promise<string> {
     console.log(`>>> generateSlug called with: "${title}" <<<`);
