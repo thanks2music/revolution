@@ -15,6 +15,8 @@ const ENTRIES: Record<string, { slug: string; aliases: string[] }> = {
   作品W: { slug: 'work-a-x', aliases: ['work'] },
   // 別名が辞書の slug の先頭・末尾の区切りになっている作品
   作品G: { slug: 'grand-work-dreaming', aliases: ['grand-work', 'work-dreaming'] },
+  // 短い別名を持つ作品
+  作品S: { slug: 'short-alias-work', aliases: ['86'] },
 };
 
 const dictionary: TitleDictionary = {
@@ -219,6 +221,24 @@ describe('alignEventDataSlugs: event_slug の差し替え', () => {
       dictionary,
     });
     expect(suffix.eventData.event_slug).toBe('special-grand-work-dreaming-cafe');
+  });
+
+  it('4 文字に満たない別名は event_slug の差し替えに使わない (LLM が書いた綴りは使う)', () => {
+    const works = [{ title: '作品S', is_primary: true }];
+    const byAlias = alignEventDataSlugs({
+      eventData: eventData({ title_slugs: ['short-alias-work'], event_slug: 'short-alias-work-cafe-86' }),
+      works,
+      workSlug: 'short-alias-work',
+      dictionary,
+    });
+    expect(byAlias.eventData.event_slug).toBe('short-alias-work-cafe-86');
+    const byLlm = alignEventDataSlugs({
+      eventData: eventData({ title_slugs: ['86'], event_slug: '86-cafe' }),
+      works,
+      workSlug: 'short-alias-work',
+      dictionary,
+    });
+    expect(byLlm.eventData.event_slug).toBe('short-alias-work-cafe');
   });
 
   it('event_slug が無ければ足さない', () => {

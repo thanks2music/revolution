@@ -52,6 +52,12 @@ export interface AlignEventDataSlugsResult {
  * 入っていればそちらが先に当たって消費されるので、その一部分である短い別名には当たらない
  * (例: 辞書の slug `grand-work-dreaming` の別名 `grand-work` が、`grand-work-dreaming-cafe` の中に再び当たらない)。
  */
+/**
+ * event_slug の差し替えに使う辞書の別名の最小の長さ。`86` や `sk` のような短い別名は、作品の部分では
+ * ない区切り (数字・略号) にも当たりうるので使わない。LLM がこの記事で書いた綴り (`replaced`) は長さを問わず使う
+ */
+const MIN_ALIAS_LENGTH_FOR_EVENT_SLUG = 4;
+
 function replaceSegments(value: string, variants: ReadonlyMap<string, string>): string {
   const froms = [...variants.keys()].sort((a, b) => b.length - a.length);
   if (froms.length === 0) return value;
@@ -132,6 +138,7 @@ export function alignEventDataSlugs(params: {
     for (const slug of dictionarySlugs) {
       for (const alias of dictionary.slugAliasesOf(slug)) {
         // ほかの作品の辞書の slug と同じ別名は使わない (その作品の部分を書き換えてしまう)
+        if (alias.length < MIN_ALIAS_LENGTH_FOR_EVENT_SLUG) continue;
         if (!variants.has(alias) && !isDictionarySlug(alias)) variants.set(alias, slug);
       }
     }
