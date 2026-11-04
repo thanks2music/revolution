@@ -47,7 +47,7 @@ jobs:
         run: pnpm type-check
 
       - name: Lint
-        run: pnpm exec turbo run lint --filter='!mcp-gcp-server'
+        run: pnpm exec turbo run lint
 
   # Job 2: Build TypeScript apps
   build:

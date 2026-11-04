@@ -105,8 +105,7 @@ revolution/
 ├── apps/
 │   ├── ai-writer/       # AI article generation pipeline + admin UI (Cloud Run)
 │   ├── docs/            # Documentation site (Fumadocs)
-│   ├── frontend/        # Public web site (Vercel) + Supabase migrations
-│   └── mcp-gcp-server/  # Model Context Protocol server
+│   └── frontend/        # Public web site (Vercel) + Supabase migrations
 ├── docs/                # Public documentation
 ├── shared/
 │   └── schemas/         # Zod schemas and Drizzle table definitions (workspace-wide)

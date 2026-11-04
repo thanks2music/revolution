@@ -160,10 +160,6 @@
       addLabels: ["ai-writer"],
     },
     {
-      matchFileNames: ["apps/mcp-gcp-server/**"],
-      addLabels: ["mcp-gcp-server"],
-    },
-    {
       matchFileNames: ["apps/flutter/**"],
       addLabels: ["flutter"],
     },

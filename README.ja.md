@@ -104,8 +104,7 @@ revolution/
 ├── apps/
 │   ├── ai-writer/       # AI 記事生成パイプライン + 管理画面（Cloud Run）
 │   ├── docs/            # ドキュメントサイト（Fumadocs）
-│   ├── frontend/        # 公開 Web サイト（Vercel）+ Supabase の migration
-│   └── mcp-gcp-server/  # Model Context Protocol サーバー
+│   └── frontend/        # 公開 Web サイト（Vercel）+ Supabase の migration
 ├── docs/                # 公開ドキュメント
 ├── shared/
 │   └── schemas/         # Zod スキーマと Drizzle のテーブル定義（ワークスペース共通）
