@@ -58,9 +58,9 @@ async function planRenames(
   const slugs = [...new Set(plan.titleRenameCandidates.flatMap((c) => [c.slug, ...c.oldSlugs]))];
   const existing =
     slugs.length > 0
-      ? await db.select({ slug: titles.slug }).from(titles).where(inArray(titles.slug, slugs))
+      ? await db.select({ slug: titles.slug, name: titles.name }).from(titles).where(inArray(titles.slug, slugs))
       : [];
-  return planTitleRenames(plan.titleRenameCandidates, new Set(existing.map((r) => r.slug)));
+  return planTitleRenames(plan.titleRenameCandidates, new Map(existing.map((r) => [r.slug, r.name])));
 }
 
 function printRenames(renames: TitleRenamePlan): void {

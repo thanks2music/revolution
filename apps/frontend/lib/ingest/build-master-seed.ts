@@ -62,7 +62,7 @@ export interface SeedPlan {
    * slug を変えた作品の改名の候補。辞書は旧 slug を slug の形の alias に残すので、
    * DB にその旧 slug の行があれば、insert ではなく改名する (`planTitleRenames`)。
    */
-  titleRenameCandidates: Array<{ slug: string; oldSlugs: string[] }>;
+  titleRenameCandidates: Array<{ slug: string; oldSlugs: string[]; names: string[] }>;
   /** 別エンティティ間の alias 衝突。1 件でもあれば seed を実行してはいけない。 */
   collisions: Array<{ table: 'title_aliases' | 'venue_aliases'; alias: string; slugs: string[] }>;
   /** slug 形式違反・kind 不正など。1 件でもあれば seed を実行してはいけない。 */
@@ -136,7 +136,10 @@ export function buildMasterSeed(
 
     plan.titles.push({ slug: entry.slug, name, kind: entry.kind });
     const oldSlugs = (entry.aliases ?? []).filter((alias) => TITLE_SLUG_REGEX.test(alias) && alias !== entry.slug);
-    if (oldSlugs.length > 0) plan.titleRenameCandidates.push({ slug: entry.slug, oldSlugs });
+    if (oldSlugs.length > 0) {
+      const names = [name, ...(entry.aliases ?? [])].map(normalizeAlias).filter((n) => n !== '');
+      plan.titleRenameCandidates.push({ slug: entry.slug, oldSlugs, names });
+    }
 
     const { aliases, collisions } = collectAliases(
       [name, ...(entry.aliases ?? [])],
@@ -152,7 +155,7 @@ export function buildMasterSeed(
   // 改名の候補から、seed するほかの作品の slug を除く (その行を改名で奪わないため)
   const plannedTitleSlugs = new Set(plan.titles.map((t) => t.slug));
   plan.titleRenameCandidates = plan.titleRenameCandidates
-    .map((c) => ({ slug: c.slug, oldSlugs: c.oldSlugs.filter((old) => !plannedTitleSlugs.has(old)) }))
+    .map((c) => ({ ...c, oldSlugs: c.oldSlugs.filter((old) => !plannedTitleSlugs.has(old)) }))
     .filter((c) => c.oldSlugs.length > 0);
 
   // --- venues: 全エントリが seed 対象 ---
@@ -204,22 +207,26 @@ export interface TitleRenamePlan {
 }
 
 /**
- * DB の titles の slug と照らして、改名する行を決める (Layer 1)。
+ * DB の titles と照らして、改名する行を決める (Layer 1)。
  *
  * - 新しい slug が DB に無く、旧 slug の候補のうち DB にあるものが 1 つだけなら、その行を改名する
+ * - ただし、その行の作品名 (`name`) が、この作品の名前か別名 (正規化して) と同じときだけ。違えば止める
+ *   (別名のローマ字がたまたまほかの作品の行の slug と同じだったときに、その行を奪わないため)
  * - 新しい slug と旧 slug の両方が DB にある、または旧 slug の候補が 2 つ以上 DB にあるときは止める
  * - 同じ旧 slug を 2 つの作品が改名しようとしたら止める
+ *
+ * @param existing DB の titles の slug → name
  */
 export function planTitleRenames(
   candidates: SeedPlan['titleRenameCandidates'],
-  existingSlugs: ReadonlySet<string>,
+  existing: ReadonlyMap<string, string>,
 ): TitleRenamePlan {
   const plan: TitleRenamePlan = { renames: [], errors: [] };
   const claimed = new Map<string, string>();
-  for (const { slug, oldSlugs } of candidates) {
-    const present = oldSlugs.filter((old) => existingSlugs.has(old));
+  for (const { slug, oldSlugs, names } of candidates) {
+    const present = oldSlugs.filter((old) => existing.has(old));
     if (present.length === 0) continue;
-    if (existingSlugs.has(slug)) {
+    if (existing.has(slug)) {
       plan.errors.push(`titles: 新しい slug "${slug}" と旧 slug "${present.join('", "')}" の両方が DB にある`);
       continue;
     }
@@ -228,6 +235,10 @@ export function planTitleRenames(
       continue;
     }
     const from = present[0];
+    if (!names.includes(normalizeAlias(existing.get(from)!))) {
+      plan.errors.push(`titles: 旧 slug "${from}" の行の作品名「${existing.get(from)}」が、"${slug}" の作品名・別名と違う`);
+      continue;
+    }
     const other = claimed.get(from);
     if (other !== undefined) {
       plan.errors.push(`titles: 旧 slug "${from}" を "${other}" と "${slug}" の両方が改名しようとしている`);
