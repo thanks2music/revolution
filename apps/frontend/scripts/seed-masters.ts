@@ -8,7 +8,7 @@
  * 使い方:
  *   TEMPLATES_SOURCE_PATH=/path/to/revolution-templates \
  *   SEED_DATABASE_URL='postgresql://...pooler...:6543/postgres' \
- *   pnpm seed:masters [--dry-run] [--verify]
+ *   pnpm seed:masters [--dry-run] [--verify] [--show-renames]
  *
  * - `SEED_DATABASE_URL` は**あえて専用の env 名**にしている (`DATABASE_URL` に
  *   フォールバックしない)。`.env.local` の値で意図しない DB へ書く事故を防ぐため、
@@ -16,6 +16,9 @@
  * - `--dry-run`: DB へ接続せず、実行計画 (件数と内訳) だけを表示する
  * - `--verify`: seed 後の検証。article-index.json の全 venue_label / title_slugs が
  *   マスタで解決できるかを DB 照合で報告する (書き込みなし)
+ * - `--show-renames`: DB を読んで titles の改名の計画だけを表示する (書き込みなし)
+ * - titles の改名: 辞書で slug を変えた作品は、旧 slug を slug の形の alias に残す。DB にその旧 slug の
+ *   行があれば、upsert の前に新しい slug へ改名する (企画との結び付きを保つため。`planTitleRenames`)
  * - 冪等: slug / alias を自然キーに upsert。再実行しても重複しない
  * - 停止条件 (exit 1): YAML の形式違反 / 別エンティティ間 alias 衝突 (naming doc §3 帰結 3) /
  *   既存 alias 行が別エンティティを指している (黙って付け替えない)
@@ -23,7 +26,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { load as yamlLoad } from 'js-yaml';
 import postgres from 'postgres';
@@ -35,6 +38,9 @@ import { venues } from '@revolution/schemas/db/venues';
 
 import {
   buildMasterSeed,
+  planTitleRenames,
+  type SeedPlan,
+  type TitleRenamePlan,
   type TitleRomajiYaml,
   type VenueMasterYaml,
 } from '../lib/ingest/build-master-seed';
@@ -42,6 +48,26 @@ import { normalizeAlias } from '../lib/ingest/normalize-alias';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const VERIFY = process.argv.includes('--verify');
+const SHOW_RENAMES = process.argv.includes('--show-renames');
+
+/** DB の titles と照らして改名の計画を作る (読むだけ) */
+async function planRenames(
+  db: Pick<ReturnType<typeof drizzle>, 'select'>,
+  plan: SeedPlan,
+): Promise<TitleRenamePlan> {
+  const slugs = [...new Set(plan.titleRenameCandidates.flatMap((c) => [c.slug, ...c.oldSlugs]))];
+  const existing =
+    slugs.length > 0
+      ? await db.select({ slug: titles.slug }).from(titles).where(inArray(titles.slug, slugs))
+      : [];
+  return planTitleRenames(plan.titleRenameCandidates, new Set(existing.map((r) => r.slug)));
+}
+
+function printRenames(renames: TitleRenamePlan): void {
+  for (const error of renames.errors) console.error(`  - ${error}`);
+  if (renames.renames.length === 0) console.log('titles の改名: なし');
+  for (const r of renames.renames) console.log(`titles の改名: ${r.from} → ${r.to}`);
+}
 
 function fail(message: string): never {
   console.error(`\n❌ ${message}`);
@@ -109,8 +135,25 @@ async function main(): Promise<void> {
       await runVerify(db);
       return;
     }
+    if (SHOW_RENAMES) {
+      printRenames(await planRenames(db, plan));
+      console.log('\n(--show-renames のため書き込みはしていません)');
+      return;
+    }
 
     await db.transaction(async (tx) => {
+      // --- titles の改名 (辞書で slug を変えた作品。旧 slug の行を新しい slug にする) ---
+      // upsert より先に行う。後だと新しい slug の行が別に insert され、企画と結び付いた旧い行が残る
+      const renames = await planRenames(tx, plan);
+      if (renames.errors.length > 0) {
+        printRenames(renames);
+        throw new Error(`titles の改名を決められない ${renames.errors.length} 件 (人手で解決してください)`);
+      }
+      for (const r of renames.renames) {
+        await tx.update(titles).set({ slug: r.to }).where(eq(titles.slug, r.from));
+        console.log(`titles の改名: ${r.from} → ${r.to}`);
+      }
+
       // --- titles (自然キー: slug)。drizzle は values([]) で throw するため空配列を避ける
       // (kind 未付与の YAML で実行した場合など、0 件は正常系) ---
       const titleRows =

@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import {
   buildMasterSeed,
+  planTitleRenames,
   type TitleRomajiYaml,
   type VenueMasterYaml,
 } from '@/lib/ingest/build-master-seed';
@@ -132,5 +133,55 @@ describe('buildMasterSeed', () => {
     });
 
     expect(plan.errors).toEqual(['venues: slug "same-slug" が複数エントリで重複']);
+  });
+});
+
+describe('titles の改名 (辞書で slug を変えた作品)', () => {
+  it('slug の形の alias を改名の候補にする (日本語の alias と、seed するほかの作品の slug は除く)', () => {
+    const plan = buildMasterSeed(
+      {
+        titles: {
+          作品A: { slug: 'work-a-new', kind: 'manga', aliases: ['作品A別名', 'work-a-old', 'work-b'] },
+          作品B: { slug: 'work-b', kind: 'manga' },
+          作品C: { slug: 'work-c', kind: 'other' },
+        },
+      },
+      emptyVenues,
+    );
+    expect(plan.titleRenameCandidates).toEqual([{ slug: 'work-a-new', oldSlugs: ['work-a-old'] }]);
+  });
+
+  it('新しい slug が DB に無く、旧 slug が DB にあれば改名する', () => {
+    expect(
+      planTitleRenames([{ slug: 'work-a-new', oldSlugs: ['work-a-old', 'romaji-a'] }], new Set(['work-a-old', 'work-c'])),
+    ).toEqual({ renames: [{ from: 'work-a-old', to: 'work-a-new' }], errors: [] });
+  });
+
+  it('改名済み (新しい slug だけが DB にある) なら何もしない', () => {
+    expect(planTitleRenames([{ slug: 'work-a-new', oldSlugs: ['work-a-old'] }], new Set(['work-a-new']))).toEqual({
+      renames: [],
+      errors: [],
+    });
+  });
+
+  it('新旧の両方が DB にある、または旧 slug の候補が 2 つ以上 DB にあるときは止める', () => {
+    expect(
+      planTitleRenames([{ slug: 'work-a-new', oldSlugs: ['work-a-old'] }], new Set(['work-a-new', 'work-a-old'])).errors,
+    ).toHaveLength(1);
+    expect(
+      planTitleRenames([{ slug: 'work-a-new', oldSlugs: ['old-1', 'old-2'] }], new Set(['old-1', 'old-2'])).errors,
+    ).toHaveLength(1);
+  });
+
+  it('同じ旧 slug を 2 つの作品が改名しようとしたら止める', () => {
+    const result = planTitleRenames(
+      [
+        { slug: 'work-a-new', oldSlugs: ['shared-old'] },
+        { slug: 'work-b-new', oldSlugs: ['shared-old'] },
+      ],
+      new Set(['shared-old']),
+    );
+    expect(result.renames).toEqual([{ from: 'shared-old', to: 'work-a-new' }]);
+    expect(result.errors).toHaveLength(1);
   });
 });
