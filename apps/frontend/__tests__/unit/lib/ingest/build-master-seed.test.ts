@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import {
   buildMasterSeed,
+  planTitleRenames,
   type TitleRomajiYaml,
   type VenueMasterYaml,
 } from '@/lib/ingest/build-master-seed';
@@ -132,5 +133,59 @@ describe('buildMasterSeed', () => {
     });
 
     expect(plan.errors).toEqual(['venues: slug "same-slug" が複数エントリで重複']);
+  });
+});
+
+describe('titles の改名 (辞書で slug を変えた作品)', () => {
+  it('slug の形の alias を改名の候補にする (日本語の alias と、seed するほかの作品の slug は除く)', () => {
+    const plan = buildMasterSeed(
+      {
+        titles: {
+          作品A: { slug: 'work-a-new', kind: 'manga', aliases: ['作品A別名', 'work-a-old', 'work-b'] },
+          作品B: { slug: 'work-b', kind: 'manga' },
+          作品C: { slug: 'work-c', kind: 'other' },
+        },
+      },
+      emptyVenues,
+    );
+    expect(plan.titleRenameCandidates).toEqual([
+      { slug: 'work-a-new', oldSlugs: ['work-a-old'], names: ['作品a', '作品a別名', 'work-a-old', 'work-b'] },
+    ]);
+  });
+
+  const a = { slug: 'work-a-new', oldSlugs: ['work-a-old', 'romaji-a'], names: ['作品a'] };
+
+  it('新しい slug が DB に無く、旧 slug の行 (作品名が同じ) が DB にあれば改名する', () => {
+    expect(planTitleRenames([a], new Map([['work-a-old', '作品A'], ['work-c', '作品C']]))).toEqual({
+      renames: [{ from: 'work-a-old', to: 'work-a-new' }],
+      errors: [],
+    });
+  });
+
+  it('旧 slug の行の作品名が違えば改名せずに止める (ほかの作品の行を奪わない)', () => {
+    const result = planTitleRenames([a], new Map([['romaji-a', '別の作品']]));
+    expect(result.renames).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+  });
+
+  it('改名済み (新しい slug だけが DB にある) なら何もしない', () => {
+    expect(planTitleRenames([a], new Map([['work-a-new', '作品A']]))).toEqual({ renames: [], errors: [] });
+  });
+
+  it('新旧の両方が DB にある、または旧 slug の候補が 2 つ以上 DB にあるときは止める', () => {
+    expect(planTitleRenames([a], new Map([['work-a-new', '作品A'], ['work-a-old', '作品A']])).errors).toHaveLength(1);
+    expect(planTitleRenames([a], new Map([['work-a-old', '作品A'], ['romaji-a', '作品A']])).errors).toHaveLength(1);
+  });
+
+  it('同じ旧 slug を 2 つの作品が改名しようとしたら止める', () => {
+    const result = planTitleRenames(
+      [
+        { slug: 'work-a-new', oldSlugs: ['shared-old'], names: ['作品a'] },
+        { slug: 'work-b-new', oldSlugs: ['shared-old'], names: ['作品a'] },
+      ],
+      new Map([['shared-old', '作品A']]),
+    );
+    expect(result.renames).toEqual([{ from: 'shared-old', to: 'work-a-new' }]);
+    expect(result.errors).toHaveLength(1);
   });
 });

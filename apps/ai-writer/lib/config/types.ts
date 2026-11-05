@@ -37,6 +37,11 @@ export interface TitleEntry {
    * @example "あの花" for "あの日見た花の名前を僕達はまだ知らない。"
    */
   short_title?: string;
+  /**
+   * IDs of the source records this entry was imported from (the import script in the private repo writes them).
+   * The ai-writer does not read them; they only keep the import idempotent.
+   */
+  source_ids?: string[];
 }
 
 /**
@@ -310,6 +315,12 @@ export const CONFIG_PATHS = {
   JP_PREFECTURE: resolve(CONFIG_DIR, 'jp-prefecture.yaml'),
   TAXONOMY: resolve(CONFIG_DIR, 'taxonomy.yaml'),
 } as const;
+
+/**
+ * Generated part of the title dictionary (optional). Read by `loadGeneratedTitleMapping`;
+ * `loadYamlConfig('TITLE_ROMAJI')` returns the hand-written file only.
+ */
+export const TITLE_ROMAJI_GENERATED_PATH = resolve(CONFIG_DIR, 'title-romaji-mapping.generated.yaml');
 
 /**
  * Configuration key type for type-safe config loading

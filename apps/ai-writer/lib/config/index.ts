@@ -26,6 +26,9 @@ export {
 // Export slug resolver functions
 export {
   resolveWorkSlug,
+  findDictionaryWorkSlug,
+  resolveCanonicalTitleSlug,
+  getSlugAliases,
   resolveStoreSlug,
   resolveEventTypeSlug,
   resolvePrefectureSlug,
