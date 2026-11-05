@@ -38,10 +38,10 @@ export interface TitleEntry {
    */
   short_title?: string;
   /**
-   * IDs of the rows this entry was imported from (the import script in the private repo writes them).
+   * IDs of the source records this entry was imported from (the import script in the private repo writes them).
    * The ai-writer does not read them; they only keep the import idempotent.
    */
-  sheet_ids?: string[];
+  source_ids?: string[];
 }
 
 /**
@@ -320,7 +320,7 @@ export const CONFIG_PATHS = {
  * Generated part of the title dictionary (optional). Read by `loadGeneratedTitleMapping`;
  * `loadYamlConfig('TITLE_ROMAJI')` returns the hand-written file only.
  */
-export const TITLE_ROMAJI_GENERATED_PATH = resolve(CONFIG_DIR, 'title-romaji-mapping.sheet.yaml');
+export const TITLE_ROMAJI_GENERATED_PATH = resolve(CONFIG_DIR, 'title-romaji-mapping.generated.yaml');
 
 /**
  * Configuration key type for type-safe config loading
