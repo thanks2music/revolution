@@ -18,6 +18,7 @@ import * as path from 'path';
 import yaml from 'js-yaml';
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import { escapeMdxText } from '@/lib/utils/mdx-safety';
+import { escapeRegExp } from '../utils/escape-regexp';
 
 export type TemplateValues = Record<string, string | string[] | null | undefined>;
 
@@ -348,10 +349,6 @@ export function upsertSummaryRow(
 /** 表の `label` の行か (行の末尾の | は無くてもよい) */
 function isSummaryRow(line: string, label: string): boolean {
   return new RegExp(`^\\|[ \\t]*${escapeRegExp(label)}[ \\t]*\\|`).test(line);
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** 表の 1 行 */
