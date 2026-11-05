@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-19T18:38:44.924Z",
+  "generatedAt": "2026-11-04T21:34:57.023Z",
   "totalArticles": 10,
   "articles": [
     {
@@ -120,7 +120,7 @@
           "winnie-the-pooh"
         ],
         "event_name": "「くまのプーさん」OH MY CAFE",
-        "event_slug": "kuma-no-pu-san-oh-my-cafe",
+        "event_slug": "winnie-the-pooh-oh-my-cafe",
         "occurrences": [
           {
             "venue_slug": null,
@@ -358,7 +358,7 @@
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/kusuriyanohitorigoto/01m02zgprcsn8er6.mdx",
+      "filePath": "apps/ai-writer/content/collabo-cafe/the-apothecary-diaries/01m02zgprcsn8er6.mdx",
       "post_id": "01m02zgprcsn8er6",
       "year": 2026,
       "event_type": "collabo-cafe",
@@ -367,7 +367,7 @@
       "work_titles": [
         "薬屋のひとりごと"
       ],
-      "work_slug": "kusuriyanohitorigoto",
+      "work_slug": "the-apothecary-diaries",
       "prefectures": [
         "東京都",
         "大阪府"
@@ -384,10 +384,10 @@
       "event_data": {
         "primary_category_slug": "collabo-cafe",
         "title_slugs": [
-          "kusuriya-no-hitorigoto"
+          "the-apothecary-diaries"
         ],
         "event_name": "『薬屋のひとりごと』原作小説カフェ",
-        "event_slug": "kusuriya-no-hitorigoto-gensaku-shousetsu-cafe",
+        "event_slug": "the-apothecary-diaries-gensaku-shousetsu-cafe",
         "occurrences": [
           {
             "venue_slug": null,
@@ -587,10 +587,10 @@
       "event_data": {
         "primary_category_slug": "collabo-cafe",
         "title_slugs": [
-          "meitantei-conan"
+          "detective-conan"
         ],
         "event_name": "名探偵コナンカフェ2026",
-        "event_slug": "meitantei-conan-cafe-2026",
+        "event_slug": "detective-conan-cafe-2026",
         "occurrences": [
           {
             "venue_slug": null,
@@ -676,7 +676,7 @@
       ],
       "tags": [],
       "author": "thanks2music",
-      "filePath": "apps/ai-writer/content/collabo-cafe/blue-lock/01m02zah3mp8jwf7.mdx",
+      "filePath": "apps/ai-writer/content/collabo-cafe/bluelock/01m02zah3mp8jwf7.mdx",
       "post_id": "01m02zah3mp8jwf7",
       "year": 2026,
       "event_type": "collabo-cafe",
@@ -685,7 +685,7 @@
       "work_titles": [
         "ブルーロック"
       ],
-      "work_slug": "blue-lock",
+      "work_slug": "bluelock",
       "prefectures": [
         "東京都"
       ],
@@ -700,10 +700,10 @@
       "event_data": {
         "primary_category_slug": "collabo-cafe",
         "title_slugs": [
-          "blue-lock"
+          "bluelock"
         ],
         "event_name": "ブルーロックカフェ -青い監獄-",
-        "event_slug": "blue-lock-cafe-aoi-kangoku",
+        "event_slug": "bluelock-cafe-aoi-kangoku",
         "occurrences": [
           {
             "venue_slug": null,
