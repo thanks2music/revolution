@@ -230,7 +230,7 @@ importers:
         version: link:../../shared/schemas
       '@sentry/nextjs':
         specifier: ^10.70.0
-        version: 10.75.3(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(encoding@0.1.13)(next@16.2.11(@babel/core@7.29.7(supports-color@8.1.1))(@opentelemetry/api@1.9.1)(@playwright/test@1.63.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(sass@1.105.0))(react@19.2.3)(supports-color@8.1.1)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.34.5)(uglify-js@3.19.3))
+        version: 10.75.3(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(encoding@0.1.13)(next@16.2.11(@babel/core@7.29.7(supports-color@8.1.1))(@opentelemetry/api@1.9.1)(@playwright/test@1.63.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(sass@1.105.0))(react@19.2.3)(supports-color@8.1.1)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3))
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
@@ -286,8 +286,8 @@ importers:
         specifier: ^0.0.1
         version: 0.0.1
       sharp:
-        specifier: ^0.34.5
-        version: 0.34.5
+        specifier: ^0.35.0
+        version: 0.35.5(@types/node@24.19.0)
       tailwind-merge:
         specifier: ^3.3.1
         version: 3.7.0
@@ -2325,6 +2325,7 @@ packages:
     resolution: {integrity: sha512-Y3dgX/6lE2QhQb+Gxy0WZxfg9MEm/JBjamZpS2IklP7xIQoKN4hzAm7KcMVGtaVDt3neE9OKBC7vAfonA/Lr1A==}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-arm@1.2.4':
     resolution: {integrity: sha512-bFI7xcKFELdiNCVov8e44Ia4u2byA+l3XtsAj+Q8tfCwO6BQ8iDojYdvoPMqsKDkuoOo+X6HZA0s0q11ANMQ8A==}
@@ -2335,6 +2336,7 @@ packages:
     resolution: {integrity: sha512-LmRtTsOHuvM2+wlO2Db37dx5MiZhB0FvSunciw48YjdOkZz9KAiRbm8ujeMOA1INqmei5NapFxYEK1D1ZSidmw==}
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-ppc64@1.2.4':
     resolution: {integrity: sha512-FMuvGijLDYG6lW+b/UvyilUWu5Ayu+3r2d1S8notiGCIyYU/76eig1UfMmkZ7vwgOrzKzlQbFSuQfgm7GYUPpA==}
@@ -2345,6 +2347,7 @@ packages:
     resolution: {integrity: sha512-Le6boB8Tai0Nis+gIxIpKx68UDVVIqdR8Tin5Yf1z2LJJQLDJvCDRqRu+jC2qCoD+eIomonmOwB4smBRxfVpYQ==}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-riscv64@1.2.4':
     resolution: {integrity: sha512-oVDbcR4zUC0ce82teubSm+x6ETixtKZBh/qbREIOcI3cULzDyb18Sr/Wcyx7NRQeQzOiHTNbZFF1UwPS2scyGA==}
@@ -2355,6 +2358,7 @@ packages:
     resolution: {integrity: sha512-aHkkIEHPRdQEegJN20MLmGtxYD9R2wQr3Cwpddnu5+YKMt6Uzax7S9h5gpZTo8wyrGuZSlfQ63OevL5mTyOC7Q==}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-s390x@1.2.4':
     resolution: {integrity: sha512-qmp9VrzgPgMoGZyPvrQHqk02uyjA0/QrTO26Tqk6l4ZV0MPWIW6LTkqOIov+J1yEu7MbFQaDpwdwJKhbJvuRxQ==}
@@ -2365,6 +2369,7 @@ packages:
     resolution: {integrity: sha512-ra/mB6MikESDUO7Yg+Mi95bFBb9GsObURuhnOv3OqknjGe9sZrG8tCe9q0xSIGrtLgvgw0gKnFWcK4blSgQOuQ==}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-x64@1.2.4':
     resolution: {integrity: sha512-tJxiiLsmHc9Ax1bz3oaOYBURTXGIRDODBqhveVHonrHJ9/+k89qbLl0bcJns+e4t4rvaNBxaEZsFtSfAdquPrw==}
@@ -2375,6 +2380,7 @@ packages:
     resolution: {integrity: sha512-GJ//SSXbnwSDes02umB3nDJLFcQzw8a18V8fyhqr6tV515tOEMdImjjxj1AoafMRz56F3PHgftnj1QEKSU1zkw==}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linuxmusl-arm64@1.2.4':
     resolution: {integrity: sha512-FVQHuwx1IIuNow9QAbYUzJ+En8KcVm9Lk5+uGUQJHaZmMECZmOlix9HnH7n1TRkXMS0pGxIJokIVB9SuqZGGXw==}
@@ -2385,6 +2391,7 @@ packages:
     resolution: {integrity: sha512-hvulFwtjUcagsis6BBxHwGFwWoNZjgYmULGVrZcyfNbjA8hKILbRxGg15/7w5HDyXHXUos/j6baAWqnCyQ2DWA==}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@img/sharp-libvips-linuxmusl-x64@1.2.4':
     resolution: {integrity: sha512-+LpyBk7L44ZIXwz/VYfglaX/okxezESc6UxDSoyo2Ks6Jxc4Y7sGjpgU9s4PMgqgjj1gZCylTieNamqA1MF7Dg==}
@@ -2395,6 +2402,7 @@ packages:
     resolution: {integrity: sha512-6zXKeE/p39I1AmA3cJG35eyBGNqNddLnUXjhwBnsGjFPWqf5VKkDBEqaEkPDoTEtkxwi2vv8Tcr2mDyP4So7Fg==}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@img/sharp-linux-arm64@0.34.5':
     resolution: {integrity: sha512-bKQzaJRY/bkPOXyKx5EVup7qkaojECG6NLYswgktOZjaXecSAeCWiZwwiFf3/Y+O1HrauiE3FVsGxFg8c24rZg==}
@@ -2407,6 +2415,7 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-arm@0.34.5':
     resolution: {integrity: sha512-9dLqsvwtg1uuXBGZKsxem9595+ujv0sJ6Vi8wcTANSFpwV/GONat5eCkzQo/1O6zRIkh0m/8+5BjrRr7jDUSZw==}
@@ -2419,6 +2428,7 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-ppc64@0.34.5':
     resolution: {integrity: sha512-7zznwNaqW6YtsfrGGDA6BRkISKAAE1Jo0QdpNYXNMHu2+0dTrPflTLNkpc8l7MUP5M16ZJcUvysVWWrMefZquA==}
@@ -2431,6 +2441,7 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-riscv64@0.34.5':
     resolution: {integrity: sha512-51gJuLPTKa7piYPaVs8GmByo7/U7/7TZOq+cnXJIHZKavIRHAP77e3N2HEl3dgiqdD/w0yUfiJnII77PuDDFdw==}
@@ -2443,6 +2454,7 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-s390x@0.34.5':
     resolution: {integrity: sha512-nQtCk0PdKfho3eC5MrbQoigJ2gd1CgddUMkabUj+rBevs8tZ2cULOx46E7oyX+04WGfABgIwmMC0VqieTiR4jg==}
@@ -2455,6 +2467,7 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-x64@0.34.5':
     resolution: {integrity: sha512-MEzd8HPKxVxVenwAa+JRPwEC7QFjoPWuS5NZnBt6B3pu7EG2Ge0id1oLHZpPJdn3OQK+BQDiw9zStiHBTJQQQQ==}
@@ -2467,6 +2480,7 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linuxmusl-arm64@0.34.5':
     resolution: {integrity: sha512-fprJR6GtRsMt6Kyfq44IsChVZeGN97gTD331weR1ex1c1rypDEABN6Tm2xa1wE6lYb5DdEnk03NZPqA7Id21yg==}
@@ -2479,6 +2493,7 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@img/sharp-linuxmusl-x64@0.34.5':
     resolution: {integrity: sha512-Jg8wNT1MUzIvhBFxViqrEhWDGzqymo3sV7z7ZsaWbZNDLXRJZoRGrjulp60YYtV4wfY8VIKcWidjojlLcWrd8Q==}
@@ -2491,6 +2506,7 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@img/sharp-wasm32@0.34.5':
     resolution: {integrity: sha512-OdWTEiVkY2PHwqkbBI8frFxQQFekHaSSkUIJkwzclWZe64O1X4UlUjqqqLaPbUpMOQk6FBu/HtlGXNblIs0huw==}
@@ -14184,6 +14200,22 @@ snapshots:
       - encoding
       - supports-color
 
+  '@sentry/bundler-plugins@10.70.0(encoding@0.1.13)(rollup@4.62.4)(supports-color@8.1.1)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3))':
+    dependencies:
+      '@babel/core': 7.29.0(supports-color@8.1.1)
+      '@sentry/cli': 2.58.6(encoding@0.1.13)(supports-color@8.1.1)
+      '@sentry/core': 10.70.0
+      dotenv: 17.4.2
+      find-up: 5.0.0
+      glob: 13.0.6
+      magic-string: 0.30.21
+    optionalDependencies:
+      rollup: 4.62.4
+      webpack: 5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3)
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+
   '@sentry/cli-darwin@2.58.6':
     optional: true
 
@@ -14268,6 +14300,32 @@ snapshots:
       - supports-color
       - webpack
 
+  '@sentry/nextjs@10.75.3(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(encoding@0.1.13)(next@16.2.11(@babel/core@7.29.7(supports-color@8.1.1))(@opentelemetry/api@1.9.1)(@playwright/test@1.63.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(sass@1.105.0))(react@19.2.3)(supports-color@8.1.1)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3))':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@rollup/plugin-commonjs': 28.0.1(rollup@4.62.4)
+      '@sentry/browser-utils': 10.75.3
+      '@sentry/bundler-plugin-core': 5.3.0(encoding@0.1.13)(supports-color@8.1.1)
+      '@sentry/conventions': 0.16.0
+      '@sentry/core': 10.75.3
+      '@sentry/node': 10.75.3(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(supports-color@8.1.1)
+      '@sentry/opentelemetry': 10.75.3(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
+      '@sentry/react': 10.75.3(react@19.2.3)
+      '@sentry/server-utils': 10.75.3
+      '@sentry/vercel-edge': 10.75.3
+      '@sentry/webpack-plugin': 5.4.0(encoding@0.1.13)(rollup@4.62.4)(supports-color@8.1.1)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3))
+      next: 16.2.11(@babel/core@7.29.7(supports-color@8.1.1))(@opentelemetry/api@1.9.1)(@playwright/test@1.63.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(sass@1.105.0)
+      rollup: 4.62.4
+      stacktrace-parser: 0.1.11
+    transitivePeerDependencies:
+      - '@opentelemetry/core'
+      - '@opentelemetry/exporter-trace-otlp-http'
+      - '@opentelemetry/sdk-trace-base'
+      - encoding
+      - react
+      - supports-color
+      - webpack
+
   '@sentry/node-core@10.75.3(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1)(supports-color@8.1.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))':
     dependencies:
       '@sentry/conventions': 0.16.0
@@ -14335,6 +14393,15 @@ snapshots:
     dependencies:
       '@sentry/bundler-plugins': 10.70.0(encoding@0.1.13)(rollup@4.62.4)(supports-color@8.1.1)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.34.5)(uglify-js@3.19.3))
       webpack: 5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.34.5)(uglify-js@3.19.3)
+    transitivePeerDependencies:
+      - encoding
+      - rollup
+      - supports-color
+
+  '@sentry/webpack-plugin@5.4.0(encoding@0.1.13)(rollup@4.62.4)(supports-color@8.1.1)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3))':
+    dependencies:
+      '@sentry/bundler-plugins': 10.70.0(encoding@0.1.13)(rollup@4.62.4)(supports-color@8.1.1)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3))
+      webpack: 5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3)
     transitivePeerDependencies:
       - encoding
       - rollup
@@ -19924,6 +19991,20 @@ snapshots:
       sharp: 0.34.5
       uglify-js: 3.19.3
 
+  minimizer-webpack-plugin@5.12.0(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3)):
+    dependencies:
+      '@jridgewell/trace-mapping': 0.3.31
+      jest-worker: 27.5.1
+      schema-utils: 4.5.0
+      terser: 5.51.2
+      webpack: 5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3)
+    optionalDependencies:
+      esbuild: 0.28.2
+      lightningcss: 1.32.0
+      postcss: 8.5.28
+      sharp: 0.35.5(@types/node@24.19.0)
+      uglify-js: 3.19.3
+
   minipass-collect@2.0.1:
     dependencies:
       minipass: 7.1.3
@@ -21403,6 +21484,7 @@ snapshots:
       '@img/sharp-win32-arm64': 0.34.5
       '@img/sharp-win32-ia32': 0.34.5
       '@img/sharp-win32-x64': 0.34.5
+    optional: true
 
   sharp@0.35.5(@types/node@24.19.0):
     dependencies:
@@ -21436,7 +21518,6 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.5
       '@img/sharp-win32-x64': 0.35.5
       '@types/node': 24.19.0
-    optional: true
 
   shebang-command@2.0.0:
     dependencies:
@@ -22484,6 +22565,46 @@ snapshots:
       graceful-fs: 4.2.11
       mime-db: 1.54.0
       minimizer-webpack-plugin: 5.12.0(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.34.5)(uglify-js@3.19.3)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.34.5)(uglify-js@3.19.3))
+      neo-async: 2.6.2
+      schema-utils: 4.5.0
+      tapable: 2.3.3
+      watchpack: 2.5.2
+      webpack-sources: 3.6.0
+    transitivePeerDependencies:
+      - '@minify-html/node'
+      - '@napi-rs/image'
+      - '@swc/core'
+      - '@swc/css'
+      - '@swc/html'
+      - clean-css
+      - cssnano
+      - csso
+      - esbuild
+      - html-minifier-terser
+      - imagemin
+      - lightningcss
+      - postcss
+      - sharp
+      - svgo
+      - uglify-js
+
+  webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3):
+    dependencies:
+      '@types/estree': 1.0.9
+      '@types/json-schema': 7.0.15
+      '@webassemblyjs/ast': 1.14.1
+      '@webassemblyjs/wasm-edit': 1.14.1
+      '@webassemblyjs/wasm-parser': 1.14.1
+      acorn: 8.18.0
+      browserslist: 4.29.3
+      chrome-trace-event: 1.0.4
+      enhanced-resolve: 5.26.0
+      es-module-lexer: 2.3.2
+      eslint-scope: 5.1.1
+      events: 3.3.0
+      graceful-fs: 4.2.11
+      mime-db: 1.54.0
+      minimizer-webpack-plugin: 5.12.0(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3)(webpack@5.109.2(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(sharp@0.35.5(@types/node@24.19.0))(uglify-js@3.19.3))
       neo-async: 2.6.2
       schema-utils: 4.5.0
       tapable: 2.3.3
