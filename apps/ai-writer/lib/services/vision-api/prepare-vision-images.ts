@@ -17,7 +17,7 @@
  *   https://ai.google.dev/gemini-api/docs/media-resolution
  * - Claude の推奨の長辺 1,568px: https://platform.claude.com/docs/en/build-with-claude/vision
  */
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 import { fetchImageSafely } from '@/lib/utils/safe-image-fetch';
 import { assertHttpImageUrls } from '@/lib/utils/vision-api-utils';
 import type { VisionImage } from '@/lib/types/vision-api';
@@ -81,7 +81,7 @@ export function planSlices(width: number, height: number): SliceRect[] {
   return slices;
 }
 
-async function toJpeg(input: sharp.Sharp): Promise<string> {
+async function toJpeg(input: Sharp): Promise<string> {
   const buffer = await input
     .resize({ width: MAX_LONG_EDGE, height: MAX_LONG_EDGE, fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality: JPEG_QUALITY })
