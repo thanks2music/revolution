@@ -10,7 +10,7 @@
  * 見る人には Next.js が AVIF / WebP に変換して届けるので、ここで WebP にするのは R2 の容量と 5 MB の上限のため。
  * 設定は Templates の `config/store-url-patterns.yaml` の `image_extraction` (YAML が SoT)。
  */
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 import type { ImageUploadConfig } from '@/lib/types/subpage-detection';
 import { MAX_INPUT_PIXELS } from '@/lib/services/vision-api/prepare-vision-images';
 
@@ -48,7 +48,7 @@ export function resizedSize(width: number, height: number, maxWidth: number): { 
  * 読み込む画像。EXIF の向きを反映し (反映しないと縦の写真が横倒しになる)、画素数の上限を付ける
  * (悪意のある巨大な画像で止まらないため。上限は Vision の下準備と共通)
  */
-function loadImage(buffer: Buffer): sharp.Sharp {
+function loadImage(buffer: Buffer): Sharp {
   return sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, autoOrient: true, animated: false });
 }
 
@@ -99,7 +99,7 @@ async function decodeResized(buffer: Buffer, source: { width: number; height: nu
  * WebP (既定) か JPEG にする。max_bytes を超えたら品質を下げる (min_quality で止め、それでも超えればそのまま返す)。
  * 品質の段階は WebP と同じ値を使う
  */
-async function encode(input: () => sharp.Sharp, config: ImageUploadConfig, format: 'webp' | 'jpeg' = 'webp'): Promise<Buffer> {
+async function encode(input: () => Sharp, config: ImageUploadConfig, format: 'webp' | 'jpeg' = 'webp'): Promise<Buffer> {
   let quality = config.webp_quality;
   for (;;) {
     // JPEG は透過を持てない。sharp の既定は透過部分を黒で塗るので、白で塗ってから JPEG にする (透過 PNG のロゴなど)
