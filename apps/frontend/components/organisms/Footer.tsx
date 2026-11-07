@@ -37,12 +37,15 @@ const Footer = () => {
           <div>
             <Link href="/" className="inline-flex">
               {/*
+                リンクの名前は alt が持つ。ヘッダーのロゴと同じ名前にする。
+
                 高さ 44px (幅 160px)。5 列になる 768〜863px では 1 列目が 160px に届かないので、
-                縦横比を保ったまま列の幅に縮める (768px で高さ約 38px)。
+                img の幅を列に合わせ、object-contain で縦横比を保ったまま描く。img の箱は
+                高さ 44px のままで、見えるロゴは 768px で高さ約 38px になる。
               */}
               <Image
                 src="/images/logo-horizontal.svg"
-                alt={siteConfig.name}
+                alt={`${siteConfig.name} ホーム`}
                 width={327}
                 height={90}
                 className="h-11 w-auto max-w-full object-contain"

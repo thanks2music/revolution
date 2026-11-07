@@ -15,18 +15,22 @@ const Header = () => {
   return (
     <header className="relative border-b bg-bg-primary">
       <div className="w-main mx-auto flex items-center justify-between gap-4 py-5 md:py-7">
-        {/* リンクの名前は aria-label が持つので、ロゴの画像は alt="" にする (二重に読ませない)。 */}
-        <Link href="/" aria-label={`${siteTitle} ホーム`} className="flex items-center">
+        <Link href="/" className="flex items-center">
           {/*
+            画像だけのリンクなので、リンクの名前は alt が持つ (HTML の仕様。aria-label では
+            画像が読み込めないときに文字が残らない)。フッターのロゴと同じ名前にする。
+
             高さはモバイル 34px・PC 42px。ヘッダーの高さはロゴではなく、メニューボタン
             (40px、md 未満) と AuthNav (44px、md 以上) が決めている。42px への切り替えを
             sm にすると 640〜767px でメニューボタンを超えてヘッダーが伸びるので、md にする。
-            上部の画像なので遅延読み込みにしない。LCP ではないので preload は付けない
-            (React は遅延読み込みでない img に、SSR で preload の link を自動で出す)。
+
+            上部の画像なので loading="eager" にする。Next.js の preload は LCP の画像に使う
+            もので、このロゴには付けない。なお React は、遅延読み込みでない img の preload
+            の link を SSR で自動で出すので、ロゴは head の段階で取得が始まる。
           */}
           <Image
             src="/images/logo-horizontal.svg"
-            alt=""
+            alt={`${siteTitle} ホーム`}
             width={327}
             height={90}
             className="h-[34px] w-auto md:h-[42px]"
