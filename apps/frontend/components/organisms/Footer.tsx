@@ -35,15 +35,14 @@ const Footer = () => {
       <div className="w-main mx-auto py-12 md:py-16">
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
           <div>
-            <Link href="/" className="inline-flex items-center gap-2.5">
+            <Link href="/" className="inline-flex">
               <Image
-                src="/images/logo-revolution.png"
-                alt=""
-                width={120}
-                height={120}
-                className="h-8 w-auto"
+                src="/images/logo-horizontal.svg"
+                alt={siteConfig.name}
+                width={327}
+                height={90}
+                className="h-11 w-auto"
               />
-              <span className="font-display text-xl text-ink-strong">{siteConfig.name}</span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-muted">
               推し活イベントで体験した思い出を、
