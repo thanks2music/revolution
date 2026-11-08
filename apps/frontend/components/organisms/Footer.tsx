@@ -3,6 +3,7 @@ import Image from 'next/image';
 
 import { AuthNav } from '@/components/molecules/AuthNav';
 import { siteConfig } from '@/lib/metadata';
+import logo from '@/public/images/logo-horizontal.svg';
 
 type FooterLink = { name: string; href: string; external?: boolean };
 type FooterColumn = { title: string; items: FooterLink[] };
@@ -39,16 +40,15 @@ const Footer = () => {
               {/*
                 リンクの名前は alt が持つ。ヘッダーのロゴと同じ名前にする。
 
-                高さ 44px (幅 160px)。5 列になる 768〜863px では 1 列目が 160px に届かないので、
-                img の幅を列に合わせ、object-contain で縦横比を保ったまま描く。img の箱は
-                高さ 44px のままで、見えるロゴは 768px で高さ約 38px になる。
+                高さ 44px (幅 160px)。5 列になる 768〜863px では 1 列目が 160px に届かない。
+                そこでは Tailwind の preflight (img の max-width: 100%) が img の幅を列に合わせ、
+                object-contain が縦横比を保って描く。img の箱は高さ 44px のままで、見えるロゴは
+                768px で高さ約 38px になる。
               */}
               <Image
-                src="/images/logo-horizontal.svg"
+                src={logo}
                 alt={`${siteConfig.name} ホーム`}
-                width={327}
-                height={90}
-                className="h-11 w-auto max-w-full object-contain"
+                className="h-11 w-auto object-contain"
               />
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-muted">

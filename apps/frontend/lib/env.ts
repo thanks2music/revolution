@@ -69,6 +69,8 @@ export const env = createEnv({
     // サイト名（メタデータで使用）
     // 「Revolution」はリポジトリのコードネームであってサイト名ではない。
     // ユーザーに見える名称は「アニイベ」で、本キーがその単一の真実源。
+    // 例外: ヘッダーとフッターのロゴの文字は画像 (public/images/logo-horizontal.svg) に
+    // 描かれていて、本キーに従わない。本キーから作るのはロゴのリンクの名前 (alt) だけ。
     NEXT_PUBLIC_SITE_NAME: z.string().min(1).default("アニイベ"),
 
     // サイト説明（メタデータで使用）

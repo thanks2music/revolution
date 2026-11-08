@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import logo from '@/public/images/logo-horizontal.svg';
 import { siteConfig } from '@/lib/metadata';
 import { MobileNavDisclosure } from '@/components/molecules/MobileNavDisclosure';
 import { AuthNav } from '@/components/molecules/AuthNav';
@@ -27,12 +28,13 @@ const Header = () => {
             上部の画像なので loading="eager" にする。Next.js の preload は LCP の画像に使う
             もので、このロゴには付けない。なお React は、遅延読み込みでない img の preload
             の link を SSR で自動で出すので、ロゴは head の段階で取得が始まる。
+
+            静的 import にすると、URL に内容のハッシュが付いて長期キャッシュされ、
+            固有の寸法 (327×90) もファイルから入る。
           */}
           <Image
-            src="/images/logo-horizontal.svg"
+            src={logo}
             alt={`${siteTitle} ホーム`}
-            width={327}
-            height={90}
             className="h-[34px] w-auto md:h-[42px]"
             loading="eager"
           />
