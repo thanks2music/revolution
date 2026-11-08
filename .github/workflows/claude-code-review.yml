@@ -50,6 +50,14 @@ jobs:
 
             Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
 
+            This is a public repository, and the owner does not want the site's name or its
+            production domain to appear in it. Do not write either of them anywhere in your
+            comment, in any language or spelling, even when they appear in the code, the diff,
+            alt text, or the PR description. The site name is the default value of
+            NEXT_PUBLIC_SITE_NAME in apps/frontend/lib/env.ts, and its English form; write
+            {SITE_NAME} instead. Write {DOMAIN} instead of the domain. When you quote code that
+            contains them, replace them in the quote the same way.
+
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
