@@ -11,30 +11,21 @@ const navItems = [
 ];
 
 const Header = () => {
-  const siteTitle = siteConfig.name;
-
   return (
     <header className="relative border-b bg-bg-primary">
       <div className="w-main mx-auto flex items-center justify-between gap-4 py-5 md:py-7">
-        <Link href="/" className="flex items-center">
+        <Link href="/" className="flex">
           {/*
-            画像だけのリンクなので、リンクの名前は alt が持つ (HTML の仕様。aria-label では
-            画像が読み込めないときに文字が残らない)。フッターのロゴと同じ名前にする。
-
-            高さはモバイル 34px・PC 42px。ヘッダーの高さはロゴではなく、メニューボタン
-            (40px、md 未満) と AuthNav (44px、md 以上) が決めている。42px への切り替えを
-            sm にすると 640〜767px でメニューボタンを超えてヘッダーが伸びるので、md にする。
-
-            上部の画像なので loading="eager" にする。Next.js の preload は LCP の画像に使う
-            もので、このロゴには付けない。なお React は、遅延読み込みでない img の preload
-            の link を SSR で自動で出すので、ロゴは head の段階で取得が始まる。
-
-            静的 import にすると、URL に内容のハッシュが付いて長期キャッシュされ、
-            固有の寸法 (327×90) もファイルから入る。
+            画像だけのリンクなので、名前は alt に持たせる (HTML の仕様。aria-label だと画像が
+            読み込めないときに文字が残らない)。フッターのロゴと同じ名前にする。
+            高さはモバイル 34px・PC 42px。ヘッダーの高さはメニューボタン (40px、md 未満) と
+            AuthNav (44px、md 以上) が決めるので、42px にするのは md から (sm だと 640〜767px
+            でヘッダーが伸びる)。LCP ではないので Next.js の preload は付けず eager にする
+            (React は遅延読み込みでない img の preload を SSR で自動で出す)。
           */}
           <Image
             src={logo}
-            alt={`${siteTitle} ホーム`}
+            alt={`${siteConfig.name} ホーム`}
             className="h-[34px] w-auto md:h-[42px]"
             loading="eager"
           />
