@@ -3,6 +3,7 @@ import Image from 'next/image';
 
 import { AuthNav } from '@/components/molecules/AuthNav';
 import { siteConfig } from '@/lib/metadata';
+import logo from '@/public/images/logo-horizontal.svg';
 
 type FooterLink = { name: string; href: string; external?: boolean };
 type FooterColumn = { title: string; items: FooterLink[] };
@@ -35,15 +36,20 @@ const Footer = () => {
       <div className="w-main mx-auto py-12 md:py-16">
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
           <div>
-            <Link href="/" className="inline-flex items-center gap-2.5">
+            <Link href="/" className="inline-flex">
+              {/*
+                リンクの名前は alt が持つ。ヘッダーのロゴと同じ名前にする。
+
+                高さ 44px (幅 160px)。5 列になる 768〜863px では 1 列目が 160px に届かない。
+                そこでは Tailwind の preflight (img の max-width: 100%) が img の幅を列に合わせ、
+                object-contain が縦横比を保って描く。img の箱は高さ 44px のままで、見えるロゴは
+                768px で高さ約 38px になる。
+              */}
               <Image
-                src="/images/logo-revolution.png"
-                alt=""
-                width={120}
-                height={120}
-                className="h-8 w-auto"
+                src={logo}
+                alt={`${siteConfig.name} ホーム`}
+                className="h-11 w-auto object-contain"
               />
-              <span className="font-display text-xl text-ink-strong">{siteConfig.name}</span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-muted">
               推し活イベントで体験した思い出を、
