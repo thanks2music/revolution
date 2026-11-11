@@ -186,11 +186,14 @@ describe('意味のトークンの WCAG AA (4.5:1、ライトとダーク)', () 
   });
 
   it('ダークのブロックはルート要素と同じ意味のトークンをすべて上書きする', () => {
-    const semantic = Object.keys(root).filter((name) =>
-      SEMANTIC_PAIRS.some(([, fg, bg]) => fg === name || bg === name),
+    // 文字の組に出ない罫線・入力欄・フォーカスの色も、ダークで上書きされていること
+    const semantic = new Set(
+      SEMANTIC_PAIRS.flatMap(([, fg, bg]) => [fg, bg]).concat(['--border', '--input', '--ring']),
     );
-    expect(semantic.length).toBeGreaterThan(0);
-    for (const name of semantic) expect(dark).toHaveProperty([name]);
+    for (const name of semantic) {
+      expect(root).toHaveProperty([name]);
+      expect(dark).toHaveProperty([name]);
+    }
   });
 });
 
