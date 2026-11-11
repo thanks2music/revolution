@@ -1,4 +1,11 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
+
+/*
+ * class を探すのは画面のコードだけ (v3 の content と同じ範囲)。自動検出のままだと __tests__ / e2e /
+ * scripts / コメントの文字列まで拾い、使っていない class が CSS に入る。
+ */
+@source '../app';
+@source '../components';
 
 /*
  * Tailwind CSS v4 (CSS-first)。tailwind.config.ts は無い。テーマはこのファイルの @theme に置く。
@@ -294,9 +301,10 @@
     cursor: pointer;
   }
 
+  /* v3 の gray-400。上の標準パレットの固定ブロックを消しても変わらないよう、値を直接書く */
   input::placeholder,
   textarea::placeholder {
-    color: var(--color-gray-400);
+    color: #9ca3af;
   }
 
   html {
