@@ -30,7 +30,7 @@ export const SectionHeader = ({
         <SparkRule className="mt-1.5 mb-3" width="2em" />
         <Heading className="font-display text-3xl text-ink-strong md:text-4xl">{title}</Heading>
         {subtitle && (
-          <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-muted md:text-base">
+          <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-muted md:text-base/6">
             {subtitle}
           </p>
         )}

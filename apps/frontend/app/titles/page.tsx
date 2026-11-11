@@ -44,7 +44,7 @@ export default async function TitlesPage() {
           </ol>
         </nav>
 
-        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
+        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl/10">
           作品から探す
         </h1>
 
@@ -59,7 +59,7 @@ export default async function TitlesPage() {
                 <li key={title.slug}>
                   <Link
                     href={getTitleUrl(title.slug)}
-                    className="flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
+                    className="flex flex-wrap items-center gap-2 rounded-2xl border border-(--line-soft) bg-bg-elevated p-3 shadow-xs transition-colors hover:border-primary-300"
                   >
                     <span className="font-display font-bold text-ink-strong">{title.name}</span>
                     <span className="rounded-md bg-bg-tinted px-1.5 py-0.5 font-display text-xs tracking-wide text-primary-700">

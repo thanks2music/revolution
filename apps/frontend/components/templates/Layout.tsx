@@ -18,7 +18,7 @@ const Layout = ({
     // children パターン)。これで Header/モバイル/Footer の全 AuthNav が同一 Provider 配下に
     // 入り、認証状態の取得 (getAuthNav) が 1 ページ 1 回に集約される (Vercel 監査)。
     <AuthNavProvider>
-      <div className="flex min-h-screen flex-col pb-[var(--space-bottom-tab)] md:pb-0">
+      <div className="flex min-h-screen flex-col pb-(--space-bottom-tab) md:pb-0">
         {/* スキップリンク: WCAG 2.1 Level A 準拠 */}
         <a
           href="#main-content"

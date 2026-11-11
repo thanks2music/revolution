@@ -118,7 +118,7 @@ export default async function EventPage(props: EventPageProps) {
           </ol>
         </nav>
 
-        <h1 className="mb-4 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
+        <h1 className="mb-4 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl/10">
           {event.name}
         </h1>
 
@@ -174,7 +174,7 @@ export default async function EventPage(props: EventPageProps) {
                 <li key={related.id}>
                   <Link
                     href={getEventUrl(related)}
-                    className="block border border-[var(--line-soft)] bg-bg-elevated p-4 font-display text-ink-strong hover:border-[var(--line-strong)]"
+                    className="block border border-(--line-soft) bg-bg-elevated p-4 font-display text-ink-strong hover:border-(--line-strong)"
                   >
                     {related.name}
                   </Link>

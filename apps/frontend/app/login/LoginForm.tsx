@@ -169,13 +169,13 @@ export function LoginForm({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="min-h-11 rounded-sm border border-[var(--line-strong)] bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500"
+              className="min-h-11 rounded-xs border border-(--line-strong) bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-hidden focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500"
             />
           </label>
           <button
             type="submit"
             disabled={isPending}
-            className="min-h-11 bg-primary-strong px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
+            className="min-h-11 bg-primary-strong px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
           >
             {isPending ? '送信中…' : 'コードを送信'}
           </button>
@@ -197,13 +197,13 @@ export function LoginForm({
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
               placeholder="000000"
-              className="font-numeric min-h-11 rounded-sm border border-[var(--line-strong)] bg-bg-elevated px-4 py-2 text-2xl tracking-[0.4em] text-ink-strong tabular-nums outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500"
+              className="font-numeric min-h-11 rounded-xs border border-(--line-strong) bg-bg-elevated px-4 py-2 text-2xl tracking-[0.4em] text-ink-strong tabular-nums outline-hidden focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500"
             />
           </label>
           <button
             type="submit"
             disabled={isPending}
-            className="min-h-11 bg-primary-strong px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
+            className="min-h-11 bg-primary-strong px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
           >
             {isPending ? '確認中…' : 'ログイン'}
           </button>
@@ -215,7 +215,7 @@ export function LoginForm({
               setMessage(null);
               setNotice(null);
             }}
-            className="self-start text-sm text-primary-600 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            className="self-start text-sm text-primary-600 underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500"
           >
             ← メールアドレスを変更
           </button>
@@ -223,16 +223,16 @@ export function LoginForm({
       )}
 
       <div className="my-7 flex items-center gap-3 text-xs text-ink-muted">
-        <span className="h-px flex-1 bg-[var(--line-soft)]" aria-hidden="true" />
+        <span className="h-px flex-1 bg-(--line-soft)" aria-hidden="true" />
         または
-        <span className="h-px flex-1 bg-[var(--line-soft)]" aria-hidden="true" />
+        <span className="h-px flex-1 bg-(--line-soft)" aria-hidden="true" />
       </div>
 
       <button
         type="button"
         onClick={handleGoogle}
         disabled={googleLoading}
-        className="flex min-h-11 w-full items-center justify-center gap-2 border border-[var(--line-strong)] bg-bg-elevated px-6 py-3 font-display tracking-wide text-ink-strong transition-colors hover:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
+        className="flex min-h-11 w-full items-center justify-center gap-2 border border-(--line-strong) bg-bg-elevated px-6 py-3 font-display tracking-wide text-ink-strong transition-colors hover:border-primary-500 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
       >
         {googleLoading ? 'Google へ移動中…' : 'Google でログイン'}
       </button>

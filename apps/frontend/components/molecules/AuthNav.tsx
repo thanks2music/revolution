@@ -65,9 +65,9 @@ export function AuthNav({
         className={
           isAuthed
             ? // ログイン済み: 静かなテキストリンク (nav と同トーン)。
-              'font-display inline-flex min-h-11 items-center text-sm tracking-wide text-ink-strong transition-colors hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2'
+              'font-display inline-flex min-h-11 items-center text-sm tracking-wide text-ink-strong transition-colors hover:text-primary-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2'
             : // 未ログイン: primary 塗りボタン (登録への一次導線)。白文字 AA のため濃色 token。
-              'font-display inline-flex min-h-11 items-center bg-primary-strong px-5 text-sm tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2'
+              'font-display inline-flex min-h-11 items-center bg-primary-strong px-5 text-sm tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2'
         }
       >
         {label}
@@ -96,7 +96,7 @@ export function AuthNav({
   return (
     <Link
       href={href}
-      className="inline-flex min-h-11 items-center text-sm text-ink-strong transition-colors hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+      className="inline-flex min-h-11 items-center text-sm text-ink-strong transition-colors hover:text-primary-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
     >
       {label}
     </Link>

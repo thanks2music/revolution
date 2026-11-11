@@ -13,7 +13,7 @@ title: 現行版 技術スタック
 | **メインフロントエンド** (`apps/frontend`) | Next.js / React / TypeScript | 16 / 19 / 5 | 公開 Web サイトと会員機能。SSG + ISR |
 | **AI Writer** (`apps/ai-writer`) | Next.js / React / TypeScript | 16 / 19 / 5 | 記事生成パイプラインと管理画面 |
 | **ドキュメントサイト** (`apps/docs`) | Next.js / Fumadocs | 16 / 16 | `docs/` 直下の配信 (検索エンジン非掲載) |
-| **スタイリング** | Tailwind CSS | 3 (frontend / ai-writer) / 4 (docs) | UI デザイン |
+| **スタイリング** | Tailwind CSS | 4 (frontend / docs) / 3 (ai-writer) | UI デザイン。設定は CSS (`@theme`) に置く。Sass などのプリプロセッサは使わない (v4 は併用する設計ではない)。v4 の対応ブラウザは Safari 16.4+ / Chrome 111+ / Firefox 128+ |
 | **MDX** | next-mdx-remote | 6 | 記事の描画 |
 | **スキーマ** | Zod | 4 | 入出力の検証 (`shared/schemas`)。frontend の環境変数は `@t3-oss/env-nextjs` |
 

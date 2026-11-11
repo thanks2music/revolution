@@ -90,7 +90,7 @@ export default async function TitleArticlesPage(props: TitleArticlesPageProps) {
           </ol>
         </nav>
 
-        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
+        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl/10">
           {title.name} の記事
         </h1>
         <p className="mb-6 text-sm text-ink-muted">

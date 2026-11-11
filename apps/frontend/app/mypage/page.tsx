@@ -96,7 +96,7 @@ export default async function MyPage() {
               ))}
             </ul>
           ) : (
-            <p className="mt-6 max-w-prose border-l-[3px] border-[var(--line-soft)] bg-bg-tinted px-5 py-4 text-sm leading-relaxed text-ink-body">
+            <p className="mt-6 max-w-prose border-l-[3px] border-(--line-soft) bg-bg-tinted px-5 py-4 text-sm leading-relaxed text-ink-body">
               まだいいねした記事はありません。気になる記事の「いいね」ボタンを押すと、ここに集まります。
             </p>
           )}
@@ -123,7 +123,7 @@ export default async function MyPage() {
             hasGoogle={userHasGoogle}
           />
 
-          <div className="mt-10 border-t border-[var(--line-soft)] pt-8">
+          <div className="mt-10 border-t border-(--line-soft) pt-8">
             <SignOutButton />
           </div>
         </div>

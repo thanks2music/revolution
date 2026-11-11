@@ -146,7 +146,7 @@ export default async function ArticlePage(props: ArticlePageProps) {
               {article.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="px-2 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded"
+                  className="px-2 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-sm"
                 >
                   #{tag}
                 </span>
@@ -165,7 +165,7 @@ export default async function ArticlePage(props: ArticlePageProps) {
           )}
 
           {/* Article Content */}
-          <div className="article-content prose prose-lg dark:prose-invert max-w-none">
+          <div className="article-content">
             <CustomMDX source={content} />
           </div>
         </ArticleGallery>

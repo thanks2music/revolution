@@ -55,7 +55,7 @@ export const OccurrenceCard = ({ event, occurrence }: Props) => (
     // 器 (角丸・影・hover) は `EventOccurrenceCard` と揃える。揃えないと
     // 「同じ意味の UI が 2 つの見た目を持つ」状態が復活する (本ファイルの
     // docstring が是正した不整合と同型)。違うのは**主表示が会場名か企画名か**だけ。
-    className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
+    className="flex flex-wrap items-center gap-3 rounded-2xl border border-(--line-soft) bg-bg-elevated p-3 shadow-xs transition-colors hover:border-primary-300"
   >
     <StatusBadge status={toBadgeStatus(occurrence.status)} />
     {/*

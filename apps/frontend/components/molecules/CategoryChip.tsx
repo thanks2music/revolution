@@ -24,8 +24,9 @@ const sizeStyles = {
 const baseStyles =
   'inline-flex items-center font-display tracking-wide rounded-full transition-colors';
 
+// 枠は既定の罫線色と同じ --line-soft (これまで表示されていた色)
 const inactiveStyles =
-  'bg-bg-tinted text-primary-700 border border-primary-300/60 hover:border-primary-500';
+  'bg-bg-tinted text-primary-700 border border-(--line-soft) hover:border-primary-500';
 
 /*
  * 🔶 2026-08-22: 地を `--primary-500` (#3fb5f0) から `--primary-strong` (#1a6fa3)

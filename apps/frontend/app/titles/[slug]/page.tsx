@@ -105,7 +105,7 @@ export default async function TitlePage(props: TitlePageProps) {
           <span className="inline-flex items-center rounded-full bg-bg-tinted px-3 py-1 font-display text-xs tracking-wide text-primary-700">
             {titleKindLabel(title.kind)}
           </span>
-          <h1 className="mt-3 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
+          <h1 className="mt-3 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl/10">
             {title.name}
           </h1>
           {/* name_kana は現状の seed では全件 null。null なら行ごと出さない。 */}
@@ -148,7 +148,7 @@ export default async function TitlePage(props: TitlePageProps) {
             {eventGroups.map(({ event, occurrences }) => (
               <li
                 key={event.id}
-                className="border border-[var(--line-soft)] bg-bg-elevated p-4 md:p-5"
+                className="border border-(--line-soft) bg-bg-elevated p-4 md:p-5"
               >
                 <div className="mb-3 flex flex-wrap items-baseline gap-2">
                   <Link

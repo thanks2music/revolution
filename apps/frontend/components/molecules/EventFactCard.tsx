@@ -78,7 +78,7 @@ export const EventFactCard = ({ article }: Props) => {
   return (
     <aside
       aria-label="イベント概要"
-      className="bg-bg-elevated border border-[var(--line-soft)] p-5 md:p-6"
+      className="bg-bg-elevated border border-(--line-soft) p-5 md:p-6"
     >
       <p className="font-numeric tabular-nums mb-3 text-[10px] tracking-[0.22em] text-ink-muted uppercase">
         Event Fact

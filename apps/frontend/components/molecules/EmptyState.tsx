@@ -27,7 +27,7 @@ type Props = {
 };
 
 export const EmptyState = ({ message }: Props) => (
-  <div className="rounded-xl border border-[var(--line-soft)] bg-bg-elevated p-6 text-center">
+  <div className="rounded-xl border border-(--line-soft) bg-bg-elevated p-6 text-center">
     <p className="text-sm text-ink-muted">{message}</p>
   </div>
 );
