@@ -8,6 +8,7 @@ import '@/styles/globals.css';
 // 名前と代わりの字形は styles/globals.css の --font-* と @font-face。
 import '@fontsource-variable/noto-sans-jp';
 import '@fontsource/zen-kaku-gothic-new/900.css';
+import { ThemeProvider } from '@/components/theme-provider';
 import { generateBasicMetadata, generateWebSiteSchema } from '@/lib/metadata';
 
 export const metadata = generateBasicMetadata();
@@ -16,14 +17,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const webSiteSchema = generateWebSiteSchema();
 
   return (
-    <html lang="ja">
+    // next-themes が描画前に html の class を書き換えるため、その差を hydration の警告にしない
+    <html lang="ja" suppressHydrationWarning>
       <head>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(webSiteSchema) }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {/*
+          ダークの色はリデザインで作るまで無いので、ライトに固定する (OS の設定も見ない)。
+          切り替えを出す時は forcedTheme を外し、defaultTheme と enableSystem を決める。
+        */}
+        <ThemeProvider
+          attribute="class"
+          forcedTheme="light"
+          enableSystem={false}
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   );
 }
