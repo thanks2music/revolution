@@ -1,4 +1,16 @@
 @import 'tailwindcss' source(none);
+/*
+ * shadcn/ui の部品が使うアニメーションと variant (data-open など)。どちらも使った分だけ CSS に出る。
+ * 2 つとも devDependencies (ビルドの時だけ読む)。本番用に依存を絞って install するとビルドが落ちる。
+ */
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+/*
+ * dark: は OS の設定ではなく、祖先に付いた .dark クラスで効かせる (shadcn/ui と next-themes の作法)。
+ * いまは next-themes でライトに固定しているので、dark: の指定はどこにも効かない。暗い色はリデザインで作る。
+ */
+@custom-variant dark (&:is(.dark *));
 
 /*
  * class を探すのは画面のコードだけ (v3 の content と同じ範囲)。自動検出だとテスト・mock・設定ファイルの
@@ -66,6 +78,30 @@
   --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback', var(--font-body);
   /* 数字の印 (`tabular-nums` と組で使う)。書体は本文と同じ */
   --font-numeric: var(--font-body);
+
+  /*
+   * shadcn/ui の意味のトークン。部品は bg-primary・text-muted-foreground・border-border などで使う。
+   * 値はルート要素のブロックにあり、ブランドのトークンを参照する。⚠️ bg-primary (意味) と
+   * bg-primary-500 (ブランドの段階) は別物。bg-accent も「hover の地」で、黄色の accent-yellow とは別。
+   */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
 @theme {
@@ -252,6 +288,61 @@
   --container-main: clamp(0px, 1050px, 90vw);
   --space-section-pc: 7rem;
   --space-section-sp: 3.5rem;
+
+  /*
+   * shadcn/ui の意味のトークン (ライト)。上のブランドのトークンを当てるだけで、新しい色は作らない。
+   * ⚠️ 手で書いている。shadcn の init を再実行すると既定の色 (oklch) で上書き・追記されるので、
+   *    再実行したら差分を見て戻す。secondary・muted・accent はいまは同じ地で、リデザインで分ける。
+   * 角丸は Tailwind の既定の --radius-* のまま (shadcn の --radius による上書きは、既存の rounded-* が
+   * 変わるので入れていない)。shadcn の部品の rounded-lg・var(--radius-md) もこの既定に従う。
+   * 文字と地の組 (foreground / background など) が AA (4.5:1) を満たすことを
+   * __tests__/unit/styles/contrast.test.ts で確かめている。hover の地 (bg-primary/80 など) や、
+   * 枠・フォーカスの 3:1 (--input / --ring) はまだ検証していない。部品を画面で使い始める時に足す。
+   */
+  --background: var(--bg-primary);
+  --foreground: var(--ink-body);
+  --card: var(--bg-elevated);
+  --card-foreground: var(--ink-body);
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--ink-body);
+  --primary: var(--primary-strong);
+  --primary-foreground: #ffffff;
+  --secondary: var(--bg-tinted);
+  --secondary-foreground: var(--ink-strong);
+  --muted: var(--bg-tinted);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--bg-tinted);
+  --accent-foreground: var(--ink-strong);
+  --destructive: var(--status-cancelled);
+  --border: var(--line-soft);
+  --input: var(--line-strong);
+  --ring: var(--primary-500);
+}
+
+/*
+ * ダークの意味のトークン。⚠️ 暫定の値: いまはライトに固定していて画面には出ない。仕組みと
+ * AA のテストを先に通しておくためのもので、暗い色の設計はリデザイン (Phase 4-1) で置き換える。
+ * ブランドのトークン (--bg-primary など) にはダークの値がまだ無い。
+ */
+.dark {
+  --background: #0f1b2d;
+  --foreground: #e6edf5;
+  --card: #16263d;
+  --card-foreground: #e6edf5;
+  --popover: #16263d;
+  --popover-foreground: #e6edf5;
+  --primary: #7bc8f4;
+  --primary-foreground: #0f1b2d;
+  --secondary: #1f334f;
+  --secondary-foreground: #e6edf5;
+  --muted: #1f334f;
+  --muted-foreground: #a9b8cc;
+  --accent: #1f334f;
+  --accent-foreground: #e6edf5;
+  --destructive: #f08a80;
+  --border: rgba(230, 237, 245, 0.12);
+  --input: rgba(230, 237, 245, 0.2);
+  --ring: #3fb5f0;
 }
 
 /*
@@ -280,16 +371,17 @@
 
 @layer base {
   /*
-   * v3 と同じ見た目を保つための互換 (公式の upgrade guide の手順)。v4 は既定値を次のとおり変えた:
-   * 罫線の色 = currentColor (v3 は gray-200。このサイトは --line-soft を既定にしていた)、
-   * ボタンのカーソル = default、placeholder の色 = 文字色の 50%。
+   * 罫線の既定色とボタンのカーソル (shadcn/ui の init の既定)。v4 の既定は currentColor と default。
+   * border は --line-soft を指すので、v3 のころからの見た目のまま。
+   * ⚠️ shadcn の既定にある outline-ring/50 (全要素の outline の色) は入れていない。キーボードの
+   * フォーカスの見た目が変わるため、リデザインでフォーカスの表現を決める時に入れる。
    */
   *,
   ::after,
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--line-soft);
+    @apply border-border;
   }
 
   button:not(:disabled),
@@ -308,9 +400,7 @@
   }
 
   body {
-    @apply font-body;
-    background-color: var(--bg-primary);
-    color: var(--ink-body);
+    @apply font-body bg-background text-foreground;
     font-feature-settings:
       "palt" 1,
       "kern" 1;
