@@ -5,8 +5,18 @@ import { AuthNav } from '@/components/molecules/AuthNav';
 import { siteConfig } from '@/lib/metadata';
 import logo from '@/public/images/logo-horizontal.svg';
 
-type FooterLink = { name: string; href: string; external?: boolean };
+/**
+ * リンクの描き方を決める種別。既定は route。
+ * - route: アプリのページ。<Link> で描き、先読みとクライアント遷移を使う
+ * - document: ページでない同じサイトの URL (sitemap.xml など)。<a> で描き、同じタブで開く。
+ *   <Link> で描くと、画面に入った時やクリックした時に RSC を取りに行き、本番では 404 になる
+ * - external: 外部サイト。新しいタブで開く
+ */
+type FooterLinkKind = 'route' | 'document' | 'external';
+type FooterLink = { name: string; href: string; kind?: FooterLinkKind };
 type FooterColumn = { title: string; items: FooterLink[] };
+
+const linkClass = 'text-sm text-ink-strong transition-colors hover:text-primary-600';
 
 const columns: FooterColumn[] = [
   {
@@ -19,13 +29,13 @@ const columns: FooterColumn[] = [
     title: 'About',
     items: [
       { name: `${siteConfig.name}について`, href: '/#about' },
-      { name: 'Sitemap', href: '/sitemap.xml' },
+      { name: 'Sitemap', href: '/sitemap.xml', kind: 'document' },
     ],
   },
   {
     title: 'Connect',
     items: [
-      { name: 'GitHub', href: 'https://github.com/thanks2music/revolution', external: true },
+      { name: 'GitHub', href: 'https://github.com/thanks2music/revolution', kind: 'external' },
     ],
   },
 ];
@@ -66,20 +76,21 @@ const Footer = () => {
               <ul className="space-y-2.5">
                 {column.items.map((item) => (
                   <li key={item.name}>
-                    {item.external ? (
+                    {item.kind === 'external' ? (
                       <a
                         href={item.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm text-ink-strong transition-colors hover:text-primary-600"
+                        className={linkClass}
                       >
                         {item.name} ↗
                       </a>
+                    ) : item.kind === 'document' ? (
+                      <a href={item.href} className={linkClass}>
+                        {item.name}
+                      </a>
                     ) : (
-                      <Link
-                        href={item.href}
-                        className="text-sm text-ink-strong transition-colors hover:text-primary-600"
-                      >
+                      <Link href={item.href} className={linkClass}>
                         {item.name}
                       </Link>
                     )}
