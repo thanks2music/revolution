@@ -1,5 +1,8 @@
 @import 'tailwindcss' source(none);
-/* shadcn/ui の部品が使うアニメーションと variant (data-open など)。どちらも使った分だけ CSS に出る */
+/*
+ * shadcn/ui の部品が使うアニメーションと variant (data-open など)。どちらも使った分だけ CSS に出る。
+ * 2 つとも devDependencies (ビルドの時だけ読む)。本番用に依存を絞って install するとビルドが落ちる。
+ */
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
