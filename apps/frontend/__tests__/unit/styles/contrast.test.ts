@@ -48,7 +48,9 @@ function readBlock(selector: string): Tokens {
 
 /**
  * トークン名かリテラルを、最終的な値 (16 進数など) に解決する。`var(--x)` はたどる。
- * ダークのブロックに無いトークンは、ルート要素の値を使う (CSS の継承と同じ)。
+ * ダークのブロックに無いトークンは、ルート要素の値を使う。ルート要素で `var()` を参照する
+ * トークンもダークの値で解決するのは、next-themes が .dark をルート要素 (html) 自身に付けるため
+ * (子孫の要素に .dark を付けると、継承されるのは計算済みの値なので、この解決とは合わない)。
  */
 function makeResolver(...layers: Tokens[]) {
   const lookup = (name: string) => layers.map((l) => l[name]).find((v) => v !== undefined);
@@ -185,7 +187,7 @@ describe('意味のトークンの WCAG AA (4.5:1、ライトとダーク)', () 
     });
   });
 
-  it('ダークのブロックはルート要素と同じ意味のトークンをすべて上書きする', () => {
+  it('ダークのブロックは、文字の組と罫線・入力欄・フォーカスの意味のトークンを上書きする', () => {
     // 文字の組に出ない罫線・入力欄・フォーカスの色も、ダークで上書きされていること
     const semantic = new Set(
       SEMANTIC_PAIRS.flatMap(([, fg, bg]) => [fg, bg]).concat(['--border', '--input', '--ring']),
