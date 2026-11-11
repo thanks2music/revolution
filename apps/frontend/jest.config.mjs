@@ -59,8 +59,7 @@ export default async function jestConfig() {
     transformIgnorePatterns: [
       // pnpm store 内の env-nextjs / env-core 以外の node_modules は transform しない
       '/node_modules/\\.pnpm/(?!(@t3-oss\\+env-nextjs|@t3-oss\\+env-core)@)',
-      // next/jest の既定は sass / scss も並べるが、このアプリは Sass を使わない (Tailwind v4 と併用しない)
-      '^.+\\.module\\.css$',
+      '^.+\\.module\\.(css|sass|scss)$',
     ],
   };
 }
