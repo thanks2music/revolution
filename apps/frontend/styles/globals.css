@@ -290,6 +290,8 @@
    * shadcn/ui の意味のトークン (ライト)。上のブランドのトークンを当てるだけで、新しい色は作らない。
    * ⚠️ 手で書いている。shadcn の init を再実行すると既定の色 (oklch) で上書き・追記されるので、
    *    再実行したら差分を見て戻す。secondary・muted・accent はいまは同じ地で、リデザインで分ける。
+   * 角丸は Tailwind の既定の --radius-* のまま (shadcn の --radius による上書きは、既存の rounded-* が
+   * 変わるので入れていない)。shadcn の部品の rounded-lg・var(--radius-md) もこの既定に従う。
    * 文字と地の組 (foreground / background など) が AA (4.5:1) を満たすことを
    * __tests__/unit/styles/contrast.test.ts で確かめている。hover の地 (bg-primary/80 など) や、
    * 枠・フォーカスの 3:1 (--input / --ring) はまだ検証していない。部品を画面で使い始める時に足す。
