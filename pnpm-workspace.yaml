@@ -13,6 +13,10 @@ overrides:
   protobufjs@<7.5.5: ^7.5.5
   basic-ftp@<5.3.0: '>=5.3.0 <7'
   form-data@<2.5.4: ^2.5.4
+  # Sass は使わない (Tailwind CSS v4 はプリプロセッサと併用する設計ではない)。どの app も依存に
+  # 持たないが、next の任意の peer として lockfile に残り続けていたので、解決の対象から外す
+  # (https://pnpm.io/settings/dependency-resolution#overrides の "-" による削除)
+  next>sass: '-'
 
 # 依存のビルドスクリプトは pnpm 10 と同じく実行しない。pnpm 11 以降は未指定の
 # パッケージがあると install が止まるので、増えたら中身を確かめて true / false を足す
