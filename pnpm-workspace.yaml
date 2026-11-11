@@ -7,7 +7,7 @@ packages:
 # minimumReleaseAgeExclude に `- <パッケージ名>` を足して個別に外し、入れたら戻す
 # (https://pnpm.io/settings/dependency-resolution#minimumreleaseageexclude)
 
-# 脆弱な版を推移的な依存から締め出すための下限。pnpm 11 以降は package.json の
+# 脆弱な版を推移的な依存から締め出すための下限と、使わない依存の除外。pnpm 11 以降は package.json の
 # "pnpm" フィールドを読まないため、ここに置く (https://pnpm.io/settings/dependency-resolution#overrides)
 overrides:
   protobufjs@<7.5.5: ^7.5.5
