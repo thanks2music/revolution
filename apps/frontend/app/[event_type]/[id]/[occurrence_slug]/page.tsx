@@ -134,12 +134,12 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
           {occurrence.status === 'ongoing' && <RemainingDaysBadge endsOn={occurrence.endsOn} />}
         </div>
 
-        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
+        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl md:leading-10">
           {event.name}
         </h1>
         <p className="mb-8 font-display text-xl text-ink-body">{venueName}</p>
 
-        <dl className="mb-10 grid gap-4 border-t border-[var(--line-soft)] pt-6 md:grid-cols-[8rem_1fr]">
+        <dl className="mb-10 grid gap-4 border-t border-(--line-soft) pt-6 md:grid-cols-[8rem_1fr]">
           <dt className="font-display text-sm text-ink-muted">期間</dt>
           <dd className="font-numeric tabular-nums text-ink-body">
             {formatPeriod(occurrence.startsOn, occurrence.endsOn)}

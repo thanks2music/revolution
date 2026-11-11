@@ -146,7 +146,7 @@ export default async function ArticlePage(props: ArticlePageProps) {
               {article.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="px-2 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded"
+                  className="px-2 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded-sm"
                 >
                   #{tag}
                 </span>

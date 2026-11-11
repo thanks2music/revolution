@@ -46,7 +46,7 @@ export const MobileNavDisclosure = ({ navItems }: { navItems: NavItem[] }) => {
         <span className="sr-only">メニュー</span>
         <HamburgerIcon />
       </summary>
-      <div className="absolute inset-x-0 top-full z-40 border-t bg-bg-elevated shadow-sm">
+      <div className="absolute inset-x-0 top-full z-40 border-t bg-bg-elevated shadow-xs">
         <nav
           aria-label="グローバルナビゲーション (モバイル)"
           className="w-main mx-auto flex flex-col py-2"

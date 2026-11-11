@@ -82,7 +82,7 @@ export default async function Home() {
            (`visibility: hidden` で文字を隠し、背景だけを測ること。白い太字を
            含めたまま測ると文字自体を「背景の最も明るい点」として拾ってしまう)。
       */}
-      <section className="relative isolate flex min-h-[19rem] items-end overflow-hidden md:min-h-[26rem]">
+      <section className="relative isolate flex min-h-76 items-end overflow-hidden md:min-h-104">
         {/*
           ⚠️ **仮入れの写真** (2026-08-22)。BOSS が加工版を用意中で、
              差し替え時は `public/images/hero-provisional.jpg` を置き換える
@@ -101,24 +101,23 @@ export default async function Home() {
           全面のスクリム。フルブリードでは文言が画像のどこに重なるか
           (ビューポート幅次第で) 決まらないため、**左右や上下に振らず一様に落とす**。
 
-          🔴 **色は `black` を使う。`ink-strong` ではない。** `--ink-strong` は
-             16 進値を持つ CSS 変数なので、Tailwind の透明度修飾子が
-             `rgb(var(--ink-strong) / .55)` を生成しようとして**無効になり、
-             スクリムが丸ごと透明に潰れる** (2026-08-22 実測)。
+          色は `black`。Tailwind v3 では、16 進値を持つ CSS 変数 (`--ink-strong` など) に
+          透明度の修飾子を付けると無効になり、スクリムが丸ごと透明に潰れた (2026-08-22 実測)。
+          v4 は `color-mix()` で透明度が効くので `ink-strong` でも描けるが、見た目を変えないため `black` のまま。
         */}
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-black/55" />
         {/* 下端は次セクションへ繋ぐため、もう一段落とす。 */}
         <div
           aria-hidden="true"
-          className="absolute inset-0 -z-10 bg-gradient-to-t from-black/60 to-transparent to-55%"
+          className="absolute inset-0 -z-10 bg-linear-to-t from-black/60 to-transparent to-55%"
         />
 
         <div className="w-main mx-auto py-10 md:py-14">
           {/* 見出しではなくタグライン扱いの h1 (PR #275 の判断を継承)。 */}
-          <h1 className="font-display text-xl font-black leading-snug text-white md:text-3xl lg:text-[2rem]">
+          <h1 className="font-display text-xl font-black leading-snug text-white md:text-3xl md:leading-9 lg:text-[2rem]">
             体験×推し=思い出
           </h1>
-          <p className="mt-3 max-w-prose text-sm leading-relaxed text-white/95 md:mt-4 md:text-base">
+          <p className="mt-3 max-w-prose text-sm leading-relaxed text-white/95 md:mt-4 md:text-base md:leading-6">
             アニイベは、アニメ・漫画・音楽・映画などの推し活イベントで体験した思い出を記録・レビュー・口コミできるイベント情報サービスです。
           </p>
         </div>
@@ -139,7 +138,7 @@ export default async function Home() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Link
             href="/titles"
-            className="block border border-[var(--line-soft)] bg-bg-elevated p-6 transition-colors hover:border-[var(--line-strong)]"
+            className="block border border-(--line-soft) bg-bg-elevated p-6 transition-colors hover:border-(--line-strong)"
           >
             <span className="font-display text-lg font-bold text-ink-strong">作品から探す</span>
             <p className="mt-2 text-sm leading-relaxed text-ink-body">
@@ -148,7 +147,7 @@ export default async function Home() {
           </Link>
           <Link
             href="/events"
-            className="block border border-[var(--line-soft)] bg-bg-elevated p-6 transition-colors hover:border-[var(--line-strong)]"
+            className="block border border-(--line-soft) bg-bg-elevated p-6 transition-colors hover:border-(--line-strong)"
           >
             <span className="font-display text-lg font-bold text-ink-strong">企画から探す</span>
             <p className="mt-2 text-sm leading-relaxed text-ink-body">
@@ -157,7 +156,7 @@ export default async function Home() {
           </Link>
           <Link
             href="/venues"
-            className="block border border-[var(--line-soft)] bg-bg-elevated p-6 transition-colors hover:border-[var(--line-strong)]"
+            className="block border border-(--line-soft) bg-bg-elevated p-6 transition-colors hover:border-(--line-strong)"
           >
             <span className="font-display text-lg font-bold text-ink-strong">会場から探す</span>
             <p className="mt-2 text-sm leading-relaxed text-ink-body">
@@ -247,7 +246,7 @@ export default async function Home() {
               <li key={pick.slug} className="snap-start">
                 <Link
                   href={getTitleUrl(pick.slug)}
-                  className="flex w-40 shrink-0 flex-col rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
+                  className="flex w-40 shrink-0 flex-col rounded-2xl border border-(--line-soft) bg-bg-elevated p-3 shadow-xs transition-colors hover:border-primary-300"
                 >
                   <span className="font-display font-bold leading-snug text-ink-strong">
                     {pick.name}
@@ -269,7 +268,7 @@ export default async function Home() {
 
       <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">
         <SectionHeader eyebrow={`No. ${sectionNo('about')} / About`} title="アニイベとは" />
-        <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg">
+        <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg md:leading-7">
           コラボカフェ・ポップアップ・コラボグッズなど、作品と街が交わるイベントを AI
           が集め、「いつ・どこで」を最短で届けます。そして、行った人が残した体験とレビューが、そこに積み重なっていきます。
         </p>

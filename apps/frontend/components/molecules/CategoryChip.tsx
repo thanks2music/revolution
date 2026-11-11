@@ -24,8 +24,11 @@ const sizeStyles = {
 const baseStyles =
   'inline-flex items-center font-display tracking-wide rounded-full transition-colors';
 
+// 枠は --line-soft。以前は `border-primary-300/60` と書いていたが、Tailwind v3 は var() の色に
+// 透明度を付けた class を生成せず、実際には既定の罫線色 (--line-soft) で表示されていた。
+// v4 ではその class が効いて枠が青くなるため、表示されていた色を明示した (見た目は変えない)。
 const inactiveStyles =
-  'bg-bg-tinted text-primary-700 border border-primary-300/60 hover:border-primary-500';
+  'bg-bg-tinted text-primary-700 border border-(--line-soft) hover:border-primary-500';
 
 /*
  * 🔶 2026-08-22: 地を `--primary-500` (#3fb5f0) から `--primary-strong` (#1a6fa3)

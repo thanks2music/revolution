@@ -57,7 +57,7 @@ export const ArticleCard = ({ article, variant = 'default' }: Props) => {
     >
       <Link
         href={getArticleUrl(article)}
-        className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-article"
+        className="block focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-article"
       >
         <div className="flex flex-col gap-2">
           {/*
@@ -76,7 +76,7 @@ export const ArticleCard = ({ article, variant = 'default' }: Props) => {
 
           <h3
             className={`font-body font-bold leading-snug text-article-ink transition-colors group-hover:text-primary-700 ${
-              isFeature ? 'text-2xl md:text-4xl' : 'text-lg md:text-xl'
+              isFeature ? 'text-2xl md:text-4xl md:leading-10' : 'text-lg md:text-xl md:leading-7'
             }`}
           >
             {article.title}

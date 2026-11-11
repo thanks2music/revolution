@@ -1,6 +1,120 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+/*
+ * Tailwind CSS v4 (CSS-first)。tailwind.config.ts は無い。テーマはこのファイルの @theme に置く。
+ * Sass などのプリプロセッサは使わない (v4 は併用する設計ではない、公式の Compatibility)。
+ *
+ * トークンの正本は下のルート要素のブロック (16 進数で書く。__tests__/unit/styles/contrast.test.ts と
+ * one-more-time の docs/design-system/build.py がそこを読む)。`@theme inline` は Tailwind の class 名に結ぶだけ。
+ * `inline` にしているのは、class が `var(--bg-primary)` を使う側で解決するため (祖先で上書きした値が効く)。
+ */
+@theme inline {
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-tinted: var(--bg-tinted);
+
+  --color-ink-strong: var(--ink-strong);
+  --color-ink-body: var(--ink-body);
+  --color-ink-muted: var(--ink-muted);
+
+  --color-primary-50: var(--primary-50);
+  --color-primary-100: var(--primary-100);
+  --color-primary-300: var(--primary-300);
+  --color-primary-500: var(--primary-500);
+  --color-primary-600: var(--primary-600);
+  --color-primary-700: var(--primary-700);
+  /* 白文字を載せる塗りボタン専用の濃色 (WCAG AA、白とのコントラスト 5.46:1 / hover 6.84:1)。 */
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-strong-hover: var(--primary-strong-hover);
+
+  --color-accent-yellow: var(--accent-yellow);
+  --color-accent-yellow-deep: var(--accent-yellow-deep);
+
+  /* 開催状態バッジ (Claude Design v6)。`cancelled` は塗りではなく文字色 (地は cancelled-surface)。 */
+  --color-status-ongoing: var(--status-ongoing);
+  --color-status-scheduled-surface: var(--status-scheduled-surface);
+  --color-status-scheduled-ink: var(--status-scheduled-ink);
+  --color-status-ended-surface: var(--status-ended-surface);
+  --color-status-ended-ink: var(--status-ended-ink);
+  --color-status-cancelled-surface: var(--status-cancelled-surface);
+  --color-status-cancelled: var(--status-cancelled);
+  --color-status-unscheduled-line: var(--status-unscheduled-line);
+
+  /* 残日数。--days-* は淡色のため前景は常に ink-strong。 */
+  --color-days-soon: var(--days-soon);
+  --color-days-urgent: var(--days-urgent);
+
+  /* 記事カード (クリーム地) と終了開催のアーカイブ地。 */
+  --color-article: var(--bg-article);
+  --color-article-line: var(--line-article);
+  --color-article-ink: var(--ink-article);
+  --color-article-muted: var(--ink-article-muted);
+  --color-archive: var(--bg-archive);
+  --color-archive-line: var(--line-archive);
+  --color-archive-ink: var(--ink-archive);
+
+  /* 企画の主分類 (イベントタイプ) タグ。白文字を載せる。 */
+  --color-tag-type: var(--tag-type-surface);
+
+  --width-main: var(--container-main);
+  --spacing-section-pc: var(--space-section-pc);
+  --spacing-section-sp: var(--space-section-sp);
+}
+
+/*
+ * 書体は本文と見出しの 2 つだけ (Fontsource、`app/layout.tsx` で読み込む)。Fallback は下の @font-face、
+ * 'Noto Sans JP' は端末に入っている Noto Sans JP (配信するのは 'Noto Sans JP Variable')。
+ * `font-body` / `font-display` / `font-numeric` の class になり、`var(--font-body)` としても参照できる。
+ */
+@theme {
+  --font-body: 'Noto Sans JP Variable', 'Noto Sans JP Fallback', 'Noto Sans JP', sans-serif;
+  --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback', var(--font-body);
+  /* 数字の印 (`tabular-nums` と組で使う)。書体は本文と同じ */
+  --font-numeric: var(--font-body);
+
+  /* 追加表示された記事カード用のフェード。過剰なモーションを避けるため translateY は 8px に抑える */
+  --animate-fade-in-up: fade-in-up 0.45s ease-out both;
+
+  @keyframes fade-in-up {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /*
+   * Tailwind の標準パレットのうち、まだ使っている色を v3 の値に固定する (v4 は oklch で値が少し変わった)。
+   * 使っているのはエラー・404・記事ページ・MDX の部品など、トークンへ寄せる前の箇所だけ。
+   * それらをトークンへ寄せたら、このブロックは消す。
+   */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-400: #60a5fa;
+  --color-blue-600: #2563eb;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
+  --color-indigo-700: #4338ca;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+}
 
 :root {
   --bg-primary: #f7f9fc;
@@ -126,14 +240,6 @@
   --container-main: clamp(0px, 1050px, 90vw);
   --space-section-pc: 7rem;
   --space-section-sp: 3.5rem;
-
-  /*
-   * フォントは本文と見出しの 2 つだけ (Fontsource、`app/layout.tsx` で読み込む)。
-   * tailwind.config.ts の fontFamily はこの 2 つを参照するだけ。… Fallback は下の @font-face、
-   * 'Noto Sans JP' は端末に入っている Noto Sans JP (配信するのは 'Noto Sans JP Variable')。
-   */
-  --font-body: 'Noto Sans JP Variable', 'Noto Sans JP Fallback', 'Noto Sans JP', sans-serif;
-  --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback', var(--font-body);
 }
 
 /*
@@ -161,10 +267,27 @@
 }
 
 @layer base {
+  /*
+   * v3 と同じ見た目を保つための互換 (公式の upgrade guide の手順)。v4 は既定値を次のとおり変えた:
+   * 罫線の色 = currentColor (v3 は gray-200。このサイトは --line-soft を既定にしていた)、
+   * ボタンのカーソル = default、placeholder の色 = 文字色の 50% (v3 は gray-400)。
+   */
   *,
-  *::before,
-  *::after {
-    @apply box-border;
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--line-soft);
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-gray-400);
   }
 
   html {
@@ -206,12 +329,6 @@
   ::selection {
     background-color: var(--primary-100);
     color: var(--ink-strong);
-  }
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
   }
 }
 
@@ -258,118 +375,6 @@
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 0;
   }
-}
-
-/* MDX 本文に活字スタイルを当てる。`prose` プラグインを入れずに済ませている。 */
-.article-body {
-  color: var(--ink-body);
-  font-size: 1rem;
-  line-height: 1.85;
-  max-width: 68ch;
-}
-
-.article-body p {
-  margin: 1em 0;
-}
-
-.article-body :is(h2, h3, h4) {
-  font-family: var(--font-display);
-  color: var(--ink-strong);
-  font-weight: 900;
-  line-height: 1.3;
-}
-
-.article-body h2 {
-  font-size: 1.625rem;
-  margin-top: 2em;
-  margin-bottom: 0.75em;
-}
-.article-body h2::before {
-  content: "";
-  display: block;
-  width: 2.25em;
-  height: 2px;
-  margin-bottom: 0.5em;
-  background-color: var(--accent-yellow-deep);
-}
-
-.article-body h3 {
-  font-size: 1.25rem;
-  margin-top: 1.75em;
-  margin-bottom: 0.6em;
-}
-
-.article-body a {
-  color: var(--primary-600);
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-}
-.article-body a:hover {
-  color: var(--primary-700);
-}
-
-.article-body :is(ul, ol) {
-  padding-left: 1.5em;
-  margin: 1em 0;
-}
-.article-body li {
-  margin: 0.4em 0;
-}
-
-.article-body img {
-  display: block;
-  margin: 1.75em 0;
-  max-width: 100%;
-  height: auto;
-}
-
-.article-body blockquote {
-  background-color: var(--bg-tinted);
-  border-left: 3px solid var(--primary-500);
-  padding: 1em 1.25em;
-  margin: 1.5em 0;
-  color: var(--ink-body);
-}
-
-.article-body table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 1.5em 0;
-  font-size: 0.95em;
-}
-.article-body :is(th, td) {
-  border: 1px solid var(--line-soft);
-  padding: 0.6em 0.8em;
-  text-align: left;
-  vertical-align: top;
-}
-.article-body th {
-  background-color: var(--bg-tinted);
-  color: var(--ink-strong);
-  font-weight: 700;
-}
-
-.article-body :is(code) {
-  background-color: var(--bg-tinted);
-  padding: 0.1em 0.35em;
-  border-radius: 2px;
-  font-size: 0.92em;
-  color: var(--primary-700);
-}
-.article-body pre {
-  background-color: var(--ink-strong);
-  color: #f7f9fc;
-  padding: 1em 1.25em;
-  margin: 1.5em 0;
-  overflow-x: auto;
-  font-size: 0.9em;
-  line-height: 1.6;
-}
-.article-body pre code {
-  background: transparent;
-  color: inherit;
-  padding: 0;
 }
 
 @layer components {

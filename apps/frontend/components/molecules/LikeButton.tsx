@@ -163,12 +163,12 @@ export function LikeButton({ targetKey }: Props) {
         className={`
           inline-flex min-h-11 items-center gap-2 border px-5 py-2.5
           font-display tracking-wide transition-colors
-          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2
+          focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2
           disabled:cursor-default disabled:opacity-70
           ${
             liked
               ? 'border-accent-yellow-deep bg-accent-yellow text-ink-strong'
-              : 'border-[var(--line-strong)] bg-bg-elevated text-ink-strong hover:border-primary-500 hover:text-primary-700'
+              : 'border-(--line-strong) bg-bg-elevated text-ink-strong hover:border-primary-500 hover:text-primary-700'
           }
         `}
       >

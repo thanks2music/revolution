@@ -63,7 +63,7 @@ const variantStyle: Record<EventStatus, string> = {
   now: 'bg-status-ongoing text-white',
   // 終了。アーカイブのトーンに合わせた地 + 暗文字 (5.03:1)。
   ended: 'bg-status-ended-surface text-status-ended-ink',
-  unknown: 'bg-bg-tinted text-ink-muted border border-[var(--line-soft)]',
+  unknown: 'bg-bg-tinted text-ink-muted border border-(--line-soft)',
   // 「発表待ち」を表すので、終了 (沈んだ地) とも開催中 (濃色) とも別に見えること。
   // 塗らず破線のみにして「まだ確定していない」を視覚的に表す (v6 が唯一の
   // 新規トークンと呼ぶ --status-unscheduled-line)。

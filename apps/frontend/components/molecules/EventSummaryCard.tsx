@@ -33,7 +33,7 @@ type Props = {
 export const EventSummaryCard = ({ event, showTypeTag = true }: Props) => (
   <Link
     href={getEventUrl(event)}
-    className="block rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
+    className="block rounded-2xl border border-(--line-soft) bg-bg-elevated p-3 shadow-xs transition-colors hover:border-primary-300"
   >
     {/*
       作品チップとタイプタグ。**タイプタグは 1 個** (`primary_category_id` は

@@ -88,7 +88,7 @@ export default async function EventTypePage(props: EventTypePageProps) {
           </ol>
         </nav>
 
-        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
+        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl md:leading-10">
           {category.name}
         </h1>
 

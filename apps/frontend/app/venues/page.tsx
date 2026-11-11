@@ -46,7 +46,7 @@ export default async function VenuesPage() {
           </ol>
         </nav>
 
-        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
+        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl md:leading-10">
           会場から探す
         </h1>
 
@@ -64,7 +64,7 @@ export default async function VenuesPage() {
                   <li key={venue.id}>
                     <Link
                       href={getVenueUrl(venue.slug)}
-                      className="flex items-center gap-2 rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
+                      className="flex items-center gap-2 rounded-2xl border border-(--line-soft) bg-bg-elevated p-3 shadow-xs transition-colors hover:border-primary-300"
                     >
                       <div className="min-w-0">
                         <p className="font-display font-bold text-ink-strong">{venue.name}</p>

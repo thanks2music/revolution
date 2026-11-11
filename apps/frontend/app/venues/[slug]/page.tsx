@@ -91,7 +91,7 @@ export default async function VenuePage(props: VenuePageProps) {
         </nav>
 
         <header className="mb-12">
-          <h1 className="font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl">
+          <h1 className="font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl md:leading-10">
             {venue.name}
           </h1>
           {/* 住所はデータ源がある項目だけを出す (全 null なら名前のみ)。 */}

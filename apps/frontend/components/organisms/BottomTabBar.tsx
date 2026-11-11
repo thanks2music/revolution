@@ -101,7 +101,7 @@ export const BottomTabBar = () => {
   return (
     <nav
       aria-label="モバイルナビゲーション"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--line-soft)] bg-bg-elevated md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-(--line-soft) bg-bg-elevated md:hidden"
     >
       <ul className="flex">
         {TABS.map((tab) => {

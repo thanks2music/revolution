@@ -38,7 +38,7 @@ export const OngoingOccurrenceCard = ({ occurrence }: Props) => (
       { id: occurrence.eventId, primaryCategory: occurrence.primaryCategory },
       occurrence.slug,
     )}
-    className="flex w-[17rem] shrink-0 flex-col gap-2 rounded-2xl border border-[var(--line-soft)] bg-bg-elevated p-3 shadow-sm transition-colors hover:border-primary-300"
+    className="flex w-68 shrink-0 flex-col gap-2 rounded-2xl border border-(--line-soft) bg-bg-elevated p-3 shadow-xs transition-colors hover:border-primary-300"
   >
     <div className="flex flex-wrap items-center gap-1">
       {/*

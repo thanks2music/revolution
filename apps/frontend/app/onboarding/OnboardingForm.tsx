@@ -161,7 +161,7 @@ export function OnboardingForm({
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="例: あにめ太郎"
             aria-invalid={!!displayNameError}
-            className="min-h-11 rounded-sm border border-[var(--line-strong)] bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500"
+            className="min-h-11 rounded-xs border border-(--line-strong) bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-hidden focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500"
           />
           {displayNameError && (
             <span role="alert" className="text-xs text-accent-yellow-deep">
@@ -185,7 +185,7 @@ export function OnboardingForm({
             maxLength={USERNAME_MAX_LENGTH}
             aria-invalid={!!usernameError || usernameStatus === 'taken' || usernameStatus === 'invalid'}
             aria-describedby="username-help"
-            className="font-numeric min-h-11 rounded-sm border border-[var(--line-strong)] bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500"
+            className="font-numeric min-h-11 rounded-xs border border-(--line-strong) bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-hidden focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500"
           />
           <span id="username-help" className="text-xs text-ink-muted">
             半角英数字とアンダースコア (_) のみ、{USERNAME_MIN_LENGTH}〜
@@ -225,7 +225,7 @@ export function OnboardingForm({
         <button
           type="submit"
           disabled={isPending}
-          className="min-h-11 bg-primary-strong px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
+          className="min-h-11 bg-primary-strong px-6 py-3 font-display tracking-wide text-white transition-colors hover:bg-primary-strong-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:opacity-60"
         >
           {isPending ? '保存中…' : 'はじめる'}
         </button>

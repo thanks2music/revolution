@@ -53,13 +53,13 @@ type Props = {
 
 /** 状態ごとのカードの地色・罫線・文字色。 */
 const surfaceStyle: Record<OccurrenceStatus, string> = {
-  ongoing: 'border-[var(--line-soft)] bg-bg-elevated',
-  scheduled: 'border-[var(--line-soft)] bg-bg-elevated',
-  unscheduled: 'border-[var(--line-soft)] bg-bg-elevated',
+  ongoing: 'border-(--line-soft) bg-bg-elevated',
+  scheduled: 'border-(--line-soft) bg-bg-elevated',
+  unscheduled: 'border-(--line-soft) bg-bg-elevated',
   // 終了はアーカイブのトーンへ沈める。
   ended: 'border-archive-line bg-archive',
   // 中止は地を変えず文字を落とす (「予定が消えた」ことを彩度で示す)。
-  cancelled: 'border-[var(--line-soft)] bg-bg-elevated',
+  cancelled: 'border-(--line-soft) bg-bg-elevated',
 };
 
 /**
@@ -99,7 +99,7 @@ export const EventOccurrenceCard = ({
 }: Props) => (
   <Link
     href={getOccurrenceUrl(event, slug)}
-    className={`block rounded-2xl border p-3 shadow-sm transition-colors hover:border-primary-300 ${surfaceStyle[status]}`}
+    className={`block rounded-2xl border p-3 shadow-xs transition-colors hover:border-primary-300 ${surfaceStyle[status]}`}
   >
     <div className="flex flex-wrap items-center gap-1">
       <StatusBadge status={toBadgeStatus(status)} />

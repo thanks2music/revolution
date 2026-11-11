@@ -43,7 +43,7 @@ export default async function ArticlesPage({
           Index — Articles
         </p>
         <SparkRule className="mt-2 mb-7" width="3em" />
-        <h1 className="font-display text-4xl leading-tight text-ink-strong sm:text-5xl md:text-6xl">
+        <h1 className="font-display text-4xl leading-tight text-ink-strong sm:text-5xl sm:leading-none md:text-6xl">
           すべての記事
         </h1>
         <p className="mt-5 text-sm text-ink-muted">
@@ -51,7 +51,7 @@ export default async function ArticlesPage({
           {activeCategory && (
             <span className="font-numeric tabular-nums"> / 全 {allArticles.length} 本中</span>
           )}
-          <span className="mx-2 text-[var(--line-strong)]">/</span>
+          <span className="mx-2 text-(--line-strong)">/</span>
           <span className="font-numeric tabular-nums">{categories.length}</span> カテゴリ
         </p>
       </section>
