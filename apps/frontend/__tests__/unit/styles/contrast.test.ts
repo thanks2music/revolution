@@ -24,15 +24,43 @@ import { describe, expect, it } from '@jest/globals';
 
 const CSS_PATH = join(__dirname, '../../../styles/globals.css');
 
-/** `:root { --name: #rrggbb; }` を name → value で読み出す。 */
-function readRootTokens(): Record<string, string> {
-  const css = readFileSync(CSS_PATH, 'utf8');
-  const root = css.slice(css.indexOf(':root'), css.indexOf('@layer base'));
-  const tokens: Record<string, string> = {};
-  for (const [, name, value] of root.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) {
+type Tokens = Record<string, string>;
+
+/**
+ * 行頭から始まるトップレベルのブロック (`:root {` / `.dark {`) を name → value で読み出す。
+ *
+ * コメントを剥がしてから探す (コメント中の文字列に引っかからないように)。ブロックが無ければ
+ * 空のまま通さず、ここで失敗させる。
+ */
+function readBlock(selector: string): Tokens {
+  const css = readFileSync(CSS_PATH, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const blocks = [...css.matchAll(new RegExp(`^${escaped}\\s*\\{([\\s\\S]*?)^\\}`, 'gm'))];
+  if (blocks.length !== 1) {
+    throw new Error(`${selector} のブロックが ${blocks.length} 個ある (1 個のはず): ${CSS_PATH}`);
+  }
+  const tokens: Tokens = {};
+  for (const [, name, value] of blocks[0][1].matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) {
     tokens[name] = value.trim();
   }
   return tokens;
+}
+
+/**
+ * トークン名かリテラルを、最終的な値 (16 進数など) に解決する。`var(--x)` はたどる。
+ * ダークのブロックに無いトークンは、ルート要素の値を使う (CSS の継承と同じ)。
+ */
+function makeResolver(...layers: Tokens[]) {
+  const lookup = (name: string) => layers.map((l) => l[name]).find((v) => v !== undefined);
+  const resolve = (v: string, depth = 0): string => {
+    if (depth > 10) throw new Error(`var() の参照が循環している: ${v}`);
+    const ref = v.match(/^var\((--[a-z0-9-]+)\)$/);
+    const name = ref ? ref[1] : v.startsWith('--') ? v : undefined;
+    if (!name) return v;
+    const value = lookup(name);
+    return value === undefined ? '' : resolve(value, depth + 1);
+  };
+  return resolve;
 }
 
 /** sRGB チャンネルを相対輝度の線形値へ (WCAG 2.1 の定義)。 */
@@ -72,10 +100,10 @@ describe('contrastRatio (テストヘルパ自身の健全性)', () => {
 });
 
 describe('デザイントークンの WCAG AA (4.5:1)', () => {
-  const tokens = readRootTokens();
+  const tokens = readBlock(':root');
 
   /** [説明, 前景, 背景] — トークン名は `--` 付きで書き、リテラルはそのまま。 */
-  const resolve = (v: string) => (v.startsWith('--') ? (tokens[v] ?? '') : v);
+  const resolve = makeResolver(tokens);
 
   const PAIRS: [label: string, fg: string, bg: string][] = [
     // 開催状態バッジ (v6)
@@ -119,6 +147,50 @@ describe('デザイントークンの WCAG AA (4.5:1)', () => {
     for (const token of ['--days-soon', '--days-urgent']) {
       expect(contrastRatio(WHITE, tokens[token])).toBeLessThan(AA_NORMAL);
     }
+  });
+});
+
+/**
+ * shadcn/ui の意味のトークン (`--background` / `--foreground` など) の組み合わせ。
+ * 部品はこの組で文字と地を塗るので、ライトとダークの両方で AA を確かめる。
+ * ダークのブロックに無いトークンはルート要素の値になる (CSS と同じ)。
+ */
+describe('意味のトークンの WCAG AA (4.5:1、ライトとダーク)', () => {
+  const root = readBlock(':root');
+  const dark = readBlock('.dark');
+
+  const SEMANTIC_PAIRS: [label: string, fg: string, bg: string][] = [
+    ['本文 on 地', '--foreground', '--background'],
+    ['カード', '--card-foreground', '--card'],
+    ['ポップオーバー', '--popover-foreground', '--popover'],
+    ['主ボタン', '--primary-foreground', '--primary'],
+    ['副ボタン', '--secondary-foreground', '--secondary'],
+    ['控えめな地', '--muted-foreground', '--muted'],
+    ['補助テキスト on 地', '--muted-foreground', '--background'],
+    ['補助テキスト on カード', '--muted-foreground', '--card'],
+    ['hover の地', '--accent-foreground', '--accent'],
+    ['エラーの文字 on 地', '--destructive', '--background'],
+    ['エラーの文字 on カード', '--destructive', '--card'],
+  ];
+
+  describe.each([
+    ['ライト', makeResolver(root)],
+    ['ダーク', makeResolver(dark, root)],
+  ])('%s', (_theme, resolve) => {
+    it.each(SEMANTIC_PAIRS)('%s は AA を満たす', (_label, fg, bg) => {
+      const [fgHex, bgHex] = [resolve(fg), resolve(bg)];
+      expect(fgHex).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(bgHex).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(contrastRatio(fgHex, bgHex)).toBeGreaterThanOrEqual(AA_NORMAL);
+    });
+  });
+
+  it('ダークのブロックはルート要素と同じ意味のトークンをすべて上書きする', () => {
+    const semantic = Object.keys(root).filter((name) =>
+      SEMANTIC_PAIRS.some(([, fg, bg]) => fg === name || bg === name),
+    );
+    expect(semantic.length).toBeGreaterThan(0);
+    for (const name of semantic) expect(dark).toHaveProperty([name]);
   });
 });
 
