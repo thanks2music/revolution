@@ -62,7 +62,6 @@
   --spacing-section-pc: var(--space-section-pc);
   --spacing-section-sp: var(--space-section-sp);
 
-
   /* 他の変数を参照する書体も inline にする (公式の Referencing other variables) */
   --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback', var(--font-body);
   /* 数字の印 (`tabular-nums` と組で使う)。書体は本文と同じ */
