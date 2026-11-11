@@ -56,21 +56,22 @@
   /* 企画の主分類 (イベントタイプ) タグ。白文字を載せる。 */
   --color-tag-type: var(--tag-type-surface);
 
-  --width-main: var(--container-main);
   --spacing-section-pc: var(--space-section-pc);
   --spacing-section-sp: var(--space-section-sp);
+
+  /* 他の変数を参照する書体も inline にする (公式の Referencing other variables) */
+  --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback', var(--font-body);
+  /* 数字の印 (`tabular-nums` と組で使う)。書体は本文と同じ */
+  --font-numeric: var(--font-body);
 }
 
 /*
  * 書体は本文と見出しの 2 つだけ (Fontsource、`app/layout.tsx` で読み込む)。Fallback は下の @font-face、
  * 'Noto Sans JP' は端末に入っている Noto Sans JP (配信するのは 'Noto Sans JP Variable')。
- * `font-body` / `font-display` / `font-numeric` の class になり、`var(--font-body)` としても参照できる。
+ * `font-body` / `font-display` / `font-numeric` の class になる。`var(--font-body)` としても参照できる。
  */
 @theme {
   --font-body: 'Noto Sans JP Variable', 'Noto Sans JP Fallback', 'Noto Sans JP', sans-serif;
-  --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback', var(--font-body);
-  /* 数字の印 (`tabular-nums` と組で使う)。書体は本文と同じ */
-  --font-numeric: var(--font-body);
 
   /* 追加表示された記事カード用のフェード。過剰なモーションを避けるため translateY は 8px に抑える */
   --animate-fade-in-up: fade-in-up 0.45s ease-out both;
@@ -114,6 +115,14 @@
   --color-indigo-700: #4338ca;
   --color-red-500: #ef4444;
   --color-red-600: #dc2626;
+}
+
+/*
+ * ページの最大幅 (`w-main`)。テーマ変数の名前空間に「幅だけ」を表すものが無いため (--container-* は
+ * container query の variant も作る)、公式の @utility で 1 つだけ定義する。
+ */
+@utility w-main {
+  width: var(--container-main);
 }
 
 :root {
