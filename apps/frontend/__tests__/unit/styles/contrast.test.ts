@@ -174,6 +174,8 @@ describe('意味のトークンの WCAG AA (4.5:1、ライトとダーク)', () 
     ['エラーの文字 on 地', '--destructive', '--background'],
     ['エラーの文字 on カード', '--destructive', '--card'],
   ];
+  /** 文字の組には出ないが、ダークでも上書きが要るトークン (罫線・入力欄・フォーカス) */
+  const SEMANTIC_LINES = ['--border', '--input', '--ring'];
 
   describe.each([
     ['ライト', makeResolver(root)],
@@ -188,10 +190,7 @@ describe('意味のトークンの WCAG AA (4.5:1、ライトとダーク)', () 
   });
 
   it('ダークのブロックは、文字の組と罫線・入力欄・フォーカスの意味のトークンを上書きする', () => {
-    // 文字の組に出ない罫線・入力欄・フォーカスの色も、ダークで上書きされていること
-    const semantic = new Set(
-      SEMANTIC_PAIRS.flatMap(([, fg, bg]) => [fg, bg]).concat(['--border', '--input', '--ring']),
-    );
+    const semantic = new Set(SEMANTIC_PAIRS.flatMap(([, fg, bg]) => [fg, bg]).concat(SEMANTIC_LINES));
     for (const name of semantic) {
       expect(root).toHaveProperty([name]);
       expect(dark).toHaveProperty([name]);
