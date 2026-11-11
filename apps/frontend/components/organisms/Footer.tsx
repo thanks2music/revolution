@@ -9,7 +9,7 @@ import logo from '@/public/images/logo-horizontal.svg';
  * リンクの描き方を決める種別。既定は route。
  * - route: アプリのページ。<Link> で描き、先読みとクライアント遷移を使う
  * - document: ページでない同じサイトの URL (sitemap.xml など)。<a> で描き、同じタブで開く。
- *   <Link> で描くと、画面に入った時やクリックした時に RSC を取りに行き、本番では 404 になる
+ *   <Link> で描くと、画面に入った時やクリックした時に RSC を取りに行き、Vercel 上では 404 になる
  * - external: 外部サイト。新しいタブで開く
  */
 type FooterLinkKind = 'route' | 'document' | 'external';
