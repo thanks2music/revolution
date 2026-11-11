@@ -1,19 +1,20 @@
 @import 'tailwindcss' source(none);
 
 /*
- * class を探すのは画面のコードだけ (v3 の content と同じ範囲)。自動検出のままだと __tests__ / e2e /
- * scripts / コメントの文字列まで拾い、使っていない class が CSS に入る。
+ * class を探すのは画面のコードだけ (v3 の content と同じ範囲)。自動検出だとテスト・mock・設定ファイルの
+ * 文字列からも使わない class が作られる。⚠️ 画面のコードを別のディレクトリに置く時は @source を足す
+ * (足さないと、その class は CSS に出ない)。
  */
 @source '../app';
 @source '../components';
 
 /*
- * Tailwind CSS v4 (CSS-first)。tailwind.config.ts は無い。テーマはこのファイルの @theme に置く。
- * Sass などのプリプロセッサは使わない (v4 は併用する設計ではない、公式の Compatibility)。
+ * 設定は CSS-first で、テーマはこのファイルの @theme に置く。Sass などのプリプロセッサは使わない。
  *
- * トークンの正本は下のルート要素のブロック (16 進数で書く。__tests__/unit/styles/contrast.test.ts と
- * one-more-time の docs/design-system/build.py がそこを読む)。`@theme inline` は Tailwind の class 名に結ぶだけ。
- * `inline` にしているのは、class が `var(--bg-primary)` を使う側で解決するため (祖先で上書きした値が効く)。
+ * トークンの正本は下のルート要素のブロック (16 進数で書く。各トークンの意味もそこに書く)。
+ * __tests__/unit/styles/contrast.test.ts とデザインシステムの生成スクリプトがそこを読む。
+ * `@theme inline` は Tailwind の class 名に結ぶだけで、class は `var(--bg-primary)` を使う側で解決する
+ * (祖先で上書きした値が効く)。
  */
 @theme inline {
   --color-bg-primary: var(--bg-primary);
@@ -30,14 +31,12 @@
   --color-primary-500: var(--primary-500);
   --color-primary-600: var(--primary-600);
   --color-primary-700: var(--primary-700);
-  /* 白文字を載せる塗りボタン専用の濃色 (WCAG AA、白とのコントラスト 5.46:1 / hover 6.84:1)。 */
   --color-primary-strong: var(--primary-strong);
   --color-primary-strong-hover: var(--primary-strong-hover);
 
   --color-accent-yellow: var(--accent-yellow);
   --color-accent-yellow-deep: var(--accent-yellow-deep);
 
-  /* 開催状態バッジ (Claude Design v6)。`cancelled` は塗りではなく文字色 (地は cancelled-surface)。 */
   --color-status-ongoing: var(--status-ongoing);
   --color-status-scheduled-surface: var(--status-scheduled-surface);
   --color-status-scheduled-ink: var(--status-scheduled-ink);
@@ -47,11 +46,9 @@
   --color-status-cancelled: var(--status-cancelled);
   --color-status-unscheduled-line: var(--status-unscheduled-line);
 
-  /* 残日数。--days-* は淡色のため前景は常に ink-strong。 */
   --color-days-soon: var(--days-soon);
   --color-days-urgent: var(--days-urgent);
 
-  /* 記事カード (クリーム地) と終了開催のアーカイブ地。 */
   --color-article: var(--bg-article);
   --color-article-line: var(--line-article);
   --color-article-ink: var(--ink-article);
@@ -60,11 +57,11 @@
   --color-archive-line: var(--line-archive);
   --color-archive-ink: var(--ink-archive);
 
-  /* 企画の主分類 (イベントタイプ) タグ。白文字を載せる。 */
   --color-tag-type: var(--tag-type-surface);
 
   --spacing-section-pc: var(--space-section-pc);
   --spacing-section-sp: var(--space-section-sp);
+
 
   /* 他の変数を参照する書体も inline にする (公式の Referencing other variables) */
   --font-display: 'Zen Kaku Gothic New', 'Zen Kaku Gothic New Fallback', var(--font-body);
@@ -72,12 +69,11 @@
   --font-numeric: var(--font-body);
 }
 
-/*
- * 書体は本文と見出しの 2 つだけ (Fontsource、`app/layout.tsx` で読み込む)。Fallback は下の @font-face、
- * 'Noto Sans JP' は端末に入っている Noto Sans JP (配信するのは 'Noto Sans JP Variable')。
- * `font-body` / `font-display` / `font-numeric` の class になる。`var(--font-body)` としても参照できる。
- */
 @theme {
+  /*
+   * 書体は本文と見出しの 2 つだけ (Fontsource、`app/layout.tsx` で読み込む)。Fallback は下の @font-face、
+   * 'Noto Sans JP' は端末に入っている Noto Sans JP (配信するのは 'Noto Sans JP Variable')。
+   */
   --font-body: 'Noto Sans JP Variable', 'Noto Sans JP Fallback', 'Noto Sans JP', sans-serif;
 
   /* 追加表示された記事カード用のフェード。過剰なモーションを避けるため translateY は 8px に抑える */
@@ -93,12 +89,13 @@
       transform: translateY(0);
     }
   }
+}
 
-  /*
-   * Tailwind の標準パレットのうち、まだ使っている色を v3 の値に固定する (v4 は oklch で値が少し変わった)。
-   * 使っているのはエラー・404・記事ページ・MDX の部品など、トークンへ寄せる前の箇所だけ。
-   * それらをトークンへ寄せたら、このブロックは消す。
-   */
+/*
+ * Tailwind の標準パレットのうち、まだ使っている色を v3 の値に固定する (v4 は oklch で値が少し変わった)。
+ * 使っているのはエラー・404・記事ページ・MDX の部品など、トークンへ寄せる前の箇所だけ。寄せたら消す。
+ */
+@theme inline {
   --color-gray-50: #f9fafb;
   --color-gray-100: #f3f4f6;
   --color-gray-200: #e5e7eb;
@@ -286,7 +283,7 @@
   /*
    * v3 と同じ見た目を保つための互換 (公式の upgrade guide の手順)。v4 は既定値を次のとおり変えた:
    * 罫線の色 = currentColor (v3 は gray-200。このサイトは --line-soft を既定にしていた)、
-   * ボタンのカーソル = default、placeholder の色 = 文字色の 50% (v3 は gray-400)。
+   * ボタンのカーソル = default、placeholder の色 = 文字色の 50%。
    */
   *,
   ::after,
@@ -301,7 +298,7 @@
     cursor: pointer;
   }
 
-  /* v3 の gray-400。上の標準パレットの固定ブロックを消しても変わらないよう、値を直接書く */
+  /* v3 の gray-400。標準パレットの固定ブロックを消しても変わらないよう、値を直接書く */
   input::placeholder,
   textarea::placeholder {
     color: #9ca3af;
@@ -392,9 +389,7 @@
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 0;
   }
-}
 
-@layer components {
   /*
    * 記事の本文の表 (2026-10-15)。Markdown の表 (まとめの表) と、AI Writer が HTML で書く表 (品目に写真が付かないときの
    * メニューの表) を同じ見た目にする。HTML で書いた <table> には MDX の components が当たらないため、見た目はここに置く。

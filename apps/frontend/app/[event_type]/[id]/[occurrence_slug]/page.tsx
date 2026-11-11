@@ -134,7 +134,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
           {occurrence.status === 'ongoing' && <RemainingDaysBadge endsOn={occurrence.endsOn} />}
         </div>
 
-        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl md:leading-10">
+        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl/10">
           {event.name}
         </h1>
         <p className="mb-8 font-display text-xl text-ink-body">{venueName}</p>

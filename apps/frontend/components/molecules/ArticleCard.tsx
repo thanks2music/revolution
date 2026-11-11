@@ -76,7 +76,7 @@ export const ArticleCard = ({ article, variant = 'default' }: Props) => {
 
           <h3
             className={`font-body font-bold leading-snug text-article-ink transition-colors group-hover:text-primary-700 ${
-              isFeature ? 'text-2xl md:text-4xl md:leading-10' : 'text-lg md:text-xl md:leading-7'
+              isFeature ? 'text-2xl md:text-4xl/10' : 'text-lg md:text-xl/7'
             }`}
           >
             {article.title}

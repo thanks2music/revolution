@@ -44,7 +44,7 @@ export default async function EventsPage() {
           </ol>
         </nav>
 
-        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl md:leading-10">
+        <h1 className="mb-2 font-display text-3xl font-bold leading-tight text-ink-strong md:text-4xl/10">
           企画から探す
         </h1>
 

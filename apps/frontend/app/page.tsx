@@ -101,9 +101,7 @@ export default async function Home() {
           全面のスクリム。フルブリードでは文言が画像のどこに重なるか
           (ビューポート幅次第で) 決まらないため、**左右や上下に振らず一様に落とす**。
 
-          色は `black`。Tailwind v3 では、16 進値を持つ CSS 変数 (`--ink-strong` など) に
-          透明度の修飾子を付けると無効になり、スクリムが丸ごと透明に潰れた (2026-08-22 実測)。
-          v4 は `color-mix()` で透明度が効くので `ink-strong` でも描けるが、見た目を変えないため `black` のまま。
+          色は `black` (見た目を保つため。v4 では `ink-strong` に透明度を付けても描ける)。
         */}
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-black/55" />
         {/* 下端は次セクションへ繋ぐため、もう一段落とす。 */}
@@ -114,10 +112,10 @@ export default async function Home() {
 
         <div className="w-main mx-auto py-10 md:py-14">
           {/* 見出しではなくタグライン扱いの h1 (PR #275 の判断を継承)。 */}
-          <h1 className="font-display text-xl font-black leading-snug text-white md:text-3xl md:leading-9 lg:text-[2rem]">
+          <h1 className="font-display text-xl font-black leading-snug text-white md:text-3xl/9 lg:text-[2rem]">
             体験×推し=思い出
           </h1>
-          <p className="mt-3 max-w-prose text-sm leading-relaxed text-white/95 md:mt-4 md:text-base md:leading-6">
+          <p className="mt-3 max-w-prose text-sm leading-relaxed text-white/95 md:mt-4 md:text-base/6">
             アニイベは、アニメ・漫画・音楽・映画などの推し活イベントで体験した思い出を記録・レビュー・口コミできるイベント情報サービスです。
           </p>
         </div>
@@ -268,7 +266,7 @@ export default async function Home() {
 
       <section id="about" className="w-main mx-auto mt-section-sp md:mt-section-pc scroll-mt-24">
         <SectionHeader eyebrow={`No. ${sectionNo('about')} / About`} title="アニイベとは" />
-        <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg md:leading-7">
+        <p className="max-w-prose text-base leading-relaxed text-ink-body md:text-lg/7">
           コラボカフェ・ポップアップ・コラボグッズなど、作品と街が交わるイベントを AI
           が集め、「いつ・どこで」を最短で届けます。そして、行った人が残した体験とレビューが、そこに積み重なっていきます。
         </p>
