@@ -23,7 +23,6 @@ jest.mock('@/lib/utils/html-extractor', () => ({
 // 変換されず "Cannot use import statement outside a module" になる。import 評価を止める。
 jest.mock('@/lib/github/create-mdx-pr', () => ({ createMdxPr: jest.fn() }));
 jest.mock('@/lib/github/update-mdx-pr', () => ({ createUpdateMdxPr: jest.fn() }));
-jest.mock('@/lib/github/pr-status', () => ({ getPrStatusByCanonicalKey: jest.fn() }));
 jest.mock('@/lib/firestore/event-deduplication', () => ({
   checkEventDuplication: jest.fn(),
   registerNewEvent: jest.fn(),

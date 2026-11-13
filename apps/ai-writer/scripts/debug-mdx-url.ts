@@ -389,9 +389,10 @@ async function main() {
     console.log(`📊 観測ログ (JSONL): ${getAiCallJsonlPath()}`);
   }
 
-  // ⚠️ 重複 PR (DuplicateSlugError) は service が `{ success: false, error }` にまとめて返すため、
-  //    CLI では「失敗」として開発系チャンネルに届く (メンションなし)。人が実行結果を見ている
-  //    経路なので許容している。cron 経路では 409 として通知対象から外している
+  // 既に記事があるイベント (Firestore の記録が generated) は、service がスキップとして返すので
+  // 「スキップ」として届く。⚠️ PR を作る段で同じブランチが見つかった時の DuplicateSlugError は、
+  // service が `{ success: false, error }` にまとめて返すため「失敗」として開発系チャンネルに届く
+  // (メンションなし)。人が実行結果を見ている経路なので許容している。cron 経路では 409 として通知対象から外している
   const notifyContext = {
     entrypoint: 'cli' as const,
     sourceUrl: url,
