@@ -11,21 +11,35 @@
  * event every time.
  *
  * Follow-up announcements are applied by a person with `--update`. To write an event
- * again from scratch, delete its record first.
+ * again from scratch, reset its record first (the reset button on the RSS → MDX debug
+ * page, which calls `POST /api/debug/reset-firestore-status`).
  */
 import type { DuplicationCheckResult } from './types';
 
+/** The event that stopped the run, for the caller's message and reset button */
+export interface ExistingEvent {
+  canonicalKey: string;
+  postId?: string;
+}
+
 /**
- * @returns the skip reason when the event already has an article, otherwise `undefined`
+ * @returns the existing event and the skip reason when the event already has an article,
+ *   otherwise `undefined`
  */
-export function existingEventSkipReason(check: DuplicationCheckResult): string | undefined {
-  if (!check.isDuplicate || !check.existingDoc) {
+export function existingEventSkip(
+  check: DuplicationCheckResult
+): { event: ExistingEvent; reason: string } | undefined {
+  // `isDuplicate` alone decides. Going on without the document would make
+  // registerNewEvent throw "already exists", which is reported as a failure.
+  if (!check.isDuplicate) {
     return undefined;
   }
 
-  return (
-    `既に記事があるイベントのためスキップ (canonicalKey: ${check.canonicalKey}、` +
-    `post_id: ${check.existingDoc.postId})。続報は --update で更新する。` +
-    `作り直す時は Firestore の記録を消してから実行する`
-  );
+  const postId = check.existingDoc?.postId;
+  const reason =
+    `既に記事があるイベントのためスキップ (canonicalKey: ${check.canonicalKey}` +
+    `${postId ? `、post_id: ${postId}` : ''})。続報は --update で更新する。` +
+    `作り直す時は、デバッグ画面 (RSS → MDX) のリセットで記録を戻してから実行する`;
+
+  return { event: { canonicalKey: check.canonicalKey, postId }, reason };
 }

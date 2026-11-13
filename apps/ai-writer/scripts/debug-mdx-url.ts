@@ -518,9 +518,16 @@ async function main() {
       console.log();
       console.log('='.repeat(80));
       console.log('💡 デバッグヒント:');
-      console.log('  - 記事内に公式URLが含まれているか確認してください');
-      console.log('  - YAML テンプレートの条件を確認してください');
-      console.log('  - DEBUG_HTML_EXTRACTION=true で抽出HTMLを確認できます');
+      if (result.existingEvent) {
+        // 抽出の問題ではない。Firestore の記録が generated だから止まった
+        console.log(`  - 既に記事があります (canonicalKey: ${result.existingEvent.canonicalKey})`);
+        console.log('  - 続報の反映は --update <post_id> で行ってください');
+        console.log('  - 作り直す時は、デバッグ画面 (RSS → MDX) のリセットで記録を戻してから実行してください');
+      } else {
+        console.log('  - 記事内に公式URLが含まれているか確認してください');
+        console.log('  - YAML テンプレートの条件を確認してください');
+        console.log('  - DEBUG_HTML_EXTRACTION=true で抽出HTMLを確認できます');
+      }
       console.log('='.repeat(80));
       return;
     }

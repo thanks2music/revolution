@@ -233,6 +233,10 @@ export async function POST(request: NextRequest) {
             //
             // 直すと「重複時に次の記事へ進む」という**振る舞いの変更**になるため、
             // 監視導入の本 PR には含めない (Follow-up として起票する)。
+            //
+            // 2026-11-14: 既に記事があるイベント (Firestore の記録が generated) は、service が
+            // DuplicateSlugError ではなくスキップ (`existingEvent` 付き) で返すようになった。
+            // 下の `result.existingEvent` の分岐で、理由と canonicalKey (リセットのボタン用) を返す。
             result = await mdxService.generateMdxFromRSS(generationRequest);
             generationSuccessful = true;
 
@@ -270,8 +274,20 @@ export async function POST(request: NextRequest) {
           return;
         }
 
+        // 既に記事があるイベント: 理由と canonicalKey を返し、画面にリセットのボタンを出す
+        if (result.skipped && result.existingEvent) {
+          const eventData = `data: ${JSON.stringify({
+            error: result.skipReason,
+            event: { canonicalKey: result.existingEvent.canonicalKey },
+          })}\n\n`;
+          controller.enqueue(encoder.encode(eventData));
+          await flushSentry(2000);
+          controller.close();
+          return;
+        }
+
         if (!result.success) {
-          await sendError(result.error || 'MDX記事の生成に失敗しました');
+          await sendError(result.error || result.skipReason || 'MDX記事の生成に失敗しました');
           return;
         }
 

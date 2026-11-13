@@ -32,7 +32,7 @@ import {
   registerNewEvent,
   updateEventStatus,
 } from '../firestore/event-deduplication';
-import { existingEventSkipReason } from '../firestore/existing-event-skip';
+import { existingEventSkip, type ExistingEvent } from '../firestore/existing-event-skip';
 import { type EventCanonicalKey } from '../firestore/types';
 import {
   resolveWorkSlug,
@@ -268,8 +268,10 @@ export interface ArticleUpdateTarget {
  */
 export interface MdxGenerationResult {
   success: boolean;
-  skipped?: boolean; // 記事選別でスキップされた場合
+  skipped?: boolean; // 記事にしなかった場合 (記事選別・抽出の失敗・既に記事があるイベントなど)
   skipReason?: string; // スキップ理由
+  /** 既に記事があるイベントでスキップした時だけ入る (呼び出し側のヒントとリセットのボタン用) */
+  existingEvent?: ExistingEvent;
   mdxArticle?: MdxArticle;
   prResult?: CreateMdxPrResult;
   eventRecord?: EventCanonicalKey;
@@ -875,15 +877,16 @@ export class ArticleGenerationMdxService {
         // 既に記事があるイベント (記録が generated) は、PR の状態に関係なくスキップする。
         // 以前は開いた PR が無いと記録を消して作り直していたが、GitHub の is:closed は
         // マージ済みの PR も含むため、マージ済みの記事を毎回作り直していた (定期実行で同じ記事の PR が毎回できる)
-        const existingSkipReason = existingEventSkipReason(duplicationCheck);
-        if (existingSkipReason) {
-          console.log(`⏭️ ${getStepContext('duplication-check')} ${existingSkipReason}`);
+        const existing = existingEventSkip(duplicationCheck);
+        if (existing) {
+          console.log(`⏭️ ${getStepContext('duplication-check')} ${existing.reason}`);
           console.log('========== MDXパイプライン: 記事生成スキップ ==========\n');
 
           return {
             success: false,
             skipped: true,
-            skipReason: existingSkipReason,
+            skipReason: existing.reason,
+            existingEvent: existing.event,
           };
         }
 
