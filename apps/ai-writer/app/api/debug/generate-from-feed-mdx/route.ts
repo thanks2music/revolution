@@ -63,8 +63,9 @@ export async function POST(request: NextRequest) {
       // つまり SDK v10 の `flushIfServerless` による route handler の自動 flush は
       // **この経路には効かない**。Cloud Run はレスポンス送出完了 (= stream の close) 後に
       // CPU を throttle するので、close より後では送信が完了しない。
-      const sendError = async (error: string) => {
-        const eventData = `data: ${JSON.stringify({ error })}\n\n`;
+      // `event.canonicalKey` を付けると、画面にリセットのボタンが出る (既に記事があるイベントの時)
+      const sendError = async (error: string, event?: { canonicalKey: string }) => {
+        const eventData = `data: ${JSON.stringify(event ? { error, event } : { error })}\n\n`;
         controller.enqueue(encoder.encode(eventData));
         await flushSentry(2000);
         controller.close();
@@ -233,10 +234,6 @@ export async function POST(request: NextRequest) {
             //
             // 直すと「重複時に次の記事へ進む」という**振る舞いの変更**になるため、
             // 監視導入の本 PR には含めない (Follow-up として起票する)。
-            //
-            // 2026-11-14: 既に記事があるイベント (Firestore の記録が generated) は、service が
-            // DuplicateSlugError ではなくスキップ (`existingEvent` 付き) で返すようになった。
-            // 下の `result.existingEvent` の分岐で、理由と canonicalKey (リセットのボタン用) を返す。
             result = await mdxService.generateMdxFromRSS(generationRequest);
             generationSuccessful = true;
 
@@ -275,19 +272,15 @@ export async function POST(request: NextRequest) {
         }
 
         // 既に記事があるイベント: 理由と canonicalKey を返し、画面にリセットのボタンを出す
-        if (result.skipped && result.existingEvent) {
-          const eventData = `data: ${JSON.stringify({
-            error: result.skipReason,
-            event: { canonicalKey: result.existingEvent.canonicalKey },
-          })}\n\n`;
-          controller.enqueue(encoder.encode(eventData));
-          await flushSentry(2000);
-          controller.close();
+        if (result.skipKind === 'existing-event' && result.details) {
+          await sendError(result.skipReason ?? '既に記事があるイベントです', {
+            canonicalKey: result.details.canonicalKey,
+          });
           return;
         }
 
         if (!result.success) {
-          await sendError(result.error || result.skipReason || 'MDX記事の生成に失敗しました');
+          await sendError(result.error || 'MDX記事の生成に失敗しました');
           return;
         }
 
@@ -327,15 +320,7 @@ export async function POST(request: NextRequest) {
           const canonicalKey = canonicalKeyMatch ? canonicalKeyMatch[1] : error.slug;
 
           // Send error with canonical key for reset button
-          const eventData = `data: ${JSON.stringify({
-            error: error.message,
-            event: {
-              canonicalKey: canonicalKey,
-            }
-          })}\n\n`;
-          controller.enqueue(encoder.encode(eventData));
-          await flushSentry(2000);
-          controller.close();
+          await sendError(error.message, { canonicalKey });
           return;
         }
 

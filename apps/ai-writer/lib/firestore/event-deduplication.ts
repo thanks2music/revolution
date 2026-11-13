@@ -326,27 +326,6 @@ export async function getEventByCanonicalKey(
 }
 
 /**
- * Deletes an event document (for testing/cleanup only)
- *
- * @param {string} canonicalKey - Event canonical key
- * @returns {Promise<void>}
- *
- * @example
- * ```typescript
- * await deleteEvent("sample-work:avail:collabo-cafe:2025");
- * ```
- *
- * @internal Use only for testing or manual cleanup
- */
-export async function deleteEvent(canonicalKey: string): Promise<void> {
-  getAdminDb(); // Firebase Admin SDK初期化
-  const db = getFirestore();
-  const docRef = db.collection(FIRESTORE_COLLECTIONS.EVENT_CANONICAL_KEYS).doc(canonicalKey);
-
-  await docRef.delete();
-}
-
-/**
  * Queries events by status
  *
  * @param {EventStatus} status - Status to filter by

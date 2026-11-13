@@ -5,7 +5,7 @@
  * as long as the record says `generated` (`isDuplicate`).
  */
 import { describe, expect, it } from '@jest/globals';
-import { existingEventSkip } from '@/lib/firestore/existing-event-skip';
+import { existingEventSkipReason } from '@/lib/firestore/existing-event-skip';
 import type { DuplicationCheckResult, EventCanonicalKey } from '@/lib/firestore/types';
 
 const canonicalKey = 'sample-work:sample-store:collabo-cafe:2026';
@@ -26,24 +26,21 @@ function doc(status: EventCanonicalKey['status']): EventCanonicalKey {
   };
 }
 
-describe('existingEventSkip', () => {
+describe('existingEventSkipReason', () => {
   it('skips a generated record, and names the key and post_id', () => {
-    const check: DuplicationCheckResult = {
+    const reason = existingEventSkipReason({
       isDuplicate: true,
       existingDoc: doc('generated'),
       canonicalKey,
-    };
+    });
 
-    const result = existingEventSkip(check);
-
-    expect(result?.event).toEqual({ canonicalKey, postId });
-    expect(result?.reason).toContain(canonicalKey);
-    expect(result?.reason).toContain(postId);
-    expect(result?.reason).toContain('--update');
+    expect(reason).toContain(canonicalKey);
+    expect(reason).toContain(postId);
+    expect(reason).toContain('--update');
   });
 
   it('does not skip when there is no record', () => {
-    expect(existingEventSkip({ isDuplicate: false, canonicalKey })).toBeUndefined();
+    expect(existingEventSkipReason({ isDuplicate: false, canonicalKey })).toBeUndefined();
   });
 
   it.each(['pending', 'failed', 'retryable'] as const)(
@@ -55,16 +52,15 @@ describe('existingEventSkip', () => {
         canonicalKey,
       };
 
-      expect(existingEventSkip(check)).toBeUndefined();
+      expect(existingEventSkipReason(check)).toBeUndefined();
     }
   );
 
   it('still skips when isDuplicate is set without the document', () => {
     // Going on would make registerNewEvent throw "already exists" and report a failure
-    const result = existingEventSkip({ isDuplicate: true, canonicalKey });
+    const reason = existingEventSkipReason({ isDuplicate: true, canonicalKey });
 
-    expect(result?.event).toEqual({ canonicalKey, postId: undefined });
-    expect(result?.reason).toContain(canonicalKey);
-    expect(result?.reason).not.toContain('post_id');
+    expect(reason).toContain(canonicalKey);
+    expect(reason).not.toContain('post_id');
   });
 });
