@@ -62,5 +62,10 @@ jobs:
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+          # --permission-mode default: --allowedTools に無い操作をすべて拒否する。
+          #   claude-code-action v1.0.273 (2026-11-12) から既定は auto mode で、許可していない操作も安全審査を通れば動く。
+          #   レビューは読むことと投稿することしかしないので、許可リストを厳密にする
+          claude_args: |
+            --permission-mode default
+            --allowedTools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Read,Grep,Glob"
 
