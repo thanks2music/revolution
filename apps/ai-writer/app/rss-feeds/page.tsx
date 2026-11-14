@@ -22,6 +22,7 @@ export default function RssFeedsPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [togglingFeedId, setTogglingFeedId] = useState<string | null>(null);
 
   // 妥当性設定関連のstate
   const [selectedPreset, setSelectedPreset] = useState<string>('custom');
@@ -175,11 +176,16 @@ export default function RssFeedsPage() {
   };
 
   const handleToggleActive = async (feed: RssFeed) => {
+    // 連打で 2 回切り替わる (結果として元に戻る) のを防ぐ
+    if (togglingFeedId) return;
+    setTogglingFeedId(feed.id);
     try {
       await RssFeedService.updateFeed(feed.id, { isActive: !feed.isActive });
       await loadFeeds();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update feed');
+    } finally {
+      setTogglingFeedId(null);
     }
   };
 
@@ -515,7 +521,7 @@ export default function RssFeedsPage() {
                   </label>
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  有効なフィードだけが定期実行の候補になります。外すと、このフィードの記事は試しません。
+                  有効なフィードだけが定期実行の候補になります。外すと、定期実行の対象から外れます。
                 </p>
               </div>
 
@@ -601,9 +607,10 @@ export default function RssFeedsPage() {
                         <button
                           type="button"
                           onClick={() => handleToggleActive(feed)}
+                          disabled={togglingFeedId !== null}
                           title={feed.isActive ? 'クリックで無効にする' : 'クリックで有効にする'}
                           aria-label={`${feed.title || feed.url} を${feed.isActive ? '無効' : '有効'}にする`}
-                          className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold transition-colors ${
+                          className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60 ${
                             feed.isActive
                               ? 'border-green-300 bg-green-100 text-green-800 hover:bg-green-200'
                               : 'border-gray-300 bg-gray-100 text-gray-800 hover:bg-gray-200'
