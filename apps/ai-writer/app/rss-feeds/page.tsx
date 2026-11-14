@@ -501,6 +501,24 @@ export default function RssFeedsPage() {
                 </div>
               )}
 
+              <div>
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="isActive"
+                    checked={formData.isActive ?? true}
+                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                    className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                  />
+                  <label htmlFor="isActive" className="ml-2 text-sm font-medium text-gray-700">
+                    有効にする
+                  </label>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  有効なフィードだけが定期実行の候補になります。外すと、このフィードの記事は試しません。
+                </p>
+              </div>
+
               <div className="flex items-center gap-8">
                 <button
                   type="submit"
@@ -581,15 +599,20 @@ export default function RssFeedsPage() {
                       </td>
                       <td className="px-6 py-4">
                         <button
+                          type="button"
                           onClick={() => handleToggleActive(feed)}
-                          className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                          title={feed.isActive ? 'クリックで無効にする' : 'クリックで有効にする'}
+                          aria-label={`${feed.title || feed.url} を${feed.isActive ? '無効' : '有効'}にする`}
+                          className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold transition-colors ${
                             feed.isActive
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-gray-100 text-gray-800'
+                              ? 'border-green-300 bg-green-100 text-green-800 hover:bg-green-200'
+                              : 'border-gray-300 bg-gray-100 text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {feed.isActive ? '有効' : '無効'}
+                          <span aria-hidden="true">⇄</span>
                         </button>
+                        <div className="mt-1 text-xs text-gray-400">クリックで切り替え</div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {new Date(feed.createdAt).toLocaleDateString('ja-JP')}
