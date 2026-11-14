@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { classifyFetchError, pageNamesWork, probeOfficialSite } from '@/lib/archive-source/probe-official';
+import { classifyFetchError, pageNamesWork, probeOfficialSite, siteUnreachable } from '@/lib/archive-source/probe-official';
 
 const page = (raw: string) => async () => ({ compacted: raw, raw });
 const failing = (message: string) => async () => {
@@ -27,6 +27,40 @@ describe('pageNamesWork', () => {
 
   it('cannot check an empty title, so treats it as named', () => {
     expect(pageNamesWork('<p>anything</p>', ' ')).toBe(true);
+  });
+});
+
+describe('probeOfficialSite retries', () => {
+  it('tries once more after a timeout or a 5xx and uses the second answer', async () => {
+    let calls = 0;
+    const flaky = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('コンテンツHTMLの取得に失敗: https://a/ - HTTP error! status: 503 Service Unavailable');
+      return { compacted: '<p>Sample Work</p>', raw: '<p>Sample Work</p>' };
+    };
+    expect(await probeOfficialSite('https://official.example.com/', 'Sample Work', flaky)).toEqual({ status: 'alive' });
+    expect(calls).toBe(2);
+  });
+
+  it('does not retry a 404 or an unreachable site', async () => {
+    let calls = 0;
+    const missing = async () => {
+      calls += 1;
+      throw new Error('コンテンツHTMLの取得に失敗: https://a/ - HTTP error! status: 404 Not Found');
+    };
+    expect(await probeOfficialSite('https://official.example.com/', 'Sample Work', missing)).toEqual(
+      expect.objectContaining({ status: 'gone', reason: 'http-404' }),
+    );
+    expect(calls).toBe(1);
+  });
+});
+
+describe('siteUnreachable', () => {
+  it('is true only when the whole site cannot be reached', () => {
+    expect(siteUnreachable('unreachable')).toBe(true);
+    expect(siteUnreachable('timeout')).toBe(true);
+    expect(siteUnreachable('http-404')).toBe(false);
+    expect(siteUnreachable('title-mismatch')).toBe(false);
   });
 });
 

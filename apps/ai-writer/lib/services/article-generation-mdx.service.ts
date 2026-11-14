@@ -62,6 +62,7 @@ import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label'
 import { loadYamlConfig } from '../config/yaml-loader';
 import { pageUrlKey, stripUtmFromUrl } from '../utils/url';
 import { removeLinksToClosedSite, withoutOfficialUrls } from '../utils/without-official-urls';
+import { siteUnreachable } from '../archive-source/probe-official';
 import { escapeMdxText, selfCloseVoidElements } from '../utils/mdx-safety';
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import {
@@ -1584,9 +1585,10 @@ export class ArticleGenerationMdxService {
           // Sprint C-β P14: collabo-cafe.com origin の utm パラメータを LLM プロンプト入力
           // 段階で剥がす (LLM が本文テーブル markdown link に utm 付き URL をそのまま
           // 反映する経路の防御)。
-          公式サイトURL: articleOfficialUrl(selectionResult.primary_official_url)
-            ? stripUtmFromUrl(selectionResult.primary_official_url!)
-            : undefined,
+          公式サイトURL: (() => {
+            const url = articleOfficialUrl(selectionResult.primary_official_url);
+            return url ? stripUtmFromUrl(url) : undefined;
+          })(),
           キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
           テーマ名: detailedExtraction.テーマ名 ?? undefined,
           描き下ろし表記,
@@ -1690,7 +1692,11 @@ export class ArticleGenerationMdxService {
       // 公式サイトが閉じている記事: 本文の LLM が書いた閉じたサイトへの案内 (表の行と文) を除く。
       // 入力のページ (アーカイブの記事) に閉じたサイトのリンクが残っているので、同じホストへのリンクをすべて対象にする
       if (unlinkOfficialSite) {
-        const unlinked = removeLinksToClosedSite(finalContent, sourceOverride.officialUrl);
+        const unlinked = removeLinksToClosedSite(
+          finalContent,
+          sourceOverride.officialUrl,
+          siteUnreachable(sourceOverride.reason) ? 'host' : 'page',
+        );
         finalContent = unlinked.content;
         if (unlinked.removed.length > 0) {
           console.warn(

@@ -51,8 +51,8 @@ describe('removeLinksToClosedSite', () => {
     'Goods are on sale.',
   ].join('\n');
 
-  it('removes every line with a link to the closed host, whatever the path or spelling, and empty links', () => {
-    const { content, removed } = removeLinksToClosedSite(article, 'https://gone.example.com/event/');
+  it('with the host scope, removes every line linking to the closed host, whatever the path or spelling', () => {
+    const { content, removed } = removeLinksToClosedSite(article, 'https://gone.example.com/event/', 'host');
     expect(content).toBe(
       [
         '| 項目 | 内容 |',
@@ -67,8 +67,19 @@ describe('removeLinksToClosedSite', () => {
     expect(removed).toHaveLength(5);
   });
 
+  it('with the page scope, removes only links to that page (ignoring case, www, a trailing slash and the query)', () => {
+    const text = [
+      '| Event | [page](https://WWW.gone.example.com/event?utm_source=x) |',
+      '| Store | [store](https://gone.example.com/stores/) |',
+      'Read [the page](https://gone.example.com/event/) for details.',
+    ].join('\n');
+    const { content, removed } = removeLinksToClosedSite(text, 'https://gone.example.com/event/', 'page');
+    expect(content).toBe('| Store | [store](https://gone.example.com/stores/) |');
+    expect(removed).toHaveLength(2);
+  });
+
   it('still removes empty links when the closed URL cannot be parsed', () => {
-    const { content } = removeLinksToClosedSite('| Empty | [page]() |\nkeep', 'not a url');
+    const { content } = removeLinksToClosedSite('| Empty | [page]() |\nkeep', 'not a url', 'host');
     expect(content).toBe('keep');
   });
 });

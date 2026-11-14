@@ -59,22 +59,26 @@ export function collectSectionImages(
     }
     if (!afterFirstHeading) continue;
     const found = element.is('img') ? [node] : element.find('img').toArray();
-    const urls = found
-      .map((img) => archiveImageUrl($(img), articleUrl, rules))
-      .filter((url): url is string => url !== null && !seen.has(url));
-    urls.forEach((url) => seen.add(url));
+    const urls: string[] = [];
+    for (const img of found) {
+      const url = archiveImageUrl($(img), articleUrl, rules);
+      if (url && !seen.has(url)) {
+        seen.add(url);
+        urls.push(url);
+      }
+    }
     if (current) {
       sectionHtml[current] += $.html(element);
       images[current].push(...urls);
     } else {
       unsortedHtml += $.html(element);
-      unsorted.push(...new Set(urls));
+      unsorted.push(...urls);
     }
   }
 
   const fallback = eventType ? rules.default_category_by_event_type[eventType] : undefined;
   if (fallback && CATEGORIES.every((category) => images[category].length === 0)) {
-    images[fallback] = [...new Set(unsorted)];
+    images[fallback] = unsorted;
     sectionHtml[fallback] = unsortedHtml;
   }
   return { ...images, sectionHtml };

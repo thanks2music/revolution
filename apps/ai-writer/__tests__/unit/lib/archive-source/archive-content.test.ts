@@ -28,6 +28,11 @@ describe('collectSectionImages', () => {
     expect(images.goods).toEqual([uploads('goods-1.jpg')]);
   });
 
+  it('does not repeat an image used twice in one block', () => {
+    const twice = collectSectionImages('<h2>メニュー</h2><p><img src="/wp-content/uploads/a.jpg"><img src="/wp-content/uploads/a.jpg"></p>', ARTICLE_URL, SOURCE.images);
+    expect(twice.menu).toEqual([uploads('a.jpg')]);
+  });
+
   it('does not use images before the first category heading or in other sections', () => {
     const all = [...images.menu, ...images.novelty, ...images.goods];
     expect(all).not.toContain(uploads('kv.jpg'));

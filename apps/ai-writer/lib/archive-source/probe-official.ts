@@ -23,17 +23,34 @@ export async function probeOfficialSite(
   workTitle: string,
   fetchContent: FetchContent,
 ): Promise<OfficialSiteProbe> {
-  let page: ContentHtmlResult;
-  try {
-    page = await fetchContent(officialUrl);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return { status: 'gone', reason: classifyFetchError(detail), detail };
+  let page: ContentHtmlResult | undefined;
+  let failure: { reason: OfficialSiteGoneReason; detail: string } | undefined;
+  // A timeout, 429 or 5xx can be passing, so one more try before calling the site gone
+  for (let attempt = 1; attempt <= 2 && !page; attempt++) {
+    try {
+      page = await fetchContent(officialUrl);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      failure = { reason: classifyFetchError(detail), detail };
+      if (!isTransient(failure.reason)) break;
+    }
   }
+  if (!page) return { status: 'gone', reason: failure?.reason ?? 'unreachable', detail: failure?.detail ?? '' };
   if (!pageNamesWork(page.raw, workTitle)) {
     return { status: 'gone', reason: 'title-mismatch', detail: `the page does not contain "${workTitle}"` };
   }
   return { status: 'alive' };
+}
+
+function isTransient(reason: OfficialSiteGoneReason): boolean {
+  if (reason === 'timeout') return true;
+  const status = reason.startsWith('http-') ? Number(reason.slice(5)) : 0;
+  return status === 429 || status >= 500;
+}
+
+/** Whether the reason means the whole site cannot be reached (its domain may be closed), not just one page */
+export function siteUnreachable(reason: string): boolean {
+  return reason === 'unreachable' || reason === 'timeout';
 }
 
 /** Maps the error messages of `extractContentHtml` to a reason */

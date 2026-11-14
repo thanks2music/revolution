@@ -27,30 +27,40 @@ const EMPTY_LINK_MARKERS = ['{{公式サイトURL}}', ']()'];
 const URL_PATTERN = /https?:\/\/[^\s)\]>"'|]+/gi;
 
 /**
- * Removes the lines that point readers to the closed site: any line with a URL on the same host
- * (ignoring case and a leading `www.`, so other pages and other spellings of the URL are caught too)
- * or with an empty official-site link. The article text writes such a pointer as one table row or
- * one sentence. Returns the removed lines so the caller can log them.
+ * Removes the lines that point readers to the closed site, or with an empty official-site link. The
+ * article text writes such a pointer as one table row or one sentence. URLs are compared ignoring
+ * case, a leading `www.`, a trailing `/`, the query and the hash; with `scope: 'host'` (the whole
+ * site is unreachable) every page on the host counts, with `scope: 'page'` (only that page is gone)
+ * just the page. Returns the removed lines so the caller can log them.
  */
 export function removeLinksToClosedSite(
   markdown: string,
   closedSiteUrl: string,
+  scope: 'host' | 'page',
 ): { content: string; removed: string[] } {
-  const closedHost = hostKey(closedSiteUrl);
+  const closed = urlKey(closedSiteUrl);
+  const matches = (url: string): boolean => {
+    const key = urlKey(url);
+    if (!closed || !key) return false;
+    return scope === 'host' ? key.host === closed.host : key.host === closed.host && key.path === closed.path;
+  };
   const removed: string[] = [];
   const kept = markdown.split('\n').filter((line) => {
     const linksToClosedSite =
-      EMPTY_LINK_MARKERS.some((marker) => line.includes(marker)) ||
-      (closedHost !== null && (line.match(URL_PATTERN) ?? []).some((url) => hostKey(url) === closedHost));
+      EMPTY_LINK_MARKERS.some((marker) => line.includes(marker)) || (line.match(URL_PATTERN) ?? []).some(matches);
     if (linksToClosedSite) removed.push(line);
     return !linksToClosedSite;
   });
   return { content: kept.join('\n'), removed };
 }
 
-function hostKey(url: string): string | null {
+function urlKey(url: string): { host: string; path: string } | null {
   try {
-    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname.toLowerCase().replace(/^www\./, ''),
+      path: decodeURI(parsed.pathname).replace(/\/+$/, ''),
+    };
   } catch {
     return null;
   }

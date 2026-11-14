@@ -302,14 +302,14 @@ function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
   return { cleanup };
 }
 
-/**
- * メインデバッグフロー
- */
 /** アーカイブの記事をどう使うかを表示する */
 function printArchivePlan(plan: ArchiveRunPlan): void {
   const { article } = plan;
   console.log('🗄️  アーカイブの記事を受け取りました');
   console.log(`  開催: ${article.startsOn ?? '不明'} 〜 ${article.endsOn ?? '不明'} (記事の年: ${plan.eventYear ?? '現在の年'})`);
+  if (plan.eventYear === undefined) {
+    console.warn('  ⚠️  アーカイブに開始日が無いため、記事の年と、年の無い日付が今年になります。生成された記事の年を必ず確かめてください');
+  }
   console.log(`  種別: ${article.eventType ?? '不明'} / 公式サイト: ${article.officialUrl}`);
   if (plan.mode === 'official') {
     console.log('  → 公式サイトが生きているので、公式サイトから作ります (アーカイブの文章と画像は使いません)');
@@ -323,6 +323,9 @@ function printArchivePlan(plan: ArchiveRunPlan): void {
   console.log();
 }
 
+/**
+ * メインデバッグフロー
+ */
 async function main() {
   // コマンドライン引数をパース
   const parsed = parseArgs();
