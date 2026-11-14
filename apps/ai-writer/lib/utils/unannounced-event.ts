@@ -59,7 +59,7 @@ const DEFAULT_REQUIRED_ANY: readonly ItemCategory[] = ['menu', 'goods', 'novelty
  * (the earliest valid `starts_on`, or `開催期間.開始` read by `toIsoDate`).
  * Using a looser test here would let an event through that is then written without a date.
  */
-function articleStartDate(extraction: ScheduleFields): string | undefined {
+export function articleStartDate(extraction: ScheduleFields): string | undefined {
   const parsed = parseAndNormalizeEventData({ rawEventData: extraction.event_data, period: extraction.開催期間 });
   return extractEventFactCardFields({
     eventDataOccurrences: parsed.status === 'ok' ? parsed.occurrences : undefined,
