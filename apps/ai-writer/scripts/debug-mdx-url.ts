@@ -75,6 +75,11 @@ import {
 import { ArticleGenerationMdxService } from '../lib/services/article-generation-mdx.service';
 import type { MdxGenerationRequest, ArticleUpdateTarget } from '../lib/services/article-generation-mdx.service';
 
+// 試した URL の記録 (定期実行と共有)
+import { getAdminDb } from '../lib/firebase/admin';
+import { AttemptStore } from '../lib/scheduled/attempt-store';
+import { recordCliAttempt } from '../lib/scheduled/record-cli-attempt';
+
 // 公開中の記事の更新 (--update)
 import { fetchArticleFromMain } from '../lib/github/update-mdx-pr';
 import { GitHubAuthError } from '../lib/errors/github';
@@ -472,7 +477,7 @@ async function main() {
     });
     if (archivePlan) printArchivePlan(archivePlan);
 
-    const { title, html, actualUrl } = await extractArticleData(archivePlan?.inputUrl ?? url);
+    const { title, html, actualUrl, pageHtml } = await extractArticleData(archivePlan?.inputUrl ?? url);
 
     console.log(`✅ タイトル: ${title}`);
     console.log(`✅ HTML: ${html.length} bytes`);
@@ -549,6 +554,14 @@ async function main() {
       });
     }
     notification = pipelineNotificationFromResult(result, notifyContext);
+
+    // PR を作る本実行の結果は、定期実行と同じ「試した URL」に残す (Job がこの URL をもう一度試さないように)。
+    // dry-run・local・画像アップロード・記事の更新は記録しない。
+    // アーカイブの記事から作った時: 公式サイトが生きていれば公式 URL (ここでの actualUrl) で残し、閉じていれば残さない
+    // (閉じたサイトの URL は定期実行の候補に来ない。one-more-time docs/adr/0004)
+    if (mode === 'pr' && !updateTarget && archivePlan?.mode !== 'archive') {
+      await recordCliAttempt(() => new AttemptStore(getAdminDb()), { url: actualUrl, title, pageHtml, result });
+    }
 
     // ========================================
     // STEP 3: 結果表示

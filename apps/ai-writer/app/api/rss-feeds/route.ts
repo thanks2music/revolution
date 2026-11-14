@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb } from '../../../lib/firebase/admin';
 import { requireAuth } from '@/lib/auth/server-auth';
 import type { RssFeed } from '../../../lib/types/rss-feed';
+import { rssFeedFromDoc } from '../../../lib/firestore/rss-feed-doc';
 
 // Force dynamic rendering to prevent build-time execution
 export const dynamic = 'force-dynamic';
@@ -31,22 +32,7 @@ export async function GET(request: NextRequest) {
 
     const snapshot = await query.get();
 
-    const feeds: RssFeed[] = snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        url: data.url,
-        title: data.title,
-        description: data.description,
-        siteUrl: data.siteUrl,
-        isActive: data.isActive,
-        validationConfig: data.validationConfig || undefined,
-        lastFetchedAt: data.lastFetchedAt?.toDate(),
-        createdAt: data.createdAt.toDate(),
-        updatedAt: data.updatedAt.toDate(),
-        createdBy: data.createdBy,
-      };
-    });
+    const feeds: RssFeed[] = snapshot.docs.map((doc) => rssFeedFromDoc(doc.id, doc.data()));
 
     console.log(`[API] Found ${feeds.length} RSS feeds`);
 

@@ -110,7 +110,7 @@ export function redactSecrets(value: string): string {
  * 値を安全に埋め込む (伏せ字 → 切り詰め → エスケープ)。
  * エスケープの後で切ると `&amp;` の途中で切れて表示が崩れるため、切ってからエスケープする
  */
-function safe(value: string, max: number): string {
+export function safe(value: string, max: number): string {
   return escapeSlackText(truncate(redactSecrets(value), max));
 }
 
