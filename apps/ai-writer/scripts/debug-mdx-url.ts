@@ -58,7 +58,12 @@ const __dirname = dirname(__filename);
 config({ path: resolve(__dirname, '../.env.local') });
 
 // HTML + タイトル抽出
-import { extractArticleData } from '../lib/utils/html-extractor';
+import { extractArticleData, extractContentHtml } from '../lib/utils/html-extractor';
+
+// アーカイブの記事 (過去のイベント) の取り込み。設定 (templates/config/archive-sources.yaml) が無ければ何もしない
+import { loadArchiveSources } from '../lib/archive-source/config';
+import { planArchiveRun, type ArchiveRunPlan } from '../lib/archive-source/plan-run';
+import { extractFromRss } from '../lib/claude/rss-extractor';
 
 // AI ステップの観測ログ
 import {
@@ -295,6 +300,24 @@ function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
 /**
  * メインデバッグフロー
  */
+/** アーカイブの記事をどう使うかを表示する */
+function printArchivePlan(plan: ArchiveRunPlan): void {
+  const { article } = plan;
+  console.log('🗄️  アーカイブの記事を受け取りました');
+  console.log(`  開催: ${article.startsOn ?? '不明'} 〜 ${article.endsOn ?? '不明'} (記事の年: ${plan.eventYear ?? '現在の年'})`);
+  console.log(`  種別: ${article.eventType ?? '不明'} / 公式サイト: ${article.officialUrl}`);
+  if (plan.mode === 'official') {
+    console.log('  → 公式サイトが生きているので、公式サイトから作ります (アーカイブの文章と画像は使いません)');
+  } else {
+    const { categoryImages } = plan.sourceOverride;
+    console.log(`  → 公式サイトを使えません (${plan.reason}: ${plan.detail})`);
+    console.log(
+      `  → アーカイブの記事から作ります (画像: メニュー ${categoryImages.menu.length} / ノベルティ ${categoryImages.novelty.length} / グッズ ${categoryImages.goods.length}、アイキャッチ ${plan.sourceOverride.ogImage ? 'あり' : 'なし'})`,
+    );
+  }
+  console.log();
+}
+
 async function main() {
   // コマンドライン引数をパース
   const parsed = parseArgs();
@@ -437,7 +460,19 @@ async function main() {
     // ========================================
     console.log('📄 STEP 1: HTMLとタイトルを取得中...');
 
-    const { title, html, actualUrl } = await extractArticleData(url);
+    // アーカイブの記事なら、公式サイトから作るか、アーカイブの記事から作るかを決める
+    const archivePlan = await planArchiveRun(url, {
+      sources: loadArchiveSources(),
+      fetchContent: extractContentHtml,
+      extractWork: async (input) => {
+        const work = await extractFromRss(input);
+        console.log(`  作品名の確認 (${work.model}): ${work.workTitle}`, work.usage ?? '');
+        return work;
+      },
+    });
+    if (archivePlan) printArchivePlan(archivePlan);
+
+    const { title, html, actualUrl } = await extractArticleData(archivePlan?.inputUrl ?? url);
 
     console.log(`✅ タイトル: ${title}`);
     console.log(`✅ HTML: ${html.length} bytes`);
@@ -486,9 +521,33 @@ async function main() {
       // --upload-images モード: localOnly=true を渡すことで、Firestore/GitHub はスキップしつつ R2 アップロードを実行
       localOnly: uploadImages,
       update: updateTarget,
+      eventYear: archivePlan?.eventYear,
+      ...(archivePlan?.mode === 'archive'
+        ? { sourceOverride: archivePlan.sourceOverride, extracted: archivePlan.extracted }
+        : {}),
     };
 
-    const result = await service.generateMdxFromRSS(request);
+    let result = await service.generateMdxFromRSS(request);
+
+    // アーカイブの記事で、公式サイトから作ったら詳細未発表で止まった: 終わったイベントは公式サイトから品目が消えやすいので、
+    // アーカイブの記事を正にして作り直す (one-more-time docs/adr/0004)
+    if (archivePlan?.mode === 'official' && result.skipKind === 'unannounced-event') {
+      const { fallback } = archivePlan;
+      console.log(`\n🗄️  公式サイトから作れなかったため (${result.skipReason})、アーカイブの記事から作り直します\n`);
+      const archivePage = await extractArticleData(fallback.inputUrl);
+      result = await service.generateMdxFromRSS({
+        ...request,
+        rssItem: {
+          ...request.rssItem,
+          title: archivePage.title,
+          link: archivePage.actualUrl,
+          content: archivePage.html,
+          contentSnippet: archivePage.html.substring(0, 500),
+        },
+        sourceOverride: fallback.sourceOverride,
+        extracted: fallback.extracted,
+      });
+    }
     notification = pipelineNotificationFromResult(result, notifyContext);
 
     // ========================================
