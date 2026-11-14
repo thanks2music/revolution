@@ -129,6 +129,8 @@ jobs:
 
       # 環境変数は Service と同じものに、Slack の送り先と R2 を足す。値は variables と Secret Manager から読む。
       # ⚠️ Service (deploy-ai-writer.yml の --set-env-vars / --set-secrets) に足した変数は、ここにも足すこと
+      # --set-env-vars は区切りを ## にしている (gcloud の ^<区切り>^ の書き方)。値にカンマが入っても壊れない。
+      #   @ は Sentry の DSN に入るので区切りに使わない
       #   (Job は定期実行の時にしか動かないので、欠けていると気づくのが遅れる)
       - name: Deploy the job
         id: deploy
@@ -142,7 +144,7 @@ jobs:
             --task-timeout 3600s \
             --memory 2Gi \
             --cpu 2 \
-            --set-env-vars "NODE_ENV=production,AI_PROVIDER=google,VISION_API_PROVIDER=google,GITHUB_OWNER=${{ github.repository_owner }},GITHUB_REPO=${{ github.event.repository.name }},GITHUB_BASE_BRANCH=main,SENTRY_DSN=${{ vars.SENTRY_DSN_AI_WRITER }},SENTRY_ENVIRONMENT=production,ANTHROPIC_FEDERATION_RULE_ID=${{ vars.ANTHROPIC_FEDERATION_RULE_ID }},ANTHROPIC_ORGANIZATION_ID=${{ vars.ANTHROPIC_ORGANIZATION_ID }},ANTHROPIC_SERVICE_ACCOUNT_ID=${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }},ANTHROPIC_WORKSPACE_ID=${{ vars.ANTHROPIC_WORKSPACE_ID }},SLACK_CHANNEL_ID=${{ vars.SLACK_CHANNEL_PROD }},SLACK_MENTION_USER_ID=${{ vars.SLACK_MENTION_USER_ID }},R2_BUCKET_NAME=${{ vars.R2_BUCKET_NAME }},R2_PUBLIC_URL=${{ vars.R2_PUBLIC_URL }}" \
+            --set-env-vars "^##^NODE_ENV=production##AI_PROVIDER=google##VISION_API_PROVIDER=google##GITHUB_OWNER=${{ github.repository_owner }}##GITHUB_REPO=${{ github.event.repository.name }}##GITHUB_BASE_BRANCH=main##SENTRY_DSN=${{ vars.SENTRY_DSN_AI_WRITER }}##SENTRY_ENVIRONMENT=production##ANTHROPIC_FEDERATION_RULE_ID=${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}##ANTHROPIC_ORGANIZATION_ID=${{ vars.ANTHROPIC_ORGANIZATION_ID }}##ANTHROPIC_SERVICE_ACCOUNT_ID=${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}##ANTHROPIC_WORKSPACE_ID=${{ vars.ANTHROPIC_WORKSPACE_ID }}##SLACK_CHANNEL_ID=${{ vars.SLACK_CHANNEL_PROD }}##SLACK_MENTION_USER_ID=${{ vars.SLACK_MENTION_USER_ID }}##R2_BUCKET_NAME=${{ vars.R2_BUCKET_NAME }}##R2_PUBLIC_URL=${{ vars.R2_PUBLIC_URL }}" \
             --set-secrets "GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest,SLACK_BOT_TOKEN=SLACK_BOT_TOKEN:latest,R2_ACCESS_KEY_ID=R2_ACCESS_KEY_ID:latest,R2_SECRET_ACCESS_KEY=R2_SECRET_ACCESS_KEY:latest,R2_ENDPOINT_URL=R2_ENDPOINT_URL:latest"
 
       - name: Build the Slack message
