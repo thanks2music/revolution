@@ -96,8 +96,9 @@ jobs:
           TEMPLATES_SOURCE_PATH: ${{ github.workspace }}/.templates-src
           SYNCED_BY: github-actions
         run: |
-          bash scripts/sync-templates.sh --force-yes
+          # 取得できた版を先に出しておく (同期が失敗しても、Slack にどの版で止まったかが出る)
           echo "short=$(git -C .templates-src rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          bash scripts/sync-templates.sh --force-yes
           rm -rf .templates-src
 
       - name: Authenticate to Google Cloud
@@ -171,4 +172,4 @@ jobs:
           auto-test-mode: 'false'
           mention: "${{ job.status != 'success' && vars.SLACK_MENTION_USER_ID || '' }}"
           text: ${{ steps.msg.outputs.text }}
-          body: "*Commit*: <${{ github.server_url }}/${{ github.repository }}/commit/${{ env.REV_SHA }}|${{ env.REV_SHA }}> · *Templates*: ${{ steps.templates.outputs.short || '(取得前に止まった)' }} · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|run>"
+          body: "*Commit*: <${{ github.server_url }}/${{ github.repository }}/commit/${{ env.REV_SHA }}|${{ env.REV_SHA }}> · *Templates*: ${{ steps.templates.outputs.short || '(取得できなかった)' }} · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|run>"
