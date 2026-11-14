@@ -1,0 +1,67 @@
+/**
+ * Decides whether an event's official site can still be the article's source.
+ *
+ * The site is treated as gone when it cannot be fetched (DNS, TLS, HTTP error, timeout), or when the
+ * page no longer names the work (the URL was reused for another event). A 403 counts as gone too:
+ * the pipeline reads the site with the same fetch, so it could not build the article from it either.
+ *
+ * @module lib/archive-source/probe-official
+ */
+import type { ContentHtmlResult } from '@/lib/utils/html-extractor';
+
+export type OfficialSiteProbe =
+  | { status: 'alive' }
+  | { status: 'gone'; reason: OfficialSiteGoneReason; detail: string };
+
+/** `http-<status>` for HTTP errors */
+export type OfficialSiteGoneReason = 'unreachable' | 'timeout' | 'title-mismatch' | `http-${number}`;
+
+export type FetchContent = (url: string) => Promise<ContentHtmlResult>;
+
+export async function probeOfficialSite(
+  officialUrl: string,
+  workTitle: string,
+  fetchContent: FetchContent,
+): Promise<OfficialSiteProbe> {
+  let page: ContentHtmlResult;
+  try {
+    page = await fetchContent(officialUrl);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { status: 'gone', reason: classifyFetchError(detail), detail };
+  }
+  if (!pageNamesWork(page.raw, workTitle)) {
+    return { status: 'gone', reason: 'title-mismatch', detail: `the page does not contain "${workTitle}"` };
+  }
+  return { status: 'alive' };
+}
+
+/** Maps the error messages of `extractContentHtml` to a reason */
+export function classifyFetchError(message: string): OfficialSiteGoneReason {
+  const http = message.match(/HTTP error! status: (\d{3})/);
+  if (http) return `http-${Number(http[1])}`;
+  if (/タイムアウト|timed? ?out|AbortError/i.test(message)) return 'timeout';
+  return 'unreachable';
+}
+
+/**
+ * Whether the page text contains the work title, ignoring width, case, spaces and punctuation
+ * (official sites write 「」, full-width marks and spaces differently from the archive).
+ * An empty title cannot be checked and counts as named.
+ */
+export function pageNamesWork(pageHtml: string, workTitle: string): boolean {
+  const title = normalizeForMatch(workTitle);
+  if (title.length === 0) return true;
+  return normalizeForMatch(stripTags(pageHtml)).includes(title);
+}
+
+function stripTags(html: string): string {
+  return html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');
+}
+
+function normalizeForMatch(text: string): string {
+  return text
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]/gu, '');
+}
