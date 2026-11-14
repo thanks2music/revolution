@@ -116,6 +116,11 @@ export interface ExtractionRequest {
    */
   official_urls?: string[];
   /**
+   * The year given to dates written without one (the event's year for past events; the current year
+   * when omitted). Shown to the LLM as the input field 「基準年」, which 2-extraction.yaml refers to
+   */
+  reference_year?: number;
+  /**
    * 観測ログ (`AiCallRecord.context`) へそのまま載せる追加情報。
    *
    * ⚠️ **プロンプトへ混ぜてはならない。** 呼び出し側 (会場の網羅性ゲート) は
@@ -476,7 +481,8 @@ export class ExtractionService {
         response.content,
         request.primary_official_url,
         response.model,
-        response.usage
+        response.usage,
+        request.reference_year,
       );
 
       console.log('[Extraction] 抽出完了:', {
@@ -525,6 +531,7 @@ ${rulesSection}
 ## 入力データ
 
 - primary_official_url: ${request.primary_official_url}
+- 基準年: ${referenceYearOf(request)}年
 - 公式サイトの著作権表記: ${copyrightNotices.length > 0 ? JSON.stringify(copyrightNotices) : 'なし'}
 - ページコンテンツ:
 
@@ -617,13 +624,15 @@ ${schemaStr}
    * @param officialUrl 公式サイトURL
    * @param model 使用したモデル名
    * @param usage トークン使用量
+   * @param referenceYear 年の無い開始日に補う年 (省略時は現在の年)
    * @returns パース済みの抽出結果
    */
   private parseResponse(
     response: string,
     officialUrl: string,
     model?: string,
-    usage?: TokenUsage
+    usage?: TokenUsage,
+    referenceYear?: number,
   ): ExtractionResult {
     try {
       let jsonData: any;
@@ -701,7 +710,7 @@ ${schemaStr}
       }
 
       // 開催期間の新構造を構築（年またぎ対応 v2.0.0）
-      const currentYear = new Date().getFullYear().toString() + '年';
+      const currentYear = `${referenceYearOf({ reference_year: referenceYear })}年`;
       const eventPeriod: EventPeriod = {
         開始: {
           年: jsonData.開催期間?.開始?.年 || currentYear,
@@ -853,3 +862,8 @@ export const extractionService = {
   extractFromOfficialSite: (request: ExtractionRequest) =>
     getExtractionService().extractFromOfficialSite(request),
 };
+
+/** The year for dates written without one: `reference_year`, or the current year */
+function referenceYearOf(request: Pick<ExtractionRequest, 'reference_year'>): number {
+  return request.reference_year ?? new Date().getFullYear();
+}
