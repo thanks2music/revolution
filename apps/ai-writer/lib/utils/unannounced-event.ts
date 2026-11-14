@@ -18,6 +18,10 @@
  * a skip. That fails safe: the article is not written with guessed content, and the
  * reason reaches Slack so a person can run it again.
  *
+ * The start date is read from the page text only. A page that shows its dates only in an
+ * image (some cafe sites do) is skipped too, and the reason says so. Reading dates from
+ * images with Vision was judged not worth the cost for now (2026-11-14).
+ *
  * The schedule check runs right after detail extraction (before the paid subpage and
  * Vision steps). The item check runs after Vision, when all three sources have been
  * merged, and before duplication-check (so no Firestore record is left behind).
@@ -78,8 +82,8 @@ export function unannouncedScheduleReason(extraction: ScheduleFields): string | 
   const venue = extraction.店舗名 ?? '';
   const venueKnown = venue.trim().length > 0 && validateVenueLabel(venue) === null;
   return venueKnown
-    ? `詳細未発表のためスキップ: 開催日程が未発表 (会場「${venue}」は発表済み、開始日が無い)`
-    : '詳細未発表のためスキップ: 第一報のみ (会場も開催日程も未発表)';
+    ? `詳細未発表のためスキップ: 開始日を読み取れない (未発表、または画像にだけ書かれている。会場「${venue}」は発表済み)`
+    : '詳細未発表のためスキップ: 第一報のみ (会場も開始日も読み取れない)';
 }
 
 /** Which item categories have at least one item after all extraction steps */

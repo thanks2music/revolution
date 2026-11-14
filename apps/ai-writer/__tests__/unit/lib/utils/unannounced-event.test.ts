@@ -49,8 +49,9 @@ describe('unannouncedScheduleReason', () => {
 
   it('skips "venue known, dates unknown" (condition 2)', () => {
     const reason = unannouncedScheduleReason({ 店舗名: 'Sample Cafe Tokyo', 開催期間: period('') });
-    expect(reason).toContain('開催日程が未発表');
+    expect(reason).toContain('開始日を読み取れない');
     expect(reason).toContain('Sample Cafe Tokyo');
+    expect(reason).toContain('画像にだけ書かれている');
   });
 
   it.each(['未定', '後日発表', ''])('skips the first announcement only when the venue is "%s" (condition 1)', (venue) => {
@@ -60,7 +61,7 @@ describe('unannouncedScheduleReason', () => {
 
   it('does not take words such as 後日発表 as a start date', () => {
     expect(unannouncedScheduleReason({ 店舗名: 'Sample Cafe Tokyo', 開催期間: period('後日発表') })).toContain(
-      '開催日程が未発表'
+      '開始日を読み取れない'
     );
   });
 
@@ -70,7 +71,7 @@ describe('unannouncedScheduleReason', () => {
       開催期間: period(''),
       event_data: { occurrences: [{ starts_on: '未定' }] },
     });
-    expect(reason).toContain('開催日程が未発表');
+    expect(reason).toContain('開始日を読み取れない');
   });
 });
 
