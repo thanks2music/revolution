@@ -92,4 +92,9 @@ describe('isCloudRun', () => {
     expect(isCloudRun({} as NodeJS.ProcessEnv)).toBe(false);
     expect(isCloudRun({ K_SERVICE: '  ' } as NodeJS.ProcessEnv)).toBe(false);
   });
+
+  it('Cloud Run Jobs (CLOUD_RUN_JOB) も Cloud Run として扱う', () => {
+    expect(isCloudRun({ CLOUD_RUN_JOB: 'ai-writer-job' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(isCloudRun({ CLOUD_RUN_JOB: '' } as NodeJS.ProcessEnv)).toBe(false);
+  });
 });
