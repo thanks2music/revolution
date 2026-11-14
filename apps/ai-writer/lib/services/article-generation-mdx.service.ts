@@ -31,8 +31,8 @@ import {
   checkEventDuplication,
   registerNewEvent,
   updateEventStatus,
-  deleteEvent,
 } from '../firestore/event-deduplication';
+import { existingEventSkipReason } from '../firestore/existing-event-skip';
 import { type EventCanonicalKey } from '../firestore/types';
 import {
   resolveWorkSlug,
@@ -45,8 +45,6 @@ import {
   getSlugAliases,
 } from '../config/slug-resolver';
 import { alignEventDataSlugs } from '../utils/align-event-data-slugs';
-import { DuplicateSlugError } from '../errors/github';
-import { getPrStatusByCanonicalKey } from '../github/pr-status';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { extractArticleHtml, extractContentHtml, extractOgImageUrl, extractPageLinks } from '../utils/html-extractor';
@@ -270,8 +268,10 @@ export interface ArticleUpdateTarget {
  */
 export interface MdxGenerationResult {
   success: boolean;
-  skipped?: boolean; // 記事選別でスキップされた場合
+  skipped?: boolean; // 記事にしなかった場合 (記事選別・抽出の失敗・既に記事があるイベントなど)
   skipReason?: string; // スキップ理由
+  /** 既に記事があるイベントでスキップした時は 'existing-event' (その時は details に既存の記録が入る) */
+  skipKind?: 'existing-event';
   mdxArticle?: MdxArticle;
   prResult?: CreateMdxPrResult;
   eventRecord?: EventCanonicalKey;
@@ -874,36 +874,27 @@ export class ArticleGenerationMdxService {
           resolvedSlugs,
         });
 
-        if (duplicationCheck.isDuplicate && duplicationCheck.existingDoc) {
-          console.log('⚠️ 重複イベントを検出:', duplicationCheck.canonicalKey);
+        // 既に記事があるイベント (記録が generated) は、PR の状態に関係なくスキップする。
+        // 以前は開いた PR が無いと記録を消して作り直していたが、GitHub の is:closed は
+        // マージ済みの PR も含むため、マージ済みの記事を毎回作り直していた (定期実行で同じ記事の PR が毎回できる)
+        const existingSkipReason = existingEventSkipReason(duplicationCheck);
+        if (existingSkipReason) {
+          console.log(`⏭️ ${getStepContext('duplication-check')} ${existingSkipReason}`);
+          console.log('========== MDXパイプライン: 記事生成スキップ ==========\n');
 
-          // Check if the corresponding GitHub PR is still open
-          console.log('GitHub PRの状態を確認中...');
-          const prStatus = await getPrStatusByCanonicalKey(duplicationCheck.canonicalKey);
-
-          if (prStatus.hasOpenPr) {
-            // Open PR exists - this is a true duplicate
-            console.log('✗ Open PRが存在します。重複エラーをスローします。');
-
-            const existingFilePath = `apps/ai-writer/content/${duplicationCheck.existingDoc.eventType}/${duplicationCheck.existingDoc.workSlug}/${duplicationCheck.existingDoc.postId}.mdx`;
-
-            throw new DuplicateSlugError(
-              `このイベントは既に生成済みです: ${duplicationCheck.canonicalKey}`,
-              duplicationCheck.existingDoc.postId,
-              existingFilePath
-            );
-          } else {
-            // No open PR - allow regeneration
-            console.log(`✓ Open PRが見つかりません。PRがCloseされたため、再生成を許可します。`);
-            console.log(`  - Open PRs: ${prStatus.hasOpenPr ? 'Yes' : 'No'}`);
-            console.log(`  - Closed PRs: ${prStatus.hasClosedPr ? 'Yes' : 'No'}`);
-            console.log(`  - Total PRs: ${prStatus.totalCount}`);
-
-            // Delete existing Firestore document to allow re-registration
-            console.log('既存のFirestoreドキュメントを削除中...');
-            await deleteEvent(duplicationCheck.canonicalKey);
-            console.log('✅ 既存ドキュメント削除完了');
-          }
+          return {
+            success: false,
+            skipped: true,
+            skipKind: 'existing-event',
+            skipReason: existingSkipReason,
+            // 既存の記録を details に入れる (Slack の通知・デバッグ画面のリセットのボタンが読む)
+            details: {
+              ...resolvedSlugs,
+              year,
+              canonicalKey: duplicationCheck.canonicalKey,
+              postId: duplicationCheck.existingDoc?.postId ?? '',
+            },
+          };
         }
 
         console.log('✅ 重複なし。イベントを登録...');

@@ -63,8 +63,9 @@ export async function POST(request: NextRequest) {
       // つまり SDK v10 の `flushIfServerless` による route handler の自動 flush は
       // **この経路には効かない**。Cloud Run はレスポンス送出完了 (= stream の close) 後に
       // CPU を throttle するので、close より後では送信が完了しない。
-      const sendError = async (error: string) => {
-        const eventData = `data: ${JSON.stringify({ error })}\n\n`;
+      // `event.canonicalKey` を付けると、画面にリセットのボタンが出る (既に記事があるイベントの時)
+      const sendError = async (error: string, event?: { canonicalKey: string }) => {
+        const eventData = `data: ${JSON.stringify(event ? { error, event } : { error })}\n\n`;
         controller.enqueue(encoder.encode(eventData));
         await flushSentry(2000);
         controller.close();
@@ -270,6 +271,14 @@ export async function POST(request: NextRequest) {
           return;
         }
 
+        // 既に記事があるイベント: 理由と canonicalKey を返し、画面にリセットのボタンを出す
+        if (result.skipKind === 'existing-event' && result.details) {
+          await sendError(result.skipReason ?? '既に記事があるイベントです', {
+            canonicalKey: result.details.canonicalKey,
+          });
+          return;
+        }
+
         if (!result.success) {
           await sendError(result.error || 'MDX記事の生成に失敗しました');
           return;
@@ -311,15 +320,7 @@ export async function POST(request: NextRequest) {
           const canonicalKey = canonicalKeyMatch ? canonicalKeyMatch[1] : error.slug;
 
           // Send error with canonical key for reset button
-          const eventData = `data: ${JSON.stringify({
-            error: error.message,
-            event: {
-              canonicalKey: canonicalKey,
-            }
-          })}\n\n`;
-          controller.enqueue(encoder.encode(eventData));
-          await flushSentry(2000);
-          controller.close();
+          await sendError(error.message, { canonicalKey });
           return;
         }
 

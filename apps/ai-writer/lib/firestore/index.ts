@@ -29,6 +29,5 @@ export {
   updateEventStatus,
   incrementRetryCount,
   getEventByCanonicalKey,
-  deleteEvent,
   queryEventsByStatus,
 } from './event-deduplication';
