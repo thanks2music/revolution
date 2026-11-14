@@ -197,7 +197,8 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
     // The run itself failed (Firestore, reading the feeds). The attempt record can no longer be
     // trusted, so stop; the summary still lists what was done. A URL whose record was not saved
     // is tried again later, and no second PR is made because the pipeline skips an event that
-    // already has an article
+    // already has an article. Held failures are always saved before the next record, so they
+    // are only lost when saving them is what failed (retrying here would fail the same way)
     error = caught instanceof Error ? caught.message : String(caught);
     stopReason = 'error';
   }

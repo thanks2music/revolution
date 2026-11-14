@@ -21,7 +21,6 @@ export type AttemptSource = 'rss' | 'cli';
 /** Where `publishedAt` came from */
 export type PublishedAtSource = PublishedDateSource | 'rss' | 'first-attempt';
 
-
 export interface AttemptRecord {
   url: string;
   source: AttemptSource;
