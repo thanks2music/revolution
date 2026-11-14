@@ -12,6 +12,8 @@
  * @module lib/slack/config
  */
 
+import { isCloudRun } from '@/lib/utils/cloud-run';
+
 export type SlackRuntime = 'cloud-run' | 'local';
 
 export interface SlackConfig {
@@ -39,7 +41,7 @@ function presentValue(value: string | undefined): string | undefined {
 /**
  * env から Slack の設定を読む。token か channel が欠けていれば null (= 通知しない)。
  *
- * 実行環境は Cloud Run が自動で入れる `K_SERVICE` で判定する。`NODE_ENV` は
+ * 実行環境は Cloud Run が自動で入れる `K_SERVICE` (Service) か `CLOUD_RUN_JOB` (Jobs) で判定する。`NODE_ENV` は
  * ローカルの `next start` / `docker:run` でも production になるため使わない。
  * **メンションは Cloud Run の時だけ**付ける (env をローカルへコピーしても
  * ローカル実走でメンションが飛ばないようにするためのガード)。
@@ -67,7 +69,3 @@ export function missingSlackConfigKeys(env: NodeJS.ProcessEnv = process.env): st
   return REQUIRED_KEYS.filter(key => !presentValue(env[key]));
 }
 
-/** Cloud Run 上で動いているか (`K_SERVICE` は Cloud Run が自動で設定する) */
-export function isCloudRun(env: NodeJS.ProcessEnv = process.env): boolean {
-  return presentValue(env.K_SERVICE) !== undefined;
-}

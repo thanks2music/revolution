@@ -33,14 +33,16 @@ jobs:
 
       # Claude の認証 (ID フェデレーション) に要る変数。欠けたままデプロイすると Claude を一切呼べないのに、
       # /api/health は 1 件の失敗を degraded (200) として返すため、ここで止める
+      # 実行用のサービスアカウントも variable から読む (public の workflow に直書きしない)
       - name: Check Anthropic federation variables
         env:
           ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
           ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          AI_WRITER_RUNTIME_SERVICE_ACCOUNT: ${{ vars.AI_WRITER_RUNTIME_SERVICE_ACCOUNT }}
         run: |
           missing=0
-          for key in ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID ANTHROPIC_SERVICE_ACCOUNT_ID; do
+          for key in ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID ANTHROPIC_SERVICE_ACCOUNT_ID AI_WRITER_RUNTIME_SERVICE_ACCOUNT; do
             if [ -z "${!key}" ]; then
               echo "::error title=Missing variable::$key is empty or unset."
               missing=1
@@ -86,6 +88,7 @@ jobs:
           docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest
 
+      # ⚠️ --set-env-vars / --set-secrets に足した変数は、定期実行の Job (deploy-ai-writer-job.yml) にも足すこと
       - name: Deploy to Cloud Run
         id: deploy
         run: |
@@ -101,7 +104,7 @@ jobs:
             --concurrency 80 \
             --max-instances 10 \
             --min-instances 0 \
-            --service-account "revo-ai-writer-runtime@${{ env.PROJECT_ID }}.iam.gserviceaccount.com" \
+            --service-account "${{ vars.AI_WRITER_RUNTIME_SERVICE_ACCOUNT }}" \
             --set-env-vars "NODE_ENV=production,AI_PROVIDER=google,VISION_API_PROVIDER=google,GITHUB_OWNER=${{ github.repository_owner }},GITHUB_REPO=${{ github.event.repository.name }},GITHUB_BASE_BRANCH=main,SENTRY_DSN=${{ vars.SENTRY_DSN_AI_WRITER }},SENTRY_ENVIRONMENT=production,ANTHROPIC_FEDERATION_RULE_ID=${{ vars.ANTHROPIC_FEDERATION_RULE_ID }},ANTHROPIC_ORGANIZATION_ID=${{ vars.ANTHROPIC_ORGANIZATION_ID }},ANTHROPIC_SERVICE_ACCOUNT_ID=${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }},ANTHROPIC_WORKSPACE_ID=${{ vars.ANTHROPIC_WORKSPACE_ID }}" \
             --set-secrets "ALLOWED_EMAILS=revo-allowed-emails:latest,GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest"
 

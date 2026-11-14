@@ -176,7 +176,7 @@ declare namespace NodeJS {
     /** 投稿先チャンネル ID (ローカル = 開発系 / Cloud Run = 本番系) */
     SLACK_CHANNEL_ID?: string;
 
-    /** 失敗時にメンションするユーザー ID。Cloud Run (`K_SERVICE` あり) でのみ使われる */
+    /** 失敗時にメンションするユーザー ID。Cloud Run (`K_SERVICE` か `CLOUD_RUN_JOB` がある) でのみ使われる */
     SLACK_MENTION_USER_ID?: string;
 
     // ========================================
@@ -188,6 +188,9 @@ declare namespace NodeJS {
 
     /** Cloud Run のリビジョン名 */
     K_REVISION?: string;
+
+    /** Cloud Run Jobs のジョブ名。存在すれば Cloud Run Jobs 上で動いている */
+    CLOUD_RUN_JOB?: string;
 
     // ========================================
     // Development / Debug

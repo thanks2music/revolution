@@ -75,6 +75,17 @@ describe('resolveAnthropicAuth', () => {
     expect(resolveAnthropicAuth(env)).toMatchObject({ mode: 'federation', workspaceId: undefined });
   });
 
+  it('Cloud Run Jobs (CLOUD_RUN_JOB) でも、フェデレーションの変数が欠けていたら失敗にする', () => {
+    expect(() => resolveAnthropicAuth({ CLOUD_RUN_JOB: 'ai-writer-job', ANTHROPIC_API_KEY: 'sk-ant-legacy' })).toThrow(
+      'Workload Identity Federation is not configured on Cloud Run'
+    );
+  });
+
+  it('Cloud Run Jobs (CLOUD_RUN_JOB) でも、変数が揃っていればフェデレーションを使う', () => {
+    const { K_SERVICE: _service, ...rest } = FEDERATION_ENV;
+    expect(resolveAnthropicAuth({ ...rest, CLOUD_RUN_JOB: 'ai-writer-job' }).mode).toBe('federation');
+  });
+
   it('Cloud Run でフェデレーションの変数が欠けていたら、API キーに戻らず失敗にする', () => {
     expect(() =>
       resolveAnthropicAuth({ K_SERVICE: 'revo-ai-writer', ANTHROPIC_API_KEY: 'sk-ant-legacy', ANTHROPIC_FEDERATION_RULE_ID: '' })

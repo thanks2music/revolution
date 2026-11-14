@@ -19,6 +19,8 @@ import path from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { oidcFederationProvider } from '@anthropic-ai/sdk/lib/credentials/oidc-federation';
 
+import { isCloudRun } from '@/lib/utils/cloud-run';
+
 /** Google の ID トークンに載せる audience。フェデレーションのルールで同じ値に固定している */
 const ANTHROPIC_AUDIENCE = 'https://api.anthropic.com';
 
@@ -60,15 +62,14 @@ export type AnthropicAuth =
 /**
  * どの方法で認証するかを決める (Layer 1)。
  *
- * Cloud Run (`K_SERVICE` がある) ではフェデレーションの変数が揃っていなければ失敗にする。
+ * Cloud Run ではフェデレーションの変数が揃っていなければ失敗にする。
  * API キーへ黙って戻ると、キーを外した切り替えの漏れに気づけないため。
- * `K_SERVICE` は Cloud Run の Service だけが持つ。Cloud Run Jobs で動かすときは
- * (`CLOUD_RUN_JOB` になる) ここの判定を足すこと。
+ * Cloud Run の判定は、Service が持つ `K_SERVICE` と、Jobs が持つ `CLOUD_RUN_JOB` のどちらか。
  *
  * @throws {Error} Cloud Run でフェデレーションの環境変数が欠けているとき
  */
 export function resolveAnthropicAuth(env: Env): AnthropicAuth {
-  if (env.K_SERVICE) {
+  if (isCloudRun(env)) {
     const missing = FEDERATION_ENV_KEYS.filter((key) => !env[key]);
     if (missing.length > 0) {
       throw new Error(

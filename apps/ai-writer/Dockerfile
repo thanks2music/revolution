@@ -101,7 +101,49 @@ ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app/apps/ai-writer
 RUN pnpm build
 
-# Stage 3: 本番環境
+# Stage 3: 定期実行用の Cloud Run Job (`docker build --target job`)
+# 記事のパイプラインを CLI と同じ経路 (tsx でスクリプトを直接動かす) で走らせる。
+# Next.js のビルド成果物は使わないので builder ではなく deps から作る。
+# ⚠️ このステージは runner より前に置くこと。--target を付けない build は最後のステージを
+#   作るため、後ろに置くと Service のイメージがこのステージに変わってしまう
+FROM node:24.22.1-alpine AS job
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# 依存関係 (tsx は ai-writer の devDependencies。deps は devDependencies も入れている)
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
+COPY --from=deps /app/shared/schemas/node_modules ./shared/schemas/node_modules
+COPY shared ./shared
+
+# 実行用のユーザー。パイプラインは作業ディレクトリの下 (logs/ と debug-logs/) に書くので、
+# アプリのディレクトリはこのユーザーの持ち物にする
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 -G nodejs aiwriter
+COPY --chown=aiwriter:nodejs apps/ai-writer ./apps/ai-writer
+
+# テンプレート (YAML) は private のリポジトリにあり、git には入っていない。
+# CI がビルドの前に apps/ai-writer/templates へ置く。無ければ記事を書けないので、ここで止める
+RUN test -f apps/ai-writer/templates/VERSION.json && \
+    test -d apps/ai-writer/templates/collabo-cafe && \
+    test -d apps/ai-writer/templates/config || \
+    (echo "apps/ai-writer/templates is missing. Place the templates before building the job image." >&2 && exit 1)
+
+# COPY --chown は中身にだけ効き、ディレクトリ自体は root のままになる (実測)。ログを書けるように持ち主を変える
+RUN chown aiwriter:nodejs apps/ai-writer
+
+USER aiwriter
+# テンプレートは process.cwd() からの相対パスで読むので、作業ディレクトリは ai-writer にする
+WORKDIR /app/apps/ai-writer
+
+# 実行するスクリプトと引数は Cloud Run Job の args で渡す (例: scripts/<入口>.ts --dry-run)。
+# args が無いと tsx は標準入力を読んで成功 (終了コード 0) で終わり、何もしないのに「成功」に見えるので、
+# 既定の引数では失敗させる
+ENTRYPOINT ["/app/node_modules/.bin/tsx"]
+CMD ["--eval", "console.error('No script given. Pass the script and its arguments as the job args.'); process.exit(2)"]
+
+# Stage 4: 本番環境 (Service)
 FROM node:24.22.1-alpine AS runner
 WORKDIR /app
 
