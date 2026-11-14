@@ -32,6 +32,14 @@ jest.mock('@/lib/firestore/event-deduplication', () => ({
 // 画像アップロード系は uuid@14 (ESM-only) を引き込むため同様に止める
 jest.mock('@/lib/services/r2-storage.service', () => ({ getR2StorageService: jest.fn() }));
 
+// 記事選別の失敗が「スキップ」でなく「失敗」になることを確かめるため、選別だけ差し替える
+const mockShouldGenerateArticle = jest.fn();
+jest.mock('@/lib/services/article-selection.service', () => ({
+  ArticleSelectionService: jest.fn().mockImplementation(() => ({
+    shouldGenerateArticle: mockShouldGenerateArticle,
+  })),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { extractArticleHtml } = require('@/lib/utils/html-extractor') as {
   extractArticleHtml: jest.Mock;
@@ -41,7 +49,9 @@ const {
   ArticleGenerationMdxService,
 } = require('@/lib/services/article-generation-mdx.service') as {
   ArticleGenerationMdxService: new () => {
-    generateMdxFromRSS: (req: unknown) => Promise<{ success: boolean; error?: string }>;
+    generateMdxFromRSS: (
+      req: unknown,
+    ) => Promise<{ success: boolean; skipped?: boolean; error?: string }>;
   };
 };
 
@@ -93,5 +103,24 @@ describe('generateMdxFromRSS の全体 catch', () => {
     const result = await service.generateMdxFromRSS({ rssItem, dryRun: true });
 
     expect(result).toEqual(expect.objectContaining({ success: false, error: 'boom' }));
+  });
+});
+
+describe('記事選別の失敗', () => {
+  it('選別が投げたら、スキップではなく失敗として返し、Sentry に送る', async () => {
+    extractArticleHtml.mockResolvedValueOnce('<html></html>');
+    const selectionError = new Error('記事選別に失敗: API key not valid');
+    mockShouldGenerateArticle.mockRejectedValueOnce(selectionError as never);
+
+    const service = new ArticleGenerationMdxService();
+    const result = await service.generateMdxFromRSS({ rssItem, dryRun: true });
+
+    expect(result.success).toBe(false);
+    expect(result.skipped).toBeUndefined();
+    expect(result.error).toBe('記事選別に失敗: API key not valid');
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      selectionError,
+      expect.objectContaining({ tags: expect.objectContaining({ pipeline: 'mdx' }) }),
+    );
   });
 });
