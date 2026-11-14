@@ -6,6 +6,7 @@
 #   JOB_STATUS      job.status (success / failure / cancelled)
 #   DEPLOY_OUTCOME  steps.deploy.outcome (success なら新しいリビジョンが出ている)
 #   HEALTH_OUTCOME  steps.health.outcome
+#   JOB_DEPLOY_OUTCOME steps.deploy_job.outcome (定期実行の Job の定義の更新。Service の確認が済んだ後に走る)
 #   HTTP_CODE       health check の最後の HTTP ステータス (無ければ空)
 #   PINNED          true なら、新しいリビジョンにトラフィックが流れていない (以前のリビジョンに固定されている)
 #   TRAFFIC_CHECKED true なら、トラフィックの割り当てを確かめられた (describe が失敗すると空)
@@ -38,6 +39,10 @@ if [[ "${JOB_STATUS}" == "success" ]]; then
 elif [[ "${PINNED:-}" == "true" ]]; then
   text='⚠️ AI Writer: 新しいリビジョンにトラフィックが流れていません (以前のリビジョンに固定中)'
   body="${commit}"$'\n'"*解除*: 新しいリビジョンの動作を確かめてから ${unpin}"
+elif [[ "${JOB_DEPLOY_OUTCOME:-}" == "failure" ]]; then
+  # Service は新しいリビジョンで動いている (Job の更新は health check の後に走る)。Job は以前の定義のまま
+  text='❌ AI Writer: Service は更新しましたが、定期実行の Job を更新できませんでした (Job は以前の定義のまま)'
+  body="${commit}"$'\n'"*確認*: workflow の「Deploy the scheduled job」のログを見る"
 elif [[ "${DEPLOY_OUTCOME}" == "success" && "${TRAFFIC_CHECKED:-}" != "true" ]]; then
   # deploy は終わったが、サービスの状態を取得できなかった。どのリビジョンが動いているか断定しない
   text='⚠️ AI Writer: デプロイ後の状態を確かめられませんでした (トラフィックの割り当てとヘルスチェックを確認してください)'
