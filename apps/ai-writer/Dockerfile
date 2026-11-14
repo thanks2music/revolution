@@ -4,7 +4,7 @@
 # Node の版 (FROM のタグ) は Renovate の docker manager が更新する
 # pnpm 12 は最初の実行で native binary を取得するので、`pnpm --version` で
 # ここで 1 回だけ取得しておく
-FROM node:24.22.1-alpine AS base
+FROM node:24.22.2-alpine AS base
 WORKDIR /app
 COPY package.json ./
 RUN corepack enable && corepack install && pnpm --version
@@ -106,7 +106,7 @@ RUN pnpm build
 # Next.js のビルド成果物は使わないので builder ではなく deps から作る。
 # ⚠️ このステージは runner より前に置くこと。--target を付けない build は最後のステージを
 #   作るため、後ろに置くと Service のイメージがこのステージに変わってしまう
-FROM node:24.22.1-alpine AS job
+FROM node:24.22.2-alpine AS job
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -144,7 +144,7 @@ ENTRYPOINT ["/app/node_modules/.bin/tsx"]
 CMD ["--eval", "console.error('No script given. Pass the script and its arguments as the job args.'); process.exit(2)"]
 
 # Stage 4: 本番環境 (Service)
-FROM node:24.22.1-alpine AS runner
+FROM node:24.22.2-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
