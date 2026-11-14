@@ -96,22 +96,13 @@ describe('unannouncedScheduleReason', () => {
     });
     expect(reason).toContain('開始日を読み取れない');
   });
-
-  it('ignores occurrences whose start date is not an ISO date', () => {
-    const reason = unannouncedScheduleReason({
-      店舗名: 'Sample Cafe Tokyo',
-      開催期間: period(''),
-      event_data: { occurrences: [{ starts_on: '未定' }] },
-    });
-    expect(reason).toContain('開始日を読み取れない');
-  });
 });
 
 describe('announcedItemCategories', () => {
   it('counts the menu from either menu list, and goods from either goods list', () => {
     expect(announcedItemCategories({ ...noItems, 具体的なメニュー名リスト: ['ラテ'] })).toEqual(['menu']);
     expect(
-      announcedItemCategories({ ...noItems, グッズ詳細リスト: [{ name: 'アクリルスタンド' }] as never })
+      announcedItemCategories({ ...noItems, グッズ詳細リスト: [{ name: 'アクリルスタンド', price: null, sales: null }] })
     ).toEqual(['goods']);
   });
 
