@@ -22,6 +22,11 @@ export interface SlackConfig {
   runtime: SlackRuntime;
   /** 失敗時にメンションするユーザー ID。Cloud Run 以外では常に undefined */
   mentionUserId?: string;
+  /**
+   * 人の対応が要らない通知の送り先 (`SLACK_DEV_CHANNEL_ID`)。定期実行の Job が、PR も失敗も無い回の
+   * まとめをここへ送る。無ければ `channel` へメンションなしで送る
+   */
+  devChannel?: string;
 }
 
 /**
@@ -55,7 +60,9 @@ export function readSlackConfig(env: NodeJS.ProcessEnv = process.env): SlackConf
   const mentionUserId =
     runtime === 'cloud-run' ? presentValue(env.SLACK_MENTION_USER_ID) : undefined;
 
-  return { token, channel, runtime, mentionUserId };
+  const devChannel = presentValue(env.SLACK_DEV_CHANNEL_ID);
+
+  return { token, channel, runtime, mentionUserId, devChannel };
 }
 
 /** 送信に必須のキー */

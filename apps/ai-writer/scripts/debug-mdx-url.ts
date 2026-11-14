@@ -70,6 +70,11 @@ import {
 import { ArticleGenerationMdxService } from '../lib/services/article-generation-mdx.service';
 import type { MdxGenerationRequest, ArticleUpdateTarget } from '../lib/services/article-generation-mdx.service';
 
+// 試した URL の記録 (定期実行と共有)
+import { getAdminDb } from '../lib/firebase/admin';
+import { AttemptStore } from '../lib/scheduled/attempt-store';
+import { recordCliAttempt } from '../lib/scheduled/record-cli-attempt';
+
 // 公開中の記事の更新 (--update)
 import { fetchArticleFromMain } from '../lib/github/update-mdx-pr';
 import { GitHubAuthError } from '../lib/errors/github';
@@ -437,7 +442,7 @@ async function main() {
     // ========================================
     console.log('📄 STEP 1: HTMLとタイトルを取得中...');
 
-    const { title, html, actualUrl } = await extractArticleData(url);
+    const { title, html, actualUrl, pageHtml } = await extractArticleData(url);
 
     console.log(`✅ タイトル: ${title}`);
     console.log(`✅ HTML: ${html.length} bytes`);
@@ -490,6 +495,12 @@ async function main() {
 
     const result = await service.generateMdxFromRSS(request);
     notification = pipelineNotificationFromResult(result, notifyContext);
+
+    // PR を作る本実行の結果は、定期実行と同じ「試した URL」に残す (Job がこの URL をもう一度試さないように)。
+    // dry-run・local・画像アップロード・記事の更新は記録しない
+    if (mode === 'pr' && !updateTarget) {
+      await recordCliAttempt(new AttemptStore(getAdminDb()), { url: actualUrl, title, pageHtml, result });
+    }
 
     // ========================================
     // STEP 3: 結果表示

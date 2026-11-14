@@ -16,7 +16,7 @@ import type { MdxGenerationResult } from '../services/article-generation-mdx.ser
 import type { SlackConfig } from './config';
 
 export type PipelineOutcome = 'success' | 'skipped' | 'failure';
-export type PipelineEntrypoint = 'cli' | 'cron';
+export type PipelineEntrypoint = 'cli' | 'cron' | 'job';
 /** CLI の実行モード。PR を作るのは `pr` だけ */
 export type PipelineMode = 'pr' | 'dry-run' | 'local' | 'upload-images';
 
@@ -71,6 +71,7 @@ const OUTCOME_LABEL: Record<PipelineOutcome, string> = {
 const ENTRYPOINT_LABEL: Record<PipelineEntrypoint, string> = {
   cli: 'ローカル実走 (debug:mdx)',
   cron: 'Cloud Run (cron)',
+  job: 'Cloud Run (定期実行の Job)',
 };
 
 /** URL のホスト。URL として読めなければそのまま返す (伏せ字と切り詰めは呼び出し側の safe で行う) */

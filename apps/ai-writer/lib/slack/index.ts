@@ -17,6 +17,8 @@ import { isCloudRun } from '@/lib/utils/cloud-run';
 import { missingSlackConfigKeys, readSlackConfig } from './config';
 import { postSlackMessage } from './client';
 import { buildPipelineMessage, type PipelineNotification } from './messages';
+import { buildScheduledRunMessage } from './scheduled-run-message';
+import type { ScheduledRunSummary } from '../scheduled/run';
 
 // 入口 (CLI / cron route) が使うものだけを公開する。部品は各モジュールから直接 import する
 export {
@@ -60,6 +62,41 @@ export async function notifyPipelineResult(
     // 組み立て側の想定外の例外も呼び出し元へ伝播させない
     console.error(
       '[Slack] 通知の準備中にエラーが発生しました:',
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+}
+
+/**
+ * 定期実行の 1 回分の結果を Slack へ 1 通送る。**例外を投げない。**
+ *
+ * PR か失敗がある回は本番系 (`SLACK_CHANNEL_ID`) にメンション付き、それ以外は開発系
+ * (`SLACK_DEV_CHANNEL_ID`、無ければ本番系) にメンションなしで送る
+ */
+export async function notifyScheduledRun(
+  summary: ScheduledRunSummary,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
+  try {
+    const config = readSlackConfig(env);
+    if (!config) {
+      const missing = missingSlackConfigKeys(env).join(' / ');
+      console.error(`[Slack] ${missing} が未設定のため、定期実行の結果を送れません`);
+      if (isCloudRun(env)) {
+        Sentry.captureMessage('Slack notification is not configured for the scheduled job', {
+          level: 'warning',
+          fingerprint: ['slack-config-missing-job'],
+          extra: { missing },
+        });
+      }
+      return;
+    }
+    const { message, attention } = buildScheduledRunMessage(summary, config);
+    const channel = attention ? config.channel : (config.devChannel ?? config.channel);
+    await postSlackMessage({ token: config.token, channel }, message);
+  } catch (error) {
+    console.error(
+      '[Slack] 定期実行の通知の準備中にエラーが発生しました:',
       error instanceof Error ? error.message : String(error)
     );
   }
