@@ -118,7 +118,7 @@ export interface EventFactCardFields {
  */
 const ISO_DATE_SCHEMA = z.iso.date();
 
-export function isValidIsoDate(value: string): boolean {
+function isValidIsoDate(value: string): boolean {
   return ISO_DATE_SCHEMA.safeParse(value).success;
 }
 

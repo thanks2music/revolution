@@ -16,6 +16,15 @@ function period(start: string, end: string | null = null): EventPeriod {
   };
 }
 
+/** A schema-valid `event_data` (EventDataSchema) with the given occurrences */
+function eventData(occurrences: Array<{ venue_label: string; starts_on: string | null }>) {
+  return {
+    primary_category_slug: 'collabo-cafe',
+    title_slugs: ['sample-work'],
+    occurrences: occurrences.map((o) => ({ venue_slug: null, ends_on: null, official_url: null, ...o })),
+  };
+}
+
 const noItems = {
   メニュー詳細リスト: null,
   具体的なメニュー名リスト: null,
@@ -37,12 +46,10 @@ describe('unannouncedScheduleReason', () => {
     const reason = unannouncedScheduleReason({
       店舗名: 'Sample Cafe Tokyo、Sample Cafe Osaka',
       開催期間: period(''),
-      event_data: {
-        occurrences: [
-          { venue_label: 'Sample Cafe Tokyo', starts_on: '2026-12-01', ends_on: null },
-          { venue_label: 'Sample Cafe Osaka', starts_on: null, ends_on: null },
-        ],
-      },
+      event_data: eventData([
+        { venue_label: 'Sample Cafe Tokyo', starts_on: '2026-12-01' },
+        { venue_label: 'Sample Cafe Osaka', starts_on: null },
+      ]),
     });
     expect(reason).toBeUndefined();
   });
@@ -85,7 +92,7 @@ describe('unannouncedScheduleReason', () => {
     const reason = unannouncedScheduleReason({
       店舗名: 'Sample Cafe Tokyo',
       開催期間: period(''),
-      event_data: { occurrences: [{ starts_on: startsOn }] },
+      event_data: eventData([{ venue_label: 'Sample Cafe Tokyo', starts_on: startsOn }]),
     });
     expect(reason).toContain('開始日を読み取れない');
   });

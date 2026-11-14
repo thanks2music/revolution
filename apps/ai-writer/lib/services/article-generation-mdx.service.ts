@@ -69,7 +69,7 @@ import {
 } from '../utils/placeholder-residue';
 import { type EventData, type EventDataOccurrence } from '@revolution/schemas/mdx-frontmatter';
 import { ArticleSelectionService } from './article-selection.service';
-import { getStepDisplay, getStepContext } from './pipeline-steps';
+import { getStepDisplay, getStepContext, type PipelineStepId } from './pipeline-steps';
 import {
   type ArticleSelectionRequest,
   type ArticleSelectionResult,
@@ -657,16 +657,16 @@ export class ArticleGenerationMdxService {
         };
       }
 
-      // A-1-c: 開始日が発表されていないイベントは書かない。下層ページと Vision の費用がかかる前に止める。
-      // 記事の更新 (続報の反映) では止めない
-      if (!update) {
-        const scheduleReason = unannouncedScheduleReason(detailedExtraction);
-        if (scheduleReason) {
-          console.log(`⏭️ ${getStepContext('detail-extraction', '詳細未発表')} ${scheduleReason}`);
-          if (costTracker.hasUsage()) costTracker.logSummary();
-          return { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: scheduleReason };
-        }
-      }
+      // A-1-c (詳細未発表のイベントは書かない) で止める時の返り値。記事の更新 (続報の反映) では止めない
+      const skipUnannounced = (step: PipelineStepId, reason: string): MdxGenerationResult => {
+        console.log(`⏭️ ${getStepContext(step, '詳細未発表')} ${reason}`);
+        if (costTracker.hasUsage()) costTracker.logSummary();
+        return { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: reason };
+      };
+
+      // A-1-c: 開始日が発表されていないイベントは、下層ページと Vision の費用がかかる前に止める
+      const scheduleReason = update ? undefined : unannouncedScheduleReason(detailedExtraction);
+      if (scheduleReason) return skipUnannounced('detail-extraction', scheduleReason);
 
       // ========================================
       // 作品名の正規化（rss-extraction step の workTitle を canonical として使用）
@@ -846,12 +846,7 @@ export class ArticleGenerationMdxService {
       // A-1-c: 種別に要る品目 (メニュー・グッズ・ノベルティ) がどれも発表されていなければ書かない。
       // 抽出・下層ページ・Vision の 3 つがそろった後で判定する。止めるのは duplication-check の中で、
       // 既に記事があるイベントの判定の後、Firestore に記録を残す前 (既存のイベントは 'existing-event' を優先して返す)
-      const itemsReason = !update && detailedExtraction ? unannouncedItemsReason(eventType, detailedExtraction) : undefined;
-      const skipUnannouncedItems = (reason: string): MdxGenerationResult => {
-        console.log(`⏭️ ${getStepContext('duplication-check', '詳細未発表')} ${reason}`);
-        if (costTracker.hasUsage()) costTracker.logSummary();
-        return { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: reason };
-      };
+      const itemsReason = update ? undefined : unannouncedItemsReason(eventType, detailedExtraction);
 
       // duplication-check step: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
@@ -861,7 +856,7 @@ export class ArticleGenerationMdxService {
         // (記事の更新では記事は登録済みで、Firestore の記録は generated のまま)
         const modeLabel = update ? '記事の更新' : localOnly ? 'ローカル保存' : 'ドライラン';
         console.log(`\n${getStepDisplay('duplication-check')} Firestore重複チェック（${modeLabel}のためスキップ）...`);
-        if (itemsReason) return skipUnannouncedItems(itemsReason);
+        if (itemsReason) return skipUnannounced('duplication-check', itemsReason);
 
         // ダミーの postId を生成（タイムスタンプベース）。記事の更新では既存の post_id
         const postIdForRun = update?.fields.postId ?? `dry-run-${Date.now()}`;
@@ -923,7 +918,7 @@ export class ArticleGenerationMdxService {
           };
         }
 
-        if (itemsReason) return skipUnannouncedItems(itemsReason);
+        if (itemsReason) return skipUnannounced('duplication-check', itemsReason);
 
         console.log('✅ 重複なし。イベントを登録...');
 

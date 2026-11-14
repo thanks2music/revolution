@@ -27,7 +27,8 @@
  * merged, and before duplication-check (so no Firestore record is left behind).
  */
 import type { ExtractionResult } from '@/lib/services/extraction.service';
-import { isValidIsoDate, toIsoDate } from '@/lib/utils/event-fact-card-mapper';
+import { parseAndNormalizeEventData } from '@/lib/utils/event-data-normalization';
+import { extractEventFactCardFields } from '@/lib/utils/event-fact-card-mapper';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { validateVenueLabel } from '@/lib/utils/venue-label-validator';
 
@@ -52,29 +53,25 @@ const REQUIRED_ANY: Record<string, readonly ItemCategory[]> = {
 };
 const DEFAULT_REQUIRED_ANY: readonly ItemCategory[] = ['menu', 'goods', 'novelty'];
 
-// The start date counts only when the article can actually show it: the same parsing as the
-// event fact card (`toIsoDate`: "YYYY年" + "N月N日", a real date) and the same ISO check for
-// `event_data`. A looser test here would let an event through that is then written without a date.
-
-/** True when any occurrence in the raw `event_data` has a start date */
-function someOccurrenceHasStart(eventData: unknown): boolean {
-  if (typeof eventData !== 'object' || eventData === null) return false;
-  const occurrences = (eventData as { occurrences?: unknown }).occurrences;
-  if (!Array.isArray(occurrences)) return false;
-  return occurrences.some(
-    (o) =>
-      typeof o === 'object' &&
-      o !== null &&
-      typeof (o as { starts_on?: unknown }).starts_on === 'string' &&
-      isValidIsoDate((o as { starts_on: string }).starts_on)
-  );
+/**
+ * The start date the article will show, worked out the same way the article does:
+ * `event_data` through `parseAndNormalizeEventData`, then the fact card's start date
+ * (the earliest valid `starts_on`, or `開催期間.開始` read by `toIsoDate`).
+ * Using a looser test here would let an event through that is then written without a date.
+ */
+function articleStartDate(extraction: ScheduleFields): string | undefined {
+  const parsed = parseAndNormalizeEventData({ rawEventData: extraction.event_data, period: extraction.開催期間 });
+  return extractEventFactCardFields({
+    eventDataOccurrences: parsed.status === 'ok' ? parsed.occurrences : undefined,
+    extractionPeriod: extraction.開催期間,
+  }).event_start_date;
 }
 
 /**
  * @returns the skip reason when the start date is not announced, otherwise `undefined`
  */
 export function unannouncedScheduleReason(extraction: ScheduleFields): string | undefined {
-  if (toIsoDate(extraction.開催期間?.開始) || someOccurrenceHasStart(extraction.event_data)) {
+  if (articleStartDate(extraction)) {
     return undefined;
   }
 
