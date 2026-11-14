@@ -101,7 +101,7 @@ export function announcedItemCategories(extraction: ItemFields): ItemCategory[] 
  *   otherwise `undefined`
  */
 export function unannouncedItemsReason(eventType: string, extraction: ItemFields): string | undefined {
-  const required = REQUIRED_ANY[eventType] ?? DEFAULT_REQUIRED_ANY;
+  const required = Object.hasOwn(REQUIRED_ANY, eventType) ? REQUIRED_ANY[eventType] : DEFAULT_REQUIRED_ANY;
   const announced = announcedItemCategories(extraction);
   if (required.some((category) => announced.includes(category))) return undefined;
 

@@ -112,7 +112,7 @@ describe('announcedItemCategories', () => {
 });
 
 describe('unannouncedItemsReason', () => {
-  it.each(['collabo-cafe', 'chain-store', 'other', 'unknown-type'])(
+  it.each(['collabo-cafe', 'chain-store', 'other', 'unknown-type', 'constructor'])(
     'writes a %s event when any one of menu, goods or novelty is announced',
     (eventType) => {
       expect(unannouncedItemsReason(eventType, { ...noItems, 具体的なメニュー名リスト: ['ラテ'] })).toBeUndefined();
