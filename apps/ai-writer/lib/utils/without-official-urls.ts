@@ -38,12 +38,7 @@ export function removeLinksToClosedSite(
   closedSiteUrl: string,
   scope: 'host' | 'page',
 ): { content: string; removed: string[] } {
-  const closed = urlKey(closedSiteUrl);
-  const matches = (url: string): boolean => {
-    const key = urlKey(url);
-    if (!closed || !key) return false;
-    return scope === 'host' ? key.host === closed.host : key.host === closed.host && key.path === closed.path;
-  };
+  const matches = (url: string) => pointsToClosedSite(url, closedSiteUrl, scope);
   const removed: string[] = [];
   const kept = markdown.split('\n').filter((line) => {
     const linksToClosedSite =
@@ -52,6 +47,17 @@ export function removeLinksToClosedSite(
     return !linksToClosedSite;
   });
   return { content: kept.join('\n'), removed };
+}
+
+/**
+ * Whether a URL points to the closed site: the same host (ignoring case and a leading `www.`) with
+ * `scope: 'host'`, or also the same path (ignoring a trailing `/`, the query and the hash) with `'page'`
+ */
+export function pointsToClosedSite(url: string, closedSiteUrl: string, scope: 'host' | 'page'): boolean {
+  const closed = urlKey(closedSiteUrl);
+  const key = urlKey(url);
+  if (!closed || !key) return false;
+  return scope === 'host' ? key.host === closed.host : key.host === closed.host && key.path === closed.path;
 }
 
 function urlKey(url: string): { host: string; path: string } | null {

@@ -37,10 +37,10 @@ describe('slugFromArticleUrl', () => {
 
 describe('decodeEntities', () => {
   it('decodes numeric and named entities', () => {
-    expect(decodeEntities('A &#038; B &#x21; &amp; &quot;C&quot;')).toBe('A & B ! & "C"');
+    expect(decodeEntities('A &#038; B &#x21; &amp; &quot;C&quot; &#215;')).toBe('A & B ! & "C" ×');
     expect(decodeEntities('&unknown;')).toBe('&unknown;');
-    // Outside Unicode: kept instead of throwing
-    expect(decodeEntities('&#99999999;')).toBe('&#99999999;');
+    // Outside Unicode: does not throw
+    expect(() => decodeEntities('&#99999999;')).not.toThrow();
   });
 });
 
@@ -68,7 +68,6 @@ describe('resolveArchiveArticle', () => {
     );
 
     expect(article).toEqual({
-      articleUrl: ARTICLE_URL,
       title: 'サンプル作品 × カフェ',
       contentHtml: ARTICLE_HTML,
       startsOn: '2019-01-22',

@@ -5,12 +5,16 @@
  * @module lib/archive-source/plan-run
  */
 import type { RssExtractionResult } from '@/lib/ai/providers/ai-provider.interface';
-import type { MdxSourceOverride } from '@/lib/services/article-generation-mdx.service';
+import type {
+  MdxGenerationRequest,
+  MdxGenerationResult,
+  MdxSourceOverride,
+} from '@/lib/services/article-generation-mdx.service';
 
 import { buildArchivePageContent } from './archive-content';
 import { type ArchiveSource, findArchiveSource } from './config';
 import { type ArchiveArticle, type FetchJson, resolveArchiveArticle } from './resolve-article';
-import { type FetchContent, type OfficialSiteGoneReason, probeOfficialSite } from './probe-official';
+import { type FetchContent, type OfficialSiteGoneReason, probeOfficialSite, siteUnreachable } from './probe-official';
 
 /**
  * Why the archive article is the source: the official site is gone, or it is still there but no
@@ -66,7 +70,10 @@ export async function planArchiveRun(url: string, deps: PlanArchiveRunDeps): Pro
   const work = await deps.extractWork({ title: article.title, content: article.contentHtml, link: url });
   const probe = await probeOfficialSite(officialUrl, work.workTitle, deps.fetchContent);
   const archivePlan = (reason: ArchiveReason, detail: string): ArchiveModePlan => {
-    const page = buildArchivePageContent(article.contentHtml, url, source, article.eventType);
+    // A site that is alive but lost the items is still the event's page; a gone site is not linked
+    const unlinkScope: MdxSourceOverride['unlinkScope'] = reason === 'official-has-no-items' ? 'none' : siteUnreachable(reason) ? 'host' : 'page';
+    const closedSite = unlinkScope === 'none' ? undefined : { url: officialUrl, scope: unlinkScope };
+    const page = buildArchivePageContent(article.contentHtml, url, source, article.eventType, closedSite);
     return {
       mode: 'archive',
       article,
@@ -80,8 +87,7 @@ export async function planArchiveRun(url: string, deps: PlanArchiveRunDeps): Pro
         ogImage: article.featuredImageUrl,
         categoryImages: page.categoryImages,
         reason,
-        // A site that is alive but lost the items is still the event's page; a gone site is not linked
-        linkOfficialSite: reason === 'official-has-no-items',
+        unlinkScope,
       },
       extracted: { workTitle: work.workTitle, storeName: work.storeName, eventTypeName: work.eventTypeName },
     };
@@ -95,4 +101,40 @@ export async function planArchiveRun(url: string, deps: PlanArchiveRunDeps): Pro
     eventYear,
     fallback: archivePlan('official-has-no-items', 'the official site no longer lists the menu, goods or novelty'),
   };
+}
+
+/** The page a pipeline run reads, as `extractArticleData` returns it */
+export interface ArticlePage {
+  title: string;
+  html: string;
+  actualUrl: string;
+}
+
+/** The pipeline input for a page (`pubDate` is the run time unless given) */
+export function rssItemFromPage(page: ArticlePage, pubDate: string = new Date().toISOString()): MdxGenerationRequest['rssItem'] {
+  return { title: page.title, link: page.actualUrl, content: page.html, contentSnippet: page.html.substring(0, 500), pubDate };
+}
+
+/**
+ * Runs the pipeline for a request built from an archive plan. When it was built from the official
+ * site and stopped as unannounced (ended events often lose their items there), it is built again
+ * from the archive article (`plan.fallback`)
+ */
+export async function generateWithArchiveFallback(
+  plan: ArchiveRunPlan | null,
+  request: MdxGenerationRequest,
+  generate: (request: MdxGenerationRequest) => Promise<MdxGenerationResult>,
+  readPage: (url: string) => Promise<ArticlePage>,
+): Promise<MdxGenerationResult> {
+  const result = await generate(request);
+  if (plan?.mode !== 'official' || result.skipKind !== 'unannounced-event') return result;
+
+  const { fallback } = plan;
+  console.log(`\n🗄️  公式サイトから作れなかったため (${result.skipReason})、アーカイブの記事から作り直します\n`);
+  return generate({
+    ...request,
+    rssItem: rssItemFromPage(await readPage(fallback.inputUrl), request.rssItem.pubDate),
+    sourceOverride: fallback.sourceOverride,
+    extracted: fallback.extracted,
+  });
 }

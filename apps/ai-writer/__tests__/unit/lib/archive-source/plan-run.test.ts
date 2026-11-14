@@ -1,6 +1,13 @@
 import { describe, expect, it, jest } from '@jest/globals';
 
-import { planArchiveRun, type PlanArchiveRunDeps } from '@/lib/archive-source/plan-run';
+import {
+  generateWithArchiveFallback,
+  planArchiveRun,
+  rssItemFromPage,
+  type ArchiveRunPlan,
+  type PlanArchiveRunDeps,
+} from '@/lib/archive-source/plan-run';
+import type { MdxGenerationRequest, MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 
 import { ARTICLE_HTML, ARTICLE_URL, SOURCE } from './fixtures';
 
@@ -48,7 +55,7 @@ describe('planArchiveRun', () => {
       expect.objectContaining({ mode: 'archive', inputUrl: ARTICLE_URL, reason: 'official-has-no-items' }),
     );
     // The site is alive, so the rebuilt article may still link to it
-    expect(plan.fallback.sourceOverride.linkOfficialSite).toBe(true);
+    expect(plan.fallback.sourceOverride.unlinkScope).toBe('none');
     expect(plan.fallback.sourceOverride.categoryImages.menu).toHaveLength(2);
   });
 
@@ -71,7 +78,8 @@ describe('planArchiveRun', () => {
         officialUrl: 'https://official.example.com/event/',
         ogImage: 'https://archive.example.com/wp-content/uploads/kv.jpg',
         reason: 'unreachable',
-        linkOfficialSite: false,
+        // The site cannot be reached at all, so no link to any of its pages
+        unlinkScope: 'host',
       }),
     );
     expect(plan.sourceOverride.categoryImages.menu).toHaveLength(2);
@@ -90,5 +98,63 @@ describe('planArchiveRun', () => {
     await expect(planArchiveRun(ARTICLE_URL, deps({ fetchJson: async () => [noLink] }))).rejects.toThrow(
       'no official site URL',
     );
+  });
+});
+
+describe('rssItemFromPage', () => {
+  it('builds the pipeline input from a page', () => {
+    const html = 'x'.repeat(600);
+    expect(rssItemFromPage({ title: 'T', html, actualUrl: 'https://a.example/' }, '2000-01-01T00:00:00.000Z')).toEqual({
+      title: 'T',
+      link: 'https://a.example/',
+      content: html,
+      contentSnippet: 'x'.repeat(500),
+      pubDate: '2000-01-01T00:00:00.000Z',
+    });
+  });
+});
+
+describe('generateWithArchiveFallback', () => {
+  const request: MdxGenerationRequest = {
+    rssItem: { title: 'Official', link: 'https://official.example.com/event/', content: '<p></p>', pubDate: '2000-01-01T00:00:00.000Z' },
+    dryRun: true,
+    eventYear: 2019,
+  };
+  const readPage = jest.fn(async (url: string) => ({ title: 'Archive', html: '<p>archive</p>', actualUrl: url }));
+  const unannounced: MdxGenerationResult = { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: 'no items' };
+
+  async function officialPlan(): Promise<ArchiveRunPlan> {
+    const plan = await planArchiveRun(ARTICLE_URL, deps());
+    if (!plan) throw new Error('expected a plan');
+    return plan;
+  }
+
+  it('returns the first result unless an official-site run stopped as unannounced', async () => {
+    const done: MdxGenerationResult = { success: true };
+    const generate = jest.fn(async () => done);
+    expect(await generateWithArchiveFallback(await officialPlan(), request, generate, readPage)).toBe(done);
+    expect(generate).toHaveBeenCalledTimes(1);
+
+    const skip = jest.fn(async () => unannounced);
+    expect(await generateWithArchiveFallback(null, request, skip, readPage)).toBe(unannounced);
+    expect(skip).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds again from the archive article, keeping the event year and the run time', async () => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    const plan = await officialPlan();
+    const generate = jest
+      .fn<(r: MdxGenerationRequest) => Promise<MdxGenerationResult>>()
+      .mockResolvedValueOnce(unannounced)
+      .mockResolvedValueOnce({ success: true });
+
+    await generateWithArchiveFallback(plan, request, generate, readPage);
+
+    expect(readPage).toHaveBeenCalledWith(ARTICLE_URL);
+    const second = generate.mock.calls[1][0];
+    expect(second.rssItem).toEqual(expect.objectContaining({ title: 'Archive', link: ARTICLE_URL, pubDate: request.rssItem.pubDate }));
+    expect(second.eventYear).toBe(2019);
+    expect(second.sourceOverride?.unlinkScope).toBe('none');
+    expect(second.extracted?.workTitle).toBe('サンプル作品');
   });
 });

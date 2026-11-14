@@ -69,7 +69,7 @@ const sourceOverride = {
     imageAlts: {},
   },
   reason: 'unreachable',
-  linkOfficialSite: false,
+  unlinkScope: 'host',
 };
 
 beforeEach(() => {

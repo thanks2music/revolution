@@ -62,7 +62,12 @@ import { extractArticleData, extractContentHtml } from '../lib/utils/html-extrac
 
 // アーカイブの記事 (過去のイベント) の取り込み。設定 (templates/config/archive-sources.yaml) が無ければ何もしない
 import { loadArchiveSources } from '../lib/archive-source/config';
-import { planArchiveRun, type ArchiveRunPlan } from '../lib/archive-source/plan-run';
+import {
+  generateWithArchiveFallback,
+  planArchiveRun,
+  rssItemFromPage,
+  type ArchiveRunPlan,
+} from '../lib/archive-source/plan-run';
 import { extractFromRss } from '../lib/claude/rss-extractor';
 
 // AI ステップの観測ログ
@@ -535,27 +540,14 @@ async function main() {
         : {}),
     };
 
-    let result = await service.generateMdxFromRSS(request);
-
-    // アーカイブの記事で、公式サイトから作ったら詳細未発表で止まった: 終わったイベントは公式サイトから品目が消えやすいので、
-    // アーカイブの記事を正にして作り直す (one-more-time docs/adr/0004)
-    if (archivePlan?.mode === 'official' && result.skipKind === 'unannounced-event') {
-      const { fallback } = archivePlan;
-      console.log(`\n🗄️  公式サイトから作れなかったため (${result.skipReason})、アーカイブの記事から作り直します\n`);
-      const archivePage = await extractArticleData(fallback.inputUrl);
-      result = await service.generateMdxFromRSS({
-        ...request,
-        rssItem: {
-          ...request.rssItem,
-          title: archivePage.title,
-          link: archivePage.actualUrl,
-          content: archivePage.html,
-          contentSnippet: archivePage.html.substring(0, 500),
-        },
-        sourceOverride: fallback.sourceOverride,
-        extracted: fallback.extracted,
-      });
-    }
+    // アーカイブの記事で、公式サイトから作ったら詳細未発表で止まった時は、アーカイブの記事から作り直す
+    // (終わったイベントは公式サイトから品目が消えやすい。one-more-time docs/adr/0004)
+    const result = await generateWithArchiveFallback(
+      archivePlan,
+      request,
+      (r) => service.generateMdxFromRSS(r),
+      extractArticleData,
+    );
     notification = pipelineNotificationFromResult(result, notifyContext);
 
     // PR を作る本実行の結果は、定期実行と同じ「試した URL」に残す (Job がこの URL をもう一度試さないように)。

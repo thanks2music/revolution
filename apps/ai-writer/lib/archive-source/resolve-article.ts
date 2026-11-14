@@ -3,14 +3,14 @@
  *
  * @module lib/archive-source/resolve-article
  */
+import * as cheerio from 'cheerio';
+
 import { BROWSER_USER_AGENT, FETCH_TIMEOUT_MS } from '@/lib/utils/http-constants';
 
 import type { ArchiveSource } from './config';
 import { pickOfficialUrl } from './official-url';
 
 export interface ArchiveArticle {
-  /** The archive article URL given to the CLI */
-  articleUrl: string;
   /** Title with HTML entities decoded */
   title: string;
   /** Article body HTML (`content.rendered`) */
@@ -80,7 +80,6 @@ export async function resolveArchiveArticle(
   const startsOn = parseArchiveDate(stringField(post, source.fields.start));
 
   return {
-    articleUrl,
     title: decodeEntities(post.title?.rendered ?? ''),
     contentHtml,
     startsOn,
@@ -110,17 +109,9 @@ function eventTypeOf(categoryIds: readonly number[], source: ArchiveSource): str
   return null;
 }
 
-/** Decodes the numeric and common named entities WordPress puts in titles */
+/** Decodes the HTML entities WordPress puts in titles (and drops any markup) */
 export function decodeEntities(text: string): string {
-  const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
-  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, code: string) => {
-    if (code[0] === '#') {
-      const point = code[1].toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
-      // String.fromCodePoint throws outside 0..0x10FFFF
-      return Number.isInteger(point) && point >= 0 && point <= 0x10ffff ? String.fromCodePoint(point) : whole;
-    }
-    return named[code.toLowerCase()] ?? whole;
-  });
+  return cheerio.load(text, null, false).text();
 }
 
 async function fetchJsonWithTimeout(url: string): Promise<unknown> {

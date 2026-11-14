@@ -62,7 +62,6 @@ import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label'
 import { loadYamlConfig } from '../config/yaml-loader';
 import { pageUrlKey, stripUtmFromUrl } from '../utils/url';
 import { removeLinksToClosedSite, withoutOfficialUrls } from '../utils/without-official-urls';
-import { siteUnreachable } from '../archive-source/probe-official';
 import { escapeMdxText, selfCloseVoidElements } from '../utils/mdx-safety';
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import {
@@ -278,10 +277,11 @@ export interface MdxSourceOverride {
   /** Why the official site could not be used (shown in the PR body and logs) */
   reason: string;
   /**
-   * Whether the article may still link to the official site. False when the site is gone (a closed
-   * domain can later belong to someone else); true when it is alive but no longer lists the items
+   * Which links to the official site the article must not have: `none` when the site is alive (it
+   * just no longer lists the items), `page` when only that page is gone, `host` when the whole site
+   * cannot be reached (a closed domain can later belong to someone else)
    */
-  linkOfficialSite: boolean;
+  unlinkScope: 'none' | 'page' | 'host';
 }
 
 /** 更新する記事 */
@@ -421,8 +421,7 @@ export class ArticleGenerationMdxService {
     // 過去のイベントは開催年 (`eventYear`)
     const year = update?.fields.year ?? request.eventYear ?? new Date().getFullYear();
     // 公式サイトが閉じている記事は、閉じたサイトへのリンクを書かない
-    const unlinkOfficialSite = sourceOverride !== undefined && !sourceOverride.linkOfficialSite;
-    const articleOfficialUrl = (url: string | null | undefined) => (unlinkOfficialSite ? undefined : (url ?? undefined));
+    const unlinkScope = sourceOverride?.unlinkScope ?? 'none';
 
     // モード判定用のヘルパー変数
     // skipExternalOps: Firestore/GitHub操作をスキップ（dryRun OR localOnly）
@@ -465,17 +464,18 @@ export class ArticleGenerationMdxService {
       console.log(`\n${getStepDisplay('article-selection')} AI API (${providerDisplayName}) で記事選別（公式URL検出、採用判定）...`);
       console.log('記事URLからHTML取得中:', rssItem.link);
 
-      const selected = sourceOverride
-        ? overrideSelection(sourceOverride)
-        : await new ArticleSelectionService().shouldGenerateArticle({
-            rss_title: rssItem.title,
-            rss_content: await extractArticleHtml(rssItem.link),
-            site_domain: new URL(rssItem.link).hostname,
-          });
+      let selected: ArticleSelectionResult;
       if (sourceOverride) {
+        selected = overrideSelection(sourceOverride);
         console.log(
           `${getStepContext('article-selection')} 公式サイトの代わりに渡されたページを使う (理由: ${sourceOverride.reason})。選別の AI は呼ばない`,
         );
+      } else {
+        selected = await new ArticleSelectionService().shouldGenerateArticle({
+          rss_title: rssItem.title,
+          rss_content: await extractArticleHtml(rssItem.link),
+          site_domain: new URL(rssItem.link).hostname,
+        });
       }
       // 更新のときは、既存の記事と同じ公式サイトから作り直す (選別が別の URL を選んでも使わない)
       const selectionResult = update
@@ -486,6 +486,9 @@ export class ArticleGenerationMdxService {
           `${getStepContext('article-selection')} 更新のため、選別した公式URL (${selected.primary_official_url ?? 'なし'}) ではなく既存の記事の official_url を使う: ${update.fields.officialUrl}`,
         );
       }
+
+      // 記事に書く公式サイトの URL (閉じたサイトなら書かない)
+      const linkedOfficialUrl = unlinkScope === 'none' ? (selectionResult.primary_official_url ?? undefined) : undefined;
 
       // 公式URLが見つからない場合はスキップ
       if (!selectionResult.should_generate) {
@@ -560,7 +563,9 @@ export class ArticleGenerationMdxService {
           console.log('公式サイトURLからHTML取得中:', selectionResult.primary_official_url);
           // ⚠️ `raw` (圧縮前) は会場の網羅性ゲート専用。LLM へ渡すのは `compacted` だけ
           //    (圧縮は class 属性を全て落とすため、raw でないと会場ブロックを認識できない)。
-          const contentHtml = sourceOverride?.contentHtml ?? (await extractContentHtml(selectionResult.primary_official_url));
+          const contentHtml = sourceOverride
+            ? sourceOverride.contentHtml
+            : await extractContentHtml(selectionResult.primary_official_url);
           officialHtml = contentHtml.compacted;
           // og:image は <head> にある。compacted は本文のブロックだけのことがある (meta が無い) ので、ここで読む
           officialOgImage = sourceOverride
@@ -704,7 +709,7 @@ export class ArticleGenerationMdxService {
       }
 
       // 公式サイトが閉じている記事は、閉じたサイトへのリンクを書かない (後で別人のサイトになりうる)
-      if (unlinkOfficialSite) detailedExtraction = withoutOfficialUrls(detailedExtraction);
+      if (unlinkScope !== 'none') detailedExtraction = withoutOfficialUrls(detailedExtraction);
 
       // A-1-c (詳細未発表のイベントは書かない) で止める時の返り値。記事の更新 (続報の反映) では止めない
       // 開始日が分かっていれば返す (定期実行が、試し直しを開始日で打ち切るために使う)
@@ -1585,10 +1590,7 @@ export class ArticleGenerationMdxService {
           // Sprint C-β P14: collabo-cafe.com origin の utm パラメータを LLM プロンプト入力
           // 段階で剥がす (LLM が本文テーブル markdown link に utm 付き URL をそのまま
           // 反映する経路の防御)。
-          公式サイトURL: (() => {
-            const url = articleOfficialUrl(selectionResult.primary_official_url);
-            return url ? stripUtmFromUrl(url) : undefined;
-          })(),
+          公式サイトURL: linkedOfficialUrl ? stripUtmFromUrl(linkedOfficialUrl) : undefined,
           キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
           テーマ名: detailedExtraction.テーマ名 ?? undefined,
           描き下ろし表記,
@@ -1691,12 +1693,8 @@ export class ArticleGenerationMdxService {
 
       // 公式サイトが閉じている記事: 本文の LLM が書いた閉じたサイトへの案内 (表の行と文) を除く。
       // 入力のページ (アーカイブの記事) に閉じたサイトのリンクが残っているので、同じホストへのリンクをすべて対象にする
-      if (unlinkOfficialSite) {
-        const unlinked = removeLinksToClosedSite(
-          finalContent,
-          sourceOverride.officialUrl,
-          siteUnreachable(sourceOverride.reason) ? 'host' : 'page',
-        );
+      if (sourceOverride && unlinkScope !== 'none') {
+        const unlinked = removeLinksToClosedSite(finalContent, sourceOverride.officialUrl, unlinkScope);
         finalContent = unlinked.content;
         if (unlinked.removed.length > 0) {
           console.warn(
@@ -1798,7 +1796,7 @@ export class ArticleGenerationMdxService {
         eventDataOccurrences: parsedEventData?.occurrences,
         extractionPeriod: detailedExtraction?.開催期間,
         extractionStoreName: detailedExtraction?.店舗名,
-        extractionOfficialUrl: articleOfficialUrl(selectionResult.primary_official_url),
+        extractionOfficialUrl: linkedOfficialUrl,
       });
 
       // silent drop の observability (Codex 中指摘 + claude[bot] R1 comment #2/#5/#6 対応)。

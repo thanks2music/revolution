@@ -482,7 +482,7 @@ export class ExtractionService {
         request.primary_official_url,
         response.model,
         response.usage,
-        request.reference_year,
+        referenceYearOf(request),
       );
 
       console.log('[Extraction] 抽出完了:', {
@@ -632,7 +632,7 @@ ${schemaStr}
     officialUrl: string,
     model?: string,
     usage?: TokenUsage,
-    referenceYear?: number,
+    referenceYear: number = new Date().getFullYear(),
   ): ExtractionResult {
     try {
       let jsonData: any;
@@ -710,7 +710,7 @@ ${schemaStr}
       }
 
       // 開催期間の新構造を構築（年またぎ対応 v2.0.0）
-      const currentYear = `${referenceYearOf({ reference_year: referenceYear })}年`;
+      const currentYear = `${referenceYear}年`;
       const eventPeriod: EventPeriod = {
         開始: {
           年: jsonData.開催期間?.開始?.年 || currentYear,

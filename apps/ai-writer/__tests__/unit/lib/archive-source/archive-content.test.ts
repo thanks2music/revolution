@@ -17,6 +17,23 @@ describe('removeNoise', () => {
   });
 });
 
+describe('removeNoise with a closed site', () => {
+  const html = '<p><a href="https://gone.example.com/event">Event page</a> / <a href="https://gone.example.com/shop/">Shop</a> / <a href="https://other.example.org/">Other</a></p>';
+
+  it('turns links to the closed page into text, keeping other links', () => {
+    const page = removeNoise(html, [], { url: 'https://gone.example.com/event/', scope: 'page' });
+    expect(page).toContain('Event page');
+    expect(page).not.toContain('href="https://gone.example.com/event"');
+    expect(page).toContain('href="https://gone.example.com/shop/"');
+  });
+
+  it('with the host scope, turns every link to the host into text', () => {
+    const page = removeNoise(html, [], { url: 'https://gone.example.com/event/', scope: 'host' });
+    expect(page).not.toContain('gone.example.com');
+    expect(page).toContain('href="https://other.example.org/"');
+  });
+});
+
 describe('collectSectionImages', () => {
   const clean = removeNoise(ARTICLE_HTML, SOURCE.noise_selectors);
   const images = collectSectionImages(clean, ARTICLE_URL, SOURCE.images);

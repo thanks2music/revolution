@@ -68,7 +68,11 @@ export function parseArchiveSources(yamlText: string): ArchiveSource[] {
 /** Reads the settings, or returns an empty list when the file is absent */
 export function loadArchiveSources(path: string = ARCHIVE_SOURCES_PATH): ArchiveSource[] {
   if (!existsSync(path)) return [];
-  return parseArchiveSources(readFileSync(path, 'utf8'));
+  try {
+    return parseArchiveSources(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new Error(`Failed to load archive sources from ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /** The archive source whose host matches the URL, if any */

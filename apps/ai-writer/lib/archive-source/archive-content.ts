@@ -10,6 +10,7 @@ import * as cheerio from 'cheerio';
 import type { CategoryImages } from '@/lib/services/category-image-extractor.service';
 import { compactHtmlForLlm } from '@/lib/utils/compact-html';
 import { mentionsRedrawnIllustration, pageRedrawnWords } from '@/lib/utils/redrawn-illustration';
+import { pointsToClosedSite } from '@/lib/utils/without-official-urls';
 
 import type { ArchiveSource } from './config';
 
@@ -22,10 +23,25 @@ export interface ArchivePageContent {
   categoryImages: CategoryImages;
 }
 
-/** Removes the archive's own ads, affiliate boxes, embeds and site banners */
-export function removeNoise(contentHtml: string, noiseSelectors: readonly string[]): string {
+/** The closed official site, whose links are taken out of the page before the LLM reads it */
+export interface ClosedSite {
+  url: string;
+  scope: 'host' | 'page';
+}
+
+/**
+ * Removes the archive's own ads, affiliate boxes, embeds and site banners, and turns links to the
+ * closed official site into plain text (so the article text has no closed link to copy)
+ */
+export function removeNoise(contentHtml: string, noiseSelectors: readonly string[], closedSite?: ClosedSite): string {
   const $ = cheerio.load(contentHtml, null, false);
   for (const selector of noiseSelectors) $(selector).remove();
+  if (closedSite) {
+    $('a[href]').each((_, link) => {
+      const href = $(link).attr('href') ?? '';
+      if (pointsToClosedSite(href, closedSite.url, closedSite.scope)) $(link).replaceWith($(link).text());
+    });
+  }
   return $.html();
 }
 
@@ -89,8 +105,9 @@ export function buildArchivePageContent(
   articleUrl: string,
   source: ArchiveSource,
   eventType: string | null = null,
+  closedSite?: ClosedSite,
 ): ArchivePageContent {
-  const raw = removeNoise(contentHtml, source.noise_selectors);
+  const raw = removeNoise(contentHtml, source.noise_selectors, closedSite);
   const sections = collectSectionImages(raw, articleUrl, source.images, eventType);
   const categoryImages: CategoryImages = {
     menu: sections.menu,
