@@ -12,6 +12,8 @@
  * @module lib/slack/config
  */
 
+import { isCloudRun } from '@/lib/utils/cloud-run';
+
 export type SlackRuntime = 'cloud-run' | 'local';
 
 export interface SlackConfig {
@@ -67,10 +69,5 @@ export function missingSlackConfigKeys(env: NodeJS.ProcessEnv = process.env): st
   return REQUIRED_KEYS.filter(key => !presentValue(env[key]));
 }
 
-/**
- * Cloud Run 上で動いているか。Cloud Run が自動で設定する変数で判定する
- * (Service は `K_SERVICE`、Jobs は `CLOUD_RUN_JOB`)
- */
-export function isCloudRun(env: NodeJS.ProcessEnv = process.env): boolean {
-  return presentValue(env.K_SERVICE) !== undefined || presentValue(env.CLOUD_RUN_JOB) !== undefined;
-}
+/** Cloud Run 上で動いているか (Service は `K_SERVICE`、Jobs は `CLOUD_RUN_JOB`)。判定は Anthropic の認証と共通 */
+export { isCloudRun };

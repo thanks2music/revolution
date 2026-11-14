@@ -231,9 +231,6 @@ jobs:
           # 手順のプレースホルダは &lt; &gt; で書く (生の < > は Slack がリンクとして解釈する)
           grep -q '&lt;サービス名&gt;' <<<"${res}"
           if grep -q '<サービス名>' <<<"${res}"; then echo "raw placeholder" >&2; exit 1; fi
-          res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=success TRAFFIC_CHECKED=true JOB_DEPLOY_OUTCOME=failure)"
-          grep -q '定期実行の Job を更新できませんでした' <<<"${res}"
-          grep -qx 'mention=true' <<<"${res}"
           res="$(deploy_msg JOB_STATUS=cancelled DEPLOY_OUTCOME=success HEALTH_OUTCOME=cancelled TRAFFIC_CHECKED=true)"
           grep -q 'デプロイ後の確認が完了しませんでした (新リビジョンがトラフィック 100% で稼働中)' <<<"${res}"
           res="$(deploy_msg DEPLOY_OUTCOME=success HEALTH_OUTCOME=failure PINNED=true TRAFFIC_CHECKED=true)"

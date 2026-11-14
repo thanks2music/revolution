@@ -14,6 +14,7 @@
  */
 
 import os from 'node:os';
+import { isCloudRun } from '@/lib/utils/cloud-run';
 import path from 'node:path';
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -67,7 +68,7 @@ export type AnthropicAuth =
  * @throws {Error} Cloud Run でフェデレーションの環境変数が欠けているとき
  */
 export function resolveAnthropicAuth(env: Env): AnthropicAuth {
-  if (env.K_SERVICE || env.CLOUD_RUN_JOB) {
+  if (isCloudRun(env)) {
     const missing = FEDERATION_ENV_KEYS.filter((key) => !env[key]);
     if (missing.length > 0) {
       throw new Error(

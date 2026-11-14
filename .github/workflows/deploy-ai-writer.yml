@@ -31,49 +31,18 @@ jobs:
         with:
           persist-credentials: false
 
-      # 記事のテンプレート (YAML) は private のリポジトリにある。定期実行の Job のイメージに入れるため、
-      # 読み取り専用の deploy key で取得する
-      - name: Checkout templates
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ github.repository_owner }}/revolution-templates
-          ssh-key: ${{ secrets.TEMPLATES_DEPLOY_KEY }}
-          path: .templates-src
-          persist-credentials: false
-
-      # scripts/sync-templates.sh と同じ物を同じ場所へ置く (あちらは手元の .env.local を読むので、CI では使えない)。
-      # どの版のテンプレートが入ったかを VERSION.json に残す
-      - name: Place templates for the job image
-        env:
-          SRC: .templates-src/ai-writer
-          DEST: apps/ai-writer/templates
-        run: |
-          mkdir -p "$DEST/config"
-          rsync -a --delete "$SRC/posts/yaml/collabo-cafe/" "$DEST/collabo-cafe/"
-          cp "$SRC"/config/*.yaml "$DEST/config/"
-          COMMIT=$(git -C .templates-src rev-parse HEAD)
-          jq -n --arg commit "$COMMIT" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{lastSynced: $at, sourceBranch: "main", sourceCommit: $commit, sourceCommitShort: $commit[0:7], syncedBy: "github-actions"}' \
-            > "$DEST/VERSION.json"
-          rm -rf .templates-src
-          echo "templates: ${COMMIT:0:7}, $(find "$DEST" -name '*.yaml' | wc -l) YAML files"
-
       # Claude の認証 (ID フェデレーション) に要る変数。欠けたままデプロイすると Claude を一切呼べないのに、
       # /api/health は 1 件の失敗を degraded (200) として返すため、ここで止める
-      # 定期実行の Job に要る変数 (実行用のサービスアカウント・Slack の送り先・R2) も、欠けていればここで止める
-      - name: Check required variables
+      # 実行用のサービスアカウントも variable から読む (public の workflow に直書きしない)
+      - name: Check Anthropic federation variables
         env:
           ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
           ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
           AI_WRITER_RUNTIME_SERVICE_ACCOUNT: ${{ vars.AI_WRITER_RUNTIME_SERVICE_ACCOUNT }}
-          SLACK_CHANNEL_PROD: ${{ vars.SLACK_CHANNEL_PROD }}
-          R2_BUCKET_NAME: ${{ vars.R2_BUCKET_NAME }}
-          R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
         run: |
           missing=0
-          for key in ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID ANTHROPIC_SERVICE_ACCOUNT_ID \
-            AI_WRITER_RUNTIME_SERVICE_ACCOUNT SLACK_CHANNEL_PROD R2_BUCKET_NAME R2_PUBLIC_URL; do
+          for key in ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID ANTHROPIC_SERVICE_ACCOUNT_ID AI_WRITER_RUNTIME_SERVICE_ACCOUNT; do
             if [ -z "${!key}" ]; then
               echo "::error title=Missing variable::$key is empty or unset."
               missing=1
@@ -118,13 +87,6 @@ jobs:
         run: |
           docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest
-
-      # 定期実行の Job のイメージ (Dockerfile の job ステージ。CLI と同じ経路でパイプラインを動かす)
-      - name: Build and push the job image
-        run: |
-          IMAGE=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}-job
-          docker build --target job --platform linux/amd64 -t "$IMAGE:${{ github.sha }}" -f apps/ai-writer/Dockerfile .
-          docker push "$IMAGE:${{ github.sha }}"
 
       - name: Deploy to Cloud Run
         id: deploy
@@ -186,30 +148,12 @@ jobs:
           echo "❌ Health check failed with status: ${HEALTH_STATUS}"
           exit 1
 
-      # 定期実行の Job の定義を更新する (実行はしない。起動は Cloud Scheduler か手動)。
-      # 環境変数は Service と同じものに、Slack の送り先と R2 を足す
-      - name: Deploy the scheduled job
-        id: deploy_job
-        run: |
-          gcloud run jobs deploy ${{ env.SERVICE_NAME }}-job \
-            --image ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}-job:${{ github.sha }} \
-            --region ${{ env.REGION }} \
-            --service-account "${{ vars.AI_WRITER_RUNTIME_SERVICE_ACCOUNT }}" \
-            --tasks 1 \
-            --max-retries 0 \
-            --task-timeout 3600s \
-            --memory 2Gi \
-            --cpu 2 \
-            --set-env-vars "NODE_ENV=production,AI_PROVIDER=google,VISION_API_PROVIDER=google,GITHUB_OWNER=${{ github.repository_owner }},GITHUB_REPO=${{ github.event.repository.name }},GITHUB_BASE_BRANCH=main,SENTRY_DSN=${{ vars.SENTRY_DSN_AI_WRITER }},SENTRY_ENVIRONMENT=production,ANTHROPIC_FEDERATION_RULE_ID=${{ vars.ANTHROPIC_FEDERATION_RULE_ID }},ANTHROPIC_ORGANIZATION_ID=${{ vars.ANTHROPIC_ORGANIZATION_ID }},ANTHROPIC_SERVICE_ACCOUNT_ID=${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }},ANTHROPIC_WORKSPACE_ID=${{ vars.ANTHROPIC_WORKSPACE_ID }},SLACK_CHANNEL_ID=${{ vars.SLACK_CHANNEL_PROD }},SLACK_MENTION_USER_ID=${{ vars.SLACK_MENTION_USER_ID }},R2_BUCKET_NAME=${{ vars.R2_BUCKET_NAME }},R2_PUBLIC_URL=${{ vars.R2_PUBLIC_URL }}" \
-            --set-secrets "GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest,SLACK_BOT_TOKEN=SLACK_BOT_TOKEN:latest,R2_ACCESS_KEY_ID=R2_ACCESS_KEY_ID:latest,R2_SECRET_ACCESS_KEY=R2_SECRET_ACCESS_KEY:latest,R2_ENDPOINT_URL=R2_ENDPOINT_URL:latest"
-
       - name: Build the Slack message
         id: msg
         if: always()
         env:
           JOB_STATUS: ${{ job.status }}
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
-          JOB_DEPLOY_OUTCOME: ${{ steps.deploy_job.outcome }}
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
           HTTP_CODE: ${{ steps.health.outputs.http_code }}
           PINNED: ${{ steps.health.outputs.pinned }}
@@ -237,4 +181,3 @@ jobs:
           echo "Service: ${{ env.SERVICE_NAME }}"
           echo "Region: ${{ env.REGION }}"
           echo "Image: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
-          echo "Job: ${{ env.SERVICE_NAME }}-job"

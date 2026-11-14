@@ -106,7 +106,8 @@ RUN pnpm build
 # Next.js のビルド成果物は使わないので builder ではなく deps から作る。
 # ⚠️ このステージは runner より前に置くこと。--target を付けない build は最後のステージを
 #   作るため、後ろに置くと Service のイメージがこのステージに変わってしまう
-FROM base AS job
+FROM node:24.22.1-alpine AS job
+WORKDIR /app
 
 ENV NODE_ENV=production
 
@@ -114,13 +115,12 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/ai-writer/node_modules ./apps/ai-writer/node_modules
 COPY --from=deps /app/shared/schemas/node_modules ./shared/schemas/node_modules
-COPY pnpm-workspace.yaml ./
 COPY shared ./shared
 
 # 実行用のユーザー。パイプラインは作業ディレクトリの下 (logs/ と debug-logs/) に書くので、
 # アプリのディレクトリはこのユーザーの持ち物にする
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 aiwriter
+    adduser --system --uid 1001 -G nodejs aiwriter
 COPY --chown=aiwriter:nodejs apps/ai-writer ./apps/ai-writer
 
 # テンプレート (YAML) は private のリポジトリにあり、git には入っていない。
@@ -137,8 +137,11 @@ USER aiwriter
 # テンプレートは process.cwd() からの相対パスで読むので、作業ディレクトリは ai-writer にする
 WORKDIR /app/apps/ai-writer
 
-# 実行するスクリプトと引数は Cloud Run Job の args で渡す (例: scripts/<入口>.ts --dry-run)
+# 実行するスクリプトと引数は Cloud Run Job の args で渡す (例: scripts/<入口>.ts --dry-run)。
+# args が無いと tsx は標準入力を読んで成功 (終了コード 0) で終わり、何もしないのに「成功」に見えるので、
+# 既定の引数では失敗させる
 ENTRYPOINT ["/app/node_modules/.bin/tsx"]
+CMD ["--eval", "console.error('No script given. Pass the script and its arguments as the job args.'); process.exit(2)"]
 
 # Stage 4: 本番環境 (Service)
 FROM node:24.22.1-alpine AS runner
