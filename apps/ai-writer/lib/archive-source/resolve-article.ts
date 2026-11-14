@@ -41,10 +41,15 @@ export type FetchJson = (url: string) => Promise<unknown>;
 export function slugFromArticleUrl(articleUrl: string): string | null {
   const segments = new URL(articleUrl).pathname.split('/').filter(Boolean);
   const last = segments.at(-1);
-  return last ? decodeURIComponent(last) : null;
+  if (!last) return null;
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
 }
 
-/** "YYYY-MM-DD" from both date formats the API returns (`2017-03-03 10:00:00` and `2026-10-01T00:00:00+09:00`) */
+/** "YYYY-MM-DD" from a date-time with a space or `T` (`2000-01-02 03:04:05`, `2000-01-02T03:04:05+09:00`) */
 export function parseArchiveDate(value: string | null | undefined): string | null {
   const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
@@ -61,6 +66,11 @@ export async function resolveArchiveArticle(
   const apiUrl = new URL(source.api_base);
   apiUrl.searchParams.set('slug', slug);
   apiUrl.searchParams.set('_embed', 'wp:featuredmedia');
+  // Only the fields read here (`_links` and `_embedded` are needed for the embed to work)
+  apiUrl.searchParams.set(
+    '_fields',
+    ['link', 'title', 'content', '_links', '_embedded', source.fields.categories, source.fields.start, source.fields.end].join(','),
+  );
   const body = await fetchJson(apiUrl.toString());
   if (!Array.isArray(body) || body.length === 0) {
     throw new Error(`Archive article not found by slug "${slug}"`);
@@ -106,7 +116,8 @@ export function decodeEntities(text: string): string {
   return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, code: string) => {
     if (code[0] === '#') {
       const point = code[1].toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
-      return Number.isFinite(point) ? String.fromCodePoint(point) : whole;
+      // String.fromCodePoint throws outside 0..0x10FFFF
+      return Number.isInteger(point) && point >= 0 && point <= 0x10ffff ? String.fromCodePoint(point) : whole;
     }
     return named[code.toLowerCase()] ?? whole;
   });

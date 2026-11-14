@@ -47,6 +47,8 @@ describe('planArchiveRun', () => {
     expect(plan.fallback).toEqual(
       expect.objectContaining({ mode: 'archive', inputUrl: ARTICLE_URL, reason: 'official-has-no-items' }),
     );
+    // The site is alive, so the rebuilt article may still link to it
+    expect(plan.fallback.sourceOverride.linkOfficialSite).toBe(true);
     expect(plan.fallback.sourceOverride.categoryImages.menu).toHaveLength(2);
   });
 
@@ -69,6 +71,7 @@ describe('planArchiveRun', () => {
         officialUrl: 'https://official.example.com/event/',
         ogImage: 'https://archive.example.com/wp-content/uploads/kv.jpg',
         reason: 'unreachable',
+        linkOfficialSite: false,
       }),
     );
     expect(plan.sourceOverride.categoryImages.menu).toHaveLength(2);

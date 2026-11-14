@@ -11,8 +11,8 @@ import { ARTICLE_HTML, ARTICLE_URL, SOURCE } from './fixtures';
 
 describe('parseArchiveDate', () => {
   it('reads both formats the API returns', () => {
-    expect(parseArchiveDate('2017-03-03 10:00:00')).toBe('2017-03-03');
-    expect(parseArchiveDate('2026-10-01T00:00:00+09:00')).toBe('2026-10-01');
+    expect(parseArchiveDate('2000-01-02 03:04:05')).toBe('2000-01-02');
+    expect(parseArchiveDate('2000-01-02T03:04:05+09:00')).toBe('2000-01-02');
   });
 
   it('returns null when there is no date', () => {
@@ -26,6 +26,8 @@ describe('slugFromArticleUrl', () => {
   it('takes the last path segment', () => {
     expect(slugFromArticleUrl(ARTICLE_URL)).toBe('sample-event-2019');
     expect(slugFromArticleUrl('https://archive.example.com/events/collabo/a%E3%81%82')).toBe('aあ');
+    // A malformed escape is kept as it is
+    expect(slugFromArticleUrl('https://archive.example.com/events/a%E3')).toBe('a%E3');
   });
 
   it('returns null for the site root', () => {
@@ -37,6 +39,8 @@ describe('decodeEntities', () => {
   it('decodes numeric and named entities', () => {
     expect(decodeEntities('A &#038; B &#x21; &amp; &quot;C&quot;')).toBe('A & B ! & "C"');
     expect(decodeEntities('&unknown;')).toBe('&unknown;');
+    // Outside Unicode: kept instead of throwing
+    expect(decodeEntities('&#99999999;')).toBe('&#99999999;');
   });
 });
 
@@ -59,6 +63,9 @@ describe('resolveArchiveArticle', () => {
     expect(requested.origin + requested.pathname).toBe(SOURCE.api_base);
     expect(requested.searchParams.get('slug')).toBe('sample-event-2019');
     expect(requested.searchParams.get('_embed')).toBe('wp:featuredmedia');
+    expect(requested.searchParams.get('_fields')?.split(',')).toEqual(
+      expect.arrayContaining(['content', '_links', '_embedded', 'event_types', 'starts_at', 'ends_at']),
+    );
 
     expect(article).toEqual({
       articleUrl: ARTICLE_URL,
@@ -86,5 +93,19 @@ describe('resolveArchiveArticle', () => {
 
   it('throws when the article is not found', async () => {
     await expect(resolveArchiveArticle(ARTICLE_URL, SOURCE, async () => [])).rejects.toThrow('not found');
+  });
+
+  it('fetches with the default client and throws on an HTTP error', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify([post]), { status: 200 }))
+      .mockResolvedValueOnce(new Response('busy', { status: 503 }));
+    try {
+      expect((await resolveArchiveArticle(ARTICLE_URL, SOURCE)).eventYear).toBe(2019);
+      await expect(resolveArchiveArticle(ARTICLE_URL, SOURCE)).rejects.toThrow('HTTP 503');
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });

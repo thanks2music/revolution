@@ -38,7 +38,7 @@ describe('collectSectionImages', () => {
     const noisy = collectSectionImages(ARTICLE_HTML, ARTICLE_URL, SOURCE.images);
     const all = [...noisy.menu, ...noisy.novelty, ...noisy.goods];
     expect(all.every((url) => url.startsWith(uploads('')))).toBe(true);
-    expect(all.some((url) => url.includes('dummy.png') || url.includes('app-banner'))).toBe(false);
+    expect(all.some((url) => url.includes('placeholder.gif') || url.includes('site-banner'))).toBe(false);
   });
 });
 

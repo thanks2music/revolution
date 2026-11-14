@@ -80,6 +80,8 @@ export async function planArchiveRun(url: string, deps: PlanArchiveRunDeps): Pro
         ogImage: article.featuredImageUrl,
         categoryImages: page.categoryImages,
         reason,
+        // A site that is alive but lost the items is still the event's page; a gone site is not linked
+        linkOfficialSite: reason === 'official-has-no-items',
       },
       extracted: { workTitle: work.workTitle, storeName: work.storeName, eventTypeName: work.eventTypeName },
     };

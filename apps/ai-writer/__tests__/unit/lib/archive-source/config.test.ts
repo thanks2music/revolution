@@ -12,7 +12,7 @@ const YAML = `
 sources:
   - id: test
     hosts: [archive.example.com]
-    api_base: https://archive.example.com/wp-json/wp/v2/events
+    api_base: https://archive.example.com/wp-json/wp/v2/posts
     categories:
       10: collabo-cafe
     fields: { categories: event_types, start: starts_at, end: ends_at }

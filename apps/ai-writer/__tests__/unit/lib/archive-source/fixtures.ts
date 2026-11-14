@@ -4,7 +4,7 @@ import type { ArchiveSource } from '@/lib/archive-source/config';
 export const SOURCE: ArchiveSource = {
   id: 'test',
   hosts: ['archive.example.com'],
-  api_base: 'https://archive.example.com/wp-json/wp/v2/events',
+  api_base: 'https://archive.example.com/wp-json/wp/v2/posts',
   categories: { '10': 'collabo-cafe', '20': 'pop-up-store' },
   fields: { categories: 'event_types', start: 'starts_at', end: 'ends_at' },
   official_url: {
@@ -16,7 +16,7 @@ export const SOURCE: ArchiveSource = {
   noise_selectors: ['ins.adsbygoogle', '.affiliate', 'blockquote.twitter-tweet', '.app-banner'],
   images: {
     path_prefixes: ['/wp-content/uploads/'],
-    exclude_name_contains: ['dummy.png', 'app-banner'],
+    exclude_name_contains: ['placeholder.gif', 'site-banner'],
     section_keywords: { menu: ['メニュー'], novelty: ['ノベルティ', '特典'], goods: ['グッズ', '商品'] },
     default_category_by_event_type: { 'pop-up-store': 'goods' },
   },
@@ -28,7 +28,7 @@ export const ARTICLE_URL = 'https://archive.example.com/events/collabo/sample-ev
 export const ARTICLE_HTML = `
 <p><img src="https://archive.example.com/wp-content/uploads/kv.jpg" alt=""></p>
 <h2>サンプル作品カフェのメニュー</h2>
-<p><img src="/wp-content/uploads/dummy.png" data-src="https://archive.example.com/wp-content/uploads/menu-1.jpg" alt=""></p>
+<p><img src="/wp-content/uploads/placeholder.gif" data-src="https://archive.example.com/wp-content/uploads/menu-1.jpg" alt=""></p>
 <p><img src="/wp-content/uploads/menu-2.jpg" alt=""></p>
 <ins class="adsbygoogle"><img src="https://ads.example.org/ad.jpg"></ins>
 <h2>サンプル作品カフェのノベルティ</h2>
@@ -38,7 +38,7 @@ export const ARTICLE_HTML = `
 <p>描き下ろしイラストを使用したグッズ</p>
 <p><img src="https://archive.example.com/wp-content/uploads/goods-1.jpg" alt=""></p>
 <p><img src="https://archive.example.com/wp-content/uploads/menu-2.jpg" alt=""></p>
-<div class="app-banner"><img src="https://archive.example.com/wp-content/uploads/app-banner-2.png"></div>
+<div class="app-banner"><img src="https://archive.example.com/wp-content/uploads/site-banner.png"></div>
 <blockquote class="twitter-tweet"><p>tweet</p></blockquote>
 <h2>サンプル作品カフェのイベント開催概要</h2>
 <table><tbody>
