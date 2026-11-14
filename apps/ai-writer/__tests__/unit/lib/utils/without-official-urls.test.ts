@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { removeLinesContaining, withoutOfficialUrls } from '@/lib/utils/without-official-urls';
+import { removeLinksToClosedSite, withoutOfficialUrls } from '@/lib/utils/without-official-urls';
 
 describe('withoutOfficialUrls', () => {
   it('clears the official URL and each occurrence URL, keeping the rest', () => {
@@ -36,27 +36,39 @@ describe('withoutOfficialUrls', () => {
   });
 });
 
-describe('removeLinesContaining', () => {
-  const table = [
+describe('removeLinksToClosedSite', () => {
+  const article = [
     '| 項目 | 内容 |',
     '|------|------|',
-    '| Site | [page](https://gone.example.com/event/) |',
+    '| Site | [page](https://gone.example.com) |',
+    '| Menu | [menu](https://WWW.Gone.Example.com/menu.pdf) |',
     '| Place | Venue |',
     '| Link | [page]({{公式サイトURL}}) |',
     '| Empty | [page]() |',
+    '| Map | [map](https://maps.example.org/?q=gone.example.com) |',
     '',
-    'See [the official site]({{公式サイトURL}}) for details.',
+    'See [the official site](https://gone.example.com/event/) for details.',
+    'Goods are on sale.',
   ].join('\n');
 
-  it('removes the table rows and sentences that contain any of the strings', () => {
-    expect(removeLinesContaining(table, ['https://gone.example.com/event/', '{{公式サイトURL}}', ']()'])).toBe(
-      ['| 項目 | 内容 |', '|------|------|', '| Place | Venue |', ''].join('\n'),
+  it('removes every line with a link to the closed host, whatever the path or spelling, and empty links', () => {
+    const { content, removed } = removeLinksToClosedSite(article, 'https://gone.example.com/event/');
+    expect(content).toBe(
+      [
+        '| 項目 | 内容 |',
+        '|------|------|',
+        '| Place | Venue |',
+        // The host only appears in another site's query string
+        '| Map | [map](https://maps.example.org/?q=gone.example.com) |',
+        '',
+        'Goods are on sale.',
+      ].join('\n'),
     );
+    expect(removed).toHaveLength(5);
   });
 
-  it('keeps the other lines and ignores empty needles', () => {
-    const text = 'Line one\nLine two';
-    expect(removeLinesContaining(text, ['https://gone.example.com/event/'])).toBe(text);
-    expect(removeLinesContaining(table, [''])).toBe(table);
+  it('still removes empty links when the closed URL cannot be parsed', () => {
+    const { content } = removeLinksToClosedSite('| Empty | [page]() |\nkeep', 'not a url');
+    expect(content).toBe('keep');
   });
 });

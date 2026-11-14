@@ -61,7 +61,7 @@ import { deriveStoreContext, type StoreContext } from '../utils/store-derivation
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
 import { pageUrlKey, stripUtmFromUrl } from '../utils/url';
-import { removeLinesContaining, withoutOfficialUrls } from '../utils/without-official-urls';
+import { removeLinksToClosedSite, withoutOfficialUrls } from '../utils/without-official-urls';
 import { escapeMdxText, selfCloseVoidElements } from '../utils/mdx-safety';
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import {
@@ -276,6 +276,11 @@ export interface MdxSourceOverride {
   categoryImages: CategoryImages;
   /** Why the official site could not be used (shown in the PR body and logs) */
   reason: string;
+  /**
+   * Whether the article may still link to the official site. False when the site is gone (a closed
+   * domain can later belong to someone else); true when it is alive but no longer lists the items
+   */
+  linkOfficialSite: boolean;
 }
 
 /** 更新する記事 */
@@ -414,8 +419,9 @@ export class ArticleGenerationMdxService {
     // 更新のときは既存の記事の年 (画像のフォルダ `{event_type}/{year}/{post_id}` に入る) を引き継ぐ。
     // 過去のイベントは開催年 (`eventYear`)
     const year = update?.fields.year ?? request.eventYear ?? new Date().getFullYear();
-    // 公式サイトが無い (sourceOverride) 記事は、公式サイトへのリンクを書かない
-    const articleOfficialUrl = (url: string | null | undefined) => (sourceOverride ? undefined : (url ?? undefined));
+    // 公式サイトが閉じている記事は、閉じたサイトへのリンクを書かない
+    const unlinkOfficialSite = sourceOverride !== undefined && !sourceOverride.linkOfficialSite;
+    const articleOfficialUrl = (url: string | null | undefined) => (unlinkOfficialSite ? undefined : (url ?? undefined));
 
     // モード判定用のヘルパー変数
     // skipExternalOps: Firestore/GitHub操作をスキップ（dryRun OR localOnly）
@@ -602,7 +608,8 @@ export class ArticleGenerationMdxService {
                 page_content: llmInput,
                 copyright_notices: copyrightNotices,
                 official_urls: officialUrls,
-                reference_year: year,
+                // 更新では従来どおり現在の年 (既存の記事の年を使うと、年をまたぐ開催の日付がずれる)
+                reference_year: request.eventYear,
                 // ⚠️ 観測ログ専用。プロンプトへは渡らない (自己成就の防止)
                 observationContext: {
                   venueGateAttempt: attempt,
@@ -696,7 +703,7 @@ export class ArticleGenerationMdxService {
       }
 
       // 公式サイトが閉じている記事は、閉じたサイトへのリンクを書かない (後で別人のサイトになりうる)
-      if (sourceOverride) detailedExtraction = withoutOfficialUrls(detailedExtraction);
+      if (unlinkOfficialSite) detailedExtraction = withoutOfficialUrls(detailedExtraction);
 
       // A-1-c (詳細未発表のイベントは書かない) で止める時の返り値。記事の更新 (続報の反映) では止めない
       // 開始日が分かっていれば返す (定期実行が、試し直しを開始日で打ち切るために使う)
@@ -1680,15 +1687,17 @@ export class ArticleGenerationMdxService {
 
       finalContent = this.removeFooterPlaceholder(finalContent);
 
-      // 公式サイトが閉じている記事: 本文の LLM が書いた公式サイトへの案内 (表の行と文) を除く
-      if (sourceOverride) {
-        finalContent = removeLinesContaining(finalContent, [
-          sourceOverride.officialUrl,
-          stripUtmFromUrl(sourceOverride.officialUrl),
-          '{{公式サイトURL}}',
-          // 公式サイトURL を空にしたので、本文の LLM が空のリンクで行を書くことがある
-          ']()',
-        ]);
+      // 公式サイトが閉じている記事: 本文の LLM が書いた閉じたサイトへの案内 (表の行と文) を除く。
+      // 入力のページ (アーカイブの記事) に閉じたサイトのリンクが残っているので、同じホストへのリンクをすべて対象にする
+      if (unlinkOfficialSite) {
+        const unlinked = removeLinksToClosedSite(finalContent, sourceOverride.officialUrl);
+        finalContent = unlinked.content;
+        if (unlinked.removed.length > 0) {
+          console.warn(
+            `${getStepContext('footer-placeholder-cleanup')} 閉じた公式サイトへの案内を ${unlinked.removed.length} 行除いた:`,
+            unlinked.removed.map((line) => line.slice(0, 60)),
+          );
+        }
       }
 
       // ------------------------------------------------------------------
