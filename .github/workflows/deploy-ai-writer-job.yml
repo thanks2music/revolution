@@ -37,7 +37,7 @@ jobs:
     name: Deploy the scheduled job
     # Service の deploy が成功した時か、main からの手動実行の時だけ (ブランチから動かすと、そのコードが本番の Job になる)
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
 
@@ -57,6 +57,8 @@ jobs:
           ref: ${{ env.REV_SHA }}
           persist-credentials: false
 
+      # ANTHROPIC_WORKSPACE_ID と SLACK_MENTION_USER_ID は任意なので確かめない (空なら空文字が入り、
+      # アプリは空白だけの値を未設定として扱う)
       - name: Check required variables
         env:
           AI_WRITER_RUNTIME_SERVICE_ACCOUNT: ${{ vars.AI_WRITER_RUNTIME_SERVICE_ACCOUNT }}
