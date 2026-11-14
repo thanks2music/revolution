@@ -8,7 +8,9 @@
  * - 90 minutes since the start (the job's task timeout is 2 hours, so the last attempt and the
  *   notification still fit)
  * - 3 failures in a row: most likely an outage (an expired key, no credits) rather than three
- *   bad pages. Those 3 failures do not count toward each URL's retry limit
+ *   bad pages. Those failures do not count toward each URL's retry limit (`retry-policy.ts`)
+ * - an error of the run itself (Firestore, reading the feeds): the summary still goes out with
+ *   what was done
  *
  * Candidates left over are tried by a later run. In a dry run nothing is written: no PR, no
  * Firestore record (the pipeline's own `dryRun` skips the rest).
@@ -19,16 +21,27 @@
  */
 import type { MdxGenerationRequest, MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 
-import { buildAttemptRecord, toAttemptOutcome, type AttemptResult } from './attempt-record';
-import type { AttemptRecord } from './attempt-store';
-import { orderCandidates, type Candidate, type RssCandidateInput } from './candidates';
-import { extractPublishedDate } from './published-date';
+import {
+  buildAttemptRecord,
+  describeAttempt,
+  toAttemptOutcome,
+  type AttemptContext,
+  type AttemptResult,
+} from './attempt-record';
+import type { AttemptRecord, AttemptStore } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
+import { orderCandidates, type RssCandidateInput } from './candidates';
+import { extractPublishedDate } from './published-date';
+import {
+  MAX_CONSECUTIVE_FAILURES,
+  MAX_PRS_PER_RUN,
+  MAX_TRIES_PER_RUN,
+  RUN_TIME_BUDGET_MINUTES,
+  type RunItem,
+  type ScheduledRunSummary,
+  type StopReason,
+} from './summary';
 
-export const MAX_PRS_PER_RUN = 5;
-export const MAX_TRIES_PER_RUN = 15;
-export const RUN_TIME_BUDGET_MS = 90 * 60 * 1000;
-export const MAX_CONSECUTIVE_FAILURES = 3;
 /** How many due retries to read. More than a run can try, so the order is decided here */
 const DUE_RETRY_READ_LIMIT = 50;
 
@@ -44,57 +57,12 @@ export interface FetchedPage {
 
 export interface ScheduledRunDeps {
   now: () => Date;
-  store: {
-    get(url: string): Promise<AttemptRecord | undefined>;
-    findAttempted(urls: string[]): Promise<Set<string>>;
-    findDueRetries(now: Date, limit: number): Promise<AttemptRecord[]>;
-    save(record: AttemptRecord): Promise<void>;
-  };
+  store: Pick<AttemptStore, 'findAttempted' | 'findDueRetries' | 'save'>;
   /** RSS items of the active feeds. A feed that cannot be read is reported in `errors` */
   loadRssItems: () => Promise<{ items: RssCandidateInput[]; errors: string[] }>;
   fetchPage: (url: string) => Promise<FetchedPage>;
   generate: (request: MdxGenerationRequest) => Promise<MdxGenerationResult>;
   log?: (message: string) => void;
-}
-
-export type StopReason = 'max-prs' | 'max-tries' | 'time-budget' | 'consecutive-failures' | 'store-error';
-
-export interface RunItem {
-  url: string;
-  title?: string;
-  source: Candidate['source'];
-  outcome: 'pr' | 'skipped' | 'unannounced' | 'failure';
-  /** The skip reason or the error */
-  reason?: string;
-  prUrl?: string;
-  /** When the URL will be tried again (unannounced / failure) */
-  nextAttemptAt?: Date | null;
-  /** Set when this attempt ended the retries */
-  givenUpReason?: string;
-}
-
-export interface ScheduledRunSummary {
-  dryRun: boolean;
-  startedAt: Date;
-  finishedAt: Date;
-  items: RunItem[];
-  prCount: number;
-  candidateCount: number;
-  stopReason?: StopReason;
-  /** The Firestore error that stopped the run (`stopReason` is `store-error`) */
-  storeError?: string;
-  /** Feeds that could not be read */
-  feedErrors: string[];
-}
-
-/** One tried URL, held until its record is saved */
-interface Attempted {
-  candidate: Candidate;
-  previous: AttemptRecord | undefined;
-  attempt: AttemptResult;
-  pageDate: ReturnType<typeof extractPublishedDate>;
-  now: Date;
-  item: RunItem;
 }
 
 export interface RunOptions {
@@ -103,49 +71,30 @@ export interface RunOptions {
   maxTries?: number;
 }
 
+/** One tried URL, held until its record is saved */
+interface Attempted {
+  previous: AttemptRecord | undefined;
+  context: AttemptContext;
+  attempt: AttemptResult;
+  item: RunItem;
+}
+
 export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions): Promise<ScheduledRunSummary> {
   const maxTries = Math.min(options.maxTries ?? MAX_TRIES_PER_RUN, MAX_TRIES_PER_RUN);
   const log = deps.log ?? (() => {});
   const startedAt = deps.now();
 
-  const [{ items: rssItems, errors: feedErrors }, dueRecords] = await Promise.all([
-    deps.loadRssItems(),
-    deps.store.findDueRetries(startedAt, DUE_RETRY_READ_LIMIT),
-  ]);
-  const attemptedUrls = await deps.store.findAttempted(rssItems.map(item => normalizeAttemptUrl(item.link)));
-  const candidates = orderCandidates({
-    dueRetries: dueRecords.flatMap(record =>
-      record.nextAttemptAt
-        ? [{ url: record.url, title: record.title, feedId: record.feedId, nextAttemptAt: record.nextAttemptAt }]
-        : [],
-    ),
-    rssItems,
-    attemptedUrls,
-    now: startedAt,
-  });
-  log(`候補 ${candidates.length} 件 (試し直し ${dueRecords.length} 件、RSS ${rssItems.length} 件、読めなかったフィード ${feedErrors.length} 件)`);
-
   const items: RunItem[] = [];
+  let feedErrors: string[] = [];
+  let candidateCount = 0;
   let prCount = 0;
   let stopReason: StopReason | undefined;
+  let error: string | undefined;
   let pendingFailures: Attempted[] = [];
 
   /** Store what happened to one URL and show the next try (or the give-up) in the summary */
   const persist = async (entry: Attempted, countFailure: boolean) => {
-    const record = buildAttemptRecord(
-      entry.previous,
-      {
-        url: entry.candidate.url,
-        source: 'rss',
-        feedId: entry.candidate.feedId,
-        title: entry.candidate.title,
-        pageDate: entry.pageDate,
-        rssPubDate: entry.candidate.rssPubDate,
-        now: entry.now,
-        countFailure,
-      },
-      entry.attempt,
-    );
+    const record = buildAttemptRecord(entry.previous, entry.context, entry.attempt, countFailure);
     entry.item.nextAttemptAt = record.nextAttemptAt;
     entry.item.givenUpReason = record.givenUpReason;
     if (!options.dryRun) await deps.store.save(record);
@@ -158,8 +107,19 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
     for (const entry of held) await persist(entry, counted);
   };
 
-  let storeError: string | undefined;
   try {
+    const [rss, dueRecords] = await Promise.all([
+      deps.loadRssItems(),
+      deps.store.findDueRetries(startedAt, DUE_RETRY_READ_LIMIT),
+    ]);
+    feedErrors = rss.errors;
+    const attemptedUrls = await deps.store.findAttempted(rss.items.map(item => normalizeAttemptUrl(item.link)));
+    const candidates = orderCandidates({ dueRetries: dueRecords, rssItems: rss.items, attemptedUrls, now: startedAt });
+    candidateCount = candidates.length;
+    log(
+      `候補 ${candidates.length} 件 (試し直し ${dueRecords.length} 件、RSS ${rss.items.length} 件、読めなかったフィード ${feedErrors.length} 件)`,
+    );
+
     for (const candidate of candidates) {
       if (prCount >= MAX_PRS_PER_RUN) {
         stopReason = 'max-prs';
@@ -170,22 +130,28 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
         break;
       }
       const now = deps.now();
-      if (now.getTime() - startedAt.getTime() >= RUN_TIME_BUDGET_MS) {
+      if (now.getTime() - startedAt.getTime() >= RUN_TIME_BUDGET_MINUTES * 60_000) {
         stopReason = 'time-budget';
         break;
       }
 
       log(`[${items.length + 1}] ${candidate.url}`);
-      const previous = await deps.store.get(candidate.url);
+      const context: AttemptContext = {
+        url: candidate.url,
+        source: 'rss',
+        feedId: candidate.feedId,
+        title: candidate.title,
+        rssPubDate: candidate.rssPubDate,
+        now,
+      };
 
       let attempt: AttemptResult;
-      let pageDate: ReturnType<typeof extractPublishedDate> = undefined;
       try {
         const page = await deps.fetchPage(candidate.url);
-        pageDate = extractPublishedDate(page.pageHtml, now);
+        context.pageDate = extractPublishedDate(page.pageHtml, now);
         log(
-          pageDate
-            ? `  公開日: ${pageDate.date.toISOString()} (${pageDate.source})`
+          context.pageDate
+            ? `  公開日: ${context.pageDate.date.toISOString()} (${context.pageDate.source})`
             : `  公開日: ページから読めず (${candidate.rssPubDate ? `RSS の配信日 ${candidate.rssPubDate.toISOString()}` : '初めて試した日'} を使う)`,
         );
         const result = await deps.generate({
@@ -199,24 +165,20 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
           dryRun: options.dryRun,
         });
         attempt = { kind: 'pipeline', result };
-      } catch (error) {
-        attempt = { kind: 'error', error: error instanceof Error ? error.message : String(error) };
+      } catch (caught) {
+        attempt = { kind: 'error', error: caught instanceof Error ? caught.message : String(caught) };
       }
 
-      const outcome = toAttemptOutcome(attempt, true);
-      const result = attempt.kind === 'pipeline' ? attempt.result : undefined;
       const item: RunItem = {
         url: candidate.url,
         title: candidate.title,
-        source: candidate.source,
-        outcome: outcome.kind,
-        reason: attempt.kind === 'error' ? attempt.error : result?.skipped ? result.skipReason : result?.error,
-        prUrl: result?.prResult?.prUrl,
+        outcome: toAttemptOutcome(attempt, true).kind,
+        ...describeAttempt(attempt),
       };
       items.push(item);
-      const entry: Attempted = { candidate, previous, attempt, pageDate, now, item };
+      const entry: Attempted = { previous: candidate.previous, context, attempt, item };
 
-      if (outcome.kind === 'failure') {
+      if (item.outcome === 'failure') {
         pendingFailures.push(entry);
         if (pendingFailures.length >= MAX_CONSECUTIVE_FAILURES) {
           await flushFailures(false);
@@ -227,17 +189,17 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
       }
 
       await flushFailures(true);
-      if (outcome.kind === 'pr') prCount++;
+      if (item.outcome === 'pr') prCount++;
       await persist(entry, true);
     }
     await flushFailures(true);
-  } catch (error) {
-    // Firestore failed: the attempt record can no longer be trusted, so stop here. The summary
-    // still goes out with what was done (a PR made before this point stays listed). A URL whose
-    // record was not saved is tried again later; an article PR is not made twice because the
-    // pipeline skips an event that already has an article
-    storeError = error instanceof Error ? error.message : String(error);
-    stopReason = 'store-error';
+  } catch (caught) {
+    // The run itself failed (Firestore, reading the feeds). The attempt record can no longer be
+    // trusted, so stop; the summary still lists what was done. A URL whose record was not saved
+    // is tried again later, and no second PR is made because the pipeline skips an event that
+    // already has an article
+    error = caught instanceof Error ? caught.message : String(caught);
+    stopReason = 'error';
   }
 
   return {
@@ -245,10 +207,9 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
     startedAt,
     finishedAt: deps.now(),
     items,
-    prCount,
-    candidateCount: candidates.length,
+    candidateCount,
     stopReason,
-    storeError,
+    error,
     feedErrors,
   };
 }

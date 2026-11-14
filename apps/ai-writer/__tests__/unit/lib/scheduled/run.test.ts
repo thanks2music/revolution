@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { AttemptRecord } from '@/lib/scheduled/attempt-store';
 import type { RssCandidateInput } from '@/lib/scheduled/candidates';
 import { runScheduled, type ScheduledRunDeps } from '@/lib/scheduled/run';
+import { prCountOf } from '@/lib/scheduled/summary';
 import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 
 const START = new Date('2026-11-15T01:05:00Z');
@@ -49,7 +50,6 @@ function makeDeps(options: {
   const deps: ScheduledRunDeps = {
     now: options.clock ?? (() => START),
     store: {
-      get: async url => saved.get(url),
       findAttempted: async urls => new Set(urls.filter(url => saved.has(url))),
       findDueRetries: async now =>
         [...saved.values()].filter(r => r.nextAttemptAt && r.nextAttemptAt.getTime() <= now.getTime()),
@@ -71,7 +71,7 @@ describe('runScheduled', () => {
   it('stops at 5 PRs', async () => {
     const { deps, generate } = makeDeps({ items: rssItems(8), results: () => PR });
     const summary = await runScheduled(deps, { dryRun: false });
-    expect(summary.prCount).toBe(5);
+    expect(prCountOf(summary)).toBe(5);
     expect(summary.stopReason).toBe('max-prs');
     expect(generate).toHaveBeenCalledTimes(5);
   });
@@ -169,9 +169,19 @@ describe('runScheduled', () => {
       if (++saves === 2) throw new Error('UNAVAILABLE');
     };
     const summary = await runScheduled(deps, { dryRun: false });
-    expect(summary.stopReason).toBe('store-error');
-    expect(summary.storeError).toBe('UNAVAILABLE');
+    expect(summary.stopReason).toBe('error');
+    expect(summary.error).toBe('UNAVAILABLE');
     expect(summary.items.map(item => item.prUrl)).toEqual(['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/1']);
+  });
+
+  it('stops with an error when the setup fails (reading the feeds)', async () => {
+    const { deps, generate } = makeDeps({ items: rssItems(3), results: () => PR });
+    deps.loadRssItems = async () => {
+      throw new Error('rss_feeds: PERMISSION_DENIED');
+    };
+    const summary = await runScheduled(deps, { dryRun: false });
+    expect(summary).toMatchObject({ stopReason: 'error', error: 'rss_feeds: PERMISSION_DENIED', items: [], candidateCount: 0 });
+    expect(generate).not.toHaveBeenCalled();
   });
 
   it('a skip that is really a step error is held and retried like a failure', async () => {

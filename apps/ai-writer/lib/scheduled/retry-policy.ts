@@ -19,13 +19,13 @@
  * @module lib/scheduled/retry-policy
  */
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { addDays, DAY_MS, startOfJstDay } from '@/lib/utils/date';
 
-export const FIRST_RETRY_DAYS_FOR_FRESH_PAGE = 7;
-export const RETRY_INTERVAL_DAYS = 3;
-export const FRESH_PAGE_MAX_AGE_DAYS = 7;
-export const UNANNOUNCED_GIVE_UP_DAYS = 60;
-export const MAX_COUNTED_FAILURES = 3;
+const FIRST_RETRY_DAYS_FOR_FRESH_PAGE = 7;
+const RETRY_INTERVAL_DAYS = 3;
+const FRESH_PAGE_MAX_AGE_DAYS = 7;
+const UNANNOUNCED_GIVE_UP_DAYS = 60;
+const MAX_COUNTED_FAILURES = 3;
 
 /** Where a URL stands after an attempt */
 export type AttemptStatus =
@@ -45,17 +45,20 @@ export type AttemptOutcome =
   | { kind: 'unannounced'; eventStartDate?: string }
   | { kind: 'failure'; counted: boolean };
 
+/** What an attempt ended in: `pr`, `skipped`, `unannounced` or `failure` */
+export type OutcomeKind = AttemptOutcome['kind'];
+
 /** The parts of the stored record the policy needs */
 export interface PreviousAttempt {
   firstAttemptAt: Date;
   unannouncedCount: number;
   failureCount: number;
   eventStartDate?: string;
-  /** What the last attempt ended in (`attempt-store.ts` `LastOutcome`) */
-  lastOutcome?: string;
+  /** What the last attempt ended in */
+  lastOutcome?: OutcomeKind;
 }
 
-export interface NextAttemptState {
+interface NextAttemptState {
   status: AttemptStatus;
   nextAttemptAt: Date | null;
   unannouncedCount: number;
@@ -63,17 +66,6 @@ export interface NextAttemptState {
   eventStartDate?: string;
   /** Why the URL was given up (only when `status` is `given-up`) */
   givenUpReason?: string;
-}
-
-/** `YYYY-MM-DD` (a day in Japan) to the moment that day starts */
-export function startOfJstDay(isoDate: string): Date | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return undefined;
-  const date = new Date(`${isoDate}T00:00:00+09:00`);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function addDays(date: Date, days: number): Date {
-  return new Date(date.getTime() + days * DAY_MS);
 }
 
 /**

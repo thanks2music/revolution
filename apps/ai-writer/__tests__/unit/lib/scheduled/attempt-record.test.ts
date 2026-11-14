@@ -54,13 +54,13 @@ describe('buildAttemptRecord', () => {
         pageDate: { date: new Date('2026-11-10T00:00:00Z'), source: 'meta' },
         rssPubDate: new Date('2026-11-14T00:00:00Z'),
         now: NOW,
-        countFailure: true,
       },
       pipeline({
         success: true,
         prResult: { prUrl: 'https://github.com/o/r/pull/1' } as MdxGenerationResult['prResult'],
         details: { postId: 'p1' } as MdxGenerationResult['details'],
       }),
+      true,
     );
     expect(record).toMatchObject({
       url: URL,
@@ -79,12 +79,12 @@ describe('buildAttemptRecord', () => {
   });
 
   it('falls back to the RSS date, then to the first attempt', () => {
-    const base = { url: URL, source: 'rss' as const, now: NOW, countFailure: true };
+    const base = { url: URL, source: 'rss' as const, now: NOW };
     const skip = pipeline({ skipped: true, skipReason: 'x' });
-    expect(buildAttemptRecord(undefined, { ...base, rssPubDate: new Date('2026-11-14T00:00:00Z') }, skip)).toMatchObject({
+    expect(buildAttemptRecord(undefined, { ...base, rssPubDate: new Date('2026-11-14T00:00:00Z') }, skip, true)).toMatchObject({
       publishedAtSource: 'rss',
     });
-    expect(buildAttemptRecord(undefined, base, skip)).toMatchObject({ publishedAt: NOW, publishedAtSource: 'first-attempt' });
+    expect(buildAttemptRecord(undefined, base, skip, true)).toMatchObject({ publishedAt: NOW, publishedAtSource: 'first-attempt' });
   });
 
   it('a retry keeps the first attempt, the source and the publish date, and counts up', () => {
@@ -104,8 +104,9 @@ describe('buildAttemptRecord', () => {
     };
     const record = buildAttemptRecord(
       previous,
-      { url: URL, source: 'rss', pageDate: { date: new Date('2026-11-12T00:00:00Z'), source: 'meta' }, now: NOW, countFailure: true },
+      { url: URL, source: 'rss', pageDate: { date: new Date('2026-11-12T00:00:00Z'), source: 'meta' }, now: NOW },
       pipeline({ skipped: true, skipKind: 'unannounced-event', skipReason: '詳細未発表' }),
+      true,
     );
     expect(record).toMatchObject({
       source: 'cli',
@@ -121,7 +122,7 @@ describe('buildAttemptRecord', () => {
   });
 
   it('keeps the error of a thrown attempt as the reason', () => {
-    const record = buildAttemptRecord(undefined, { url: URL, source: 'rss', now: NOW, countFailure: true }, { kind: 'error', error: 'HTTP 404' });
+    const record = buildAttemptRecord(undefined, { url: URL, source: 'rss', now: NOW }, { kind: 'error', error: 'HTTP 404' }, true);
     expect(record).toMatchObject({ status: 'retrying-failure', lastOutcome: 'failure', lastReason: 'HTTP 404', failureCount: 1 });
   });
 });

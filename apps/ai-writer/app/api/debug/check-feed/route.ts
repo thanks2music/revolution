@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RssArticleCollectionService } from '../../../../lib/services/rss-article-collection.service';
 import { getAdminDb } from '../../../../lib/firebase/admin';
 import type { RssFeed } from '../../../../lib/types/rss-feed';
+import { rssFeedFromDoc } from '../../../../lib/firestore/rss-feed-doc';
 import { requireAuth } from '@/lib/auth/server-auth';
 
 // Force dynamic rendering to prevent build-time execution
@@ -43,19 +44,7 @@ export async function POST(request: NextRequest) {
     }
 
     const feedData = feedDoc.data()!;
-    const feed: RssFeed = {
-      id: feedDoc.id,
-      url: feedData.url,
-      title: feedData.title,
-      description: feedData.description,
-      siteUrl: feedData.siteUrl,
-      isActive: feedData.isActive,
-      validationConfig: feedData.validationConfig || undefined,
-      lastFetchedAt: feedData.lastFetchedAt?.toDate(),
-      createdAt: feedData.createdAt.toDate(),
-      updatedAt: feedData.updatedAt.toDate(),
-      createdBy: feedData.createdBy,
-    };
+    const feed: RssFeed = rssFeedFromDoc(feedDoc.id, feedData);
 
     // Collect articles from the feed (using feed object directly)
     const collectionService = new RssArticleCollectionService({

@@ -5,7 +5,7 @@
  */
 import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 
-import type { AttemptRecord, AttemptSource, LastOutcome, PublishedAtSource } from './attempt-store';
+import type { AttemptRecord, AttemptSource, PublishedAtSource } from './attempt-store';
 import type { PublishedDate } from './published-date';
 import { nextAttemptState, type AttemptOutcome } from './retry-policy';
 
@@ -14,6 +14,7 @@ export type AttemptResult =
   | { kind: 'pipeline'; result: MdxGenerationResult }
   | { kind: 'error'; error: string };
 
+/** What is known about the URL when it is tried */
 export interface AttemptContext {
   url: string;
   source: AttemptSource;
@@ -24,21 +25,16 @@ export interface AttemptContext {
   /** The RSS delivery date (RSS items only) */
   rssPubDate?: Date;
   now: Date;
-  /**
-   * Whether a failure counts toward the 3-failure limit. A failure inside a run-wide outage
-   * (several failures in a row) does not count
-   */
-  countFailure: boolean;
 }
 
 /** Map an attempt onto the retry policy's outcome */
 export function toAttemptOutcome(attempt: AttemptResult, countFailure: boolean): AttemptOutcome {
   if (attempt.kind === 'error') return { kind: 'failure', counted: countFailure };
   const { result } = attempt;
-  // A skip comes back as `success: false, skipped: true`, so check `skipped` first
   // The pipeline returns some step errors as skips (detail extraction, content generation);
   // they are failures here, so a passing outage does not drop the article for good
   if (result.skipped && result.skipKind === 'step-error') return { kind: 'failure', counted: countFailure };
+  // A skip comes back as `success: false, skipped: true`, so check `skipped` before `success`
   if (result.skipped) {
     return result.skipKind === 'unannounced-event'
       ? { kind: 'unannounced', eventStartDate: result.eventStartDate }
@@ -48,12 +44,12 @@ export function toAttemptOutcome(attempt: AttemptResult, countFailure: boolean):
   return { kind: 'pr' };
 }
 
-const LAST_OUTCOME: Record<AttemptOutcome['kind'], LastOutcome> = {
-  pr: 'pr',
-  skipped: 'skipped',
-  unannounced: 'unannounced',
-  failure: 'failure',
-};
+/** The skip reason or the error of an attempt, and its PR (what the record and Slack show) */
+export function describeAttempt(attempt: AttemptResult): { reason?: string; prUrl?: string } {
+  if (attempt.kind === 'error') return { reason: attempt.error };
+  const { result } = attempt;
+  return { reason: result.skipped ? result.skipReason : result.error, prUrl: result.prResult?.prUrl };
+}
 
 /**
  * The publish date used for the retry schedule. It is fixed on the first attempt, so the
@@ -69,18 +65,21 @@ function publishedAtOf(
   return { publishedAt: context.now, publishedAtSource: 'first-attempt' };
 }
 
+/**
+ * @param countFailure whether a failure counts toward the 3-failure limit. A failure inside a
+ *   run-wide outage (several failures in a row) does not count
+ */
 export function buildAttemptRecord(
   previous: AttemptRecord | undefined,
   context: AttemptContext,
   attempt: AttemptResult,
+  countFailure: boolean,
 ): AttemptRecord {
-  const outcome = toAttemptOutcome(attempt, context.countFailure);
+  const outcome = toAttemptOutcome(attempt, countFailure);
   const { publishedAt, publishedAtSource } = publishedAtOf(previous, context);
   const state = nextAttemptState(previous, outcome, context.now, publishedAt);
-
-  const result = attempt.kind === 'pipeline' ? attempt.result : undefined;
-  const lastReason =
-    attempt.kind === 'error' ? attempt.error : result?.skipped ? result.skipReason : result?.error;
+  const { reason, prUrl } = describeAttempt(attempt);
+  const postId = attempt.kind === 'pipeline' ? attempt.result.details?.postId : undefined;
 
   return {
     url: context.url,
@@ -88,10 +87,10 @@ export function buildAttemptRecord(
     feedId: previous?.feedId ?? context.feedId,
     title: context.title ?? previous?.title,
     status: state.status,
-    lastOutcome: LAST_OUTCOME[outcome.kind],
-    lastReason,
-    prUrl: result?.prResult?.prUrl ?? previous?.prUrl,
-    postId: result?.details?.postId ?? previous?.postId,
+    lastOutcome: outcome.kind,
+    lastReason: reason,
+    prUrl: prUrl ?? previous?.prUrl,
+    postId: postId ?? previous?.postId,
     attemptCount: (previous?.attemptCount ?? 0) + 1,
     unannouncedCount: state.unannouncedCount,
     failureCount: state.failureCount,

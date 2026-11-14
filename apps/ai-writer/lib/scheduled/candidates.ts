@@ -11,10 +11,12 @@
  *
  * @module lib/scheduled/candidates
  */
+import { DAY_MS } from '@/lib/utils/date';
+
+import type { AttemptRecord } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
 
-export const RSS_MAX_AGE_DAYS = 14;
-const DAY_MS = 24 * 60 * 60 * 1000;
+const RSS_MAX_AGE_DAYS = 14;
 
 export interface RssCandidateInput {
   /** The item's link as the feed gives it (a Google redirect URL is fine) */
@@ -25,14 +27,6 @@ export interface RssCandidateInput {
   feedId: string;
 }
 
-export interface DueRetryInput {
-  /** The normalized URL stored in the attempt record */
-  url: string;
-  title?: string;
-  feedId?: string;
-  nextAttemptAt: Date;
-}
-
 export interface Candidate {
   /** Normalized URL: what is fetched, compared and stored */
   url: string;
@@ -41,10 +35,13 @@ export interface Candidate {
   feedId?: string;
   /** The RSS delivery date (new RSS items only) */
   rssPubDate?: Date;
+  /** The stored record (retries only; a new item has none) */
+  previous?: AttemptRecord;
 }
 
-export interface OrderCandidatesInput {
-  dueRetries: DueRetryInput[];
+interface OrderCandidatesInput {
+  /** Records whose retry is due (`AttemptStore.findDueRetries`) */
+  dueRetries: AttemptRecord[];
   rssItems: RssCandidateInput[];
   /** Normalized URLs that already have an attempt record */
   attemptedUrls: ReadonlySet<string>;
@@ -55,11 +52,13 @@ export function orderCandidates({ dueRetries, rssItems, attemptedUrls, now }: Or
   const seen = new Set<string>();
   const ordered: Candidate[] = [];
 
-  const retries = [...dueRetries].sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime());
+  const retries = dueRetries
+    .filter((record): record is AttemptRecord & { nextAttemptAt: Date } => record.nextAttemptAt !== null)
+    .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime());
   for (const retry of retries) {
     if (seen.has(retry.url)) continue;
     seen.add(retry.url);
-    ordered.push({ url: retry.url, source: 'retry', title: retry.title, feedId: retry.feedId });
+    ordered.push({ url: retry.url, source: 'retry', title: retry.title, feedId: retry.feedId, previous: retry });
   }
 
   const oldest = now.getTime() - RSS_MAX_AGE_DAYS * DAY_MS;

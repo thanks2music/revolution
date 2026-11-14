@@ -16,20 +16,17 @@
 import { createHash } from 'node:crypto';
 
 import { extractActualUrl } from '@/lib/utils/html-extractor';
+import { stripUtmFromUrl } from '@/lib/utils/url';
 
-/** Query parameters that only track the visit and never change the page */
-const TRACKING_PARAMS = new Set(['fbclid', 'gclid', 'yclid', 'msclkid', 'mc_cid', 'mc_eid']);
-
-function isTrackingParam(name: string): boolean {
-  return name.toLowerCase().startsWith('utm_') || TRACKING_PARAMS.has(name.toLowerCase());
-}
+/** Click IDs: query parameters that only track the visit (`utm_*` is removed by `stripUtmFromUrl`) */
+const CLICK_ID_PARAMS = new Set(['fbclid', 'gclid', 'yclid', 'msclkid', 'mc_cid', 'mc_eid']);
 
 /**
  * The URL used for comparison and stored in the attempt record.
  * A string that is not a URL is returned trimmed but otherwise unchanged.
  */
 export function normalizeAttemptUrl(rawUrl: string): string {
-  const unwrapped = extractActualUrl(rawUrl.trim());
+  const unwrapped = stripUtmFromUrl(extractActualUrl(rawUrl.trim()));
   let url: URL;
   try {
     url = new URL(unwrapped);
@@ -39,7 +36,7 @@ export function normalizeAttemptUrl(rawUrl: string): string {
 
   url.hash = '';
   for (const name of [...url.searchParams.keys()]) {
-    if (isTrackingParam(name)) url.searchParams.delete(name);
+    if (CLICK_ID_PARAMS.has(name.toLowerCase())) url.searchParams.delete(name);
   }
   // `URL` keeps a lone `?` when every parameter was removed; drop it
   if (url.searchParams.size === 0) url.search = '';

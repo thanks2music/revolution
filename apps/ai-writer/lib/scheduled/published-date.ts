@@ -20,7 +20,7 @@
  */
 import * as cheerio from 'cheerio';
 
-import { toJstDateString } from '@/lib/utils/date';
+import { JST_OFFSET, toJstDateString } from '@/lib/utils/date';
 
 export type PublishedDateSource = 'meta' | 'json-ld' | 'time-element' | 'date-element';
 
@@ -30,8 +30,6 @@ export interface PublishedDate {
 }
 
 const MIN_YEAR = 2000;
-/** A date-only value is read as a day in Japan */
-const JST_OFFSET = '+09:00';
 
 /**
  * Parse the date formats seen on Japanese pages: ISO 8601, `2026-11-14`, `2026/11/14`,
@@ -107,55 +105,57 @@ function dateElementRank(classAndId: string): number | undefined {
 
 export function extractPublishedDate(html: string, now: Date = new Date()): PublishedDate | undefined {
   const $ = cheerio.load(html);
+  const classAndId = (element: Parameters<typeof $>[0]) => `${$(element).attr('class') ?? ''} ${$(element).attr('id') ?? ''}`;
 
-  // 1. Open Graph article meta
-  for (const element of $('meta[property="article:published_time"]').toArray()) {
-    const date = parseDateText($(element).attr('content') ?? '');
-    if (usable(date, now)) return { date, source: 'meta' };
-  }
-
-  // 2. JSON-LD. Broken JSON on a page is common and is skipped
-  for (const element of $('script[type="application/ld+json"]').toArray()) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse($(element).text());
-    } catch {
-      continue;
+  /** The first text that reads as a usable date, tagged with where it came from */
+  const firstUsable = (texts: Iterable<string>, source: PublishedDateSource): PublishedDate | undefined => {
+    for (const text of texts) {
+      const date = parseDateText(text);
+      if (usable(date, now)) return { date, source };
     }
-    const value = findDatePublished(parsed);
-    const date = value ? parseDateText(value) : undefined;
-    if (usable(date, now)) return { date, source: 'json-ld' };
-  }
+    return undefined;
+  };
 
-  // 3. <time datetime>, ranked by the element's class/id like step 4
-  const timeElements = $('time[datetime]')
-    .toArray()
-    .map(element => ({
-      rank: dateElementRank(`${$(element).attr('class') ?? ''} ${$(element).attr('id') ?? ''}`) ?? 1,
-      text: $(element).attr('datetime') ?? '',
-    }))
-    .sort((a, b) => a.rank - b.rank);
-  for (const { text } of timeElements) {
-    const date = parseDateText(text);
-    if (usable(date, now)) return { date, source: 'time-element' };
-  }
-
-  // 4. Elements named like a date. The text is read (a datetime/content attribute first)
-  const dateElements = $('[class], [id]')
+  /** JSON-LD `datePublished` values. Broken JSON on a page is common and is skipped */
+  const jsonLdDates = $('script[type="application/ld+json"]')
     .toArray()
     .flatMap(element => {
-      const rank = dateElementRank(`${$(element).attr('class') ?? ''} ${$(element).attr('id') ?? ''}`);
+      try {
+        const value = findDatePublished(JSON.parse($(element).text()));
+        return value ? [value] : [];
+      } catch {
+        return [];
+      }
+    });
+
+  /** <time datetime>, ranked by the element's class/id like the date elements */
+  const timeTexts = $('time[datetime]')
+    .toArray()
+    .map(element => ({ rank: dateElementRank(classAndId(element)) ?? 1, text: $(element).attr('datetime') ?? '' }))
+    .sort((a, b) => a.rank - b.rank)
+    .map(({ text }) => text);
+
+  /** Elements named like a date. The text is read (a datetime/content attribute first) */
+  const dateElementTexts = $('[class], [id]')
+    .toArray()
+    .flatMap(element => {
+      const rank = dateElementRank(classAndId(element));
       if (rank === undefined) return [];
       const $element = $(element);
       const text = $element.attr('datetime') ?? $element.attr('content') ?? $element.text();
       // A long block is a container (an article body), not a date label
       return text.length <= 200 ? [{ rank, text }] : [];
     })
-    .sort((a, b) => a.rank - b.rank);
-  for (const { text } of dateElements) {
-    const date = parseDateText(text);
-    if (usable(date, now)) return { date, source: 'date-element' };
-  }
+    .sort((a, b) => a.rank - b.rank)
+    .map(({ text }) => text);
 
-  return undefined;
+  return (
+    firstUsable(
+      $('meta[property="article:published_time"]').toArray().map(element => $(element).attr('content') ?? ''),
+      'meta',
+    ) ??
+    firstUsable(jsonLdDates, 'json-ld') ??
+    firstUsable(timeTexts, 'time-element') ??
+    firstUsable(dateElementTexts, 'date-element')
+  );
 }

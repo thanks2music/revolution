@@ -5,27 +5,30 @@
  * or had a failure needs a person (a PR to review, something to fix), so it goes to the
  * production channel with a mention. Otherwise it goes to the dev channel without one.
  *
- * Values are made safe the same way as the pipeline message (`messages.ts`):
- * redact secrets, truncate, then escape.
+ * Values are made safe the same way as the pipeline message (`safe` in `messages.ts`).
  *
  * @module lib/slack/scheduled-run-message
  */
-import type { RunItem, ScheduledRunSummary, StopReason } from '../scheduled/run';
+import {
+  MAX_CONSECUTIVE_FAILURES,
+  MAX_PRS_PER_RUN,
+  MAX_TRIES_PER_RUN,
+  prCountOf,
+  RUN_TIME_BUDGET_MINUTES,
+  type RunItem,
+  type ScheduledRunSummary,
+  type StopReason,
+} from '../scheduled/summary';
 import { toJstDateString } from '../utils/date';
 import type { SlackConfig } from './config';
-import { escapeSlackText, redactSecrets, truncate, type SlackMessage } from './messages';
-
-function safe(value: string, max: number): string {
-  return escapeSlackText(truncate(redactSecrets(value), max));
-}
+import { safe, type SlackMessage } from './messages';
 
 const STOP_LABEL: Record<StopReason, string> = {
-  'max-prs': '記事 PR が上限 (5 本) に達したので止めました',
-  'max-tries': '試した候補が上限 (15 件) に達したので止めました',
-  'time-budget': '実行時間が 90 分を過ぎたので止めました',
-  'consecutive-failures':
-    '3 件続けて失敗したので止めました (キーの失効や残高切れなど、全体の障害の可能性があります)',
-  'store-error': 'Firestore の読み書きに失敗したので止めました (試した URL の記録が残っていない可能性があります)',
+  'max-prs': `記事 PR が上限 (${MAX_PRS_PER_RUN} 本) に達したので止めました`,
+  'max-tries': `試した候補が上限 (${MAX_TRIES_PER_RUN} 件) に達したので止めました`,
+  'time-budget': `実行時間が ${RUN_TIME_BUDGET_MINUTES} 分を過ぎたので止めました`,
+  'consecutive-failures': `${MAX_CONSECUTIVE_FAILURES} 件続けて失敗したので止めました (キーの失効や残高切れなど、全体の障害の可能性があります)`,
+  error: '実行そのものが失敗したので止めました (試した URL の記録が残っていない可能性があります)',
 };
 
 const OUTCOME_ICON: Record<RunItem['outcome'], string> = {
@@ -35,31 +38,31 @@ const OUTCOME_ICON: Record<RunItem['outcome'], string> = {
   failure: '❌ 失敗',
 };
 
+/** Something failed: a URL, or the run as a whole */
+function hasFailure(summary: ScheduledRunSummary): boolean {
+  return (
+    summary.stopReason === 'consecutive-failures' ||
+    summary.stopReason === 'error' ||
+    summary.items.some(item => item.outcome === 'failure')
+  );
+}
+
 /** A run that leaves something for a person to do */
 export function needsAttention(summary: ScheduledRunSummary): boolean {
-  return (
-    summary.prCount > 0 ||
-    summary.items.some(item => item.outcome === 'failure') ||
-    summary.stopReason === 'consecutive-failures' ||
-    summary.stopReason === 'store-error' ||
-    summary.feedErrors.length > 0
-  );
+  return prCountOf(summary) > 0 || hasFailure(summary) || summary.feedErrors.length > 0;
 }
 
 function itemLine(item: RunItem, dryRun: boolean): string {
   // A dry run makes no PR; the article could be written
   const label = dryRun && item.outcome === 'pr' ? '✅ 記事にできる (dry-run)' : OUTCOME_ICON[item.outcome];
-  const head = `${label}  ${safe(item.title ?? item.url, 80)}`;
-  const lines = [head, safe(item.url, 300)];
+  const lines = [`${label}  ${safe(item.title ?? item.url, 80)}`, safe(item.url, 300)];
   if (item.outcome === 'pr' && item.prUrl) lines.push(`PR: ${safe(item.prUrl, 300)}`);
   if (item.outcome !== 'pr' && item.reason) lines.push(`理由: ${safe(item.reason, 300)}`);
   if (item.givenUpReason) {
     lines.push(`🛑 ${safe(item.givenUpReason, 200)}`);
   } else if (item.nextAttemptAt) {
     lines.push(
-      item.outcome === 'failure'
-        ? '次の回に試し直します'
-        : `次に試す日: ${toJstDateString(item.nextAttemptAt)}`,
+      item.outcome === 'failure' ? '次の回に試し直します' : `次に試す日: ${toJstDateString(item.nextAttemptAt)}`,
     );
   }
   return lines.join('\n');
@@ -73,22 +76,21 @@ export function buildScheduledRunMessage(
   const mention = attention && config.mentionUserId ? `<@${config.mentionUserId}> ` : '';
   const envLabel = config.runtime === 'cloud-run' ? 'production' : 'local';
   const count = (outcome: RunItem['outcome']) => summary.items.filter(item => item.outcome === outcome).length;
-  const failed =
-    summary.stopReason === 'consecutive-failures' || summary.stopReason === 'store-error' || count('failure') > 0;
-  const icon = failed ? '❌' : '🗓️';
 
   const text =
-    `${mention}${icon} [${envLabel}]${summary.dryRun ? ' [dry-run]' : ''} 定期実行: ` +
-    `${summary.dryRun ? '記事にできる' : 'PR'} ${summary.prCount} 本・スキップ ${count('skipped')} 件・詳細未発表 ${count('unannounced')} 件・失敗 ${count('failure')} 件` +
+    `${mention}${hasFailure(summary) ? '❌' : '🗓️'} [${envLabel}]${summary.dryRun ? ' [dry-run]' : ''} 定期実行: ` +
+    `${summary.dryRun ? '記事にできる' : 'PR'} ${count('pr')} 本・スキップ ${count('skipped')} 件・詳細未発表 ${count('unannounced')} 件・失敗 ${count('failure')} 件` +
     ` (候補 ${summary.candidateCount} 件のうち ${summary.items.length} 件を試した)`;
 
   const blocks: Array<Record<string, unknown>> = [{ type: 'section', text: { type: 'mrkdwn', text } }];
 
   const notes: string[] = [];
   if (summary.stopReason) notes.push(STOP_LABEL[summary.stopReason]);
-  if (summary.storeError) notes.push(`エラー: ${safe(summary.storeError, 300)}`);
+  if (summary.error) notes.push(`エラー: ${safe(summary.error, 300)}`);
   for (const error of summary.feedErrors) notes.push(`読めなかったフィード: ${safe(error, 300)}`);
-  if (summary.items.length === 0 && summary.feedErrors.length === 0) notes.push('試す候補がありませんでした');
+  if (summary.items.length === 0 && !summary.stopReason && summary.feedErrors.length === 0) {
+    notes.push('試す候補がありませんでした');
+  }
   if (notes.length > 0) {
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: notes.join('\n') } });
   }

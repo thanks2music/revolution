@@ -10,7 +10,7 @@
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 
 import type { PublishedDateSource } from './published-date';
-import type { AttemptStatus } from './retry-policy';
+import type { AttemptStatus, OutcomeKind } from './retry-policy';
 import { attemptDocId } from './attempt-url';
 
 export const ATTEMPTS_COLLECTION = 'scheduled_url_attempts';
@@ -21,8 +21,6 @@ export type AttemptSource = 'rss' | 'cli';
 /** Where `publishedAt` came from */
 export type PublishedAtSource = PublishedDateSource | 'rss' | 'first-attempt';
 
-/** What the last attempt ended in */
-export type LastOutcome = 'pr' | 'skipped' | 'unannounced' | 'failure';
 
 export interface AttemptRecord {
   url: string;
@@ -30,7 +28,7 @@ export interface AttemptRecord {
   feedId?: string;
   title?: string;
   status: AttemptStatus;
-  lastOutcome: LastOutcome;
+  lastOutcome: OutcomeKind;
   /** The skip reason or the error of the last attempt */
   lastReason?: string;
   prUrl?: string;

@@ -3,7 +3,8 @@
  */
 import { describe, expect, it } from '@jest/globals';
 
-import { nextAttemptState, startOfJstDay, type PreviousAttempt } from '@/lib/scheduled/retry-policy';
+import { nextAttemptState, type PreviousAttempt } from '@/lib/scheduled/retry-policy';
+import { startOfJstDay } from '@/lib/utils/date';
 
 const day = (iso: string) => new Date(`${iso}T03:00:00Z`); // noon in Japan
 const NOW = day('2026-11-15');

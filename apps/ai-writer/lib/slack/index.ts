@@ -14,11 +14,11 @@
 import { Sentry } from '@/lib/observability/sentry';
 
 import { isCloudRun } from '@/lib/utils/cloud-run';
-import { missingSlackConfigKeys, readSlackConfig } from './config';
+import type { ScheduledRunSummary } from '../scheduled/summary';
+import { missingSlackConfigKeys, readSlackConfig, type SlackConfig } from './config';
 import { postSlackMessage } from './client';
-import { buildPipelineMessage, type PipelineNotification } from './messages';
+import { buildPipelineMessage, type PipelineNotification, type SlackMessage } from './messages';
 import { buildScheduledRunMessage } from './scheduled-run-message';
-import type { ScheduledRunSummary } from '../scheduled/run';
 
 // 入口 (CLI / cron route) が使うものだけを公開する。部品は各モジュールから直接 import する
 export {
@@ -28,25 +28,23 @@ export {
 } from './messages';
 
 /**
- * パイプラインの結果を Slack へ通知する。**例外を投げない。**
+ * 設定を読み、組み立てたメッセージを送る。**例外を投げない。**
  *
- * `SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` が無ければ送らない (パイプラインの失敗扱いにはしない)。
+ * `SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` が無ければ送らない (処理の失敗扱いにはしない)。
  * - ローカル: warn ログを 1 行出して skip する (op run を通さない実行は正常な使い方)
  * - Cloud Run: 注入漏れなので Sentry へ warning を出す。失敗通知が届かないこと自体に
- *   気づけるようにするため (warning はメール通知の対象外。Sentry の定期まとめで拾われる)。
- *   なお S5 (Scheduler 稼働) までは Cloud Run へ token を注入しないので、その間に
- *   cron 経路が失敗した場合もこの warning が出る
+ *   気づけるようにするため (warning はメール通知の対象外。Sentry の定期まとめで拾われる)
  */
-export async function notifyPipelineResult(
-  notification: PipelineNotification,
-  env: NodeJS.ProcessEnv = process.env
+async function sendToSlack(
+  env: NodeJS.ProcessEnv,
+  build: (config: SlackConfig) => { message: SlackMessage; channel: string }
 ): Promise<void> {
   try {
     const config = readSlackConfig(env);
     if (!config) {
       const missing = missingSlackConfigKeys(env).join(' / ');
       if (isCloudRun(env)) {
-        console.error(`[Slack] ${missing} が未設定のため、失敗通知を送れません`);
+        console.error(`[Slack] ${missing} が未設定のため、通知を送れません`);
         Sentry.captureMessage('Slack notification is not configured on Cloud Run', {
           level: 'warning',
           fingerprint: ['slack-config-missing'],
@@ -57,7 +55,8 @@ export async function notifyPipelineResult(
       }
       return;
     }
-    await postSlackMessage(config, buildPipelineMessage(notification, config));
+    const { message, channel } = build(config);
+    await postSlackMessage({ token: config.token, channel }, message);
   } catch (error) {
     // 組み立て側の想定外の例外も呼び出し元へ伝播させない
     console.error(
@@ -65,6 +64,21 @@ export async function notifyPipelineResult(
       error instanceof Error ? error.message : String(error)
     );
   }
+}
+
+/**
+ * パイプラインの結果を Slack へ通知する (CLI / cron route)。**例外を投げない。**
+ * なお S5 (Scheduler 稼働) までは Service へ token を注入しないので、その間に cron 経路が失敗した
+ * 場合は未設定の warning が出る
+ */
+export async function notifyPipelineResult(
+  notification: PipelineNotification,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
+  await sendToSlack(env, config => ({
+    message: buildPipelineMessage(notification, config),
+    channel: config.channel,
+  }));
 }
 
 /**
@@ -77,27 +91,8 @@ export async function notifyScheduledRun(
   summary: ScheduledRunSummary,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
-  try {
-    const config = readSlackConfig(env);
-    if (!config) {
-      const missing = missingSlackConfigKeys(env).join(' / ');
-      console.error(`[Slack] ${missing} が未設定のため、定期実行の結果を送れません`);
-      if (isCloudRun(env)) {
-        Sentry.captureMessage('Slack notification is not configured for the scheduled job', {
-          level: 'warning',
-          fingerprint: ['slack-config-missing-job'],
-          extra: { missing },
-        });
-      }
-      return;
-    }
+  await sendToSlack(env, config => {
     const { message, attention } = buildScheduledRunMessage(summary, config);
-    const channel = attention ? config.channel : (config.devChannel ?? config.channel);
-    await postSlackMessage({ token: config.token, channel }, message);
-  } catch (error) {
-    console.error(
-      '[Slack] 定期実行の通知の準備中にエラーが発生しました:',
-      error instanceof Error ? error.message : String(error)
-    );
-  }
+    return { message, channel: attention ? config.channel : (config.devChannel ?? config.channel) };
+  });
 }

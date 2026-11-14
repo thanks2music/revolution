@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
-import type { ScheduledRunSummary } from '@/lib/scheduled/run';
+import type { ScheduledRunSummary } from '@/lib/scheduled/summary';
 import { notifyScheduledRun } from '@/lib/slack';
 
 const originalFetch = global.fetch;
@@ -26,8 +26,7 @@ const summary = (outcome: 'pr' | 'skipped' | 'failure'): ScheduledRunSummary => 
   dryRun: false,
   startedAt: new Date('2026-11-15T01:05:00Z'),
   finishedAt: new Date('2026-11-15T01:30:00Z'),
-  items: [{ url: 'https://a.example/1', source: 'rss', outcome }],
-  prCount: outcome === 'pr' ? 1 : 0,
+  items: [{ url: 'https://a.example/1', outcome }],
   candidateCount: 1,
   feedErrors: [],
 });

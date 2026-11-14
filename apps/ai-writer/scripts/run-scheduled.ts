@@ -22,13 +22,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, '../.env.local') });
 
 import { getAdminDb } from '../lib/firebase/admin';
-import { beforeSendFilter, flushSentry, Sentry } from '../lib/observability/sentry';
+import { flushSentry, Sentry, serverSentryOptions } from '../lib/observability/sentry';
 import { ArticleGenerationMdxService } from '../lib/services/article-generation-mdx.service';
 import { RssArticleCollectionService } from '../lib/services/rss-article-collection.service';
 import { AttemptStore } from '../lib/scheduled/attempt-store';
 import type { RssCandidateInput } from '../lib/scheduled/candidates';
-import { runScheduled, type ScheduledRunSummary } from '../lib/scheduled/run';
-import { notifyPipelineResult, notifyScheduledRun } from '../lib/slack';
+import { runScheduled } from '../lib/scheduled/run';
+import { prCountOf, type ScheduledRunSummary, type StopReason } from '../lib/scheduled/summary';
+import { notifyScheduledRun } from '../lib/slack';
 import { redactSecrets, truncate } from '../lib/slack/messages';
 import { rssFeedFromDoc } from '../lib/firestore/rss-feed-doc';
 import { extractArticleData } from '../lib/utils/html-extractor';
@@ -64,8 +65,8 @@ async function loadRssItems(): Promise<{ items: RssCandidateInput[]; errors: str
 
 function logSummary(summary: ScheduledRunSummary): void {
   console.log('\n' + '='.repeat(80));
-  console.log(`定期実行の結果${summary.dryRun ? ' (dry-run)' : ''}: ${summary.dryRun ? '記事にできる' : 'PR'} ${summary.prCount} 本 / 試した ${summary.items.length} 件 / 候補 ${summary.candidateCount} 件`);
-  if (summary.stopReason) console.log(`止めた理由: ${summary.stopReason}`);
+  console.log(`定期実行の結果${summary.dryRun ? ' (dry-run)' : ''}: ${summary.dryRun ? '記事にできる' : 'PR'} ${prCountOf(summary)} 本 / 試した ${summary.items.length} 件 / 候補 ${summary.candidateCount} 件`);
+  if (summary.stopReason) console.log(`止めた理由: ${summary.stopReason}${summary.error ? ` (${summary.error})` : ''}`);
   for (const error of summary.feedErrors) console.log(`読めなかったフィード: ${error}`);
   for (const item of summary.items) {
     console.log(`- ${item.outcome}: ${item.url}${item.reason ? ` (${item.reason})` : ''}${item.prUrl ? ` ${item.prUrl}` : ''}`);
@@ -102,22 +103,15 @@ async function main(): Promise<void> {
   }
 
   // Next.js initializes Sentry through instrumentation.ts; a tsx script has to do it itself.
-  // Without SENTRY_DSN (local runs) nothing is sent
-  const dsn = process.env.SENTRY_DSN;
-  if (dsn) {
-    Sentry.init({
-      dsn,
-      environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV,
-      beforeSend: beforeSendFilter,
-      sendDefaultPii: false,
-      initialScope: { tags: { entrypoint: 'job' } },
-    });
-  }
+  // Same options as the Next.js server. Without SENTRY_DSN (local runs) nothing is sent
+  Sentry.init({ ...serverSentryOptions(), initialScope: { tags: { entrypoint: 'job' } } });
 
   console.log(`🗓️ 定期実行を開始します${dryRun ? ' (dry-run: PR と Firestore への書き込みなし)' : ''}`);
+  const startedAt = new Date();
+  let summary: ScheduledRunSummary;
   try {
     const service = new ArticleGenerationMdxService();
-    const summary = await runScheduled(
+    summary = await runScheduled(
       {
         now: () => new Date(),
         store: new AttemptStore(getAdminDb()),
@@ -128,41 +122,51 @@ async function main(): Promise<void> {
       },
       { dryRun, maxTries },
     );
-    logSummary(summary);
-    if (summary.stopReason === 'store-error') {
-      Sentry.captureMessage('Scheduled run stopped on a Firestore error', {
-        level: 'error',
-        fingerprint: ['scheduled-run-store-error'],
-        extra: { error: truncate(redactSecrets(summary.storeError ?? ''), 500) },
-      });
-      process.exitCode = 1;
-    }
-    if (summary.stopReason === 'consecutive-failures') {
-      Sentry.captureMessage('Scheduled run stopped after consecutive failures', {
-        level: 'error',
-        fingerprint: ['scheduled-run-consecutive-failures'],
-        // Provider errors can echo request details; mask secrets the same way as the Slack message
-        extra: { errors: summary.items.slice(-3).map(item => truncate(redactSecrets(item.reason ?? ''), 500)) },
-      });
-      process.exitCode = 1;
-    }
-    await notifyScheduledRun(summary);
   } catch (error) {
-    // The run itself broke (Firestore, the feeds' collection ...): nothing of the run is reliable
-    console.error('❌ 定期実行が途中で止まりました:', error);
-    Sentry.captureException(error, { tags: { entrypoint: 'job' } });
-    await notifyPipelineResult({
-      outcome: 'failure',
-      entrypoint: 'job',
-      sourceUrl: '定期実行',
-      mode: dryRun ? 'dry-run' : 'pr',
+    // runScheduled catches the errors of the run; this is a bug or a broken setup (Firebase Admin)
+    console.error('❌ 定期実行が始められませんでした:', error);
+    Sentry.captureException(error);
+    summary = {
+      dryRun,
+      startedAt,
+      finishedAt: new Date(),
+      items: [],
+      candidateCount: 0,
+      stopReason: 'error',
       error: error instanceof Error ? error.message : String(error),
-      revision: process.env.CLOUD_RUN_EXECUTION,
+      feedErrors: [],
+    };
+  }
+
+  logSummary(summary);
+  const alert = summary.stopReason ? ALERTS[summary.stopReason] : undefined;
+  if (alert) {
+    Sentry.captureMessage(alert.message, {
+      level: 'error',
+      fingerprint: [alert.fingerprint],
+      // Provider errors can echo request details; mask secrets the same way as the Slack message
+      extra: { errors: alert.errors(summary).map(text => truncate(redactSecrets(text), 500)) },
     });
     process.exitCode = 1;
-  } finally {
-    await flushSentry(2000);
   }
+  await notifyScheduledRun(summary);
+  await flushSentry(2000);
 }
+
+/** Stop reasons that need a person: reported to Sentry and ending with exit code 1 */
+const ALERTS: Partial<
+  Record<StopReason, { message: string; fingerprint: string; errors: (summary: ScheduledRunSummary) => string[] }>
+> = {
+  'consecutive-failures': {
+    message: 'Scheduled run stopped after consecutive failures',
+    fingerprint: 'scheduled-run-consecutive-failures',
+    errors: summary => summary.items.slice(-3).map(item => item.reason ?? ''),
+  },
+  error: {
+    message: 'Scheduled run stopped on an error of the run itself',
+    fingerprint: 'scheduled-run-error',
+    errors: summary => [summary.error ?? ''],
+  },
+};
 
 main();

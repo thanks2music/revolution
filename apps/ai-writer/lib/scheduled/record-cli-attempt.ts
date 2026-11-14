@@ -12,6 +12,8 @@ import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.
 import { buildAttemptRecord } from './attempt-record';
 import type { AttemptStore } from './attempt-store';
 import { extractPublishedDate } from './published-date';
+import { toJstDateString } from '@/lib/utils/date';
+
 import { normalizeAttemptUrl } from './attempt-url';
 
 export async function recordCliAttempt(
@@ -32,14 +34,14 @@ export async function recordCliAttempt(
         title: input.title,
         pageDate: extractPublishedDate(input.pageHtml, now),
         now,
-        countFailure: true,
       },
       { kind: 'pipeline', result: input.result },
+      true,
     );
     await store.save(record);
     const next =
       record.status === 'waiting-details' && record.nextAttemptAt
-        ? `定期実行は ${record.nextAttemptAt.toISOString().slice(0, 10)} 以降に試し直します`
+        ? `定期実行は ${toJstDateString(record.nextAttemptAt)} 以降に試し直します`
         : record.status === 'retrying-failure'
           ? '定期実行が次の回に試し直します'
           : '定期実行はこの URL を試しません';

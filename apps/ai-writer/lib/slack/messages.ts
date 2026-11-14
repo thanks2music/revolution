@@ -16,7 +16,7 @@ import type { MdxGenerationResult } from '../services/article-generation-mdx.ser
 import type { SlackConfig } from './config';
 
 export type PipelineOutcome = 'success' | 'skipped' | 'failure';
-export type PipelineEntrypoint = 'cli' | 'cron' | 'job';
+export type PipelineEntrypoint = 'cli' | 'cron';
 /** CLI の実行モード。PR を作るのは `pr` だけ */
 export type PipelineMode = 'pr' | 'dry-run' | 'local' | 'upload-images';
 
@@ -71,7 +71,6 @@ const OUTCOME_LABEL: Record<PipelineOutcome, string> = {
 const ENTRYPOINT_LABEL: Record<PipelineEntrypoint, string> = {
   cli: 'ローカル実走 (debug:mdx)',
   cron: 'Cloud Run (cron)',
-  job: 'Cloud Run (定期実行の Job)',
 };
 
 /** URL のホスト。URL として読めなければそのまま返す (伏せ字と切り詰めは呼び出し側の safe で行う) */
@@ -111,7 +110,7 @@ export function redactSecrets(value: string): string {
  * 値を安全に埋め込む (伏せ字 → 切り詰め → エスケープ)。
  * エスケープの後で切ると `&amp;` の途中で切れて表示が崩れるため、切ってからエスケープする
  */
-function safe(value: string, max: number): string {
+export function safe(value: string, max: number): string {
   return escapeSlackText(truncate(redactSecrets(value), max));
 }
 
