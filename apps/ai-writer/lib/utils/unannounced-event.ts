@@ -110,6 +110,6 @@ export function unannouncedItemsReason(eventType: string, extraction: ItemFields
   const announcedLabel = announced.length > 0 ? announced.map((c) => ITEM_LABELS[c]).join('・') : 'なし';
   return (
     `詳細未発表のためスキップ: ${missing} ` +
-    `(種別 ${eventType}、発表済みの品目: ${announcedLabel})`
+    `(種別 ${eventType}、発表済みの品目: ${announcedLabel}。ページから読み取れなかっただけなら、実行し直す)`
   );
 }

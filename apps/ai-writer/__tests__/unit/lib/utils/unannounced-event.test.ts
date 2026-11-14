@@ -125,6 +125,7 @@ describe('unannouncedItemsReason', () => {
     const reason = unannouncedItemsReason('collabo-cafe', noItems);
     expect(reason).toContain('メニュー・グッズ・ノベルティのどれも発表されていない');
     expect(reason).toContain('発表済みの品目: なし');
+    expect(reason).toContain('実行し直す');
   });
 
   it('requires goods for a pop-up store', () => {
