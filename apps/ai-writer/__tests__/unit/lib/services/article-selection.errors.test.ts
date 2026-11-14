@@ -3,8 +3,7 @@
  *
  * 以前は AI の呼び出しや応答の解析に失敗すると `should_generate: false` を返し、
  * パイプラインはそれを「スキップ」として扱っていた。AI の障害・キーの失効・残高切れでも
- * 全記事が黙ってスキップされ、誰も気づけなかった (2026-11-14、本番の Gemini のキーが
- * 無効なまま定期実行の dry-run がスキップで終わった)。
+ * 全記事が黙ってスキップされ、誰も気づけなかった。
  * 失敗は例外として投げ、AI が「対象外」と判定した時だけ `should_generate: false` を返す。
  */
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
@@ -57,6 +56,15 @@ describe('記事選別の失敗', () => {
     );
 
     await expect(service.shouldGenerateArticle(REQUEST)).rejects.toThrow(/^記事選別に失敗: /);
+  });
+
+  it('JSON は読めても必須の項目が欠けていたら投げる', async () => {
+    const content = JSON.stringify({ should_generate: true, primary_official_url: null });
+    const service = buildService(jest.fn(async () => ({ content, model: 'gemini' })));
+
+    await expect(service.shouldGenerateArticle(REQUEST)).rejects.toThrow(
+      '記事選別に失敗: Failed to parse selection response: Missing or invalid official_urls field',
+    );
   });
 
   it('AI が「対象外」と判定した時は投げずに should_generate: false を返す', async () => {

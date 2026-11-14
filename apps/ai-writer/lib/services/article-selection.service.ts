@@ -97,7 +97,7 @@ export class ArticleSelectionService {
 
       // 判定できなかったことは「対象外 (スキップ)」ではなく失敗として投げる。
       // スキップで返すと、AI の障害・キーの失効・残高切れでも全記事が黙って飛ばされ、
-      // 誰も気づけない (2026-11-14、本番の Gemini のキーが無効でもスキップで終わった)。
+      // 誰も気づけない。
       // 呼び出し側 (generateMdxFromRSS) の catch が失敗として返し、Sentry にも送る。
       throw new Error(
         `記事選別に失敗: ${error instanceof Error ? error.message : 'Unknown error'}`,
