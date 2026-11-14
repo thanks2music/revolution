@@ -11,11 +11,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_ROOT_DIR/.env.local"
 
+# CI (定期実行の Job のイメージを作る workflow) には .env.local が無いので、
+# TEMPLATES_SOURCE_PATH が環境変数で渡されていれば .env.local を読まずに進める
 if [[ -f "$ENV_FILE" ]]; then
     set -o allexport
     source "$ENV_FILE"
     set +o allexport
-else
+elif [[ -z "$TEMPLATES_SOURCE_PATH" ]]; then
     echo -e "\033[0;31m[ERROR]\033[0m .env.local ファイルが見つかりません: $ENV_FILE"
     echo "以下の環境変数を設定してください："
     echo "  TEMPLATES_SOURCE_PATH=\"/path/to/revolution-templates\""
@@ -208,7 +210,7 @@ if command -v jq &> /dev/null; then
   "sourceBranch": "$SOURCE_BRANCH",
   "sourceCommit": "$SOURCE_COMMIT",
   "sourceCommitShort": "$SOURCE_COMMIT_SHORT",
-  "syncedBy": "$USER"
+  "syncedBy": "${SYNCED_BY:-$USER}"
 }
 VERSION_EOF
         log_info "VERSION.json を新規作成しました (branch=$SOURCE_BRANCH, commit=$SOURCE_COMMIT_SHORT)"

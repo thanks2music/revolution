@@ -69,5 +69,3 @@ export function missingSlackConfigKeys(env: NodeJS.ProcessEnv = process.env): st
   return REQUIRED_KEYS.filter(key => !presentValue(env[key]));
 }
 
-/** Cloud Run 上で動いているか (Service は `K_SERVICE`、Jobs は `CLOUD_RUN_JOB`)。判定は Anthropic の認証と共通 */
-export { isCloudRun };

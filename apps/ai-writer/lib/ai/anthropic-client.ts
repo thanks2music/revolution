@@ -14,11 +14,12 @@
  */
 
 import os from 'node:os';
-import { isCloudRun } from '@/lib/utils/cloud-run';
 import path from 'node:path';
 
 import Anthropic from '@anthropic-ai/sdk';
 import { oidcFederationProvider } from '@anthropic-ai/sdk/lib/credentials/oidc-federation';
+
+import { isCloudRun } from '@/lib/utils/cloud-run';
 
 /** Google の ID トークンに載せる audience。フェデレーションのルールで同じ値に固定している */
 const ANTHROPIC_AUDIENCE = 'https://api.anthropic.com';

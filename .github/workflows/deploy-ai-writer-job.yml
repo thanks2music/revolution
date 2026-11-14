@@ -41,6 +41,10 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
 
+    env:
+      # workflow_run では Service に deploy された commit、手動では main の今の commit
+      REV_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
     permissions:
       contents: read
       id-token: write
@@ -50,7 +54,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # workflow_run では、Service に deploy された commit と同じものを使う
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ env.REV_SHA }}
           persist-credentials: false
 
       - name: Check required variables
@@ -82,25 +86,17 @@ jobs:
           path: .templates-src
           persist-credentials: false
 
-      # scripts/sync-templates.sh と同じ物を同じ場所へ置く (あちらは手元の .env.local を読むので CI では使えない)。
-      # どの版のテンプレートが入ったかを VERSION.json とイメージのタグに残す
+      # 手元と同じ scripts/sync-templates.sh で置く (同じ物が同じ場所に入る)。どの版が入ったかは
+      # VERSION.json とイメージのタグに残す
       - name: Place templates for the job image
         id: templates
         env:
-          SRC: .templates-src/ai-writer
-          DEST: apps/ai-writer/templates
+          TEMPLATES_SOURCE_PATH: ${{ github.workspace }}/.templates-src
+          SYNCED_BY: github-actions
         run: |
-          mkdir -p "$DEST/config"
-          rsync -a --delete "$SRC/posts/yaml/collabo-cafe/" "$DEST/collabo-cafe/"
-          cp "$SRC"/config/*.yaml "$DEST/config/"
-          COMMIT=$(git -C .templates-src rev-parse HEAD)
-          BRANCH=$(git -C .templates-src rev-parse --abbrev-ref HEAD)
-          jq -n --arg commit "$COMMIT" --arg branch "$BRANCH" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{lastSynced: $at, sourceBranch: $branch, sourceCommit: $commit, sourceCommitShort: $commit[0:7], syncedBy: "github-actions"}' \
-            > "$DEST/VERSION.json"
+          bash scripts/sync-templates.sh --force-yes
+          echo "short=$(git -C .templates-src rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
           rm -rf .templates-src
-          echo "short=${COMMIT:0:7}" >> "$GITHUB_OUTPUT"
-          echo "templates: ${BRANCH} ${COMMIT:0:7}, $(find "$DEST" -name '*.yaml' | wc -l) YAML files"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -122,7 +118,6 @@ jobs:
       - name: Build and push the job image
         id: image
         env:
-          REV_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           TPL_SHORT: ${{ steps.templates.outputs.short }}
         run: |
           IMAGE="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}-job:${REV_SHA}-tpl-${TPL_SHORT}"
@@ -130,7 +125,9 @@ jobs:
           docker push "$IMAGE"
           echo "ref=$IMAGE" >> "$GITHUB_OUTPUT"
 
-      # 環境変数は Service と同じものに、Slack の送り先と R2 を足す。値は variables と Secret Manager から読む
+      # 環境変数は Service と同じものに、Slack の送り先と R2 を足す。値は variables と Secret Manager から読む。
+      # ⚠️ Service (deploy-ai-writer.yml の --set-env-vars / --set-secrets) に足した変数は、ここにも足すこと
+      #   (Job は定期実行の時にしか動かないので、欠けていると気づくのが遅れる)
       - name: Deploy the job
         id: deploy
         run: |
@@ -146,6 +143,19 @@ jobs:
             --set-env-vars "NODE_ENV=production,AI_PROVIDER=google,VISION_API_PROVIDER=google,GITHUB_OWNER=${{ github.repository_owner }},GITHUB_REPO=${{ github.event.repository.name }},GITHUB_BASE_BRANCH=main,SENTRY_DSN=${{ vars.SENTRY_DSN_AI_WRITER }},SENTRY_ENVIRONMENT=production,ANTHROPIC_FEDERATION_RULE_ID=${{ vars.ANTHROPIC_FEDERATION_RULE_ID }},ANTHROPIC_ORGANIZATION_ID=${{ vars.ANTHROPIC_ORGANIZATION_ID }},ANTHROPIC_SERVICE_ACCOUNT_ID=${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }},ANTHROPIC_WORKSPACE_ID=${{ vars.ANTHROPIC_WORKSPACE_ID }},SLACK_CHANNEL_ID=${{ vars.SLACK_CHANNEL_PROD }},SLACK_MENTION_USER_ID=${{ vars.SLACK_MENTION_USER_ID }},R2_BUCKET_NAME=${{ vars.R2_BUCKET_NAME }},R2_PUBLIC_URL=${{ vars.R2_PUBLIC_URL }}" \
             --set-secrets "GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest,SLACK_BOT_TOKEN=SLACK_BOT_TOKEN:latest,R2_ACCESS_KEY_ID=R2_ACCESS_KEY_ID:latest,R2_SECRET_ACCESS_KEY=R2_SECRET_ACCESS_KEY:latest,R2_ENDPOINT_URL=R2_ENDPOINT_URL:latest"
 
+      - name: Build the Slack message
+        id: msg
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          case "$JOB_STATUS" in
+            success)   text='✅ AI Writer: 定期実行の Job を更新しました' ;;
+            cancelled) text='⏹️ AI Writer: 定期実行の Job の更新が中断されました (Job は以前の定義のまま)' ;;
+            *)         text='❌ AI Writer: 定期実行の Job を更新できませんでした (Job は以前の定義のまま)' ;;
+          esac
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
       - name: Notify Slack of the result
         # 本番系へ 1 通。失敗の時だけメンションする。Job は更新されなければ以前の定義のまま
         if: always()
@@ -156,5 +166,5 @@ jobs:
           # 本番の Job の更新なので、どこから動かしてもテストモードにしない
           auto-test-mode: 'false'
           mention: "${{ job.status != 'success' && vars.SLACK_MENTION_USER_ID || '' }}"
-          text: "${{ job.status == 'success' && '✅ AI Writer: 定期実行の Job を更新しました' || (job.status == 'cancelled' && '⏹️ AI Writer: 定期実行の Job の更新が中断されました (Job は以前の定義のまま)' || '❌ AI Writer: 定期実行の Job を更新できませんでした (Job は以前の定義のまま)') }}"
-          body: "*Commit*: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.workflow_run.head_sha || github.sha }}|${{ github.event.workflow_run.head_sha || github.sha }}> · *Templates*: ${{ steps.templates.outputs.short || '(取得前に止まった)' }} · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|run>"
+          text: ${{ steps.msg.outputs.text }}
+          body: "*Commit*: <${{ github.server_url }}/${{ github.repository }}/commit/${{ env.REV_SHA }}|${{ env.REV_SHA }}> · *Templates*: ${{ steps.templates.outputs.short || '(取得前に止まった)' }} · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|run>"

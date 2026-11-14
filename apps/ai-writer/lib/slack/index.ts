@@ -13,7 +13,8 @@
 
 import { Sentry } from '@/lib/observability/sentry';
 
-import { isCloudRun, missingSlackConfigKeys, readSlackConfig } from './config';
+import { isCloudRun } from '@/lib/utils/cloud-run';
+import { missingSlackConfigKeys, readSlackConfig } from './config';
 import { postSlackMessage } from './client';
 import { buildPipelineMessage, type PipelineNotification } from './messages';
 
