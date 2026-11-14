@@ -515,8 +515,9 @@ async function main() {
         process.exitCode = 1;
         notification = { ...notifyContext, outcome: 'failure', error: `記事を更新できませんでした: ${result.skipReason}` };
       }
-      // 既に記事があるイベント・詳細未発表のイベントは抽出の問題ではない (理由は上に書いてある) ので、抽出のヒントを出さない
-      if (!result.skipKind) {
+      // 既に記事があるイベントは抽出の問題ではない (対処は上の理由に書いてある) ので、抽出のヒントを出さない。
+      // 詳細未発表のスキップは、抽出で読めなかった時にも起きるので、ヒントを出す
+      if (result.skipKind !== 'existing-event') {
         console.log();
         console.log('='.repeat(80));
         console.log('💡 デバッグヒント:');

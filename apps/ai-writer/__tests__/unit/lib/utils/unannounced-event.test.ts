@@ -65,6 +65,31 @@ describe('unannouncedScheduleReason', () => {
     );
   });
 
+  it.each([
+    ['a weekday suffix', '12月1日(月)'],
+    ['a date that does not exist', '2月30日'],
+  ])('skips when the start date has %s, since the article could not show it', (_label, date) => {
+    expect(unannouncedScheduleReason({ 店舗名: 'Sample Cafe Tokyo', 開催期間: period(date) })).toContain(
+      '開始日を読み取れない'
+    );
+  });
+
+  it('skips when the start year is missing', () => {
+    const p = period('12月1日');
+    expect(
+      unannouncedScheduleReason({ 店舗名: 'Sample Cafe Tokyo', 開催期間: { ...p, 開始: { 年: '', 日付: '12月1日' } } })
+    ).toContain('開始日を読み取れない');
+  });
+
+  it.each(['2026-13-01', '2026-12-01T00:00', '未定'])('ignores an occurrence whose start date is %s', (startsOn) => {
+    const reason = unannouncedScheduleReason({
+      店舗名: 'Sample Cafe Tokyo',
+      開催期間: period(''),
+      event_data: { occurrences: [{ starts_on: startsOn }] },
+    });
+    expect(reason).toContain('開始日を読み取れない');
+  });
+
   it('ignores occurrences whose start date is not an ISO date', () => {
     const reason = unannouncedScheduleReason({
       店舗名: 'Sample Cafe Tokyo',

@@ -27,6 +27,7 @@
  * merged, and before duplication-check (so no Firestore record is left behind).
  */
 import type { ExtractionResult } from '@/lib/services/extraction.service';
+import { isValidIsoDate, toIsoDate } from '@/lib/utils/event-fact-card-mapper';
 import { isEmptyList } from '@/lib/utils/llm-values';
 import { validateVenueLabel } from '@/lib/utils/venue-label-validator';
 
@@ -51,11 +52,9 @@ const REQUIRED_ANY: Record<string, readonly ItemCategory[]> = {
 };
 const DEFAULT_REQUIRED_ANY: readonly ItemCategory[] = ['menu', 'goods', 'novelty'];
 
-/** "N月N日" with digits. An empty string or words such as 後日発表 do not count */
-const hasDate = (value: string | null | undefined): boolean =>
-  typeof value === 'string' && /\d{1,2}\s*月\s*\d{1,2}\s*日/.test(value);
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
+// The start date counts only when the article can actually show it: the same parsing as the
+// event fact card (`toIsoDate`: "YYYY年" + "N月N日", a real date) and the same ISO check for
+// `event_data`. A looser test here would let an event through that is then written without a date.
 
 /** True when any occurrence in the raw `event_data` has a start date */
 function someOccurrenceHasStart(eventData: unknown): boolean {
@@ -67,7 +66,7 @@ function someOccurrenceHasStart(eventData: unknown): boolean {
       typeof o === 'object' &&
       o !== null &&
       typeof (o as { starts_on?: unknown }).starts_on === 'string' &&
-      ISO_DATE.test((o as { starts_on: string }).starts_on)
+      isValidIsoDate((o as { starts_on: string }).starts_on)
   );
 }
 
@@ -75,7 +74,7 @@ function someOccurrenceHasStart(eventData: unknown): boolean {
  * @returns the skip reason when the start date is not announced, otherwise `undefined`
  */
 export function unannouncedScheduleReason(extraction: ScheduleFields): string | undefined {
-  if (hasDate(extraction.開催期間?.開始?.日付) || someOccurrenceHasStart(extraction.event_data)) {
+  if (toIsoDate(extraction.開催期間?.開始) || someOccurrenceHasStart(extraction.event_data)) {
     return undefined;
   }
 

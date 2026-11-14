@@ -663,6 +663,7 @@ export class ArticleGenerationMdxService {
         const scheduleReason = unannouncedScheduleReason(detailedExtraction);
         if (scheduleReason) {
           console.log(`⏭️ ${getStepContext('detail-extraction', '詳細未発表')} ${scheduleReason}`);
+          if (costTracker.hasUsage()) costTracker.logSummary();
           return { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: scheduleReason };
         }
       }
@@ -843,14 +844,14 @@ export class ArticleGenerationMdxService {
       const resolvedSlugs = { workSlug, storeSlug, eventType };
 
       // A-1-c: 種別に要る品目 (メニュー・グッズ・ノベルティ) がどれも発表されていなければ書かない。
-      // 抽出・下層ページ・Vision の 3 つがそろった後で判定し、Firestore に記録を残す前に止める
-      if (!update && detailedExtraction) {
-        const itemsReason = unannouncedItemsReason(eventType, detailedExtraction);
-        if (itemsReason) {
-          console.log(`⏭️ ${getStepContext('slug-generation', '詳細未発表')} ${itemsReason}`);
-          return { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: itemsReason };
-        }
-      }
+      // 抽出・下層ページ・Vision の 3 つがそろった後で判定する。止めるのは duplication-check の中で、
+      // 既に記事があるイベントの判定の後、Firestore に記録を残す前 (既存のイベントは 'existing-event' を優先して返す)
+      const itemsReason = !update && detailedExtraction ? unannouncedItemsReason(eventType, detailedExtraction) : undefined;
+      const skipUnannouncedItems = (reason: string): MdxGenerationResult => {
+        console.log(`⏭️ ${getStepContext('duplication-check', '詳細未発表')} ${reason}`);
+        if (costTracker.hasUsage()) costTracker.logSummary();
+        return { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: reason };
+      };
 
       // duplication-check step: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
@@ -860,6 +861,7 @@ export class ArticleGenerationMdxService {
         // (記事の更新では記事は登録済みで、Firestore の記録は generated のまま)
         const modeLabel = update ? '記事の更新' : localOnly ? 'ローカル保存' : 'ドライラン';
         console.log(`\n${getStepDisplay('duplication-check')} Firestore重複チェック（${modeLabel}のためスキップ）...`);
+        if (itemsReason) return skipUnannouncedItems(itemsReason);
 
         // ダミーの postId を生成（タイムスタンプベース）。記事の更新では既存の post_id
         const postIdForRun = update?.fields.postId ?? `dry-run-${Date.now()}`;
@@ -920,6 +922,8 @@ export class ArticleGenerationMdxService {
             },
           };
         }
+
+        if (itemsReason) return skipUnannouncedItems(itemsReason);
 
         console.log('✅ 重複なし。イベントを登録...');
 
