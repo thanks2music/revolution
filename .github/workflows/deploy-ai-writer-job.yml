@@ -37,7 +37,7 @@ jobs:
     name: Deploy the scheduled job
     # Service の deploy が成功した時か、main からの手動実行の時だけ (ブランチから動かすと、そのコードが本番の Job になる)
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.conclusion == 'success') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
 
