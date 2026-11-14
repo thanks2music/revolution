@@ -499,7 +499,7 @@ async function main() {
     // PR を作る本実行の結果は、定期実行と同じ「試した URL」に残す (Job がこの URL をもう一度試さないように)。
     // dry-run・local・画像アップロード・記事の更新は記録しない
     if (mode === 'pr' && !updateTarget) {
-      await recordCliAttempt(new AttemptStore(getAdminDb()), { url: actualUrl, title, pageHtml, result });
+      await recordCliAttempt(() => new AttemptStore(getAdminDb()), { url: actualUrl, title, pageHtml, result });
     }
 
     // ========================================

@@ -17,6 +17,8 @@ describe('parseDateText', () => {
     ['2026.11.4', '2026-11-03T15:00:00.000Z'],
     ['公開日：2026年11月14日', '2026-11-13T15:00:00.000Z'],
     ['2026年11月14日(金) 10:05', '2026-11-14T01:05:00.000Z'],
+    ['2026-11-14T10:00:00', '2026-11-14T01:00:00.000Z'],
+    ['2026-11-14T10:00:00Z', '2026-11-14T10:00:00.000Z'],
   ])('reads %s', (text, iso) => {
     expect(parseDateText(text)?.toISOString()).toBe(iso);
   });
@@ -67,6 +69,15 @@ describe('extractPublishedDate', () => {
       '<span class="date">2026/11/03</span>',
     );
     expect(extractPublishedDate(html, NOW)).toEqual({ date: new Date('2026-11-02T15:00:00Z'), source: 'date-element' });
+  });
+
+  it('leaves out the event schedule ("event-date", "timetable", "start-date") but not "publish"', () => {
+    const html = page(
+      '',
+      '<span class="event-date">2026年9月1日〜</span><p class="timetable">2026/10/1 10:00</p>' +
+        '<p id="start-date">2026.10.2</p><span class="calendar-date">2026.11.12</span>',
+    );
+    expect(extractPublishedDate(html, NOW)).toEqual({ date: new Date('2026-11-11T15:00:00Z'), source: 'date-element' });
   });
 
   it('ignores long blocks whose class happens to contain "date"', () => {

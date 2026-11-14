@@ -11,7 +11,8 @@
  *     was published (and switch to the start date as soon as one becomes known)
  * - A failure (network, AI, GitHub ...) is tried again on the next run, up to 3 failures in
  *   total. A failure that is part of a run-wide outage (several failures in a row) does not
- *   count, because the URL itself is not the problem.
+ *   count, because the URL itself is not the problem. Only the first failure of a URL's streak
+ *   can be excused; the following ones count.
  *
  * Pure functions only; the Firestore side is `attempt-store.ts`.
  *
@@ -50,6 +51,8 @@ export interface PreviousAttempt {
   unannouncedCount: number;
   failureCount: number;
   eventStartDate?: string;
+  /** What the last attempt ended in (`attempt-store.ts` `LastOutcome`) */
+  lastOutcome?: string;
 }
 
 export interface NextAttemptState {
@@ -98,7 +101,11 @@ export function nextAttemptState(
       return { ...base, status: 'done', nextAttemptAt: null };
 
     case 'failure': {
-      const count = outcome.counted ? failureCount + 1 : failureCount;
+      // Only the first failure of a URL's streak can be excused. Otherwise URLs that always fail
+      // would keep each other at the front of the queue (retries go first), stop every run as an
+      // "outage" and never be given up
+      const excused = !outcome.counted && previous?.lastOutcome !== 'failure';
+      const count = excused ? failureCount : failureCount + 1;
       if (count >= MAX_COUNTED_FAILURES) {
         return {
           ...base,

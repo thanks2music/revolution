@@ -66,12 +66,13 @@ jobs:
           ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
           SLACK_CHANNEL_PROD: ${{ vars.SLACK_CHANNEL_PROD }}
+          SLACK_CHANNEL_DEV: ${{ vars.SLACK_CHANNEL_DEV }}
           R2_BUCKET_NAME: ${{ vars.R2_BUCKET_NAME }}
           R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
         run: |
           missing=0
           for key in AI_WRITER_RUNTIME_SERVICE_ACCOUNT ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_ORGANIZATION_ID \
-            ANTHROPIC_SERVICE_ACCOUNT_ID SLACK_CHANNEL_PROD R2_BUCKET_NAME R2_PUBLIC_URL; do
+            ANTHROPIC_SERVICE_ACCOUNT_ID SLACK_CHANNEL_PROD SLACK_CHANNEL_DEV R2_BUCKET_NAME R2_PUBLIC_URL; do
             if [ -z "${!key}" ]; then
               echo "::error title=Missing variable::$key is empty or unset."
               missing=1

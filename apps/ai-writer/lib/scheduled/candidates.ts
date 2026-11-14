@@ -6,12 +6,12 @@
  *
  * URLs registered by hand will come first once they exist (the next PR adds them).
  * A URL that was tried before is never a new item, and the same page is listed once even when
- * it arrives through several feeds or with different tracking parameters (`url-key.ts`).
+ * it arrives through several feeds or with different tracking parameters (`attempt-url.ts`).
  * The run itself stops after 15 tries or 5 PRs; this module only orders.
  *
  * @module lib/scheduled/candidates
  */
-import { normalizeAttemptUrl } from './url-key';
+import { normalizeAttemptUrl } from './attempt-url';
 
 export const RSS_MAX_AGE_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;

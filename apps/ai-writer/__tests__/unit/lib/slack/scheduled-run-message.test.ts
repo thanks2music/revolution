@@ -39,6 +39,7 @@ describe('needsAttention', () => {
     ['a PR', summary({ prCount: 1, items: [{ url: 'u', source: 'rss', outcome: 'pr' }] })],
     ['a failure', summary({ items: [{ url: 'u', source: 'rss', outcome: 'failure' }] })],
     ['an unreadable feed', summary({ feedErrors: ['コラボカフェ: 503'] })],
+    ['a Firestore error', summary({ stopReason: 'store-error', storeError: 'UNAVAILABLE' })],
   ])('%s needs a person', (_, value) => {
     expect(needsAttention(value)).toBe(true);
   });

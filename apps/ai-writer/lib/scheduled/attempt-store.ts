@@ -1,7 +1,7 @@
 /**
  * The record of URLs a scheduled run (or a `pnpm debug:mdx` run that makes a PR) has tried.
  *
- * Collection `scheduled_url_attempts`, one document per normalized URL (`url-key.ts`).
+ * Collection `scheduled_url_attempts`, one document per normalized URL (`attempt-url.ts`).
  * Only the Admin SDK writes it (the job and the CLI); `firestore.rules` gives the admin UI read
  * access only.
  *
@@ -11,7 +11,7 @@ import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 
 import type { PublishedDateSource } from './published-date';
 import type { AttemptStatus } from './retry-policy';
-import { attemptDocId } from './url-key';
+import { attemptDocId } from './attempt-url';
 
 export const ATTEMPTS_COLLECTION = 'scheduled_url_attempts';
 

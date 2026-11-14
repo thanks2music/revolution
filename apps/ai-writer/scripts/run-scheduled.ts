@@ -29,7 +29,8 @@ import { AttemptStore } from '../lib/scheduled/attempt-store';
 import type { RssCandidateInput } from '../lib/scheduled/candidates';
 import { runScheduled, type ScheduledRunSummary } from '../lib/scheduled/run';
 import { notifyPipelineResult, notifyScheduledRun } from '../lib/slack';
-import type { RssFeed } from '../lib/types/rss-feed';
+import { redactSecrets, truncate } from '../lib/slack/messages';
+import { rssFeedFromDoc } from '../lib/firestore/rss-feed-doc';
 import { extractArticleData } from '../lib/utils/html-extractor';
 import { isCloudRun } from '../lib/utils/cloud-run';
 
@@ -40,19 +41,7 @@ function plainText(value: string): string {
 
 async function loadRssItems(): Promise<{ items: RssCandidateInput[]; errors: string[] }> {
   const snapshot = await getAdminDb().collection('rss_feeds').where('isActive', '==', true).get();
-  const feeds: RssFeed[] = snapshot.docs.map(doc => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      url: data.url,
-      title: data.title,
-      isActive: data.isActive,
-      validationConfig: data.validationConfig || undefined,
-      createdAt: data.createdAt?.toDate?.() ?? new Date(0),
-      updatedAt: data.updatedAt?.toDate?.() ?? new Date(0),
-      createdBy: data.createdBy,
-    };
-  });
+  const feeds = snapshot.docs.map(doc => rssFeedFromDoc(doc.id, doc.data()));
 
   // No per-feed count limit (0 turns the slice off): the 14-day window and the per-run limits
   // decide how much is tried
@@ -140,11 +129,20 @@ async function main(): Promise<void> {
       { dryRun, maxTries },
     );
     logSummary(summary);
+    if (summary.stopReason === 'store-error') {
+      Sentry.captureMessage('Scheduled run stopped on a Firestore error', {
+        level: 'error',
+        fingerprint: ['scheduled-run-store-error'],
+        extra: { error: truncate(redactSecrets(summary.storeError ?? ''), 500) },
+      });
+      process.exitCode = 1;
+    }
     if (summary.stopReason === 'consecutive-failures') {
       Sentry.captureMessage('Scheduled run stopped after consecutive failures', {
         level: 'error',
         fingerprint: ['scheduled-run-consecutive-failures'],
-        extra: { errors: summary.items.slice(-3).map(item => item.reason) },
+        // Provider errors can echo request details; mask secrets the same way as the Slack message
+        extra: { errors: summary.items.slice(-3).map(item => truncate(redactSecrets(item.reason ?? ''), 500)) },
       });
       process.exitCode = 1;
     }

@@ -5,7 +5,7 @@ import { describe, expect, it } from '@jest/globals';
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 
 import { ATTEMPTS_COLLECTION, AttemptStore, type AttemptRecord } from '@/lib/scheduled/attempt-store';
-import { attemptDocId } from '@/lib/scheduled/url-key';
+import { attemptDocId } from '@/lib/scheduled/attempt-url';
 
 type Doc = Record<string, unknown>;
 

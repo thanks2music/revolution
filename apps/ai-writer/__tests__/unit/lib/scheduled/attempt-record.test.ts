@@ -24,6 +24,12 @@ describe('toAttemptOutcome', () => {
       toAttemptOutcome(pipeline({ skipped: true, skipKind: 'unannounced-event', eventStartDate: '2026-12-01' }), true),
     ).toEqual({ kind: 'unannounced', eventStartDate: '2026-12-01' });
   });
+  it('a skip that is really a step error (detail extraction, content generation) is a failure', () => {
+    expect(toAttemptOutcome(pipeline({ skipped: true, skipKind: 'step-error', skipReason: 'コンテンツ生成に失敗: 503' }), true)).toEqual({
+      kind: 'failure',
+      counted: true,
+    });
+  });
   it('treats an existing event as an ordinary skip', () => {
     expect(toAttemptOutcome(pipeline({ skipped: true, skipKind: 'existing-event' }), true)).toEqual({ kind: 'skipped' });
   });

@@ -11,16 +11,12 @@
  * @module lib/slack/scheduled-run-message
  */
 import type { RunItem, ScheduledRunSummary, StopReason } from '../scheduled/run';
+import { toJstDateString } from '../utils/date';
 import type { SlackConfig } from './config';
 import { escapeSlackText, redactSecrets, truncate, type SlackMessage } from './messages';
 
 function safe(value: string, max: number): string {
   return escapeSlackText(truncate(redactSecrets(value), max));
-}
-
-/** `YYYY-MM-DD` of the day in Japan */
-function jstDay(date: Date): string {
-  return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 const STOP_LABEL: Record<StopReason, string> = {
@@ -29,6 +25,7 @@ const STOP_LABEL: Record<StopReason, string> = {
   'time-budget': '実行時間が 90 分を過ぎたので止めました',
   'consecutive-failures':
     '3 件続けて失敗したので止めました (キーの失効や残高切れなど、全体の障害の可能性があります)',
+  'store-error': 'Firestore の読み書きに失敗したので止めました (試した URL の記録が残っていない可能性があります)',
 };
 
 const OUTCOME_ICON: Record<RunItem['outcome'], string> = {
@@ -44,6 +41,7 @@ export function needsAttention(summary: ScheduledRunSummary): boolean {
     summary.prCount > 0 ||
     summary.items.some(item => item.outcome === 'failure') ||
     summary.stopReason === 'consecutive-failures' ||
+    summary.stopReason === 'store-error' ||
     summary.feedErrors.length > 0
   );
 }
@@ -61,7 +59,7 @@ function itemLine(item: RunItem, dryRun: boolean): string {
     lines.push(
       item.outcome === 'failure'
         ? '次の回に試し直します'
-        : `次に試す日: ${jstDay(item.nextAttemptAt)}`,
+        : `次に試す日: ${toJstDateString(item.nextAttemptAt)}`,
     );
   }
   return lines.join('\n');
@@ -75,7 +73,9 @@ export function buildScheduledRunMessage(
   const mention = attention && config.mentionUserId ? `<@${config.mentionUserId}> ` : '';
   const envLabel = config.runtime === 'cloud-run' ? 'production' : 'local';
   const count = (outcome: RunItem['outcome']) => summary.items.filter(item => item.outcome === outcome).length;
-  const icon = summary.stopReason === 'consecutive-failures' || count('failure') > 0 ? '❌' : '🗓️';
+  const failed =
+    summary.stopReason === 'consecutive-failures' || summary.stopReason === 'store-error' || count('failure') > 0;
+  const icon = failed ? '❌' : '🗓️';
 
   const text =
     `${mention}${icon} [${envLabel}]${summary.dryRun ? ' [dry-run]' : ''} 定期実行: ` +
@@ -86,6 +86,7 @@ export function buildScheduledRunMessage(
 
   const notes: string[] = [];
   if (summary.stopReason) notes.push(STOP_LABEL[summary.stopReason]);
+  if (summary.storeError) notes.push(`エラー: ${safe(summary.storeError, 300)}`);
   for (const error of summary.feedErrors) notes.push(`読めなかったフィード: ${safe(error, 300)}`);
   if (summary.items.length === 0 && summary.feedErrors.length === 0) notes.push('試す候補がありませんでした');
   if (notes.length > 0) {

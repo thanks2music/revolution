@@ -12,13 +12,15 @@ import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.
 import { buildAttemptRecord } from './attempt-record';
 import type { AttemptStore } from './attempt-store';
 import { extractPublishedDate } from './published-date';
-import { normalizeAttemptUrl } from './url-key';
+import { normalizeAttemptUrl } from './attempt-url';
 
 export async function recordCliAttempt(
-  store: Pick<AttemptStore, 'get' | 'save'>,
+  /** Called inside the try: building the store (Firebase Admin) can throw too */
+  getStore: () => Pick<AttemptStore, 'get' | 'save'>,
   input: { url: string; title: string; pageHtml: string; result: MdxGenerationResult; now?: Date },
 ): Promise<void> {
   try {
+    const store = getStore();
     const now = input.now ?? new Date();
     const url = normalizeAttemptUrl(input.url);
     const previous = await store.get(url);

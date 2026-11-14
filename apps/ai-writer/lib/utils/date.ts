@@ -20,3 +20,10 @@ export function toIsoMsDate(input?: string | null): string {
   }
   return new Date().toISOString();
 }
+
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/** The day in Japan (`YYYY-MM-DD`) of a moment */
+export function toJstDateString(date: Date): string {
+  return new Date(date.getTime() + JST_OFFSET_MS).toISOString().slice(0, 10);
+}

@@ -9,7 +9,8 @@
  * 2. JSON-LD `datePublished`
  * 3. `<time datetime>`
  * 4. an element whose class or id contains `date`, `time`, `update` or `publish`
- *    (`publish` before plain `date`/`time`, and `update` last)
+ *    (`publish` before plain `date`/`time`, and `update` last). Names of an event's schedule
+ *    (`event`, `schedule`, `period`, `timetable`, `start`, `end`) are left out unless they say `publish`
  *
  * A date in the future is ignored (it is usually an event date, not a publish date), and so is
  * anything before 2000. When nothing is found the caller falls back to the RSS delivery date or
@@ -18,6 +19,8 @@
  * @module lib/scheduled/published-date
  */
 import * as cheerio from 'cheerio';
+
+import { toJstDateString } from '@/lib/utils/date';
 
 export type PublishedDateSource = 'meta' | 'json-ld' | 'time-element' | 'date-element';
 
@@ -38,9 +41,11 @@ export function parseDateText(text: string): Date | undefined {
   const value = text.trim();
   if (!value) return undefined;
 
-  // Full ISO 8601 with a time and an offset (meta tags, JSON-LD, <time datetime>)
+  // ISO 8601 with a time (meta tags, JSON-LD, <time datetime>). Without an offset it is a time
+  // in Japan; `new Date` would read it in the machine's zone (UTC on Cloud Run)
   if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
-    const date = new Date(value);
+    const hasOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+    const date = new Date(hasOffset ? value : `${value}${JST_OFFSET}`);
     return Number.isNaN(date.getTime()) ? undefined : date;
   }
 
@@ -57,8 +62,7 @@ export function parseDateText(text: string): Date | undefined {
   const date = new Date(`${y}-${pad(month)}-${pad(day)}T${time}${JST_OFFSET}`);
   if (Number.isNaN(date.getTime())) return undefined;
   // Rejects dates such as 2026-02-31, which `Date` would roll over into March
-  const jstDay = new Date(date.getTime() + 9 * 60 * 60 * 1000).getUTCDate();
-  return jstDay === day ? date : undefined;
+  return toJstDateString(date) === `${y}-${pad(month)}-${pad(day)}` ? date : undefined;
 }
 
 function usable(date: Date | undefined, now: Date): date is Date {
@@ -85,10 +89,17 @@ function findDatePublished(node: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Names of an event's schedule, not of the page's date ("event-date", "timetable" ...).
+ * A past event date taken as the publish date would end the retries too early
+ */
+const SCHEDULE_NAME = /(?:^|[^a-z])(?:event|schedule|period|timetable|start|end)/;
+
 /** Lower is preferred. `undefined` means the element is not a date element */
 function dateElementRank(classAndId: string): number | undefined {
   const name = classAndId.toLowerCase();
   if (name.includes('publish')) return 0;
+  if (SCHEDULE_NAME.test(name)) return undefined;
   if (name.includes('update')) return 2;
   if (name.includes('date') || name.includes('time')) return 1;
   return undefined;

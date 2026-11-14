@@ -23,7 +23,7 @@ import { buildAttemptRecord, toAttemptOutcome, type AttemptResult } from './atte
 import type { AttemptRecord } from './attempt-store';
 import { orderCandidates, type Candidate, type RssCandidateInput } from './candidates';
 import { extractPublishedDate } from './published-date';
-import { normalizeAttemptUrl } from './url-key';
+import { normalizeAttemptUrl } from './attempt-url';
 
 export const MAX_PRS_PER_RUN = 5;
 export const MAX_TRIES_PER_RUN = 15;
@@ -57,7 +57,7 @@ export interface ScheduledRunDeps {
   log?: (message: string) => void;
 }
 
-export type StopReason = 'max-prs' | 'max-tries' | 'time-budget' | 'consecutive-failures';
+export type StopReason = 'max-prs' | 'max-tries' | 'time-budget' | 'consecutive-failures' | 'store-error';
 
 export interface RunItem {
   url: string;
@@ -81,11 +81,14 @@ export interface ScheduledRunSummary {
   prCount: number;
   candidateCount: number;
   stopReason?: StopReason;
+  /** The Firestore error that stopped the run (`stopReason` is `store-error`) */
+  storeError?: string;
   /** Feeds that could not be read */
   feedErrors: string[];
 }
 
-interface PendingFailure {
+/** One tried URL, held until its record is saved */
+interface Attempted {
   candidate: Candidate;
   previous: AttemptRecord | undefined;
   attempt: AttemptResult;
@@ -125,118 +128,117 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
   const items: RunItem[] = [];
   let prCount = 0;
   let stopReason: StopReason | undefined;
-  let pendingFailures: PendingFailure[] = [];
+  let pendingFailures: Attempted[] = [];
+
+  /** Store what happened to one URL and show the next try (or the give-up) in the summary */
+  const persist = async (entry: Attempted, countFailure: boolean) => {
+    const record = buildAttemptRecord(
+      entry.previous,
+      {
+        url: entry.candidate.url,
+        source: 'rss',
+        feedId: entry.candidate.feedId,
+        title: entry.candidate.title,
+        pageDate: entry.pageDate,
+        rssPubDate: entry.candidate.rssPubDate,
+        now: entry.now,
+        countFailure,
+      },
+      entry.attempt,
+    );
+    entry.item.nextAttemptAt = record.nextAttemptAt;
+    entry.item.givenUpReason = record.givenUpReason;
+    if (!options.dryRun) await deps.store.save(record);
+  };
 
   /** Save the held failures. They count toward the retry limit unless the run hit an outage */
   const flushFailures = async (counted: boolean) => {
-    for (const pending of pendingFailures) {
-      const record = buildAttemptRecord(
-        pending.previous,
-        {
-          url: pending.candidate.url,
-          source: 'rss',
-          feedId: pending.candidate.feedId,
-          title: pending.candidate.title,
-          pageDate: pending.pageDate,
-          rssPubDate: pending.candidate.rssPubDate,
-          now: pending.now,
-          countFailure: counted,
-        },
-        pending.attempt,
-      );
-      pending.item.nextAttemptAt = record.nextAttemptAt;
-      pending.item.givenUpReason = record.givenUpReason;
-      if (!options.dryRun) await deps.store.save(record);
-    }
+    const held = pendingFailures;
     pendingFailures = [];
+    for (const entry of held) await persist(entry, counted);
   };
 
-  for (const candidate of candidates) {
-    if (prCount >= MAX_PRS_PER_RUN) {
-      stopReason = 'max-prs';
-      break;
-    }
-    if (items.length >= maxTries) {
-      stopReason = 'max-tries';
-      break;
-    }
-    const now = deps.now();
-    if (now.getTime() - startedAt.getTime() >= RUN_TIME_BUDGET_MS) {
-      stopReason = 'time-budget';
-      break;
-    }
-
-    log(`[${items.length + 1}] ${candidate.url}`);
-    const previous = await deps.store.get(candidate.url);
-
-    let attempt: AttemptResult;
-    let pageDate: ReturnType<typeof extractPublishedDate> = undefined;
-    try {
-      const page = await deps.fetchPage(candidate.url);
-      pageDate = extractPublishedDate(page.pageHtml, now);
-      log(
-        pageDate
-          ? `  公開日: ${pageDate.date.toISOString()} (${pageDate.source})`
-          : `  公開日: ページから読めず (${candidate.rssPubDate ? `RSS の配信日 ${candidate.rssPubDate.toISOString()}` : '初めて試した日'} を使う)`,
-      );
-      const result = await deps.generate({
-        rssItem: {
-          title: page.title,
-          link: page.actualUrl,
-          content: page.html,
-          contentSnippet: page.html.substring(0, 500),
-          pubDate: (candidate.rssPubDate ?? now).toISOString(),
-        },
-        dryRun: options.dryRun,
-      });
-      attempt = { kind: 'pipeline', result };
-    } catch (error) {
-      attempt = { kind: 'error', error: error instanceof Error ? error.message : String(error) };
-    }
-
-    const outcome = toAttemptOutcome(attempt, true);
-    const result = attempt.kind === 'pipeline' ? attempt.result : undefined;
-    const item: RunItem = {
-      url: candidate.url,
-      title: candidate.title,
-      source: candidate.source,
-      outcome: outcome.kind,
-      reason: attempt.kind === 'error' ? attempt.error : result?.skipped ? result.skipReason : result?.error,
-      prUrl: result?.prResult?.prUrl,
-    };
-    items.push(item);
-
-    if (outcome.kind === 'failure') {
-      pendingFailures.push({ candidate, previous, attempt, pageDate, now, item });
-      if (pendingFailures.length >= MAX_CONSECUTIVE_FAILURES) {
-        await flushFailures(false);
-        stopReason = 'consecutive-failures';
+  let storeError: string | undefined;
+  try {
+    for (const candidate of candidates) {
+      if (prCount >= MAX_PRS_PER_RUN) {
+        stopReason = 'max-prs';
         break;
       }
-      continue;
-    }
+      if (items.length >= maxTries) {
+        stopReason = 'max-tries';
+        break;
+      }
+      const now = deps.now();
+      if (now.getTime() - startedAt.getTime() >= RUN_TIME_BUDGET_MS) {
+        stopReason = 'time-budget';
+        break;
+      }
 
-    await flushFailures(true);
-    if (outcome.kind === 'pr') prCount++;
-    const record = buildAttemptRecord(
-      previous,
-      {
+      log(`[${items.length + 1}] ${candidate.url}`);
+      const previous = await deps.store.get(candidate.url);
+
+      let attempt: AttemptResult;
+      let pageDate: ReturnType<typeof extractPublishedDate> = undefined;
+      try {
+        const page = await deps.fetchPage(candidate.url);
+        pageDate = extractPublishedDate(page.pageHtml, now);
+        log(
+          pageDate
+            ? `  公開日: ${pageDate.date.toISOString()} (${pageDate.source})`
+            : `  公開日: ページから読めず (${candidate.rssPubDate ? `RSS の配信日 ${candidate.rssPubDate.toISOString()}` : '初めて試した日'} を使う)`,
+        );
+        const result = await deps.generate({
+          rssItem: {
+            title: page.title,
+            link: page.actualUrl,
+            content: page.html,
+            contentSnippet: page.html.substring(0, 500),
+            pubDate: (candidate.rssPubDate ?? now).toISOString(),
+          },
+          dryRun: options.dryRun,
+        });
+        attempt = { kind: 'pipeline', result };
+      } catch (error) {
+        attempt = { kind: 'error', error: error instanceof Error ? error.message : String(error) };
+      }
+
+      const outcome = toAttemptOutcome(attempt, true);
+      const result = attempt.kind === 'pipeline' ? attempt.result : undefined;
+      const item: RunItem = {
         url: candidate.url,
-        source: 'rss',
-        feedId: candidate.feedId,
         title: candidate.title,
-        pageDate,
-        rssPubDate: candidate.rssPubDate,
-        now,
-        countFailure: true,
-      },
-      attempt,
-    );
-    item.nextAttemptAt = record.nextAttemptAt;
-    item.givenUpReason = record.givenUpReason;
-    if (!options.dryRun) await deps.store.save(record);
+        source: candidate.source,
+        outcome: outcome.kind,
+        reason: attempt.kind === 'error' ? attempt.error : result?.skipped ? result.skipReason : result?.error,
+        prUrl: result?.prResult?.prUrl,
+      };
+      items.push(item);
+      const entry: Attempted = { candidate, previous, attempt, pageDate, now, item };
+
+      if (outcome.kind === 'failure') {
+        pendingFailures.push(entry);
+        if (pendingFailures.length >= MAX_CONSECUTIVE_FAILURES) {
+          await flushFailures(false);
+          stopReason = 'consecutive-failures';
+          break;
+        }
+        continue;
+      }
+
+      await flushFailures(true);
+      if (outcome.kind === 'pr') prCount++;
+      await persist(entry, true);
+    }
+    await flushFailures(true);
+  } catch (error) {
+    // Firestore failed: the attempt record can no longer be trusted, so stop here. The summary
+    // still goes out with what was done (a PR made before this point stays listed). A URL whose
+    // record was not saved is tried again later; an article PR is not made twice because the
+    // pipeline skips an event that already has an article
+    storeError = error instanceof Error ? error.message : String(error);
+    stopReason = 'store-error';
   }
-  await flushFailures(true);
 
   return {
     dryRun: options.dryRun,
@@ -246,6 +248,7 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
     prCount,
     candidateCount: candidates.length,
     stopReason,
+    storeError,
     feedErrors,
   };
 }

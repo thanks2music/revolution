@@ -9,7 +9,7 @@ import type { AttemptRecord, AttemptSource, LastOutcome, PublishedAtSource } fro
 import type { PublishedDate } from './published-date';
 import { nextAttemptState, type AttemptOutcome } from './retry-policy';
 
-/** What one attempt produced. `result` is absent when the attempt threw before the pipeline ran */
+/** What one attempt produced: the pipeline's result, or the error thrown before it returned */
 export type AttemptResult =
   | { kind: 'pipeline'; result: MdxGenerationResult }
   | { kind: 'error'; error: string };
@@ -36,6 +36,9 @@ export function toAttemptOutcome(attempt: AttemptResult, countFailure: boolean):
   if (attempt.kind === 'error') return { kind: 'failure', counted: countFailure };
   const { result } = attempt;
   // A skip comes back as `success: false, skipped: true`, so check `skipped` first
+  // The pipeline returns some step errors as skips (detail extraction, content generation);
+  // they are failures here, so a passing outage does not drop the article for good
+  if (result.skipped && result.skipKind === 'step-error') return { kind: 'failure', counted: countFailure };
   if (result.skipped) {
     return result.skipKind === 'unannounced-event'
       ? { kind: 'unannounced', eventStartDate: result.eventStartDate }

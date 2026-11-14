@@ -18,7 +18,7 @@ describe('recordCliAttempt', () => {
   it('stores the normalized URL with source cli and the page date', async () => {
     const save = jest.fn(async (_: AttemptRecord) => {});
     await recordCliAttempt(
-      { get: async () => undefined, save },
+      () => ({ get: async () => undefined, save }),
       {
         url: 'https://a.example/1?utm_source=x',
         title: 't',
@@ -45,7 +45,7 @@ describe('recordCliAttempt', () => {
       save: jest.fn(async () => {}),
     };
     await expect(
-      recordCliAttempt(store, { url: 'https://a.example/1', title: 't', pageHtml: '', result: { success: true } as MdxGenerationResult }),
+      recordCliAttempt(() => store, { url: 'https://a.example/1', title: 't', pageHtml: '', result: { success: true } as MdxGenerationResult }),
     ).resolves.toBeUndefined();
     expect(console.warn).toHaveBeenCalled();
   });

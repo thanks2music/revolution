@@ -150,6 +150,38 @@ describe('runScheduled', () => {
     expect(saved.get('https://r.example/w')).toMatchObject({ attemptCount: 2, status: 'done' });
   });
 
+  it('URLs that always fail are excused once, then counted and given up', async () => {
+    const { deps, saved } = makeDeps({ items: rssItems(3), results: () => new Error('HTTP 403') });
+    const run1 = await runScheduled(deps, { dryRun: false });
+    expect(run1.stopReason).toBe('consecutive-failures');
+    expect(saved.get('https://a.example/1')).toMatchObject({ failureCount: 0, status: 'retrying-failure' });
+    await runScheduled(deps, { dryRun: false });
+    expect(saved.get('https://a.example/1')).toMatchObject({ failureCount: 1 });
+    await runScheduled(deps, { dryRun: false });
+    await runScheduled(deps, { dryRun: false });
+    expect(saved.get('https://a.example/1')).toMatchObject({ status: 'given-up', failureCount: 3 });
+  });
+
+  it('stops on a Firestore error and still returns what was done', async () => {
+    const { deps } = makeDeps({ items: rssItems(3), results: () => PR });
+    let saves = 0;
+    deps.store.save = async () => {
+      if (++saves === 2) throw new Error('UNAVAILABLE');
+    };
+    const summary = await runScheduled(deps, { dryRun: false });
+    expect(summary.stopReason).toBe('store-error');
+    expect(summary.storeError).toBe('UNAVAILABLE');
+    expect(summary.items.map(item => item.prUrl)).toEqual(['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/1']);
+  });
+
+  it('a skip that is really a step error is held and retried like a failure', async () => {
+    const stepError: MdxGenerationResult = { success: false, skipped: true, skipKind: 'step-error', skipReason: 'コンテンツ生成に失敗: 503' };
+    const { deps, saved } = makeDeps({ items: rssItems(1), results: () => stepError });
+    const summary = await runScheduled(deps, { dryRun: false });
+    expect(summary.items[0]).toMatchObject({ outcome: 'failure', reason: 'コンテンツ生成に失敗: 503' });
+    expect(saved.get('https://a.example/1')).toMatchObject({ status: 'retrying-failure', failureCount: 1 });
+  });
+
   it('writes nothing in a dry run and passes dryRun to the pipeline', async () => {
     const { deps, save, generate } = makeDeps({ items: rssItems(2), results: () => FAIL });
     const summary = await runScheduled(deps, { dryRun: true });

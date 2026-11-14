@@ -79,6 +79,12 @@ describe('failures', () => {
     const state = nextAttemptState(previousAfter('2026-11-14', 0, 2), { kind: 'failure', counted: false }, NOW, NOW);
     expect(state).toMatchObject({ status: 'retrying-failure', failureCount: 2 });
   });
+
+  it('only the first failure of a streak is excused, so URLs that always fail are still given up', () => {
+    const previous = { ...previousAfter('2026-11-14', 0, 2), lastOutcome: 'failure' };
+    const state = nextAttemptState(previous, { kind: 'failure', counted: false }, NOW, NOW);
+    expect(state).toMatchObject({ status: 'given-up', failureCount: 3 });
+  });
 });
 
 describe('startOfJstDay', () => {
