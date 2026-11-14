@@ -33,7 +33,7 @@ import {
   updateEventStatus,
 } from '../firestore/event-deduplication';
 import { existingEventSkipReason } from '../firestore/existing-event-skip';
-import { unannouncedItemsReason, unannouncedScheduleReason } from '@/lib/utils/unannounced-event';
+import { articleStartDate, unannouncedItemsReason, unannouncedScheduleReason } from '@/lib/utils/unannounced-event';
 import { type EventCanonicalKey } from '../firestore/types';
 import {
   resolveWorkSlug,
@@ -273,9 +273,13 @@ export interface MdxGenerationResult {
   skipReason?: string; // スキップ理由
   /**
    * スキップの種類。'existing-event' は既に記事があるイベント (その時は details に既存の記録が入る)、
-   * 'unannounced-event' は詳細 (開始日・種別に要る品目) が未発表のイベント (A-1-c)
+   * 'unannounced-event' は詳細 (開始日・種別に要る品目) が未発表のイベント (A-1-c)、
+   * 'step-error' は step の失敗 (公式サイトの詳細抽出・本文生成の例外) をスキップとして返したもの。
+   * CLI では今までどおりスキップとして扱い、定期実行は失敗として試し直す
    */
-  skipKind?: 'existing-event' | 'unannounced-event';
+  skipKind?: 'existing-event' | 'unannounced-event' | 'step-error';
+  /** 'unannounced-event' の時、開始日が分かっていれば `YYYY-MM-DD` (品目だけが未発表の時) */
+  eventStartDate?: string;
   mdxArticle?: MdxArticle;
   prResult?: CreateMdxPrResult;
   eventRecord?: EventCanonicalKey;
@@ -635,6 +639,7 @@ export class ArticleGenerationMdxService {
           return {
             success: false,
             skipped: true,
+            skipKind: 'step-error',
             skipReason: `公式サイトからの詳細抽出に失敗: ${extractionError instanceof Error ? extractionError.message : 'Unknown error'}`,
           };
         }
@@ -658,10 +663,18 @@ export class ArticleGenerationMdxService {
       }
 
       // A-1-c (詳細未発表のイベントは書かない) で止める時の返り値。記事の更新 (続報の反映) では止めない
+      // 開始日が分かっていれば返す (定期実行が、試し直しを開始日で打ち切るために使う)
+      const extractionForSkip = detailedExtraction;
       const skipUnannounced = (step: PipelineStepId, reason: string): MdxGenerationResult => {
         console.log(`⏭️ ${getStepContext(step, '詳細未発表')} ${reason}`);
         if (costTracker.hasUsage()) costTracker.logSummary();
-        return { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: reason };
+        return {
+          success: false,
+          skipped: true,
+          skipKind: 'unannounced-event',
+          skipReason: reason,
+          eventStartDate: articleStartDate(extractionForSkip),
+        };
       };
 
       // A-1-c: 開始日が発表されていないイベントは、下層ページと Vision の費用がかかる前に止める
@@ -1280,6 +1293,7 @@ export class ArticleGenerationMdxService {
         return {
           success: false,
           skipped: true,
+          skipKind: 'step-error',
           skipReason: `コンテンツ生成に失敗: ${contentError instanceof Error ? contentError.message : 'Unknown error'}`,
           detailedExtraction,
         };

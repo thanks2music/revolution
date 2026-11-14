@@ -643,6 +643,8 @@ export async function extractArticleData(url: string): Promise<{
   title: string;
   html: string;
   actualUrl: string;
+  /** The whole page as fetched (`html` is only the article block). Used to read the publish date */
+  pageHtml: string;
 }> {
   try {
     // Google リダイレクトURLから実際のURLを抽出
@@ -740,6 +742,7 @@ export async function extractArticleData(url: string): Promise<{
       title,
       html: articleHtml,
       actualUrl,
+      pageHtml: fullHtml,
     };
   } catch (error) {
     if (error instanceof Error) {
