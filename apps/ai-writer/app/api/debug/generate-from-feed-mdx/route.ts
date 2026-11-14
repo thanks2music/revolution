@@ -280,7 +280,8 @@ export async function POST(request: NextRequest) {
         }
 
         if (!result.success) {
-          await sendError(result.error || 'MDX記事の生成に失敗しました');
+          // スキップ (記事選別・詳細未発表など) は error を持たず、理由は skipReason にある
+          await sendError(result.error || result.skipReason || 'MDX記事の生成に失敗しました');
           return;
         }
 
