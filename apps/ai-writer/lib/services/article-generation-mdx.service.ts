@@ -33,6 +33,7 @@ import {
   updateEventStatus,
 } from '../firestore/event-deduplication';
 import { existingEventSkipReason } from '../firestore/existing-event-skip';
+import { unannouncedItemsReason, unannouncedScheduleReason } from '@/lib/utils/unannounced-event';
 import { type EventCanonicalKey } from '../firestore/types';
 import {
   resolveWorkSlug,
@@ -270,8 +271,11 @@ export interface MdxGenerationResult {
   success: boolean;
   skipped?: boolean; // 記事にしなかった場合 (記事選別・抽出の失敗・既に記事があるイベントなど)
   skipReason?: string; // スキップ理由
-  /** 既に記事があるイベントでスキップした時は 'existing-event' (その時は details に既存の記録が入る) */
-  skipKind?: 'existing-event';
+  /**
+   * スキップの種類。'existing-event' は既に記事があるイベント (その時は details に既存の記録が入る)、
+   * 'unannounced-event' は詳細 (開始日・種別に要る品目) が未発表のイベント (A-1-c)
+   */
+  skipKind?: 'existing-event' | 'unannounced-event';
   mdxArticle?: MdxArticle;
   prResult?: CreateMdxPrResult;
   eventRecord?: EventCanonicalKey;
@@ -653,6 +657,16 @@ export class ArticleGenerationMdxService {
         };
       }
 
+      // A-1-c: 開始日が発表されていないイベントは書かない。下層ページと Vision の費用がかかる前に止める。
+      // 記事の更新 (続報の反映) では止めない
+      if (!update) {
+        const scheduleReason = unannouncedScheduleReason(detailedExtraction);
+        if (scheduleReason) {
+          console.log(`⏭️ ${getStepContext('detail-extraction', '詳細未発表')} ${scheduleReason}`);
+          return { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: scheduleReason };
+        }
+      }
+
       // ========================================
       // 作品名の正規化（rss-extraction step の workTitle を canonical として使用）
       // ========================================
@@ -827,6 +841,16 @@ export class ArticleGenerationMdxService {
 
       // Create resolved slugs object to pass to subsequent functions
       const resolvedSlugs = { workSlug, storeSlug, eventType };
+
+      // A-1-c: 種別に要る品目 (メニュー・グッズ・ノベルティ) がどれも発表されていなければ書かない。
+      // 抽出・下層ページ・Vision の 3 つがそろった後で判定し、Firestore に記録を残す前に止める
+      if (!update && detailedExtraction) {
+        const itemsReason = unannouncedItemsReason(eventType, detailedExtraction);
+        if (itemsReason) {
+          console.log(`⏭️ ${getStepContext('slug-generation', '詳細未発表')} ${itemsReason}`);
+          return { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: itemsReason };
+        }
+      }
 
       // duplication-check step: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
