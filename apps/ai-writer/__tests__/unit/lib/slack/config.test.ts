@@ -96,4 +96,3 @@ describe('missingSlackConfigKeys', () => {
     expect(missingSlackConfigKeys(env as NodeJS.ProcessEnv)).toEqual(expected);
   });
 });
-});
