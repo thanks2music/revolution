@@ -33,6 +33,8 @@ import { normalizeAttemptUrl } from './attempt-url';
 import { orderCandidates, type Candidate, type RssCandidateInput } from './candidates';
 import { extractPublishedDate } from './published-date';
 import type { RegisteredUrl } from './registered-url-store';
+import { UNREGISTERED_REASON } from './registered-urls';
+import { isAwaitingRetry } from './retry-policy';
 import {
   MAX_CONSECUTIVE_FAILURES,
   MAX_PRS_PER_RUN,
@@ -64,6 +66,8 @@ export interface ScheduledRunDeps {
   store: Pick<AttemptStore, 'findAttempted' | 'findDueRetries' | 'save'>;
   /** URLs registered by hand from the admin UI */
   loadRegisteredUrls: () => Promise<RegisteredUrl[]>;
+  /** Whether the URL is still registered (checked before a registered URL is queued for a retry) */
+  isRegistered: (url: string) => Promise<boolean>;
   /** RSS items of the active feeds. A feed that cannot be read is reported in `errors` */
   loadRssItems: () => Promise<{ items: RssCandidateInput[]; errors: string[] }>;
   fetchPage: (url: string) => Promise<FetchedPage>;
@@ -107,7 +111,17 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
 
   /** Store what happened to one URL and show the next try (or the give-up) in the summary */
   const persist = async (entry: Attempted, countFailure: boolean) => {
-    const record = buildAttemptRecord(entry.previous, entry.context, entry.attempt, countFailure);
+    let record = buildAttemptRecord(entry.previous, entry.context, entry.attempt, countFailure);
+    // A registration removed while this run was trying the URL, before it had a record, left
+    // nothing to give up (`unregisterUrl`); do not queue it for a retry with no way to stop it
+    if (
+      !options.dryRun &&
+      record.source === 'registered' &&
+      isAwaitingRetry(record.status) &&
+      !(await deps.isRegistered(record.url))
+    ) {
+      record = { ...record, status: 'given-up', nextAttemptAt: null, givenUpReason: UNREGISTERED_REASON };
+    }
     entry.item.nextAttemptAt = record.nextAttemptAt;
     entry.item.givenUpReason = record.givenUpReason;
     if (options.dryRun) return;

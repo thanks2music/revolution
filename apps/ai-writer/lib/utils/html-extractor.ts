@@ -138,7 +138,8 @@ const MAX_PAGE_REDIRECTS = 5;
  * 2 回目に別のアドレスを返す DNS (DNS rebinding) は防げない。防ぐには、接続の時の lookup で同じ確認を行う必要がある。
  *
  * @param url フェッチ先URL
- * @param options fetch オプション (`redirect` は上書きする)
+ * @param options fetch オプション (`redirect` は上書きする)。全ホップに同じものを送るので、
+ *   別のオリジンへ転送されうる認証情報 (Cookie・Authorization) は渡さないこと
  * @returns 最後のホップの Response
  */
 async function fetchWithSSLFallback(url: string, options: RequestInit = {}): Promise<Response> {
@@ -152,6 +153,7 @@ async function fetchWithSSLFallback(url: string, options: RequestInit = {}): Pro
 
     const response = await fetchOnceWithSSLFallback(current.href, { ...options, redirect: 'manual' });
     const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+    // Location の無い 3xx (304 など) はそのまま返し、呼び出し側が ok でないものとして扱う
     if (!location) return response;
     // 追わない本文は捨てて、接続を早く返す
     await response.body?.cancel().catch(() => {});

@@ -27,6 +27,7 @@ import { ArticleGenerationMdxService } from '../lib/services/article-generation-
 import { RssArticleCollectionService } from '../lib/services/rss-article-collection.service';
 import { AttemptStore } from '../lib/scheduled/attempt-store';
 import type { RssCandidateInput } from '../lib/scheduled/candidates';
+import { attemptDocId } from '../lib/scheduled/attempt-url';
 import { RegisteredUrlStore } from '../lib/scheduled/registered-url-store';
 import { runScheduled } from '../lib/scheduled/run';
 import { prCountOf, type ScheduledRunSummary, type StopReason } from '../lib/scheduled/summary';
@@ -118,6 +119,7 @@ async function main(): Promise<void> {
         now: () => new Date(),
         store: new AttemptStore(getAdminDb()),
         loadRegisteredUrls: () => new RegisteredUrlStore(getAdminDb()).list(),
+        isRegistered: async url => (await new RegisteredUrlStore(getAdminDb()).get(attemptDocId(url))) !== undefined,
         loadRssItems,
         fetchPage: extractArticleData,
         generate: request => service.generateMdxFromRSS(request),

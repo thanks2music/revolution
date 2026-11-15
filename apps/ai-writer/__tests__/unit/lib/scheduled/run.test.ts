@@ -59,6 +59,7 @@ function makeDeps(options: {
       save,
     },
     loadRegisteredUrls: async () => options.registered ?? [],
+    isRegistered: async url => (options.registered ?? []).some(entry => entry.url === url),
     loadRssItems: async () => ({ items: options.items, errors: [] }),
     fetchPage: async url => ({
       title: `title of ${url}`,
@@ -320,6 +321,35 @@ describe('runScheduled', () => {
       deps.store.save = async () => false;
       const summary = await runScheduled(deps, { dryRun: false });
       expect(summary.items[0]).toMatchObject({ nextAttemptAt: null, givenUpReason: ALREADY_GIVEN_UP_REASON });
+    });
+
+    it('gives up instead of queuing a retry when the registration was removed before the first save', async () => {
+      const unannounced: MdxGenerationResult = { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: '詳細未発表' };
+      const { deps, saved } = makeDeps({
+        items: [],
+        results: () => unannounced,
+        registered: [registered('https://reg.example/1', '2026-11-10T00:00:00Z')],
+      });
+      // removed while the run was trying it
+      deps.isRegistered = async () => false;
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(saved.get('https://reg.example/1')).toMatchObject({
+        status: 'given-up',
+        nextAttemptAt: null,
+        givenUpReason: '登録を取り消したため打ち切りました',
+      });
+      expect(summary.items[0]).toMatchObject({ nextAttemptAt: null, givenUpReason: '登録を取り消したため打ち切りました' });
+    });
+
+    it('queues a retry for a registered URL that is still registered', async () => {
+      const unannounced: MdxGenerationResult = { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: '詳細未発表' };
+      const { deps, saved } = makeDeps({
+        items: [],
+        results: () => unannounced,
+        registered: [registered('https://reg.example/1', '2026-11-10T00:00:00Z')],
+      });
+      await runScheduled(deps, { dryRun: false });
+      expect(saved.get('https://reg.example/1')).toMatchObject({ status: 'waiting-details' });
     });
   });
 });
