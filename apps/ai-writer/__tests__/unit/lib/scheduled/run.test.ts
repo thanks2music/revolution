@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { AttemptRecord } from '@/lib/scheduled/attempt-store';
 import type { RssCandidateInput } from '@/lib/scheduled/candidates';
 import type { RegisteredUrl } from '@/lib/scheduled/registered-url-store';
-import { runScheduled, type ScheduledRunDeps } from '@/lib/scheduled/run';
+import { ALREADY_GIVEN_UP_REASON, runScheduled, type ScheduledRunDeps } from '@/lib/scheduled/run';
 import { prCountOf } from '@/lib/scheduled/summary';
 import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 
@@ -308,6 +308,18 @@ describe('runScheduled', () => {
       expect(summary.stopReason).toBeUndefined();
       expect(summary.feedErrors).toEqual(['登録 URL: UNAVAILABLE']);
       expect(generate).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not show a retry for a URL whose record the store kept as given up', async () => {
+      const unannounced: MdxGenerationResult = { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: '詳細未発表' };
+      const { deps } = makeDeps({
+        items: [],
+        results: () => unannounced,
+        registered: [registered('https://reg.example/1', '2026-11-10T00:00:00Z')],
+      });
+      deps.store.save = async () => false;
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(summary.items[0]).toMatchObject({ nextAttemptAt: null, givenUpReason: ALREADY_GIVEN_UP_REASON });
     });
   });
 });

@@ -43,6 +43,9 @@ import {
   type StopReason,
 } from './summary';
 
+/** Shown when the record was given up while the run was trying the URL (`AttemptStore.save`) */
+export const ALREADY_GIVEN_UP_REASON = '試している間に登録が取り消されたため、試し直しません';
+
 /** How many due retries to read. More than a run can try, so the order is decided here */
 const DUE_RETRY_READ_LIMIT = 50;
 
@@ -107,7 +110,14 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
     const record = buildAttemptRecord(entry.previous, entry.context, entry.attempt, countFailure);
     entry.item.nextAttemptAt = record.nextAttemptAt;
     entry.item.givenUpReason = record.givenUpReason;
-    if (!options.dryRun) await deps.store.save(record);
+    if (options.dryRun) return;
+    if (!(await deps.store.save(record))) {
+      // The URL was given up while this run was trying it (its registration was removed), and
+      // the store keeps it that way: it is not tried again, whatever the summary computed
+      log(`  記録を変えませんでした (この回の途中で打ち切られた URL): ${record.url}`);
+      entry.item.nextAttemptAt = null;
+      entry.item.givenUpReason = ALREADY_GIVEN_UP_REASON;
+    }
   };
 
   /** Save the held failures. They count toward the retry limit unless the run hit an outage */

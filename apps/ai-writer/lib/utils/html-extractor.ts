@@ -158,7 +158,11 @@ async function fetchWithSSLFallback(url: string, options: RequestInit = {}): Pro
     if (hop === MAX_PAGE_REDIRECTS) {
       throw new Error(`Too many redirects (> ${MAX_PAGE_REDIRECTS}) for "${url}"`);
     }
-    current = new URL(location, current);
+    try {
+      current = new URL(location, current);
+    } catch {
+      throw new Error(`Invalid redirect Location "${location.slice(0, 200)}" from ${current.href}`);
+    }
   }
 
   // ループは必ず return / throw で抜けるが、型のために置く

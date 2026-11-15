@@ -377,6 +377,18 @@ describe('extractContentHtml', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('壊れた Location は分かる理由で失敗する', async () => {
+      global.fetch = jest.fn(async () => ({
+        ok: false,
+        status: 302,
+        statusText: '',
+        headers: new Headers({ location: 'http://[bad' }),
+        text: async () => '',
+      })) as unknown as typeof global.fetch;
+
+      await expect(extractContentHtml('https://example.com/')).rejects.toThrow(/Invalid redirect Location/);
+    });
+
     it('公開のアドレスへのリダイレクトは追う', async () => {
       const fetchMock = jest.fn(async (url: string) =>
         url === 'http://example.com/'
