@@ -18,11 +18,12 @@ export type AttemptResult =
   | { kind: 'error'; error: string; httpStatus?: number };
 
 /**
- * Statuses that mean the site refuses the page, or the page is gone. Trying again does not
- * help: a site behind a bot filter refuses the Job's address every time, even when a local
- * machine can read the page
+ * Statuses that mean the site refuses the page, or the page is gone for good. Trying again does
+ * not help: a site behind a bot filter refuses the Job's address every time, even when a local
+ * machine can read the page. 404 is not here: a page can be listed before it is published, so it
+ * stays a failure and is retried
  */
-const REFUSED_STATUSES = new Set([401, 403, 404, 410, 451]);
+const REFUSED_STATUSES = new Set([401, 403, 410, 451]);
 
 /** The page was refused or is gone, so the attempt is a skip, not a failure */
 function isRefusedStatus(status: number | undefined): boolean {

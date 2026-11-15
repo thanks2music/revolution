@@ -40,10 +40,10 @@ describe('toAttemptOutcome', () => {
   it('success is a PR', () => {
     expect(toAttemptOutcome(pipeline({ success: true }), true)).toEqual({ kind: 'pr' });
   });
-  it.each([401, 403, 404, 410, 451])('a page refused or gone (HTTP %i) is a skip, not retried', status => {
+  it.each([401, 403, 410, 451])('a page refused or gone (HTTP %i) is a skip, not retried', status => {
     expect(toAttemptOutcome({ kind: 'error', error: 'HTTP', httpStatus: status }, true)).toEqual({ kind: 'skipped' });
   });
-  it.each([429, 500, 503])('a passing error status (HTTP %i) stays a failure', status => {
+  it.each([404, 429, 500, 503])('a passing error status (HTTP %i) stays a failure', status => {
     expect(toAttemptOutcome({ kind: 'error', error: 'HTTP', httpStatus: status }, true)).toEqual({
       kind: 'failure',
       counted: true,

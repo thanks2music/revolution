@@ -802,7 +802,7 @@ export async function extractArticleData(url: string): Promise<{
         );
       }
       const message = `記事データの取得に失敗: ${url} - ${error.message}`;
-      if (error instanceof HttpStatusError) throw new HttpStatusError(message, error.status);
+      if (error instanceof HttpStatusError) throw new HttpStatusError(message, error.status, { cause: error });
       throw new Error(message);
     }
     throw new Error(`記事データの取得に失敗: ${url}`);
