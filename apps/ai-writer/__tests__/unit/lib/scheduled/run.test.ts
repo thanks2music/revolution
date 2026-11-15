@@ -123,6 +123,17 @@ describe('runScheduled', () => {
     }
   });
 
+  it('a page that names no work is a skip, not a failure to retry', async () => {
+    const noWork = { success: false, skipped: true, skipKind: 'no-work-title', skipReason: '作品名なし' } as MdxGenerationResult;
+    const { deps, saved } = makeDeps({ items: rssItems(3), results: () => noWork });
+    const summary = await runScheduled(deps, { dryRun: false });
+    expect(summary.stopReason).toBeUndefined();
+    expect(summary.items.map(item => item.outcome)).toEqual(['skipped', 'skipped', 'skipped']);
+    for (const record of saved.values()) {
+      expect(record).toMatchObject({ status: 'done', nextAttemptAt: null, failureCount: 0 });
+    }
+  });
+
   it('stops after 3 failures in a row and does not count them toward the retry limit', async () => {
     const { deps, saved } = makeDeps({ items: rssItems(6), results: () => FAIL });
     const summary = await runScheduled(deps, { dryRun: false });
