@@ -91,6 +91,9 @@ export async function unregisterUrl(deps: RegisteredUrlDeps, id: string): Promis
   // A URL waiting for a retry would otherwise keep being tried after the registration is gone.
   // Both sides are transactions: this never overwrites a result a run stored in the meantime,
   // and a run cannot put the given-up URL back in the queue (`AttemptStore.save`)
+  // Give up first: if removing the registration then fails, the URL stays listed (as given up)
+  // and removing it again finishes the job. The other order could leave a URL retrying with no
+  // registration left to remove
   await deps.attempts.giveUpIfAwaitingRetry(entry.url, UNREGISTERED_REASON);
   await deps.registered.remove(id);
   return true;

@@ -104,15 +104,6 @@ export class AttemptStore {
   }
 
   /**
-   * Store the record, unless it would put a given-up URL back in the retry queue.
-   *
-   * A given-up URL is never tried again, so the only way to get there is a lost update: a run
-   * that was trying the URL while its registration was removed (`unregisterUrl`). A PR or a skip
-   * from that run is still stored. Read and write in one transaction so the check holds.
-   *
-   * @returns `false` when the record was not stored
-   */
-  /**
    * Give up a URL that is waiting for a retry, reading and writing in one transaction so a
    * result stored by a run in the meantime (a PR, a skip) is never replaced by a stale copy.
    *
@@ -128,6 +119,15 @@ export class AttemptStore {
     });
   }
 
+  /**
+   * Store the record, unless it would put a given-up URL back in the retry queue.
+   *
+   * A given-up URL is never tried again, so the only way to get there is a lost update: a run
+   * that was trying the URL while its registration was removed (`unregisterUrl`). A PR or a skip
+   * from that run is still stored. Read and write in one transaction so the check holds.
+   *
+   * @returns `false` when the record was not stored
+   */
   async save(record: AttemptRecord): Promise<boolean> {
     const ref = this.ref(record.url);
     return this.db.runTransaction(async transaction => {
