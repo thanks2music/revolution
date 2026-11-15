@@ -103,7 +103,10 @@ function pickPost(posts: RestPost[], articleUrl: string, slug: string): RestPost
   const path = pathOf(articleUrl);
   const match = posts.find((post) => post.link !== undefined && pathOf(post.link) === path);
   if (match) return match;
-  if (posts.length === 1) return posts[0];
+  if (posts.length === 1) {
+    console.warn(`⚠️ The archive article for slug "${slug}" is at ${posts[0].link ?? '(no link)'}, not ${articleUrl}`);
+    return posts[0];
+  }
   throw new Error(`Archive slug "${slug}" matched ${posts.length} articles, none at ${articleUrl}`);
 }
 

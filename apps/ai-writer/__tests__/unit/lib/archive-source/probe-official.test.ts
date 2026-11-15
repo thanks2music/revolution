@@ -25,6 +25,13 @@ describe('pageNamesWork', () => {
     expect(pageNamesWork('<script>var t="Sample Work"</script><p>other event</p>', 'Sample Work')).toBe(false);
   });
 
+  it('reads the title from image alt / title texts and og:title (logo-only pages)', () => {
+    expect(pageNamesWork('<h1><img src="/logo.png" alt="サンプル作品 コラボカフェ"></h1>', 'サンプル作品')).toBe(true);
+    expect(pageNamesWork('<a title="Sample Work"><img src="/logo.png"></a>', 'Sample Work')).toBe(true);
+    expect(pageNamesWork('<meta property="og:title" content="サンプル作品 POP UP"><p>no text</p>', 'サンプル作品')).toBe(true);
+    expect(pageNamesWork('<img src="/logo.png" alt="other event">', 'サンプル作品')).toBe(false);
+  });
+
   it('cannot check an empty title, so treats it as named', () => {
     expect(pageNamesWork('<p>anything</p>', ' ')).toBe(true);
   });
