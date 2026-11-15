@@ -37,6 +37,26 @@ import type { SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-re
 import { PIPELINE_PROMPTS } from './pipeline-prompts';
 
 /**
+ * The official page names no work (作品名). The page is a company's own collaboration
+ * (no anime or character) or a company's top page, so trying again gives the same result.
+ * The wrappers below keep it as `cause`; find it with `isMissingWorkTitle`.
+ */
+export class MissingWorkTitleError extends Error {
+  constructor() {
+    super('Missing required field: 作品名 (or works[].title with is_primary)');
+    this.name = 'MissingWorkTitleError';
+  }
+}
+
+/** Whether the error, or one of its causes, is a `MissingWorkTitleError` */
+export function isMissingWorkTitle(error: unknown): boolean {
+  for (let current = error; current instanceof Error; current = current.cause) {
+    if (current instanceof MissingWorkTitleError) return true;
+  }
+  return false;
+}
+
+/**
  * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
  *
  * `ExtractionResponseSchema` is static — the Zod → JSON Schema conversion + strict-mode
@@ -496,7 +516,8 @@ export class ExtractionService {
     } catch (error) {
       console.error('[Extraction] 情報抽出エラー:', error);
       throw new Error(
-        `情報抽出失敗: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `情報抽出失敗: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { cause: error }
       );
     }
   }
@@ -701,7 +722,7 @@ ${schemaStr}
 
       // === 必須フィールドの検証（新旧両対応） ===
       if (!workTitle) {
-        throw new Error('Missing required field: 作品名 (or works[].title with is_primary)');
+        throw new MissingWorkTitleError();
       }
       if (!storeName) {
         throw new Error('Missing required field: 店舗名 (or store.name)');
@@ -828,7 +849,8 @@ ${schemaStr}
     } catch (error) {
       console.error('[Extraction] Failed to parse response:', error);
       throw new Error(
-        `Failed to parse extraction response: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to parse extraction response: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { cause: error }
       );
     }
   }

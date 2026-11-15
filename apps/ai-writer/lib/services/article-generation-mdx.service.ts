@@ -82,6 +82,7 @@ import {
 } from '@/lib/types/title-generation';
 import {
   ExtractionService,
+  isMissingWorkTitle,
   type ExtractionResult,
 } from './extraction.service';
 import {
@@ -308,9 +309,11 @@ export interface MdxGenerationResult {
    * スキップの種類。'existing-event' は既に記事があるイベント (その時は details に既存の記録が入る)、
    * 'unannounced-event' は詳細 (開始日・種別に要る品目) が未発表のイベント (A-1-c)、
    * 'step-error' は step の失敗 (公式サイトの詳細抽出・本文生成の例外) をスキップとして返したもの。
-   * CLI では今までどおりスキップとして扱い、定期実行は失敗として試し直す
+   * CLI では今までどおりスキップとして扱い、定期実行は失敗として試し直す。
+   * 'no-work-title' は公式サイトから作品名を読めないもの (作品とのコラボではない、または公式 URL が
+   * 企業のトップページ)。試し直しても同じなので、定期実行でもスキップとして扱う
    */
-  skipKind?: 'existing-event' | 'unannounced-event' | 'step-error';
+  skipKind?: 'existing-event' | 'unannounced-event' | 'step-error' | 'no-work-title';
   /** 'unannounced-event' の時、開始日が分かっていれば `YYYY-MM-DD` (品目だけが未発表の時) */
   eventStartDate?: string;
   mdxArticle?: MdxArticle;
@@ -684,6 +687,15 @@ export class ArticleGenerationMdxService {
           //   ここで再度記録すると採用された試行だけ二重計上になる。
         } catch (extractionError) {
           console.error('❌ 公式サイトからの詳細抽出に失敗しました:', extractionError);
+          if (isMissingWorkTitle(extractionError)) {
+            return {
+              success: false,
+              skipped: true,
+              skipKind: 'no-work-title',
+              skipReason:
+                '公式サイトから作品名を読み取れないため対象外 (作品とのコラボではない、または公式サイトの URL が企業のトップページ)',
+            };
+          }
           // 必須フィールドが取得できない場合は記事生成を中止
           return {
             success: false,

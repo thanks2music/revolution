@@ -9,6 +9,7 @@ import type { RegisteredUrl } from '@/lib/scheduled/registered-url-store';
 import { ALREADY_GIVEN_UP_REASON, runScheduled, type ScheduledRunDeps } from '@/lib/scheduled/run';
 import { prCountOf } from '@/lib/scheduled/summary';
 import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
+import { HttpStatusError } from '@/lib/utils/http-status-error';
 
 const START = new Date('2026-11-15T01:05:00Z');
 
@@ -106,6 +107,20 @@ describe('runScheduled', () => {
     const summary = await runScheduled(deps, { dryRun: false });
     expect(summary.stopReason).toBe('time-budget');
     expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  it('a page the site refuses (403) is a skip: not retried, and not counted as a failure in a row', async () => {
+    const { deps, saved } = makeDeps({ items: rssItems(4), results: () => SKIP });
+    deps.fetchPage = async url => {
+      throw new HttpStatusError(`記事データの取得に失敗: ${url} - HTTP error! status: 403 Forbidden`, 403);
+    };
+    const summary = await runScheduled(deps, { dryRun: false });
+    expect(summary.stopReason).toBeUndefined();
+    expect(summary.items.map(item => item.outcome)).toEqual(['skipped', 'skipped', 'skipped', 'skipped']);
+    expect(summary.items[0].reason).toContain('試し直しません');
+    for (const record of saved.values()) {
+      expect(record).toMatchObject({ status: 'done', nextAttemptAt: null });
+    }
   });
 
   it('stops after 3 failures in a row and does not count them toward the retry limit', async () => {

@@ -9,10 +9,25 @@ import type { AttemptRecord, AttemptSource, PublishedAtSource } from './attempt-
 import type { PublishedDate } from './published-date';
 import { nextAttemptState, type AttemptOutcome } from './retry-policy';
 
-/** What one attempt produced: the pipeline's result, or the error thrown before it returned */
+/**
+ * What one attempt produced: the pipeline's result, or the error thrown before it returned.
+ * `httpStatus` is set when the page answered with an error status
+ */
 export type AttemptResult =
   | { kind: 'pipeline'; result: MdxGenerationResult }
-  | { kind: 'error'; error: string };
+  | { kind: 'error'; error: string; httpStatus?: number };
+
+/**
+ * Statuses that mean the site refuses the page, or the page is gone. Trying again does not
+ * help: a site behind a bot filter refuses the Job's address every time (gamer.ne.jp answered
+ * 403 to Cloud Run and 200 to a local machine on 2026-11-15)
+ */
+const REFUSED_STATUSES = new Set([401, 403, 404, 410, 451]);
+
+/** The page was refused or is gone, so the attempt is a skip, not a failure */
+function isRefused(attempt: AttemptResult): boolean {
+  return attempt.kind === 'error' && attempt.httpStatus !== undefined && REFUSED_STATUSES.has(attempt.httpStatus);
+}
 
 /** What is known about the URL when it is tried */
 export interface AttemptContext {
@@ -31,6 +46,7 @@ export interface AttemptContext {
 
 /** Map an attempt onto the retry policy's outcome */
 export function toAttemptOutcome(attempt: AttemptResult, countFailure: boolean): AttemptOutcome {
+  if (isRefused(attempt)) return { kind: 'skipped' };
   if (attempt.kind === 'error') return { kind: 'failure', counted: countFailure };
   const { result } = attempt;
   // The pipeline returns some step errors as skips (detail extraction, content generation);
@@ -48,6 +64,11 @@ export function toAttemptOutcome(attempt: AttemptResult, countFailure: boolean):
 
 /** The skip reason or the error of an attempt, and its PR (what the record and Slack show) */
 export function describeAttempt(attempt: AttemptResult): { reason?: string; prUrl?: string } {
+  if (isRefused(attempt)) {
+    return {
+      reason: `${attempt.kind === 'error' ? attempt.error : ''}。サイトがページの取得を拒んでいるため、試し直しません (手元の CLI からなら取れることがあります)`,
+    };
+  }
   if (attempt.kind === 'error') return { reason: attempt.error };
   const { result } = attempt;
   return { reason: result.skipped ? result.skipReason : result.error, prUrl: result.prResult?.prUrl };

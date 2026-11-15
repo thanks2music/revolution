@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from '@jest/globals';
 
-import { buildAttemptRecord, toAttemptOutcome } from '@/lib/scheduled/attempt-record';
+import { buildAttemptRecord, describeAttempt, toAttemptOutcome } from '@/lib/scheduled/attempt-record';
 import type { AttemptRecord } from '@/lib/scheduled/attempt-store';
 import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 
@@ -39,6 +39,35 @@ describe('toAttemptOutcome', () => {
   });
   it('success is a PR', () => {
     expect(toAttemptOutcome(pipeline({ success: true }), true)).toEqual({ kind: 'pr' });
+  });
+  it.each([401, 403, 404, 410, 451])('a page refused or gone (HTTP %i) is a skip, not retried', status => {
+    expect(toAttemptOutcome({ kind: 'error', error: 'HTTP', httpStatus: status }, true)).toEqual({ kind: 'skipped' });
+  });
+  it.each([429, 500, 503])('a passing error status (HTTP %i) stays a failure', status => {
+    expect(toAttemptOutcome({ kind: 'error', error: 'HTTP', httpStatus: status }, true)).toEqual({
+      kind: 'failure',
+      counted: true,
+    });
+  });
+  it('no work title on the official page is a skip (trying again gives the same page)', () => {
+    expect(toAttemptOutcome(pipeline({ skipped: true, skipKind: 'no-work-title' }), true)).toEqual({ kind: 'skipped' });
+  });
+});
+
+describe('describeAttempt', () => {
+  it('says why a refused page is not tried again', () => {
+    const { reason } = describeAttempt({
+      kind: 'error',
+      error: '記事データの取得に失敗: https://a.example/1 - HTTP error! status: 403 Forbidden',
+      httpStatus: 403,
+    });
+    expect(reason).toContain('403 Forbidden');
+    expect(reason).toContain('試し直しません');
+  });
+  it('keeps the error of a passing failure as it is', () => {
+    expect(describeAttempt({ kind: 'error', error: 'HTTP error! status: 503', httpStatus: 503 })).toEqual({
+      reason: 'HTTP error! status: 503',
+    });
   });
 });
 
