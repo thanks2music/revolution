@@ -8,11 +8,14 @@
 import * as path from 'path';
 import { z } from 'zod';
 import { TITLE_KIND_VALUES, TITLE_SLUG_REGEX } from '@revolution/schemas/title';
+import { VENUE_SLUG_REGEX } from '@revolution/schemas/venue';
 import type { TemplateIssue } from './issues';
 import type { TemplatesLayout } from './layout';
 import type { ParsedDocs } from './syntax';
 
 export const SlugSchema = z.string().regex(TITLE_SLUG_REGEX, 'must be a slug (lowercase letters, digits and single hyphens)');
+/** Venue slugs follow the venues table's own truth source (the seed checks them with it) */
+const VenueSlugSchema = z.string().regex(VENUE_SLUG_REGEX, 'must be a slug (lowercase letters, digits and single hyphens)');
 const NonEmpty = z.string().min(1);
 
 export const TitleEntrySchema = z.union([
@@ -52,7 +55,7 @@ export const DICTIONARY_SCHEMAS: Record<string, { schema: z.ZodType; required: b
       venues: z.record(
         z.string(),
         z.object({
-          slug: SlugSchema,
+          slug: VenueSlugSchema,
           prefecture: NonEmpty,
           city: NonEmpty.optional(),
           address: NonEmpty.optional(),

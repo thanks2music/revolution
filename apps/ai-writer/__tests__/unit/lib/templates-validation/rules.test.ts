@@ -76,6 +76,18 @@ describe('checkDictionaries (layer B)', () => {
     expect(issues[0]).toMatchObject({ rule: 'schema/venue-master', file: 'ai-writer/config/venue-master.yaml', at: 'venues["会場A"].slug' });
   });
 
+  it('checks every slug-valued dictionary, not only titles and venues', () => {
+    const files = validDocs();
+    files['brand-slugs.yaml'] = { brand_slugs: { ブランドA: 'brand a' } };
+    files['event-type-slugs.yaml'] = { event_types: { 種別A: 'type--a' } };
+    files['title-sheet-overrides.yaml'] = { overrides: { id1: { slug: '-work-b' } } };
+    expect(rulesOf(checkDictionaries(layout, toDocs(files), new Set()))).toEqual([
+      'schema/brand-slugs',
+      'schema/event-type-slugs',
+      'schema/title-sheet-overrides',
+    ]);
+  });
+
   it('rejects a kind outside the allowed values', () => {
     const files = validDocs();
     files['title-romaji-mapping.yaml'] = { titles: { 作品A: { slug: 'work-a', kind: 'movie' } } };

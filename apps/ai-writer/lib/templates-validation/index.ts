@@ -18,6 +18,7 @@ import { resolveLayout } from './layout';
 import { parseAllYaml } from './syntax';
 
 export { formatIssues, type TemplateIssue } from './issues';
+export { TemplatesLayoutError } from './layout';
 
 export async function validateTemplates(dir: string): Promise<TemplateIssue[]> {
   const layout = resolveLayout(dir);

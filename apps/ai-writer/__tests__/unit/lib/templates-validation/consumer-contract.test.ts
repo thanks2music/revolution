@@ -75,7 +75,7 @@ const lexicon = {
 function docs(overrides: Record<string, unknown> = {}): ParsedDocs {
   return new Map(
     Object.entries({
-      'ai-writer/posts/yaml/collabo-cafe/_meta.yaml': { pipeline: { order: ['1-selection', '1.5-vision-extraction', '3-title'] } },
+      'ai-writer/posts/yaml/collabo-cafe/_meta.yaml': { pipeline: { order: ['1-selection', '1.5-vision-extraction', '3-title', '9-new'] } },
       'ai-writer/posts/yaml/collabo-cafe/shared/industry-lexicon.yaml': lexicon,
       'ai-writer/posts/yaml/collabo-cafe/shared/style-guide.yaml': { not: 'checked here' },
       ...overrides,
@@ -104,8 +104,15 @@ describe('checkConsumerContract', () => {
       'store-url-patterns',
       'archive-sources',
       'vision',
+      // every pipeline the services load, then the ones only _meta.yaml lists; vision is loaded once, above
       'pipeline 1-selection',
-      'pipeline 3-title', // the vision pipeline is loaded once, through loadVisionApiTemplate
+      'pipeline 2-extraction',
+      'pipeline 2.5-subpage-extraction',
+      'pipeline 3-title',
+      'pipeline 4-content',
+      'pipeline 4.5-article-points',
+      'pipeline 6-meta-description',
+      'pipeline 9-new',
     ]);
     const args = Object.fromEntries(calls);
     expect(args['points']).toEqual([layout.sectionsDir]);
@@ -128,7 +135,23 @@ describe('checkConsumerContract', () => {
       },
       { rule: 'contract/pipeline', file: 'ai-writer/posts/yaml/collabo-cafe/pipeline/3-title.yaml', message: 'pipeline 3-title failed' },
     ]);
-    expect(calls).toHaveLength(13);
+    expect(calls).toHaveLength(19);
+  });
+
+  it('still loads the production pipelines when _meta.yaml is missing (production fails on it too)', async () => {
+    await checkConsumerContract(layout, docs({ 'ai-writer/posts/yaml/collabo-cafe/_meta.yaml': undefined }));
+    expect(calls.map(([name]) => name).filter((name) => name.startsWith('pipeline '))).toHaveLength(7);
+  });
+
+  it('reports a pipeline id that cannot be a file name on _meta.yaml, without putting it in a file path', async () => {
+    const issues = await checkConsumerContract(
+      layout,
+      docs({ 'ai-writer/posts/yaml/collabo-cafe/_meta.yaml': { pipeline: { order: ['../secret value', 42] } } })
+    );
+    const idIssues = issues.filter((issue) => issue.rule === 'contract/pipeline-id');
+    expect(idIssues).toHaveLength(2);
+    expect(idIssues.every((issue) => issue.file === 'ai-writer/posts/yaml/collabo-cafe/_meta.yaml')).toBe(true);
+    expect(calls.some(([name]) => name.includes('secret'))).toBe(false);
   });
 
   it('checks the shared lexicon and style guide against their schemas', async () => {

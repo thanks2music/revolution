@@ -92,10 +92,10 @@ jobs:
       # 壊れた templates (辞書・プロンプト) をイメージに入れない。templates の repo の CI と同じ検証を、
       # 取得した版に対して行う。この repo は public でログも公開されるため、--redact で規則と件数だけを出す
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: '.tool-versions'
           cache: 'pnpm'

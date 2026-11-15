@@ -8,7 +8,7 @@
  *
  * Exit code: 0 when valid, 1 when any issue is found, 2 on usage errors.
  */
-import { formatIssues, validateTemplates } from '@/lib/templates-validation';
+import { formatIssues, TemplatesLayoutError, validateTemplates } from '@/lib/templates-validation';
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
@@ -24,7 +24,7 @@ async function main(): Promise<number> {
   try {
     issues = await validateTemplates(dir);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(describeFailure(error, redact));
     return 2;
   }
   const output = formatIssues(issues, { redact });
@@ -33,4 +33,16 @@ async function main(): Promise<number> {
   return issues.length === 0 ? 0 : 1;
 }
 
-main().then((code) => process.exit(code));
+/** With --redact, only messages known to hold no template values are printed */
+function describeFailure(error: unknown, redact: boolean): string {
+  if (error instanceof TemplatesLayoutError || !redact) return error instanceof Error ? error.message : String(error);
+  return `The validator could not run (${error instanceof Error ? error.name : typeof error}; details redacted).`;
+}
+
+main().then(
+  (code) => process.exit(code),
+  (error: unknown) => {
+    console.error(describeFailure(error, process.argv.includes('--redact')));
+    process.exit(2);
+  }
+);

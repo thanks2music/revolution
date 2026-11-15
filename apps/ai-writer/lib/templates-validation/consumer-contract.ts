@@ -30,6 +30,23 @@ import { errorMessage, type ParsedDocs } from './syntax';
 /** Loaded through `loadVisionApiTemplate`, not `loadModularTemplate` */
 const VISION_PIPELINE_ID = '1.5-vision-extraction';
 
+/**
+ * Pipelines the services load (each service's `pipelineId`). Checked even when `_meta.yaml` does not list them,
+ * so a missing `_meta.yaml` or `pipeline.order` fails here as it does in production.
+ */
+export const PRODUCTION_PIPELINE_IDS = [
+  '1-selection',
+  '2-extraction',
+  '2.5-subpage-extraction',
+  '3-title',
+  '4-content',
+  '4.5-article-points',
+  '6-meta-description',
+] as const;
+
+/** A pipeline id becomes part of a file name, which `--redact` prints; anything else is reported on `_meta.yaml` */
+const PIPELINE_ID = /^[0-9A-Za-z][0-9A-Za-z._-]*$/;
+
 interface Check {
   name: string;
   file: string;
@@ -88,7 +105,14 @@ export async function checkConsumerContract(layout: TemplatesLayout, docs: Parse
     },
   ];
 
-  for (const pipelineId of pipelineOrder(layout, docs)) {
+  const metaFile = rel(path.join(templatesDir, TEMPLATE_ID, '_meta.yaml'));
+  const { ids: listed, invalid } = pipelineOrder(docs.get(metaFile));
+  const issues: TemplateIssue[] = invalid.map(() => ({
+    rule: 'contract/pipeline-id',
+    file: metaFile,
+    message: 'pipeline.order has an entry that is not a pipeline file name',
+  }));
+  for (const pipelineId of new Set<string>([...PRODUCTION_PIPELINE_IDS, ...listed])) {
     if (pipelineId === VISION_PIPELINE_ID) continue;
     checks.push({
       name: `pipeline ${pipelineId}`,
@@ -97,7 +121,6 @@ export async function checkConsumerContract(layout: TemplatesLayout, docs: Parse
     });
   }
 
-  const issues: TemplateIssue[] = [];
   await withQuietConsole(async () => {
     for (const check of checks) {
       try {
@@ -123,13 +146,17 @@ export async function checkConsumerContract(layout: TemplatesLayout, docs: Parse
   return issues;
 }
 
-/** Pipeline files in `_meta.yaml` order (the list the loader itself follows) */
-function pipelineOrder(layout: TemplatesLayout, docs: ParsedDocs): string[] {
-  const meta = docs.get(path.relative(layout.root, path.join(layout.templatesDir, TEMPLATE_ID, '_meta.yaml'))) as
-    | { pipeline?: { order?: unknown } }
-    | undefined;
-  const order = meta?.pipeline?.order;
-  return Array.isArray(order) ? order.filter((id): id is string => typeof id === 'string') : [];
+/** Pipeline ids listed in `_meta.yaml` (`pipeline.order`), split into usable ids and entries that are not */
+function pipelineOrder(meta: unknown): { ids: string[]; invalid: unknown[] } {
+  const order = (meta as { pipeline?: { order?: unknown } } | undefined)?.pipeline?.order;
+  if (!Array.isArray(order)) return { ids: [], invalid: [] };
+  const ids: string[] = [];
+  const invalid: unknown[] = [];
+  for (const id of order) {
+    if (typeof id === 'string' && PIPELINE_ID.test(id)) ids.push(id);
+    else invalid.push(id);
+  }
+  return { ids, invalid };
 }
 
 /** The loaders log every load; keep the validator's output to the issues */

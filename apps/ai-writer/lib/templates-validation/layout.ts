@@ -10,6 +10,11 @@ import * as path from 'path';
 
 export const TEMPLATE_ID = 'collabo-cafe';
 
+/** The directory is not a templates directory. Its message holds only the path, so it is safe to print in public logs */
+export class TemplatesLayoutError extends Error {
+  override name = 'TemplatesLayoutError';
+}
+
 export interface TemplatesLayout {
   kind: 'source' | 'synced';
   root: string;
@@ -34,7 +39,7 @@ export function resolveLayout(dir: string): TemplatesLayout {
   if (fs.existsSync(path.join(root, 'config')) && fs.existsSync(path.join(root, TEMPLATE_ID))) {
     return build('synced', root, path.join(root, 'config'), root, root);
   }
-  throw new Error(
+  throw new TemplatesLayoutError(
     `${root} is not a templates directory: expected ai-writer/config (a templates checkout) ` +
       `or config/ and ${TEMPLATE_ID}/ (the synced copy)`
   );
