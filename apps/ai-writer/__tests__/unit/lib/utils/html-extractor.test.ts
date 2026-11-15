@@ -1,4 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+
+// ページの取得は SSRF ガード (DNS で内部アドレスを弾く) を通る。テストではネットワークに出さない。
+// `internal.example` だけ内部のアドレスに解決させ、ほかは公開アドレスにする。
+// ⚠️ ここでは global の `jest` を使う。next/jest (SWC) は `@jest/globals` から import した `jest` の
+// jest.mock を import より上へ巻き上げず、mock が効かない (2026-11-15 に確かめた)
+jest.mock('node:dns/promises', () => ({
+  lookup: async (hostname: string) =>
+    hostname === 'internal.example' ? [{ address: '10.0.0.5', family: 4 }] : [{ address: '93.184.216.34', family: 4 }],
+}));
 
 import * as cheerio from 'cheerio';
 
@@ -237,6 +246,7 @@ const PAGE_WITH_MAIN = `
 
 const originalFetch = global.fetch;
 
+
 /** `fetchWithSSLFallback` は global fetch を呼ぶため、そこを差し替える。 */
 function mockFetchHtml(html: string, init: { ok?: boolean; status?: number } = {}): void {
   global.fetch = jest.fn(async () => ({
@@ -305,6 +315,45 @@ describe('extractContentHtml', () => {
 
     expect(result).toContain('og:title');
     expect(result).toContain('name="description"');
+  });
+
+  describe('内部のアドレスへの取得を拒む (SSRF)', () => {
+    it.each([
+      'http://169.254.169.254/computeMetadata/v1/',
+      'http://127.0.0.1:8080/',
+      'https://internal.example/event',
+      'file:///etc/passwd',
+    ])('%s は取得せずに throw する', async url => {
+      mockFetchHtml(PAGE_WITH_MAIN);
+      await expect(extractContentHtml(url)).rejects.toThrow(/Blocked/);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('リダイレクトを自分で追い、内部のアドレスへの転送は拒む', async () => {
+      const fetchMock = jest.fn(async (url: string) =>
+        url === 'https://example.com/go'
+          ? { ok: false, status: 302, statusText: '', headers: new Headers({ location: 'http://10.0.0.1/admin' }), text: async () => '' }
+          : { ok: true, status: 200, statusText: '', headers: new Headers(), text: async () => PAGE_WITH_MAIN },
+      );
+      global.fetch = fetchMock as unknown as typeof global.fetch;
+
+      await expect(extractContentHtml('https://example.com/go')).rejects.toThrow(/Blocked/);
+      expect(fetchMock.mock.calls.map(call => call[0])).toEqual(['https://example.com/go']);
+      expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'manual' });
+    });
+
+    it('公開のアドレスへのリダイレクトは追う', async () => {
+      const fetchMock = jest.fn(async (url: string) =>
+        url === 'http://example.com/'
+          ? { ok: false, status: 301, statusText: '', headers: new Headers({ location: 'https://www.example.com/' }), text: async () => '' }
+          : { ok: true, status: 200, statusText: '', headers: new Headers(), text: async () => PAGE_WITH_MAIN },
+      );
+      global.fetch = fetchMock as unknown as typeof global.fetch;
+
+      const { compacted } = await extractContentHtml('http://example.com/');
+      expect(compacted).toContain('main 要素の本文です。');
+      expect(fetchMock.mock.calls.map(call => call[0])).toEqual(['http://example.com/', 'https://www.example.com/']);
+    });
   });
 
   it('HTTP エラーは throw する (エラーページを本文にしない)', async () => {
