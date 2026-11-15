@@ -146,7 +146,7 @@ jobs:
         run: |
           # Slack のまとめに管理画面 (URL 登録) へのリンクを付けるため、Service の URL をここで読む
           # (repo には書かない)。読めなくても Job は更新する (リンクが付かないだけ。warning を残す)。
-          # 下の --set-env-vars の ${ADMIN_URL} は bash の変数 (${{ }} の式ではない)
+          # 下の --set-env-vars の ${ADMIN_URL} は bash の変数 (GitHub Actions の式ではない)
           ADMIN_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)' || true)
           if [ -z "$ADMIN_URL" ]; then
             echo "::warning::Could not read the service URL. The Slack summary will have no link to the admin page."
