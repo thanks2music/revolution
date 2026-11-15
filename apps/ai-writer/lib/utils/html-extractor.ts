@@ -134,6 +134,9 @@ const MAX_PAGE_REDIRECTS = 5;
  * リダイレクトは自前で追い、各ホップに同じ確認をかける (`redirect: 'follow'` だと
  * 外部 → 内部への転送を確かめられない)。
  *
+ * 既知の限界 (画像の取得と同じ): 確かめる時の名前解決と、fetch が接続する時の名前解決は別なので、
+ * 2 回目に別のアドレスを返す DNS (DNS rebinding) は防げない。防ぐには、接続の時の lookup で同じ確認を行う必要がある。
+ *
  * @param url フェッチ先URL
  * @param options fetch オプション (`redirect` は上書きする)
  * @returns 最後のホップの Response
@@ -150,6 +153,8 @@ async function fetchWithSSLFallback(url: string, options: RequestInit = {}): Pro
     const response = await fetchOnceWithSSLFallback(current.href, { ...options, redirect: 'manual' });
     const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
     if (!location) return response;
+    // 追わない本文は捨てて、接続を早く返す
+    await response.body?.cancel().catch(() => {});
     if (hop === MAX_PAGE_REDIRECTS) {
       throw new Error(`Too many redirects (> ${MAX_PAGE_REDIRECTS}) for "${url}"`);
     }

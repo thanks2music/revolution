@@ -342,6 +342,41 @@ describe('extractContentHtml', () => {
       expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'manual' });
     });
 
+    it('相対の Location を解決して追い、6 回目のリダイレクトで止める', async () => {
+      const fetchMock = jest.fn(async (url: string) => ({
+        ok: false,
+        status: 302,
+        statusText: '',
+        headers: new Headers({ location: `/hop-${Number(new URL(url).pathname.split('-')[1] ?? 0) + 1}` }),
+        text: async () => '',
+      }));
+      global.fetch = fetchMock as unknown as typeof global.fetch;
+
+      await expect(extractContentHtml('https://example.com/hop-0')).rejects.toThrow(/Too many redirects/);
+      expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
+        'https://example.com/hop-0',
+        'https://example.com/hop-1',
+        'https://example.com/hop-2',
+        'https://example.com/hop-3',
+        'https://example.com/hop-4',
+        'https://example.com/hop-5',
+      ]);
+    });
+
+    it('名前解決で内部のアドレスになるホストへの転送も拒む', async () => {
+      const fetchMock = jest.fn(async () => ({
+        ok: false,
+        status: 301,
+        statusText: '',
+        headers: new Headers({ location: 'https://internal.example/admin' }),
+        text: async () => '',
+      }));
+      global.fetch = fetchMock as unknown as typeof global.fetch;
+
+      await expect(extractContentHtml('https://example.com/')).rejects.toThrow(/Blocked/);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('公開のアドレスへのリダイレクトは追う', async () => {
       const fetchMock = jest.fn(async (url: string) =>
         url === 'http://example.com/'

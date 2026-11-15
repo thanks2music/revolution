@@ -56,8 +56,10 @@ function fakeDeps(options: { registered?: RegisteredUrl[]; attempts?: AttemptRec
     attempts: {
       get: async url => attempts.get(url),
       getMany: async urls => new Map(urls.filter(url => attempts.has(url)).map(url => [url, attempts.get(url)!])),
-      save: async entry => {
-        attempts.set(entry.url, entry);
+      giveUpIfAwaitingRetry: async (url, reason) => {
+        const current = attempts.get(url);
+        if (!current || (current.status !== 'waiting-details' && current.status !== 'retrying-failure')) return false;
+        attempts.set(url, { ...current, status: 'given-up', nextAttemptAt: null, givenUpReason: reason });
         return true;
       },
     },
@@ -87,6 +89,7 @@ describe('parseRegisteredUrl', () => {
     expect(parseRegisteredUrl('not a url')).toBeUndefined();
     expect(parseRegisteredUrl('javascript:alert(1)')).toBeUndefined();
     expect(parseRegisteredUrl('ftp://a.example/file')).toBeUndefined();
+    expect(parseRegisteredUrl(`https://a.example/${'a'.repeat(2048)}`)).toBeUndefined();
   });
 });
 

@@ -50,6 +50,9 @@ function fakeFirestore() {
         set: (ref: { id: string }, data: Doc) => {
           docs.set(ref.id, data);
         },
+        update: (ref: { id: string }, data: Doc) => {
+          docs.set(ref.id, { ...docs.get(ref.id), ...data });
+        },
       }),
   };
   return { db: db as unknown as Firestore, docs, queries };
@@ -116,6 +119,25 @@ describe('AttemptStore', () => {
 
     expect(await store.save({ ...record('https://a.example/1', null), lastOutcome: 'pr', prUrl: 'https://github.com/o/r/pull/1' })).toBe(true);
     expect(await store.get('https://a.example/1')).toMatchObject({ status: 'done', prUrl: 'https://github.com/o/r/pull/1' });
+  });
+
+  it('gives up only a URL that is still waiting, keeping a result stored in the meantime', async () => {
+    const { db } = fakeFirestore();
+    const store = new AttemptStore(db);
+    await store.save(record('https://a.example/waiting', new Date('2026-11-20T00:00:00Z')));
+    expect(await store.giveUpIfAwaitingRetry('https://a.example/waiting', '登録を取り消したため打ち切りました')).toBe(true);
+    expect(await store.get('https://a.example/waiting')).toMatchObject({
+      status: 'given-up',
+      nextAttemptAt: null,
+      givenUpReason: '登録を取り消したため打ち切りました',
+      attemptCount: 1,
+    });
+
+    // a run finished with a PR before the removal reached the record
+    await store.save({ ...record('https://a.example/pr', null), lastOutcome: 'pr', prUrl: 'https://github.com/o/r/pull/1' });
+    expect(await store.giveUpIfAwaitingRetry('https://a.example/pr', 'x')).toBe(false);
+    expect(await store.get('https://a.example/pr')).toMatchObject({ status: 'done', prUrl: 'https://github.com/o/r/pull/1' });
+    expect(await store.giveUpIfAwaitingRetry('https://a.example/none', 'x')).toBe(false);
   });
 
   it('reads the records of several URLs at once, by URL', async () => {

@@ -13,13 +13,15 @@
 import type { AttemptRecord, AttemptStore } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
 import type { RegisteredUrl, RegisteredUrlStore } from './registered-url-store';
-import { isAwaitingRetry } from './retry-policy';
 
 export const UNREGISTERED_REASON = '登録を取り消したため打ち切りました';
 
+/** Longer input is not a page URL anyone registers by hand */
+const MAX_URL_LENGTH = 2048;
+
 export interface RegisteredUrlDeps {
   registered: Pick<RegisteredUrlStore, 'list' | 'get' | 'add' | 'remove'>;
-  attempts: Pick<AttemptStore, 'get' | 'getMany' | 'save'>;
+  attempts: Pick<AttemptStore, 'get' | 'getMany' | 'giveUpIfAwaitingRetry'>;
   /**
    * Throws when the host is (or resolves to) an internal address (`assertPublicHost`).
    * The job fetches registered URLs, so an internal address must not get in
@@ -44,6 +46,7 @@ export type RegisterResult =
  * Google redirect URLs are unwrapped and tracking parameters removed (`attempt-url.ts`).
  */
 export function parseRegisteredUrl(input: string): string | undefined {
+  if (input.length > MAX_URL_LENGTH) return undefined;
   const normalized = normalizeAttemptUrl(input);
   try {
     const url = new URL(normalized);
@@ -85,12 +88,10 @@ export async function unregisterUrl(deps: RegisteredUrlDeps, id: string): Promis
   const entry = await deps.registered.get(id);
   if (!entry) return false;
 
-  const attempt = await deps.attempts.get(entry.url);
   // A URL waiting for a retry would otherwise keep being tried after the registration is gone.
-  // A run trying the URL at this moment cannot put it back in the queue (`AttemptStore.save`)
-  if (attempt && isAwaitingRetry(attempt.status)) {
-    await deps.attempts.save({ ...attempt, status: 'given-up', nextAttemptAt: null, givenUpReason: UNREGISTERED_REASON });
-  }
+  // Both sides are transactions: this never overwrites a result a run stored in the meantime,
+  // and a run cannot put the given-up URL back in the queue (`AttemptStore.save`)
+  await deps.attempts.giveUpIfAwaitingRetry(entry.url, UNREGISTERED_REASON);
   await deps.registered.remove(id);
   return true;
 }

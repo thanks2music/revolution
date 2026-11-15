@@ -112,6 +112,22 @@ export class AttemptStore {
    *
    * @returns `false` when the record was not stored
    */
+  /**
+   * Give up a URL that is waiting for a retry, reading and writing in one transaction so a
+   * result stored by a run in the meantime (a PR, a skip) is never replaced by a stale copy.
+   *
+   * @returns `true` when the record was given up
+   */
+  async giveUpIfAwaitingRetry(url: string, reason: string): Promise<boolean> {
+    const ref = this.ref(url);
+    return this.db.runTransaction(async transaction => {
+      const current = await transaction.get(ref);
+      if (!isAwaitingRetry(current.data()?.status as AttemptStatus | undefined)) return false;
+      transaction.update(ref, { status: 'given-up', nextAttemptAt: null, givenUpReason: reason });
+      return true;
+    });
+  }
+
   async save(record: AttemptRecord): Promise<boolean> {
     const ref = this.ref(record.url);
     return this.db.runTransaction(async transaction => {
