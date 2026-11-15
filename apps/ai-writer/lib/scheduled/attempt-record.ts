@@ -9,10 +9,26 @@ import type { AttemptRecord, AttemptSource, PublishedAtSource } from './attempt-
 import type { PublishedDate } from './published-date';
 import { nextAttemptState, type AttemptOutcome } from './retry-policy';
 
-/** What one attempt produced: the pipeline's result, or the error thrown before it returned */
+/**
+ * What one attempt produced: the pipeline's result, or the error thrown before it returned.
+ * `httpStatus` is set when the page answered with an error status
+ */
 export type AttemptResult =
   | { kind: 'pipeline'; result: MdxGenerationResult }
-  | { kind: 'error'; error: string };
+  | { kind: 'error'; error: string; httpStatus?: number };
+
+/**
+ * Statuses that mean the site refuses the page, or the page is gone for good. Trying again does
+ * not help: a site behind a bot filter refuses the Job's address every time, even when a local
+ * machine can read the page. 404 is not here: a page can be listed before it is published, so it
+ * stays a failure and is retried
+ */
+const REFUSED_STATUSES = new Set([401, 403, 410, 451]);
+
+/** The page was refused or is gone, so the attempt is a skip, not a failure */
+function isRefusedStatus(status: number | undefined): boolean {
+  return status !== undefined && REFUSED_STATUSES.has(status);
+}
 
 /** What is known about the URL when it is tried */
 export interface AttemptContext {
@@ -31,7 +47,9 @@ export interface AttemptContext {
 
 /** Map an attempt onto the retry policy's outcome */
 export function toAttemptOutcome(attempt: AttemptResult, countFailure: boolean): AttemptOutcome {
-  if (attempt.kind === 'error') return { kind: 'failure', counted: countFailure };
+  if (attempt.kind === 'error') {
+    return isRefusedStatus(attempt.httpStatus) ? { kind: 'skipped' } : { kind: 'failure', counted: countFailure };
+  }
   const { result } = attempt;
   // The pipeline returns some step errors as skips (detail extraction, content generation);
   // they are failures here, so a passing outage does not drop the article for good
@@ -48,7 +66,13 @@ export function toAttemptOutcome(attempt: AttemptResult, countFailure: boolean):
 
 /** The skip reason or the error of an attempt, and its PR (what the record and Slack show) */
 export function describeAttempt(attempt: AttemptResult): { reason?: string; prUrl?: string } {
-  if (attempt.kind === 'error') return { reason: attempt.error };
+  if (attempt.kind === 'error') {
+    return {
+      reason: isRefusedStatus(attempt.httpStatus)
+        ? `${attempt.error}。サイトがページの取得を拒んでいるため、試し直しません (手元の CLI からなら取れることがあります)`
+        : attempt.error,
+    };
+  }
   const { result } = attempt;
   return { reason: result.skipped ? result.skipReason : result.error, prUrl: result.prResult?.prUrl };
 }

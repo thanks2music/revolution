@@ -33,6 +33,10 @@ jest.mock('@/lib/services/extraction.service', () => ({
   ExtractionService: jest.fn().mockImplementation(() => ({
     extractFromOfficialSite: mockExtractFromOfficialSite,
   })),
+  // a pure helper the service uses when extraction fails; keep the real one
+  isMissingWorkTitle: jest.requireActual<typeof import('@/lib/services/extraction.service')>(
+    '@/lib/services/extraction.service',
+  ).isMissingWorkTitle,
 }));
 
 const { extractArticleHtml, extractContentHtml } = require('@/lib/utils/html-extractor') as {

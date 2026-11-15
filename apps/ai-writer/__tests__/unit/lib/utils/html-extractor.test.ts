@@ -13,11 +13,13 @@ import * as cheerio from 'cheerio';
 
 import {
   extractActualUrl,
+  extractArticleData,
   extractContentHtml,
   extractPageLinks,
   MAX_PAGE_REDIRECTS,
   selectMainContent,
 } from '@/lib/utils/html-extractor';
+import { HttpStatusError } from '@/lib/utils/http-status-error';
 
 /**
  * `html-extractor.ts` にはこれまでテストが 1 本も無かった。純粋関数を Layer 1、
@@ -403,6 +405,15 @@ describe('extractContentHtml', () => {
     mockFetchHtml('<html><body>404</body></html>', { ok: false, status: 404 });
 
     await expect(extractContentHtml('https://example.com/missing')).rejects.toThrow(/404/);
+  });
+
+  it('記事のページの HTTP エラーは、状態コードを持ったまま throw する (定期実行が拒否と障害を分けるため)', async () => {
+    mockFetchHtml('<html><body>Forbidden</body></html>', { ok: false, status: 403 });
+
+    const error = await extractArticleData('https://example.com/news/1').catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(HttpStatusError);
+    expect((error as HttpStatusError).status).toBe(403);
+    expect((error as Error).message).toContain('記事データの取得に失敗: https://example.com/news/1');
   });
 
   /**

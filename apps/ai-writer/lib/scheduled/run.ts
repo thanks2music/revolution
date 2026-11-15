@@ -20,6 +20,7 @@
  * @module lib/scheduled/run
  */
 import type { MdxGenerationRequest, MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
+import { HttpStatusError } from '@/lib/utils/http-status-error';
 
 import {
   buildAttemptRecord,
@@ -219,7 +220,11 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
         });
         attempt = { kind: 'pipeline', result };
       } catch (caught) {
-        attempt = { kind: 'error', error: caught instanceof Error ? caught.message : String(caught) };
+        attempt = {
+          kind: 'error',
+          error: caught instanceof Error ? caught.message : String(caught),
+          httpStatus: caught instanceof HttpStatusError ? caught.status : undefined,
+        };
       }
 
       const item: RunItem = {

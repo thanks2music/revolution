@@ -144,6 +144,13 @@ jobs:
       - name: Deploy the job
         id: deploy
         run: |
+          # Slack のまとめに管理画面 (URL 登録) へのリンクを付けるため、Service の URL をここで読む
+          # (repo には書かない)。読めなくても Job は更新する (リンクが付かないだけ。warning を残す)。
+          # 下の --set-env-vars の ${ADMIN_URL} は bash の変数 (${{ }} の式ではない)
+          ADMIN_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)' || true)
+          if [ -z "$ADMIN_URL" ]; then
+            echo "::warning::Could not read the service URL. The Slack summary will have no link to the admin page."
+          fi
           gcloud run jobs deploy ${{ env.SERVICE_NAME }}-job \
             --image "${{ steps.image.outputs.ref }}" \
             --region ${{ env.REGION }} \
@@ -154,7 +161,7 @@ jobs:
             --task-timeout 7200s \
             --memory 2Gi \
             --cpu 2 \
-            --set-env-vars "^##^NODE_ENV=production##AI_PROVIDER=google##VISION_API_PROVIDER=google##GITHUB_OWNER=${{ github.repository_owner }}##GITHUB_REPO=${{ github.event.repository.name }}##GITHUB_BASE_BRANCH=main##SENTRY_DSN=${{ vars.SENTRY_DSN_AI_WRITER }}##SENTRY_ENVIRONMENT=production##ANTHROPIC_FEDERATION_RULE_ID=${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}##ANTHROPIC_ORGANIZATION_ID=${{ vars.ANTHROPIC_ORGANIZATION_ID }}##ANTHROPIC_SERVICE_ACCOUNT_ID=${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}##ANTHROPIC_WORKSPACE_ID=${{ vars.ANTHROPIC_WORKSPACE_ID }}##SLACK_CHANNEL_ID=${{ vars.SLACK_CHANNEL_PROD }}##SLACK_DEV_CHANNEL_ID=${{ vars.SLACK_CHANNEL_DEV }}##SLACK_MENTION_USER_ID=${{ vars.SLACK_MENTION_USER_ID }}##R2_BUCKET_NAME=${{ vars.R2_BUCKET_NAME }}##R2_PUBLIC_URL=${{ vars.R2_PUBLIC_URL }}" \
+            --set-env-vars "^##^NODE_ENV=production##AI_PROVIDER=google##VISION_API_PROVIDER=google##GITHUB_OWNER=${{ github.repository_owner }}##GITHUB_REPO=${{ github.event.repository.name }}##GITHUB_BASE_BRANCH=main##SENTRY_DSN=${{ vars.SENTRY_DSN_AI_WRITER }}##SENTRY_ENVIRONMENT=production##ANTHROPIC_FEDERATION_RULE_ID=${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}##ANTHROPIC_ORGANIZATION_ID=${{ vars.ANTHROPIC_ORGANIZATION_ID }}##ANTHROPIC_SERVICE_ACCOUNT_ID=${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}##ANTHROPIC_WORKSPACE_ID=${{ vars.ANTHROPIC_WORKSPACE_ID }}##SLACK_CHANNEL_ID=${{ vars.SLACK_CHANNEL_PROD }}##SLACK_DEV_CHANNEL_ID=${{ vars.SLACK_CHANNEL_DEV }}##SLACK_MENTION_USER_ID=${{ vars.SLACK_MENTION_USER_ID }}##R2_BUCKET_NAME=${{ vars.R2_BUCKET_NAME }}##R2_PUBLIC_URL=${{ vars.R2_PUBLIC_URL }}##AI_WRITER_ADMIN_URL=${ADMIN_URL}" \
             --set-secrets "GOOGLE_APPLICATION_CREDENTIALS_JSON=revo-firebase-service-account:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GITHUB_PAT=GITHUB_PAT:latest,SLACK_BOT_TOKEN=SLACK_BOT_TOKEN:latest,R2_ACCESS_KEY_ID=R2_ACCESS_KEY_ID:latest,R2_SECRET_ACCESS_KEY=R2_SECRET_ACCESS_KEY:latest,R2_ENDPOINT_URL=R2_ENDPOINT_URL:latest"
 
       - name: Build the Slack message

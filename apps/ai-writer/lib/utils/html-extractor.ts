@@ -31,6 +31,7 @@ import { compactHtmlForLlm, LLM_INPUT_BUDGET_CHARS } from '@/lib/utils/compact-h
 import { assertPublicHost } from '@/lib/utils/safe-image-fetch';
 import { BROWSER_USER_AGENT, FETCH_TIMEOUT_MS } from '@/lib/utils/http-constants';
 import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
+import { HttpStatusError } from '@/lib/utils/http-status-error';
 
 /**
  * SSL証明書エラーのコード一覧
@@ -715,7 +716,7 @@ export async function extractArticleData(url: string): Promise<{
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
+      throw new HttpStatusError(`HTTP error! status: ${response.status} ${response.statusText}`, response.status);
     }
 
     const fullHtml = await response.text();
@@ -800,7 +801,9 @@ export async function extractArticleData(url: string): Promise<{
           `記事データのフェッチがタイムアウトしました: ${url} (${FETCH_TIMEOUT_MS}ms)`
         );
       }
-      throw new Error(`記事データの取得に失敗: ${url} - ${error.message}`);
+      const message = `記事データの取得に失敗: ${url} - ${error.message}`;
+      if (error instanceof HttpStatusError) throw new HttpStatusError(message, error.status, { cause: error });
+      throw new Error(message);
     }
     throw new Error(`記事データの取得に失敗: ${url}`);
   }
