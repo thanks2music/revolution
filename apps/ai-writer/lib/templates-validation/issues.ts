@@ -8,7 +8,10 @@
 export interface TemplateIssue {
   /** Stable rule id, e.g. `yaml/parse`, `title/slug-duplicate` */
   rule: string;
-  /** Path relative to the templates root */
+  /**
+   * Path relative to the templates root. `--redact` prints it, so it must never be built from YAML values:
+   * use the repo's own file names, or report on the file that holds the value (e.g. `_meta.yaml`)
+   */
   file: string;
   /** Where in the file (a YAML path such as `titles["…"].slug`). May contain dictionary values */
   at?: string;
