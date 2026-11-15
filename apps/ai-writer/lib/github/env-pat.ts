@@ -9,12 +9,16 @@ export const PAT_ENV_NAMES = ['REVO_GITHUB_PAT', 'GITHUB_PAT'] as const;
 
 type PatEnvName = (typeof PAT_ENV_NAMES)[number];
 
-export interface EnvPatResolution {
-  /** 使う PAT。どの名前にも値が無ければ null (Secret Manager を使う) */
-  pat: { name: PatEnvName; value: string } | null;
-  /** `op://` の参照のままだったため飛ばした名前 (`op run` を通さずに起動した時) */
-  unresolvedRefs: PatEnvName[];
-}
+/** 1Password の参照の接頭辞。`op run` が実行時に値へ置き換える */
+const ONE_PASSWORD_REF_PREFIX = 'op://';
+
+export type EnvPatResolution =
+  /** この名前の値を使う */
+  | { kind: 'pat'; name: PatEnvName; value: string }
+  /** この名前が `op://` の参照のまま (`op run` を通さずに起動した)。次の名前へは進まない */
+  | { kind: 'unresolved-ref'; name: PatEnvName }
+  /** どの名前にも値が無い (Secret Manager を使う) */
+  | { kind: 'none' };
 
 /**
  * 環境変数から PAT を選ぶ。
@@ -22,20 +26,18 @@ export interface EnvPatResolution {
  * `REVO_GITHUB_PAT` を先に見る。`GITHUB_PAT` は汎用の名前で、シェル全体に export された
  * 別の用途のトークン (期限切れのものを含む) が入っていることがあり、それが Revolution の
  * トークンより先に使われて認証に失敗していたため。
- * `op://` で始まる値は `op run` を通さずに起動した時の参照のままの値なので、未設定と同じ扱いにし、
- * 呼び出し側が警告できるように `unresolvedRefs` に名前を残す。
+ *
+ * 値が `op://` の参照のままなら、その名前で止める。次の名前へ進むと、意図したトークンの代わりに
+ * シェルの古い `GITHUB_PAT` を使い、同じ 401 が別の経路で起きるため。呼び出し側が分かるエラーにする。
+ * 空 (空白だけを含む) の値は未設定として次の名前へ進む。
  */
 export function resolveEnvPat(env: Record<string, string | undefined>): EnvPatResolution {
-  const unresolvedRefs: PatEnvName[] = [];
   for (const name of PAT_ENV_NAMES) {
     // 前後の空白を落としてから判定する (' op://...' も参照として扱うため)
     const value = env[name]?.trim();
     if (!value) continue;
-    if (value.startsWith('op://')) {
-      unresolvedRefs.push(name);
-      continue;
-    }
-    return { pat: { name, value }, unresolvedRefs };
+    if (value.startsWith(ONE_PASSWORD_REF_PREFIX)) return { kind: 'unresolved-ref', name };
+    return { kind: 'pat', name, value };
   }
-  return { pat: null, unresolvedRefs };
+  return { kind: 'none' };
 }

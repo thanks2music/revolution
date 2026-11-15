@@ -80,13 +80,14 @@ async function getGitHubPat(forceRefresh = false): Promise<string> {
   }
 
   // Pattern 1: 環境変数から直接取得（ローカル開発・デバッグ用）
-  const { pat: fromEnv, unresolvedRefs } = resolveEnvPat(process.env);
-  for (const name of unresolvedRefs) {
-    console.warn(
-      `[GitHub Client] ⚠️ ${name} is an unresolved op:// reference (run via \`op run\`?). Skipping it.`
+  const fromEnv = resolveEnvPat(process.env);
+  if (fromEnv.kind === 'unresolved-ref') {
+    // 別の名前のトークンへ黙って切り替えず、ここで止める (env-pat.ts の説明)
+    throw new GitHubAuthError(
+      `${fromEnv.name} is an unresolved op:// reference. Run through \`op run\` (pnpm debug:mdx does this via .env.op.local).`
     );
   }
-  if (fromEnv) {
+  if (fromEnv.kind === 'pat') {
     console.log(`[GitHub Client] Using ${fromEnv.name} from environment variable`);
     cachedPat = fromEnv.value;
     patCachedAt = now;

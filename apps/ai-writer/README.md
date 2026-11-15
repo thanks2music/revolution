@@ -67,7 +67,7 @@ GITHUB_REPO=revolution
 GITHUB_BASE_BRANCH=main
 
 # Secrets (managed via Secret Manager)
-# - GITHUB_PAT
+# - GITHUB_PAT (Cloud Run。ローカルの CLI は .env.op.local の REVO_GITHUB_PAT を先に使う)
 # - CRON_KEY
 # Claude は API キーを使わない (下の「Claude の認証」)
 ```
