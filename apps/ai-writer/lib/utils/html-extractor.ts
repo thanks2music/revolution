@@ -122,8 +122,11 @@ async function fetchOnceWithSSLFallback(url: string, options: RequestInit): Prom
   }
 }
 
-/** ページのリダイレクトの上限 (http → https → www → 言語別のページ、程度まで) */
-const MAX_PAGE_REDIRECTS = 5;
+/**
+ * ページのリダイレクトの上限。fetch の `redirect: 'follow'` の既定 (20) にそろえ、以前に読めていたページを
+ * 読めなくしない (アーカイブの公式サイトの生死の判定は、取得の失敗を「閉じた」とみなすため)
+ */
+export const MAX_PAGE_REDIRECTS = 20;
 
 /**
  * ページを取得する。SSL 証明書エラー時の再試行に加えて、内部のアドレスへの取得を拒む (SSRF 対策)。

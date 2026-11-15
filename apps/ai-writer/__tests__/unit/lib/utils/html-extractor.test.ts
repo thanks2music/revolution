@@ -15,6 +15,7 @@ import {
   extractActualUrl,
   extractContentHtml,
   extractPageLinks,
+  MAX_PAGE_REDIRECTS,
   selectMainContent,
 } from '@/lib/utils/html-extractor';
 
@@ -342,7 +343,7 @@ describe('extractContentHtml', () => {
       expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'manual' });
     });
 
-    it('相対の Location を解決して追い、6 回目のリダイレクトで止める', async () => {
+    it('相対の Location を解決して追い、上限を超えるリダイレクトで止める', async () => {
       const fetchMock = jest.fn(async (url: string) => ({
         ok: false,
         status: 302,
@@ -353,14 +354,9 @@ describe('extractContentHtml', () => {
       global.fetch = fetchMock as unknown as typeof global.fetch;
 
       await expect(extractContentHtml('https://example.com/hop-0')).rejects.toThrow(/Too many redirects/);
-      expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
-        'https://example.com/hop-0',
-        'https://example.com/hop-1',
-        'https://example.com/hop-2',
-        'https://example.com/hop-3',
-        'https://example.com/hop-4',
-        'https://example.com/hop-5',
-      ]);
+      expect(fetchMock.mock.calls.map(call => call[0])).toEqual(
+        Array.from({ length: MAX_PAGE_REDIRECTS + 1 }, (_, i) => `https://example.com/hop-${i}`),
+      );
     });
 
     it('名前解決で内部のアドレスになるホストへの転送も拒む', async () => {
