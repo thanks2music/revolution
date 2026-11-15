@@ -322,6 +322,9 @@ export const CONFIG_PATHS = {
  */
 export const TITLE_ROMAJI_GENERATED_PATH = resolve(CONFIG_DIR, 'title-romaji-mapping.generated.yaml');
 
+/** Archive sources (optional). Read by `loadArchiveSources` (`lib/archive-source/config.ts`) */
+export const ARCHIVE_SOURCES_PATH = resolve(CONFIG_DIR, 'archive-sources.yaml');
+
 /**
  * Configuration key type for type-safe config loading
  */
