@@ -17,6 +17,8 @@ export type StopReason = 'max-prs' | 'max-tries' | 'time-budget' | 'consecutive-
 
 export interface RunItem {
   url: string;
+  /** Why the URL was a candidate */
+  source: 'registered' | 'retry' | 'rss';
   title?: string;
   outcome: OutcomeKind;
   /** The skip reason or the error */

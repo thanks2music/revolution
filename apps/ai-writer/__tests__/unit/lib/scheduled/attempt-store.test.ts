@@ -96,6 +96,16 @@ describe('AttemptStore', () => {
     expect(await store.findAttempted([])).toEqual(new Set());
   });
 
+  it('reads the records of several URLs at once, by URL', async () => {
+    const { db } = fakeFirestore();
+    const store = new AttemptStore(db);
+    await store.save(record('https://a.example/1', new Date('2026-11-20T00:00:00Z')));
+    const found = await store.getMany(['https://a.example/1', 'https://a.example/2']);
+    expect([...found.keys()]).toEqual(['https://a.example/1']);
+    expect(found.get('https://a.example/1')?.nextAttemptAt).toEqual(new Date('2026-11-20T00:00:00Z'));
+    expect(await store.getMany([])).toEqual(new Map());
+  });
+
   it('finds due retries, longest-waiting first', async () => {
     const { db, queries } = fakeFirestore();
     const store = new AttemptStore(db);

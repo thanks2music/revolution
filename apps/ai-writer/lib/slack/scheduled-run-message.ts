@@ -55,7 +55,8 @@ export function needsAttention(summary: ScheduledRunSummary): boolean {
 function itemLine(item: RunItem, dryRun: boolean): string {
   // A dry run makes no PR; the article could be written
   const label = dryRun && item.outcome === 'pr' ? '✅ 記事にできる (dry-run)' : OUTCOME_ICON[item.outcome];
-  const lines = [`${label}  ${safe(item.title ?? item.url, 80)}`, safe(item.url, 300)];
+  const registered = item.source === 'registered' ? ' (登録 URL)' : '';
+  const lines = [`${label}${registered}  ${safe(item.title ?? item.url, 80)}`, safe(item.url, 300)];
   if (item.outcome === 'pr' && item.prUrl) lines.push(`PR: ${safe(item.prUrl, 300)}`);
   if (item.outcome !== 'pr' && item.reason) lines.push(`理由: ${safe(item.reason, 300)}`);
   if (item.givenUpReason) {

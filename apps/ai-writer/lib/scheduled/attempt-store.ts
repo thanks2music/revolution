@@ -15,11 +15,11 @@ import { attemptDocId } from './attempt-url';
 
 export const ATTEMPTS_COLLECTION = 'scheduled_url_attempts';
 
-/** Who tried the URL first */
-export type AttemptSource = 'rss' | 'cli';
+/** Where the URL came from when it was first tried */
+export type AttemptSource = 'rss' | 'registered' | 'cli';
 
 /** Where `publishedAt` came from */
-export type PublishedAtSource = PublishedDateSource | 'rss' | 'first-attempt';
+export type PublishedAtSource = PublishedDateSource | 'rss' | 'registration' | 'first-attempt';
 
 export interface AttemptRecord {
   url: string;
@@ -78,14 +78,18 @@ export class AttemptStore {
     return snapshot.exists ? fromFirestore(snapshot.data() ?? {}) : undefined;
   }
 
-  /** Which of the given normalized URLs already have a record (one batched read) */
-  async findAttempted(urls: string[]): Promise<Set<string>> {
+  /** The records of the given normalized URLs that have one, by URL (one batched read) */
+  async getMany(urls: string[]): Promise<Map<string, AttemptRecord>> {
     const unique = [...new Set(urls)];
-    if (unique.length === 0) return new Set();
+    if (unique.length === 0) return new Map();
     const snapshots = await this.db.getAll(...unique.map(url => this.ref(url)));
-    return new Set(
-      snapshots.filter(s => s.exists).map(s => String((s.data() as { url?: unknown }).url ?? '')),
-    );
+    const records = snapshots.filter(s => s.exists).map(s => fromFirestore(s.data() ?? {}));
+    return new Map(records.map(record => [record.url, record]));
+  }
+
+  /** Which of the given normalized URLs already have a record */
+  async findAttempted(urls: string[]): Promise<Set<string>> {
+    return new Set((await this.getMany(urls)).keys());
   }
 
   /** Records whose retry is due, the longest-waiting first */
