@@ -149,6 +149,27 @@ export interface EnrichedData extends TextPlaceholderData {
 // LeadGeneratorService
 // ============================================================================
 
+/**
+ * Reads `sections/01-lead.yaml` and checks the fields the lead generator needs.
+ * Also used by the templates validator (`lib/templates-validation/`).
+ *
+ * @throws when the file is missing, is not YAML, or lacks `templates` / `section`
+ */
+export function readLeadSectionYaml(yamlPath: string): SectionTemplate {
+  if (!fs.existsSync(yamlPath)) {
+    throw new Error(
+      `Lead section YAML not found: ${yamlPath}\n` +
+        'Please ensure the Templates repository has been synced via `pnpm sync:templates`.'
+    );
+  }
+
+  const parsed = yaml.load(fs.readFileSync(yamlPath, 'utf-8')) as SectionTemplate;
+  if (!parsed?.templates || !parsed?.section) {
+    throw new Error(`Invalid lead section YAML at ${yamlPath}: missing 'templates' or 'section' field.`);
+  }
+  return parsed;
+}
+
 export class LeadGeneratorService {
   private readonly deps: LeadGeneratorDeps;
   private leadSection: SectionTemplate | null = null;
@@ -242,24 +263,7 @@ export class LeadGeneratorService {
       'sections',
       '01-lead.yaml'
     );
-    const yamlPath = this.deps.yamlPath ?? defaultPath;
-
-    if (!fs.existsSync(yamlPath)) {
-      throw new Error(
-        `Lead section YAML not found: ${yamlPath}\n` +
-          'Please ensure the Templates repository has been synced via `pnpm sync:templates`.'
-      );
-    }
-
-    const fileContent = fs.readFileSync(yamlPath, 'utf-8');
-    const parsed = yaml.load(fileContent) as SectionTemplate;
-
-    if (!parsed?.templates || !parsed?.section) {
-      throw new Error(
-        `Invalid lead section YAML at ${yamlPath}: missing 'templates' or 'section' field.`
-      );
-    }
-
+    const parsed = readLeadSectionYaml(this.deps.yamlPath ?? defaultPath);
     this.leadSection = parsed;
     return parsed;
   }
