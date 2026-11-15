@@ -73,7 +73,8 @@ export async function planArchiveRun(url: string, deps: PlanArchiveRunDeps): Pro
     // A site that is alive but lost the items is still the event's page; a gone site is not linked
     const unlinkScope: MdxSourceOverride['unlinkScope'] = reason === 'official-has-no-items' ? 'none' : siteUnreachable(reason) ? 'host' : 'page';
     const closedSite = unlinkScope === 'none' ? undefined : { url: officialUrl, scope: unlinkScope };
-    const page = buildArchivePageContent(article.contentHtml, url, source, article.eventType, closedSite);
+    // The archive's own URL: images are kept only when they are on the same site as the article
+    const page = buildArchivePageContent(article.contentHtml, article.articleUrl, source, article.eventType, closedSite);
     return {
       mode: 'archive',
       article,

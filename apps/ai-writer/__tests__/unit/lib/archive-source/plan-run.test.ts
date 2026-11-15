@@ -44,6 +44,18 @@ describe('planArchiveRun', () => {
     expect(fetchJson).not.toHaveBeenCalled();
   });
 
+  it('reads images from the archive site when the URL is given with "www."', async () => {
+    const wwwUrl = ARTICLE_URL.replace('://', '://www.');
+    const sources = [{ ...SOURCE, hosts: [...SOURCE.hosts, new URL(wwwUrl).hostname] }];
+    const plan = await planArchiveRun(wwwUrl, deps({ sources }));
+    if (plan?.mode !== 'official') throw new Error('expected the official mode');
+    // Same images as with the archive's own URL (relative and absolute ones alike)
+    const canonical = await planArchiveRun(ARTICLE_URL, deps());
+    if (canonical?.mode !== 'official') throw new Error('expected the official mode');
+    expect(plan.fallback.sourceOverride.categoryImages.all).toEqual(canonical.fallback.sourceOverride.categoryImages.all);
+    expect(plan.fallback.sourceOverride.categoryImages.menu).toHaveLength(2);
+  });
+
   it('builds from the official site when it is alive', async () => {
     const plan = await planArchiveRun(ARTICLE_URL, deps());
     expect(plan).toEqual(

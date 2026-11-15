@@ -11,6 +11,8 @@ import type { ArchiveSource } from './config';
 import { pickOfficialUrl } from './official-url';
 
 export interface ArchiveArticle {
+  /** The archive's own URL of the article (the input URL may differ, e.g. with or without `www.`) */
+  articleUrl: string;
   /** Title with HTML entities decoded */
   title: string;
   /** Article body HTML (`content.rendered`) */
@@ -78,8 +80,10 @@ export async function resolveArchiveArticle(
   const post = body[0] as RestPost;
   const contentHtml = post.content?.rendered ?? '';
   const startsOn = parseArchiveDate(stringField(post, source.fields.start));
+  const canonicalUrl = post.link ?? articleUrl;
 
   return {
+    articleUrl: canonicalUrl,
     title: decodeEntities(post.title?.rendered ?? ''),
     contentHtml,
     startsOn,
@@ -87,7 +91,7 @@ export async function resolveArchiveArticle(
     eventYear: startsOn ? Number(startsOn.slice(0, 4)) : null,
     eventType: eventTypeOf(numberListField(post, source.fields.categories), source),
     featuredImageUrl: post._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null,
-    officialUrl: pickOfficialUrl(contentHtml, post.link ?? articleUrl, source.official_url),
+    officialUrl: pickOfficialUrl(contentHtml, canonicalUrl, source.official_url),
   };
 }
 

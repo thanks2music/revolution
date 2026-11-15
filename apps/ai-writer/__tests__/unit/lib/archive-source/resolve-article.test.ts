@@ -68,6 +68,7 @@ describe('resolveArchiveArticle', () => {
     );
 
     expect(article).toEqual({
+      articleUrl: ARTICLE_URL,
       title: 'サンプル作品 × カフェ',
       contentHtml: ARTICLE_HTML,
       startsOn: '2019-01-22',
