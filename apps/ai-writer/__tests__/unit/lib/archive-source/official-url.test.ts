@@ -23,17 +23,30 @@ describe('pickOfficialUrl', () => {
     expect(pickOfficialUrl(html, ARTICLE_URL, rules)).toBeNull();
   });
 
-  it('skips excluded hosts, subdomains of them and ad links', () => {
+  it('skips excluded hosts and subdomains of them', () => {
     const html = table(
       row('特設ページ', 'https://mobile.twitter.com/sample'),
-      row('特設ページ', 'https://ad.example.com/?utm_source=archive'),
       row('特設ページ', 'https://special.example.com/'),
     );
     expect(pickOfficialUrl(html, ARTICLE_URL, rules)).toBe('https://special.example.com/');
   });
 
-  it('falls back to the link selector when no table row is usable', () => {
-    const html = `${table(row('特設ページ', 'https://x.com/sample'))}<a class="official-link" href="https://shop.example.net/">shop</a><a class="official-link" href="https://special.example.com/">site</a>`;
+  it('keeps a table row that carries the archive tracking params', () => {
+    const html = table(row('公式サイト', 'https://special.example.com/?utm_source=archive&utm_medium=archive'));
+    expect(pickOfficialUrl(html, ARTICLE_URL, rules)).toBe(
+      'https://special.example.com/?utm_source=archive&utm_medium=archive',
+    );
+  });
+
+  it('repairs tracking params written into the path without "?"', () => {
+    const html = table(row('公式サイト', 'https://special.example.com/event/utm_source=archive&utm_medium=archive'));
+    expect(pickOfficialUrl(html, ARTICLE_URL, rules)).toBe(
+      'https://special.example.com/event/?utm_source=archive&utm_medium=archive',
+    );
+  });
+
+  it('falls back to the link selector when no table row is usable, skipping ad links there', () => {
+    const html = `${table(row('特設ページ', 'https://x.com/sample'))}<a class="official-link" href="https://ad.example.com/?utm_source=archive">ad</a><a class="official-link" href="https://shop.example.net/">shop</a><a class="official-link" href="https://special.example.com/">site</a>`;
     expect(pickOfficialUrl(html, ARTICLE_URL, rules)).toBe('https://special.example.com/');
   });
 

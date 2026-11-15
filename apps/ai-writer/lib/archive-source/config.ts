@@ -34,7 +34,7 @@ const archiveSourceSchema = z.object({
     fallback_selector: z.string().min(1).optional(),
     /** Hosts (suffix match) that are never the official site: social, shops, affiliates */
     exclude_hosts: z.array(z.string().min(1)).default([]),
-    /** Links carrying any of these query parameters are ads */
+    /** Fallback links carrying any of these query parameters are ads (table rows are not checked) */
     exclude_query_params: z.array(z.string().min(1)).default([]),
   }),
   /** Elements removed from the archive article before it is used as the source */
