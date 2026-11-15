@@ -7,6 +7,7 @@
 import * as path from 'path';
 import { IndustryLexiconConfigSchema } from '@revolution/schemas/industry-lexicon';
 import { StyleGuideConfigSchema } from '@revolution/schemas/style-guide';
+import { loadArchiveSources } from '@/lib/archive-source/config';
 import { loadPointsFormat } from '@/lib/services/article-points';
 import { ConfigLoaderService } from '@/lib/services/config-loader.service';
 import { loadGoodsListConfig } from '@/lib/services/goods-list';
@@ -45,18 +46,18 @@ export async function checkConsumerContract(layout: TemplatesLayout, docs: Parse
     {
       name: 'menu',
       file: path.join(sectionsDir, '02-menu.yaml'),
-      run: () => loadRendered('02-menu.yaml', MENU_RENDERED_KEYS, sectionsDir),
+      run: () => loadRendered<Record<string, unknown>>('02-menu.yaml', MENU_RENDERED_KEYS, sectionsDir),
     },
     {
       name: 'novelty',
       file: path.join(sectionsDir, '03-novelty.yaml'),
-      run: () => loadRendered('03-novelty.yaml', NOVELTY_RENDERED_KEYS, sectionsDir),
+      run: () => loadRendered<Record<string, unknown>>('03-novelty.yaml', NOVELTY_RENDERED_KEYS, sectionsDir),
     },
     { name: 'goods', file: path.join(sectionsDir, '04-goods.yaml'), run: () => loadGoodsListConfig(sectionsDir) },
     {
       name: 'summary',
       file: path.join(sectionsDir, '05-summary.yaml'),
-      run: () => loadRendered('05-summary.yaml', [...SUMMARY_VENUE_KEYS, ...SUMMARY_ROWS_KEYS], sectionsDir),
+      run: () => loadRendered<Record<string, unknown>>('05-summary.yaml', [...SUMMARY_VENUE_KEYS, ...SUMMARY_ROWS_KEYS], sectionsDir),
     },
     { name: 'lead', file: path.join(sectionsDir, '01-lead.yaml'), run: () => readLeadSectionYaml(path.join(sectionsDir, '01-lead.yaml')) },
     {
@@ -73,6 +74,12 @@ export async function checkConsumerContract(layout: TemplatesLayout, docs: Parse
       name: 'store-url-patterns',
       file: path.join(configDir, 'store-url-patterns.yaml'),
       run: () => new ConfigLoaderService(configDir).loadStoreUrlPatterns(),
+    },
+    {
+      // optional file: an absent file turns the feature off, a malformed one throws
+      name: 'archive-sources',
+      file: path.join(configDir, 'archive-sources.yaml'),
+      run: () => loadArchiveSources(path.join(configDir, 'archive-sources.yaml')),
     },
     {
       name: 'vision-template',
