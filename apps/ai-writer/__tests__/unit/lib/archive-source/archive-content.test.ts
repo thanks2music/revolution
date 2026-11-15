@@ -50,6 +50,26 @@ describe('collectSectionImages', () => {
     expect(twice.menu).toEqual([uploads('a.jpg')]);
   });
 
+  it('takes the full-size file a gallery thumbnail links to', () => {
+    const gallery = collectSectionImages(
+      '<h2>メニュー</h2><div><a href="/wp-content/uploads/menu-a.jpg"><img src="/wp-content/uploads/menu-a-340x255.jpg"></a></div>',
+      ARTICLE_URL,
+      SOURCE.images,
+    );
+    expect(gallery.menu).toEqual([uploads('menu-a.jpg')]);
+  });
+
+  it('keeps the image itself when its link is not an uploaded image file', () => {
+    const linked = collectSectionImages(
+      '<h2>メニュー</h2><p><a href="/wp-content/uploads/menu.pdf"><img src="/wp-content/uploads/menu-a.jpg"></a>' +
+        '<a href="https://shop.example.com/item.jpg"><img src="/wp-content/uploads/menu-b.jpg"></a>' +
+        '<a href="/events/other/"><img src="/wp-content/uploads/menu-c.jpg"></a></p>',
+      ARTICLE_URL,
+      SOURCE.images,
+    );
+    expect(linked.menu).toEqual([uploads('menu-a.jpg'), uploads('menu-b.jpg'), uploads('menu-c.jpg')]);
+  });
+
   it('does not use images before the first category heading or in other sections', () => {
     const all = [...images.menu, ...images.novelty, ...images.goods];
     expect(all).not.toContain(uploads('kv.jpg'));
