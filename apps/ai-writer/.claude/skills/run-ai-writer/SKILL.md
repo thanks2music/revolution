@@ -39,6 +39,7 @@ description: ai-writer の記事パイプラインをローカルで実行し (p
 - **AI の呼び出し失敗はスキップとして返る** (記事選別の catch が安全側に倒すため)。残高切れ (429) でも「⏭️ スキップ」になるので、理由の文を必ず読む。その AI が使えない時は、実行ごとに `AI_PROVIDER=google` などで切り替えられる (dotenv は既にある環境変数を上書きしない)
 - **tsx では `@sentry/nextjs` の `captureException` が `undefined` になる**。service の catch で TypeError が起き、本当のエラーが `Sentry.captureException is not a function` に置き換わる (main からある既知の問題)
 - 実行すると `debug-logs/` に HTML のダンプが残る。`--log` を付けると `logs/` にも残る。どちらも gitignore 済みだが、確認が終わったら消す
+- **定期実行の Cloud Run Job は、引数なしで起動すると本実行になる**。既定の args が `scripts/run-scheduled.ts` で、記事 PR を作り、Firestore と R2 に書き込む。手で動かす時は `gcloud run jobs execute <job> --region <region> --args scripts/run-scheduled.ts,--dry-run` のように、入口のスクリプトごと `--args` で渡す (`--args` は既定の args を丸ごと置き換える)
 
 ## Slack 通知を観測する
 
