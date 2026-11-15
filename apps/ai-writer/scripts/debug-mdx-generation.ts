@@ -13,7 +13,7 @@
  *   pnpm tsx scripts/debug-mdx-generation.ts
  *
  * 前提条件:
- *   - .env.local に GITHUB_PAT を設定
+ *   - REVO_GITHUB_PAT (.env.op.local に 1Password の参照を書く) か GITHUB_PAT を設定
  *   - Claude は ant auth login のプロファイルで認証する (キー不要。apps/ai-writer/README.md 参照)
  *   - Firebase Admin SDK の認証情報を設定
  */
@@ -318,7 +318,7 @@ async function main() {
     console.log('📊 次のステップ:');
     console.log('  - 実際のRSSフィードやスクレイピングデータで動作確認');
     console.log('  - Firestore接続の確認（.env.localにFIREBASE_PROJECT_ID設定）');
-    console.log('  - GitHub PR作成のテスト（GITHUB_PAT設定済み）');
+    console.log('  - GitHub PR作成のテスト（REVO_GITHUB_PAT か GITHUB_PAT を設定済み）');
   } catch (error) {
     console.error('\n❌ エラー発生:', error);
     if (error instanceof Error) {
