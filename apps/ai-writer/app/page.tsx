@@ -59,6 +59,13 @@ export default function Home() {
               <p className="mt-2 text-sm text-gray-600">RSS feedsの登録と管理</p>
             </a>
             <a
+              href="/registered-urls"
+              className="rounded-lg border p-4 transition-colors hover:bg-gray-50"
+            >
+              <h3 className="font-semibold">URL 登録</h3>
+              <p className="mt-2 text-sm text-gray-600">定期実行で先に試す URL の登録と結果</p>
+            </a>
+            <a
               href="/debug-rss-mdx"
               className="rounded-lg border border-blue-200 bg-blue-50 p-4 transition-colors hover:bg-blue-100"
             >

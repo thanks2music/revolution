@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import type { AttemptRecord } from '@/lib/scheduled/attempt-store';
 import type { RssCandidateInput } from '@/lib/scheduled/candidates';
-import { runScheduled, type ScheduledRunDeps } from '@/lib/scheduled/run';
+import type { RegisteredUrl } from '@/lib/scheduled/registered-url-store';
+import { ALREADY_GIVEN_UP_REASON, runScheduled, type ScheduledRunDeps } from '@/lib/scheduled/run';
 import { prCountOf } from '@/lib/scheduled/summary';
 import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 
@@ -35,6 +36,7 @@ function makeDeps(options: {
   items: RssCandidateInput[];
   results: (url: string) => MdxGenerationResult | Error;
   stored?: AttemptRecord[];
+  registered?: RegisteredUrl[];
   clock?: () => Date;
 }) {
   const saved = new Map<string, AttemptRecord>();
@@ -46,6 +48,7 @@ function makeDeps(options: {
   });
   const save = jest.fn(async (record: AttemptRecord) => {
     saved.set(record.url, record);
+    return true;
   });
   const deps: ScheduledRunDeps = {
     now: options.clock ?? (() => START),
@@ -55,6 +58,8 @@ function makeDeps(options: {
         [...saved.values()].filter(r => r.nextAttemptAt && r.nextAttemptAt.getTime() <= now.getTime()),
       save,
     },
+    loadRegisteredUrls: async () => options.registered ?? [],
+    isRegistered: async url => (options.registered ?? []).some(entry => entry.url === url),
     loadRssItems: async () => ({ items: options.items, errors: [] }),
     fetchPage: async url => ({
       title: `title of ${url}`,
@@ -167,6 +172,7 @@ describe('runScheduled', () => {
     let saves = 0;
     deps.store.save = async () => {
       if (++saves === 2) throw new Error('UNAVAILABLE');
+      return true;
     };
     const summary = await runScheduled(deps, { dryRun: false });
     expect(summary.stopReason).toBe('error');
@@ -215,6 +221,135 @@ describe('runScheduled', () => {
       title: '記事 1',
       // published 2026-11-14, first tried 2026-11-15: a fresh page, so a week later
       nextAttemptAt: new Date('2026-11-22T01:05:00Z'),
+    });
+  });
+
+  describe('registered URLs', () => {
+    const registered = (url: string, createdAt: string): RegisteredUrl => ({
+      id: `id-${url}`,
+      url,
+      createdBy: 'boss@example.com',
+      createdAt: new Date(createdAt),
+    });
+
+    it('tries untried registered URLs first, the oldest registration first', async () => {
+      const { deps, generate } = makeDeps({
+        items: rssItems(1),
+        results: () => SKIP,
+        registered: [registered('https://reg.example/new', '2026-11-14T00:00:00Z'), registered('https://reg.example/old', '2026-11-10T00:00:00Z')],
+      });
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(generate.mock.calls.map(call => call[0].rssItem.link)).toEqual([
+        'https://reg.example/old',
+        'https://reg.example/new',
+        'https://a.example/1',
+      ]);
+      expect(summary.items.map(item => item.registered)).toEqual([true, true, false]);
+    });
+
+    it('does not try a registered URL again once it has a record', async () => {
+      const { deps, generate } = makeDeps({
+        items: [],
+        results: () => SKIP,
+        registered: [registered('https://reg.example/1', '2026-11-10T00:00:00Z')],
+      });
+      await runScheduled(deps, { dryRun: false });
+      await runScheduled(deps, { dryRun: false });
+      expect(generate).toHaveBeenCalledTimes(1);
+    });
+
+    it('records the source, the page title, and the registration date when the page shows none', async () => {
+      const { deps, saved } = makeDeps({
+        items: [],
+        results: () => SKIP,
+        registered: [registered('https://reg.example/1', '2026-11-10T00:00:00Z')],
+      });
+      deps.fetchPage = async url => ({ title: 'イベントのページ', html: '<p>本文</p>', actualUrl: url, pageHtml: '<p>no date</p>' });
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(saved.get('https://reg.example/1')).toMatchObject({
+        source: 'registered',
+        title: 'イベントのページ',
+        publishedAt: new Date('2026-11-10T00:00:00Z'),
+        publishedAtSource: 'registration',
+      });
+      expect(summary.items[0]).toMatchObject({ registered: true, title: 'イベントのページ' });
+    });
+
+    it('marks a retry of a registered URL as registered', async () => {
+      const waiting: AttemptRecord = {
+        url: 'https://reg.example/1',
+        source: 'registered',
+        status: 'waiting-details',
+        lastOutcome: 'unannounced',
+        attemptCount: 1,
+        unannouncedCount: 1,
+        failureCount: 0,
+        firstAttemptAt: new Date('2026-11-01T00:00:00Z'),
+        lastAttemptAt: new Date('2026-11-01T00:00:00Z'),
+        nextAttemptAt: new Date('2026-11-08T00:00:00Z'),
+        publishedAt: new Date('2026-10-31T00:00:00Z'),
+        publishedAtSource: 'registration',
+      };
+      const { deps } = makeDeps({
+        items: [],
+        results: () => SKIP,
+        stored: [waiting],
+        registered: [registered('https://reg.example/1', '2026-10-31T00:00:00Z')],
+      });
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(summary.items).toEqual([expect.objectContaining({ url: 'https://reg.example/1', registered: true })]);
+    });
+
+    it('keeps the run going when the registrations cannot be read', async () => {
+      const { deps, generate } = makeDeps({ items: rssItems(1), results: () => SKIP });
+      deps.loadRegisteredUrls = async () => {
+        throw new Error('UNAVAILABLE');
+      };
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(summary.stopReason).toBeUndefined();
+      expect(summary.feedErrors).toEqual(['登録 URL: UNAVAILABLE']);
+      expect(generate).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not show a retry for a URL whose record the store kept as given up', async () => {
+      const unannounced: MdxGenerationResult = { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: '詳細未発表' };
+      const { deps } = makeDeps({
+        items: [],
+        results: () => unannounced,
+        registered: [registered('https://reg.example/1', '2026-11-10T00:00:00Z')],
+      });
+      deps.store.save = async () => false;
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(summary.items[0]).toMatchObject({ nextAttemptAt: null, givenUpReason: ALREADY_GIVEN_UP_REASON });
+    });
+
+    it('gives up instead of queuing a retry when the registration was removed before the first save', async () => {
+      const unannounced: MdxGenerationResult = { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: '詳細未発表' };
+      const { deps, saved } = makeDeps({
+        items: [],
+        results: () => unannounced,
+        registered: [registered('https://reg.example/1', '2026-11-10T00:00:00Z')],
+      });
+      // removed while the run was trying it
+      deps.isRegistered = async () => false;
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(saved.get('https://reg.example/1')).toMatchObject({
+        status: 'given-up',
+        nextAttemptAt: null,
+        givenUpReason: '登録を取り消したため打ち切りました',
+      });
+      expect(summary.items[0]).toMatchObject({ nextAttemptAt: null, givenUpReason: '登録を取り消したため打ち切りました' });
+    });
+
+    it('queues a retry for a registered URL that is still registered', async () => {
+      const unannounced: MdxGenerationResult = { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: '詳細未発表' };
+      const { deps, saved } = makeDeps({
+        items: [],
+        results: () => unannounced,
+        registered: [registered('https://reg.example/1', '2026-11-10T00:00:00Z')],
+      });
+      await runScheduled(deps, { dryRun: false });
+      expect(saved.get('https://reg.example/1')).toMatchObject({ status: 'waiting-details' });
     });
   });
 });

@@ -1,10 +1,11 @@
 /**
  * Put the URLs a scheduled run will try in order (decided 2026-11-15).
  *
- * 1. URLs whose retry is due (details not announced yet, or a failure), the longest-waiting first
- * 2. new RSS items delivered within the last 14 days, the newest first
+ * 1. URLs registered by hand that have not been tried yet, the oldest registration first
+ * 2. URLs whose retry is due (details not announced yet, or a failure), the longest-waiting first.
+ *    A registered URL that is waiting for a retry comes back here, not in 1
+ * 3. new RSS items delivered within the last 14 days, the newest first
  *
- * URLs registered by hand will come first once they exist (the next PR adds them).
  * A URL that was tried before is never a new item, and the same page is listed once even when
  * it arrives through several feeds or with different tracking parameters (`attempt-url.ts`).
  * The run itself stops after 15 tries or 5 PRs; this module only orders.
@@ -15,6 +16,7 @@ import { DAY_MS } from '@/lib/utils/date';
 
 import type { AttemptRecord } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
+import type { RegisteredUrl } from './registered-url-store';
 
 const RSS_MAX_AGE_DAYS = 14;
 
@@ -30,27 +32,44 @@ export interface RssCandidateInput {
 export interface Candidate {
   /** Normalized URL: what is fetched, compared and stored */
   url: string;
-  source: 'retry' | 'rss';
+  source: 'registered' | 'retry' | 'rss';
   title?: string;
   feedId?: string;
   /** The RSS delivery date (new RSS items only) */
   rssPubDate?: Date;
+  /** When the URL was registered (new registered URLs only) */
+  registeredAt?: Date;
   /** The stored record (retries only; a new item has none) */
   previous?: AttemptRecord;
 }
 
 interface OrderCandidatesInput {
+  /** URLs registered by hand (`RegisteredUrlStore.list`); tried ones are left out here */
+  registered: RegisteredUrl[];
   /** Records whose retry is due (`AttemptStore.findDueRetries`) */
   dueRetries: AttemptRecord[];
   rssItems: RssCandidateInput[];
-  /** Normalized URLs that already have an attempt record */
+  /** Normalized URLs that already have an attempt record (registered and RSS URLs) */
   attemptedUrls: ReadonlySet<string>;
   now: Date;
 }
 
-export function orderCandidates({ dueRetries, rssItems, attemptedUrls, now }: OrderCandidatesInput): Candidate[] {
+export function orderCandidates({
+  registered,
+  dueRetries,
+  rssItems,
+  attemptedUrls,
+  now,
+}: OrderCandidatesInput): Candidate[] {
   const seen = new Set<string>();
   const ordered: Candidate[] = [];
+
+  const untried = [...registered].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  for (const entry of untried) {
+    if (!entry.url || seen.has(entry.url) || attemptedUrls.has(entry.url)) continue;
+    seen.add(entry.url);
+    ordered.push({ url: entry.url, source: 'registered', registeredAt: entry.createdAt });
+  }
 
   const retries = dueRetries
     .filter((record): record is AttemptRecord & { nextAttemptAt: Date } => record.nextAttemptAt !== null)

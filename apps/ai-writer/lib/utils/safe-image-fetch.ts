@@ -196,10 +196,11 @@ export function isBlockedHost(hostname: string): boolean {
  *
  * IP リテラルの直接指定だけでなく、**内部 IP を返す DNS レコード**も塞ぐ。
  * 解決できないホストは取得しても失敗するので、そのまま throw する。
+ * ページの取得 (`html-extractor.ts`) と、定期実行の登録 URL の受け付け (`lib/scheduled/registered-url-api.ts`) でも使う。
  */
-async function assertPublicHost(url: URL): Promise<void> {
+export async function assertPublicHost(url: URL): Promise<void> {
   if (isBlockedHost(url.hostname)) {
-    throw new Error(`Blocked image host (internal address): ${url.hostname}`);
+    throw new Error(`Blocked host (internal address): ${url.hostname}`);
   }
 
   // IP リテラルなら上のチェックで確定しているので DNS 解決は不要
@@ -210,7 +211,7 @@ async function assertPublicHost(url: URL): Promise<void> {
     const blocked = family === 4 ? isBlockedIpv4(address) : isBlockedIpv6(address);
     if (blocked) {
       throw new Error(
-        `Blocked image host (resolves to internal address): ${url.hostname} → ${address}`
+        `Blocked host (resolves to internal address): ${url.hostname} → ${address}`
       );
     }
   }

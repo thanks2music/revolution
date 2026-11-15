@@ -16,7 +16,7 @@ beforeEach(() => {
 
 describe('recordCliAttempt', () => {
   it('stores the normalized URL with source cli and the page date', async () => {
-    const save = jest.fn(async (_: AttemptRecord) => {});
+    const save = jest.fn(async (_: AttemptRecord) => true);
     await recordCliAttempt(
       () => ({ get: async () => undefined, save }),
       {
@@ -37,12 +37,24 @@ describe('recordCliAttempt', () => {
     });
   });
 
+  it('says the record was left alone when the store refuses it', async () => {
+    const save = jest.fn(async (_: AttemptRecord) => false);
+    await recordCliAttempt(() => ({ get: async () => undefined, save }), {
+      url: 'https://a.example/1',
+      title: 't',
+      pageHtml: '',
+      result: { success: false, skipped: true, skipKind: 'unannounced-event', skipReason: '詳細未発表' } as MdxGenerationResult,
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('記録は変えませんでした'));
+  });
+
   it('never throws when the store fails', async () => {
     const store = {
       get: async () => {
         throw new Error('PERMISSION_DENIED');
       },
-      save: jest.fn(async () => {}),
+      save: jest.fn(async () => true),
     };
     await expect(
       recordCliAttempt(() => store, { url: 'https://a.example/1', title: 't', pageHtml: '', result: { success: true } as MdxGenerationResult }),

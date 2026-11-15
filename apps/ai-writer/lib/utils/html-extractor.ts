@@ -28,6 +28,7 @@ import * as path from 'path';
 import { Agent } from 'undici';
 
 import { compactHtmlForLlm, LLM_INPUT_BUDGET_CHARS } from '@/lib/utils/compact-html';
+import { assertPublicHost } from '@/lib/utils/safe-image-fetch';
 import { BROWSER_USER_AGENT, FETCH_TIMEOUT_MS } from '@/lib/utils/http-constants';
 import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
 
@@ -92,17 +93,13 @@ async function fetchWithSSLSkip(url: string, options: RequestInit = {}): Promise
 }
 
 /**
- * SSL証明書エラー時に自動リトライする fetch ラッパー
+ * SSL証明書エラー時に自動リトライする fetch (1 回分。リダイレクトは追わない)
  *
  * 1. まず通常の SSL 検証でリクエスト
  * 2. SSL証明書エラーの場合のみ、検証スキップでリトライ
  * 3. リトライ時は警告ログを出力
- *
- * @param url フェッチ先URL
- * @param options fetch オプション
- * @returns Response
  */
-async function fetchWithSSLFallback(url: string, options: RequestInit = {}): Promise<Response> {
+async function fetchOnceWithSSLFallback(url: string, options: RequestInit): Promise<Response> {
   try {
     // 通常の SSL 検証で試行
     return await fetch(url, options);
@@ -123,6 +120,58 @@ async function fetchWithSSLFallback(url: string, options: RequestInit = {}): Pro
     // その他のエラーはそのまま throw
     throw error;
   }
+}
+
+/**
+ * ページのリダイレクトの上限。fetch の `redirect: 'follow'` の既定 (20) にそろえ、以前に読めていたページを
+ * 読めなくしない (アーカイブの公式サイトの生死の判定は、取得の失敗を「閉じた」とみなすため)
+ */
+export const MAX_PAGE_REDIRECTS = 20;
+
+/**
+ * ページを取得する。SSL 証明書エラー時の再試行に加えて、内部のアドレスへの取得を拒む (SSRF 対策)。
+ *
+ * 取得する URL は RSS・CLI の引数・管理画面で登録した URL などの外部の入力にあたる。
+ * 画像の取得 (`safe-image-fetch.ts`) と同じく、スキームを http(s) に限り、ホストが内部のアドレス
+ * (ループバック・プライベート・リンクローカル・メタデータ) を指していないことを確かめる。
+ * リダイレクトは自前で追い、各ホップに同じ確認をかける (`redirect: 'follow'` だと
+ * 外部 → 内部への転送を確かめられない)。
+ *
+ * 既知の限界 (画像の取得と同じ): 確かめる時の名前解決と、fetch が接続する時の名前解決は別なので、
+ * 2 回目に別のアドレスを返す DNS (DNS rebinding) は防げない。防ぐには、接続の時の lookup で同じ確認を行う必要がある。
+ *
+ * @param url フェッチ先URL
+ * @param options fetch オプション (`redirect` は上書きする)。全ホップに同じものを送るので、
+ *   別のオリジンへ転送されうる認証情報 (Cookie・Authorization) は渡さないこと
+ * @returns 最後のホップの Response
+ */
+async function fetchWithSSLFallback(url: string, options: RequestInit = {}): Promise<Response> {
+  let current = new URL(url);
+
+  for (let hop = 0; hop <= MAX_PAGE_REDIRECTS; hop++) {
+    if (current.protocol !== 'http:' && current.protocol !== 'https:') {
+      throw new Error(`Blocked page URL scheme "${current.protocol}" for "${current.href}"`);
+    }
+    await assertPublicHost(current);
+
+    const response = await fetchOnceWithSSLFallback(current.href, { ...options, redirect: 'manual' });
+    const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+    // Location の無い 3xx (304 など) はそのまま返し、呼び出し側が ok でないものとして扱う
+    if (!location) return response;
+    // 追わない本文は捨てて、接続を早く返す
+    await response.body?.cancel().catch(() => {});
+    if (hop === MAX_PAGE_REDIRECTS) {
+      throw new Error(`Too many redirects (> ${MAX_PAGE_REDIRECTS}) for "${url}"`);
+    }
+    try {
+      current = new URL(location, current);
+    } catch {
+      throw new Error(`Invalid redirect Location "${location.slice(0, 200)}" from ${current.href}`);
+    }
+  }
+
+  // ループは必ず return / throw で抜けるが、型のために置く
+  throw new Error(`Too many redirects (> ${MAX_PAGE_REDIRECTS}) for "${url}"`);
 }
 
 /**
