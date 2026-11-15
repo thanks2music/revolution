@@ -32,9 +32,10 @@ describe('resolveEnvPat', () => {
   });
 
   it('reports both names in order when both are unresolved references (Secret Manager is used)', () => {
-    expect(
-      resolveEnvPat({ REVO_GITHUB_PAT: 'op://a/b/c', GITHUB_PAT: 'op://d/e/f' })
-    ).toEqual({ pat: null, unresolvedRefs: ['REVO_GITHUB_PAT', 'GITHUB_PAT'] });
+    expect(resolveEnvPat({ REVO_GITHUB_PAT: 'op://a/b/c', GITHUB_PAT: 'op://d/e/f' })).toEqual({
+      pat: null,
+      unresolvedRefs: ['REVO_GITHUB_PAT', 'GITHUB_PAT'],
+    });
   });
 
   it('treats empty or blank values as unset and trims the value', () => {
