@@ -38,7 +38,10 @@ export async function recordCliAttempt(
       { kind: 'pipeline', result: input.result },
       true,
     );
-    await store.save(record);
+    if (!(await store.save(record))) {
+      console.log('📒 試した URL の記録は変えませんでした (打ち切り済みの URL のため、定期実行は試しません)');
+      return;
+    }
     const next =
       record.status === 'waiting-details' && record.nextAttemptAt
         ? `定期実行は ${toJstDateString(record.nextAttemptAt)} 以降に試し直します`

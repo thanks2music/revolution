@@ -10,16 +10,16 @@
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 
 import type { PublishedDateSource } from './published-date';
-import type { AttemptStatus, OutcomeKind } from './retry-policy';
+import { isAwaitingRetry, type AttemptStatus, type OutcomeKind } from './retry-policy';
 import { attemptDocId } from './attempt-url';
 
 export const ATTEMPTS_COLLECTION = 'scheduled_url_attempts';
 
-/** Who tried the URL first */
-export type AttemptSource = 'rss' | 'cli';
+/** Where the URL came from when it was first tried */
+export type AttemptSource = 'rss' | 'registered' | 'cli';
 
 /** Where `publishedAt` came from */
-export type PublishedAtSource = PublishedDateSource | 'rss' | 'first-attempt';
+export type PublishedAtSource = PublishedDateSource | 'rss' | 'registration' | 'first-attempt';
 
 export interface AttemptRecord {
   url: string;
@@ -78,14 +78,18 @@ export class AttemptStore {
     return snapshot.exists ? fromFirestore(snapshot.data() ?? {}) : undefined;
   }
 
-  /** Which of the given normalized URLs already have a record (one batched read) */
-  async findAttempted(urls: string[]): Promise<Set<string>> {
+  /** The records of the given normalized URLs that have one, by URL (one batched read) */
+  async getMany(urls: string[]): Promise<Map<string, AttemptRecord>> {
     const unique = [...new Set(urls)];
-    if (unique.length === 0) return new Set();
+    if (unique.length === 0) return new Map();
     const snapshots = await this.db.getAll(...unique.map(url => this.ref(url)));
-    return new Set(
-      snapshots.filter(s => s.exists).map(s => String((s.data() as { url?: unknown }).url ?? '')),
-    );
+    const records = snapshots.filter(s => s.exists).map(s => fromFirestore(s.data() ?? {}));
+    return new Map(records.map(record => [record.url, record]));
+  }
+
+  /** Which of the given normalized URLs already have a record */
+  async findAttempted(urls: string[]): Promise<Set<string>> {
+    return new Set((await this.getMany(urls)).keys());
   }
 
   /** Records whose retry is due, the longest-waiting first */
@@ -99,7 +103,38 @@ export class AttemptStore {
     return snapshot.docs.map(doc => fromFirestore(doc.data()));
   }
 
-  async save(record: AttemptRecord): Promise<void> {
-    await this.ref(record.url).set(toFirestore(record));
+  /**
+   * Give up a URL that is waiting for a retry, reading and writing in one transaction so a
+   * result stored by a run in the meantime (a PR, a skip) is never replaced by a stale copy.
+   *
+   * @returns `true` when the record was given up
+   */
+  async giveUpIfAwaitingRetry(url: string, reason: string): Promise<boolean> {
+    const ref = this.ref(url);
+    return this.db.runTransaction(async transaction => {
+      const current = await transaction.get(ref);
+      if (!isAwaitingRetry(current.data()?.status as AttemptStatus | undefined)) return false;
+      transaction.update(ref, { status: 'given-up', nextAttemptAt: null, givenUpReason: reason });
+      return true;
+    });
+  }
+
+  /**
+   * Store the record, unless it would put a given-up URL back in the retry queue.
+   *
+   * A given-up URL is never tried again, so the only way to get there is a lost update: a run
+   * that was trying the URL while its registration was removed (`unregisterUrl`). A PR or a skip
+   * from that run is still stored. Read and write in one transaction so the check holds.
+   *
+   * @returns `false` when the record was not stored
+   */
+  async save(record: AttemptRecord): Promise<boolean> {
+    const ref = this.ref(record.url);
+    return this.db.runTransaction(async transaction => {
+      const current = await transaction.get(ref);
+      if (current.data()?.status === 'given-up' && isAwaitingRetry(record.status)) return false;
+      transaction.set(ref, toFirestore(record));
+      return true;
+    });
   }
 }

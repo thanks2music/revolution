@@ -26,8 +26,8 @@ describe('needsAttention', () => {
       needsAttention(
         summary({
           items: [
-            { url: 'u1', outcome: 'skipped' },
-            { url: 'u2', outcome: 'unannounced' },
+            { url: 'u1', registered: false, outcome: 'skipped' },
+            { url: 'u2', registered: false, outcome: 'unannounced' },
           ],
         }),
       ),
@@ -35,8 +35,8 @@ describe('needsAttention', () => {
   });
 
   it.each([
-    ['a PR', summary({ items: [{ url: 'u', outcome: 'pr' }] })],
-    ['a failure', summary({ items: [{ url: 'u', outcome: 'failure' }] })],
+    ['a PR', summary({ items: [{ url: 'u', registered: false, outcome: 'pr' }] })],
+    ['a failure', summary({ items: [{ url: 'u', registered: false, outcome: 'failure' }] })],
     ['an unreadable feed', summary({ feedErrors: ['コラボカフェ: 503'] })],
     ['an error of the run', summary({ stopReason: 'error', error: 'UNAVAILABLE' })],
   ])('%s needs a person', (_, value) => {
@@ -46,11 +46,11 @@ describe('needsAttention', () => {
 
 describe('buildScheduledRunMessage', () => {
   it('mentions only when a person is needed', () => {
-    const quiet = buildScheduledRunMessage(summary({ items: [{ url: 'u', outcome: 'skipped' }] }), CLOUD);
+    const quiet = buildScheduledRunMessage(summary({ items: [{ url: 'u', registered: false, outcome: 'skipped' }] }), CLOUD);
     expect(quiet.attention).toBe(false);
     expect(quiet.message.text).not.toContain('<@');
 
-    const loud = buildScheduledRunMessage(summary({ items: [{ url: 'u', outcome: 'failure', reason: 'x' }] }), CLOUD);
+    const loud = buildScheduledRunMessage(summary({ items: [{ url: 'u', registered: false, outcome: 'failure', reason: 'x' }] }), CLOUD);
     expect(loud.attention).toBe(true);
     expect(loud.message.text.startsWith('<@U0000000001> ❌ [production]')).toBe(true);
   });
@@ -61,9 +61,9 @@ describe('buildScheduledRunMessage', () => {
         dryRun: true,
         candidateCount: 7,
         items: [
-          { url: 'u1', outcome: 'pr', prUrl: 'https://github.com/o/r/pull/1' },
-          { url: 'u2', outcome: 'skipped' },
-          { url: 'u3', outcome: 'unannounced' },
+          { url: 'u1', registered: false, outcome: 'pr', prUrl: 'https://github.com/o/r/pull/1' },
+          { url: 'u2', registered: false, outcome: 'skipped' },
+          { url: 'u3', registered: false, outcome: 'unannounced' },
         ],
       }),
       { runtime: 'local' },
@@ -78,15 +78,16 @@ describe('buildScheduledRunMessage', () => {
     const { message } = buildScheduledRunMessage(
       summary({
         items: [
-          { url: 'https://a.example/1', title: 'コラボ', outcome: 'pr', prUrl: 'https://github.com/o/r/pull/1' },
+          { url: 'https://a.example/1', registered: false, title: 'コラボ', outcome: 'pr', prUrl: 'https://github.com/o/r/pull/1' },
           {
             url: 'https://a.example/2',
+            registered: false,
             outcome: 'unannounced',
             reason: '詳細未発表',
             nextAttemptAt: new Date('2026-11-22T01:05:00Z'),
           },
-          { url: 'https://a.example/3', outcome: 'failure', reason: 'HTTP 503', nextAttemptAt: new Date() },
-          { url: 'https://a.example/4', outcome: 'unannounced', givenUpReason: '開始日 (2026-11-20) までに詳細が発表されなかったため打ち切りました' },
+          { url: 'https://a.example/3', registered: false, outcome: 'failure', reason: 'HTTP 503', nextAttemptAt: new Date() },
+          { url: 'https://a.example/4', registered: false, outcome: 'unannounced', givenUpReason: '開始日 (2026-11-20) までに詳細が発表されなかったため打ち切りました' },
         ],
       }),
       CLOUD,
@@ -99,9 +100,24 @@ describe('buildScheduledRunMessage', () => {
     expect(message.blocks).toHaveLength(1 + 4 + 1);
   });
 
+  it('marks URLs registered from the admin UI', () => {
+    const { message } = buildScheduledRunMessage(
+      summary({
+        items: [
+          { url: 'https://reg.example/1', registered: true, outcome: 'skipped' },
+          { url: 'https://rss.example/1', registered: false, outcome: 'skipped' },
+        ],
+      }),
+      CLOUD,
+    );
+    const lines = message.blocks.map(block => JSON.stringify(block));
+    expect(lines.find(line => line.includes('reg.example'))).toContain('(登録 URL)');
+    expect(lines.find(line => line.includes('rss.example'))).not.toContain('(登録 URL)');
+  });
+
   it('explains why the run stopped and says when there was nothing to try', () => {
     const stopped = buildScheduledRunMessage(
-      summary({ stopReason: 'consecutive-failures', items: [{ url: 'u', outcome: 'failure' }] }),
+      summary({ stopReason: 'consecutive-failures', items: [{ url: 'u', registered: false, outcome: 'failure' }] }),
       CLOUD,
     );
     expect(text(stopped.message)).toContain('3 件続けて失敗したので止めました');
@@ -111,7 +127,7 @@ describe('buildScheduledRunMessage', () => {
   it('escapes and redacts values from outside', () => {
     const { message } = buildScheduledRunMessage(
       summary({
-        items: [{ url: 'https://a.example/<!channel>', outcome: 'failure', reason: 'key AIzaSyA0123456789012345678901234567890 rejected' }],
+        items: [{ url: 'https://a.example/<!channel>', registered: false, outcome: 'failure', reason: 'key AIzaSyA0123456789012345678901234567890 rejected' }],
       }),
       CLOUD,
     );

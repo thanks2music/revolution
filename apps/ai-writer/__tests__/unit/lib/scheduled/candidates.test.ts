@@ -37,6 +37,7 @@ beforeEach(() => {
 describe('orderCandidates', () => {
   it('puts due retries first (longest-waiting first), then new RSS items newest first', () => {
     const result = orderCandidates({
+      registered: [],
       dueRetries: [
         due('https://r.example/2', new Date('2026-11-14T00:00:00Z')),
         due('https://r.example/1', new Date('2026-11-10T00:00:00Z')),
@@ -56,6 +57,7 @@ describe('orderCandidates', () => {
 
   it('leaves out RSS items older than 14 days and items without a readable date', () => {
     const result = orderCandidates({
+      registered: [],
       dueRetries: [],
       rssItems: [rss('https://a.example/14', 14), rss('https://a.example/15', 15), { ...rss('https://a.example/x', 1), pubDate: 'unknown' }],
       attemptedUrls: new Set(),
@@ -66,6 +68,7 @@ describe('orderCandidates', () => {
 
   it('never lists a URL that was already tried as a new item', () => {
     const result = orderCandidates({
+      registered: [],
       dueRetries: [],
       rssItems: [rss('https://a.example/1?utm_source=alert', 1), rss('https://a.example/2', 1)],
       attemptedUrls: new Set(['https://a.example/1']),
@@ -77,6 +80,7 @@ describe('orderCandidates', () => {
   it('lists the same page once across feeds, Google redirects and tracking parameters', () => {
     const google = 'https://www.google.com/url?rct=j&url=https://a.example/1&ct=ga';
     const result = orderCandidates({
+      registered: [],
       dueRetries: [due('https://a.example/9', NOW)],
       rssItems: [rss(google, 1), rss('https://a.example/1#top', 2), rss('https://a.example/9', 1)],
       attemptedUrls: new Set(),
@@ -87,6 +91,7 @@ describe('orderCandidates', () => {
 
   it('keeps the RSS title, feed and delivery date for new items', () => {
     const [candidate] = orderCandidates({
+      registered: [],
       dueRetries: [],
       rssItems: [rss('https://a.example/1', 2, 'コラボカフェ')],
       attemptedUrls: new Set(),
@@ -94,5 +99,26 @@ describe('orderCandidates', () => {
     });
     expect(candidate).toMatchObject({ title: 'コラボカフェ', feedId: 'feed-1', source: 'rss' });
     expect(candidate.rssPubDate?.toUTCString()).toBe(daysAgo(2));
+  });
+
+  it('puts untried registered URLs first (oldest registration first), before retries and RSS', () => {
+    const result = orderCandidates({
+      registered: [
+        { id: 'b', url: 'https://reg.example/b', createdBy: 'boss@example.com', createdAt: new Date('2026-11-14T00:00:00Z') },
+        { id: 'a', url: 'https://reg.example/a', createdBy: 'boss@example.com', createdAt: new Date('2026-11-12T00:00:00Z') },
+        { id: 't', url: 'https://reg.example/tried', createdBy: 'boss@example.com', createdAt: new Date('2026-11-01T00:00:00Z') },
+      ],
+      dueRetries: [due('https://retry.example/1', new Date('2026-11-14T00:00:00Z'))],
+      rssItems: [rss('https://rss.example/1', 1), rss('https://reg.example/a', 1)],
+      attemptedUrls: new Set(['https://reg.example/tried']),
+      now: NOW,
+    });
+    expect(result.map(c => [c.source, c.url])).toEqual([
+      ['registered', 'https://reg.example/a'],
+      ['registered', 'https://reg.example/b'],
+      ['retry', 'https://retry.example/1'],
+      ['rss', 'https://rss.example/1'],
+    ]);
+    expect(result[0].registeredAt).toEqual(new Date('2026-11-12T00:00:00Z'));
   });
 });

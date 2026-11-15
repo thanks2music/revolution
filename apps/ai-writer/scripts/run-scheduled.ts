@@ -1,9 +1,9 @@
 /**
  * Entry point of the scheduled job (Cloud Run Jobs, started by Cloud Scheduler).
  *
- * One run reads the active RSS feeds and the URLs whose retry is due, sends them through the
- * article pipeline one by one (`lib/scheduled/run.ts` has the limits), stores what happened to
- * each URL, and posts one Slack message for the run.
+ * One run reads the URLs registered from the admin UI, the active RSS feeds and the URLs whose
+ * retry is due, sends them through the article pipeline one by one (`lib/scheduled/run.ts` has
+ * the limits), stores what happened to each URL, and posts one Slack message for the run.
  *
  * Usage:
  *   tsx scripts/run-scheduled.ts --dry-run   # no PR, no Firestore write (reads Firestore)
@@ -27,6 +27,8 @@ import { ArticleGenerationMdxService } from '../lib/services/article-generation-
 import { RssArticleCollectionService } from '../lib/services/rss-article-collection.service';
 import { AttemptStore } from '../lib/scheduled/attempt-store';
 import type { RssCandidateInput } from '../lib/scheduled/candidates';
+import { attemptDocId } from '../lib/scheduled/attempt-url';
+import { RegisteredUrlStore } from '../lib/scheduled/registered-url-store';
 import { runScheduled } from '../lib/scheduled/run';
 import { prCountOf, type ScheduledRunSummary, type StopReason } from '../lib/scheduled/summary';
 import { notifyScheduledRun } from '../lib/slack';
@@ -54,7 +56,8 @@ async function loadRssItems(): Promise<{ items: RssCandidateInput[]; errors: str
       const articles = await collector.collectArticlesFromFeedObject(feed);
       for (const article of articles) {
         if (!article.link) continue;
-        items.push({ link: article.link, title: plainText(article.title), pubDate: article.pubDate, feedId: feed.id });
+        // An item without a date is left out by the 14-day check (`orderCandidates`)
+        items.push({ link: article.link, title: plainText(article.title), pubDate: article.pubDate ?? '', feedId: feed.id });
       }
     } catch (error) {
       errors.push(`${feed.title || feed.id}: ${error instanceof Error ? error.message : String(error)}`);
@@ -115,6 +118,8 @@ async function main(): Promise<void> {
       {
         now: () => new Date(),
         store: new AttemptStore(getAdminDb()),
+        loadRegisteredUrls: () => new RegisteredUrlStore(getAdminDb()).list(),
+        isRegistered: async url => (await new RegisteredUrlStore(getAdminDb()).get(attemptDocId(url))) !== undefined,
         loadRssItems,
         fetchPage: extractArticleData,
         generate: request => service.generateMdxFromRSS(request),

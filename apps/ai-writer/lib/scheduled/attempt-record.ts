@@ -24,6 +24,8 @@ export interface AttemptContext {
   pageDate?: PublishedDate;
   /** The RSS delivery date (RSS items only) */
   rssPubDate?: Date;
+  /** When the URL was registered (registered URLs only) */
+  registeredAt?: Date;
   now: Date;
 }
 
@@ -62,6 +64,7 @@ function publishedAtOf(
   if (previous) return { publishedAt: previous.publishedAt, publishedAtSource: previous.publishedAtSource };
   if (context.pageDate) return { publishedAt: context.pageDate.date, publishedAtSource: context.pageDate.source };
   if (context.rssPubDate) return { publishedAt: context.rssPubDate, publishedAtSource: 'rss' };
+  if (context.registeredAt) return { publishedAt: context.registeredAt, publishedAtSource: 'registration' };
   return { publishedAt: context.now, publishedAtSource: 'first-attempt' };
 }
 

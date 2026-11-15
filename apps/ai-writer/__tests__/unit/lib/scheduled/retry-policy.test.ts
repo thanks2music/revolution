@@ -82,7 +82,7 @@ describe('failures', () => {
   });
 
   it('only the first failure of a streak is excused, so URLs that always fail are still given up', () => {
-    const previous = { ...previousAfter('2026-11-14', 0, 2), lastOutcome: 'failure' };
+    const previous = { ...previousAfter('2026-11-14', 0, 2), lastOutcome: 'failure' as const };
     const state = nextAttemptState(previous, { kind: 'failure', counted: false }, NOW, NOW);
     expect(state).toMatchObject({ status: 'given-up', failureCount: 3 });
   });
