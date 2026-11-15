@@ -13,6 +13,7 @@ import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { GitHubAuthError, GitHubNetworkError } from '../errors/github';
+import { resolveEnvPat } from './env-pat';
 
 /**
  * Octokit with plugins
@@ -53,7 +54,7 @@ const PAT_CACHE_TTL_MS = 60 * 60 * 1000; // 1時間
  * GitHub PATを取得 (メモ化)
  *
  * 取得優先順位:
- * 1. 環境変数 GITHUB_PAT (ローカル開発・デバッグ用)
+ * 1. 環境変数 REVO_GITHUB_PAT → GITHUB_PAT (ローカル開発・デバッグ用、resolveEnvPat)
  * 2. Secret Manager (Cloud Run本番用)
  *
  * Codexレビュー指摘対応:
@@ -79,9 +80,10 @@ async function getGitHubPat(forceRefresh = false): Promise<string> {
   }
 
   // Pattern 1: 環境変数から直接取得（ローカル開発・デバッグ用）
-  if (process.env.GITHUB_PAT) {
-    console.log('[GitHub Client] Using GITHUB_PAT from environment variable');
-    cachedPat = process.env.GITHUB_PAT;
+  const fromEnv = resolveEnvPat(process.env);
+  if (fromEnv) {
+    console.log(`[GitHub Client] Using ${fromEnv.name} from environment variable`);
+    cachedPat = fromEnv.value;
     patCachedAt = now;
     return cachedPat;
   }
