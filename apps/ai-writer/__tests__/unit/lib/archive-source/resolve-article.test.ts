@@ -81,6 +81,14 @@ describe('resolveArchiveArticle', () => {
     });
   });
 
+  it('picks the post at the article path when the slug matches several', async () => {
+    const other = { ...post, link: 'https://archive.example.com/events/other/sample-event-2019/', title: { rendered: 'Other' } };
+    const article = await resolveArchiveArticle(ARTICLE_URL, SOURCE, async () => [other, post]);
+    expect(article.title).toBe('サンプル作品 × カフェ');
+
+    await expect(resolveArchiveArticle(ARTICLE_URL, SOURCE, async () => [other, other])).rejects.toThrow('matched 2 articles');
+  });
+
   it('leaves the year and type empty when the API has none', async () => {
     const article = await resolveArchiveArticle(ARTICLE_URL, SOURCE, async () => [
       { content: { rendered: '' }, starts_at: null, event_types: [1] },

@@ -132,9 +132,17 @@ export async function generateWithArchiveFallback(
 
   const { fallback } = plan;
   console.log(`\n🗄️  公式サイトから作れなかったため (${result.skipReason})、アーカイブの記事から作り直します\n`);
+  let page: ArticlePage;
+  try {
+    page = await readPage(fallback.inputUrl);
+  } catch (error) {
+    // Keep the official run's result (a skip) rather than turning it into a failure
+    console.warn(`⚠️ アーカイブの記事を読めなかったため、作り直しを止めます: ${error instanceof Error ? error.message : String(error)}`);
+    return result;
+  }
   return generate({
     ...request,
-    rssItem: rssItemFromPage(await readPage(fallback.inputUrl), request.rssItem.pubDate),
+    rssItem: rssItemFromPage(page, request.rssItem.pubDate),
     sourceOverride: fallback.sourceOverride,
     extracted: fallback.extracted,
   });

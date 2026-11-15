@@ -77,7 +77,7 @@ export async function resolveArchiveArticle(
   if (!Array.isArray(body) || body.length === 0) {
     throw new Error(`Archive article not found by slug "${slug}"`);
   }
-  const post = body[0] as RestPost;
+  const post = pickPost(body as RestPost[], articleUrl, slug);
   const contentHtml = post.content?.rendered ?? '';
   const startsOn = parseArchiveDate(stringField(post, source.fields.start));
   const canonicalUrl = post.link ?? articleUrl;
@@ -93,6 +93,26 @@ export async function resolveArchiveArticle(
     featuredImageUrl: post._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null,
     officialUrl: pickOfficialUrl(contentHtml, canonicalUrl, source.official_url),
   };
+}
+
+/**
+ * The post for the article: the one whose link has the article's path. A single result is used as
+ * it is; several results without a match are an error rather than a guess
+ */
+function pickPost(posts: RestPost[], articleUrl: string, slug: string): RestPost {
+  const path = pathOf(articleUrl);
+  const match = posts.find((post) => post.link !== undefined && pathOf(post.link) === path);
+  if (match) return match;
+  if (posts.length === 1) return posts[0];
+  throw new Error(`Archive slug "${slug}" matched ${posts.length} articles, none at ${articleUrl}`);
+}
+
+function pathOf(url: string): string | null {
+  try {
+    return new URL(url).pathname.replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
 }
 
 function stringField(post: RestPost, name: string): string | null {

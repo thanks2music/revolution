@@ -169,4 +169,16 @@ describe('generateWithArchiveFallback', () => {
     expect(second.sourceOverride?.unlinkScope).toBe('none');
     expect(second.extracted?.workTitle).toBe('サンプル作品');
   });
+
+  it('keeps the skip when the archive article cannot be read again', async () => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const generate = jest.fn(async () => unannounced);
+    const failingRead = jest.fn(async (): Promise<{ title: string; html: string; actualUrl: string }> => {
+      throw new Error('fetch failed');
+    });
+
+    expect(await generateWithArchiveFallback(await officialPlan(), request, generate, failingRead)).toBe(unannounced);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
 });
