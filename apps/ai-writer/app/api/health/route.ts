@@ -82,6 +82,7 @@ export async function GET() {
 
     const requiredSecrets = [
       'ALLOWED_EMAILS',
+      // Cloud Run は Secret Manager からこの名前で受け取る (ローカルの CLI の REVO_GITHUB_PAT はここを通らない)
       'GITHUB_PAT',
       'GITHUB_OWNER',
       'GITHUB_REPO',

@@ -101,7 +101,10 @@ declare namespace NodeJS {
     // GitHub
     // ========================================
 
-    /** GitHub Personal Access Token */
+    /** GitHub Personal Access Token (ローカルの CLI 用。GITHUB_PAT より優先する) */
+    REVO_GITHUB_PAT?: string;
+
+    /** GitHub Personal Access Token (Cloud Run は Secret Manager からこの名前で受け取る) */
     GITHUB_PAT?: string;
 
     /** GitHub リポジトリオーナー */

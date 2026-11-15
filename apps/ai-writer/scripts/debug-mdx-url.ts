@@ -32,7 +32,7 @@
  *   --allow-shrink   --update で会場・品目が減っても PR を作る
  *
  * 前提条件:
- *   - .env.local に GITHUB_PAT を設定（--dry-run/--local/--upload-images時は不要。--update は --dry-run でも必要 (main の記事を読む)）
+ *   - REVO_GITHUB_PAT (.env.op.local に 1Password の参照を書く) か GITHUB_PAT を設定（--dry-run/--local/--upload-images時は不要。--update は --dry-run でも必要 (main の記事を読む)）
  *   - .env.local に AI_PROVIDER に応じたキーを設定 (Claude は ant auth login のプロファイルでキー不要)
  *   - .env.local に R2_* 環境変数を設定（--upload-images時に必要）
  *   - Firebase Admin SDK の認証情報を設定（--dry-run/--local/--upload-images時は不要）
@@ -358,7 +358,7 @@ async function main() {
     } catch (error) {
       console.error('\n❌ 更新する記事を読めませんでした:', error instanceof Error ? error.message : error);
       if (error instanceof GitHubAuthError) {
-        console.error('  GITHUB_PAT が要ります (--dry-run でも main の記事を読むため)。例: GITHUB_PAT="$(gh auth token)" pnpm debug:mdx --update <post_id> --dry-run');
+        console.error('  REVO_GITHUB_PAT か GITHUB_PAT が要ります (--dry-run でも main の記事を読むため)。例: REVO_GITHUB_PAT="$(gh auth token)" pnpm debug:mdx --update <post_id> --dry-run');
       }
       process.exitCode = 1;
       return;
@@ -763,7 +763,7 @@ async function main() {
     console.log('  1. URLが正しいか確認');
     console.log('  2. .env.local に必要な環境変数が設定されているか確認');
     console.log('     - AI_PROVIDER に応じたキー (GEMINI_API_KEY / OPENAI_API_KEY。Claude は ant auth login のプロファイル)');
-    console.log('     - GITHUB_PAT');
+    console.log('     - REVO_GITHUB_PAT (.env.op.local の 1Password の参照) か GITHUB_PAT (REVO_GITHUB_PAT が優先)');
     console.log('     - FIREBASE_PROJECT_ID (オプション)');
     console.log('  3. ネットワーク接続を確認');
     console.log('  4. DEBUG_HTML_EXTRACTION=true でHTML抽出をデバッグ');
