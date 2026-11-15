@@ -27,6 +27,7 @@ import { isRecord, toOptionalString } from '@/lib/utils/llm-values';
 import { pageUrlKey } from '@/lib/utils/url';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
 import { EXTRACTION_THINKING_LEVEL } from '@/lib/config/gemini-models';
+import { PIPELINE_PROMPTS } from './pipeline-prompts';
 
 const SUBPAGE_EXTRACTION_OPENAI_SCHEMA = zodToOpenAiSchema(
   SubpageExtractionResponseSchema,
@@ -183,7 +184,7 @@ export function parseSubpageResponse(raw: unknown, pages: SubpageText[]): Subpag
 
 export class SubpageExtractionService {
   private readonly templateId = 'collabo-cafe';
-  private readonly pipelineId = '2.5-subpage-extraction';
+  private readonly pipelineId = PIPELINE_PROMPTS.subpageExtraction.pipelineId;
   private readonly templateLoader: YamlTemplateLoaderService;
   private readonly aiProvider: AiProvider;
 
@@ -204,7 +205,7 @@ export class SubpageExtractionService {
       includeSections: false,
       includeShared: false,
     });
-    const instruction = template.prompts.extract_subpages;
+    const instruction = template.prompts[PIPELINE_PROMPTS.subpageExtraction.promptKey];
     if (!instruction) {
       throw new Error(`${this.pipelineId}.yaml に prompts.extract_subpages がありません`);
     }

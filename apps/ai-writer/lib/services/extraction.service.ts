@@ -34,6 +34,7 @@ import {
 import { getStepContext } from './pipeline-steps';
 import { isRecord, toOptionalString } from '@/lib/utils/llm-values';
 import type { SubpageGoodsItem } from '@revolution/schemas/subpage-extraction-response';
+import { PIPELINE_PROMPTS } from './pipeline-prompts';
 
 /**
  * Module-level compile of the OpenAI-strict JSON Schema for extraction responses.
@@ -386,7 +387,7 @@ export class ExtractionService {
   /** モジュール化テンプレートID */
   private readonly templateId = 'collabo-cafe';
   /** パイプラインID */
-  private readonly pipelineId = '2-extraction';
+  private readonly pipelineId = PIPELINE_PROMPTS.extraction.pipelineId;
 
   constructor(templateLoader?: YamlTemplateLoaderService, aiProvider?: AiProvider) {
     this.templateLoader = templateLoader || new YamlTemplateLoaderService();
@@ -522,7 +523,7 @@ export class ExtractionService {
     const { text: pageContent, truncated } = truncateForLlm(request.page_content);
 
     // 最終プロンプトを構築
-    return `${template.prompts.extraction}
+    return `${template.prompts[PIPELINE_PROMPTS.extraction.promptKey]}
 
 ${rulesSection}
 
