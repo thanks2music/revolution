@@ -70,7 +70,12 @@ async function getGitHubPat(forceRefresh = false): Promise<string> {
   const now = Date.now();
 
   // キャッシュが有効な場合はそれを返す
-  if (!forceRefresh && cachedPat && patCachedAt && now - patCachedAt < PAT_CACHE_TTL_MS) {
+  if (
+    !forceRefresh &&
+    cachedPat &&
+    patCachedAt &&
+    now - patCachedAt < PAT_CACHE_TTL_MS
+  ) {
     return cachedPat;
   }
 
@@ -156,7 +161,9 @@ export async function createGitHubClient(
     // throttling plugin設定
     throttle: {
       onRateLimit: (retryAfter: number, options: any, octokit: any, retryCount: number) => {
-        octokit.log.warn(`Request quota exhausted for request ${options.method} ${options.url}`);
+        octokit.log.warn(
+          `Request quota exhausted for request ${options.method} ${options.url}`
+        );
 
         // 最大3回までリトライ
         if (retryCount < 3) {
@@ -166,12 +173,7 @@ export async function createGitHubClient(
 
         return false;
       },
-      onSecondaryRateLimit: (
-        retryAfter: number,
-        options: any,
-        octokit: any,
-        retryCount: number
-      ) => {
+      onSecondaryRateLimit: (retryAfter: number, options: any, octokit: any, retryCount: number) => {
         octokit.log.warn(
           `Secondary rate limit detected for request ${options.method} ${options.url}`
         );
@@ -202,7 +204,10 @@ export async function createGitHubClient(
  */
 export function wrapNetworkError(error: unknown): never {
   if (error instanceof Error) {
-    throw new GitHubNetworkError(`GitHub API network error: ${error.message}`, error);
+    throw new GitHubNetworkError(
+      `GitHub API network error: ${error.message}`,
+      error
+    );
   }
   throw new GitHubNetworkError('Unknown GitHub API network error');
 }
