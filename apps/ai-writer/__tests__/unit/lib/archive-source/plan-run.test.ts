@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 import {
   generateWithArchiveFallback,
@@ -127,6 +127,10 @@ describe('rssItemFromPage', () => {
 });
 
 describe('generateWithArchiveFallback', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   const request: MdxGenerationRequest = {
     rssItem: { title: 'Official', link: 'https://official.example.com/event/', content: '<p></p>', pubDate: '2000-01-01T00:00:00.000Z' },
     dryRun: true,

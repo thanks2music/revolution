@@ -76,10 +76,12 @@ export function pageNamesWork(pageHtml: string, workTitle: string): boolean {
 /** The page's visible text plus the attribute texts that name things (`alt`, `title`, `og:title`) */
 function pageText(html: string): string {
   const body = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ');
-  const attributes = [...body.matchAll(/\s(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((match) => match[1]);
-  const ogTitle = [...body.matchAll(/<meta\b[^>]*\bproperty\s*=\s*"og:title"[^>]*>/gi)].map(
-    (match) => /\bcontent\s*=\s*"([^"]*)"/i.exec(match[0])?.[1] ?? '',
-  );
+  // Double- or single-quoted values (`"…"` / `'…'`)
+  const attributes = [...body.matchAll(/\s(?:alt|title)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)].map((match) => match[1] ?? match[2]);
+  const ogTitle = [...body.matchAll(/<meta\b[^>]*\bproperty\s*=\s*["']og:title["'][^>]*>/gi)].map((match) => {
+    const content = /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(match[0]);
+    return content?.[1] ?? content?.[2] ?? '';
+  });
   return [body.replace(/<[^>]+>/g, ' '), ...attributes, ...ogTitle].join(' ');
 }
 

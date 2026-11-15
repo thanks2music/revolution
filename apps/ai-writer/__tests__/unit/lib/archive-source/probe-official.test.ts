@@ -29,6 +29,8 @@ describe('pageNamesWork', () => {
     expect(pageNamesWork('<h1><img src="/logo.png" alt="サンプル作品 コラボカフェ"></h1>', 'サンプル作品')).toBe(true);
     expect(pageNamesWork('<a title="Sample Work"><img src="/logo.png"></a>', 'Sample Work')).toBe(true);
     expect(pageNamesWork('<meta property="og:title" content="サンプル作品 POP UP"><p>no text</p>', 'サンプル作品')).toBe(true);
+    expect(pageNamesWork("<img src='/logo.png' alt='サンプル作品'>", 'サンプル作品')).toBe(true);
+    expect(pageNamesWork("<meta content='サンプル作品' property='og:title'>", 'サンプル作品')).toBe(true);
     expect(pageNamesWork('<img src="/logo.png" alt="other event">', 'サンプル作品')).toBe(false);
   });
 
