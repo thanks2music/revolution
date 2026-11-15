@@ -89,16 +89,32 @@ jobs:
           path: .templates-src
           persist-credentials: false
 
+      # 壊れた templates (辞書・プロンプト) をイメージに入れない。templates の repo の CI と同じ検証を、
+      # 取得した版に対して行う。この repo は public でログも公開されるため、--redact で規則と件数だけを出す
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.tool-versions'
+          cache: 'pnpm'
+
+      - name: Validate templates
+        id: templates
+        run: |
+          # 取得できた版を先に出しておく (検証や同期が失敗しても、Slack にどの版で止まったかが出る)
+          echo "short=$(git -C .templates-src rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          pnpm install --frozen-lockfile --filter @revolution/ai-writer...
+          pnpm --filter @revolution/ai-writer validate:templates --dir "$GITHUB_WORKSPACE/.templates-src" --redact
+
       # 手元と同じ scripts/sync-templates.sh で置く (同じ物が同じ場所に入る)。どの版が入ったかは
       # VERSION.json とイメージのタグに残す
       - name: Place templates for the job image
-        id: templates
         env:
           TEMPLATES_SOURCE_PATH: ${{ github.workspace }}/.templates-src
           SYNCED_BY: github-actions
         run: |
-          # 取得できた版を先に出しておく (同期が失敗しても、Slack にどの版で止まったかが出る)
-          echo "short=$(git -C .templates-src rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
           bash scripts/sync-templates.sh --force-yes
           rm -rf .templates-src
 
