@@ -80,7 +80,12 @@ async function getGitHubPat(forceRefresh = false): Promise<string> {
   }
 
   // Pattern 1: 環境変数から直接取得（ローカル開発・デバッグ用）
-  const fromEnv = resolveEnvPat(process.env);
+  const { pat: fromEnv, unresolvedRefs } = resolveEnvPat(process.env);
+  for (const name of unresolvedRefs) {
+    console.warn(
+      `[GitHub Client] ⚠️ ${name} is an unresolved op:// reference (run via \`op run\`?). Skipping it.`
+    );
+  }
   if (fromEnv) {
     console.log(`[GitHub Client] Using ${fromEnv.name} from environment variable`);
     cachedPat = fromEnv.value;
