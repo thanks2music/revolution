@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { describeRegisteredUrlStatus, isAwaitingRetry, type StatusTone } from '../../lib/scheduled/registered-url-status';
+import { describeRegisteredUrlStatus, type StatusTone } from '../../lib/scheduled/registered-url-status';
+import { isAwaitingRetry } from '../../lib/scheduled/retry-policy';
 import type { RegisteredUrlAttemptView, RegisteredUrlView } from '../../lib/types/registered-url';
 
 const TONE_CLASS: Record<StatusTone, string> = {

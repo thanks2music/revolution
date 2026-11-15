@@ -6,7 +6,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import type { AttemptRecord } from '@/lib/scheduled/attempt-store';
 import { attemptDocId } from '@/lib/scheduled/attempt-url';
-import { AlreadyRegisteredError, type RegisteredUrl } from '@/lib/scheduled/registered-url-store';
+import type { RegisteredUrl } from '@/lib/scheduled/registered-url-store';
 import {
   listRegisteredUrls,
   parseRegisteredUrl,
@@ -44,7 +44,7 @@ function fakeDeps(options: { registered?: RegisteredUrl[]; attempts?: AttemptRec
       get: async id => registered.get(id),
       add: async (url, createdBy, now) => {
         const id = attemptDocId(url);
-        if (registered.has(id)) throw new AlreadyRegisteredError(url);
+        if (registered.has(id)) return undefined;
         const entry = { id, url, createdBy, createdAt: now };
         registered.set(id, entry);
         return entry;
@@ -58,6 +58,7 @@ function fakeDeps(options: { registered?: RegisteredUrl[]; attempts?: AttemptRec
       getMany: async urls => new Map(urls.filter(url => attempts.has(url)).map(url => [url, attempts.get(url)!])),
       save: async entry => {
         attempts.set(entry.url, entry);
+        return true;
       },
     },
     assertPublicHost: async url => {

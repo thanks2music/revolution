@@ -48,6 +48,7 @@ function makeDeps(options: {
   });
   const save = jest.fn(async (record: AttemptRecord) => {
     saved.set(record.url, record);
+    return true;
   });
   const deps: ScheduledRunDeps = {
     now: options.clock ?? (() => START),
@@ -170,6 +171,7 @@ describe('runScheduled', () => {
     let saves = 0;
     deps.store.save = async () => {
       if (++saves === 2) throw new Error('UNAVAILABLE');
+      return true;
     };
     const summary = await runScheduled(deps, { dryRun: false });
     expect(summary.stopReason).toBe('error');

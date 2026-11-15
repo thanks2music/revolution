@@ -38,6 +38,11 @@ export type AttemptStatus =
   /** Ended without an article after the retries ran out */
   | 'given-up';
 
+/** Still to be tried again (`nextAttemptAt` is set) */
+export function isAwaitingRetry(status: AttemptStatus | undefined): boolean {
+  return status === 'waiting-details' || status === 'retrying-failure';
+}
+
 /** What the pipeline returned for one attempt */
 export type AttemptOutcome =
   | { kind: 'pr' }

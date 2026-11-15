@@ -10,7 +10,7 @@
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 
 import type { PublishedDateSource } from './published-date';
-import type { AttemptStatus, OutcomeKind } from './retry-policy';
+import { isAwaitingRetry, type AttemptStatus, type OutcomeKind } from './retry-policy';
 import { attemptDocId } from './attempt-url';
 
 export const ATTEMPTS_COLLECTION = 'scheduled_url_attempts';
@@ -103,7 +103,22 @@ export class AttemptStore {
     return snapshot.docs.map(doc => fromFirestore(doc.data()));
   }
 
-  async save(record: AttemptRecord): Promise<void> {
-    await this.ref(record.url).set(toFirestore(record));
+  /**
+   * Store the record, unless it would put a given-up URL back in the retry queue.
+   *
+   * A given-up URL is never tried again, so the only way to get there is a lost update: a run
+   * that was trying the URL while its registration was removed (`unregisterUrl`). A PR or a skip
+   * from that run is still stored. Read and write in one transaction so the check holds.
+   *
+   * @returns `false` when the record was not stored
+   */
+  async save(record: AttemptRecord): Promise<boolean> {
+    const ref = this.ref(record.url);
+    return this.db.runTransaction(async transaction => {
+      const current = await transaction.get(ref);
+      if (current.data()?.status === 'given-up' && isAwaitingRetry(record.status)) return false;
+      transaction.set(ref, toFirestore(record));
+      return true;
+    });
   }
 }

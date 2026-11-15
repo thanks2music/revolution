@@ -39,14 +39,6 @@ function fromFirestore(id: string, data: Record<string, unknown>): RegisteredUrl
   };
 }
 
-/** Thrown by `add` when the URL is already registered */
-export class AlreadyRegisteredError extends Error {
-  constructor(url: string) {
-    super(`Already registered: ${url}`);
-    this.name = 'AlreadyRegisteredError';
-  }
-}
-
 /** Firestore's ALREADY_EXISTS, returned by `create` when the document exists */
 const ALREADY_EXISTS = 6;
 
@@ -71,13 +63,15 @@ export class RegisteredUrlStore {
   /**
    * Register a normalized URL. `create` fails when the document exists, so two people
    * registering the same URL at once cannot both succeed.
+   *
+   * @returns `undefined` when the URL is already registered
    */
-  async add(url: string, createdBy: string, now: Date): Promise<RegisteredUrl> {
+  async add(url: string, createdBy: string, now: Date): Promise<RegisteredUrl | undefined> {
     const id = attemptDocId(url);
     try {
       await this.collection().doc(id).create({ url, createdBy, createdAt: Timestamp.fromDate(now) });
     } catch (error) {
-      if ((error as { code?: unknown }).code === ALREADY_EXISTS) throw new AlreadyRegisteredError(url);
+      if ((error as { code?: unknown }).code === ALREADY_EXISTS) return undefined;
       throw error;
     }
     return { id, url, createdBy, createdAt: now };

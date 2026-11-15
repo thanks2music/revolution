@@ -44,6 +44,13 @@ function fakeFirestore() {
       };
     },
     getAll: async (...refs: Array<{ id: string }>) => refs.map(ref => snapshot(ref.id)),
+    runTransaction: async <T>(fn: (transaction: unknown) => Promise<T>) =>
+      fn({
+        get: async (ref: { id: string }) => snapshot(ref.id),
+        set: (ref: { id: string }, data: Doc) => {
+          docs.set(ref.id, data);
+        },
+      }),
   };
   return { db: db as unknown as Firestore, docs, queries };
 }
@@ -94,6 +101,21 @@ describe('AttemptStore', () => {
     const found = await store.findAttempted(['https://a.example/1', 'https://a.example/2', 'https://a.example/1']);
     expect([...found]).toEqual(['https://a.example/1']);
     expect(await store.findAttempted([])).toEqual(new Set());
+  });
+
+  it('never puts a given-up URL back in the retry queue, but still stores a PR or a skip', async () => {
+    const { db } = fakeFirestore();
+    const store = new AttemptStore(db);
+    const givenUp = { ...record('https://a.example/1', null), status: 'given-up' as const, givenUpReason: '登録を取り消したため打ち切りました' };
+    await store.save(givenUp);
+
+    // a run that was trying the URL when the registration was removed
+    const waiting = record('https://a.example/1', new Date('2026-11-20T00:00:00Z'));
+    expect(await store.save(waiting)).toBe(false);
+    expect(await store.get('https://a.example/1')).toMatchObject({ status: 'given-up', nextAttemptAt: null });
+
+    expect(await store.save({ ...record('https://a.example/1', null), lastOutcome: 'pr', prUrl: 'https://github.com/o/r/pull/1' })).toBe(true);
+    expect(await store.get('https://a.example/1')).toMatchObject({ status: 'done', prUrl: 'https://github.com/o/r/pull/1' });
   });
 
   it('reads the records of several URLs at once, by URL', async () => {

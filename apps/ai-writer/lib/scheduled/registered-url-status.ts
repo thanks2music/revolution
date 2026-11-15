@@ -6,13 +6,6 @@
 import type { RegisteredUrlAttemptView } from '@/lib/types/registered-url';
 import { toJstDateString } from '@/lib/utils/date';
 
-import type { AttemptStatus } from './retry-policy';
-
-/** Still to be tried again: removing the registration gives it up (`unregisterUrl`) */
-export function isAwaitingRetry(status: AttemptStatus | undefined): boolean {
-  return status === 'waiting-details' || status === 'retrying-failure';
-}
-
 export type StatusTone = 'pending' | 'success' | 'neutral' | 'waiting' | 'error';
 
 export interface RegisteredUrlStatusView {

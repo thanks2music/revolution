@@ -122,20 +122,18 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
       // Registered URLs are one source among three; failing to read them should not stop the run
       deps.loadRegisteredUrls().catch((caught: unknown) => {
         feedErrors.push(`登録 URL: ${caught instanceof Error ? caught.message : String(caught)}`);
-        return undefined;
+        return [];
       }),
       deps.loadRssItems(),
       deps.store.findDueRetries(startedAt, DUE_RETRY_READ_LIMIT),
     ]);
     feedErrors.push(...rss.errors);
     const attemptedUrls = await deps.store.findAttempted([
-      ...(registered ?? []).map(entry => entry.url),
+      ...registered.map(entry => entry.url),
       ...rss.items.map(item => normalizeAttemptUrl(item.link)),
     ]);
     const candidates = orderCandidates({
-      registered: registered ?? [],
-      // Without the registrations, a retry of a registered URL cannot be checked, so it waits
-      registrationsKnown: registered !== undefined,
+      registered,
       dueRetries: dueRecords,
       rssItems: rss.items,
       attemptedUrls,

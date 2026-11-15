@@ -12,8 +12,8 @@
  */
 import type { AttemptRecord, AttemptStore } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
-import { AlreadyRegisteredError, type RegisteredUrl, type RegisteredUrlStore } from './registered-url-store';
-import { isAwaitingRetry } from './registered-url-status';
+import type { RegisteredUrl, RegisteredUrlStore } from './registered-url-store';
+import { isAwaitingRetry } from './retry-policy';
 
 export const UNREGISTERED_REASON = '登録を取り消したため打ち切りました';
 
@@ -76,12 +76,8 @@ export async function registerUrl(
   const attempt = await deps.attempts.get(url);
   if (attempt) return { kind: 'already-attempted', attempt };
 
-  try {
-    return { kind: 'registered', registered: await deps.registered.add(url, createdBy, now) };
-  } catch (error) {
-    if (error instanceof AlreadyRegisteredError) return { kind: 'already-registered' };
-    throw error;
-  }
+  const registered = await deps.registered.add(url, createdBy, now);
+  return registered ? { kind: 'registered', registered } : { kind: 'already-registered' };
 }
 
 /** @returns `false` when there was no such registration */
@@ -91,9 +87,7 @@ export async function unregisterUrl(deps: RegisteredUrlDeps, id: string): Promis
 
   const attempt = await deps.attempts.get(entry.url);
   // A URL waiting for a retry would otherwise keep being tried after the registration is gone.
-  // A run trying the URL at this moment can write its record back as waiting; the next run still
-  // leaves it out, because a registered URL is only retried while its registration exists
-  // (`orderCandidates`)
+  // A run trying the URL at this moment cannot put it back in the queue (`AttemptStore.save`)
   if (attempt && isAwaitingRetry(attempt.status)) {
     await deps.attempts.save({ ...attempt, status: 'given-up', nextAttemptAt: null, givenUpReason: UNREGISTERED_REASON });
   }

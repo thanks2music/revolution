@@ -121,18 +121,4 @@ describe('orderCandidates', () => {
     ]);
     expect(result[0].registeredAt).toEqual(new Date('2026-11-12T00:00:00Z'));
   });
-
-  it('retries a registered URL only while its registration exists and is known', () => {
-    const kept = { ...due('https://reg.example/kept', new Date('2026-11-14T00:00:00Z')), source: 'registered' as const };
-    const removed = { ...due('https://reg.example/removed', new Date('2026-11-13T00:00:00Z')), source: 'registered' as const };
-    const rssRetry = due('https://rss.example/retry', new Date('2026-11-12T00:00:00Z'));
-    const registered = [
-      { id: 'k', url: 'https://reg.example/kept', createdBy: 'boss@example.com', createdAt: new Date('2026-11-01T00:00:00Z') },
-    ];
-    const input = { registered, dueRetries: [kept, removed, rssRetry], rssItems: [], attemptedUrls: new Set(['https://reg.example/kept']), now: NOW };
-    expect(orderCandidates(input).map(c => c.url)).toEqual(['https://rss.example/retry', 'https://reg.example/kept']);
-    expect(orderCandidates({ ...input, registered: [], registrationsKnown: false }).map(c => c.url)).toEqual([
-      'https://rss.example/retry',
-    ]);
-  });
 });

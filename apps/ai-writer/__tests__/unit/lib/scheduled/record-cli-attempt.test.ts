@@ -16,7 +16,7 @@ beforeEach(() => {
 
 describe('recordCliAttempt', () => {
   it('stores the normalized URL with source cli and the page date', async () => {
-    const save = jest.fn(async (_: AttemptRecord) => {});
+    const save = jest.fn(async (_: AttemptRecord) => true);
     await recordCliAttempt(
       () => ({ get: async () => undefined, save }),
       {
@@ -42,7 +42,7 @@ describe('recordCliAttempt', () => {
       get: async () => {
         throw new Error('PERMISSION_DENIED');
       },
-      save: jest.fn(async () => {}),
+      save: jest.fn(async () => true),
     };
     await expect(
       recordCliAttempt(() => store, { url: 'https://a.example/1', title: 't', pageHtml: '', result: { success: true } as MdxGenerationResult }),

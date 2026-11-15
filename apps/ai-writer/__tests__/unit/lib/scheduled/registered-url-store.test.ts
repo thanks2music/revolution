@@ -6,7 +6,6 @@ import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 
 import { attemptDocId } from '@/lib/scheduled/attempt-url';
 import {
-  AlreadyRegisteredError,
   REGISTERED_URLS_COLLECTION,
   RegisteredUrlStore,
 } from '@/lib/scheduled/registered-url-store';
@@ -52,7 +51,7 @@ describe('RegisteredUrlStore', () => {
     const { db, docs } = fakeFirestore();
     const store = new RegisteredUrlStore(db);
     const now = new Date('2026-11-15T03:00:00Z');
-    const entry = await store.add('https://a.example/1', 'boss@example.com', now);
+    const entry = (await store.add('https://a.example/1', 'boss@example.com', now))!;
 
     expect(entry.id).toBe(attemptDocId('https://a.example/1'));
     expect(docs.get(entry.id)).toEqual({
@@ -67,9 +66,7 @@ describe('RegisteredUrlStore', () => {
     const { db } = fakeFirestore();
     const store = new RegisteredUrlStore(db);
     await store.add('https://a.example/1', 'boss@example.com', new Date());
-    await expect(store.add('https://a.example/1', 'boss@example.com', new Date())).rejects.toBeInstanceOf(
-      AlreadyRegisteredError,
-    );
+    expect(await store.add('https://a.example/1', 'boss@example.com', new Date())).toBeUndefined();
   });
 
   it('passes on other Firestore errors', async () => {
@@ -86,7 +83,7 @@ describe('RegisteredUrlStore', () => {
   it('lists the oldest registration first, and removes one', async () => {
     const { db } = fakeFirestore();
     const store = new RegisteredUrlStore(db);
-    const newer = await store.add('https://a.example/new', 'boss@example.com', new Date('2026-11-14T00:00:00Z'));
+    const newer = (await store.add('https://a.example/new', 'boss@example.com', new Date('2026-11-14T00:00:00Z')))!;
     await store.add('https://a.example/old', 'boss@example.com', new Date('2026-11-10T00:00:00Z'));
 
     expect((await store.list()).map(entry => entry.url)).toEqual(['https://a.example/old', 'https://a.example/new']);
