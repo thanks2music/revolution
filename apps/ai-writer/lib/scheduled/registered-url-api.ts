@@ -5,6 +5,7 @@
  */
 import { getAdminDb } from '@/lib/firebase/admin';
 import type { RegisteredUrlAttemptView, RegisteredUrlView } from '@/lib/types/registered-url';
+import { assertPublicHost } from '@/lib/utils/safe-image-fetch';
 
 import { AttemptStore, type AttemptRecord } from './attempt-store';
 import { RegisteredUrlStore, type RegisteredUrl } from './registered-url-store';
@@ -12,7 +13,7 @@ import type { RegisteredUrlDeps } from './registered-urls';
 
 export function registeredUrlDeps(): RegisteredUrlDeps {
   const db = getAdminDb();
-  return { registered: new RegisteredUrlStore(db), attempts: new AttemptStore(db) };
+  return { registered: new RegisteredUrlStore(db), attempts: new AttemptStore(db), assertPublicHost };
 }
 
 export function toAttemptView(attempt: AttemptRecord): RegisteredUrlAttemptView {

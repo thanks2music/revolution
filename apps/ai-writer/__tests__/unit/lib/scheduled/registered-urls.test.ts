@@ -35,7 +35,7 @@ const record = (url: string, overrides: Partial<AttemptRecord> = {}): AttemptRec
   ...overrides,
 });
 
-function fakeDeps(options: { registered?: RegisteredUrl[]; attempts?: AttemptRecord[] } = {}) {
+function fakeDeps(options: { registered?: RegisteredUrl[]; attempts?: AttemptRecord[]; blockedHosts?: string[] } = {}) {
   const registered = new Map((options.registered ?? []).map(entry => [entry.id, entry]));
   const attempts = new Map((options.attempts ?? []).map(entry => [entry.url, entry]));
   const deps: RegisteredUrlDeps = {
@@ -59,6 +59,9 @@ function fakeDeps(options: { registered?: RegisteredUrl[]; attempts?: AttemptRec
       save: async entry => {
         attempts.set(entry.url, entry);
       },
+    },
+    assertPublicHost: async url => {
+      if ((options.blockedHosts ?? []).includes(url.hostname)) throw new Error(`Blocked: ${url.hostname}`);
     },
   };
   return { deps, registered, attempts };
@@ -107,6 +110,14 @@ describe('registerUrl', () => {
     expect(await registerUrl(deps, 'https://a.example/event', 'boss@example.com', NOW)).toEqual({
       kind: 'already-registered',
     });
+  });
+
+  it('refuses a host that is or resolves to an internal address', async () => {
+    const { deps, registered } = fakeDeps({ blockedHosts: ['169.254.169.254', 'internal.example'] });
+    for (const url of ['http://169.254.169.254/computeMetadata/v1/', 'https://internal.example/event']) {
+      expect(await registerUrl(deps, url, 'boss@example.com', NOW)).toMatchObject({ kind: 'invalid' });
+    }
+    expect(registered.size).toBe(0);
   });
 
   it('refuses an invalid URL', async () => {

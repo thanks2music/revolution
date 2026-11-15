@@ -196,8 +196,9 @@ export function isBlockedHost(hostname: string): boolean {
  *
  * IP リテラルの直接指定だけでなく、**内部 IP を返す DNS レコード**も塞ぐ。
  * 解決できないホストは取得しても失敗するので、そのまま throw する。
+ * 定期実行の登録 URL の受け付けでも使う (`lib/scheduled/registered-url-api.ts`)。
  */
-async function assertPublicHost(url: URL): Promise<void> {
+export async function assertPublicHost(url: URL): Promise<void> {
   if (isBlockedHost(url.hostname)) {
     throw new Error(`Blocked image host (internal address): ${url.hostname}`);
   }

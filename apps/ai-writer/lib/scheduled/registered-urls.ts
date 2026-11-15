@@ -19,6 +19,11 @@ export const UNREGISTERED_REASON = '登録を取り消したため打ち切り�
 export interface RegisteredUrlDeps {
   registered: Pick<RegisteredUrlStore, 'list' | 'get' | 'add' | 'remove'>;
   attempts: Pick<AttemptStore, 'get' | 'getMany' | 'save'>;
+  /**
+   * Throws when the host is (or resolves to) an internal address (`assertPublicHost`).
+   * The job fetches registered URLs, so an internal address must not get in
+   */
+  assertPublicHost: (url: URL) => Promise<void>;
 }
 
 export interface RegisteredUrlWithResult extends RegisteredUrl {
@@ -61,6 +66,11 @@ export async function registerUrl(
 ): Promise<RegisterResult> {
   const url = parseRegisteredUrl(input);
   if (!url) return { kind: 'invalid', message: 'http または https の URL を入力してください' };
+  try {
+    await deps.assertPublicHost(new URL(url));
+  } catch {
+    return { kind: 'invalid', message: '内部のアドレスや、名前を解決できないホストの URL は登録できません' };
+  }
 
   const attempt = await deps.attempts.get(url);
   if (attempt) return { kind: 'already-attempted', attempt };
