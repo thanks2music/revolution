@@ -10,9 +10,6 @@ apps/*/.env.test
 apps/*/.env.*.local
 
 # Node.js
-# The root node_modules exists on the runner when a workflow installs before `docker build`
-# (deploy-ai-writer-job.yml validates the templates first). The image installs its own in the deps stage.
-/node_modules
 apps/*/node_modules
 apps/*/.next
 apps/*/out
