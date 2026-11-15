@@ -17,6 +17,7 @@ import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
 import { enforceTitleCityLabel } from '@/lib/utils/enforce-title-city-label';
+import { PIPELINE_PROMPTS } from './pipeline-prompts';
 
 /** タイトルの文字数の下限と上限 (上限の根拠は generateTitle 内の ★ を参照) */
 const TITLE_MIN_LENGTH = 28;
@@ -31,7 +32,7 @@ export class TitleGenerationService {
   /** モジュール化テンプレートID */
   private readonly templateId = 'collabo-cafe';
   /** パイプラインID */
-  private readonly pipelineId = '3-title';
+  private readonly pipelineId = PIPELINE_PROMPTS.title.pipelineId;
 
   constructor(templateLoader?: YamlTemplateLoaderService, aiProvider?: AiProvider) {
     this.templateLoader = templateLoader || new YamlTemplateLoaderService();
@@ -158,7 +159,7 @@ export class TitleGenerationService {
     const extractedDataSection = this.buildExtractedDataSection(request);
 
     // 最終プロンプトを構築
-    return `${template.prompts.generate_title}
+    return `${template.prompts[PIPELINE_PROMPTS.title.promptKey]}
 
 ${rulesSection}
 

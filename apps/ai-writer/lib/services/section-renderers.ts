@@ -62,6 +62,15 @@ function replaceSectionBody(content: string, range: SectionRange, body: string):
   return content.slice(0, range.start) + body + content.slice(range.end);
 }
 
+/**
+ * `rendered` keys the article generator requires from each section YAML. The templates validator reads the
+ * same lists, so a key the code needs cannot be dropped from Templates without the validator failing.
+ */
+export const MENU_RENDERED_KEYS = ['item_line', 'other_images_heading', 'table'] as const;
+export const NOVELTY_RENDERED_KEYS = ['sentence', 'item_line', 'other_images_heading'] as const;
+/** `05-summary.yaml`: these plus `SUMMARY_ROWS_KEYS` (summary-table.ts) */
+export const SUMMARY_VENUE_KEYS = ['venue_row_label', 'venue_list_item', 'venue_list_separator'] as const;
+
 const yamlCache = new Map<string, Record<string, unknown>>();
 
 /**

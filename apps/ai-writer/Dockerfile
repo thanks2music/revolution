@@ -130,6 +130,10 @@ RUN test -f apps/ai-writer/templates/VERSION.json && \
     test -d apps/ai-writer/templates/config || \
     (echo "apps/ai-writer/templates is missing. Place the templates before building the job image." >&2 && exit 1)
 
+# 置いた templates (辞書・プロンプト) が、このイメージのコードで読めることを確かめる。壊れていればイメージを作らない。
+# ビルドのログは public の Actions に出るので、--redact で規則・ファイル・件数だけを出す (値は出さない)
+RUN cd apps/ai-writer && ./node_modules/.bin/tsx scripts/validate-templates.ts --dir templates --redact
+
 # COPY --chown は中身にだけ効き、ディレクトリ自体は root のままになる (実測)。ログを書けるように持ち主を変える
 RUN chown aiwriter:nodejs apps/ai-writer
 

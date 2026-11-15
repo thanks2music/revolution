@@ -24,6 +24,7 @@ import { getMediaFormResolverService } from './media-form-resolver.service';
 import { getMediaTypeMapperService } from './media-type-mapper.service';
 import { formatAuthorName } from '@/lib/utils/author-formatter';
 import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
+import { PIPELINE_PROMPTS } from './pipeline-prompts';
 
 /**
  * Token usage statistics for cost tracking
@@ -90,7 +91,7 @@ export class ContentGenerationService {
   /** モジュール化テンプレートID */
   private readonly templateId = 'collabo-cafe';
   /** パイプラインID */
-  private readonly pipelineId = '4-content';
+  private readonly pipelineId = PIPELINE_PROMPTS.content.pipelineId;
 
   constructor(templateLoader?: YamlTemplateLoaderService, aiProvider?: AiProvider) {
     this.templateLoader = templateLoader || new YamlTemplateLoaderService();
@@ -215,7 +216,7 @@ export class ContentGenerationService {
     delete enrichedExtractedData.TwitterURL;
 
     // 最終プロンプトを構築
-    return `${template.prompts.generate_content}
+    return `${template.prompts[PIPELINE_PROMPTS.content.promptKey]}
 
 ${rulesSection}
 

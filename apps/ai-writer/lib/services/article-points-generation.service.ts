@@ -15,6 +15,7 @@ import { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.s
 import { menuItemsOf } from '@/lib/services/vision-api/merge-vision-into-extraction';
 import { formatPagesForPrompt, parseJson, type PromptPage } from '@/lib/services/subpage-extraction.service';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
+import { PIPELINE_PROMPTS } from './pipeline-prompts';
 
 const ARTICLE_POINTS_OPENAI_SCHEMA = zodToOpenAiSchema(ArticlePointsResponseSchema, 'ArticlePointsResponse');
 
@@ -70,7 +71,7 @@ export class ArticlePointsParseError extends Error {
 
 export class ArticlePointsGenerationService {
   private readonly templateId = 'collabo-cafe';
-  private readonly pipelineId = '4.5-article-points';
+  private readonly pipelineId = PIPELINE_PROMPTS.articlePoints.pipelineId;
   private readonly templateLoader: YamlTemplateLoaderService;
   private readonly aiProvider: AiProvider;
 
@@ -88,9 +89,9 @@ export class ArticlePointsGenerationService {
       includeSections: false,
       includeShared: false,
     });
-    const instruction = template.prompts.write_features;
+    const instruction = template.prompts[PIPELINE_PROMPTS.articlePoints.promptKey];
     if (!instruction) {
-      throw new Error(`${this.pipelineId}.yaml に prompts.write_features がありません。pnpm sync:templates で Templates を同期してください`);
+      throw new Error(`${this.pipelineId}.yaml に prompts.${PIPELINE_PROMPTS.articlePoints.promptKey} がありません。pnpm sync:templates で Templates を同期してください`);
     }
     // 1 回で置き換える (作品名などに `{{pages}}` の文字列が含まれていても、そこへ展開しない)
     const values: Record<'作品名' | 'facts' | 'extraction' | 'pages', string> = {

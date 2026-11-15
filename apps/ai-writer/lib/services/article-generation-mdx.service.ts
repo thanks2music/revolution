@@ -174,6 +174,8 @@ import {
   hasMenuSection,
   hasNoveltySection,
   loadRendered,
+  MENU_RENDERED_KEYS,
+  NOVELTY_RENDERED_KEYS,
   otherImagesBlock,
   renderItemHeadings,
   renderMenuItems,
@@ -184,6 +186,7 @@ import {
   replaceNoveltySentence,
   replacePlaceholderLine,
   replaceSummaryRowValue,
+  SUMMARY_VENUE_KEYS,
   type MenuTableConfig,
   type VenueListConfig,
 } from './section-renderers';
@@ -1636,9 +1639,7 @@ export class ArticleGenerationMdxService {
 
         // まとめの表の「開催場所」は、LLM が書いた文ではなく会場の一覧にする (会場のデータがあるときだけ。2026-10-15 BOSS 決定)
         const summary = loadRendered<{ venue_row_label: string } & VenueListConfig & SummaryRowsConfig>('05-summary.yaml', [
-          'venue_row_label',
-          'venue_list_item',
-          'venue_list_separator',
+          ...SUMMARY_VENUE_KEYS,
           ...SUMMARY_ROWS_KEYS,
         ]);
         const venueList = renderVenueList(storeContext.会場一覧, summary);
@@ -2105,7 +2106,7 @@ export class ArticleGenerationMdxService {
     if (menuItems.length > 0) {
       const rendered = loadRendered<{ item_line: string; other_images_heading: string; table: MenuTableConfig }>(
         '02-menu.yaml',
-        ['item_line', 'other_images_heading', 'table'],
+        MENU_RENDERED_KEYS,
       );
       if (!menu.itemImages.some(Boolean)) {
         // 品目に写真が 1 枚も付かない (縦長のメニュー表 1 枚にまとまっているなど): 画像の下に表で並べる
@@ -2124,7 +2125,7 @@ export class ArticleGenerationMdxService {
     if (!isEmptyList(extraction.ノベルティ名)) {
       const rendered = loadRendered<{ sentence: string; item_line: string; other_images_heading: string }>(
         '03-novelty.yaml',
-        ['sentence', 'item_line', 'other_images_heading'],
+        NOVELTY_RENDERED_KEYS,
       );
       result = replaceNoveltySentence(
         result,

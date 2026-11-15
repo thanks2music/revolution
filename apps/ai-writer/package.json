@@ -15,6 +15,7 @@
     "stop": "lsof -ti :7777 | xargs kill -9 2>/dev/null && echo '✓ Next.js stopped on port 7777' || echo '✗ No process found on port 7777'",
     "docker:build": "docker build --platform linux/amd64 -t revo-ai-writer:local .",
     "docker:run": "docker run -p 8080:8080 --env-file .env.local revo-ai-writer:local",
+    "validate:templates": "tsx scripts/validate-templates.ts",
     "test": "jest --testPathIgnorePatterns=/__tests__/e2e/",
     "test:watch": "jest --watch --testPathIgnorePatterns=/__tests__/e2e/",
     "test:coverage": "jest --coverage --testPathIgnorePatterns=/__tests__/e2e/",

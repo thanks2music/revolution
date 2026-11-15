@@ -16,6 +16,7 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
 import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
+import { PIPELINE_PROMPTS } from './pipeline-prompts';
 
 /**
  * 記事選別サービス
@@ -26,7 +27,7 @@ export class ArticleSelectionService {
   /** モジュール化テンプレートID */
   private readonly templateId = 'collabo-cafe';
   /** パイプラインID */
-  private readonly pipelineId = '1-selection';
+  private readonly pipelineId = PIPELINE_PROMPTS.selection.pipelineId;
 
   constructor(templateLoader?: YamlTemplateLoaderService, aiProvider?: AiProvider) {
     this.templateLoader = templateLoader || new YamlTemplateLoaderService();
@@ -120,7 +121,7 @@ export class ArticleSelectionService {
     const rulesSection = this.buildRulesSection(template);
 
     // 最終プロンプトを構築
-    return `${template.prompts.selection}
+    return `${template.prompts[PIPELINE_PROMPTS.selection.promptKey]}
 
 ${rulesSection}
 

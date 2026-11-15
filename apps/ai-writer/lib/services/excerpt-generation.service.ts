@@ -15,6 +15,7 @@ import { createAiProvider } from '@/lib/ai/factory/ai-factory';
 import { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
 import { parseJson } from '@/lib/services/subpage-extraction.service';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
+import { PIPELINE_PROMPTS } from './pipeline-prompts';
 
 const EXCERPT_OPENAI_SCHEMA = zodToOpenAiSchema(ExcerptResponseSchema, 'ExcerptResponse');
 
@@ -150,7 +151,7 @@ function firstSentenceEnd(text: string): number {
 
 export class ExcerptGenerationService {
   private readonly templateId = 'collabo-cafe';
-  private readonly pipelineId = '6-meta-description';
+  private readonly pipelineId = PIPELINE_PROMPTS.excerpt.pipelineId;
   private readonly templateLoader: YamlTemplateLoaderService;
   private readonly aiProvider: AiProvider;
 
@@ -168,7 +169,7 @@ export class ExcerptGenerationService {
       includeSections: false,
       includeShared: false,
     });
-    const instruction = template.prompts.write_excerpt;
+    const instruction = template.prompts[PIPELINE_PROMPTS.excerpt.promptKey];
     if (!instruction) throw new ExcerptPromptMissingError(this.pipelineId);
     const points = pointsLinesOf(request.pointsBlock);
     // 1 回で置き換える (リード文などに `{{points}}` の文字列が含まれていても、そこへ展開しない)
