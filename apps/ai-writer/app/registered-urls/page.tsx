@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { describeRegisteredUrlStatus, type StatusTone } from '../../lib/scheduled/registered-url-status';
+import { describeRegisteredUrlStatus, isAwaitingRetry, type StatusTone } from '../../lib/scheduled/registered-url-status';
 import type { RegisteredUrlAttemptView, RegisteredUrlView } from '../../lib/types/registered-url';
 
 const TONE_CLASS: Record<StatusTone, string> = {
@@ -97,8 +97,7 @@ export default function RegisteredUrlsPage() {
 
   const handleRemove = async (entry: RegisteredUrlView) => {
     if (removingId) return;
-    const waiting = entry.attempt?.status === 'waiting-details' || entry.attempt?.status === 'retrying-failure';
-    const message = waiting
+    const message = isAwaitingRetry(entry.attempt?.status)
       ? 'この登録を削除しますか？ 試し直しも打ち切ります。'
       : 'この登録を削除しますか？';
     if (!confirm(message)) return;

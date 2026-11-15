@@ -95,7 +95,7 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
   const startedAt = deps.now();
 
   const items: RunItem[] = [];
-  let feedErrors: string[] = [];
+  const feedErrors: string[] = [];
   let candidateCount = 0;
   let prCount = 0;
   let stopReason: StopReason | undefined;
@@ -119,17 +119,23 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
 
   try {
     const [registered, rss, dueRecords] = await Promise.all([
-      deps.loadRegisteredUrls(),
+      // Registered URLs are one source among three; failing to read them should not stop the run
+      deps.loadRegisteredUrls().catch((caught: unknown) => {
+        feedErrors.push(`登録 URL: ${caught instanceof Error ? caught.message : String(caught)}`);
+        return undefined;
+      }),
       deps.loadRssItems(),
       deps.store.findDueRetries(startedAt, DUE_RETRY_READ_LIMIT),
     ]);
-    feedErrors = rss.errors;
+    feedErrors.push(...rss.errors);
     const attemptedUrls = await deps.store.findAttempted([
-      ...registered.map(entry => entry.url),
+      ...(registered ?? []).map(entry => entry.url),
       ...rss.items.map(item => normalizeAttemptUrl(item.link)),
     ]);
     const candidates = orderCandidates({
-      registered,
+      registered: registered ?? [],
+      // Without the registrations, a retry of a registered URL cannot be checked, so it waits
+      registrationsKnown: registered !== undefined,
       dueRetries: dueRecords,
       rssItems: rss.items,
       attemptedUrls,
@@ -171,8 +177,8 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
       let attempt: AttemptResult;
       try {
         const page = await deps.fetchPage(candidate.url);
-        // A registered URL has no title until its page is read
-        context.title ??= page.title || undefined;
+        // A registered URL has no title until its page is read (an RSS title can be empty too)
+        context.title ||= page.title || undefined;
         context.pageDate = extractPublishedDate(page.pageHtml, now);
         log(
           context.pageDate
@@ -196,7 +202,7 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
 
       const item: RunItem = {
         url: candidate.url,
-        source: candidate.source,
+        registered: candidate.source === 'registered' || candidate.previous?.source === 'registered',
         title: context.title,
         outcome: toAttemptOutcome(attempt, true).kind,
         ...describeAttempt(attempt),

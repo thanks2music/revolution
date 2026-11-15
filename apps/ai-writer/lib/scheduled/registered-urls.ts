@@ -13,6 +13,7 @@
 import type { AttemptRecord, AttemptStore } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
 import { AlreadyRegisteredError, type RegisteredUrl, type RegisteredUrlStore } from './registered-url-store';
+import { isAwaitingRetry } from './registered-url-status';
 
 export const UNREGISTERED_REASON = '登録を取り消したため打ち切りました';
 
@@ -90,9 +91,10 @@ export async function unregisterUrl(deps: RegisteredUrlDeps, id: string): Promis
 
   const attempt = await deps.attempts.get(entry.url);
   // A URL waiting for a retry would otherwise keep being tried after the registration is gone.
-  // The job writes the whole record when it tries a URL, so a removal during a run can be
-  // overwritten by that run's result; the URL then follows its retry schedule as before
-  if (attempt && (attempt.status === 'waiting-details' || attempt.status === 'retrying-failure')) {
+  // A run trying the URL at this moment can write its record back as waiting; the next run still
+  // leaves it out, because a registered URL is only retried while its registration exists
+  // (`orderCandidates`)
+  if (attempt && isAwaitingRetry(attempt.status)) {
     await deps.attempts.save({ ...attempt, status: 'given-up', nextAttemptAt: null, givenUpReason: UNREGISTERED_REASON });
   }
   await deps.registered.remove(id);

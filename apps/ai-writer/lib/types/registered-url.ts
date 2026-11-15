@@ -1,18 +1,13 @@
 /**
  * What the registered URL API returns to the admin UI (dates as ISO strings).
  *
- * Kept free of server imports so the client page can use it.
+ * Only type imports, so the client page can use it.
  */
-
-/** Where a URL stands after an attempt (`AttemptStatus` in `lib/scheduled/retry-policy.ts`) */
-export type RegisteredUrlStatus = 'done' | 'waiting-details' | 'retrying-failure' | 'given-up';
-
-/** What the last attempt ended in (`OutcomeKind` in `lib/scheduled/retry-policy.ts`) */
-export type RegisteredUrlOutcome = 'pr' | 'skipped' | 'unannounced' | 'failure';
+import type { AttemptStatus, OutcomeKind } from '@/lib/scheduled/retry-policy';
 
 export interface RegisteredUrlAttemptView {
-  status: RegisteredUrlStatus;
-  lastOutcome: RegisteredUrlOutcome;
+  status: AttemptStatus;
+  lastOutcome: OutcomeKind;
   /** The page title, once the page was read */
   title?: string;
   /** The skip reason or the error of the last attempt */

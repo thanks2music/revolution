@@ -3,7 +3,9 @@
  *
  * 1. URLs registered by hand that have not been tried yet, the oldest registration first
  * 2. URLs whose retry is due (details not announced yet, or a failure), the longest-waiting first.
- *    A registered URL that is waiting for a retry comes back here, not in 1
+ *    A registered URL that is waiting for a retry comes back here, not in 1. Once its
+ *    registration is removed it is not tried again, even if a run that was trying it at the
+ *    moment of the removal wrote its record back as waiting
  * 3. new RSS items delivered within the last 14 days, the newest first
  *
  * A URL that was tried before is never a new item, and the same page is listed once even when
@@ -46,6 +48,8 @@ export interface Candidate {
 interface OrderCandidatesInput {
   /** URLs registered by hand (`RegisteredUrlStore.list`); tried ones are left out here */
   registered: RegisteredUrl[];
+  /** `false` when the registrations could not be read: retries of registered URLs then wait */
+  registrationsKnown?: boolean;
   /** Records whose retry is due (`AttemptStore.findDueRetries`) */
   dueRetries: AttemptRecord[];
   rssItems: RssCandidateInput[];
@@ -56,6 +60,7 @@ interface OrderCandidatesInput {
 
 export function orderCandidates({
   registered,
+  registrationsKnown = true,
   dueRetries,
   rssItems,
   attemptedUrls,
@@ -71,8 +76,10 @@ export function orderCandidates({
     ordered.push({ url: entry.url, source: 'registered', registeredAt: entry.createdAt });
   }
 
+  const registeredUrls = new Set(registered.map(entry => entry.url));
   const retries = dueRetries
     .filter((record): record is AttemptRecord & { nextAttemptAt: Date } => record.nextAttemptAt !== null)
+    .filter(record => record.source !== 'registered' || (registrationsKnown && registeredUrls.has(record.url)))
     .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime());
   for (const retry of retries) {
     if (seen.has(retry.url)) continue;

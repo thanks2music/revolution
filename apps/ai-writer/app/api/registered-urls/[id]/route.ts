@@ -18,6 +18,10 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   }
 
   const { id } = await params;
+  // The ID is always the SHA-256 of the URL; anything else cannot exist (and could be an invalid path)
+  if (!/^[0-9a-f]{64}$/.test(id)) {
+    return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+  }
   try {
     const removed = await unregisterUrl(registeredUrlDeps(), id);
     return removed

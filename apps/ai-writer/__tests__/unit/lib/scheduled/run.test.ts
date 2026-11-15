@@ -241,7 +241,7 @@ describe('runScheduled', () => {
         'https://reg.example/new',
         'https://a.example/1',
       ]);
-      expect(summary.items.map(item => item.source)).toEqual(['registered', 'registered', 'rss']);
+      expect(summary.items.map(item => item.registered)).toEqual([true, true, false]);
     });
 
     it('does not try a registered URL again once it has a record', async () => {
@@ -269,7 +269,43 @@ describe('runScheduled', () => {
         publishedAt: new Date('2026-11-10T00:00:00Z'),
         publishedAtSource: 'registration',
       });
-      expect(summary.items[0]).toMatchObject({ source: 'registered', title: 'イベントのページ' });
+      expect(summary.items[0]).toMatchObject({ registered: true, title: 'イベントのページ' });
+    });
+
+    it('marks a retry of a registered URL as registered', async () => {
+      const waiting: AttemptRecord = {
+        url: 'https://reg.example/1',
+        source: 'registered',
+        status: 'waiting-details',
+        lastOutcome: 'unannounced',
+        attemptCount: 1,
+        unannouncedCount: 1,
+        failureCount: 0,
+        firstAttemptAt: new Date('2026-11-01T00:00:00Z'),
+        lastAttemptAt: new Date('2026-11-01T00:00:00Z'),
+        nextAttemptAt: new Date('2026-11-08T00:00:00Z'),
+        publishedAt: new Date('2026-10-31T00:00:00Z'),
+        publishedAtSource: 'registration',
+      };
+      const { deps } = makeDeps({
+        items: [],
+        results: () => SKIP,
+        stored: [waiting],
+        registered: [registered('https://reg.example/1', '2026-10-31T00:00:00Z')],
+      });
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(summary.items).toEqual([expect.objectContaining({ url: 'https://reg.example/1', registered: true })]);
+    });
+
+    it('keeps the run going when the registrations cannot be read', async () => {
+      const { deps, generate } = makeDeps({ items: rssItems(1), results: () => SKIP });
+      deps.loadRegisteredUrls = async () => {
+        throw new Error('UNAVAILABLE');
+      };
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(summary.stopReason).toBeUndefined();
+      expect(summary.feedErrors).toEqual(['登録 URL: UNAVAILABLE']);
+      expect(generate).toHaveBeenCalledTimes(1);
     });
   });
 });

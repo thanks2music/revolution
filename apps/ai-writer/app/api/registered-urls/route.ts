@@ -38,13 +38,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as { url?: unknown };
-  if (typeof body.url !== 'string') {
+  const body: unknown = await request.json().catch(() => null);
+  const url = typeof body === 'object' && body !== null ? (body as { url?: unknown }).url : undefined;
+  if (typeof url !== 'string') {
     return NextResponse.json({ success: false, error: 'url is required' }, { status: 400 });
   }
 
   try {
-    const result = await registerUrl(registeredUrlDeps(), body.url, user.email, new Date());
+    const result = await registerUrl(registeredUrlDeps(), url, user.email, new Date());
     switch (result.kind) {
       case 'registered':
         return NextResponse.json({ success: true, url: toRegisteredUrlView(result.registered) }, { status: 201 });

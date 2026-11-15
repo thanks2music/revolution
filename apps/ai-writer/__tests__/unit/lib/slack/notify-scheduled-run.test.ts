@@ -26,7 +26,7 @@ const summary = (outcome: 'pr' | 'skipped' | 'failure'): ScheduledRunSummary => 
   dryRun: false,
   startedAt: new Date('2026-11-15T01:05:00Z'),
   finishedAt: new Date('2026-11-15T01:30:00Z'),
-  items: [{ url: 'https://a.example/1', outcome }],
+  items: [{ url: 'https://a.example/1', registered: false, outcome }],
   candidateCount: 1,
   feedErrors: [],
 });
