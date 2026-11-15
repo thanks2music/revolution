@@ -4,7 +4,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import type { ScheduledRunSummary } from '@/lib/scheduled/summary';
-import { buildScheduledRunMessage, needsAttention } from '@/lib/slack/scheduled-run-message';
+import { buildScheduledRunMessage, needsAttention, scheduledRunLinks } from '@/lib/slack/scheduled-run-message';
 
 const CLOUD = { runtime: 'cloud-run' as const, mentionUserId: 'U0000000001' };
 
@@ -135,5 +135,47 @@ describe('buildScheduledRunMessage', () => {
     expect(body).not.toContain('<!channel>');
     expect(body).toContain('&lt;!channel&gt;');
     expect(body).toContain('[REDACTED]');
+  });
+});
+
+describe('links to the next step', () => {
+  it('ends the message with the open article PRs and the registered-URL page', () => {
+    const { message } = buildScheduledRunMessage(summary(), CLOUD, {
+      openPrs: 'https://github.com/o/r/pulls?q=is%3Apr',
+      registeredUrls: 'https://admin.example/registered-urls',
+    });
+    const footer = JSON.stringify(message.blocks[message.blocks.length - 1]);
+    expect(footer).toContain('<https://github.com/o/r/pulls?q=is%3Apr|開いている記事 PR>');
+    expect(footer).toContain('<https://admin.example/registered-urls|URL 登録の画面>');
+  });
+
+  it('leaves the links out when they are not known', () => {
+    const { message } = buildScheduledRunMessage(summary(), CLOUD);
+    expect(JSON.stringify(message.blocks[message.blocks.length - 1])).not.toContain('<http');
+  });
+
+  it('says a dry run made no PR', () => {
+    expect(text(buildScheduledRunMessage(summary({ dryRun: true }), CLOUD).message)).toContain('PR は作っていません');
+    expect(text(buildScheduledRunMessage(summary(), CLOUD).message)).not.toContain('PR は作っていません');
+  });
+});
+
+describe('scheduledRunLinks', () => {
+  it('builds the PR search for article branches and the admin page from the env', () => {
+    const links = scheduledRunLinks({
+      GITHUB_OWNER: 'o',
+      GITHUB_REPO: 'r',
+      AI_WRITER_ADMIN_URL: 'https://admin.example/',
+    });
+    expect(links.openPrs).toBe(`https://github.com/o/r/pulls?q=${encodeURIComponent('is:pr is:open head:ai-writer/')}`);
+    expect(links.registeredUrls).toBe('https://admin.example/registered-urls');
+  });
+
+  it.each([
+    ['no env', {}],
+    ['a repo name that would break the link', { GITHUB_OWNER: 'o', GITHUB_REPO: 'r|x', AI_WRITER_ADMIN_URL: 'javascript:alert(1)' }],
+    ['an admin URL that is not a URL', { AI_WRITER_ADMIN_URL: 'not a url' }],
+  ])('leaves out what it cannot build safely (%s)', (_, env) => {
+    expect(scheduledRunLinks(env as NodeJS.ProcessEnv)).toEqual({ openPrs: undefined, registeredUrls: undefined });
   });
 });

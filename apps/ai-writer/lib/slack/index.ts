@@ -18,7 +18,7 @@ import type { ScheduledRunSummary } from '../scheduled/summary';
 import { missingSlackConfigKeys, readSlackConfig, type SlackConfig } from './config';
 import { postSlackMessage } from './client';
 import { buildPipelineMessage, type PipelineNotification, type SlackMessage } from './messages';
-import { buildScheduledRunMessage } from './scheduled-run-message';
+import { buildScheduledRunMessage, scheduledRunLinks } from './scheduled-run-message';
 
 // 入口 (CLI / cron route) が使うものだけを公開する。部品は各モジュールから直接 import する
 export {
@@ -92,7 +92,7 @@ export async function notifyScheduledRun(
   env: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
   await sendToSlack(env, config => {
-    const { message, attention } = buildScheduledRunMessage(summary, config);
+    const { message, attention } = buildScheduledRunMessage(summary, config, scheduledRunLinks(env));
     return { message, channel: attention ? config.channel : (config.devChannel ?? config.channel) };
   });
 }

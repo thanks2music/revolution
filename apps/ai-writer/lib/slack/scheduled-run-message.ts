@@ -38,6 +38,45 @@ const OUTCOME_ICON: Record<RunItem['outcome'], string> = {
   failure: '❌ 失敗',
 };
 
+/** Links to where a person acts on the result, at the end of the message */
+export interface ScheduledRunLinks {
+  /** The open article PRs on GitHub (review and merge to publish) */
+  openPrs?: string;
+  /** The admin page for registered URLs */
+  registeredUrls?: string;
+}
+
+/** Article PRs come from `ai-writer/mdx-…` (new) and `ai-writer/update-…` (updates) branches */
+const ARTICLE_PR_QUERY = 'is:pr is:open head:ai-writer/';
+
+/** An http(s) URL, or undefined (an env value that is not one is left out, not sent) */
+function httpUrl(value: string | undefined): URL | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Build the links from the env (pure). The repo comes from `GITHUB_OWNER` / `GITHUB_REPO`, the
+ * admin page from `AI_WRITER_ADMIN_URL` (the deploy sets it; it is not written in the repo)
+ */
+export function scheduledRunLinks(env: NodeJS.ProcessEnv): ScheduledRunLinks {
+  const owner = env.GITHUB_OWNER?.trim();
+  const repo = env.GITHUB_REPO?.trim();
+  const safeName = /^[\w.-]+$/;
+  const openPrs =
+    owner && repo && safeName.test(owner) && safeName.test(repo)
+      ? `https://github.com/${owner}/${repo}/pulls?q=${encodeURIComponent(ARTICLE_PR_QUERY)}`
+      : undefined;
+  const admin = httpUrl(env.AI_WRITER_ADMIN_URL?.trim());
+  const registeredUrls = admin ? new URL('/registered-urls', admin).toString() : undefined;
+  return { openPrs, registeredUrls };
+}
+
 /** Something failed: a URL, or the run as a whole */
 function hasFailure(summary: ScheduledRunSummary): boolean {
   return (
@@ -72,6 +111,7 @@ function itemLine(item: RunItem, dryRun: boolean): string {
 export function buildScheduledRunMessage(
   summary: ScheduledRunSummary,
   config: Pick<SlackConfig, 'runtime' | 'mentionUserId'>,
+  links: ScheduledRunLinks = {},
 ): { message: SlackMessage; attention: boolean } {
   const attention = needsAttention(summary);
   const mention = attention && config.mentionUserId ? `<@${config.mentionUserId}> ` : '';
@@ -86,6 +126,7 @@ export function buildScheduledRunMessage(
   const blocks: Array<Record<string, unknown>> = [{ type: 'section', text: { type: 'mrkdwn', text } }];
 
   const notes: string[] = [];
+  if (summary.dryRun) notes.push('dry-run なので PR は作っていません (動きを確かめるための実行です)');
   if (summary.stopReason) notes.push(STOP_LABEL[summary.stopReason]);
   if (summary.error) notes.push(`エラー: ${safe(summary.error, 300)}`);
   for (const error of summary.feedErrors) notes.push(`読めなかったフィード: ${safe(error, 300)}`);
@@ -103,7 +144,10 @@ export function buildScheduledRunMessage(
   }
 
   const minutes = Math.round((summary.finishedAt.getTime() - summary.startedAt.getTime()) / 60000);
-  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `所要 ${minutes} 分` }] });
+  const footer = [`所要 ${minutes} 分`];
+  if (links.openPrs) footer.push(`<${safe(links.openPrs, 500)}|開いている記事 PR>`);
+  if (links.registeredUrls) footer.push(`<${safe(links.registeredUrls, 500)}|URL 登録の画面>`);
+  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: footer.join(' · ') }] });
 
   return { message: { text, blocks }, attention };
 }
