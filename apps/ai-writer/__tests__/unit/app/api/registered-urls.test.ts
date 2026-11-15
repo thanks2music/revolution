@@ -46,10 +46,8 @@ jest.mock('@/lib/scheduled/registered-url-api', () => ({
   registeredUrlDeps: () => deps,
 }));
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const { GET, POST } = require('@/app/api/registered-urls/route') as typeof import('@/app/api/registered-urls/route');
 const { DELETE } = require('@/app/api/registered-urls/[id]/route') as typeof import('@/app/api/registered-urls/[id]/route');
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 const post = (body: string) =>
   POST(new NextRequest('http://localhost/api/registered-urls', { method: 'POST', body, headers: { 'content-type': 'application/json' } }));
