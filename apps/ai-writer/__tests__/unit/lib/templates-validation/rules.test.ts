@@ -97,9 +97,11 @@ describe('checkDictionaries (layer B)', () => {
   it('reports a missing required file, but not a missing optional one', () => {
     const files = validDocs();
     delete files['brand-slugs.yaml'];
+    delete files['slug-registry.yaml'];
     delete files['title-romaji-mapping.generated.yaml'];
     expect(checkDictionaries(layout, toDocs(files), new Set())).toEqual([
       expect.objectContaining({ rule: 'schema/missing-file', file: 'ai-writer/config/brand-slugs.yaml' }),
+      expect.objectContaining({ rule: 'schema/missing-file', file: 'ai-writer/config/slug-registry.yaml' }),
     ]);
   });
 
@@ -146,6 +148,17 @@ describe('checkCrossFile (layer C)', () => {
     expect(rulesOf(checkCrossFile(layout, toDocs(files)))).toEqual(['title/alias-ambiguous']);
   });
 
+  it('reports an old slug kept as an alias that is now another work\'s slug', () => {
+    const files = validDocs();
+    (files['title-romaji-mapping.yaml'] as { titles: Record<string, unknown> }).titles['作品E'] = {
+      slug: 'work-e',
+      aliases: ['work-b'],
+    };
+    const issues = checkCrossFile(layout, toDocs(files));
+    expect(rulesOf(issues)).toEqual(['title/alias-is-other-slug']);
+    expect(issues[0].message).toBe('alias "work-b" is the slug of 作品B');
+  });
+
   it('reports an event type outside the registry and a heading label for an unknown slug', () => {
     const files = validDocs();
     files['event-type-slugs.yaml'] = { event_types: { 種別A: 'type-a', 種別Z: 'type-z' }, heading_labels: { 'type-y': 'Y' } };
@@ -158,6 +171,17 @@ describe('checkCrossFile (layer C)', () => {
       venues: { 会場A: { slug: 'venue-a', prefecture: '県Z' }, 会場B: { slug: 'venue-a', prefecture: '県B' } },
     };
     expect(rulesOf(checkCrossFile(layout, toDocs(files)))).toEqual(['venue/slug-duplicate', 'venue/unknown-prefecture']);
+  });
+
+  it('reports a name or alias shared by two venues', () => {
+    const files = validDocs();
+    files['venue-master.yaml'] = {
+      venues: {
+        会場A: { slug: 'venue-a', prefecture: '県A', aliases: ['A店'] },
+        会場B: { slug: 'venue-b', prefecture: '県B', aliases: ['A店', '会場A'] },
+      },
+    };
+    expect(rulesOf(checkCrossFile(layout, toDocs(files)))).toEqual(['venue/alias-ambiguous', 'venue/alias-ambiguous']);
   });
 
   it('reports a region member that is not a prefecture slug', () => {

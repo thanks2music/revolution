@@ -4,6 +4,7 @@
  * Each check calls the real loader (or its required-key list) with the given directory, so this layer follows
  * the code: when the code starts requiring a new key, the validator requires it too.
  */
+import * as fs from 'fs';
 import * as path from 'path';
 import { IndustryLexiconConfigSchema } from '@revolution/schemas/industry-lexicon';
 import { StyleGuideConfigSchema } from '@revolution/schemas/style-guide';
@@ -14,6 +15,7 @@ import { loadGoodsListConfig } from '@/lib/services/goods-list';
 import { readLeadSectionYaml } from '@/lib/services/lead-generator.service';
 import { MediaFormResolverService } from '@/lib/services/media-form-resolver.service';
 import { MediaTypeMapperService } from '@/lib/services/media-type-mapper.service';
+import { PIPELINE_PROMPTS } from '@/lib/services/pipeline-prompts';
 import {
   loadRendered,
   MENU_RENDERED_KEYS,
@@ -30,22 +32,8 @@ import { errorMessage, type ParsedDocs } from './syntax';
 /** Loaded through `loadVisionApiTemplate`, not `loadModularTemplate` */
 const VISION_PIPELINE_ID = '1.5-vision-extraction';
 
-/**
- * Pipelines the services load (each service's `pipelineId`). Checked even when `_meta.yaml` does not list them,
- * so a missing `_meta.yaml` or `pipeline.order` fails here as it does in production.
- */
-export const PRODUCTION_PIPELINE_IDS = [
-  '1-selection',
-  '2-extraction',
-  '2.5-subpage-extraction',
-  '3-title',
-  '4-content',
-  '4.5-article-points',
-  '6-meta-description',
-] as const;
-
-/** A pipeline id becomes part of a file name, which `--redact` prints; anything else is reported on `_meta.yaml` */
-const PIPELINE_ID = /^[0-9A-Za-z][0-9A-Za-z._-]*$/;
+/** A section id becomes part of a printed file name (`--redact` prints file names); anything else is reported on `_meta.yaml` */
+const FILE_ID = /^[0-9A-Za-z][0-9A-Za-z._-]*$/;
 
 interface Check {
   name: string;
@@ -53,10 +41,15 @@ interface Check {
   run: () => unknown;
 }
 
-export async function checkConsumerContract(layout: TemplatesLayout, docs: ParsedDocs): Promise<TemplateIssue[]> {
+export async function checkConsumerContract(
+  layout: TemplatesLayout,
+  docs: ParsedDocs,
+  failedToParse: ReadonlySet<string> = new Set()
+): Promise<TemplateIssue[]> {
   const { configDir, sectionsDir, sharedDir, templatesDir } = layout;
   const loader = new YamlTemplateLoaderService(templatesDir);
   const rel = (file: string) => path.relative(layout.root, file);
+  const pipelineFile = (id: string) => path.join(templatesDir, TEMPLATE_ID, 'pipeline', `${id}.yaml`);
 
   const checks: Check[] = [
     { name: 'points', file: path.join(sectionsDir, '01b-points.yaml'), run: () => loadPointsFormat(sectionsDir) },
@@ -98,47 +91,44 @@ export async function checkConsumerContract(layout: TemplatesLayout, docs: Parse
       file: path.join(configDir, 'archive-sources.yaml'),
       run: () => loadArchiveSources(path.join(configDir, 'archive-sources.yaml')),
     },
-    {
-      name: 'vision-template',
-      file: path.join(templatesDir, TEMPLATE_ID, 'pipeline', `${VISION_PIPELINE_ID}.yaml`),
-      run: () => loader.loadVisionApiTemplate(TEMPLATE_ID),
-    },
+    { name: 'vision-template', file: pipelineFile(VISION_PIPELINE_ID), run: () => loader.loadVisionApiTemplate(TEMPLATE_ID) },
+    // Every pipeline a service loads, with the prompt it reads (a missing prompt would reach the model as "undefined")
+    ...Object.values(PIPELINE_PROMPTS).map(({ pipelineId, promptKey }) => ({
+      name: 'pipeline',
+      file: pipelineFile(pipelineId),
+      run: async () => {
+        const template = await loader.loadModularTemplate(TEMPLATE_ID, pipelineId);
+        const prompt: unknown = template.prompts?.[promptKey];
+        if (typeof prompt !== 'string' || prompt.trim() === '') {
+          throw new Error(`prompts.${promptKey} is missing or empty (the service reads it)`);
+        }
+      },
+    })),
   ];
 
-  const metaFile = rel(path.join(templatesDir, TEMPLATE_ID, '_meta.yaml'));
-  const { ids: listed, invalid } = pipelineOrder(docs.get(metaFile));
-  const issues: TemplateIssue[] = invalid.map(() => ({
-    rule: 'contract/pipeline-id',
-    file: metaFile,
-    message: 'pipeline.order has an entry that is not a pipeline file name',
-  }));
-  for (const pipelineId of new Set<string>([...PRODUCTION_PIPELINE_IDS, ...listed])) {
-    if (pipelineId === VISION_PIPELINE_ID) continue;
-    checks.push({
-      name: `pipeline ${pipelineId}`,
-      file: path.join(templatesDir, TEMPLATE_ID, 'pipeline', `${pipelineId}.yaml`),
-      run: () => loader.loadModularTemplate(TEMPLATE_ID, pipelineId),
-    });
-  }
-
+  const issues: TemplateIssue[] = [];
   await withQuietConsole(async () => {
     for (const check of checks) {
+      if (failedToParse.has(rel(check.file))) continue; // already reported by the syntax layer
       try {
         await check.run();
       } catch (error) {
-        issues.push({ rule: `contract/${check.name.split(' ')[0]}`, file: rel(check.file), message: errorMessage(error) });
+        issues.push({ rule: `contract/${check.name}`, file: rel(check.file), message: errorMessage(error) });
       }
     }
   });
+
+  issues.push(...checkSectionFiles(layout, docs, rel));
 
   for (const [file, schema] of [
     ['industry-lexicon.yaml', IndustryLexiconConfigSchema],
     ['style-guide.yaml', StyleGuideConfigSchema],
   ] as const) {
     const docPath = rel(path.join(sharedDir, file));
+    if (failedToParse.has(docPath)) continue;
     const doc = docs.get(docPath);
     if (doc === undefined) {
-      issues.push({ rule: 'contract/shared', file: docPath, message: 'the file does not exist or failed to parse' });
+      issues.push({ rule: 'contract/shared', file: docPath, message: 'the file does not exist' });
       continue;
     }
     issues.push(...schemaIssues(schema, doc, docPath));
@@ -146,17 +136,26 @@ export async function checkConsumerContract(layout: TemplatesLayout, docs: Parse
   return issues;
 }
 
-/** Pipeline ids listed in `_meta.yaml` (`pipeline.order`), split into usable ids and entries that are not */
-function pipelineOrder(meta: unknown): { ids: string[]; invalid: unknown[] } {
-  const order = (meta as { pipeline?: { order?: unknown } } | undefined)?.pipeline?.order;
-  if (!Array.isArray(order)) return { ids: [], invalid: [] };
-  const ids: string[] = [];
-  const invalid: unknown[] = [];
+/**
+ * Every section `_meta.yaml` lists (`sections.order`) has its file. The loader skips a missing section with only
+ * a warning, so articles would silently lose it.
+ */
+function checkSectionFiles(layout: TemplatesLayout, docs: ParsedDocs, rel: (file: string) => string): TemplateIssue[] {
+  const metaPath = path.join(layout.templatesDir, TEMPLATE_ID, '_meta.yaml');
+  const order = (docs.get(rel(metaPath)) as { sections?: { order?: unknown } } | undefined)?.sections?.order;
+  if (!Array.isArray(order)) return [];
+  const issues: TemplateIssue[] = [];
   for (const id of order) {
-    if (typeof id === 'string' && PIPELINE_ID.test(id)) ids.push(id);
-    else invalid.push(id);
+    if (typeof id !== 'string' || !FILE_ID.test(id)) {
+      issues.push({ rule: 'contract/section', file: rel(metaPath), message: 'sections.order has an entry that is not a section file name' });
+      continue;
+    }
+    const file = path.join(layout.sectionsDir, `${id}.yaml`);
+    if (!fs.existsSync(file)) {
+      issues.push({ rule: 'contract/section', file: rel(metaPath), message: `sections.order lists ${id}, but ${rel(file)} does not exist` });
+    }
   }
-  return { ids, invalid };
+  return issues;
 }
 
 /** The loaders log every load; keep the validator's output to the issues */

@@ -5,6 +5,7 @@
  * which is what the slug resolver looks up. When two works share a slug or an alias, the resolver silently picks
  * one or resolves to nothing, so an article can get the wrong work's URL without any error.
  */
+import { TITLE_SLUG_REGEX } from '@revolution/schemas/title';
 import { mergeTitleMappings } from '@/lib/config/yaml-loader';
 import type { TitleRomajiMapping } from '@/lib/config/types';
 import { DICTIONARY_SCHEMAS, configDocPath, formatPath } from './dictionaries';
@@ -69,6 +70,23 @@ function checkTitles(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[]
       message: `"${name}" points to ${slugs.size} slugs (${[...slugs].join(' / ')}) through ${owners.join(' / ')}`,
     });
   }
+
+  // A slug-shaped alias (an old slug kept for redirects) that is another work's slug: the resolver keeps the slug
+  // for that other work and drops the alias, so the old URL would lead to the wrong work
+  for (const [title, value] of Object.entries(merged)) {
+    if (typeof value === 'string') continue;
+    for (const alias of value.aliases ?? []) {
+      if (alias === value.slug || !TITLE_SLUG_REGEX.test(alias)) continue;
+      const others = titlesBySlug.get(alias);
+      if (!others) continue;
+      issues.push({
+        rule: 'title/alias-is-other-slug',
+        file: fileOf(title),
+        at: formatPath(['titles', title, 'aliases']),
+        message: `alias "${alias}" is the slug of ${others.join(' / ')}`,
+      });
+    }
+  }
   return issues;
 }
 
@@ -108,14 +126,23 @@ function checkEventTypes(layout: TemplatesLayout, docs: ParsedDocs): TemplateIss
 }
 
 function checkVenues(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[] {
-  const venues = validDoc<{ venues: Record<string, { slug: string; prefecture: string }> }>(layout, docs, 'venue-master.yaml');
+  const venues = validDoc<{ venues: Record<string, { slug: string; prefecture: string; aliases?: string[] }> }>(
+    layout,
+    docs,
+    'venue-master.yaml'
+  );
   const prefectures = validDoc<{ prefectures: Record<string, string> }>(layout, docs, 'jp-prefecture.yaml');
   if (!venues) return [];
   const file = configDocPath(layout, 'venue-master.yaml');
   const issues: TemplateIssue[] = [];
   const namesBySlug = new Map<string, string[]>();
+  const slugsByLabel = new Map<string, Set<string>>();
   for (const [name, venue] of Object.entries(venues.venues)) {
     namesBySlug.set(venue.slug, [...(namesBySlug.get(venue.slug) ?? []), name]);
+    // A venue label in an article is matched against the names and aliases
+    for (const label of new Set([name, ...(venue.aliases ?? [])])) {
+      slugsByLabel.set(label, (slugsByLabel.get(label) ?? new Set()).add(venue.slug));
+    }
     if (prefectures && !(venue.prefecture in prefectures.prefectures)) {
       issues.push({
         rule: 'venue/unknown-prefecture',
@@ -132,6 +159,14 @@ function checkVenues(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[]
       file,
       at: formatPath(['venues', names[0]]),
       message: `slug "${slug}" is used by ${names.length} venues: ${names.join(' / ')}`,
+    });
+  }
+  for (const [label, slugs] of slugsByLabel) {
+    if (slugs.size < 2) continue;
+    issues.push({
+      rule: 'venue/alias-ambiguous',
+      file,
+      message: `"${label}" names ${slugs.size} venues (${[...slugs].join(' / ')})`,
     });
   }
   return issues;

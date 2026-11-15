@@ -13,8 +13,8 @@ import { formatIssues, TemplatesLayoutError, validateTemplates } from '@/lib/tem
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
   const dirIndex = args.indexOf('--dir');
-  const dir = dirIndex >= 0 ? args[dirIndex + 1] : undefined;
-  if (!dir) {
+  const dir = args.find((arg) => arg.startsWith('--dir='))?.slice('--dir='.length) ?? (dirIndex >= 0 ? args[dirIndex + 1] : undefined);
+  if (!dir || dir.startsWith('--')) {
     console.error('Usage: validate-templates --dir <templates directory> [--redact]');
     return 2;
   }
@@ -39,10 +39,13 @@ function describeFailure(error: unknown, redact: boolean): string {
   return `The validator could not run (${error instanceof Error ? error.name : typeof error}; details redacted).`;
 }
 
+// Set the exit code instead of calling process.exit, so a long report written to a pipe is not cut off
 main().then(
-  (code) => process.exit(code),
+  (code) => {
+    process.exitCode = code;
+  },
   (error: unknown) => {
     console.error(describeFailure(error, process.argv.includes('--redact')));
-    process.exit(2);
+    process.exitCode = 2;
   }
 );

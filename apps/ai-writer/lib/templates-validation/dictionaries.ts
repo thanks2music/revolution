@@ -69,7 +69,8 @@ export const DICTIONARY_SCHEMAS: Record<string, { schema: z.ZodType; required: b
     schema: z.object({
       categories: z.array(z.object({ slug: SlugSchema, name: NonEmpty, aliases: z.array(NonEmpty).optional() })),
     }),
-    required: false,
+    // the category truth source of Templates (shared/schemas/category.ts); the event-type check depends on it
+    required: true,
   },
   'title-sheet-overrides.yaml': {
     schema: z.object({

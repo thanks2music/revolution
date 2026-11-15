@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it } from '@jest/globals';
 
 const calls: Array<[string, unknown[]]> = [];
 const failing = new Set<string>();
+/** Prompts the fake pipeline templates hold (every key a service reads, unless a test removes one) */
+const prompts: Record<string, string> = {};
 
 function fake(name: string) {
   return (...args: unknown[]) => {
@@ -40,12 +42,18 @@ jest.mock('@/lib/services/config-loader.service', () => ({
 }));
 jest.mock('@/lib/services/yaml-template-loader.service', () => ({
   YamlTemplateLoaderService: jest.fn((templatesDir: string) => ({
-    loadModularTemplate: async (templateId: string, pipelineId: string) =>
-      fake(`pipeline ${pipelineId}`)(templatesDir, templateId),
+    loadModularTemplate: async (templateId: string, pipelineId: string) => {
+      fake(`pipeline ${pipelineId}`)(templatesDir, templateId);
+      return { prompts };
+    },
     loadVisionApiTemplate: async (templateId: string) => fake('vision')(templatesDir, templateId),
   })),
 }));
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { PIPELINE_PROMPTS } from '@/lib/services/pipeline-prompts';
 import { checkConsumerContract } from '@/lib/templates-validation/consumer-contract';
 import type { TemplatesLayout } from '@/lib/templates-validation/layout';
 import type { ParsedDocs } from '@/lib/templates-validation/syntax';
@@ -75,7 +83,7 @@ const lexicon = {
 function docs(overrides: Record<string, unknown> = {}): ParsedDocs {
   return new Map(
     Object.entries({
-      'ai-writer/posts/yaml/collabo-cafe/_meta.yaml': { pipeline: { order: ['1-selection', '1.5-vision-extraction', '3-title', '9-new'] } },
+      'ai-writer/posts/yaml/collabo-cafe/_meta.yaml': { pipeline: { order: ['1-selection', '9-listed-only'] } },
       'ai-writer/posts/yaml/collabo-cafe/shared/industry-lexicon.yaml': lexicon,
       'ai-writer/posts/yaml/collabo-cafe/shared/style-guide.yaml': { not: 'checked here' },
       ...overrides,
@@ -87,6 +95,8 @@ describe('checkConsumerContract', () => {
   beforeEach(() => {
     calls.length = 0;
     failing.clear();
+    for (const key of Object.keys(prompts)) delete prompts[key];
+    for (const { promptKey } of Object.values(PIPELINE_PROMPTS)) prompts[promptKey] = 'a prompt';
   });
 
   it('calls every loader with the directories of the given templates', async () => {
@@ -104,7 +114,7 @@ describe('checkConsumerContract', () => {
       'store-url-patterns',
       'archive-sources',
       'vision',
-      // every pipeline the services load, then the ones only _meta.yaml lists; vision is loaded once, above
+      // every pipeline a service loads (from PIPELINE_PROMPTS), whatever _meta.yaml lists
       'pipeline 1-selection',
       'pipeline 2-extraction',
       'pipeline 2.5-subpage-extraction',
@@ -112,7 +122,6 @@ describe('checkConsumerContract', () => {
       'pipeline 4-content',
       'pipeline 4.5-article-points',
       'pipeline 6-meta-description',
-      'pipeline 9-new',
     ]);
     const args = Object.fromEntries(calls);
     expect(args['points']).toEqual([layout.sectionsDir]);
@@ -135,23 +144,55 @@ describe('checkConsumerContract', () => {
       },
       { rule: 'contract/pipeline', file: 'ai-writer/posts/yaml/collabo-cafe/pipeline/3-title.yaml', message: 'pipeline 3-title failed' },
     ]);
-    expect(calls).toHaveLength(19);
+    expect(calls).toHaveLength(18);
   });
 
-  it('still loads the production pipelines when _meta.yaml is missing (production fails on it too)', async () => {
+  it('still loads every service pipeline when _meta.yaml is missing (production fails on it too)', async () => {
     await checkConsumerContract(layout, docs({ 'ai-writer/posts/yaml/collabo-cafe/_meta.yaml': undefined }));
     expect(calls.map(([name]) => name).filter((name) => name.startsWith('pipeline '))).toHaveLength(7);
   });
 
-  it('reports a pipeline id that cannot be a file name on _meta.yaml, without putting it in a file path', async () => {
-    const issues = await checkConsumerContract(
-      layout,
-      docs({ 'ai-writer/posts/yaml/collabo-cafe/_meta.yaml': { pipeline: { order: ['../secret value', 42] } } })
-    );
-    const idIssues = issues.filter((issue) => issue.rule === 'contract/pipeline-id');
-    expect(idIssues).toHaveLength(2);
-    expect(idIssues.every((issue) => issue.file === 'ai-writer/posts/yaml/collabo-cafe/_meta.yaml')).toBe(true);
-    expect(calls.some(([name]) => name.includes('secret'))).toBe(false);
+  it('reports a pipeline that lacks the prompt its service reads', async () => {
+    delete prompts[PIPELINE_PROMPTS.title.promptKey];
+    prompts[PIPELINE_PROMPTS.content.promptKey] = '  ';
+    const issues = (await checkConsumerContract(layout, docs())).filter((issue) => issue.rule === 'contract/pipeline');
+    expect(issues).toEqual([
+      expect.objectContaining({ file: 'ai-writer/posts/yaml/collabo-cafe/pipeline/3-title.yaml', message: expect.stringContaining('prompts.generate_title') }),
+      expect.objectContaining({ file: 'ai-writer/posts/yaml/collabo-cafe/pipeline/4-content.yaml', message: expect.stringContaining('prompts.generate_content') }),
+    ]);
+  });
+
+  it('skips a check whose file the syntax layer already reported', async () => {
+    failing.add('rendered 05-summary.yaml');
+    const issues = await checkConsumerContract(layout, docs(), new Set(['ai-writer/posts/yaml/collabo-cafe/sections/05-summary.yaml']));
+    expect(issues.some((issue) => issue.rule === 'contract/summary')).toBe(false);
+    expect(calls.some(([name]) => name === 'rendered 05-summary.yaml')).toBe(false);
+  });
+
+  it('reports a section _meta.yaml lists whose file is missing, and an entry that is not a file name', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'templates-contract-'));
+    try {
+      const sectionsDir = path.join(root, 'ai-writer/posts/yaml/collabo-cafe/sections');
+      fs.mkdirSync(sectionsDir, { recursive: true });
+      fs.writeFileSync(path.join(sectionsDir, '02-menu.yaml'), 'a: 1\n');
+      const tmpLayout: TemplatesLayout = {
+        ...layout,
+        root,
+        templatesDir: path.join(root, 'ai-writer/posts/yaml'),
+        sectionsDir,
+        sharedDir: path.join(root, 'ai-writer/posts/yaml/collabo-cafe/shared'),
+      };
+      const issues = await checkConsumerContract(
+        tmpLayout,
+        docs({ 'ai-writer/posts/yaml/collabo-cafe/_meta.yaml': { sections: { order: ['02-menu', '06-missing', '../x y'] } } })
+      );
+      expect(issues.filter((issue) => issue.rule === 'contract/section').map((issue) => issue.message)).toEqual([
+        'sections.order lists 06-missing, but ai-writer/posts/yaml/collabo-cafe/sections/06-missing.yaml does not exist',
+        'sections.order has an entry that is not a section file name',
+      ]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('checks the shared lexicon and style guide against their schemas', async () => {

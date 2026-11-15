@@ -28,6 +28,6 @@ export async function validateTemplates(dir: string): Promise<TemplateIssue[]> {
     ...syntaxIssues,
     ...checkDictionaries(layout, docs, failedToParse),
     ...checkCrossFile(layout, docs),
-    ...(await checkConsumerContract(layout, docs)),
+    ...(await checkConsumerContract(layout, docs, failedToParse)),
   ];
 }
