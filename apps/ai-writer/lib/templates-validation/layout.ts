@@ -16,7 +16,6 @@ export class TemplatesLayoutError extends Error {
 }
 
 export interface TemplatesLayout {
-  kind: 'source' | 'synced';
   root: string;
   /** Directory of the dictionaries (`brand-slugs.yaml`, `title-romaji-mapping.yaml`, …) */
   configDir: string;
@@ -34,10 +33,10 @@ export function resolveLayout(dir: string): TemplatesLayout {
   const root = path.resolve(dir);
   const sourceConfig = path.join(root, 'ai-writer', 'config');
   if (fs.existsSync(sourceConfig)) {
-    return build('source', root, sourceConfig, path.join(root, 'ai-writer', 'posts', 'yaml'), path.join(root, 'ai-writer'));
+    return build(root, sourceConfig, path.join(root, 'ai-writer', 'posts', 'yaml'), path.join(root, 'ai-writer'));
   }
   if (fs.existsSync(path.join(root, 'config')) && fs.existsSync(path.join(root, TEMPLATE_ID))) {
-    return build('synced', root, path.join(root, 'config'), root, root);
+    return build(root, path.join(root, 'config'), root, root);
   }
   throw new TemplatesLayoutError(
     `${root} is not a templates directory: expected ai-writer/config (a templates checkout) ` +
@@ -46,7 +45,6 @@ export function resolveLayout(dir: string): TemplatesLayout {
 }
 
 function build(
-  kind: TemplatesLayout['kind'],
   root: string,
   configDir: string,
   templatesDir: string,
@@ -54,7 +52,6 @@ function build(
 ): TemplatesLayout {
   const templateDir = path.join(templatesDir, TEMPLATE_ID);
   return {
-    kind,
     root,
     configDir,
     templatesDir,

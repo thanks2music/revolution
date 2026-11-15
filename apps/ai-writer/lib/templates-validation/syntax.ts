@@ -12,7 +12,7 @@ import type { TemplateIssue } from './issues';
 /** Parsed documents keyed by the path relative to the templates root */
 export type ParsedDocs = Map<string, unknown>;
 
-export function listYamlFiles(dir: string): string[] {
+function listYamlFiles(dir: string): string[] {
   const files: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;

@@ -24,10 +24,11 @@ export async function validateTemplates(dir: string): Promise<TemplateIssue[]> {
   const layout = resolveLayout(dir);
   const { docs, issues: syntaxIssues } = parseAllYaml(layout.scanRoot, layout.root);
   const failedToParse = new Set(syntaxIssues.map((issue) => issue.file));
+  const dictionaries = checkDictionaries(layout, docs, failedToParse);
   return [
     ...syntaxIssues,
-    ...checkDictionaries(layout, docs, failedToParse),
-    ...checkCrossFile(layout, docs),
+    ...dictionaries.issues,
+    ...checkCrossFile(layout, dictionaries.valid),
     ...(await checkConsumerContract(layout, docs, failedToParse)),
   ];
 }

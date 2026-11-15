@@ -20,15 +20,14 @@ export function formatIssues(issues: TemplateIssue[], options: { redact?: boolea
   if (issues.length === 0) return 'Templates are valid (0 issues).';
 
   if (options.redact) {
-    const counts = new Map<string, number>();
-    for (const issue of issues) {
-      const key = `${issue.rule}\t${issue.file}`;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+    const counts = new Map<string, { rule: string; file: string; count: number }>();
+    for (const { rule, file } of issues) {
+      const key = JSON.stringify([rule, file]);
+      const entry = counts.get(key) ?? { rule, file, count: 0 };
+      entry.count += 1;
+      counts.set(key, entry);
     }
-    const lines = [...counts].map(([key, count]) => {
-      const [rule, file] = key.split('\t');
-      return `- ${rule} in ${file}: ${count}`;
-    });
+    const lines = [...counts.values()].map(({ rule, file, count }) => `- ${rule} in ${file}: ${count}`);
     return [`Templates are invalid (${issues.length} issues, details redacted):`, ...lines].join('\n');
   }
 

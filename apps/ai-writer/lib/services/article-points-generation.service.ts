@@ -91,7 +91,7 @@ export class ArticlePointsGenerationService {
     });
     const instruction = template.prompts[PIPELINE_PROMPTS.articlePoints.promptKey];
     if (!instruction) {
-      throw new Error(`${this.pipelineId}.yaml に prompts.write_features がありません。pnpm sync:templates で Templates を同期してください`);
+      throw new Error(`${this.pipelineId}.yaml に prompts.${PIPELINE_PROMPTS.articlePoints.promptKey} がありません。pnpm sync:templates で Templates を同期してください`);
     }
     // 1 回で置き換える (作品名などに `{{pages}}` の文字列が含まれていても、そこへ展開しない)
     const values: Record<'作品名' | 'facts' | 'extraction' | 'pages', string> = {

@@ -207,7 +207,7 @@ export class SubpageExtractionService {
     });
     const instruction = template.prompts[PIPELINE_PROMPTS.subpageExtraction.promptKey];
     if (!instruction) {
-      throw new Error(`${this.pipelineId}.yaml に prompts.extract_subpages がありません`);
+      throw new Error(`${this.pipelineId}.yaml に prompts.${PIPELINE_PROMPTS.subpageExtraction.promptKey} がありません`);
     }
     // 予算に収まるまとまりごとに呼ぶ (並列)。ページの順番は保つ。1 つのまとまりが失敗しても、他の結果は使う
     const batches = batchPages(request.pages);

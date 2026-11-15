@@ -7,18 +7,22 @@
  */
 import * as path from 'path';
 import { z } from 'zod';
+import { CATEGORY_SLUG_REGEX } from '@revolution/schemas/category';
 import { TITLE_KIND_VALUES, TITLE_SLUG_REGEX } from '@revolution/schemas/title';
 import { VENUE_SLUG_REGEX } from '@revolution/schemas/venue';
 import type { TemplateIssue } from './issues';
 import type { TemplatesLayout } from './layout';
 import type { ParsedDocs } from './syntax';
 
-export const SlugSchema = z.string().regex(TITLE_SLUG_REGEX, 'must be a slug (lowercase letters, digits and single hyphens)');
+const SLUG_MESSAGE = 'must be a slug (lowercase letters, digits and single hyphens)';
+const SlugSchema = z.string().regex(TITLE_SLUG_REGEX, SLUG_MESSAGE);
+/** Event type (category) slugs follow the categories' own truth source */
+const CategorySlugSchema = z.string().regex(CATEGORY_SLUG_REGEX, SLUG_MESSAGE);
 /** Venue slugs follow the venues table's own truth source (the seed checks them with it) */
-const VenueSlugSchema = z.string().regex(VENUE_SLUG_REGEX, 'must be a slug (lowercase letters, digits and single hyphens)');
+const VenueSlugSchema = z.string().regex(VENUE_SLUG_REGEX, SLUG_MESSAGE);
 const NonEmpty = z.string().min(1);
 
-export const TitleEntrySchema = z.union([
+const TitleEntrySchema = z.union([
   SlugSchema,
   z.object({
     slug: SlugSchema,
@@ -30,7 +34,7 @@ export const TitleEntrySchema = z.union([
   }),
 ]);
 
-export const TitleMappingSchema = z.object({ titles: z.record(z.string(), TitleEntrySchema) });
+const TitleMappingSchema = z.object({ titles: z.record(z.string(), TitleEntrySchema) });
 
 const SlugMap = z.record(z.string(), SlugSchema);
 
@@ -39,7 +43,10 @@ export const DICTIONARY_SCHEMAS: Record<string, { schema: z.ZodType; required: b
   'title-romaji-mapping.generated.yaml': { schema: TitleMappingSchema, required: false },
   'brand-slugs.yaml': { schema: z.object({ brand_slugs: SlugMap }), required: true },
   'event-type-slugs.yaml': {
-    schema: z.object({ event_types: SlugMap, heading_labels: z.record(SlugSchema, NonEmpty).optional() }),
+    schema: z.object({
+      event_types: z.record(z.string(), CategorySlugSchema),
+      heading_labels: z.record(CategorySlugSchema, NonEmpty).optional(),
+    }),
     required: true,
   },
   'jp-prefecture.yaml': {
@@ -67,7 +74,7 @@ export const DICTIONARY_SCHEMAS: Record<string, { schema: z.ZodType; required: b
   },
   'slug-registry.yaml': {
     schema: z.object({
-      categories: z.array(z.object({ slug: SlugSchema, name: NonEmpty, aliases: z.array(NonEmpty).optional() })),
+      categories: z.array(z.object({ slug: CategorySlugSchema, name: NonEmpty, aliases: z.array(NonEmpty).optional() })),
     }),
     // the category truth source of Templates (shared/schemas/category.ts); the event-type check depends on it
     required: true,
@@ -96,8 +103,17 @@ export function configDocPath(layout: TemplatesLayout, file: string): string {
   return path.relative(layout.root, path.join(layout.configDir, file));
 }
 
-export function checkDictionaries(layout: TemplatesLayout, docs: ParsedDocs, failedToParse: Set<string>): TemplateIssue[] {
+/**
+ * @returns the issues, and the dictionaries (by file name in `config/`) that matched their schemas — the input of
+ *   the cross-file rules, which run only on valid dictionaries
+ */
+export function checkDictionaries(
+  layout: TemplatesLayout,
+  docs: ParsedDocs,
+  failedToParse: ReadonlySet<string>
+): { issues: TemplateIssue[]; valid: Map<string, unknown> } {
   const issues: TemplateIssue[] = [];
+  const valid = new Map<string, unknown>();
   for (const [file, { schema, required }] of Object.entries(DICTIONARY_SCHEMAS)) {
     const rel = configDocPath(layout, file);
     if (failedToParse.has(rel)) continue; // already reported by the syntax layer
@@ -106,9 +122,11 @@ export function checkDictionaries(layout: TemplatesLayout, docs: ParsedDocs, fai
       if (required) issues.push({ rule: 'schema/missing-file', file: rel, message: 'the file the code reads does not exist' });
       continue;
     }
-    issues.push(...schemaIssues(schema, doc, rel));
+    const found = schemaIssues(schema, doc, rel);
+    if (found.length === 0) valid.set(file, doc);
+    issues.push(...found);
   }
-  return issues;
+  return { issues, valid };
 }
 
 export function schemaIssues(schema: z.ZodType, doc: unknown, file: string): TemplateIssue[] {

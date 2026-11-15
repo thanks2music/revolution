@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from '@jest/globals';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { EVENT_TYPE_SLUGS } from '@revolution/schemas/category';
 import { checkCrossFile } from '@/lib/templates-validation/cross-file';
 import { checkDictionaries } from '@/lib/templates-validation/dictionaries';
 import { formatIssues, type TemplateIssue } from '@/lib/templates-validation/issues';
@@ -15,7 +16,6 @@ import { resolveLayout, type TemplatesLayout } from '@/lib/templates-validation/
 import { parseAllYaml, type ParsedDocs } from '@/lib/templates-validation/syntax';
 
 const layout: TemplatesLayout = {
-  kind: 'source',
   root: '/t',
   configDir: '/t/ai-writer/config',
   templatesDir: '/t/ai-writer/posts/yaml',
@@ -41,18 +41,27 @@ function validDocs(): Record<string, unknown> {
     },
     'brand-slugs.yaml': { brand_slugs: { ブランドA: 'brand-a' } },
     'event-type-slugs.yaml': {
-      event_types: { 種別A: 'type-a', 種別A別名: 'type-a' },
-      heading_labels: { 'type-a': '種別' },
+      event_types: { 種別A: TYPE_A, 種別A別名: TYPE_A },
+      heading_labels: { [TYPE_A]: '種別' },
     },
     'jp-prefecture.yaml': {
       prefectures: { 県A: 'pref-a', 県B: 'pref-b' },
       regions: { 地方A: { slug: 'region-a', prefectures: ['pref-a', 'pref-b'] } },
     },
     'venue-master.yaml': { venues: { 会場A: { slug: 'venue-a', prefecture: '県A', city: '市A' } } },
-    'slug-registry.yaml': { categories: [{ slug: 'type-a', name: '種別A' }] },
+    // the registry lists the code's event types (shared/schemas/category.ts)
+    'slug-registry.yaml': { categories: EVENT_TYPE_SLUGS.map((slug) => ({ slug, name: `種別 ${slug}` })) },
     'title-sheet-overrides.yaml': { overrides: { id1: { slug: 'work-b' }, id2: { skip: true }, id3: { same_as: '作品A' } } },
     'taxonomy.yaml': { axes: {}, category_rules: {} },
   };
+}
+
+/** An event type slug of the code (the values are public: shared/schemas/category.ts) */
+const TYPE_A = EVENT_TYPE_SLUGS[0];
+
+/** Layer C runs on the dictionaries Layer B accepted */
+function crossFile(files: Record<string, unknown>): TemplateIssue[] {
+  return checkCrossFile(layout, checkDictionaries(layout, toDocs(files), new Set()).valid);
 }
 
 function toDocs(files: Record<string, unknown>): ParsedDocs {
@@ -65,13 +74,13 @@ function rulesOf(issues: TemplateIssue[]): string[] {
 
 describe('checkDictionaries (layer B)', () => {
   it('passes the valid set', () => {
-    expect(checkDictionaries(layout, toDocs(validDocs()), new Set())).toEqual([]);
+    expect(checkDictionaries(layout, toDocs(validDocs()), new Set()).issues).toEqual([]);
   });
 
   it('rejects a slug with uppercase letters, with the YAML path', () => {
     const files = validDocs();
     files['venue-master.yaml'] = { venues: { 会場A: { slug: 'Venue-A', prefecture: '県A' } } };
-    const issues = checkDictionaries(layout, toDocs(files), new Set());
+    const { issues } = checkDictionaries(layout, toDocs(files), new Set());
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ rule: 'schema/venue-master', file: 'ai-writer/config/venue-master.yaml', at: 'venues["会場A"].slug' });
   });
@@ -81,7 +90,7 @@ describe('checkDictionaries (layer B)', () => {
     files['brand-slugs.yaml'] = { brand_slugs: { ブランドA: 'brand a' } };
     files['event-type-slugs.yaml'] = { event_types: { 種別A: 'type--a' } };
     files['title-sheet-overrides.yaml'] = { overrides: { id1: { slug: '-work-b' } } };
-    expect(rulesOf(checkDictionaries(layout, toDocs(files), new Set()))).toEqual([
+    expect(rulesOf(checkDictionaries(layout, toDocs(files), new Set()).issues)).toEqual([
       'schema/brand-slugs',
       'schema/event-type-slugs',
       'schema/title-sheet-overrides',
@@ -91,7 +100,7 @@ describe('checkDictionaries (layer B)', () => {
   it('rejects a kind outside the allowed values', () => {
     const files = validDocs();
     files['title-romaji-mapping.yaml'] = { titles: { 作品A: { slug: 'work-a', kind: 'movie' } } };
-    expect(rulesOf(checkDictionaries(layout, toDocs(files), new Set()))).toEqual(['schema/title-romaji-mapping']);
+    expect(rulesOf(checkDictionaries(layout, toDocs(files), new Set()).issues)).toEqual(['schema/title-romaji-mapping']);
   });
 
   it('reports a missing required file, but not a missing optional one', () => {
@@ -99,7 +108,7 @@ describe('checkDictionaries (layer B)', () => {
     delete files['brand-slugs.yaml'];
     delete files['slug-registry.yaml'];
     delete files['title-romaji-mapping.generated.yaml'];
-    expect(checkDictionaries(layout, toDocs(files), new Set())).toEqual([
+    expect(checkDictionaries(layout, toDocs(files), new Set()).issues).toEqual([
       expect.objectContaining({ rule: 'schema/missing-file', file: 'ai-writer/config/brand-slugs.yaml' }),
       expect.objectContaining({ rule: 'schema/missing-file', file: 'ai-writer/config/slug-registry.yaml' }),
     ]);
@@ -108,25 +117,25 @@ describe('checkDictionaries (layer B)', () => {
   it('skips a file the syntax layer already reported', () => {
     const files = validDocs();
     delete files['brand-slugs.yaml'];
-    expect(checkDictionaries(layout, toDocs(files), new Set(['ai-writer/config/brand-slugs.yaml']))).toEqual([]);
+    expect(checkDictionaries(layout, toDocs(files), new Set(['ai-writer/config/brand-slugs.yaml'])).issues).toEqual([]);
   });
 
   it('allows keys the code does not know yet', () => {
     const files = validDocs();
     files['brand-slugs.yaml'] = { brand_slugs: { ブランドA: 'brand-a' }, future_key: { anything: 1 } };
-    expect(checkDictionaries(layout, toDocs(files), new Set())).toEqual([]);
+    expect(checkDictionaries(layout, toDocs(files), new Set()).issues).toEqual([]);
   });
 });
 
 describe('checkCrossFile (layer C)', () => {
   it('passes the valid set (a generated entry under a hand-written key is overridden, not a conflict)', () => {
-    expect(checkCrossFile(layout, toDocs(validDocs()))).toEqual([]);
+    expect(crossFile(validDocs())).toEqual([]);
   });
 
   it('reports two works sharing a slug across the hand-written and generated files', () => {
     const files = validDocs();
     (files['title-romaji-mapping.generated.yaml'] as { titles: Record<string, unknown> }).titles['作品D'] = { slug: 'work-b' };
-    const issues = checkCrossFile(layout, toDocs(files));
+    const issues = crossFile(files);
     expect(rulesOf(issues)).toEqual(['title/slug-duplicate']);
     expect(issues[0].message).toContain('作品B / 作品D');
   });
@@ -137,7 +146,7 @@ describe('checkCrossFile (layer C)', () => {
       slug: 'work-e',
       aliases: ['作品A別名'],
     };
-    const issues = checkCrossFile(layout, toDocs(files));
+    const issues = crossFile(files);
     expect(rulesOf(issues)).toEqual(['title/alias-ambiguous']);
     expect(issues[0].message).toContain('"作品A別名" points to 2 slugs');
   });
@@ -145,7 +154,7 @@ describe('checkCrossFile (layer C)', () => {
   it('reports an alias equal to another work name', () => {
     const files = validDocs();
     (files['title-romaji-mapping.yaml'] as { titles: Record<string, unknown> }).titles['作品E'] = { slug: 'work-e', aliases: ['作品B'] };
-    expect(rulesOf(checkCrossFile(layout, toDocs(files)))).toEqual(['title/alias-ambiguous']);
+    expect(rulesOf(crossFile(files))).toEqual(['title/alias-ambiguous']);
   });
 
   it('reports an old slug kept as an alias that is now another work\'s slug', () => {
@@ -154,15 +163,28 @@ describe('checkCrossFile (layer C)', () => {
       slug: 'work-e',
       aliases: ['work-b'],
     };
-    const issues = checkCrossFile(layout, toDocs(files));
+    const issues = crossFile(files);
     expect(rulesOf(issues)).toEqual(['title/alias-is-other-slug']);
     expect(issues[0].message).toBe('alias "work-b" is the slug of 作品B');
   });
 
   it('reports an event type outside the registry and a heading label for an unknown slug', () => {
     const files = validDocs();
-    files['event-type-slugs.yaml'] = { event_types: { 種別A: 'type-a', 種別Z: 'type-z' }, heading_labels: { 'type-y': 'Y' } };
-    expect(rulesOf(checkCrossFile(layout, toDocs(files)))).toEqual(['event-type/unknown-category', 'event-type/unknown-heading-label']);
+    files['event-type-slugs.yaml'] = { event_types: { 種別A: TYPE_A, 種別Z: 'type-z' }, heading_labels: { 'type-y': 'Y' } };
+    expect(rulesOf(crossFile(files))).toEqual(['event-type/unknown-category', 'event-type/unknown-heading-label']);
+  });
+
+  it('reports a registry that differs from the code\'s event types, both ways', () => {
+    const files = validDocs();
+    files['slug-registry.yaml'] = {
+      categories: [...EVENT_TYPE_SLUGS.slice(1).map((slug) => ({ slug, name: slug })), { slug: 'type-extra', name: 'X' }],
+    };
+    files['event-type-slugs.yaml'] = { event_types: { 種別B: EVENT_TYPE_SLUGS[1] } };
+    const issues = crossFile(files).filter((issue) => issue.rule === 'event-type/registry-differs-from-code');
+    expect(issues.map((issue) => issue.message)).toEqual([
+      'category "type-extra" is not an event type in the code (shared/schemas/category.ts EVENT_TYPE_SLUGS)',
+      `the code's event type "${TYPE_A}" is not a category in slug-registry.yaml`,
+    ]);
   });
 
   it('reports a venue with an unknown prefecture and two venues sharing a slug', () => {
@@ -170,7 +192,7 @@ describe('checkCrossFile (layer C)', () => {
     files['venue-master.yaml'] = {
       venues: { 会場A: { slug: 'venue-a', prefecture: '県Z' }, 会場B: { slug: 'venue-a', prefecture: '県B' } },
     };
-    expect(rulesOf(checkCrossFile(layout, toDocs(files)))).toEqual(['venue/slug-duplicate', 'venue/unknown-prefecture']);
+    expect(rulesOf(crossFile(files))).toEqual(['venue/slug-duplicate', 'venue/unknown-prefecture']);
   });
 
   it('reports a name or alias shared by two venues', () => {
@@ -181,20 +203,20 @@ describe('checkCrossFile (layer C)', () => {
         会場B: { slug: 'venue-b', prefecture: '県B', aliases: ['A店', '会場A'] },
       },
     };
-    expect(rulesOf(checkCrossFile(layout, toDocs(files)))).toEqual(['venue/alias-ambiguous', 'venue/alias-ambiguous']);
+    expect(rulesOf(crossFile(files))).toEqual(['venue/alias-ambiguous', 'venue/alias-ambiguous']);
   });
 
   it('reports a region member that is not a prefecture slug', () => {
     const files = validDocs();
     files['jp-prefecture.yaml'] = { prefectures: { 県A: 'pref-a' }, regions: { 地方A: { slug: 'region-a', prefectures: ['pref-z'] } } };
     files['venue-master.yaml'] = { venues: {} };
-    expect(rulesOf(checkCrossFile(layout, toDocs(files)))).toEqual(['prefecture/unknown-region-member']);
+    expect(rulesOf(crossFile(files))).toEqual(['prefecture/unknown-region-member']);
   });
 
   it('does not run on a dictionary that failed its schema (layer B reports it)', () => {
     const files = validDocs();
     files['title-romaji-mapping.yaml'] = { titles: { 作品A: { slug: 'BAD' }, 作品B: { slug: 'BAD' } } };
-    expect(checkCrossFile(layout, toDocs(files))).toEqual([]);
+    expect(crossFile(files).filter((issue) => issue.rule.startsWith('title/'))).toEqual([]);
   });
 });
 
@@ -234,11 +256,11 @@ describe('parseAllYaml and resolveLayout (layer A, on a temporary directory)', (
 
   it('recognizes a templates checkout and the synced copy, and rejects other directories', () => {
     const source = writeTree({ 'ai-writer/config/a.yaml': 'a: 1\n' });
-    expect(resolveLayout(source)).toMatchObject({ kind: 'source', configDir: path.join(source, 'ai-writer', 'config') });
+    expect(resolveLayout(source)).toMatchObject({ configDir: path.join(source, 'ai-writer', 'config') });
     fs.rmSync(source, { recursive: true, force: true });
 
     const synced = writeTree({ 'config/a.yaml': 'a: 1\n', 'collabo-cafe/_meta.yaml': 'a: 1\n' });
-    expect(resolveLayout(synced)).toMatchObject({ kind: 'synced', configDir: path.join(synced, 'config'), templatesDir: synced });
+    expect(resolveLayout(synced)).toMatchObject({ configDir: path.join(synced, 'config'), templatesDir: synced });
     fs.rmSync(synced, { recursive: true, force: true });
 
     const other = writeTree({ 'README.md': '' });

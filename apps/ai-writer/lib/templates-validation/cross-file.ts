@@ -5,29 +5,30 @@
  * which is what the slug resolver looks up. When two works share a slug or an alias, the resolver silently picks
  * one or resolves to nothing, so an article can get the wrong work's URL without any error.
  */
+import { EVENT_TYPE_SLUGS } from '@revolution/schemas/category';
 import { TITLE_SLUG_REGEX } from '@revolution/schemas/title';
 import { mergeTitleMappings } from '@/lib/config/yaml-loader';
-import type { TitleRomajiMapping } from '@/lib/config/types';
-import { DICTIONARY_SCHEMAS, configDocPath, formatPath } from './dictionaries';
+import type { EventTypeSlugsConfig, PrefectureConfig, TitleRomajiMapping } from '@/lib/config/types';
+import { configDocPath, formatPath } from './dictionaries';
 import type { TemplateIssue } from './issues';
 import type { TemplatesLayout } from './layout';
-import type { ParsedDocs } from './syntax';
 
-/** Returns the dictionary when it exists and matches its schema; otherwise null (its issues are reported by Layer B) */
-function validDoc<T>(layout: TemplatesLayout, docs: ParsedDocs, file: string): T | null {
-  const doc = docs.get(configDocPath(layout, file));
-  if (doc === undefined) return null;
-  return DICTIONARY_SCHEMAS[file].schema.safeParse(doc).success ? (doc as T) : null;
+/** Dictionaries that matched their schemas in Layer B, by file name in `config/` (`checkDictionaries().valid`) */
+export type ValidDictionaries = ReadonlyMap<string, unknown>;
+
+/** The dictionary when it matched its schema; otherwise null (Layer B reports why) */
+function validDoc<T>(valid: ValidDictionaries, file: string): T | null {
+  return (valid.get(file) as T | undefined) ?? null;
 }
 
-export function checkCrossFile(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[] {
-  return [...checkTitles(layout, docs), ...checkEventTypes(layout, docs), ...checkVenues(layout, docs), ...checkPrefectures(layout, docs)];
+export function checkCrossFile(layout: TemplatesLayout, valid: ValidDictionaries): TemplateIssue[] {
+  return [...checkTitles(layout, valid), ...checkEventTypes(layout, valid), ...checkVenues(layout, valid), ...checkPrefectures(layout, valid)];
 }
 
-function checkTitles(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[] {
-  const hand = validDoc<TitleRomajiMapping>(layout, docs, 'title-romaji-mapping.yaml');
+function checkTitles(layout: TemplatesLayout, valid: ValidDictionaries): TemplateIssue[] {
+  const hand = validDoc<TitleRomajiMapping>(valid, 'title-romaji-mapping.yaml');
   if (!hand) return [];
-  const generated = validDoc<TitleRomajiMapping>(layout, docs, 'title-romaji-mapping.generated.yaml');
+  const generated = validDoc<TitleRomajiMapping>(valid, 'title-romaji-mapping.generated.yaml');
   const merged = mergeTitleMappings(hand, generated).titles;
   const handFile = configDocPath(layout, 'title-romaji-mapping.yaml');
   const generatedFile = configDocPath(layout, 'title-romaji-mapping.generated.yaml');
@@ -90,17 +91,25 @@ function checkTitles(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[]
   return issues;
 }
 
-function checkEventTypes(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[] {
-  const eventTypes = validDoc<{ event_types: Record<string, string>; heading_labels?: Record<string, string> }>(
-    layout,
-    docs,
-    'event-type-slugs.yaml'
-  );
-  const registry = validDoc<{ categories: Array<{ slug: string }> }>(layout, docs, 'slug-registry.yaml');
+function checkEventTypes(layout: TemplatesLayout, valid: ValidDictionaries): TemplateIssue[] {
+  const eventTypes = validDoc<EventTypeSlugsConfig>(valid, 'event-type-slugs.yaml');
+  const registry = validDoc<{ categories: Array<{ slug: string }> }>(valid, 'slug-registry.yaml');
   if (!eventTypes || !registry) return [];
   const file = configDocPath(layout, 'event-type-slugs.yaml');
   const categories = new Set(registry.categories.map((category) => category.slug));
   const issues: TemplateIssue[] = [];
+  // shared/schemas/category.ts: the code's event types, slug-registry.yaml and event-type-slugs.yaml change together
+  const codeSlugs = new Set<string>(EVENT_TYPE_SLUGS);
+  for (const slug of new Set([...categories, ...codeSlugs])) {
+    if (categories.has(slug) && codeSlugs.has(slug)) continue;
+    issues.push({
+      rule: 'event-type/registry-differs-from-code',
+      file: configDocPath(layout, 'slug-registry.yaml'),
+      message: categories.has(slug)
+        ? `category "${slug}" is not an event type in the code (shared/schemas/category.ts EVENT_TYPE_SLUGS)`
+        : `the code's event type "${slug}" is not a category in slug-registry.yaml`,
+    });
+  }
   for (const [name, slug] of Object.entries(eventTypes.event_types)) {
     if (!categories.has(slug)) {
       issues.push({
@@ -125,13 +134,9 @@ function checkEventTypes(layout: TemplatesLayout, docs: ParsedDocs): TemplateIss
   return issues;
 }
 
-function checkVenues(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[] {
-  const venues = validDoc<{ venues: Record<string, { slug: string; prefecture: string; aliases?: string[] }> }>(
-    layout,
-    docs,
-    'venue-master.yaml'
-  );
-  const prefectures = validDoc<{ prefectures: Record<string, string> }>(layout, docs, 'jp-prefecture.yaml');
+function checkVenues(layout: TemplatesLayout, valid: ValidDictionaries): TemplateIssue[] {
+  const venues = validDoc<{ venues: Record<string, { slug: string; prefecture: string; aliases?: string[] }> }>(valid, 'venue-master.yaml');
+  const prefectures = validDoc<PrefectureConfig>(valid, 'jp-prefecture.yaml');
   if (!venues) return [];
   const file = configDocPath(layout, 'venue-master.yaml');
   const issues: TemplateIssue[] = [];
@@ -172,12 +177,8 @@ function checkVenues(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[]
   return issues;
 }
 
-function checkPrefectures(layout: TemplatesLayout, docs: ParsedDocs): TemplateIssue[] {
-  const config = validDoc<{ prefectures: Record<string, string>; regions?: Record<string, { prefectures: string[] }> }>(
-    layout,
-    docs,
-    'jp-prefecture.yaml'
-  );
+function checkPrefectures(layout: TemplatesLayout, valid: ValidDictionaries): TemplateIssue[] {
+  const config = validDoc<PrefectureConfig>(valid, 'jp-prefecture.yaml');
   if (!config?.regions) return [];
   const file = configDocPath(layout, 'jp-prefecture.yaml');
   const slugs = new Set(Object.values(config.prefectures));

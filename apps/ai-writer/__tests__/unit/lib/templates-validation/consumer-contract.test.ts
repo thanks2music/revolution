@@ -59,7 +59,6 @@ import type { TemplatesLayout } from '@/lib/templates-validation/layout';
 import type { ParsedDocs } from '@/lib/templates-validation/syntax';
 
 const layout: TemplatesLayout = {
-  kind: 'source',
   root: '/t',
   configDir: '/t/ai-writer/config',
   templatesDir: '/t/ai-writer/posts/yaml',
