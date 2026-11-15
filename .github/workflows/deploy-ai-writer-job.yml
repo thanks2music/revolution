@@ -137,6 +137,9 @@ jobs:
       # --set-env-vars は区切りを ## にしている (gcloud の ^<区切り>^ の書き方)。値にカンマが入っても壊れない。
       #   @ は Sentry の DSN に入るので区切りに使わない
       #   (Job は定期実行の時にしか動かないので、欠けていると気づくのが遅れる)
+      # 既定の args は定期実行の入口 (本実行)。起動する側は引数を渡さずに jobs.run を呼ぶだけでよく、
+      # 起動の権限に args の上書き (run.jobs.runWithOverrides) を含めずに済む。
+      # 手で dry-run する時は、gcloud run jobs execute --args で上書きする
       - name: Deploy the job
         id: deploy
         run: |
@@ -144,6 +147,7 @@ jobs:
             --image "${{ steps.image.outputs.ref }}" \
             --region ${{ env.REGION }} \
             --service-account "${{ vars.AI_WRITER_RUNTIME_SERVICE_ACCOUNT }}" \
+            --args scripts/run-scheduled.ts \
             --tasks 1 \
             --max-retries 0 \
             --task-timeout 7200s \
