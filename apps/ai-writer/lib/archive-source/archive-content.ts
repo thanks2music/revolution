@@ -133,15 +133,22 @@ function categoryOfHeading(text: string, keywords: ArchiveSource['images']['sect
   return CATEGORIES.find((category) => keywords[category].some((word) => text.includes(word))) ?? null;
 }
 
+const IMAGE_FILE = /\.(?:jpe?g|png|webp|gif|avif)$/i;
+
+interface ImageElement {
+  attr(name: string): string | undefined;
+  closest(selector: string): { attr(name: string): string | undefined };
+}
+
 /**
- * The image's own URL. Lazy-loaded images keep a placeholder image (not a `data:` URL) in `src` and
- * the real one in `data-src`, so every candidate is checked and the first usable one wins
+ * The image's own URL. A gallery shows a small thumbnail inside a link to the full-size file, so
+ * a linked image file wins over the `<img>`. Lazy-loaded images keep a placeholder image (not a
+ * `data:` URL) in `src` and the real one in `data-src`, so every candidate is checked and the
+ * first usable one wins
  */
-function archiveImageUrl(
-  img: { attr(name: string): string | undefined },
-  articleUrl: string,
-  rules: ArchiveSource['images'],
-): string | null {
+function archiveImageUrl(img: ImageElement, articleUrl: string, rules: ArchiveSource['images']): string | null {
+  const linked = usableImageUrl(img.closest('a').attr('href'), articleUrl, rules);
+  if (linked && IMAGE_FILE.test(new URL(linked).pathname)) return linked;
   for (const name of ['data-src', 'data-lazy-src', 'src']) {
     const url = usableImageUrl(img.attr(name), articleUrl, rules);
     if (url) return url;
