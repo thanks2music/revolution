@@ -61,6 +61,7 @@ import { deriveStoreContext, type StoreContext } from '../utils/store-derivation
 import { resolveEventTypeHeadingLabel } from '../utils/event-type-heading-label';
 import { loadYamlConfig } from '../config/yaml-loader';
 import { pageUrlKey, stripUtmFromUrl } from '../utils/url';
+import { removeLinksToClosedSite, withoutOfficialUrls } from '../utils/without-official-urls';
 import { escapeMdxText, selfCloseVoidElements } from '../utils/mdx-safety';
 import type { ExtractionMenuItem } from '@revolution/schemas/extraction-response';
 import {
@@ -252,6 +253,35 @@ export interface MdxGenerationRequest {
    * Firestore には触れない (登録済みで `generated` のまま)。タイトルは作り直さない
    */
   update?: ArticleUpdateTarget;
+  /**
+   * Year of the event (the canonical key, the image folder and frontmatter `year`, and the year the
+   * extraction gives to dates written without one). Defaults to the current year
+   */
+  eventYear?: number;
+  /**
+   * Build the article from a page other than the official site (the official site is gone).
+   * Article selection, the official-site fetch and the sub-page / image discovery are skipped and
+   * these values are used instead; the article does not link to the official site
+   */
+  sourceOverride?: MdxSourceOverride;
+}
+
+/** Page content that replaces the official site's (`MdxGenerationRequest.sourceOverride`) */
+export interface MdxSourceOverride {
+  /** The event's official site URL. Kept for extraction and logs; not written into the article */
+  officialUrl: string;
+  /** Same shape as `extractContentHtml` */
+  contentHtml: { compacted: string; raw: string };
+  ogImage: string | null;
+  categoryImages: CategoryImages;
+  /** Why the official site could not be used (shown in the PR body and logs) */
+  reason: string;
+  /**
+   * Which links to the official site the article must not have: `none` when the site is alive (it
+   * just no longer lists the items), `page` when only that page is gone, `host` when the whole site
+   * cannot be reached (a closed domain can later belong to someone else)
+   */
+  unlinkScope: 'none' | 'page' | 'host';
 }
 
 /** 更新する記事 */
@@ -386,9 +416,12 @@ export class ArticleGenerationMdxService {
    * AI_PROVIDER環境変数でプロバイダーを切り替え可能
    */
   async generateMdxFromRSS(request: MdxGenerationRequest): Promise<MdxGenerationResult> {
-    const { rssItem, dryRun = false, localOnly = false, update } = request;
-    // 更新のときは既存の記事の年 (画像のフォルダ `{event_type}/{year}/{post_id}` に入る) を引き継ぐ
-    const year = update?.fields.year ?? new Date().getFullYear();
+    const { rssItem, dryRun = false, localOnly = false, update, sourceOverride } = request;
+    // 更新のときは既存の記事の年 (画像のフォルダ `{event_type}/{year}/{post_id}` に入る) を引き継ぐ。
+    // 過去のイベントは開催年 (`eventYear`)
+    const year = update?.fields.year ?? request.eventYear ?? new Date().getFullYear();
+    // 公式サイトが閉じている記事は、閉じたサイトへのリンクを書かない
+    const unlinkScope = sourceOverride?.unlinkScope ?? 'none';
 
     // モード判定用のヘルパー変数
     // skipExternalOps: Firestore/GitHub操作をスキップ（dryRun OR localOnly）
@@ -431,15 +464,19 @@ export class ArticleGenerationMdxService {
       console.log(`\n${getStepDisplay('article-selection')} AI API (${providerDisplayName}) で記事選別（公式URL検出、採用判定）...`);
       console.log('記事URLからHTML取得中:', rssItem.link);
 
-      const articleHtml = await extractArticleHtml(rssItem.link);
-      console.log('記事HTML取得完了:', articleHtml.length, 'bytes');
-
-      const selectionService = new ArticleSelectionService();
-      const selected = await selectionService.shouldGenerateArticle({
-        rss_title: rssItem.title,
-        rss_content: articleHtml,
-        site_domain: new URL(rssItem.link).hostname,
-      });
+      let selected: ArticleSelectionResult;
+      if (sourceOverride) {
+        selected = overrideSelection(sourceOverride);
+        console.log(
+          `${getStepContext('article-selection')} 公式サイトの代わりに渡されたページを使う (理由: ${sourceOverride.reason})。選別の AI は呼ばない`,
+        );
+      } else {
+        selected = await new ArticleSelectionService().shouldGenerateArticle({
+          rss_title: rssItem.title,
+          rss_content: await extractArticleHtml(rssItem.link),
+          site_domain: new URL(rssItem.link).hostname,
+        });
+      }
       // 更新のときは、既存の記事と同じ公式サイトから作り直す (選別が別の URL を選んでも使わない)
       const selectionResult = update
         ? { ...selected, primary_official_url: update.fields.officialUrl }
@@ -449,6 +486,9 @@ export class ArticleGenerationMdxService {
           `${getStepContext('article-selection')} 更新のため、選別した公式URL (${selected.primary_official_url ?? 'なし'}) ではなく既存の記事の official_url を使う: ${update.fields.officialUrl}`,
         );
       }
+
+      // 記事に書く公式サイトの URL (閉じたサイトなら書かない)
+      const linkedOfficialUrl = unlinkScope === 'none' ? (selectionResult.primary_official_url ?? undefined) : undefined;
 
       // 公式URLが見つからない場合はスキップ
       if (!selectionResult.should_generate) {
@@ -523,10 +563,14 @@ export class ArticleGenerationMdxService {
           console.log('公式サイトURLからHTML取得中:', selectionResult.primary_official_url);
           // ⚠️ `raw` (圧縮前) は会場の網羅性ゲート専用。LLM へ渡すのは `compacted` だけ
           //    (圧縮は class 属性を全て落とすため、raw でないと会場ブロックを認識できない)。
-          const contentHtml = await extractContentHtml(selectionResult.primary_official_url);
+          const contentHtml = sourceOverride
+            ? sourceOverride.contentHtml
+            : await extractContentHtml(selectionResult.primary_official_url);
           officialHtml = contentHtml.compacted;
           // og:image は <head> にある。compacted は本文のブロックだけのことがある (meta が無い) ので、ここで読む
-          officialOgImage = extractOgImageUrl(contentHtml.raw, selectionResult.primary_official_url);
+          officialOgImage = sourceOverride
+            ? sourceOverride.ogImage
+            : extractOgImageUrl(contentHtml.raw, selectionResult.primary_official_url);
           console.log(
             '公式サイトHTML取得完了:',
             officialHtml.length,
@@ -570,6 +614,8 @@ export class ArticleGenerationMdxService {
                 page_content: llmInput,
                 copyright_notices: copyrightNotices,
                 official_urls: officialUrls,
+                // 更新では従来どおり現在の年 (既存の記事の年を使うと、年をまたぐ開催の日付がずれる)
+                reference_year: request.eventYear,
                 // ⚠️ 観測ログ専用。プロンプトへは渡らない (自己成就の防止)
                 observationContext: {
                   venueGateAttempt: attempt,
@@ -662,6 +708,9 @@ export class ArticleGenerationMdxService {
         };
       }
 
+      // 公式サイトが閉じている記事は、閉じたサイトへのリンクを書かない (後で別人のサイトになりうる)
+      if (unlinkScope !== 'none') detailedExtraction = withoutOfficialUrls(detailedExtraction);
+
       // A-1-c (詳細未発表のイベントは書かない) で止める時の返り値。記事の更新 (続報の反映) では止めない
       // 開始日が分かっていれば返す (定期実行が、試し直しを開始日で打ち切るために使う)
       const extractionForSkip = detailedExtraction;
@@ -703,7 +752,14 @@ export class ArticleGenerationMdxService {
       let subpageDetection: SubpageDetectionResult | undefined;
       let categoryImages: CategoryImages | undefined;
 
-      if (selectionResult.primary_official_url && officialHtml) {
+      if (sourceOverride) {
+        categoryImages = sourceOverride.categoryImages;
+        console.log(`${getStepContext('category-image-extraction')} 渡された画像を使う (下層ページは探さない):`, {
+          menu: categoryImages.menu.length,
+          novelty: categoryImages.novelty.length,
+          goods: categoryImages.goods.length,
+        });
+      } else if (selectionResult.primary_official_url && officialHtml) {
         try {
           // 公式サイトHTMLからリンクを抽出
           const pageLinks = extractPageLinks(officialHtml, selectionResult.primary_official_url);
@@ -1534,9 +1590,7 @@ export class ArticleGenerationMdxService {
           // Sprint C-β P14: collabo-cafe.com origin の utm パラメータを LLM プロンプト入力
           // 段階で剥がす (LLM が本文テーブル markdown link に utm 付き URL をそのまま
           // 反映する経路の防御)。
-          公式サイトURL: selectionResult.primary_official_url
-            ? stripUtmFromUrl(selectionResult.primary_official_url)
-            : undefined,
+          公式サイトURL: linkedOfficialUrl ? stripUtmFromUrl(linkedOfficialUrl) : undefined,
           キャラクター名: detailedExtraction.キャラクター名 ?? undefined,
           テーマ名: detailedExtraction.テーマ名 ?? undefined,
           描き下ろし表記,
@@ -1637,6 +1691,19 @@ export class ArticleGenerationMdxService {
 
       finalContent = this.removeFooterPlaceholder(finalContent);
 
+      // 公式サイトが閉じている記事: 本文の LLM が書いた閉じたサイトへの案内 (表の行と文) を除く。
+      // 入力のページ (アーカイブの記事) に閉じたサイトのリンクが残っているので、同じホストへのリンクをすべて対象にする
+      if (sourceOverride && unlinkScope !== 'none') {
+        const unlinked = removeLinksToClosedSite(finalContent, sourceOverride.officialUrl, unlinkScope);
+        finalContent = unlinked.content;
+        if (unlinked.removed.length > 0) {
+          console.warn(
+            `${getStepContext('footer-placeholder-cleanup')} 閉じた公式サイトへの案内を ${unlinked.removed.length} 行除いた:`,
+            unlinked.removed.map((line) => line.slice(0, 60)),
+          );
+        }
+      }
+
       // ------------------------------------------------------------------
       // 未置換プレースホルダーの最終検査 (2026-08-15 追加)
       //
@@ -1729,7 +1796,7 @@ export class ArticleGenerationMdxService {
         eventDataOccurrences: parsedEventData?.occurrences,
         extractionPeriod: detailedExtraction?.開催期間,
         extractionStoreName: detailedExtraction?.店舗名,
-        extractionOfficialUrl: selectionResult.primary_official_url,
+        extractionOfficialUrl: linkedOfficialUrl,
       });
 
       // silent drop の observability (Codex 中指摘 + claude[bot] R1 comment #2/#5/#6 対応)。
@@ -1906,6 +1973,7 @@ export class ArticleGenerationMdxService {
           workSlug,
           storeSlug,
           eventType,
+          sourceOverrideReason: sourceOverride?.reason,
         });
 
         prResult = await createMdxPr({
@@ -2380,10 +2448,17 @@ export class ArticleGenerationMdxService {
     workSlug: string;
     storeSlug: string;
     eventType: string;
+    /** Set when the article was built from a page other than the official site */
+    sourceOverrideReason?: string;
   }): string {
-    const { rssItem, extraction, metadata, eventRecord, workSlug, storeSlug, eventType } = params;
+    const { rssItem, extraction, metadata, eventRecord, workSlug, storeSlug, eventType, sourceOverrideReason } = params;
+    const sourceNote = sourceOverrideReason
+      ? `> ⚠️ **公式サイトではなく、アーカイブの記事から作りました** (公式サイトを使えなかった理由: \`${sourceOverrideReason}\`)。会場・品目・日付を特に確かめてください
 
-    return `## 📝 記事情報
+`
+      : '';
+
+    return `${sourceNote}## 📝 記事情報
 
 **タイトル:** ${rssItem.title}
 **公開日:** ${rssItem.pubDate || '不明'}
@@ -2655,3 +2730,13 @@ async function recordVenueGateVerdict(
 }
 
 export default ArticleGenerationMdxService;
+
+/** The selection result for a page given in place of the official site (no AI call) */
+function overrideSelection(override: MdxSourceOverride): ArticleSelectionResult {
+  return {
+    should_generate: true,
+    primary_official_url: override.officialUrl,
+    official_urls: [],
+    reason: `source override: ${override.reason}`,
+  };
+}

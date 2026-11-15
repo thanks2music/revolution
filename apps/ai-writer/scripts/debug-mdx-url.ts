@@ -58,7 +58,17 @@ const __dirname = dirname(__filename);
 config({ path: resolve(__dirname, '../.env.local') });
 
 // HTML + タイトル抽出
-import { extractArticleData } from '../lib/utils/html-extractor';
+import { extractArticleData, extractContentHtml } from '../lib/utils/html-extractor';
+
+// アーカイブの記事 (過去のイベント) の取り込み。設定 (templates/config/archive-sources.yaml) が無ければ何もしない
+import { loadArchiveSources } from '../lib/archive-source/config';
+import {
+  generateWithArchiveFallback,
+  planArchiveRun,
+  rssItemFromPage,
+  type ArchiveRunPlan,
+} from '../lib/archive-source/plan-run';
+import { extractFromRss } from '../lib/claude/rss-extractor';
 
 // AI ステップの観測ログ
 import {
@@ -297,6 +307,27 @@ function setupConsoleLogging(logFilePath: string): { cleanup: () => void } {
   return { cleanup };
 }
 
+/** アーカイブの記事をどう使うかを表示する */
+function printArchivePlan(plan: ArchiveRunPlan): void {
+  const { article } = plan;
+  console.log('🗄️  アーカイブの記事を受け取りました');
+  console.log(`  開催: ${article.startsOn ?? '不明'} 〜 ${article.endsOn ?? '不明'} (記事の年: ${plan.eventYear ?? '現在の年'})`);
+  if (plan.eventYear === undefined) {
+    console.warn('  ⚠️  アーカイブに開始日が無いため、記事の年と、年の無い日付が今年になります。生成された記事の年を必ず確かめてください');
+  }
+  console.log(`  種別: ${article.eventType ?? '不明'} / 公式サイト: ${article.officialUrl}`);
+  if (plan.mode === 'official') {
+    console.log('  → 公式サイトが生きているので、公式サイトから作ります (アーカイブの文章と画像は使いません)');
+  } else {
+    const { categoryImages } = plan.sourceOverride;
+    console.log(`  → 公式サイトを使えません (${plan.reason}: ${plan.detail})`);
+    console.log(
+      `  → アーカイブの記事から作ります (画像: メニュー ${categoryImages.menu.length} / ノベルティ ${categoryImages.novelty.length} / グッズ ${categoryImages.goods.length}、アイキャッチ ${plan.sourceOverride.ogImage ? 'あり' : 'なし'})`,
+    );
+  }
+  console.log();
+}
+
 /**
  * メインデバッグフロー
  */
@@ -442,7 +473,19 @@ async function main() {
     // ========================================
     console.log('📄 STEP 1: HTMLとタイトルを取得中...');
 
-    const { title, html, actualUrl, pageHtml } = await extractArticleData(url);
+    // アーカイブの記事なら、公式サイトから作るか、アーカイブの記事から作るかを決める
+    const archivePlan = await planArchiveRun(url, {
+      sources: loadArchiveSources(),
+      fetchContent: extractContentHtml,
+      extractWork: async (input) => {
+        const work = await extractFromRss(input);
+        console.log(`  作品名の確認 (${work.model}): ${work.workTitle}`, work.usage ?? '');
+        return work;
+      },
+    });
+    if (archivePlan) printArchivePlan(archivePlan);
+
+    const { title, html, actualUrl, pageHtml } = await extractArticleData(archivePlan?.inputUrl ?? url);
 
     console.log(`✅ タイトル: ${title}`);
     console.log(`✅ HTML: ${html.length} bytes`);
@@ -491,14 +534,27 @@ async function main() {
       // --upload-images モード: localOnly=true を渡すことで、Firestore/GitHub はスキップしつつ R2 アップロードを実行
       localOnly: uploadImages,
       update: updateTarget,
+      eventYear: archivePlan?.eventYear,
+      ...(archivePlan?.mode === 'archive'
+        ? { sourceOverride: archivePlan.sourceOverride, extracted: archivePlan.extracted }
+        : {}),
     };
 
-    const result = await service.generateMdxFromRSS(request);
+    // アーカイブの記事で、公式サイトから作ったら詳細未発表で止まった時は、アーカイブの記事から作り直す
+    // (終わったイベントは公式サイトから品目が消えやすい。one-more-time docs/adr/0004)
+    const result = await generateWithArchiveFallback(
+      archivePlan,
+      request,
+      (r) => service.generateMdxFromRSS(r),
+      extractArticleData,
+    );
     notification = pipelineNotificationFromResult(result, notifyContext);
 
     // PR を作る本実行の結果は、定期実行と同じ「試した URL」に残す (Job がこの URL をもう一度試さないように)。
-    // dry-run・local・画像アップロード・記事の更新は記録しない
-    if (mode === 'pr' && !updateTarget) {
+    // dry-run・local・画像アップロード・記事の更新は記録しない。
+    // アーカイブの記事から作った時: 公式サイトが生きていれば公式 URL (ここでの actualUrl) で残し、閉じていれば残さない
+    // (閉じたサイトの URL は定期実行の候補に来ない。one-more-time docs/adr/0004)
+    if (mode === 'pr' && !updateTarget && archivePlan?.mode !== 'archive') {
       await recordCliAttempt(() => new AttemptStore(getAdminDb()), { url: actualUrl, title, pageHtml, result });
     }
 
