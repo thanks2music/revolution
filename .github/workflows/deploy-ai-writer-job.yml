@@ -139,7 +139,8 @@ jobs:
       #   (Job は定期実行の時にしか動かないので、欠けていると気づくのが遅れる)
       # 既定の args は定期実行の入口 (本実行)。起動する側は引数を渡さずに jobs.run を呼ぶだけでよく、
       # 起動の権限に args の上書き (run.jobs.runWithOverrides) を含めずに済む。
-      # 手で dry-run する時は、gcloud run jobs execute --args で上書きする
+      # 手で dry-run する時は、入口のスクリプトごと --args で上書きする (--args は既定を丸ごと置き換える):
+      #   gcloud run jobs execute <job> --region <region> --args scripts/run-scheduled.ts,--dry-run
       - name: Deploy the job
         id: deploy
         run: |
