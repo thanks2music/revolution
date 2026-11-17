@@ -214,6 +214,9 @@ jobs:
   actionlint:
     name: Lint Workflows
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
@@ -222,8 +225,12 @@ jobs:
           persist-credentials: false
 
       - name: Install actionlint
-        # 取得のスクリプトと本体を、同じ版に固定する
-        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+        # 取得のスクリプトは v1.7.12 の tag の commit で固定し (tag は動かせるため)、本体も同じ版にする
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash) 1.7.12
+
+      - name: Check that shellcheck is installed
+        # actionlint は shellcheck が無いと `run:` のスクリプトを黙って検査しない。runner から消えたら、ここで落とす
+        run: shellcheck --version
 
       - name: Run actionlint
         run: ./actionlint -color
