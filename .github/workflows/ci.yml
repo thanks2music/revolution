@@ -206,3 +206,24 @@ jobs:
         if: ${{ !cancelled() }}
         run: cd apps/docs && pnpm test
 
+
+  # Job 4: workflow のファイルの検査
+  # 壊れた workflow は main に入ってから GitHub に弾かれ、その deploy が黙って走らない
+  # (2026-11-15、`run:` の中のコメントに書いた空の式で実際に起きた)。
+  # actionlint は、shellcheck が入っていれば `run:` のスクリプトも検査する (runner には入っている)。
+  actionlint:
+    name: Lint Workflows
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        # 取得のスクリプトと本体を、同じ版に固定する
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+
+      - name: Run actionlint
+        run: ./actionlint -color

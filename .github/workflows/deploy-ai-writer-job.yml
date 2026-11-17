@@ -10,7 +10,14 @@ name: Deploy AI Writer Job
 # ⚠️ workflow_run は workflow の name で一致させる。deploy-ai-writer.yml の `name:` を変えると、
 #   Service の deploy の後に Job が更新されなくなる。
 # ⚠️ workflow_run は default branch の workflow しか動かない。この workflow の変更は main へ入ってから効く。
+# この workflow のファイルだけを直した時は、Service の deploy が走らないので、push でも動かす
+# (2026-11-15、workflow だけを直した PR の後に Job が古いまま残った)。
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/deploy-ai-writer-job.yml'
   workflow_run:
     workflows:
       - Deploy AI Writer to Cloud Run
@@ -35,14 +42,16 @@ env:
 jobs:
   deploy-job:
     name: Deploy the scheduled job
-    # Service の deploy が成功した時か、main からの手動実行の時だけ (ブランチから動かすと、そのコードが本番の Job になる)
+    # Service の deploy が成功した時、この workflow のファイルが main で変わった時、main からの手動実行の時だけ
+    # (ブランチから動かすと、そのコードが本番の Job になる)
     if: >-
       (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
 
     env:
-      # workflow_run では Service に deploy された commit、手動では main の今の commit
+      # workflow_run では Service に deploy された commit、push と手動では main の今の commit
       REV_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     permissions:
