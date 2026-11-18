@@ -30,6 +30,9 @@ const TITLE_MAX_LENGTH = 40;
 /** 応答の形 (`{ title, _reasoning }`) を provider に強制する */
 const TITLE_RESPONSE_SCHEMA = zodToOpenAiSchema(TitleResponseSchema, 'TitleResponse');
 
+/** 応答を読む時の形。`_reasoning` はデバッグ用なので、無くても読む (Anthropic は responseSchema を使わない) */
+const TITLE_RESPONSE_PARSER = TitleResponseSchema.partial({ _reasoning: true });
+
 /**
  * 1 記事で LLM を呼ぶ回数の上限 (最初の 1 回 + 作り直し 1 回)。
  * 応答を読めない・文字数を満たさない時に作り直し、それでもだめなら {@link TitleGenerationError} を投げる
@@ -44,9 +47,10 @@ export class TitleGenerationError extends Error {
   constructor(
     message: string,
     readonly model: string | undefined,
-    readonly usage: TokenUsage | undefined
+    readonly usage: TokenUsage | undefined,
+    options?: ErrorOptions
   ) {
-    super(message);
+    super(message, options);
     this.name = 'TitleGenerationError';
   }
 }
@@ -207,7 +211,8 @@ export class TitleGenerationService {
       throw new TitleGenerationError(
         `タイトル生成失敗: ${error instanceof Error ? error.message : 'Unknown error'}`,
         model,
-        usage
+        usage,
+        { cause: error }
       );
     }
   }
@@ -450,8 +455,7 @@ ${rulesText}`);
   private parseResponse(response: string): { title: string; _reasoning?: string } {
     let parsed: { title: string; _reasoning?: string };
     try {
-      // `_reasoning` はデバッグ用なので、無くても読む (schema を守らない provider がある。Anthropic は responseSchema を使わない)
-      parsed = TitleResponseSchema.partial({ _reasoning: true }).parse(parseJson(response.trim()));
+      parsed = TITLE_RESPONSE_PARSER.parse(parseJson(response.trim()));
     } catch (error) {
       throw new TitleParseError(error);
     }

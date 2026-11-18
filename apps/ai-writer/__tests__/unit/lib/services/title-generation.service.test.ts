@@ -144,8 +144,17 @@ describe('TitleGenerationService の応答の検証と作り直し', () => {
 
     expect(error).toBeInstanceOf(TitleGenerationError);
     expect((error as TitleGenerationError).message).toMatch(/503/);
+    expect((error as TitleGenerationError).cause).toBeInstanceOf(Error);
     expect((error as TitleGenerationError).usage).toEqual(USAGE);
     expect((error as TitleGenerationError).model).toBe('test-model');
+  });
+
+  it('空白だけのタイトルは読めないものとして作り直す', async () => {
+    const { service, sendMessage } = setupSequence([json('   '), json(VALID)]);
+    const result = await service.generateTitle(REQUEST);
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(result.title).toBe(VALID);
   });
 
   it('_reasoning が無い応答も読む (schema を使わない provider がある)', async () => {
