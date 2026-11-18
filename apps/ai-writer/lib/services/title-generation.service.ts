@@ -21,7 +21,7 @@ import { PIPELINE_PROMPTS } from './pipeline-prompts';
 import { TitleResponseSchema } from '@revolution/schemas/title-response';
 import type { TokenUsage } from '@revolution/schemas/ai-provider-response';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
-import { parseJson } from '@/lib/services/subpage-extraction.service';
+import { parseJson, sumUsage } from '@/lib/services/subpage-extraction.service';
 
 /** タイトルの文字数の下限と上限 (上限の根拠は generateTitle 内の ★ を参照) */
 const TITLE_MIN_LENGTH = 28;
@@ -61,22 +61,6 @@ class TitleParseError extends Error {
     super(`タイトルの応答を読めない: ${cause instanceof Error ? cause.message : String(cause)}`);
     this.name = 'TitleParseError';
   }
-}
-
-/** usage を足し合わせる (作り直した回の費用も記録するため) */
-function addUsage(total: TokenUsage | undefined, next: TokenUsage | undefined): TokenUsage | undefined {
-  if (!next) return total;
-  if (!total) return { ...next };
-  const sumOptional = (a?: number, b?: number) => (a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0));
-  const cachedTokens = sumOptional(total.cachedTokens, next.cachedTokens);
-  const cacheCreationTokens = sumOptional(total.cacheCreationTokens, next.cacheCreationTokens);
-  return {
-    promptTokens: total.promptTokens + next.promptTokens,
-    completionTokens: total.completionTokens + next.completionTokens,
-    totalTokens: total.totalTokens + next.totalTokens,
-    ...(cachedTokens !== undefined ? { cachedTokens } : {}),
-    ...(cacheCreationTokens !== undefined ? { cacheCreationTokens } : {}),
-  };
 }
 
 /**
@@ -139,7 +123,7 @@ export class TitleGenerationService {
           responseFormat: 'json',
           responseSchema: TITLE_RESPONSE_SCHEMA,
         });
-        usage = addUsage(usage, response.usage);
+        usage = sumUsage([usage, response.usage]); // 作り直した回の費用も記録する
         model = response.model;
 
         let parsed: { title: string; _reasoning?: string };
