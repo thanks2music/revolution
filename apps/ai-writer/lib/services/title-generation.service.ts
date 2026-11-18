@@ -99,6 +99,9 @@ export class TitleGenerationService {
   async generateTitle(
     request: TitleGenerationRequest
   ): Promise<TitleGenerationResult> {
+    // 失敗した時も呼び出し側が費用を記録できるよう、try の外で持つ
+    let usage: TokenUsage | undefined;
+    let model: string | undefined;
     try {
       console.log('[TitleGeneration] タイトル生成開始:', request.rss_title);
 
@@ -122,8 +125,6 @@ export class TitleGenerationService {
         console.log('[TitleGeneration] ========== プロンプト終了 ==========\n');
       }
 
-      let usage: TokenUsage | undefined;
-      let model: string | undefined;
       let lastFailure = '';
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
@@ -187,6 +188,7 @@ export class TitleGenerationService {
           console.log('[TitleGeneration] === 理由終了 ===\n');
         }
 
+        // 返すのは文字数を満たしたタイトルだけなので is_valid は常に true (型の互換のために残す)
         if (is_valid) {
           return { title, length, is_valid, _reasoning, model, usage };
         }
@@ -201,8 +203,11 @@ export class TitleGenerationService {
     } catch (error) {
       if (error instanceof TitleGenerationError) throw error;
       console.error('[TitleGeneration] タイトル生成エラー:', error);
-      throw new Error(
-        `タイトル生成失敗: ${error instanceof Error ? error.message : 'Unknown error'}`
+      // 2 回目の呼び出しで provider が失敗しても、1 回目の費用を落とさない
+      throw new TitleGenerationError(
+        `タイトル生成失敗: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        model,
+        usage
       );
     }
   }

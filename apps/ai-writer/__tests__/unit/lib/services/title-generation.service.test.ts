@@ -83,8 +83,12 @@ describe('TitleGenerationService の応答の検証と作り直し', () => {
     const { service, sendMessage } = setupSequence([json(VALID)]);
     await service.generateTitle(REQUEST);
 
-    const options = sendMessage.mock.calls[0][1] as { responseSchema?: { schema: { required?: string[] } } };
+    const options = sendMessage.mock.calls[0][1] as {
+      responseSchema?: { schema: { required?: string[]; additionalProperties?: boolean } };
+    };
     expect(options.responseSchema?.schema.required).toEqual(['title', '_reasoning']);
+    // OpenAI の Structured Outputs (strict) は additionalProperties: false を要求する
+    expect(options.responseSchema?.schema.additionalProperties).toBe(false);
   });
 
   it('配列で包んだ応答は読まずに作り直し、2 回目のタイトルを使う', async () => {
@@ -117,9 +121,31 @@ describe('TitleGenerationService の応答の検証と作り直し', () => {
 
   it('2 回とも 40 字を超えれば TitleGenerationError を投げる (警告だけで記事に使わない)', async () => {
     const tooLong = 'BANANA FISH カフェ&バー in 新宿 東口 11月26日よりコラボカフェ開催決定'; // 46 字
-    const { service } = setupSequence([json(tooLong)]);
+    const { service, sendMessage } = setupSequence([json(tooLong)]);
 
     await expect(service.generateTitle(REQUEST)).rejects.toThrow(/28〜40文字/);
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('作り直しの呼び出しで provider が失敗しても、1 回目の費用を TitleGenerationError で返す', async () => {
+    const sendMessage = jest
+      .fn(async (_prompt: string, _options?: unknown) => ({
+        content: json('BANANA FISH カフェ'),
+        model: 'test-model',
+        usage: USAGE,
+      }))
+      .mockImplementationOnce(async () => ({ content: '[', model: 'test-model', usage: USAGE }))
+      .mockImplementationOnce(async () => {
+        throw new Error('503 Service Unavailable');
+      });
+    const loader = { loadModularTemplate: async () => TEMPLATE } as unknown as YamlTemplateLoaderService;
+    const service = new TitleGenerationService(loader, { sendMessage } as unknown as AiProvider);
+    const error = await service.generateTitle(REQUEST).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TitleGenerationError);
+    expect((error as TitleGenerationError).message).toMatch(/503/);
+    expect((error as TitleGenerationError).usage).toEqual(USAGE);
+    expect((error as TitleGenerationError).model).toBe('test-model');
   });
 
   it('_reasoning が無い応答も読む (schema を使わない provider がある)', async () => {
