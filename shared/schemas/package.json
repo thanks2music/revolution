@@ -10,6 +10,7 @@
     "./subpage-extraction-response": "./subpage-extraction-response.ts",
     "./article-points-response": "./article-points-response.ts",
     "./excerpt-response": "./excerpt-response.ts",
+    "./title-response": "./title-response.ts",
     "./ai-provider-response": "./ai-provider-response.ts",
     "./article-index": "./article-index.ts",
     "./vision-api-extraction": "./vision-api-extraction.ts",
