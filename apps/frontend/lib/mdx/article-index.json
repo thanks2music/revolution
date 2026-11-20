@@ -1,7 +1,60 @@
 {
-  "generatedAt": "2026-11-04T21:34:57.023Z",
-  "totalArticles": 10,
+  "generatedAt": "2026-11-18T06:18:04.800Z",
+  "totalArticles": 11,
   "articles": [
+    {
+      "slug": "01m7pmtfq9xbw5ks",
+      "title": "ペロペロ★スパ～クルズ カフェ in 渋谷 11月29日よりコラボ開催",
+      "date": "2026-11-18T03:38:18.000Z",
+      "excerpt": "せきやゆりえ先生による作品「ペロペロ★スパ～クルズ」のコラボカフェが、2026年11月29日〜12月13日までSHIBUYA109渋谷店 8Fにて開催されます。めろ、きゅん、るぅをイメージしたコラボメニューが楽しめるほか、描き下ろしイラストを使用したコラボグッズの先行販売も行われます。",
+      "categories": [
+        "ペロペロ★スパ～クルズ",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/peropero-sparkles/01m7pmtfq9xbw5ks.mdx",
+      "post_id": "01m7pmtfq9xbw5ks",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "ペロペロ★スパ～クルズ",
+      "work_titles": [
+        "ペロペロ★スパ～クルズ"
+      ],
+      "work_slug": "peropero-sparkles",
+      "prefectures": [
+        "東京都"
+      ],
+      "prefecture_slugs": [
+        "tokyo"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m7pmtfq9xbw5ks/6d2062e9bae353f01fed581482795d7c.jpg",
+      "event_start_date": "2026-11-29",
+      "event_end_date": "2026-12-13",
+      "venue": "SHIBUYA109渋谷店 8F",
+      "official_url": "https://prtimes.jp/main/html/rd/p/000002415.000002734.html",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "peropero-sparkles"
+        ],
+        "supplementary_category_slugs": [
+          "pop-up-store"
+        ],
+        "event_name": "ペロペロ★スパ〜クルズ コラボカフェ in SHIBUYA109",
+        "event_slug": "peropero-sparkles-collabo-cafe-in-shibuya109",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "SHIBUYA109渋谷店 8F",
+            "starts_on": "2026-11-29",
+            "ends_on": "2026-12-13",
+            "official_url": "https://prtimes.jp/main/html/rd/p/000002415.000002734.html"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m4s065g1hchh9d",
       "title": "ヒロアカ カフェ in 4都市 10月16日よりコラボ開催",
