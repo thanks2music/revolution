@@ -1,7 +1,57 @@
 {
-  "generatedAt": "2026-11-04T21:34:57.023Z",
-  "totalArticles": 10,
+  "generatedAt": "2026-11-18T06:18:48.047Z",
+  "totalArticles": 11,
   "articles": [
+    {
+      "slug": "01m7pmw11svaktm8",
+      "title": "組長娘と世話係 × Cafe＆Dining Take 12月1日よりコラボ開催",
+      "date": "2026-11-18T03:13:55.000Z",
+      "excerpt": "「組長娘と世話係」とCafe＆Dining Takeのコラボカフェが、2026年12月1日〜2027年1月29日まで開催されます。霧島、八重花、雅也、蓮、桜樹組長、鷹松組長、桃山組長、柿原組長らをイメージした全9品のコラボメニューが楽しめます。",
+      "categories": [
+        "組長娘と世話係",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/the-yakuzas-guide-to-babysitting/01m7pmw11svaktm8.mdx",
+      "post_id": "01m7pmw11svaktm8",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "組長娘と世話係",
+      "work_titles": [
+        "組長娘と世話係"
+      ],
+      "work_slug": "the-yakuzas-guide-to-babysitting",
+      "prefectures": [
+        "東京都"
+      ],
+      "prefecture_slugs": [
+        "tokyo"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m7pmw11svaktm8/914dbda2c0de09f353249f1b4a272c4f.png",
+      "event_start_date": "2026-12-01",
+      "event_end_date": "2027-01-29",
+      "venue": "Cafe＆Dining Take",
+      "official_url": "https://comicelmo.jp/special/kumichomusume/event/cafe2026/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "the-yakuzas-guide-to-babysitting"
+        ],
+        "event_name": "組長娘と世話係 17巻発売記念コラボカフェ",
+        "event_slug": "the-yakuzas-guide-to-babysitting-17kan-hatsubai-kinen-collabo-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "Cafe＆Dining Take",
+            "starts_on": "2026-12-01",
+            "ends_on": "2027-01-29",
+            "official_url": "https://comicelmo.jp/special/kumichomusume/event/cafe2026/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m4s065g1hchh9d",
       "title": "ヒロアカ カフェ in 4都市 10月16日よりコラボ開催",
