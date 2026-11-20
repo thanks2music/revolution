@@ -1,7 +1,78 @@
 {
-  "generatedAt": "2026-11-04T21:34:57.023Z",
-  "totalArticles": 10,
+  "generatedAt": "2026-11-18T06:21:32.793Z",
+  "totalArticles": 11,
   "articles": [
+    {
+      "slug": "01m7pmzb3zjpf3yy",
+      "title": "ガルパン もっとらぶらぶ作戦です！ × 洒落CAFE 12月11日よりコラボ開催",
+      "date": "2026-11-18T03:10:50.000Z",
+      "excerpt": "「ガールズ＆パンツァー もっとらぶらぶ作戦です！」× 洒落CAFEのコラボカフェが、2026年12月11日〜12月27日まで東京・愛知・大阪の3会場で開催されます。「レトロポップ」をテーマにした描き下ろしイラスト使用のコラボグッズや、キャラクターをイメージしたコラボメニュー全8品が楽しめます。",
+      "categories": [
+        "ガールズ＆パンツァー もっとらぶらぶ作戦です！",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/girls-und-panzer-motto-love-love-sakusen-desu/01m7pmzb3zjpf3yy.mdx",
+      "post_id": "01m7pmzb3zjpf3yy",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "ガールズ＆パンツァー もっとらぶらぶ作戦です！",
+      "work_titles": [
+        "ガールズ＆パンツァー もっとらぶらぶ作戦です！"
+      ],
+      "work_slug": "girls-und-panzer-motto-love-love-sakusen-desu",
+      "prefectures": [
+        "東京都",
+        "愛知県",
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "aichi",
+        "osaka"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m7pmzb3zjpf3yy/ad70179e6070be87f54487f0e760fd7e.png",
+      "event_start_date": "2026-12-11",
+      "event_end_date": "2026-12-27",
+      "venue": "洒落CAFE ハラカド店",
+      "official_url": "https://shop.anique.jp/blogs/news/garupan",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "girls-und-panzer"
+        ],
+        "supplementary_category_slugs": [
+          "pop-up-store"
+        ],
+        "event_name": "『ガールズ＆パンツァー もっとらぶらぶ作戦です！』レトロポップカフェ at 洒落CAFE",
+        "event_slug": "girls-and-panzer-motto-love-love-sakusen-desu-retropop-cafe-at-share-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "洒落CAFE ハラカド店",
+            "starts_on": "2026-12-11",
+            "ends_on": "2026-12-20",
+            "official_url": "https://shop.anique.jp/blogs/news/garupan"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "洒落CAFE 名古屋セントラルパーク店",
+            "starts_on": "2026-12-18",
+            "ends_on": "2026-12-27",
+            "official_url": "https://shop.anique.jp/blogs/news/garupan"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "洒落CAFE 心斎橋BIGSTEP店",
+            "starts_on": "2026-12-20",
+            "ends_on": "2026-12-27",
+            "official_url": "https://shop.anique.jp/blogs/news/garupan"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m4s065g1hchh9d",
       "title": "ヒロアカ カフェ in 4都市 10月16日よりコラボ開催",
