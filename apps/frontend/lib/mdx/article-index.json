@@ -1,7 +1,76 @@
 {
-  "generatedAt": "2026-11-04T21:34:57.023Z",
-  "totalArticles": 10,
+  "generatedAt": "2026-11-18T06:16:54.155Z",
+  "totalArticles": 11,
   "articles": [
+    {
+      "slug": "01m7pmrpqdqyv9kw",
+      "title": "ベルサイユのばら コラボカフェ in 渋谷 11月26日より開催",
+      "date": "2026-11-18T03:48:23.000Z",
+      "excerpt": "池田理代子先生による「ベルサイユのばら」のコラボカフェが、2026年11月26日〜12月9日まで東京・北海道の3会場にて開催されます。マリー・アントワネット、オスカル、ロザリー、マリー・テレーズらキャラクターをイメージしたコラボメニューがお楽しみいただけます。",
+      "categories": [
+        "ベルサイユのばら",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/the-rose-of-versailles/01m7pmrpqdqyv9kw.mdx",
+      "post_id": "01m7pmrpqdqyv9kw",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "ベルサイユのばら",
+      "work_titles": [
+        "ベルサイユのばら"
+      ],
+      "work_slug": "the-rose-of-versailles",
+      "prefectures": [
+        "東京都",
+        "北海道"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "hokkaido"
+      ],
+      "ogImage": "/images/og-image-compressed.png",
+      "event_start_date": "2026-11-26",
+      "event_end_date": "2026-12-09",
+      "venue": "渋谷スクランブルスクエア 6F・5F +Q（プラスク）",
+      "official_url": "https://www.tokyu-dept.co.jp/shibuyabeautyjam/specialcontents/2026winter/index.html",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "the-rose-of-versailles"
+        ],
+        "supplementary_category_slugs": [
+          "chain-store"
+        ],
+        "event_name": "SHIBUYA BEAUTY JAM THE WEEKS ベルサイユのばら スペシャルコラボ",
+        "event_slug": "shibuya-beauty-jam-the-weeks-the-rose-of-versailles-special-collaboration",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "渋谷スクランブルスクエア 6F・5F +Q（プラスク）",
+            "starts_on": "2026-11-26",
+            "ends_on": "2026-12-09",
+            "official_url": "https://www.tokyu-dept.co.jp/shibuyabeautyjam/specialcontents/2026winter/index.html"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "渋谷ヒカリエ内ShinQs",
+            "starts_on": "2026-11-26",
+            "ends_on": "2026-12-09",
+            "official_url": "https://www.tokyu-dept.co.jp/shibuyabeautyjam/specialcontents/2026winter/index.html"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "SHIBUYA109渋谷店 1F Dress Table by ShinQs ビューティー パレット",
+            "starts_on": "2026-11-26",
+            "ends_on": "2026-12-09",
+            "official_url": "https://www.tokyu-dept.co.jp/shibuyabeautyjam/specialcontents/2026winter/index.html"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m4s065g1hchh9d",
       "title": "ヒロアカ カフェ in 4都市 10月16日よりコラボ開催",
