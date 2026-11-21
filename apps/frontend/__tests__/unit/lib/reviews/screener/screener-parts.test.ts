@@ -84,6 +84,7 @@ describe('createFakeScreener', () => {
     ['[reject:spam] 宣伝', { ok: true, decision: 'reject', reasonCode: 'spam' }],
     ['[unsure] どうだろう', { ok: true, decision: 'unsure', reasonCode: null }],
     ['[fail]', { ok: false }],
+    ['[reject:typo] 書き間違い', { ok: false }],
   ])('%s', async (body, expected) => {
     await expect(screener.screen({ body })).resolves.toMatchObject({
       ...expected,
