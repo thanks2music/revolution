@@ -11,6 +11,7 @@ import {
   GOODS_COST_BAND_LABELS,
   REJECTION_REASON_LABELS,
   formatVisitedMonth,
+  toScreeningReason,
 } from '@/lib/reviews/labels';
 
 describe('口コミの画面の言葉', () => {
@@ -28,5 +29,13 @@ describe('formatVisitedMonth', () => {
     ['2026-11', '2026年11月'],
   ])('%s → %s', (input, expected) => {
     expect(formatVisitedMonth(input)).toBe(expected);
+  });
+});
+
+describe('toScreeningReason', () => {
+  it('審査の 4 種だけを通し、ほか (AI の失敗・知らない値) は null にする', () => {
+    expect(toScreeningReason('resale')).toBe('resale');
+    expect(toScreeningReason('ai_failure')).toBeNull();
+    expect(toScreeningReason(null)).toBeNull();
   });
 });

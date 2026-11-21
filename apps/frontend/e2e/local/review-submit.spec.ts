@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 import { getOccurrenceUrl } from '../../lib/event/event-url';
 import { sessionCookiesFor } from '../../test-support/member-session';
@@ -49,6 +49,18 @@ async function occurrencePage(input: { startsOn: string | null; endsOn: string }
     occurrence.slug
   );
   return { occurrenceId: occurrence.id, path };
+}
+
+/**
+ * 公開になった口コミが開催のページに出るまで、ページを開き直す。審査は DB に「公開」と書いてから
+ * ページを作り直す (`revalidatePath`) ので、DB が公開になった直後は、まだ前のページが返ることがある
+ */
+async function gotoUntilReviewShown(page: Page, path: string, text?: string) {
+  await expect(async () => {
+    await page.goto(path);
+    const cards = page.getByTestId('review-card');
+    await expect(text ? cards.filter({ hasText: text }) : cards).toHaveCount(1, { timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
 }
 
 async function statusOf(occurrenceId: number, userId: string) {
@@ -126,7 +138,7 @@ test('公開された口コミは開催のページに出て、星の平均と�
     .poll(() => statusOf(occurrenceId, member.userId), { timeout: 15_000 })
     .toMatchObject({ status: 'published' });
 
-  await page.goto(path);
+  await gotoUntilReviewShown(page, path);
   const card = page.getByTestId('review-card');
   await expect(card).toHaveCount(1);
   await expect(card).toContainText('展示が充実していて満足です');
@@ -160,7 +172,7 @@ test('ネタバレの口コミは本文をたたみ、押すと開く', async ({
     .poll(() => statusOf(occurrenceId, member.userId), { timeout: 15_000 })
     .toMatchObject({ status: 'published' });
 
-  await page.goto(path);
+  await gotoUntilReviewShown(page, path);
   await expect(page.getByText('最後の部屋に原画があります')).toBeHidden();
   await page.getByText('表示する ›').click();
   await expect(page.getByText('最後の部屋に原画があります')).toBeVisible();
@@ -294,8 +306,7 @@ test('もう口コミがある開催では、その編集になる。公開中�
   await expect
     .poll(() => statusOf(occurrenceId, member.userId), { timeout: 15_000 })
     .toMatchObject({ status: 'published' });
-  await page.goto(path);
-  await expect(page.getByTestId('review-card')).toHaveCount(1);
+  await gotoUntilReviewShown(page, path, '直した本文');
   await expect(page.getByTestId('review-card')).toContainText('直した本文');
   await expect(page.getByTestId('review-card')).toContainText('最終編集');
 });

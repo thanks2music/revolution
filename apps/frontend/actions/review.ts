@@ -22,7 +22,6 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 import {
-  REVIEW_SCREENING_REASONS,
   ReviewDraftSchema,
   ReviewSubmitSchema,
   type ReviewDraftInput,
@@ -42,7 +41,13 @@ import {
   type OwnReview,
   type ReviewContent,
 } from '@/lib/reviews/authoring';
-import { authoringMode, ownReviewStatus, type OwnReviewStatus } from '@/lib/reviews/eligibility';
+import {
+  authoringMode,
+  explainsReason,
+  ownReviewStatus,
+  type OwnReviewStatus,
+} from '@/lib/reviews/eligibility';
+import { toScreeningReason } from '@/lib/reviews/labels';
 import { todayInJst } from '@/lib/occurrence/status';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
 import { getReviewScreener } from '@/lib/reviews/screener';
@@ -366,7 +371,7 @@ async function screenAfterSubmit(
  */
 export type OwnReviewState = {
   status: OwnReviewStatus;
-  /** 差し戻しの理由のコード (rejected の時だけ) */
+  /** 差し戻し・非公開の理由のコード (審査の 4 種だけ。ほかは null) */
   reasonCode: ReviewScreeningReason | null;
   /** 訪問日 (YYYY-MM-DD)。本人にだけ日付まで見せる */
   visitedOn: string;
@@ -385,12 +390,11 @@ export async function getOwnReviewState(occurrenceId: number): Promise<OwnReview
     const status = own && ownReviewStatus(own.status);
     // 下書きは出さない。下書き以外は訪問日がある (DB の CHECK)
     if (!own || !status || !own.visitedOn) return null;
-    const explained = status === 'rejected' || status === 'hidden';
-    // 審査の 4 種以外 (ai_failure・通報の理由) のコードは本人には出さない
-    const reasonCode = REVIEW_SCREENING_REASONS.find(code => code === own.reasonCode) ?? null;
+    const explained = explainsReason(own.status);
     return {
       status,
-      reasonCode: status === 'rejected' ? reasonCode : null,
+      // 差し戻しと非公開は、どちらも理由を見て直せる (仕様 #156)。マイページの出し方と揃える
+      reasonCode: explained ? toScreeningReason(own.reasonCode) : null,
       visitedOn: own.visitedOn,
       note: explained ? own.reasonNote : null,
     };
