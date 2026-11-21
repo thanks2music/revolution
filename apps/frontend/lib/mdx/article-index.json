@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-21T10:10:09.545Z",
+  "totalArticles": 12,
   "articles": [
     {
       "slug": "01m7ydys18ckpgbj",
@@ -51,6 +51,76 @@
             "starts_on": "2026-11-26",
             "ends_on": "2027-01-17",
             "official_url": "https://bananafish-cafe.ltr-online.com/"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "01m7ys9xt08t6z6b",
+      "title": "ドラクエ × FF コラボカフェ in 横浜 11月11日より開催",
+      "date": "2026-11-20T21:49:24.000Z",
+      "excerpt": "「ドラゴンクエスト」と「ファイナルファンタジー」のスペシャルコラボカフェが、2026年11月11日〜2027年1月11日まで、神奈川の3会場にて開催されます。会場では、描き下ろしイラストを使用し、両作品の世界観を融合したコラボメニューなどが楽しめます。",
+      "categories": [
+        "ドラゴンクエスト",
+        "コラボイベント"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/other/dragon-quest/01m7ys9xt08t6z6b.mdx",
+      "post_id": "01m7ys9xt08t6z6b",
+      "year": 2026,
+      "event_type": "other",
+      "event_title": "コラボイベント",
+      "work_title": "ドラゴンクエスト",
+      "work_titles": [
+        "ドラゴンクエスト",
+        "ファイナルファンタジー"
+      ],
+      "work_slug": "dragon-quest",
+      "prefectures": [
+        "神奈川県"
+      ],
+      "prefecture_slugs": [
+        "kanagawa"
+      ],
+      "ogImage": "https://images.anime-events.com/other/2026/01m7ys9xt08t6z6b/824abebc1a926c43865b183a570db163.jpg",
+      "event_start_date": "2026-11-11",
+      "event_end_date": "2027-01-11",
+      "venue": "ランドマークプラザ",
+      "official_url": "https://yokohama-landmark.jp/lp/winterholiday2026/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "dragon-quest",
+          "final-fantasy"
+        ],
+        "supplementary_category_slugs": [
+          "pop-up-store",
+          "exhibition"
+        ],
+        "event_name": "横浜・みなとみらい Winter Holiday 2026 ～DQ×FFが織りなす冬のファンタジー～",
+        "event_slug": "yokohama-minatomirai-winter-holiday-2026-dq-ff",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "ランドマークプラザ",
+            "starts_on": "2026-11-11",
+            "ends_on": "2027-01-11",
+            "official_url": "https://yokohama-landmark.jp/lp/winterholiday2026/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "MARK IS みなとみらい",
+            "starts_on": "2026-11-11",
+            "ends_on": "2027-01-11",
+            "official_url": "https://yokohama-landmark.jp/lp/winterholiday2026/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "グランモール公園",
+            "starts_on": "2026-11-11",
+            "ends_on": "2027-01-11",
+            "official_url": "https://yokohama-landmark.jp/lp/winterholiday2026/"
           }
         ]
       }
