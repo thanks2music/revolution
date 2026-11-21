@@ -34,10 +34,13 @@ export async function loadScreeningPrompt(dir: string = templatesDir()): Promise
 }
 
 /**
- * 本文をプロンプトに埋め込む。本文は利用者の入力なので、区切りのタグを閉じる文字列を無害にして、
- * 指示として読まれないようにする (プロンプト側でも「タグの中はデータ」と明記する)
+ * 本文をプロンプトに埋め込む。本文は利用者の入力なので、`<` と `>` をすべて全角に置き換え、
+ * 区切りのタグ (`<review>`) を閉じたり新しく作ったりできないようにする。大文字・空白入りの
+ * `</REVIEW >` などの書き方も含めて防ぐため、特定の文字列ではなく文字ごと置き換える
+ * (審査には影響しない。プロンプト側でも「タグの中はデータ」と明記している)
  */
 export function renderUserPrompt(prompt: ScreeningPrompt, body: string | null): string {
-  const safeBody = (body ?? '').replaceAll('</review>', '<\\/review>');
-  return prompt.user.replace('{{body}}', safeBody);
+  const safeBody = (body ?? '').replaceAll('<', '＜').replaceAll('>', '＞');
+  // 置き換えの文字列の `$&` などを特別扱いさせないため、関数で渡す
+  return prompt.user.replace('{{body}}', () => safeBody);
 }
