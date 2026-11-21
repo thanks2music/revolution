@@ -14,7 +14,7 @@
  *      (cookie 整合性のため。コピーしないと refresh が失われる)。
  *
  * M2 スコープ: ② の認証呼び出し後に ③ 保護判定を追加する。
- *   - `/mypage`, `/onboarding` のみ保護 (他は公開、未認証でも記事を読める)
+ *   - `/mypage`, `/onboarding` と口コミの投稿 (`/{種別}/{id}/{開催}/review`) を保護 (他は公開、未認証でも記事を読める)
  *   - 未認証で保護ルート → `/login`
  *   - 認証済みで onboarding 未完了 → `/onboarding` 強制 (案B = JWT claims で判定、
  *     DB を叩かない)
@@ -36,9 +36,13 @@ const PROTECTED_PREFIXES = ['/mypage', '/onboarding'];
 // 認証関連ページ (完了済みユーザーが再訪したら /mypage へ送る)。
 const AUTH_PAGES = ['/login'];
 
-function isPathProtected(pathname: string): boolean {
-  return PROTECTED_PREFIXES.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
+// 口コミの投稿 `/{種別}/{企画 ID}/{開催の slug}/review` (one-more-time #161)。前方一致では書けないので形で見る
+const REVIEW_SUBMIT_PATH = /^\/[^/]+\/\d+\/[^/]+\/review\/?$/;
+
+export function isPathProtected(pathname: string): boolean {
+  return (
+    PROTECTED_PREFIXES.some(p => pathname === p || pathname.startsWith(`${p}/`)) ||
+    REVIEW_SUBMIT_PATH.test(pathname)
   );
 }
 
@@ -56,18 +60,16 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({
             request,
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
+            supabaseResponse.cookies.set(name, value, options)
           );
         },
       },
-    },
+    }
   );
 
   // IMPORTANT: createServerClient と getClaims() の間にコードを書かない (公式原則)。
@@ -101,7 +103,7 @@ export async function updateSession(request: NextRequest) {
     }
 
     // (d) 認証済みで /login (auth ページ) 再訪 → onboarding 状態に応じて誘導
-    if (AUTH_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    if (AUTH_PAGES.some(p => pathname === p || pathname.startsWith(`${p}/`))) {
       return redirectTo(request, supabaseResponse, onboarded ? '/mypage' : '/onboarding');
     }
   }
@@ -122,7 +124,7 @@ function redirectTo(
   request: NextRequest,
   supabaseResponse: NextResponse,
   destination: string,
-  returnTo?: string,
+  returnTo?: string
 ): NextResponse {
   const url = request.nextUrl.clone();
   url.pathname = destination;
@@ -131,7 +133,7 @@ function redirectTo(
     url.searchParams.set('next', returnTo);
   }
   const redirectResponse = NextResponse.redirect(url);
-  supabaseResponse.cookies.getAll().forEach((cookie) => {
+  supabaseResponse.cookies.getAll().forEach(cookie => {
     redirectResponse.cookies.set(cookie);
   });
   return redirectResponse;

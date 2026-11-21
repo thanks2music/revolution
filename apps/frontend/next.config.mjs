@@ -31,9 +31,10 @@ const nextConfig = {
     ],
   },
   // 審査のプロンプト (scripts/fetch-templates.sh がビルドの最初に templates repo から取り込む) を
-  // サーバーの関数に含める。実行時に fs で読むので、静的な解析では含まれない
+  // サーバーの関数に含める。実行時に fs で読むので、静的な解析では含まれない。
+  // 審査を走らせるのは口コミの投稿のページ (の Server Action) だけ。審査器を呼ぶルートを足したら、ここにも足す
   outputFileTracingIncludes: {
-    '/*': ['./templates/reviews/**'],
+    '/[event_type]/[id]/[occurrence_slug]/review': ['./templates/reviews/**'],
   },
 
   /**
