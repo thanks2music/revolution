@@ -43,6 +43,7 @@ const config = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^@revolution/schemas/(.*)$': '<rootDir>/../../shared/schemas/$1',
+    '^@revolution/slack/(.*)$': '<rootDir>/../../shared/slack/$1',
     // `@sentry/nextjs` は常に手動 mock へ解決する。実体は @sentry/node +
     // @opentelemetry/* の巨大依存を引き、transform 対象にすると遅く・壊れやすい。
     // ⚠️ 下の transformIgnorePatterns は触らない (@t3-oss の allowlist を壊さないため)。

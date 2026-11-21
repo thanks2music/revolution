@@ -11,6 +11,7 @@
  * @module lib/slack/messages
  */
 
+import { escapeSlackText, truncate } from '@revolution/slack/text';
 import type { CreateMdxPrResult } from '../github/create-mdx-pr';
 import type { MdxGenerationResult } from '../services/article-generation-mdx.service';
 import type { SlackConfig } from './config';
@@ -48,19 +49,9 @@ export interface SlackMessage {
 const ERROR_MAX_CHARS = 500;
 const URL_MAX_CHARS = 380;
 
-/** Slack の制御文字 (`&` `<` `>`) をエスケープする */
-export function escapeSlackText(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/**
- * max 文字を超えたら末尾を `…` にして切り詰める。
- * コードポイント単位で数える (UTF-16 単位で切ると絵文字のサロゲートペアが割れて文字化けする)
- */
-export function truncate(value: string, max: number): string {
-  const chars = Array.from(value);
-  return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : value;
-}
+// エスケープと切り詰めは全アプリで共有する (`@revolution/slack/text`)。
+// 既存の import 先を変えないため、ここからも export する
+export { escapeSlackText, truncate };
 
 const OUTCOME_LABEL: Record<PipelineOutcome, string> = {
   success: '✅ 成功',

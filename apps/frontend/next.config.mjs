@@ -6,7 +6,7 @@ const nextConfig = {
   reactStrictMode: true,
 
   // Next.js 公式推奨: shared/schemas/ workspace の .ts ファイルを直接 transpile する
-  transpilePackages: ['@revolution/schemas'],
+  transpilePackages: ['@revolution/schemas', '@revolution/slack'],
 
   /**
    * Vercel Functions に sharp を入れない (Vercel の Functions Storage の削減)
