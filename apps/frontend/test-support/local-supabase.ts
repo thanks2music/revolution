@@ -17,6 +17,9 @@ import path from 'node:path';
  *
  * テストは会員を作り、開催を書き込み、最後に消す。API の URL と Postgres の接続文字列のどちらかのホストが `127.0.0.1` / `localhost` でなければ
  * 例外を投げて止める (取り違えた値で本物の DB を書き換えないための安全網)。
+ *
+ * 見るのはホスト名だけ。`localhost` へ SSH のトンネルを張って本物の DB につないだ時のように、
+ * ホスト名がローカルでも中身がローカルでない場合は防げない。`::1` も通さない (安全な側に倒している)。
  */
 export type LocalSupabaseEnv = {
   url: string;

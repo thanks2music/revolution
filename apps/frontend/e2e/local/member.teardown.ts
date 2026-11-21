@@ -15,7 +15,13 @@ teardown('setup で作った会員を消す', async () => {
   }
 
   const { admin } = createTestDataScope();
-  await deleteTestMember(admin, userId);
+  try {
+    await deleteTestMember(admin, userId);
+  } catch (error) {
+    // 会員がもう消えている (前回の後片付けの途中で止まった時など) なら、目的は果たせている
+    const { data } = await admin.auth.admin.getUserById(userId);
+    if (data.user) throw error;
+  }
   await rm(MEMBER_RECORD_PATH, { force: true });
   await rm(MEMBER_STATE_PATH, { force: true });
 });

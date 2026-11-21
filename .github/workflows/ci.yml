@@ -282,6 +282,17 @@ jobs:
         working-directory: apps/frontend
         run: pnpm test:e2e:local
 
+      - name: Check that tests cleaned up their data
+        # テストは `test-` で始まる行と会員を作り、終わりに消す。消し漏れがあればここで落とす
+        if: ${{ !cancelled() }}
+        run: |
+          leftover=$(psql "$LOCAL_SUPABASE_DB_URL" -tAc "
+            select (select count(*) from public.events where slug like 'test-%')
+                 + (select count(*) from public.occurrences where slug like 'test-%')
+                 + (select count(*) from auth.users where email like 'test-%@example.com')")
+          echo "leftover test rows: $leftover"
+          test "$leftover" -eq 0
+
       - name: Upload Playwright traces
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

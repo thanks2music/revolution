@@ -207,7 +207,13 @@ async function deleteById(admin: SupabaseClient, table: string, id: number | str
 }
 
 async function anyCategoryId(admin: SupabaseClient): Promise<number> {
-  const { data, error } = await admin.from('categories').select('id').limit(1).single();
+  // 毎回同じカテゴリを使う (順序を決めないと、実行ごとに選ばれるカテゴリが変わりうる)
+  const { data, error } = await admin
+    .from('categories')
+    .select('id')
+    .order('id')
+    .limit(1)
+    .single();
   if (error) throw new Error(`カテゴリが 1 件もありません (migration を確かめる): ${error.message}`);
   return data.id as number;
 }
