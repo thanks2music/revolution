@@ -23,6 +23,7 @@ export function OwnReviewStatus({ occurrenceId }: { occurrenceId: number }) {
       .then(value => {
         if (active) setState(value);
       })
+      // 失敗は action の側で Sentry に送っている。ここに来るのは通信の失敗だけなので、何も出さない
       .catch(() => undefined);
     return () => {
       active = false;
@@ -44,10 +45,10 @@ export function OwnReviewStatus({ occurrenceId }: { occurrenceId: number }) {
       )}
       {state.status === 'published' && <p>公開中です。</p>}
       {state.status === 'rejected' && (
-        <p>
-          審査に通らなかったため、公開されていません。
-          {state.reasonCode && <>理由: {REJECTION_REASON_LABELS[state.reasonCode]}</>}
-        </p>
+        <>
+          <p>審査に通らなかったため、公開されていません。</p>
+          {state.reasonCode && <p>理由: {REJECTION_REASON_LABELS[state.reasonCode]}</p>}
+        </>
       )}
       {state.status === 'hidden' && <p>非公開になっています。</p>}
       {state.note && <p>運営より: {state.note}</p>}

@@ -22,7 +22,7 @@ export const LATEST_REVIEWS_LIMIT = 10;
 
 const ReviewRowSchema = z.object({
   id: z.number(),
-  rating: z.number().int(),
+  rating: z.number().int().min(1).max(5),
   body: z.string().nullable(),
   visited_month: z.string().nullable(),
   attendance: z.enum(REVIEW_ATTENDANCES).nullable(),
@@ -94,6 +94,8 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
       .eq('status', 'published')
       .is('deleted_at', null)
       .order('submitted_at', { ascending: false })
+      // 同じ時刻の口コミが作り直しのたびに入れ替わらないよう、ID でも並べる
+      .order('id', { ascending: false })
       .limit(LATEST_REVIEWS_LIMIT),
   ]);
   if (rating.error) throw new Error(`failed to load ratings: ${rating.error.message}`);
