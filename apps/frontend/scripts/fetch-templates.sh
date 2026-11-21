@@ -64,7 +64,7 @@ else
 fi
 
 # 形を確かめる (読み込みの関数と同じスキーマ)。崩れていれば入れ替えない
-if ! pnpm exec tsx scripts/check-review-prompt.ts "$STAGING" >&2; then
+if ! node_modules/.bin/tsx scripts/check-review-prompt.ts "$STAGING" >&2; then
   fail_or_warn "取り込んだプロンプトの形が正しくありません"
 fi
 

@@ -18,29 +18,31 @@ const ScreeningPromptSchema = z.object({
   /** 審査に使うモデル。env (`REVIEW_SCREENING_MODEL`) が優先 */
   model: z.string().min(1),
   system: z.string().min(1),
-  user: z.string().includes('{{body}}'),
+  /**
+   * Gemini 3 系の thinking の深さ (任意)。モデルと対にして templates で決める。
+   * 無ければ送らない (受け付けないモデルで全件が失敗しないように)
+   */
+  thinking_level: z.enum(['minimal', 'low', 'medium', 'high']).optional(),
+  // 本文は `<review>` タグで囲む。renderUserPrompt の全角への置き換えはこの区切りを前提にするので、
+  // 区切りを変えたら読み込みで止める (守りが黙って外れないように)
+  user: z
+    .string()
+    .regex(
+      /<review>\s*\{\{body\}\}\s*<\/review>/,
+      'user must wrap {{body}} in <review>...</review>'
+    ),
 });
 
 export type ScreeningPrompt = z.infer<typeof ScreeningPromptSchema>;
 
 /** 取り込み先 (`apps/frontend/templates/`)。サーバーの関数では cwd が apps/frontend になる */
-export function templatesDir(): string {
-  return path.join(process.cwd(), 'templates');
-}
+export const DEFAULT_TEMPLATES_DIR = path.join(process.cwd(), 'templates');
 
-// 読み込んだプロンプトを置き場所ごとに覚える (提出のたびにファイルを読み直さない)。
-// 失敗は覚えない (次の呼び出しでもう一度読む)
-const loaded = new Map<string, Promise<ScreeningPrompt>>();
-
-export function loadScreeningPrompt(dir: string = templatesDir()): Promise<ScreeningPrompt> {
-  const cached = loaded.get(dir);
-  if (cached) return cached;
-  const promise = readFile(path.join(dir, 'reviews', 'screening.yaml'), 'utf8').then((raw) =>
-    ScreeningPromptSchema.parse(yaml.load(raw)),
-  );
-  loaded.set(dir, promise);
-  promise.catch(() => loaded.delete(dir));
-  return promise;
+export async function loadScreeningPrompt(
+  dir: string = DEFAULT_TEMPLATES_DIR
+): Promise<ScreeningPrompt> {
+  const raw = await readFile(path.join(dir, 'reviews', 'screening.yaml'), 'utf8');
+  return ScreeningPromptSchema.parse(yaml.load(raw));
 }
 
 /**

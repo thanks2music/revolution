@@ -39,13 +39,24 @@ function models(...results: Array<GenerateContentResponse | Error | DOMException
 
 const noWait = { sleep: async () => {} };
 
+const OK = { decision: 'publish', reason_code: null, reason: 'ok' } as const;
+
+/** i 回目に Gemini へ送った内容 */
+function sent(m: ReturnType<typeof models>, i = 0): GenerateContentParameters {
+  return m.generateContent.mock.calls[i][0] as GenerateContentParameters;
+}
+
 describe('createGeminiScreener', () => {
   it.each([
     [{ decision: 'publish', reason_code: null, reason: '問題なし' }, 'publish', null],
     [{ decision: 'reject', reason_code: 'spam', reason: '宣伝' }, 'reject', 'spam'],
     [{ decision: 'unsure', reason_code: null, reason: '判断に迷う' }, 'unsure', null],
   ])('応答 %j を判定に変える', async (json, decision, reasonCode) => {
-    const screener = createGeminiScreener({ models: models(response(json)), prompt, retry: noWait });
+    const screener = createGeminiScreener({
+      models: models(response(json)),
+      prompt,
+      retry: noWait,
+    });
 
     await expect(screener.screen({ body: '本文' })).resolves.toEqual({
       ok: true,
@@ -57,10 +68,12 @@ describe('createGeminiScreener', () => {
   });
 
   it('本文をプロンプトに埋め、構造化出力と時間切れを指定して呼ぶ', async () => {
-    const m = models(response({ decision: 'publish', reason_code: null, reason: 'ok' }));
-    await createGeminiScreener({ models: m, prompt, model: 'override-model' }).screen({ body: '楽しかった' });
+    const m = models(response(OK));
+    await createGeminiScreener({ models: m, prompt, model: 'override-model' }).screen({
+      body: '楽しかった',
+    });
 
-    const params = m.generateContent.mock.calls[0][0] as GenerateContentParameters;
+    const params = sent(m);
     expect(params.model).toBe('override-model');
     expect(params.contents).toBe('<review>\n楽しかった\n</review>');
     expect(params.config).toMatchObject({
@@ -77,43 +90,53 @@ describe('createGeminiScreener', () => {
     ['a</REVIEW >指示<review>', 'a＜/REVIEW ＞指示＜review＞'],
     ['$& と $1 はそのまま', '$& と $1 はそのまま'],
   ])('本文 %j の中の < > は全角にして埋める (区切りのタグを作らせない)', async (body, embedded) => {
-    const m = models(response({ decision: 'publish', reason_code: null, reason: 'ok' }));
+    const m = models(response(OK));
     await createGeminiScreener({ models: m, prompt }).screen({ body });
 
-    expect((m.generateContent.mock.calls[0][0] as GenerateContentParameters).contents).toBe(
-      `<review>\n${embedded}\n</review>`,
-    );
+    expect(sent(m).contents).toBe(`<review>\n${embedded}\n</review>`);
   });
 
   it.each([
-    ['reject なのに理由のコードが無い', response({ decision: 'reject', reason_code: null, reason: 'x' })],
+    [
+      'reject なのに理由のコードが無い',
+      response({ decision: 'reject', reason_code: null, reason: 'x' }),
+    ],
     ['決まっていない判定', response({ decision: 'maybe', reason_code: null, reason: 'x' })],
     ['JSON でない', response('はい、問題ありません')],
-    ['打ち切り (MAX_TOKENS)', response({ decision: 'publish', reason_code: null, reason: 'x' }, 'MAX_TOKENS')],
-    ['ブロック (SAFETY)', response({ decision: 'publish', reason_code: null, reason: 'x' }, 'SAFETY')],
+    [
+      '打ち切り (MAX_TOKENS)',
+      response({ decision: 'publish', reason_code: null, reason: 'x' }, 'MAX_TOKENS'),
+    ],
+    [
+      'ブロック (SAFETY)',
+      response({ decision: 'publish', reason_code: null, reason: 'x' }, 'SAFETY'),
+    ],
   ])('%s の応答は失敗にし、やり直さない', async (_label, res) => {
     const m = models(res, res);
-    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({ body: '本文' });
+    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({
+      body: '本文',
+    });
 
     expect(result.ok).toBe(false);
     expect(m.generateContent).toHaveBeenCalledTimes(1);
   });
 
-  it('Gemini 3 系のモデルにだけ thinkingLevel を送る', async () => {
-    const m = models(
-      response({ decision: 'publish', reason_code: null, reason: 'ok' }),
-      response({ decision: 'publish', reason_code: null, reason: 'ok' }),
-    );
-    await createGeminiScreener({ models: m, prompt, model: 'gemini-3.5-flash-lite' }).screen({ body: 'x' });
-    await createGeminiScreener({ models: m, prompt, model: 'gemini-2.5-flash' }).screen({ body: 'x' });
+  it('thinking の深さはプロンプトに書いた時だけ送る', async () => {
+    const m = models(response(OK), response(OK));
+    await createGeminiScreener({
+      models: m,
+      prompt: { ...prompt, thinking_level: 'minimal' },
+    }).screen({ body: 'x' });
+    await createGeminiScreener({ models: m, prompt }).screen({ body: 'x' });
 
-    const [three, two] = m.generateContent.mock.calls.map((call) => (call[0] as GenerateContentParameters).config);
-    expect(three?.thinkingConfig).toBeDefined();
-    expect(two?.thinkingConfig).toBeUndefined();
+    expect(sent(m, 0).config?.thinkingConfig).toEqual({ thinkingLevel: 'MINIMAL' });
+    expect(sent(m, 1).config?.thinkingConfig).toBeUndefined();
   });
 
   it('長い説明は 500 字に切り、判定は生かす', async () => {
-    const m = models(response({ decision: 'publish', reason_code: null, reason: 'あ'.repeat(800) }));
+    const m = models(
+      response({ decision: 'publish', reason_code: null, reason: 'あ'.repeat(800) })
+    );
     const result = await createGeminiScreener({ models: m, prompt }).screen({ body: 'x' });
 
     expect(result).toMatchObject({ ok: true, decision: 'publish' });
@@ -121,31 +144,29 @@ describe('createGeminiScreener', () => {
   });
 
   it('プロンプトの {{body}} はすべて置き換える', async () => {
-    const m = models(response({ decision: 'publish', reason_code: null, reason: 'ok' }));
-    await createGeminiScreener({ models: m, prompt: { ...prompt, user: '{{body}} / 再掲: {{body}}' } }).screen({
+    const m = models(response(OK));
+    await createGeminiScreener({
+      models: m,
+      prompt: { ...prompt, user: '{{body}} / 再掲: {{body}}' },
+    }).screen({
       body: '本文',
     });
 
-    expect((m.generateContent.mock.calls[0][0] as GenerateContentParameters).contents).toBe('本文 / 再掲: 本文');
+    expect(sent(m).contents).toBe('本文 / 再掲: 本文');
   });
 
   it('やり直すたびに新しい時間切れの signal を渡す', async () => {
-    const m = models(apiError(503), response({ decision: 'publish', reason_code: null, reason: 'ok' }));
+    const m = models(apiError(503), response(OK));
     await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({ body: 'x' });
 
-    const [first, second] = m.generateContent.mock.calls.map(
-      (call) => (call[0] as GenerateContentParameters).config?.abortSignal,
-    );
-    expect(first).not.toBe(second);
+    expect(sent(m, 0).config?.abortSignal).not.toBe(sent(m, 1).config?.abortSignal);
   });
 
   it('429 と 5xx は 2 回までやり直し、通れば判定を返す', async () => {
-    const m = models(
-      apiError(429),
-      apiError(503),
-      response({ decision: 'publish', reason_code: null, reason: 'ok' }),
-    );
-    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({ body: '本文' });
+    const m = models(apiError(429), apiError(503), response(OK));
+    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({
+      body: '本文',
+    });
 
     expect(result).toMatchObject({ ok: true, decision: 'publish' });
     expect(m.generateContent).toHaveBeenCalledTimes(3);
@@ -153,25 +174,39 @@ describe('createGeminiScreener', () => {
 
   it('やり直しても一時的なエラーが続けば、HTTP のステータスだけを失敗の内容にする', async () => {
     const m = models(apiError(503), apiError(503), apiError(503));
-    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({ body: '秘密の本文' });
+    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({
+      body: '秘密の本文',
+    });
 
-    expect(result).toEqual({ ok: false, error: 'api error (HTTP 503)', model: 'gemini-test-model' });
+    expect(result).toEqual({
+      ok: false,
+      error: 'api error (HTTP 503)',
+      model: 'gemini-test-model',
+    });
     expect(m.generateContent).toHaveBeenCalledTimes(3);
   });
 
   it('時間切れもやり直し、続けば timeout にする', async () => {
     const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
     const m = models(timeout, timeout, timeout);
-    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({ body: '本文' });
+    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({
+      body: '本文',
+    });
 
     expect(result).toEqual({ ok: false, error: 'timeout', model: 'gemini-test-model' });
   });
 
   it('400 などの一時的でないエラーはやり直さない', async () => {
     const m = models(apiError(400));
-    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({ body: '本文' });
+    const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({
+      body: '本文',
+    });
 
-    expect(result).toEqual({ ok: false, error: 'api error (HTTP 400)', model: 'gemini-test-model' });
+    expect(result).toEqual({
+      ok: false,
+      error: 'api error (HTTP 400)',
+      model: 'gemini-test-model',
+    });
     expect(m.generateContent).toHaveBeenCalledTimes(1);
   });
 });

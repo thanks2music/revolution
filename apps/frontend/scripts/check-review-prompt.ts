@@ -13,12 +13,12 @@ if (!dir) {
 }
 
 loadScreeningPrompt(dir).then(
-  (prompt) => {
+  prompt => {
     console.error(`[check-review-prompt] ok (version ${prompt.version}, model ${prompt.model})`);
   },
   (error: unknown) => {
     const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
     console.error(`[check-review-prompt] invalid: ${reason}`);
     process.exit(1);
-  },
+  }
 );

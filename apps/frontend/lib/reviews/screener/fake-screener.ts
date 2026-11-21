@@ -1,5 +1,7 @@
 import { REVIEW_SCREENING_REASONS, type ReviewScreeningReason } from '@revolution/schemas/review';
 
+import type { ReviewScreeningDecision } from '@revolution/schemas/review-screening-response';
+
 import type { ReviewScreener, ReviewScreeningResult } from './types';
 
 /**
@@ -34,9 +36,9 @@ export function createFakeScreener(): ReviewScreener {
 }
 
 function success(
-  decision: 'publish' | 'reject' | 'unsure',
+  decision: ReviewScreeningDecision,
   reasonCode: ReviewScreeningReason | null,
-  reason: string,
+  reason: string
 ): ReviewScreeningResult {
   return { ok: true, decision, reasonCode, reason, model: FAKE_SCREENER_MODEL };
 }

@@ -1,11 +1,14 @@
-import { ThinkingLevel, type GenerateContentParameters, type GenerateContentResponse } from '@google/genai';
+import {
+  ThinkingLevel,
+  type GenerateContentParameters,
+  type GenerateContentResponse,
+} from '@google/genai';
 import { z } from 'zod';
 
 import { ReviewScreeningResponseSchema } from '@revolution/schemas/review-screening-response';
 
-import type { ScreeningPrompt } from './prompt';
-import { renderUserPrompt } from './prompt';
-import { withTransientRetry } from './retry';
+import { renderUserPrompt, type ScreeningPrompt } from './prompt';
+import { classifyError, withTransientRetry } from './retry';
 import type { ReviewScreener, ReviewScreeningResult } from './types';
 
 /**
@@ -39,12 +42,21 @@ const MAX_OUTPUT_TOKENS = 1_024;
 
 const RESPONSE_JSON_SCHEMA = z.toJSONSchema(ReviewScreeningResponseSchema, { target: 'draft-7' });
 
+const THINKING_LEVELS = {
+  minimal: ThinkingLevel.MINIMAL,
+  low: ThinkingLevel.LOW,
+  medium: ThinkingLevel.MEDIUM,
+  high: ThinkingLevel.HIGH,
+} as const;
+
 /** やり直しても結果が変わらない失敗 (打ち切り・ブロック・形の崩れ) */
 class DeterministicScreeningError extends Error {}
 
 export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScreener {
   const model = options.model ?? options.prompt.model;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const thinkingLevel =
+    options.prompt.thinking_level && THINKING_LEVELS[options.prompt.thinking_level];
 
   function request(body: string | null): GenerateContentParameters {
     return {
@@ -54,9 +66,8 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
         systemInstruction: options.prompt.system,
         temperature: 0,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        // 判定は短い JSON なので thinking は最小にする (thinking のトークンも maxOutputTokens に数えられる)。
-        // thinkingLevel は Gemini 3 系の指定で、ほかの系統には送らない (受け付けずに全件が失敗しうるため)
-        ...(model.startsWith('gemini-3') ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } } : {}),
+        // thinking の深さはプロンプトがモデルと対で決める (thinking のトークンも maxOutputTokens に数えられる)
+        ...(thinkingLevel ? { thinkingConfig: { thinkingLevel } } : {}),
         responseMimeType: 'application/json',
         responseJsonSchema: RESPONSE_JSON_SCHEMA,
         // やり直しのたびに新しい時間切れにする
@@ -70,7 +81,7 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
       try {
         const response = await withTransientRetry(
           () => options.models.generateContent(request(body)),
-          options.retry,
+          options.retry
         );
         const parsed = parseResponse(response);
         return {
@@ -90,9 +101,6 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
 
 function parseResponse(response: GenerateContentResponse) {
   const finishReason = response.candidates?.[0]?.finishReason;
-  if (finishReason === 'MAX_TOKENS') {
-    throw new DeterministicScreeningError('response truncated (MAX_TOKENS)');
-  }
   if (finishReason && finishReason !== 'STOP') {
     throw new DeterministicScreeningError(`response stopped (${finishReason})`);
   }
@@ -107,7 +115,9 @@ function parseResponse(response: GenerateContentResponse) {
   }
   const result = ReviewScreeningResponseSchema.safeParse(json);
   if (!result.success) {
-    throw new DeterministicScreeningError(`response shape is invalid (${result.error.issues[0]?.message})`);
+    throw new DeterministicScreeningError(
+      `response shape is invalid (${result.error.issues[0]?.message})`
+    );
   }
   return result.data;
 }
@@ -115,11 +125,15 @@ function parseResponse(response: GenerateContentResponse) {
 /** 失敗の内容を短い文にする。SDK のメッセージには本文が含まれうるので、種類と HTTP のステータスだけにする */
 function describeError(error: unknown): string {
   if (error instanceof DeterministicScreeningError) return error.message;
-  if (typeof error === 'object' && error !== null) {
-    const { status, name } = error as { status?: unknown; name?: unknown };
-    if (typeof status === 'number') return `api error (HTTP ${status})`;
-    if (name === 'TimeoutError' || name === 'AbortError') return 'timeout';
-    if (typeof name === 'string') return `error (${name})`;
+  const classified = classifyError(error);
+  switch (classified.kind) {
+    case 'http':
+      return `api error (HTTP ${classified.status})`;
+    case 'timeout':
+      return 'timeout';
+    case 'network':
+      return 'network error';
+    case 'other':
+      return classified.name ? `error (${classified.name})` : 'unknown error';
   }
-  return 'unknown error';
 }

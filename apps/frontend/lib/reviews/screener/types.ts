@@ -1,4 +1,5 @@
 import type { ReviewScreeningReason } from '@revolution/schemas/review';
+import type { ReviewScreeningDecision } from '@revolution/schemas/review-screening-response';
 
 /**
  * 口コミの審査器の口 (仕様: 差し替えのできる 3 つの口の 1 つ)。
@@ -21,7 +22,7 @@ export interface ReviewScreeningInput {
 export type ReviewScreeningResult =
   | {
       ok: true;
-      decision: 'publish' | 'reject' | 'unsure';
+      decision: ReviewScreeningDecision;
       /** reject の時の理由 (審査の 4 種) */
       reasonCode: ReviewScreeningReason | null;
       /** 判断の短い説明 (管理画面だけで見る) */
