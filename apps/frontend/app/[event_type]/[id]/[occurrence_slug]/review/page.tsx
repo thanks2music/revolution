@@ -14,15 +14,15 @@ import { notFound, permanentRedirect } from 'next/navigation';
 
 import { VENUE_NAME_FALLBACK } from '@/components/molecules/OccurrenceCard';
 import Layout from '@/components/templates/Layout';
-import { getCachedUser } from '@/lib/auth/current-user';
+import { getCurrentMember } from '@/lib/auth/member';
 import { getCategory } from '@/lib/category/queries';
 import { env } from '@/lib/env';
 import { getOccurrenceUrl } from '@/lib/event/event-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { todayInJst } from '@/lib/occurrence/status';
-import { buildXShareUrl } from '@/lib/reviews/labels';
-import { findProfileId } from '@/lib/reviews/profile';
+import { reviewBlockReason } from '@/lib/reviews/eligibility';
+import { buildXShareUrl } from '@/lib/reviews/share';
 import { createClient } from '@/lib/supabase/server';
 import type { OccurrencePageProps } from '@/types/page-props';
 
@@ -41,7 +41,11 @@ export const metadata: Metadata = {
 
 export default async function ReviewSubmitPage(props: OccurrencePageProps) {
   const { event_type, id, occurrence_slug } = await props.params;
-  const data = await getOccurrenceDetail(id, occurrence_slug);
+  // 会員の判定 (cookie と profiles) は開催と関係なく引けるので、並べて走らせる
+  const [data, member] = await Promise.all([
+    getOccurrenceDetail(id, occurrence_slug),
+    getCurrentMember().catch(() => null),
+  ]);
 
   if (!data) notFound();
   if (data.event.primaryCategory.slug !== event_type) {
@@ -52,7 +56,11 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
   const { occurrence, event } = data;
   const occurrencePath = getOccurrenceUrl(event, occurrence.slug);
   const venueName = occurrence.venueName ?? VENUE_NAME_FALLBACK;
-  const blocked = await blockedReason(occurrence);
+  const blocked =
+    reviewBlockReason(occurrence.status) ??
+    (member?.ok && (await hasOwnReview(occurrence.id, member.profileId))
+      ? 'この開催には、もう口コミを書いています。'
+      : null);
 
   return (
     <Layout>
@@ -76,7 +84,7 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
             venueName={venueName}
             period={formatPeriod(occurrence.startsOn, occurrence.endsOn)}
             minDate={occurrence.startsOn!}
-            maxDate={minDate(occurrence.endsOn, todayInJst())}
+            maxDate={earlierDate(occurrence.endsOn, todayInJst())}
             occurrencePath={occurrencePath}
             shareUrl={buildXShareUrl({
               eventName: event.name,
@@ -91,37 +99,23 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
   );
 }
 
-/** 書けない理由。書ける時は null */
-async function blockedReason(occurrence: { id: number; status: string; startsOn: string | null }) {
-  switch (occurrence.status) {
-    case 'scheduled':
-      return 'この開催はまだ始まっていません。開催が始まったら口コミを書けます。';
-    case 'unscheduled':
-      return 'この開催は日程がまだ発表されていないため、口コミを書けません。';
-    case 'cancelled':
-      return 'この開催は中止になったため、口コミを書けません。';
-  }
-  if (!occurrence.startsOn) return 'この開催には口コミを書けません。';
-
-  const {
-    data: { user },
-  } = await getCachedUser();
-  if (!user) return 'ログインしてください。';
+/**
+ * 会員がこの開催にもう口コミを書いているか。確かめられない時は書かせる側に倒す
+ * (二重の投稿は DB の部分 unique が止め、提出の時に理由を返す)
+ */
+async function hasOwnReview(occurrenceId: number, profileId: string): Promise<boolean> {
   const supabase = await createClient();
-  const profileId = await findProfileId(supabase, user.id).catch(() => null);
-  if (!profileId) return null;
-  const { data: existing, error } = await supabase
+  const { data, error } = await supabase
     .from('reviews')
     .select('id')
-    .eq('occurrence_id', occurrence.id)
+    .eq('occurrence_id', occurrenceId)
     .eq('user_id', profileId)
     .is('deleted_at', null)
     .maybeSingle();
-  // 確かめられない時は書かせる側に倒す (二重の投稿は DB の部分 unique が止める)
-  if (!error && existing) return 'この開催には、もう口コミを書いています。';
-  return null;
+  return !error && data !== null;
 }
 
-function minDate(endsOn: string | null, today: string): string {
+/** 開催の終わりと今日の早い方 (訪問日に選べる最後の日) */
+function earlierDate(endsOn: string | null, today: string): string {
   return endsOn && endsOn < today ? endsOn : today;
 }

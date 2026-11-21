@@ -13,7 +13,7 @@
 
 jest.mock('@/lib/env', () => ({ env: {} }));
 jest.mock('@/lib/occurrence/queries', () => ({ getOccurrenceDetail: jest.fn() }));
-jest.mock('@/lib/auth/current-user', () => ({ getCachedUser: jest.fn() }));
+jest.mock('@/lib/auth/member', () => ({ getCurrentMember: jest.fn() }));
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn(() => ({ admin: true })) }));
 jest.mock('@/lib/reviews/screener', () => ({
   getReviewScreener: jest.fn(async () => ({ screen: jest.fn() })),
@@ -21,7 +21,6 @@ jest.mock('@/lib/reviews/screener', () => ({
 jest.mock('@/lib/reviews/operations', () => ({ screenSubmittedReview: jest.fn() }));
 jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }));
 jest.mock('next/server', () => ({ after: jest.fn() }));
-jest.mock('@/lib/reviews/profile', () => ({ findProfileId: jest.fn() }));
 jest.mock('@/lib/supabase/server', () => {
   const builder: any = {};
   builder.insert = jest.fn(() => builder);
@@ -38,10 +37,9 @@ import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 
 import { submitReview } from '@/actions/review';
-import { getCachedUser } from '@/lib/auth/current-user';
+import { getCurrentMember } from '@/lib/auth/member';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
-import { findProfileId } from '@/lib/reviews/profile';
 
 const builder = (jest.requireMock('@/lib/supabase/server') as { __builder: any }).__builder;
 
@@ -66,10 +64,7 @@ function detail(status = 'ongoing') {
 beforeEach(() => {
   jest.clearAllMocks();
   (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail());
-  (getCachedUser as jest.Mock).mockResolvedValue({
-    data: { user: { id: 'auth-1', user_metadata: { onboarded: true } } },
-  });
-  (findProfileId as jest.Mock).mockResolvedValue('profile-1');
+  (getCurrentMember as jest.Mock).mockResolvedValue({ ok: true, profileId: 'profile-1' });
   builder.insert.mockReturnValue(builder);
   builder.select.mockReturnValue(builder);
   builder.single.mockResolvedValue({ data: { id: 56 }, error: null });
@@ -87,13 +82,10 @@ it('開催をサーバーで引き、投稿者は会員の profiles.id で挿入
       visited_on: '2026-11-20',
     })
   );
-  expect(findProfileId).toHaveBeenCalledWith(expect.anything(), 'auth-1');
 });
 
 it('onboarding を済ませていない会員は書けない (Server Action はどのルートからも呼べるため)', async () => {
-  (getCachedUser as jest.Mock).mockResolvedValue({
-    data: { user: { id: 'auth-1', user_metadata: {} } },
-  });
+  (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'not_onboarded' });
 
   await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false, needsAuth: true });
   expect(builder.insert).not.toHaveBeenCalled();
@@ -161,7 +153,7 @@ it('URL の種別が違えば開催が見つからない扱いにする', async 
 });
 
 it('未ログインは needsAuth を返す', async () => {
-  (getCachedUser as jest.Mock).mockResolvedValue({ data: { user: null } });
+  (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'unauthenticated' });
 
   await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false, needsAuth: true });
 });

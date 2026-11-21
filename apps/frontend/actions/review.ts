@@ -7,10 +7,10 @@
  *   応答の後に `after()` で AI の審査を走らせる。審査の結果の書き込みは操作の層 (service role)
  *
  * 設計 (favorite.ts の方針を踏襲):
- * - 投稿者 (user_id) と開催 (occurrence_id) はクライアントから受け取らない。投稿者は getUser() から、
+ * - 投稿者と開催はクライアントから受け取らない。投稿者は会員の profiles.id (`getCurrentMember`)、
  *   開催は URL の種別・企画 ID・開催の slug からサーバーで引く
  * - throw せず型付きの結果を返す。ユーザーの入力に起因する失敗 (形の誤り・二重の投稿・期間外の訪問日・
- *   未ログイン) は Sentry に送らない。DB の障害だけを送る (llm-context/sentry-rules.md)
+ *   未ログイン) は Sentry に送らない。DB の障害など想定外の例外だけを送る (llm-context/sentry-rules.md)
  */
 
 import * as Sentry from '@sentry/nextjs';
@@ -19,12 +19,11 @@ import { after } from 'next/server';
 
 import { ReviewSubmitSchema, type ReviewSubmitInput } from '@revolution/schemas/review';
 
-import { getCachedUser } from '@/lib/auth/current-user';
+import { getCurrentMember } from '@/lib/auth/member';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
-import { isOnboardedFromMetadata } from '@/lib/auth/onboarding-status';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
+import { reviewBlockReason } from '@/lib/reviews/eligibility';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
-import { findProfileId } from '@/lib/reviews/profile';
 import { getReviewScreener } from '@/lib/reviews/screener';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -32,17 +31,37 @@ import { createClient } from '@/lib/supabase/server';
 const PG_UNIQUE_VIOLATION = '23505';
 const PG_CHECK_VIOLATION = '23514';
 
-/** 口コミを書ける開催の状態 (開催中か終了。仕様 #156) */
-const REVIEWABLE_STATUSES = new Set(['ongoing', 'ended']);
-
 export type ReviewRouteParams = { eventType: string; eventId: string; occurrenceSlug: string };
 
 /** 入力の欄ごとの誤り (画面の欄の下に出す) */
 export type ReviewFieldErrors = Partial<Record<keyof ReviewSubmitInput, string>>;
 
-export type SubmitReviewResult =
-  | { ok: true; reviewId: number }
-  | { ok: false; error: string; fieldErrors?: ReviewFieldErrors; needsAuth?: boolean };
+export type SubmitReviewFailure = {
+  ok: false;
+  error: string;
+  fieldErrors?: ReviewFieldErrors;
+  needsAuth?: boolean;
+};
+
+export type SubmitReviewResult = { ok: true; reviewId: number } | SubmitReviewFailure;
+
+const FAILURES = {
+  notFound: { ok: false, error: '開催が見つかりません' },
+  needsLogin: { ok: false, error: 'ログインしてください', needsAuth: true },
+  needsOnboarding: {
+    ok: false,
+    error: 'プロフィールの登録を済ませてから投稿してください',
+    needsAuth: true,
+  },
+  duplicate: { ok: false, error: 'この開催には、もう口コミを書いています' },
+  notReviewable: { ok: false, error: 'この開催には、まだ口コミを書けません' },
+  visitedOnOutOfRange: {
+    ok: false,
+    error: '入力を確かめてください',
+    fieldErrors: { visitedOn: '開催期間の中で、今日までの日付を選んでください' },
+  },
+  unexpected: { ok: false, error: '投稿できませんでした。時間をおいてもう一度お試しください' },
+} as const satisfies Record<string, SubmitReviewFailure>;
 
 export async function submitReview(
   route: ReviewRouteParams,
@@ -51,9 +70,9 @@ export async function submitReview(
   try {
     return await submit(route, input);
   } catch (error) {
-    // 開催の取得・認証・DB の接続などが投げた例外。画面の入力を失わせないよう、型付きの結果で返す
+    // 開催の取得・認証・DB の障害など。画面の入力を失わせないよう、型付きの結果で返す
     Sentry.captureException(error, { tags: { action: 'submitReview' } });
-    return { ok: false, error: '投稿できませんでした。時間をおいてもう一度お試しください' };
+    return FAILURES.unexpected;
   }
 }
 
@@ -61,13 +80,12 @@ async function submit(
   route: ReviewRouteParams,
   input: Omit<ReviewSubmitInput, 'occurrenceId'>
 ): Promise<SubmitReviewResult> {
-  const detail = await getOccurrenceDetail(route.eventId, route.occurrenceSlug);
-  if (!detail || detail.event.primaryCategory.slug !== route.eventType) {
-    return { ok: false, error: '開催が見つかりません' };
-  }
-  if (!REVIEWABLE_STATUSES.has(detail.occurrence.status)) {
-    return { ok: false, error: 'この開催には、まだ口コミを書けません' };
-  }
+  const [detail, member] = await Promise.all([
+    getOccurrenceDetail(route.eventId, route.occurrenceSlug),
+    getCurrentMember(),
+  ]);
+  if (!detail || detail.event.primaryCategory.slug !== route.eventType) return FAILURES.notFound;
+  if (reviewBlockReason(detail.occurrence.status)) return FAILURES.notReviewable;
 
   const parsed = ReviewSubmitSchema.safeParse({ ...input, occurrenceId: detail.occurrence.id });
   if (!parsed.success) {
@@ -79,30 +97,17 @@ async function submit(
     return { ok: false, error: '入力を確かめてください', fieldErrors };
   }
 
-  const {
-    data: { user },
-  } = await getCachedUser();
-  if (!user) return { ok: false, error: 'ログインしてください', needsAuth: true };
-  // Server Action はどのルートからも呼べるので、middleware の onboarding の強制に頼らず、ここでも見る
-  if (!isOnboardedFromMetadata(user.user_metadata)) {
-    return {
-      ok: false,
-      error: 'プロフィールの登録を済ませてから投稿してください',
-      needsAuth: true,
-    };
+  if (!member.ok) {
+    return member.reason === 'not_onboarded' ? FAILURES.needsOnboarding : FAILURES.needsLogin;
   }
 
   const value = parsed.data;
   const supabase = await createClient();
-  // 投稿者は profiles.id (永続 ID)。auth のユーザー ID ではない (shared/schemas/db/reviews.ts)
-  const profileId = await findProfileId(supabase, user.id);
-  if (!profileId) return { ok: false, error: 'ログインしてください', needsAuth: true };
-
   const { data, error } = await supabase
     .from('reviews')
     .insert({
       occurrence_id: value.occurrenceId,
-      user_id: profileId,
+      user_id: member.profileId,
       rating: value.rating,
       visited_on: value.visitedOn,
       attendance: value.attendance,
@@ -115,21 +120,14 @@ async function submit(
     .single();
 
   if (error) {
-    if (error.code === PG_UNIQUE_VIOLATION) {
-      return { ok: false, error: 'この開催には、もう口コミを書いています' };
-    }
-    if (error.code === PG_CHECK_VIOLATION && error.message.includes('visited_on')) {
-      return {
-        ok: false,
-        error: '入力を確かめてください',
-        fieldErrors: { visitedOn: '開催期間の中で、今日までの日付を選んでください' },
-      };
-    }
+    if (error.code === PG_UNIQUE_VIOLATION) return FAILURES.duplicate;
+    // DB のトリガ (private.check_review_occurrence) の拒否。本文の長さなどの CHECK は zod が先に止める
     if (error.code === PG_CHECK_VIOLATION) {
-      return { ok: false, error: 'この開催には、まだ口コミを書けません' };
+      return error.message.includes('visited_on')
+        ? FAILURES.visitedOnOutOfRange
+        : FAILURES.notReviewable;
     }
-    Sentry.captureException(error, { tags: { action: 'submitReview' } });
-    return { ok: false, error: '投稿できませんでした。時間をおいてもう一度お試しください' };
+    throw error;
   }
 
   const reviewId = data.id as number;

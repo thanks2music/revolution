@@ -18,7 +18,7 @@ import {
   type ReviewGoodsCostBand,
 } from '@revolution/schemas/review';
 
-import { submitReview, type ReviewFieldErrors, type ReviewRouteParams } from '@/actions/review';
+import { submitReview, type ReviewRouteParams, type SubmitReviewFailure } from '@/actions/review';
 import {
   ATTENDANCE_LABELS,
   FOOD_COST_BAND_LABELS,
@@ -41,17 +41,19 @@ export type ReviewFormProps = {
   shareUrl: string;
 };
 
+type Rating = keyof typeof RATING_LABELS;
+
 export function ReviewForm(props: ReviewFormProps) {
-  const [rating, setRating] = useState<number | null>(null);
+  const [rating, setRating] = useState<Rating | null>(null);
   const [visitedOn, setVisitedOn] = useState(props.maxDate);
   const [attendance, setAttendance] = useState<ReviewAttendance | null>(null);
   const [foodCostBand, setFoodCostBand] = useState<ReviewFoodCostBand | null>(null);
   const [goodsCostBand, setGoodsCostBand] = useState<ReviewGoodsCostBand | null>(null);
   const [body, setBody] = useState('');
   const [hasSpoiler, setHasSpoiler] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [needsAuth, setNeedsAuth] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<ReviewFieldErrors>({});
+  // 提出の失敗 (全体の文・欄ごとの誤り・ログインが要るか) を 1 つで持つ
+  const [failure, setFailure] = useState<SubmitReviewFailure | null>(null);
+  const fieldErrors = failure?.fieldErrors ?? {};
   const [submittedAt, setSubmittedAt] = useState<Date | null>(null);
   const [pending, startTransition] = useTransition();
   const ids = { visitedOn: useId(), body: useId(), spoiler: useId() };
@@ -72,12 +74,8 @@ export function ReviewForm(props: ReviewFormProps) {
 
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (rating === null) {
-      setError(null);
-      setNeedsAuth(false);
-      setFieldErrors({ rating: '星を選んでください' });
-      return;
-    }
+    // 星が無い間は送信のボタンを押せない (型を絞るためだけの判定)
+    if (rating === null) return;
     startTransition(async () => {
       try {
         const result = await submitReview(props.route, {
@@ -94,13 +92,13 @@ export function ReviewForm(props: ReviewFormProps) {
           window.scrollTo({ top: 0 });
           return;
         }
-        setError(result.error);
-        setNeedsAuth(result.needsAuth ?? false);
-        setFieldErrors(result.fieldErrors ?? {});
+        setFailure(result);
       } catch {
         // 通信の失敗など。入力は残したまま、もう一度押せるようにする
-        setError('投稿できませんでした。通信を確かめて、もう一度お試しください');
-        setNeedsAuth(false);
+        setFailure({
+          ok: false,
+          error: '投稿できませんでした。通信を確かめて、もう一度お試しください',
+        });
       }
     });
   }
@@ -139,13 +137,12 @@ export function ReviewForm(props: ReviewFormProps) {
           className="min-h-6 pt-1 font-display text-sm font-bold text-ink-strong"
           aria-live="polite"
         >
-          {rating !== null ? RATING_LABELS[rating as 1 | 2 | 3 | 4 | 5] : ''}
+          {rating !== null ? RATING_LABELS[rating] : ''}
         </p>
-        <FieldError message={fieldErrors.rating} />
       </div>
 
       <div className="flex flex-col gap-2 pt-5">
-        <FieldLabel htmlFor={ids.visitedOn} required>
+        <FieldLabel htmlFor={ids.visitedOn} badge="required">
           訪問日
         </FieldLabel>
         <input
@@ -174,7 +171,7 @@ export function ReviewForm(props: ReviewFormProps) {
       />
 
       <div className="flex flex-col gap-2 pt-5">
-        <FieldLabel optional>使った金額（1人分）</FieldLabel>
+        <FieldLabel badge="optional">使った金額（1人分）</FieldLabel>
         <ChipGroup
           label="飲食代"
           small
@@ -197,7 +194,7 @@ export function ReviewForm(props: ReviewFormProps) {
       </div>
 
       <div className="flex flex-col gap-2 pt-5">
-        <FieldLabel htmlFor={ids.body} optional>
+        <FieldLabel htmlFor={ids.body} badge="optional">
           本文
         </FieldLabel>
         <textarea
@@ -237,13 +234,13 @@ export function ReviewForm(props: ReviewFormProps) {
         </button>
       </div>
 
-      {error && (
+      {failure && (
         <p
           role="alert"
           className="mt-5 rounded-xl bg-status-cancelled-surface px-3 py-2 text-sm text-status-cancelled"
         >
-          {error}
-          {needsAuth && (
+          {failure.error}
+          {failure.needsAuth && (
             <>
               {' '}
               <Link
@@ -276,27 +273,29 @@ export function ReviewForm(props: ReviewFormProps) {
   );
 }
 
+const BADGES = {
+  required: { label: '必須', className: 'bg-status-cancelled-surface text-status-cancelled' },
+  optional: { label: '任意', className: 'bg-status-scheduled-surface text-ink-muted' },
+} as const;
+
 function FieldLabel(props: {
   children: React.ReactNode;
   htmlFor?: string;
-  required?: boolean;
-  optional?: boolean;
+  id?: string;
+  badge?: keyof typeof BADGES;
 }) {
   const Tag = props.htmlFor ? 'label' : 'p';
+  const badge = props.badge && BADGES[props.badge];
   return (
     <Tag
       htmlFor={props.htmlFor}
+      id={props.id}
       className="flex items-center gap-1.5 text-xs font-bold text-ink-strong"
     >
       {props.children}
-      {props.required && (
-        <span className="rounded bg-status-cancelled-surface px-1.5 py-0.5 text-[10px] text-status-cancelled">
-          必須
-        </span>
-      )}
-      {props.optional && (
-        <span className="rounded bg-status-scheduled-surface px-1.5 py-0.5 text-[10px] text-ink-muted">
-          任意
+      {badge && (
+        <span className={`rounded px-1.5 py-0.5 text-[10px] ${badge.className}`}>
+          {badge.label}
         </span>
       )}
     </Tag>
@@ -320,12 +319,9 @@ function ChipGroup<T extends string>(props: {
           {props.label}
         </p>
       ) : (
-        <p id={groupId} className="flex items-center gap-1.5 text-xs font-bold text-ink-strong">
+        <FieldLabel id={groupId} badge="optional">
           {props.label}
-          <span className="rounded bg-status-scheduled-surface px-1.5 py-0.5 text-[10px] text-ink-muted">
-            任意
-          </span>
-        </p>
+        </FieldLabel>
       )}
       <div role="radiogroup" aria-labelledby={groupId} className="flex flex-wrap gap-2">
         {props.options.map(option => {

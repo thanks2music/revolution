@@ -17,6 +17,13 @@ type Props = {
   shareUrl: string;
 };
 
+/** 進み具合の点の色 (済み・今・これから) */
+const STEP_DOT = {
+  done: 'bg-primary-strong',
+  current: 'bg-accent-yellow-deep',
+  todo: 'bg-(--line-strong)',
+} as const;
+
 const DATE_TIME = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
   year: 'numeric',
@@ -48,13 +55,7 @@ export function ReviewSubmitted(props: Props) {
             <div className="flex flex-col items-center pt-1">
               <span
                 aria-hidden="true"
-                className={`size-3.5 rounded-full ${
-                  step.state === 'done'
-                    ? 'bg-primary-strong'
-                    : step.state === 'current'
-                      ? 'bg-accent-yellow-deep'
-                      : 'bg-(--line-strong)'
-                }`}
+                className={`size-3.5 rounded-full ${STEP_DOT[step.state]}`}
               />
               {index < steps.length - 1 && (
                 <span
