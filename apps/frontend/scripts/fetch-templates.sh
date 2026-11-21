@@ -64,6 +64,7 @@ else
 fi
 
 # 形を確かめる (読み込みの関数と同じスキーマ)。崩れていれば入れ替えない
+[ -x node_modules/.bin/tsx ] || fail_or_warn "tsx がありません (apps/frontend の devDependencies を入れてください)"
 if ! node_modules/.bin/tsx scripts/check-review-prompt.ts "$STAGING" >&2; then
   fail_or_warn "取り込んだプロンプトの形が正しくありません"
 fi

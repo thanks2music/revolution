@@ -109,6 +109,12 @@ describe('loadScreeningPrompt', () => {
     await expect(loadScreeningPrompt(await templatesWith(NO_BODY))).rejects.toThrow();
   });
 
+  it('thinking_level の値が誤っていれば拒否する', async () => {
+    const dir = await templatesWith(VALID + 'thinking_level: max\n');
+
+    await expect(loadScreeningPrompt(dir)).rejects.toThrow();
+  });
+
   it('本文を <review> タグで囲まないプロンプトは拒否する (全角への置き換えが効かなくなるため)', async () => {
     const dir = await templatesWith('version: 1\nmodel: m\nsystem: s\nuser: "[[{{body}}]]"\n');
 
@@ -150,6 +156,28 @@ describe('getReviewScreener', () => {
       error: 'GEMINI_API_KEY is not set',
       model: null,
     });
+  });
+
+  it('同じ鍵・モデル・置き場所なら、作った審査器を使い回す', async () => {
+    const dir = await templatesWith(VALID);
+    const env = { GEMINI_API_KEY: 'test-key' };
+
+    const first = await getReviewScreener(env, { templatesDir: dir });
+    expect(await getReviewScreener(env, { templatesDir: dir })).toBe(first);
+    expect(
+      await getReviewScreener({ ...env, REVIEW_SCREENING_MODEL: 'other' }, { templatesDir: dir })
+    ).not.toBe(first);
+  });
+
+  it('プロンプトが読めない時の審査器は覚えず、置かれた後に読み直す', async () => {
+    const dir = await tempDir('later-');
+    const env = { GEMINI_API_KEY: 'test-key' };
+
+    const failing = await getReviewScreener(env, { templatesDir: dir });
+    await expect(failing.screen({ body: 'x' })).resolves.toMatchObject({ ok: false });
+    await mkdir(path.join(dir, 'reviews'));
+    await writeFile(path.join(dir, 'reviews', 'screening.yaml'), VALID);
+    expect(await getReviewScreener(env, { templatesDir: dir })).not.toBe(failing);
   });
 
   it('鍵はあってもプロンプトが読めなければ、必ず失敗する審査器にする', async () => {

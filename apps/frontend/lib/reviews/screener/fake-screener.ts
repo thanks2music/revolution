@@ -30,7 +30,11 @@ export function createFakeScreener(): ReviewScreener {
       if (reject) {
         // 知らない理由は書き間違いなので、黙って公開せず失敗にする (E2E で気づけるように)
         if (!(REVIEW_SCREENING_REASONS as readonly string[]).includes(reject[1])) {
-          return { ok: false, error: `fake: unknown reason ${reject[1]}`, model: FAKE_SCREENER_MODEL };
+          return {
+            ok: false,
+            error: `fake: unknown reason ${reject[1]}`,
+            model: FAKE_SCREENER_MODEL,
+          };
         }
         return success('reject', reject[1] as ReviewScreeningReason, `fake: ${reject[1]}`);
       }

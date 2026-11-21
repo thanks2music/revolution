@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
+
 import { GoogleGenAI } from '@google/genai';
 
 import { presentEnvValue } from '@revolution/slack/env';
@@ -39,7 +41,8 @@ export async function getReviewScreener(
 
   const model = presentEnvValue(env.REVIEW_SCREENING_MODEL);
   const dir = options.templatesDir ?? DEFAULT_TEMPLATES_DIR;
-  const key = JSON.stringify([apiKey, model, dir]);
+  // 鍵そのものはキーにしない (Map を覗かれても漏れないように、ハッシュにする)
+  const key = JSON.stringify([createHash('sha256').update(apiKey).digest('hex'), model, dir]);
   const cached = screeners.get(key);
   if (cached) return cached;
 

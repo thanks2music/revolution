@@ -18,7 +18,9 @@ export function classifyError(error: unknown): ErrorKind {
   if (typeof error !== 'object' || error === null) return { kind: 'other', name: null };
   const { status, name, message, cause } = error as Record<string, unknown>;
   if (typeof status === 'number') return { kind: 'http', status };
-  // `AbortSignal.timeout` の中断。DOMException は realm をまたぐと instanceof が効かないので name で見る
+  // `AbortSignal.timeout` の中断。DOMException は realm をまたぐと instanceof が効かないので name で見る。
+  // AbortError も時間切れとして扱うのは、渡す signal が `AbortSignal.timeout` だけだから
+  // (呼び出し側の中断を足す時は、別の種類に分ける)
   if (name === 'TimeoutError' || name === 'AbortError') return { kind: 'timeout' };
   // fetch の通信の失敗 (undici は TypeError: fetch failed を投げ、原因を cause に付ける)。
   // ほかの TypeError はプログラムの不具合として扱う
