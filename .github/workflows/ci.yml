@@ -222,6 +222,12 @@ jobs:
       PINNED_SUPABASE_CLI_VERSION: 3.0.0
 
     steps:
+      - name: Reserve local Supabase ports
+        # Supabase のポート (54320〜54329、`apps/frontend/supabase/config.toml`) は Linux の一時ポートの
+        # 範囲 (32768〜60999) に入っている。先の step の外向きの通信に割り当てられると、`supabase start` が
+        # "address already in use" で落ちる (2026-11-21、5 回中 1 回)。job の最初に予約して割り当てさせない
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=54320-54329
+
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
