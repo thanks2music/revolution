@@ -14,24 +14,26 @@ export function isTransientError(error: unknown): boolean {
   if (typeof status === 'number') return status === 429 || status >= 500;
   // `AbortSignal.timeout` の中断。DOMException は realm をまたぐと instanceof が効かないので name で見る
   if (name === 'TimeoutError' || name === 'AbortError') return true;
-  // fetch の通信の失敗 (undici は TypeError: fetch failed を投げる)
-  return name === 'TypeError';
+  // fetch の通信の失敗 (undici は TypeError: fetch failed を投げ、原因を cause に付ける)。
+  // ほかの TypeError はプログラムの不具合なので、やり直さない
+  if (name === 'TypeError') {
+    const { message, cause } = error as { message?: unknown; cause?: unknown };
+    return message === 'fetch failed' || cause !== undefined;
+  }
+  return false;
 }
 
-/**
- * fn を呼び、一時的なエラーなら間隔を空けてやり直す。最後の失敗はそのまま投げる。
- * 何回目で成功したかを返す (AI の記録と計測に使う)。
- */
+/** fn を呼び、一時的なエラーなら間隔を空けてやり直す。最後の失敗はそのまま投げる */
 export async function withTransientRetry<T>(
   fn: () => Promise<T>,
   options: { delays?: readonly number[]; sleep?: (ms: number) => Promise<void> } = {},
-): Promise<{ value: T; attempts: number }> {
+): Promise<T> {
   const delays = options.delays ?? RETRY_DELAYS_MS;
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
 
   for (let attempt = 0; ; attempt++) {
     try {
-      return { value: await fn(), attempts: attempt + 1 };
+      return await fn();
     } catch (error) {
       if (attempt >= delays.length || !isTransientError(error)) throw error;
       await sleep(delays[attempt]);

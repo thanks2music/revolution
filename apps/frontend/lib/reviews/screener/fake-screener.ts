@@ -22,18 +22,18 @@ export function createFakeScreener(): ReviewScreener {
         return { ok: false, error: 'fake failure', model: FAKE_SCREENER_MODEL };
       }
       if (text.includes('[unsure]')) {
-        return ok('unsure', null, 'fake: unsure');
+        return success('unsure', null, 'fake: unsure');
       }
       const reject = text.match(/\[reject:([a-z_]+)\]/);
       if (reject && (REVIEW_SCREENING_REASONS as readonly string[]).includes(reject[1])) {
-        return ok('reject', reject[1] as ReviewScreeningReason, `fake: ${reject[1]}`);
+        return success('reject', reject[1] as ReviewScreeningReason, `fake: ${reject[1]}`);
       }
-      return ok('publish', null, 'fake: publish');
+      return success('publish', null, 'fake: publish');
     },
   };
 }
 
-function ok(
+function success(
   decision: 'publish' | 'reject' | 'unsure',
   reasonCode: ReviewScreeningReason | null,
   reason: string,

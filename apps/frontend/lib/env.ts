@@ -53,7 +53,8 @@ export const env = createEnv({
     // 審査器は `process.env` を直読みする (テストで env を差し替えるため)。未設定なら審査は失敗として扱う
     GEMINI_API_KEY: z.string().optional(),
     REVIEW_SCREENING_MODEL: z.string().optional(),
-    REVIEW_SCREENER: z.enum(['fake']).optional(),
+    // fake の時だけ偽物を使う。ほかの値は無視する (値の誤りで起動を止めないため)
+    REVIEW_SCREENER: z.string().optional(),
   },
 
   /*

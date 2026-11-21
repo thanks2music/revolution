@@ -16,7 +16,8 @@ export const ReviewScreeningResponseSchema = z
   .object({
     decision: z.enum(['publish', 'reject', 'unsure']),
     reason_code: z.enum(REVIEW_SCREENING_REASONS).nullable(),
-    reason: z.string().max(500),
+    // 長さは制限しない (長い説明で判定まで捨てないため)。保存する側で切る
+    reason: z.string(),
   })
   .refine((value) => value.decision !== 'reject' || value.reason_code !== null, {
     message: 'reject requires reason_code',

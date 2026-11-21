@@ -1,4 +1,5 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -7,6 +8,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { createFakeScreener, FAKE_SCREENER_MODEL } from '@/lib/reviews/screener/fake-screener';
 import { getReviewScreener } from '@/lib/reviews/screener';
 import { loadScreeningPrompt } from '@/lib/reviews/screener/prompt';
+import { ReviewScreeningResponseSchema } from '@revolution/schemas/review-screening-response';
 import { isTransientError, withTransientRetry } from '@/lib/reviews/screener/retry';
 
 describe('isTransientError', () => {
@@ -18,6 +20,8 @@ describe('isTransientError', () => {
     [{ status: 403 }, false],
     [new DOMException('timeout', 'TimeoutError'), true],
     [new TypeError('fetch failed'), true],
+    [new TypeError('x', { cause: { code: 'ECONNRESET' } }), true],
+    [new TypeError("Cannot read properties of undefined (reading 'text')"), false],
     [new Error('x'), false],
     ['text', false],
   ])('%p → %p', (error, expected) => {
@@ -45,7 +49,7 @@ describe('withTransientRetry', () => {
       return 'ok';
     };
 
-    await expect(withTransientRetry(fn, { sleep: async () => {} })).resolves.toEqual({ value: 'ok', attempts: 2 });
+    await expect(withTransientRetry(fn, { sleep: async () => {} })).resolves.toBe('ok');
   });
 });
 
@@ -95,6 +99,12 @@ describe('getReviewScreener', () => {
     await expect(screener.screen({ body: 'x' })).resolves.toMatchObject({ model: FAKE_SCREENER_MODEL });
   });
 
+  it('Vercel の外の本番 (NODE_ENV=production) でも REVIEW_SCREENER=fake を無視する', async () => {
+    const screener = await getReviewScreener({ REVIEW_SCREENER: 'fake', NODE_ENV: 'production' });
+
+    await expect(screener.screen({ body: 'x' })).resolves.toMatchObject({ ok: false, model: null });
+  });
+
   it('本番では REVIEW_SCREENER=fake を無視する (鍵が無いので必ず失敗し、公開されない)', async () => {
     const screener = await getReviewScreener({ REVIEW_SCREENER: 'fake', VERCEL_ENV: 'production' });
 
@@ -116,4 +126,77 @@ describe('getReviewScreener', () => {
       model: null,
     });
   });
+});
+
+describe('ReviewScreeningResponseSchema', () => {
+  it('reject には理由のコードが要る', () => {
+    expect(
+      ReviewScreeningResponseSchema.safeParse({ decision: 'reject', reason_code: null, reason: 'x' }).success,
+    ).toBe(false);
+  });
+
+  it('長い説明でも判定は受け付ける (切るのは保存する側)', () => {
+    expect(
+      ReviewScreeningResponseSchema.safeParse({ decision: 'publish', reason_code: null, reason: 'あ'.repeat(2000) })
+        .success,
+    ).toBe(true);
+  });
+});
+
+/**
+ * 取り込みのスクリプト (scripts/fetch-templates.sh)。本番のビルドを止めるかどうかを決める所なので、
+ * 本番と本番以外の分かれ目を確かめる。置き先は一時ディレクトリにする (TEMPLATES_DEST)
+ */
+describe('fetch-templates.sh', () => {
+  const VALID = 'version: 1\nmodel: m\nsystem: s\nuser: "<review>{{body}}</review>"\n';
+
+  async function run(env: Record<string, string>) {
+    const dest = await mkdtemp(path.join(tmpdir(), 'fetched-'));
+    const result = await new Promise<{ code: number; stderr: string }>((resolve) => {
+      execFile(
+        'bash',
+        ['scripts/fetch-templates.sh'],
+        {
+          // 手元の env (VERCEL_ENV・TEMPLATES_* など) を持ち込まないよう、必要な物だけを渡す
+          env: {
+            PATH: process.env.PATH ?? '',
+            HOME: process.env.HOME ?? '',
+            TEMPLATES_DEST: dest,
+            ...env,
+          } as unknown as NodeJS.ProcessEnv,
+        },
+        (error, _stdout, stderr) => resolve({ code: error ? Number(error.code ?? 1) : 0, stderr }),
+      );
+    });
+    return { ...result, dest };
+  }
+
+  async function sourceWith(yaml: string) {
+    const dir = await mkdtemp(path.join(tmpdir(), 'source-'));
+    await mkdir(path.join(dir, 'reviews'));
+    await writeFile(path.join(dir, 'reviews', 'screening.yaml'), yaml);
+    return dir;
+  }
+
+  it('手元の templates repo から取り込む', async () => {
+    const { code, dest } = await run({ TEMPLATES_SOURCE_PATH: await sourceWith(VALID) });
+
+    expect(code).toBe(0);
+    await expect(readFile(path.join(dest, 'reviews', 'screening.yaml'), 'utf8')).resolves.toBe(VALID);
+  }, 60_000);
+
+  it('取り込み元が無ければ、本番では止め、本番以外では警告して続ける', async () => {
+    expect((await run({ VERCEL_ENV: 'production' })).code).toBe(1);
+    const preview = await run({ VERCEL_ENV: 'preview' });
+    expect(preview.code).toBe(0);
+    expect(preview.stderr).toContain('warning');
+  }, 60_000);
+
+  it('形の崩れたプロンプトは、本番では止め、置き先に入れない', async () => {
+    const source = await sourceWith('version: 1\nmodel: m\nsystem: s\nuser: "本文なし"\n');
+
+    const production = await run({ TEMPLATES_SOURCE_PATH: source, VERCEL_ENV: 'production' });
+    expect(production.code).toBe(1);
+    await expect(readFile(path.join(production.dest, 'reviews', 'screening.yaml'))).rejects.toThrow();
+  }, 60_000);
 });

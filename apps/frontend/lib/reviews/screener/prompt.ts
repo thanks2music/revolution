@@ -28,9 +28,19 @@ export function templatesDir(): string {
   return path.join(process.cwd(), 'templates');
 }
 
-export async function loadScreeningPrompt(dir: string = templatesDir()): Promise<ScreeningPrompt> {
-  const raw = await readFile(path.join(dir, 'reviews', 'screening.yaml'), 'utf8');
-  return ScreeningPromptSchema.parse(yaml.load(raw));
+// 読み込んだプロンプトを置き場所ごとに覚える (提出のたびにファイルを読み直さない)。
+// 失敗は覚えない (次の呼び出しでもう一度読む)
+const loaded = new Map<string, Promise<ScreeningPrompt>>();
+
+export function loadScreeningPrompt(dir: string = templatesDir()): Promise<ScreeningPrompt> {
+  const cached = loaded.get(dir);
+  if (cached) return cached;
+  const promise = readFile(path.join(dir, 'reviews', 'screening.yaml'), 'utf8').then((raw) =>
+    ScreeningPromptSchema.parse(yaml.load(raw)),
+  );
+  loaded.set(dir, promise);
+  promise.catch(() => loaded.delete(dir));
+  return promise;
 }
 
 /**
@@ -42,5 +52,5 @@ export async function loadScreeningPrompt(dir: string = templatesDir()): Promise
 export function renderUserPrompt(prompt: ScreeningPrompt, body: string | null): string {
   const safeBody = (body ?? '').replaceAll('<', '＜').replaceAll('>', '＞');
   // 置き換えの文字列の `$&` などを特別扱いさせないため、関数で渡す
-  return prompt.user.replace('{{body}}', () => safeBody);
+  return prompt.user.replaceAll('{{body}}', () => safeBody);
 }

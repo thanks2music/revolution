@@ -99,6 +99,46 @@ describe('createGeminiScreener', () => {
     expect(m.generateContent).toHaveBeenCalledTimes(1);
   });
 
+  it('Gemini 3 系のモデルにだけ thinkingLevel を送る', async () => {
+    const m = models(
+      response({ decision: 'publish', reason_code: null, reason: 'ok' }),
+      response({ decision: 'publish', reason_code: null, reason: 'ok' }),
+    );
+    await createGeminiScreener({ models: m, prompt, model: 'gemini-3.5-flash-lite' }).screen({ body: 'x' });
+    await createGeminiScreener({ models: m, prompt, model: 'gemini-2.5-flash' }).screen({ body: 'x' });
+
+    const [three, two] = m.generateContent.mock.calls.map((call) => (call[0] as GenerateContentParameters).config);
+    expect(three?.thinkingConfig).toBeDefined();
+    expect(two?.thinkingConfig).toBeUndefined();
+  });
+
+  it('長い説明は 500 字に切り、判定は生かす', async () => {
+    const m = models(response({ decision: 'publish', reason_code: null, reason: 'あ'.repeat(800) }));
+    const result = await createGeminiScreener({ models: m, prompt }).screen({ body: 'x' });
+
+    expect(result).toMatchObject({ ok: true, decision: 'publish' });
+    expect(result.ok && result.reason.length).toBe(500);
+  });
+
+  it('プロンプトの {{body}} はすべて置き換える', async () => {
+    const m = models(response({ decision: 'publish', reason_code: null, reason: 'ok' }));
+    await createGeminiScreener({ models: m, prompt: { ...prompt, user: '{{body}} / 再掲: {{body}}' } }).screen({
+      body: '本文',
+    });
+
+    expect((m.generateContent.mock.calls[0][0] as GenerateContentParameters).contents).toBe('本文 / 再掲: 本文');
+  });
+
+  it('やり直すたびに新しい時間切れの signal を渡す', async () => {
+    const m = models(apiError(503), response({ decision: 'publish', reason_code: null, reason: 'ok' }));
+    await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({ body: 'x' });
+
+    const [first, second] = m.generateContent.mock.calls.map(
+      (call) => (call[0] as GenerateContentParameters).config?.abortSignal,
+    );
+    expect(first).not.toBe(second);
+  });
+
   it('429 と 5xx は 2 回までやり直し、通れば判定を返す', async () => {
     const m = models(
       apiError(429),

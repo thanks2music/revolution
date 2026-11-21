@@ -20,13 +20,14 @@ export type { ReviewScreener, ReviewScreeningResult } from './types';
  * | `GEMINI_API_KEY` がある | Gemini。モデルは `REVIEW_SCREENING_MODEL` か、プロンプトの既定 |
  * | どちらも無い / プロンプトが読めない | 必ず失敗を返す審査器 (口コミは BOSS の確認待ちに回り、公開されない) |
  *
- * 本番 (`VERCEL_ENV=production`) では偽物を選ばない。設定の取り違えで、審査なしに公開されるのを防ぐ。
+ * 本番 (`VERCEL_ENV=production`。Vercel の外では `NODE_ENV=production`) では偽物を選ばない。
+ * 設定の取り違えで、審査なしに公開されるのを防ぐ。
  */
 export async function getReviewScreener(
   env: Record<string, string | undefined> = process.env,
   options: { templatesDir?: string } = {},
 ): Promise<ReviewScreener> {
-  if (env.REVIEW_SCREENER === 'fake' && env.VERCEL_ENV !== 'production') {
+  if (env.REVIEW_SCREENER === 'fake' && !isProduction(env)) {
     return createFakeScreener();
   }
 
@@ -45,6 +46,12 @@ export async function getReviewScreener(
     prompt,
     model: presentEnvValue(env.REVIEW_SCREENING_MODEL),
   });
+}
+
+/** 本番か。Vercel の本番に加えて、Vercel の外で production として動かす時も本番とみなす */
+function isProduction(env: Record<string, string | undefined>): boolean {
+  if (env.VERCEL_ENV) return env.VERCEL_ENV === 'production';
+  return env.NODE_ENV === 'production';
 }
 
 function failingScreener(error: string): ReviewScreener {

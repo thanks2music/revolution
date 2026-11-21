@@ -32,6 +32,8 @@ export interface GeminiScreenerOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+/** 管理画面に残す判断の説明の上限 (字) */
+const REASON_MAX_CHARS = 500;
 /** 判定は短い JSON なので小さく取る */
 const MAX_OUTPUT_TOKENS = 1_024;
 
@@ -53,8 +55,8 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
         temperature: 0,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         // 判定は短い JSON なので thinking は最小にする (thinking のトークンも maxOutputTokens に数えられる)。
-        // Gemini 3 系は thinkingBudget ではなく thinkingLevel で指定する (AI ライターと同じ)
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+        // thinkingLevel は Gemini 3 系の指定で、ほかの系統には送らない (受け付けずに全件が失敗しうるため)
+        ...(model.startsWith('gemini-3') ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } } : {}),
         responseMimeType: 'application/json',
         responseJsonSchema: RESPONSE_JSON_SCHEMA,
         // やり直しのたびに新しい時間切れにする
@@ -66,7 +68,7 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
   return {
     async screen({ body }): Promise<ReviewScreeningResult> {
       try {
-        const { value: response } = await withTransientRetry(
+        const response = await withTransientRetry(
           () => options.models.generateContent(request(body)),
           options.retry,
         );
@@ -75,7 +77,8 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
           ok: true,
           decision: parsed.decision,
           reasonCode: parsed.reason_code,
-          reason: parsed.reason,
+          // 説明は管理画面で読む物。長すぎる応答も判定は生かし、ここで切る
+          reason: parsed.reason.slice(0, REASON_MAX_CHARS),
           model,
         };
       } catch (error) {
