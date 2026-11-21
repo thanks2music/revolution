@@ -1,4 +1,9 @@
-import { reviewBlockReason, visitDateRange } from '@/lib/reviews/eligibility';
+import {
+  ownReviewStatus,
+  reviewBlockReason,
+  reviewSectionMode,
+  visitDateRange,
+} from '@/lib/reviews/eligibility';
 
 describe('reviewBlockReason', () => {
   it.each(['ongoing', 'ended'] as const)('%s の開催には書ける', status => {
@@ -45,5 +50,30 @@ describe('visitDateRange', () => {
   it('開始日が無い・今日より後なら範囲が無い', () => {
     expect(visitDateRange(null, '2026-12-31', '2026-11-22')).toBeNull();
     expect(visitDateRange('2026-11-23', '2026-12-31', '2026-11-22')).toBeNull();
+  });
+});
+
+describe('reviewSectionMode', () => {
+  it.each([
+    ['ongoing', 'full'],
+    ['ended', 'full'],
+    ['scheduled', 'notYet'],
+    ['unscheduled', 'none'],
+    ['cancelled', 'none'],
+  ] as const)('%s → %s', (status, mode) => {
+    expect(reviewSectionMode(status)).toBe(mode);
+  });
+});
+
+describe('ownReviewStatus', () => {
+  it.each([
+    ['draft', null],
+    ['pending', 'screening'],
+    ['needs_review', 'screening'],
+    ['published', 'published'],
+    ['rejected', 'rejected'],
+    ['hidden', 'hidden'],
+  ] as const)('%s → %p', (status, own) => {
+    expect(ownReviewStatus(status)).toBe(own);
   });
 });

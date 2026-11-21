@@ -16,13 +16,24 @@
 import * as Sentry from '@sentry/nextjs';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
+import { z } from 'zod';
 
-import { ReviewSubmitSchema, type ReviewSubmitInput } from '@revolution/schemas/review';
+import {
+  REVIEW_SCREENING_REASONS,
+  REVIEW_STATUSES,
+  ReviewSubmitSchema,
+  type ReviewScreeningReason,
+  type ReviewSubmitInput,
+} from '@revolution/schemas/review';
 
 import { getCurrentMember } from '@/lib/auth/member';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
-import { reviewBlockReason } from '@/lib/reviews/eligibility';
+import {
+  ownReviewStatus,
+  reviewBlockReason,
+  type OwnReviewStatus,
+} from '@/lib/reviews/eligibility';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
 import { getReviewScreener } from '@/lib/reviews/screener';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -165,5 +176,63 @@ async function screenAfterSubmit(reviewId: number, paths: string[]): Promise<voi
     }
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'screenAfterSubmit' } });
+  }
+}
+
+/**
+ * 本人の口コミの状態 (開催のページの島がマウント後に呼ぶ。ページの静的な描画を壊さないため)。
+ *
+ * 理由と訪問日は anon・authenticated に GRANT していない列なので、本人の行だけを service role で読み、
+ * 本人に返す。会員でない・口コミが無い・読めない時は null (ページの表示を止めない)。
+ * AI 審査の失敗 (ai_failure) と確認待ちは、本人には「審査中」として見せる。
+ */
+export type OwnReviewState = {
+  status: OwnReviewStatus;
+  /** 差し戻しの理由のコード (rejected の時だけ) */
+  reasonCode: ReviewScreeningReason | null;
+  /** 訪問日 (YYYY-MM-DD)。本人にだけ日付まで見せる */
+  visitedOn: string;
+  /** 運営 (BOSS) が書いた、投稿者に見せる補足 (差し戻し・非公開の時) */
+  note: string | null;
+};
+
+const OwnReviewRowSchema = z.object({
+  status: z.enum(REVIEW_STATUSES),
+  // 審査の 4 種以外 (ai_failure・通報の理由) は本人には出さない
+  reason_code: z.enum(REVIEW_SCREENING_REASONS).nullable().catch(null),
+  reason_note: z.string().nullable(),
+  visited_on: z.string(),
+});
+
+export async function getOwnReviewState(occurrenceId: number): Promise<OwnReviewState | null> {
+  try {
+    if (!Number.isInteger(occurrenceId) || occurrenceId <= 0) return null;
+    const member = await getCurrentMember();
+    const db = createAdminClient();
+    if (!member.ok || !db) return null;
+
+    const { data, error } = await db
+      .from('reviews')
+      .select('status, reason_code, reason_note, visited_on')
+      .eq('occurrence_id', occurrenceId)
+      .eq('user_id', member.profileId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+
+    const row = OwnReviewRowSchema.parse(data);
+    const status = ownReviewStatus(row.status);
+    if (!status) return null;
+    const explained = status === 'rejected' || status === 'hidden';
+    return {
+      status,
+      reasonCode: status === 'rejected' ? row.reason_code : null,
+      visitedOn: row.visited_on,
+      note: explained ? row.reason_note : null,
+    };
+  } catch (error) {
+    Sentry.captureException(error, { tags: { action: 'getOwnReviewState' } });
+    return null;
   }
 }
