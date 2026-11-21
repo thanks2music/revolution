@@ -64,11 +64,19 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
   const occurrencePath = getOccurrenceUrl(event, occurrence.slug);
   const venueName = occurrence.venueName ?? VENUE_NAME_FALLBACK;
   const dateRange = visitDateRange(occurrence.startsOn, occurrence.endsOn, todayInJst());
-  const blocked =
-    reviewBlockReason(occurrence.status) ??
-    (dateRange ? null : 'この開催には、まだ口コミを書けません。');
   // 同じ開催にもう書いていれば、その口コミの編集にする (仕様: 1 開催 1 件、既にあれば編集へ案内する)
-  const own = member?.ok && !blocked ? await loadOwnReview(occurrence.id, member.profileId) : null;
+  const own = member?.ok ? await loadOwnReview(occurrence.id, member.profileId) : null;
+  const submitted = own !== null && own.status !== 'draft';
+  // 提出した口コミは、開催が中止などになった後も直せる (仕様: いつでも編集)。
+  // 選べる訪問日が無い開催では、前の訪問日のままにする (変えるとトリガが止める)
+  const range =
+    submitted && own.visitedOn
+      ? (dateRange ?? { min: own.visitedOn, max: own.visitedOn })
+      : dateRange;
+  const blocked = submitted
+    ? null
+    : (reviewBlockReason(occurrence.status) ??
+      (dateRange ? null : 'この開催には、まだ口コミを書けません。'));
 
   return (
     <Layout>
@@ -76,7 +84,7 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
         <h1 className="mb-4 text-center font-display text-lg font-bold text-ink-strong">
           口コミを書く
         </h1>
-        {blocked || !dateRange ? (
+        {blocked || !range ? (
           <div className="flex flex-col gap-4 text-center">
             <p className="rounded-xl border border-(--line-soft) bg-white p-4 text-sm text-ink-body">
               {blocked}
@@ -91,8 +99,8 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
             eventName={event.name}
             venueName={venueName}
             period={formatPeriod(occurrence.startsOn, occurrence.endsOn)}
-            minDate={dateRange.min}
-            maxDate={dateRange.max}
+            minDate={range.min}
+            maxDate={range.max}
             occurrencePath={occurrencePath}
             initial={own ?? undefined}
             shareUrl={buildXShareUrl({

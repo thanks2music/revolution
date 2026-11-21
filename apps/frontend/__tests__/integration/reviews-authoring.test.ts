@@ -208,10 +208,11 @@ describe('下書き・提出・編集・削除', () => {
 
     const outcome = await deleteOwnReview(data.admin, {
       profileId: member.userId,
+      occurrenceId: occ.id,
       reviewId: inserted.id,
     });
 
-    expect(outcome).toEqual({ kind: 'deleted', occurrenceId: occ.id, wasPublished: true });
+    expect(outcome).toEqual({ kind: 'deleted', wasPublished: true });
     expect(await counts(occ.id)).toMatchObject({ rating_count: 0, rating_sum: 0 });
     const { data: deleted } = await data.admin
       .from('reviews')
@@ -219,18 +220,16 @@ describe('下書き・提出・編集・削除', () => {
       .eq('id', inserted.id)
       .single();
     expect(deleted?.deleted_at).not.toBeNull();
-    const again = await client
-      .from('reviews')
-      .insert({
-        occurrence_id: occ.id,
-        user_id: member.userId,
-        rating: 5,
-        visited_on: jstDate(-1),
-      });
+    const again = await client.from('reviews').insert({
+      occurrence_id: occ.id,
+      user_id: member.userId,
+      rating: 5,
+      visited_on: jstDate(-1),
+    });
     expect(again.error).toBeNull();
   });
 
-  it('他人の口コミは削除できない', async () => {
+  it('他人の口コミ・別の開催の口コミは削除できない', async () => {
     const occ = await ongoingOccurrence();
     const owner = await data.createMember();
     const draft = await saveDraft(data.admin, {
@@ -242,7 +241,20 @@ describe('下書き・提出・編集・削除', () => {
     const someone = await data.createMember();
 
     await expect(
-      deleteOwnReview(data.admin, { profileId: someone.userId, reviewId: draft.reviewId })
+      deleteOwnReview(data.admin, {
+        profileId: someone.userId,
+        occurrenceId: occ.id,
+        reviewId: draft.reviewId,
+      })
+    ).resolves.toEqual({ kind: 'not_found' });
+    // 本人でも、別の開催を名乗っては消せない
+    const other = await ongoingOccurrence();
+    await expect(
+      deleteOwnReview(data.admin, {
+        profileId: owner.userId,
+        occurrenceId: other.id,
+        reviewId: draft.reviewId,
+      })
     ).resolves.toEqual({ kind: 'not_found' });
   });
 });

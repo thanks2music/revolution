@@ -14,7 +14,7 @@ import {
  * 投稿者が起こす操作のうち、状態か論理削除を書くもの (one-more-time #162)。
  *
  * 仕様 #156: 投稿者が起こせるのは「下書きの保存」「提出」「内容の変更」「削除」だけ。投稿者は状態と
- * `deleted_at` を列単位の GRANT で書けないので、この 3 つはサーバー (service role) が行う。どれも
+ * `deleted_at` を列単位の GRANT で書けないので、下書きの保存・提出・削除はサーバー (service role) が行う。どれも
  * 本人の profiles.id と、読んだ時点の状態で絞って書く (compare-and-set)。内容の変更 (公開後の編集など)
  * は、投稿者の RLS のクライアントで書き、トリガが審査中に戻す (`actions/review.ts`)。
  */
@@ -157,27 +157,23 @@ export async function submitDraft(
   return (data ?? []).length > 0;
 }
 
-export type DeleteOutcome =
-  { kind: 'deleted'; occurrenceId: number; wasPublished: boolean } | { kind: 'not_found' };
+export type DeleteOutcome = { kind: 'deleted'; wasPublished: boolean } | { kind: 'not_found' };
 
 /** 自分の口コミを論理削除する。集計からはトリガが外す。削除の後は同じ開催にもう一度書ける */
 export async function deleteOwnReview(
   db: SupabaseClient,
-  input: { profileId: string; reviewId: number }
+  input: { profileId: string; occurrenceId: number; reviewId: number }
 ): Promise<DeleteOutcome> {
   const { data, error } = await db
     .from('reviews')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', input.reviewId)
     .eq('user_id', input.profileId)
+    .eq('occurrence_id', input.occurrenceId)
     .is('deleted_at', null)
-    .select('occurrence_id, status');
+    .select('status');
   if (error) throw error;
   const row = data?.[0];
   if (!row) return { kind: 'not_found' };
-  return {
-    kind: 'deleted',
-    occurrenceId: row.occurrence_id as number,
-    wasPublished: row.status === 'published',
-  };
+  return { kind: 'deleted', wasPublished: row.status === 'published' };
 }

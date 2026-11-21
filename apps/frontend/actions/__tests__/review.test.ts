@@ -92,7 +92,7 @@ beforeEach(() => {
   builder.select.mockReturnValue(builder);
   builder.single.mockResolvedValue({ data: { id: 56 }, error: null });
   builder.update.mockReturnValue(builder);
-  builder.eq.mockResolvedValue({ error: null });
+  builder.eq.mockReturnValue(builder);
   (findOwnReview as jest.Mock).mockResolvedValue(null);
 });
 
@@ -358,6 +358,7 @@ describe('既に口コミがある開催への提出', () => {
 
   it('提出した口コミなら内容の変更にし、公開中だったらページをすぐ作り直す', async () => {
     (findOwnReview as jest.Mock).mockResolvedValue({ id: 71, status: 'published', ...EXISTING });
+    builder.select.mockResolvedValueOnce({ data: [{ id: 71 }], error: null });
 
     await expect(submitReview(ROUTE, INPUT)).resolves.toEqual({ ok: true, reviewId: 71 });
     expect(builder.update).toHaveBeenCalledWith(
@@ -379,6 +380,58 @@ describe('既に口コミがある開催への提出', () => {
       ok: false,
       fieldErrors: { visitedOn: expect.any(String) },
     });
+  });
+});
+
+describe('提出した口コミの直し方', () => {
+  const EXISTING = {
+    rating: 4,
+    visitedOn: '2026-11-19',
+    attendance: null,
+    foodCostBand: null,
+    goodsCostBand: null,
+    body: '楽しかった',
+    hasSpoiler: false,
+  };
+
+  it('内容が前と同じなら出し直さない (審査に回らないのに成功に見せない)', async () => {
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 72, status: 'rejected', ...EXISTING });
+
+    await expect(submitReview(ROUTE, { ...INPUT, ...EXISTING })).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('前と同じ'),
+    });
+    expect(builder.update).not.toHaveBeenCalled();
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it('中止になった開催でも、提出した口コミは直せる', async () => {
+    (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail('cancelled'));
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 73, status: 'published', ...EXISTING });
+    builder.select.mockResolvedValueOnce({ data: [{ id: 73 }], error: null });
+
+    await expect(submitReview(ROUTE, { ...INPUT, ...EXISTING, body: '直した' })).resolves.toEqual({
+      ok: true,
+      reviewId: 73,
+    });
+  });
+
+  it('中止になった開催の下書きは、提出できない', async () => {
+    (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail('cancelled'));
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 74, status: 'draft', ...EXISTING });
+
+    await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false });
+    expect(submitDraft).not.toHaveBeenCalled();
+  });
+
+  it('読んだ後に別の端末で削除されていたら、見つからない扱いにする', async () => {
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 75, status: 'published', ...EXISTING });
+    builder.select.mockResolvedValueOnce({ data: [], error: null });
+
+    await expect(submitReview(ROUTE, { ...INPUT, body: '直した' })).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(after).not.toHaveBeenCalled();
   });
 });
 
@@ -420,6 +473,7 @@ describe('deleteReview', () => {
     await expect(deleteReview(ROUTE, 71)).resolves.toEqual({ ok: true });
     expect(deleteOwnReview).toHaveBeenCalledWith(expect.anything(), {
       profileId: 'profile-1',
+      occurrenceId: 34,
       reviewId: 71,
     });
     expect(revalidatePath).toHaveBeenCalledWith('/collabo-cafe/12/shibuya');
@@ -430,6 +484,15 @@ describe('deleteReview', () => {
 
     await expect(deleteReview(ROUTE, 71)).resolves.toMatchObject({ ok: false });
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('onboarding を済ませていない会員には、プロフィールの登録を案内する', async () => {
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'not_onboarded' });
+
+    await expect(deleteReview(ROUTE, 71)).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('プロフィール'),
+    });
   });
 
   it('未ログインは消せない', async () => {
