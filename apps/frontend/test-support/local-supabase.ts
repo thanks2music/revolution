@@ -36,22 +36,37 @@ let cached: LocalSupabaseEnv | undefined;
 export function getLocalSupabaseEnv(): LocalSupabaseEnv {
   if (cached) return cached;
 
-  const fromEnv = readFromEnv();
+  const fromEnv = readLocalSupabaseEnvVars(process.env);
   const resolved = fromEnv ?? readFromSupabaseCli();
-  assertLocal(resolved.url);
-  assertLocal(resolved.dbUrl);
+  assertLocalUrl(resolved.url);
+  assertLocalUrl(resolved.dbUrl);
 
   cached = resolved;
   return resolved;
 }
 
-function readFromEnv(): LocalSupabaseEnv | undefined {
-  const url = process.env.LOCAL_SUPABASE_URL;
-  const publishableKey = process.env.LOCAL_SUPABASE_PUBLISHABLE_KEY;
-  const secretKey = process.env.LOCAL_SUPABASE_SECRET_KEY;
-  const dbUrl = process.env.LOCAL_SUPABASE_DB_URL;
-  if (!url || !publishableKey || !secretKey || !dbUrl) return undefined;
-  return { url, publishableKey, secretKey, dbUrl };
+const ENV_NAMES = {
+  url: 'LOCAL_SUPABASE_URL',
+  publishableKey: 'LOCAL_SUPABASE_PUBLISHABLE_KEY',
+  secretKey: 'LOCAL_SUPABASE_SECRET_KEY',
+  dbUrl: 'LOCAL_SUPABASE_DB_URL',
+} as const satisfies Record<keyof LocalSupabaseEnv, string>;
+
+/**
+ * 環境変数から接続情報を読む。1 つも無ければ undefined (`supabase status` から読む)。
+ * 一部だけある時は、黙って `supabase status` に切り替えず、足りない名前を挙げて止める。
+ */
+export function readLocalSupabaseEnvVars(
+  vars: Record<string, string | undefined>,
+): LocalSupabaseEnv | undefined {
+  const entries = Object.entries(ENV_NAMES) as Array<[keyof LocalSupabaseEnv, string]>;
+  const missing = entries.filter(([, name]) => !vars[name]).map(([, name]) => name);
+
+  if (missing.length === entries.length) return undefined;
+  if (missing.length > 0) {
+    throw new Error(`ローカルの Supabase の環境変数が足りません: ${missing.join(' / ')}`);
+  }
+  return Object.fromEntries(entries.map(([key, name]) => [key, vars[name]])) as LocalSupabaseEnv;
 }
 
 function readFromSupabaseCli(): LocalSupabaseEnv {
@@ -65,7 +80,7 @@ function readFromSupabaseCli(): LocalSupabaseEnv {
   } catch {
     throw new Error(
       'ローカルの Supabase に接続できません。apps/frontend で `supabase start` を実行してください' +
-        ' (または LOCAL_SUPABASE_URL / LOCAL_SUPABASE_PUBLISHABLE_KEY / LOCAL_SUPABASE_SECRET_KEY / LOCAL_SUPABASE_DB_URL を設定する)',
+        ` (または ${Object.values(ENV_NAMES).join(' / ')} を設定する)`,
     );
   }
 
@@ -82,8 +97,15 @@ function readFromSupabaseCli(): LocalSupabaseEnv {
   return { url, publishableKey, secretKey, dbUrl };
 }
 
-function assertLocal(url: string): void {
-  const host = new URL(url).hostname;
+/** 接続先のホストがローカルでなければ例外を投げる (ファイル冒頭の「ローカル以外を拒む」) */
+export function assertLocalUrl(url: string): void {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    // 値に秘密 (DB のパスワード) が入りうるので、エラーには値を出さない
+    throw new Error('ローカルの Supabase の接続先が URL として読めません (パスワードの記号のエスケープ漏れなど)');
+  }
   if (!LOCAL_HOSTS.has(host)) {
     throw new Error(
       `テストはローカルの Supabase にだけ接続します。接続先のホストが ${host} だったため止めました`,

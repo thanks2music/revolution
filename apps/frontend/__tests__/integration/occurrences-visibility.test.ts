@@ -40,6 +40,17 @@ describe('開催の公開範囲', () => {
     expect(rows).toEqual([]);
   });
 
+  it('anon は開催を書き込めない', async () => {
+    const event = await data!.createEvent();
+
+    const { error } = await anonClient()
+      .from('occurrences')
+      .insert({ event_id: event.id, slug: 'test-anon-write', starts_on: '2026-01-01', verified: true });
+
+    // 書き込みの権限が無い (42501)
+    expect(error?.code).toBe('42501');
+  });
+
   it('anon は承認済みの開催を読める', async () => {
     const event = await data!.createEvent();
     const verified = await data!.createOccurrence({ eventId: event.id, verified: true });

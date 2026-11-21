@@ -289,13 +289,16 @@ jobs:
         run: pnpm test:e2e:local
 
       - name: Check that tests cleaned up their data
-        # テストは `test-` で始まる行と会員を作り、終わりに消す。消し漏れがあればここで落とす
+        # テストは `test-` で始まる行と会員を作り、終わりに消す。消し漏れがあればここで落とす。
+        # profiles は、会員を消すと退会のトリガが匿名化 (auth_user_id が NULL) して残すので、その行も数える
+        # (CI の DB は起動したばかりで、seed に会員はいない)
         if: ${{ !cancelled() }}
         run: |
           leftover=$(psql "$LOCAL_SUPABASE_DB_URL" -tAc "
             select (select count(*) from public.events where slug like 'test-%')
                  + (select count(*) from public.occurrences where slug like 'test-%')
-                 + (select count(*) from auth.users where email like 'test-%@example.com')")
+                 + (select count(*) from auth.users where email like 'test-%@example.com')
+                 + (select count(*) from public.profiles where auth_user_id is null or username like 'test\_%')")
           echo "leftover test rows: $leftover"
           test "$leftover" -eq 0
 
