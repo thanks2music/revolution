@@ -82,6 +82,16 @@ describe('postSlackMessage', () => {
     await expect(postSlackMessage(target, message)).resolves.toEqual({ ok: false, code: 'timeout' });
   });
 
+  it('本文の読み込み中の時間切れも timeout として返す', async () => {
+    const response = new Response('{}', { status: 200 });
+    jest
+      .spyOn(response, 'json')
+      .mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError'));
+    fetchMock.mockResolvedValue(response);
+
+    await expect(postSlackMessage(target, message)).resolves.toEqual({ ok: false, code: 'timeout' });
+  });
+
   it('失敗しても再送しない (二重投稿を避けるため)', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ ok: false, error: 'ratelimited' }, 429));
 

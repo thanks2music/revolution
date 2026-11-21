@@ -85,6 +85,16 @@ describe('notifySlack', () => {
     expect(sentBody().blocks).toHaveLength(50);
   });
 
+  it('blocks が空なら、メンションだけのブロックにせず、本文にだけメンションを置く', async () => {
+    fetchMock.mockResolvedValue(okResponse());
+
+    await notifySlack('attention', { text: message.text, blocks: [] }, env);
+
+    const body = sentBody();
+    expect(body.text).toBe('<@U_BOSS> 口コミが確認待ちになりました');
+    expect(body.blocks).toEqual([]);
+  });
+
   it('メンション先が未設定なら、要対応でもメンションなしで送る', async () => {
     fetchMock.mockResolvedValue(okResponse());
     const { SLACK_MENTION_USER_ID: _omitted, ...withoutMention } = env;

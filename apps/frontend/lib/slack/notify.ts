@@ -1,10 +1,3 @@
-import 'server-only';
-
-import * as Sentry from '@sentry/nextjs';
-
-import { presentEnvValue } from '@revolution/slack/env';
-import { postSlackMessage, type SlackMessage } from '@revolution/slack/post-message';
-
 /**
  * 公開サイト (と、今後の管理アプリ) から Slack へ通知を送る口。
  *
@@ -29,6 +22,14 @@ import { postSlackMessage, type SlackMessage } from '@revolution/slack/post-mess
  *
  * @module lib/slack/notify
  */
+
+import 'server-only';
+
+import * as Sentry from '@sentry/nextjs';
+
+import { presentEnvValue } from '@revolution/slack/env';
+import { postSlackMessage, type SlackMessage } from '@revolution/slack/post-message';
+
 export type SlackDestination = 'attention' | 'notice';
 
 const CHANNEL_KEY: Record<SlackDestination, string> = {
@@ -80,8 +81,9 @@ function withMention(message: SlackMessage, userId: string): SlackMessage {
   const { blocks } = message;
   return {
     text: `${mention} ${message.text}`,
+    // 空の blocks にメンションのブロックだけを足すと、表示が blocks に切り替わり本文が隠れる
     blocks:
-      blocks && blocks.length < MAX_BLOCKS
+      blocks && blocks.length > 0 && blocks.length < MAX_BLOCKS
         ? [{ type: 'section', text: { type: 'mrkdwn', text: mention } }, ...blocks]
         : blocks,
   };

@@ -194,6 +194,12 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
+      - name: Run frontend unit tests
+        # apps/frontend の単体テスト (DB を使わない。結合テストと E2E は Job 4)。上と同じく turbo を
+        # 通さない。AI Writer のテストが落ちても走らせる
+        if: ${{ !cancelled() }}
+        run: cd apps/frontend && pnpm test
+
       # docs.anime-events.com (apps/docs)。ビルドは Build Apps ではなくここで行う (Build Apps が最も
       # 時間のかかるジョブのため)。repo 直下の docs/ をビルド時に読むので、docs/*.md の frontmatter の
       # 抜けもここで落ちる。AI Writer のテストが落ちても走らせる (逆も同じ)
