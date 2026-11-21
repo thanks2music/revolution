@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-21T10:09:10.826Z",
+  "totalArticles": 12,
   "articles": [
     {
       "slug": "01m7ydys18ckpgbj",
@@ -51,6 +51,52 @@
             "starts_on": "2026-11-26",
             "ends_on": "2027-01-17",
             "official_url": "https://bananafish-cafe.ltr-online.com/"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "01m7ys7jehyqc55p",
+      "title": "らんま1/2 カフェ in AniqueShop 11月21日よりコラボ開催",
+      "date": "2026-11-21T00:05:25.000Z",
+      "excerpt": "高橋留美子先生による「らんま1/2」とAniqueShopのコラボカフェが2026年11月21日〜2027年1月11日まで開催されます。キャラクターをイメージしたコラボメニューが楽しめるほか、「アイスクリーム」をテーマにした描き下ろしイラストなどのコラボグッズも発売されます。",
+      "categories": [
+        "らんま1/2",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/ranma-1-2/01m7ys7jehyqc55p.mdx",
+      "post_id": "01m7ys7jehyqc55p",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "らんま1/2",
+      "work_titles": [
+        "らんま1/2"
+      ],
+      "work_slug": "ranma-1-2",
+      "prefectures": [],
+      "prefecture_slugs": [],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m7ys7jehyqc55p/49ea49e6a90b3d7339e9c5e043ddea79.png",
+      "event_start_date": "2026-11-21",
+      "event_end_date": "2027-01-11",
+      "venue": "AniqueShop",
+      "official_url": "https://shop.anique.jp/collections/ranma-icecream",
+      "event_data": {
+        "primary_category_slug": "pop-up-store",
+        "title_slugs": [
+          "ranma-1-2"
+        ],
+        "event_name": "TVアニメ「らんま1/2」アイスクリーム グッズ販売",
+        "event_slug": "ranma-1-2-icecream-goods",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "AniqueShop",
+            "starts_on": "2026-11-21",
+            "ends_on": "2027-01-11",
+            "official_url": "https://shop.anique.jp/collections/ranma-icecream"
           }
         ]
       }
