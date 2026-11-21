@@ -366,7 +366,7 @@ async function screenAfterSubmit(
  */
 export type OwnReviewState = {
   status: OwnReviewStatus;
-  /** 差し戻しの理由のコード (rejected の時だけ) */
+  /** 差し戻し・非公開の理由のコード (審査の 4 種だけ。ほかは null) */
   reasonCode: ReviewScreeningReason | null;
   /** 訪問日 (YYYY-MM-DD)。本人にだけ日付まで見せる */
   visitedOn: string;
@@ -390,7 +390,8 @@ export async function getOwnReviewState(occurrenceId: number): Promise<OwnReview
     const reasonCode = REVIEW_SCREENING_REASONS.find(code => code === own.reasonCode) ?? null;
     return {
       status,
-      reasonCode: status === 'rejected' ? reasonCode : null,
+      // 差し戻しと非公開は、どちらも理由を見て直せる (仕様 #156)。マイページの出し方と揃える
+      reasonCode: explained ? reasonCode : null,
       visitedOn: own.visitedOn,
       note: explained ? own.reasonNote : null,
     };

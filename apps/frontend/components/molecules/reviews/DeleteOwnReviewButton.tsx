@@ -17,6 +17,7 @@ export function DeleteOwnReviewButton(props: { route: ReviewRouteParams; reviewI
   const [pending, startTransition] = useTransition();
 
   function onDelete() {
+    setError(null);
     startTransition(async () => {
       try {
         const result = await deleteReview(props.route, props.reviewId);
@@ -55,7 +56,10 @@ export function DeleteOwnReviewButton(props: { route: ReviewRouteParams; reviewI
       </button>
       <button
         type="button"
-        onClick={() => setConfirming(false)}
+        onClick={() => {
+          setConfirming(false);
+          setError(null);
+        }}
         disabled={pending}
         className="text-ink-muted hover:underline"
       >

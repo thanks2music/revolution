@@ -59,10 +59,10 @@ export default async function MyPage() {
         .maybeSingle()
     : { data: null };
 
-  const ownReviews = await loadOwnReviews();
+  // 自分の口コミといいね一覧は互いに依存しないので、並べて引く
+  const [ownReviews, favoritesResult] = await Promise.all([loadOwnReviews(), getFavorites()]);
 
   // いいね一覧 → 記事へ逆引き (resolveArticleByKey は Layer1 純粋関数)。
-  const favoritesResult = await getFavorites();
   const allArticles = getAllArticles();
   const likedArticles: ArticleIndexItem[] = favoritesResult.ok
     ? favoritesResult.favorites
@@ -166,7 +166,8 @@ async function loadOwnReviews(): Promise<OwnReviewListItem[] | null> {
     const member = await getCurrentMember();
     if (!member.ok) return [];
     const admin = createAdminClient();
-    if (!admin) throw new Error('own reviews skipped: SUPABASE_SECRET_KEY is not set');
+    // 鍵の無い環境 (Preview など) では欄を出さない。開くたびに Sentry へ送らない (getOwnReviewState と同じ)
+    if (!admin) return null;
     return await listOwnReviews(admin, member.profileId);
   } catch (error) {
     Sentry.captureException(error, { tags: { page: 'mypage' } });

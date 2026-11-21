@@ -72,9 +72,12 @@ function OwnReviewItem({ review }: { review: OwnReviewListItem }) {
         </p>
       )}
       <div className="flex items-center gap-4 text-xs font-bold">
-        <Link href={`${occurrencePath}/review`} className="text-primary-700 hover:underline">
-          {view.editLabel}
-        </Link>
+        {/* 中止になった開催の下書きなど、もう続きを書けない口コミは削除だけにする */}
+        {review.canEdit && (
+          <Link href={`${occurrencePath}/review`} className="text-primary-700 hover:underline">
+            {view.editLabel}
+          </Link>
+        )}
         <DeleteOwnReviewButton
           route={{
             eventType: review.route.eventType,
