@@ -34,13 +34,7 @@ export function visitDateRange(
   return startsOn <= max ? { min: startsOn, max } : null;
 }
 
-/**
- * 会員がこの開催の投稿のページで何をできるか (one-more-time #162)。投稿のページと Server Action の両方が使う。
- *
- * - 提出した口コミ (下書き以外) は、開催の状態に関わらず直せる (仕様: いつでも編集)。書けない開催
- *   (中止・開催前・日程未発表) や選べる日が無い開催では、前の訪問日だけを選べる (変えると DB のトリガが止める)
- * - 新しく書く・下書きは、開催中か終了の開催で、選べる訪問日がある時だけ
- */
+/** 訪問日に選べる最初と最後の日 (JST の YYYY-MM-DD) */
 export type DateRange = { min: string; max: string };
 
 export type AuthoringMode =
@@ -48,6 +42,13 @@ export type AuthoringMode =
 
 const NO_RANGE_REASON = 'この開催には、まだ口コミを書けません。';
 
+/**
+ * 会員がこの開催の投稿のページで何をできるか (one-more-time #162)。投稿のページと Server Action の両方が使う。
+ *
+ * - 提出した口コミ (下書き以外) は、開催の状態に関わらず直せる (仕様: いつでも編集)。書けない開催
+ *   (中止・開催前・日程未発表) や選べる日が無い開催では、前の訪問日だけを選べる (変えると DB のトリガが止める)
+ * - 新しく書く・下書きは、開催中か終了の開催で、選べる訪問日がある時だけ
+ */
 export function authoringMode(input: {
   occurrenceStatus: OccurrenceStatus;
   startsOn: string | null;

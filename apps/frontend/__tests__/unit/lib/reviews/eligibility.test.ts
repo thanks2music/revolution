@@ -140,4 +140,16 @@ describe('authoringMode', () => {
       })
     ).toEqual({ kind: 'edit', range: { min: '2026-10-05', max: '2026-10-05' } });
   });
+
+  it('訪問日の無い提出した口コミ (DB の CHECK で起きない) は、選べる日が無ければ止める', () => {
+    expect(
+      authoringMode({
+        startsOn: null,
+        endsOn: null,
+        today: '2026-11-22',
+        occurrenceStatus: 'unscheduled',
+        own: { status: 'published', visitedOn: null },
+      })
+    ).toMatchObject({ kind: 'blocked' });
+  });
 });
