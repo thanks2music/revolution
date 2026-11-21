@@ -48,6 +48,7 @@ jest.mock('@/lib/supabase/server', () => {
   builder.single = jest.fn();
   builder.update = jest.fn(() => builder);
   builder.eq = jest.fn();
+  builder.is = jest.fn(() => builder);
   return {
     __builder: builder,
     createClient: jest.fn(async () => ({ from: jest.fn(() => builder) })),
@@ -93,6 +94,7 @@ beforeEach(() => {
   builder.single.mockResolvedValue({ data: { id: 56 }, error: null });
   builder.update.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
+  builder.is.mockReturnValue(builder);
   (findOwnReview as jest.Mock).mockResolvedValue(null);
 });
 

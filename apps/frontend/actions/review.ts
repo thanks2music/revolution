@@ -246,6 +246,8 @@ async function submit(
       .from('reviews')
       .update(toContentColumns(content))
       .eq('id', own.id)
+      // RLS の更新の policy は「本人の行か」しか見ないので、論理削除した行を書き換えないよう明示する
+      .is('deleted_at', null)
       .select('submitted_at');
     if (error) throw error;
     // 読んだ後に別の端末で削除された

@@ -159,6 +159,29 @@ describe('下書き・提出・編集・削除', () => {
     ).rejects.toMatchObject({ code: '23514' });
   });
 
+  it('下書きを書いた後に開催が中止になったら、提出を DB が止める', async () => {
+    const occ = await ongoingOccurrence();
+    const member = await data.createMember();
+    const draft = await saveDraft(data.admin, {
+      profileId: member.userId,
+      occurrenceId: occ.id,
+      content: EMPTY,
+    });
+    if (draft.kind !== 'saved') throw new Error('draft');
+    await data.admin
+      .from('occurrences')
+      .update({ cancelled_at: new Date().toISOString() })
+      .eq('id', occ.id);
+
+    await expect(
+      submitDraft(data.admin, {
+        profileId: member.userId,
+        reviewId: draft.reviewId,
+        content: { ...EMPTY, rating: 4, visitedOn: jstDate(-1) },
+      })
+    ).rejects.toMatchObject({ code: '23514', message: 'review occurrence is cancelled' });
+  });
+
   it('公開中の口コミの内容を変えると審査中に戻り、集計から外れ、最終編集日が入る', async () => {
     const occ = await ongoingOccurrence();
     const member = await data.createMember();
