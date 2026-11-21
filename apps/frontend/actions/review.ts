@@ -21,7 +21,9 @@ import { z } from 'zod';
 import {
   REVIEW_SCREENING_REASONS,
   REVIEW_STATUSES,
+  ReviewDraftSchema,
   ReviewSubmitSchema,
+  type ReviewDraftInput,
   type ReviewScreeningReason,
   type ReviewSubmitInput,
 } from '@revolution/schemas/review';
@@ -29,6 +31,14 @@ import {
 import { getCurrentMember } from '@/lib/auth/member';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
+import {
+  deleteOwnReview,
+  findOwnReview,
+  saveDraft,
+  submitDraft,
+  toContentColumns,
+  type ReviewContent,
+} from '@/lib/reviews/authoring';
 import {
   ownReviewStatus,
   reviewBlockReason,
@@ -70,6 +80,10 @@ const FAILURES = {
     needsAuth: true,
   },
   duplicate: { ok: false, error: 'この開催には、もう口コミを書いています' },
+  alreadySubmitted: {
+    ok: false,
+    error: 'この口コミはもう提出されています。ページを読み込み直して、編集してください',
+  },
   notReviewable: { ok: false, error: 'この開催には、まだ口コミを書けません' },
   visitedOnOutOfRange: {
     ok: false,
@@ -92,66 +106,192 @@ export async function submitReview(
   }
 }
 
-async function submit(
-  route: ReviewRouteParams,
-  input: Omit<ReviewSubmitInput, 'occurrenceId'>
-): Promise<SubmitReviewResult> {
+/** 開催と会員を引き、書けるかを確かめる (提出と下書きの保存で共通) */
+async function resolveWriteContext(route: ReviewRouteParams) {
   const [detail, member] = await Promise.all([
     getOccurrenceDetail(route.eventId, route.occurrenceSlug),
     getCurrentMember(),
   ]);
-  if (!detail || detail.event.primaryCategory.slug !== route.eventType) return FAILURES.notFound;
+  if (!detail || detail.event.primaryCategory.slug !== route.eventType) {
+    return { ok: false as const, failure: FAILURES.notFound };
+  }
   // 会員でなければ、入力の検証より先に返す (ログインの案内を優先する)
   if (!member.ok) {
-    return member.reason === 'not_onboarded' ? FAILURES.needsOnboarding : FAILURES.needsLogin;
+    return {
+      ok: false as const,
+      failure: member.reason === 'not_onboarded' ? FAILURES.needsOnboarding : FAILURES.needsLogin,
+    };
   }
-  if (reviewBlockReason(detail.occurrence.status)) return FAILURES.notReviewable;
+  if (reviewBlockReason(detail.occurrence.status)) {
+    return { ok: false as const, failure: FAILURES.notReviewable };
+  }
+  const admin = createAdminClient();
+  if (!admin) throw new Error('review write skipped: SUPABASE_SECRET_KEY is not set');
+  // 公開になった・公開でなくなった時に作り直すページ: 開催 (口コミの一覧・星) と企画 (開催ごとの星の集計)
+  const paths = [getOccurrenceUrl(detail.event, detail.occurrence.slug), getEventUrl(detail.event)];
+  return { ok: true as const, detail, profileId: member.profileId, admin, paths };
+}
+
+function toFieldErrors(issues: readonly { path: readonly PropertyKey[]; message: string }[]) {
+  const fieldErrors: ReviewFieldErrors = {};
+  for (const issue of issues) {
+    const field = issue.path[0] as keyof ReviewSubmitInput | undefined;
+    if (field && !fieldErrors[field]) fieldErrors[field] = issue.message;
+  }
+  return fieldErrors;
+}
+
+/**
+ * DB の書き込みの拒否を、利用者向けの結果にする。二重の投稿と、開催と訪問日のトリガ
+ * (private.check_review_occurrence) の拒否だけ。文言は migration の RAISE と結合テスト (reviews-db.test.ts)
+ * で固定している。ほかの拒否は想定外として投げる
+ */
+function toWriteFailure(error: { code?: string; message: string }): SubmitReviewFailure {
+  if (error.code === PG_UNIQUE_VIOLATION) return FAILURES.duplicate;
+  if (error.code === PG_CHECK_VIOLATION) {
+    if (error.message.includes(TRIGGER_MESSAGES.visitedOn)) return FAILURES.visitedOnOutOfRange;
+    if (error.message.includes(TRIGGER_MESSAGES.occurrence)) return FAILURES.notReviewable;
+  }
+  throw error;
+}
+
+async function submit(
+  route: ReviewRouteParams,
+  input: Omit<ReviewSubmitInput, 'occurrenceId'>
+): Promise<SubmitReviewResult> {
+  const context = await resolveWriteContext(route);
+  if (!context.ok) return context.failure;
+  const { detail, profileId, admin, paths } = context;
 
   const parsed = ReviewSubmitSchema.safeParse({ ...input, occurrenceId: detail.occurrence.id });
   if (!parsed.success) {
-    const fieldErrors: ReviewFieldErrors = {};
-    for (const issue of parsed.error.issues) {
-      const field = issue.path[0] as keyof ReviewSubmitInput | undefined;
-      if (field && !fieldErrors[field]) fieldErrors[field] = issue.message;
-    }
-    return { ok: false, error: '入力を確かめてください', fieldErrors };
+    return {
+      ok: false,
+      error: '入力を確かめてください',
+      fieldErrors: toFieldErrors(parsed.error.issues),
+    };
   }
+  const content: ReviewContent = parsed.data;
 
-  const value = parsed.data;
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('reviews')
-    .insert({
-      occurrence_id: value.occurrenceId,
-      user_id: member.profileId,
-      rating: value.rating,
-      visited_on: value.visitedOn,
-      attendance: value.attendance,
-      food_cost_band: value.foodCostBand,
-      goods_cost_band: value.goodsCostBand,
-      body: value.body,
-      has_spoiler: value.hasSpoiler,
-    })
-    .select('id')
-    .single();
-
-  if (error) {
-    if (error.code === PG_UNIQUE_VIOLATION) return FAILURES.duplicate;
-    // DB のトリガ (private.check_review_occurrence) の拒否だけを利用者向けの文にする。文言は migration の
-    // RAISE と結合テスト (reviews-db.test.ts) で固定している。ほかの CHECK の違反は想定外として投げる
-    if (error.code === PG_CHECK_VIOLATION) {
-      if (error.message.includes(TRIGGER_MESSAGES.visitedOn)) return FAILURES.visitedOnOutOfRange;
-      if (error.message.includes(TRIGGER_MESSAGES.occurrence)) return FAILURES.notReviewable;
+  // この開催の口コミが既にあれば、下書きは提出、それ以外は内容の変更 (仕様: 1 開催 1 件、既にあれば編集)
+  const existing = await findOwnReview(admin, profileId, detail.occurrence.id);
+  let reviewId: number;
+  try {
+    if (!existing) {
+      // 新しい口コミは投稿者の RLS のクライアントで入れる (トリガが審査中にする)
+      const supabase = await createClient();
+      const { data, error } = await supabase
+        .from('reviews')
+        .insert({
+          occurrence_id: detail.occurrence.id,
+          user_id: profileId,
+          ...toContentColumns(content),
+        })
+        .select('id')
+        .single();
+      if (error) return toWriteFailure(error);
+      reviewId = data.id as number;
+    } else if (existing.status === 'draft') {
+      // 下書きの提出は状態を書くので、サーバーが行う (開催と訪問日は DB のトリガも確かめる)
+      if (!(await submitDraft(admin, { profileId, reviewId: existing.id, content }))) {
+        return FAILURES.alreadySubmitted;
+      }
+      reviewId = existing.id;
+    } else {
+      // 提出した口コミの内容の変更は投稿者の RLS のクライアントで書く。トリガが審査中に戻し、
+      // 公開の後なら最終編集日を入れる
+      const supabase = await createClient();
+      const { error } = await supabase
+        .from('reviews')
+        .update(toContentColumns(content))
+        .eq('id', existing.id);
+      if (error) return toWriteFailure(error);
+      reviewId = existing.id;
+      // 公開中だった口コミは審査中に戻って見えなくなるので、すぐにページを作り直す
+      if (existing.status === 'published') for (const path of paths) revalidatePath(path);
+    }
+  } catch (error) {
+    // submitDraft はトリガの拒否を投げる
+    if (error && typeof error === 'object' && 'message' in error) {
+      return toWriteFailure(error as { code?: string; message: string });
     }
     throw error;
   }
 
-  const reviewId = data.id as number;
-  // 公開になったら作り直すページ: 開催 (口コミの一覧・星) と企画 (開催ごとの星の集計)
-  const paths = [getOccurrenceUrl(detail.event, detail.occurrence.slug), getEventUrl(detail.event)];
   after(() => screenAfterSubmit(reviewId, paths));
-
   return { ok: true, reviewId };
+}
+
+export type SaveDraftResult = { ok: true; reviewId: number } | SubmitReviewFailure;
+
+/** 下書きを保存する (審査に回さない)。星と訪問日は空でよい */
+export async function saveReviewDraft(
+  route: ReviewRouteParams,
+  input: Omit<ReviewDraftInput, 'occurrenceId'>
+): Promise<SaveDraftResult> {
+  try {
+    const context = await resolveWriteContext(route);
+    if (!context.ok) return context.failure;
+    const { detail, profileId, admin } = context;
+
+    const parsed = ReviewDraftSchema.safeParse({ ...input, occurrenceId: detail.occurrence.id });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: '入力を確かめてください',
+        fieldErrors: toFieldErrors(parsed.error.issues),
+      };
+    }
+    try {
+      const outcome = await saveDraft(admin, {
+        profileId,
+        occurrenceId: detail.occurrence.id,
+        content: parsed.data,
+      });
+      return outcome.kind === 'saved'
+        ? { ok: true, reviewId: outcome.reviewId }
+        : FAILURES.alreadySubmitted;
+    } catch (error) {
+      if (error && typeof error === 'object' && 'message' in error) {
+        return toWriteFailure(error as { code?: string; message: string });
+      }
+      throw error;
+    }
+  } catch (error) {
+    Sentry.captureException(error, { tags: { action: 'saveReviewDraft' } });
+    return FAILURES.unexpected;
+  }
+}
+
+export type DeleteReviewResult = { ok: true } | SubmitReviewFailure;
+
+/** 自分の口コミを削除する (論理削除)。削除の後は同じ開催にもう一度書ける */
+export async function deleteReview(
+  route: ReviewRouteParams,
+  reviewId: number
+): Promise<DeleteReviewResult> {
+  try {
+    if (!Number.isInteger(reviewId) || reviewId <= 0) return FAILURES.notFound;
+    const [detail, member] = await Promise.all([
+      getOccurrenceDetail(route.eventId, route.occurrenceSlug),
+      getCurrentMember(),
+    ]);
+    if (!member.ok) return FAILURES.needsLogin;
+    const admin = createAdminClient();
+    if (!admin) throw new Error('review delete skipped: SUPABASE_SECRET_KEY is not set');
+
+    const outcome = await deleteOwnReview(admin, { profileId: member.profileId, reviewId });
+    if (outcome.kind === 'not_found') return FAILURES.notFound;
+    // 公開中だった口コミは集計からも外れるので、ページを作り直す
+    if (outcome.wasPublished && detail) {
+      revalidatePath(getOccurrenceUrl(detail.event, detail.occurrence.slug));
+      revalidatePath(getEventUrl(detail.event));
+    }
+    return { ok: true };
+  } catch (error) {
+    Sentry.captureException(error, { tags: { action: 'deleteReview' } });
+    return FAILURES.unexpected;
+  }
 }
 
 /**

@@ -54,17 +54,22 @@ const OwnReviewSchema = z.object({
   has_spoiler: z.boolean(),
 });
 
-export type OwnReview = { id: number; status: z.infer<typeof OwnReviewSchema>['status'] } & ReviewContent;
+export type OwnReview = {
+  id: number;
+  status: z.infer<typeof OwnReviewSchema>['status'];
+} & ReviewContent;
 
 /** 会員のこの開催の口コミ (論理削除していないもの)。無ければ null */
 export async function findOwnReview(
   db: SupabaseClient,
   profileId: string,
-  occurrenceId: number,
+  occurrenceId: number
 ): Promise<OwnReview | null> {
   const { data, error } = await db
     .from('reviews')
-    .select('id, status, rating, visited_on, attendance, food_cost_band, goods_cost_band, body, has_spoiler')
+    .select(
+      'id, status, rating, visited_on, attendance, food_cost_band, goods_cost_band, body, has_spoiler'
+    )
     .eq('occurrence_id', occurrenceId)
     .eq('user_id', profileId)
     .is('deleted_at', null)
@@ -93,7 +98,7 @@ export type SaveDraftOutcome =
 /** 下書きを保存する。この開催の下書きがあれば書き換え、無ければ作る。審査には回さない */
 export async function saveDraft(
   db: SupabaseClient,
-  input: { profileId: string; occurrenceId: number; content: ReviewContent },
+  input: { profileId: string; occurrenceId: number; content: ReviewContent }
 ): Promise<SaveDraftOutcome> {
   const existing = await findOwnReview(db, input.profileId, input.occurrenceId);
   const columns = toContentColumns(input.content);
@@ -134,7 +139,7 @@ export async function saveDraft(
  */
 export async function submitDraft(
   db: SupabaseClient,
-  input: { profileId: string; reviewId: number; content: ReviewContent },
+  input: { profileId: string; reviewId: number; content: ReviewContent }
 ): Promise<boolean> {
   const { data, error } = await db
     .from('reviews')
@@ -153,13 +158,12 @@ export async function submitDraft(
 }
 
 export type DeleteOutcome =
-  | { kind: 'deleted'; occurrenceId: number; wasPublished: boolean }
-  | { kind: 'not_found' };
+  { kind: 'deleted'; occurrenceId: number; wasPublished: boolean } | { kind: 'not_found' };
 
 /** 自分の口コミを論理削除する。集計からはトリガが外す。削除の後は同じ開催にもう一度書ける */
 export async function deleteOwnReview(
   db: SupabaseClient,
-  input: { profileId: string; reviewId: number },
+  input: { profileId: string; reviewId: number }
 ): Promise<DeleteOutcome> {
   const { data, error } = await db
     .from('reviews')
