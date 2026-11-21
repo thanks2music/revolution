@@ -1,7 +1,60 @@
 {
-  "generatedAt": "2026-11-04T21:34:57.023Z",
-  "totalArticles": 10,
+  "generatedAt": "2026-11-21T06:52:13.208Z",
+  "totalArticles": 11,
   "articles": [
+    {
+      "slug": "01m7ydys18ckpgbj",
+      "title": "BANANA FISH カフェ in 新宿 11月26日よりコラボ開催",
+      "date": "2026-11-21T06:50:15.007Z",
+      "excerpt": "「BANANA FISH」のコラボカフェが、2026年11月26日〜2027年1月17日までBOX cafe&space ルミネエスト新宿2号店で開催されます。「What they see」をテーマに、作品の世界観やアッシュたちをイメージしたコラボメニューやコラボグッズが楽しめます。",
+      "categories": [
+        "BANANA FISH",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/banana-fish/01m7ydys18ckpgbj.mdx",
+      "post_id": "01m7ydys18ckpgbj",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "BANANA FISH",
+      "work_titles": [
+        "BANANA FISH"
+      ],
+      "work_slug": "banana-fish",
+      "prefectures": [
+        "東京都"
+      ],
+      "prefecture_slugs": [
+        "tokyo"
+      ],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m7ydys18ckpgbj/af48cd8e73fed459a2e7c95327398ea9.jpg",
+      "event_start_date": "2026-11-26",
+      "event_end_date": "2027-01-17",
+      "venue": "BOX cafe&space ルミネエスト新宿2号店",
+      "official_url": "https://bananafish-cafe.ltr-online.com/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "banana-fish"
+        ],
+        "supplementary_category_slugs": [
+          "pop-up-store"
+        ],
+        "event_name": "BANANA FISH Cafe and Bar - What they see -",
+        "event_slug": "banana-fish-cafe-and-bar-what-they-see",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "BOX cafe&space ルミネエスト新宿2号店",
+            "starts_on": "2026-11-26",
+            "ends_on": "2027-01-17",
+            "official_url": "https://bananafish-cafe.ltr-online.com/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m4s065g1hchh9d",
       "title": "ヒロアカ カフェ in 4都市 10月16日よりコラボ開催",
