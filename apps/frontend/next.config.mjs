@@ -30,6 +30,11 @@ const nextConfig = {
       '../../node_modules/.pnpm/*/node_modules/@img/sharp-*',
     ],
   },
+  // 審査のプロンプト (scripts/fetch-templates.sh がビルドの最初に templates repo から取り込む) を
+  // サーバーの関数に含める。実行時に fs で読むので、静的な解析では含まれない
+  outputFileTracingIncludes: {
+    '/*': ['./templates/reviews/**'],
+  },
 
   /**
    * 画像最適化設定

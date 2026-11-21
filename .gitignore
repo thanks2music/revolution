@@ -289,6 +289,9 @@ test-artifacts/
 # Playwright の E2E が保存するログイン状態 (cookie とテスト会員の ID。apps/frontend/e2e/local/paths.ts)
 **/e2e/**/.auth/
 
+# 公開サイトが build の時に private の templates repo から取り込むプロンプト (apps/frontend/scripts/fetch-templates.sh)
+apps/frontend/templates/
+
 # カバレッジ
 coverage/
 .nyc_output/

@@ -40,7 +40,8 @@
     "./event": "./event.ts",
     "./occurrence": "./occurrence.ts",
     "./review": "./review.ts",
-    "./alias": "./alias.ts"
+    "./alias": "./alias.ts",
+    "./review-screening-response": "./review-screening-response.ts"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.36.0",

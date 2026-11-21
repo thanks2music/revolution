@@ -48,6 +48,13 @@ export const env = createEnv({
     SLACK_NOTICE_CHANNEL_ID: z.string().optional(),
     // 要対応で鳴らすユーザー ID。Vercel では Production にだけ設定する
     SLACK_MENTION_USER_ID: z.string().optional(),
+
+    // 口コミの AI 審査 (lib/reviews/screener)。Slack と同じく、ここは env レジストリとしての記録で、
+    // 審査器は `process.env` を直読みする (テストで env を差し替えるため)。未設定なら審査は失敗として扱う
+    GEMINI_API_KEY: z.string().optional(),
+    REVIEW_SCREENING_MODEL: z.string().optional(),
+    // fake の時だけ偽物を使う。ほかの値は無視する (値の誤りで起動を止めないため)
+    REVIEW_SCREENER: z.string().optional(),
   },
 
   /*
@@ -110,6 +117,9 @@ export const env = createEnv({
     SLACK_ATTENTION_CHANNEL_ID: process.env.SLACK_ATTENTION_CHANNEL_ID,
     SLACK_NOTICE_CHANNEL_ID: process.env.SLACK_NOTICE_CHANNEL_ID,
     SLACK_MENTION_USER_ID: process.env.SLACK_MENTION_USER_ID,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    REVIEW_SCREENING_MODEL: process.env.REVIEW_SCREENING_MODEL,
+    REVIEW_SCREENER: process.env.REVIEW_SCREENER,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
