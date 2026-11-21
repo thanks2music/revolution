@@ -480,6 +480,9 @@ importers:
       '@fontsource/zen-kaku-gothic-new':
         specifier: ^5.3.1
         version: 5.3.1
+      '@google/genai':
+        specifier: ^2.17.1
+        version: 2.24.0(@modelcontextprotocol/sdk@1.31.0(supports-color@8.1.1)(zod@4.6.6))(supports-color@8.1.1)
       '@revolution/schemas':
         specifier: workspace:*
         version: link:../../shared/schemas
@@ -513,6 +516,9 @@ importers:
       image-size:
         specifier: 2.0.4
         version: 2.0.4
+      js-yaml:
+        specifier: ^4.3.1
+        version: 4.3.2
       lucide-react:
         specifier: ^1.71.0
         version: 1.71.0(@types/react@19.2.7)(react@19.2.3)
@@ -592,9 +598,6 @@ importers:
       jest-environment-jsdom:
         specifier: ^30.4.1
         version: 30.5.2(supports-color@8.1.1)
-      js-yaml:
-        specifier: ^4.3.1
-        version: 4.3.2
       postcss:
         specifier: ^8
         version: 8.5.28

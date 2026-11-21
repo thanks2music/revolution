@@ -20,6 +20,11 @@ const nextConfig = {
    * - Vercel 以外 (standalone など) で配るなら見直す。そこでは画像の最適化に sharp が要る
    * https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats
    */
+  // 審査のプロンプト (scripts/fetch-templates.sh がビルドの最初に templates repo から取り込む) を
+  // サーバーの関数に含める。実行時に fs で読むので、静的な解析では含まれない
+  outputFileTracingIncludes: {
+    '/*': ['./templates/reviews/**'],
+  },
   outputFileTracingExcludes: {
     '/*': [
       '../../node_modules/.pnpm/sharp@*/**',
