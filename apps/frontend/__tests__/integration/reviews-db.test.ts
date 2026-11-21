@@ -266,6 +266,44 @@ describe('口コミの DB', () => {
       expect(await occurrenceRating(occ.id)).toEqual({ rating_sum: 0, rating_count: 0 });
     });
 
+    it('投稿者の公開中の件数は公開・非公開・削除で増減し、0 になると anon から表示名が見えなくなる', async () => {
+      const occ = await ongoingOccurrence();
+      const member = await data!.createMember();
+      const { data: row } = await submit(await signInAsMember(member), member, occ.id);
+      const count = async () => {
+        const { data: profile } = await data!.admin
+          .from('profiles')
+          .select('published_review_count')
+          .eq('id', member.userId)
+          .single();
+        return (profile as { published_review_count: number }).published_review_count;
+      };
+      const visibleToAnon = async () =>
+        ((await anonClient().from('profiles').select('id').eq('id', member.userId)).data ?? []).length;
+
+      expect(await count()).toBe(0);
+      await setReview(row!.id as number, { status: 'published' });
+      expect([await count(), await visibleToAnon()]).toEqual([1, 1]);
+      await setReview(row!.id as number, { status: 'hidden' });
+      expect([await count(), await visibleToAnon()]).toEqual([0, 0]);
+      await setReview(row!.id as number, { status: 'published' });
+      await softDelete(row!.id as number);
+      expect([await count(), await visibleToAnon()]).toEqual([0, 0]);
+    });
+
+    // 仕様 (状態の遷移の表): 非公開・BOSS の確認待ちも、投稿者が直して出し直すと審査中に戻り、もう一度 AI の審査を通る
+    it.each(['hidden', 'needs_review'])('%s の口コミも、投稿者が直すと審査中に戻る', async (status) => {
+      const occ = await ongoingOccurrence();
+      const member = await data!.createMember();
+      const client = await signInAsMember(member);
+      const { data: row } = await submit(client, member, occ.id);
+      await setReview(row!.id as number, { status, reason_code: status === 'hidden' ? 'spam' : null });
+
+      await client.from('reviews').update({ body: '直しました' }).eq('id', row!.id);
+
+      expect(await adminReview(row!.id as number)).toMatchObject({ status: 'pending', reason_code: null });
+    });
+
     it('公開中の口コミを論理削除すると集計から外れ、anon に見えなくなる', async () => {
       const occ = await ongoingOccurrence();
       const member = await data!.createMember();

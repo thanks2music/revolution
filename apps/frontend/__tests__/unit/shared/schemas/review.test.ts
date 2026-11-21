@@ -322,6 +322,7 @@ describe('値の一覧が DB の CHECK と一致する', () => {
 
   function checkValues(constraint: string): string[] {
     const start = migration.indexOf(`"${constraint}" CHECK`);
+    if (start === -1) throw new Error(`migration に ${constraint} が見つかりません`);
     const body = migration.slice(start, migration.indexOf('),', start));
     return [...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1]);
   }

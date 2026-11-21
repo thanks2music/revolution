@@ -30,6 +30,15 @@ SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '60s';
 --> statement-breakpoint
 
+-- 前提を守る: 行が残っている環境では止める (既存の行の移行は書いていない。生成列の追加で表も書き直す)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM "public"."reviews") THEN
+    RAISE EXCEPTION '0018 assumes public.reviews is empty; migrate existing rows first';
+  END IF;
+END $$;
+--> statement-breakpoint
+
 -- ───────────────────────────────────────────────
 -- A. 列と制約
 -- ───────────────────────────────────────────────
