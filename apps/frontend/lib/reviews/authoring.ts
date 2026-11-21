@@ -61,7 +61,9 @@ const OwnReviewSchema = z
     goods_cost_band: z.enum(REVIEW_GOODS_COST_BANDS).nullable(),
     body: z.string().nullable(),
     has_spoiler: z.boolean(),
-    reason_code: z.enum(REVIEW_REASON_CODES).nullable(),
+    // 理由は本人に見せるためだけの列。知らない値 (通報の理由など、後で足すもの) で書き込みの操作まで
+    // 止めないよう、読めなければ null にする
+    reason_code: z.enum(REVIEW_REASON_CODES).nullable().catch(null),
     reason_note: z.string().nullable(),
     submitted_at: z.string().nullable(),
   })

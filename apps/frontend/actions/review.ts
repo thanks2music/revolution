@@ -250,6 +250,8 @@ async function submit(
     if (error) throw error;
     // 読んだ後に別の端末で削除された
     if (!data || data.length === 0) return FAILURES.notFound;
+    // 内容が変わればトリガが submitted_at を進める (0018 の guard_review_author_write。結合テストで固定)。
+    // 読んでから書くまでの間に別の端末が出し直した場合は、その結果に従う (どちらでも DB の状態は正しい)
     if (data[0].submitted_at === own.submittedAt) return FAILURES.noChanges;
     // 公開中だった口コミは審査中に戻って見えなくなるので、すぐにページを作り直す
     if (own.status === 'published') for (const path of paths) revalidatePath(path);
