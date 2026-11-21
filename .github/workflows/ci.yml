@@ -207,7 +207,90 @@ jobs:
         run: cd apps/docs && pnpm test
 
 
-  # Job 4: workflow のファイルの検査
+  # Job 4: ローカルの Supabase に対する結合テストと E2E (frontend)
+  # migration と seed を流した本物の Postgres・RLS・トリガに対して、DB を叩く層 (jest) と
+  # 会員の操作 (Playwright) を確かめる。staging や本番には接続しない
+  # (`apps/frontend/test-support/local-supabase.ts` がローカル以外の接続先を拒む)。
+  integration:
+    name: Integration & E2E (local Supabase)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # 本番の migration の workflow (deploy-supabase-migrations.yml) と同じ版にする
+      PINNED_SUPABASE_CLI_VERSION: 3.0.0
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.tool-versions'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: ${{ env.PINNED_SUPABASE_CLI_VERSION }}
+
+      - name: Start local Supabase
+        # migration と seed (`supabase/config.toml` の [db.seed]) は起動の時に流れる。
+        # テストが使うのは Postgres・Auth (gotrue)・REST (postgrest)・その前段の kong だけなので、
+        # 残りは起動しない (起動の時間と、使わないコンテナの不調で落ちるのを避けるため)
+        working-directory: apps/frontend
+        run: >-
+          supabase start
+          -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: Export local Supabase credentials
+        # ローカルの Supabase の既定のキー (どの環境でも同じ値で、秘密ではない)。
+        # キーが欠けていたら `null` を書かずに、この step で落とす (CLI の版で名前が変わった時に気づくため)
+        working-directory: apps/frontend
+        run: |
+          supabase status -o json > "$RUNNER_TEMP/supabase-status.json"
+          jq -r '
+            def need($k): .[$k] // error("supabase status に \($k) がありません");
+            "LOCAL_SUPABASE_URL=\(need("API_URL"))",
+            "LOCAL_SUPABASE_PUBLISHABLE_KEY=\(need("PUBLISHABLE_KEY"))",
+            "LOCAL_SUPABASE_SECRET_KEY=\(need("SECRET_KEY"))",
+            "LOCAL_SUPABASE_DB_URL=\(need("DB_URL"))"
+          ' "$RUNNER_TEMP/supabase-status.json" >> "$GITHUB_ENV"
+
+      - name: Install Playwright browser
+        # 結合テストより前に入れる (結合テストが落ちても E2E を走らせるため)
+        working-directory: apps/frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run integration tests
+        working-directory: apps/frontend
+        run: pnpm test:integration
+
+      - name: Run E2E tests
+        # 結合テストが落ちても E2E は走らせる (逆も同じ)
+        if: ${{ !cancelled() }}
+        working-directory: apps/frontend
+        run: pnpm test:e2e:local
+
+      - name: Upload Playwright traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-test-results
+          path: apps/frontend/test-results/
+          retention-days: 7
+
+  # Job 5: workflow のファイルの検査
   # 壊れた workflow は main に入ってから GitHub に弾かれ、その deploy が黙って走らない
   # (2026-11-15、`run:` の中のコメントに書いた空の式で実際に起きた)。
   # actionlint は、shellcheck が入っていれば `run:` のスクリプトも検査する (runner には入っている)。
