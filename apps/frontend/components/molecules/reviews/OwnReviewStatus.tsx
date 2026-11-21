@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { getOwnReviewState, type OwnReviewState } from '@/actions/review';
 import { useAuthNav } from '@/components/molecules/AuthNavProvider';
+import { toDotDate } from '@/lib/date';
 import { REJECTION_REASON_LABELS } from '@/lib/reviews/labels';
 
 /**
@@ -29,7 +30,7 @@ export function OwnReviewStatus({ occurrenceId }: { occurrenceId: number }) {
   }, [occurrenceId, isAuthed]);
 
   if (!state) return null;
-  const visitedOn = state.visitedOn.replaceAll('-', '.');
+  const visitedOn = toDotDate(state.visitedOn);
 
   return (
     <div

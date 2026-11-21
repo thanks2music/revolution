@@ -14,6 +14,7 @@ import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase
  * cookie を触らない公開のクライアントで読み、開催のページの SSG / ISR を保つ。RLS で、公開中かつ
  * 論理削除していない口コミだけが見える。他人の訪問日は年月 (`visited_month`) だけ (日付の列は
  * anon・authenticated に GRANT していない)。投稿者は、公開中の口コミがある会員の表示名だけが見える。
+ * 星の平均と件数は、開催の集計の列 (口コミのトリガが保つ) から出す。
  */
 
 /** 新着から何件を出すか。すべての一覧のページは後のチケット */
@@ -38,74 +39,8 @@ const ReviewRowSchema = z.object({
     .nullable(),
 });
 
-export type PublicReview = {
-  id: number;
-  rating: number;
-  body: string | null;
-  /** 訪問した年と月 (YYYY-MM) */
-  visitedMonth: string | null;
-  attendance: z.infer<typeof ReviewRowSchema>['attendance'];
-  foodCostBand: z.infer<typeof ReviewRowSchema>['food_cost_band'];
-  goodsCostBand: z.infer<typeof ReviewRowSchema>['goods_cost_band'];
-  hasSpoiler: boolean;
-  editedAt: string | null;
-  /** 投稿者の表示名。退会した会員・見えない時は null */
-  authorName: string | null;
-};
-
-export type OccurrenceReviews = {
-  /** 公開中の口コミの星の平均 (小数 1 桁)。0 件なら null */
-  ratingAverage: number | null;
-  ratingCount: number;
-  latest: PublicReview[];
-};
-
-const EMPTY: OccurrenceReviews = { ratingAverage: null, ratingCount: 0, latest: [] };
-
-export async function getOccurrenceReviews(occurrenceId: number): Promise<OccurrenceReviews> {
-  // 資格情報の無いビルド (CI の Build Apps) では 0 件として描く (開催の取得と同じ扱い)
-  if (!hasPublicSupabaseCredentials()) return EMPTY;
-  const supabase = createPublicClient();
-
-  const [ratingResult, reviewsResult] = await Promise.all([
-    supabase
-      .from('occurrence_view')
-      .select('rating_sum, rating_count')
-      .eq('id', occurrenceId)
-      .maybeSingle(),
-    supabase
-      .from('reviews')
-      .select(
-        'id, rating, body, visited_month, attendance, food_cost_band, goods_cost_band, has_spoiler, edited_at, profiles!reviews_user_id_profiles_id_fk(display_name, username, withdrawn_at)'
-      )
-      .eq('occurrence_id', occurrenceId)
-      .eq('status', 'published')
-      .is('deleted_at', null)
-      .order('submitted_at', { ascending: false })
-      .limit(LATEST_REVIEWS_LIMIT),
-  ]);
-  if (ratingResult.error) throw new Error(`failed to load ratings: ${ratingResult.error.message}`);
-  if (reviewsResult.error)
-    throw new Error(`failed to load reviews: ${reviewsResult.error.message}`);
-
-  const ratingCount = Number(ratingResult.data?.rating_count ?? 0);
-  const ratingSum = Number(ratingResult.data?.rating_sum ?? 0);
-  return {
-    ratingAverage: averageRating(ratingSum, ratingCount),
-    ratingCount,
-    latest: z
-      .array(ReviewRowSchema)
-      .parse(reviewsResult.data ?? [])
-      .map(toPublicReview),
-  };
-}
-
-/** 星の平均 (小数 1 桁に丸める)。0 件なら null */
-export function averageRating(sum: number, count: number): number | null {
-  return count > 0 ? Math.round((sum / count) * 10) / 10 : null;
-}
-
-export function toPublicReview(row: z.infer<typeof ReviewRowSchema>): PublicReview {
+/** 画面に出す形へ。訪問は年月 (YYYY-MM) だけ、退会した会員・見えない会員の名前は null */
+export const PublicReviewSchema = ReviewRowSchema.transform(row => {
   const author = row.profiles;
   return {
     id: row.id,
@@ -119,5 +54,55 @@ export function toPublicReview(row: z.infer<typeof ReviewRowSchema>): PublicRevi
     editedAt: row.edited_at,
     authorName:
       author && !author.withdrawn_at ? (author.display_name ?? author.username ?? null) : null,
+  };
+});
+
+export type PublicReview = z.output<typeof PublicReviewSchema>;
+
+/** 星の平均 (小数 1 桁に丸める)。0 件なら null */
+export function averageRating(sum: number, count: number): number | null {
+  return count > 0 ? Math.round((sum / count) * 10) / 10 : null;
+}
+
+export type OccurrenceReviews = {
+  /** 公開中の口コミの星の平均 (小数 1 桁)。0 件なら null */
+  ratingAverage: number | null;
+  ratingCount: number;
+  /** 新着 (LATEST_REVIEWS_LIMIT 件) */
+  latest: PublicReview[];
+};
+
+export async function getOccurrenceReviews(occurrenceId: number): Promise<OccurrenceReviews> {
+  // 資格情報の無いビルド (CI の Build Apps) では 0 件として描く (開催の取得と同じ扱い)
+  if (!hasPublicSupabaseCredentials()) return { ratingAverage: null, ratingCount: 0, latest: [] };
+  const supabase = createPublicClient();
+
+  const [rating, reviews] = await Promise.all([
+    supabase
+      .from('occurrence_view')
+      .select('rating_sum, rating_count')
+      .eq('id', occurrenceId)
+      .maybeSingle(),
+    supabase
+      .from('reviews')
+      // 投稿者は列の名前で結び付ける (reviews と profiles には review_helpful 経由の結び付きもあり、
+      // 指定しないと PostgREST が選べない)
+      .select(
+        'id, rating, body, visited_month, attendance, food_cost_band, goods_cost_band, has_spoiler, edited_at, profiles!user_id(display_name, username, withdrawn_at)'
+      )
+      .eq('occurrence_id', occurrenceId)
+      .eq('status', 'published')
+      .is('deleted_at', null)
+      .order('submitted_at', { ascending: false })
+      .limit(LATEST_REVIEWS_LIMIT),
+  ]);
+  if (rating.error) throw new Error(`failed to load ratings: ${rating.error.message}`);
+  if (reviews.error) throw new Error(`failed to load reviews: ${reviews.error.message}`);
+
+  const ratingCount = Number(rating.data?.rating_count ?? 0);
+  return {
+    ratingAverage: averageRating(Number(rating.data?.rating_sum ?? 0), ratingCount),
+    ratingCount,
+    latest: z.array(PublicReviewSchema).parse(reviews.data ?? []),
   };
 }

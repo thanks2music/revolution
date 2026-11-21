@@ -1,6 +1,8 @@
 jest.mock('@/lib/env', () => ({ env: {} }));
 
-import { averageRating, toPublicReview } from '@/lib/reviews/queries';
+import { PublicReviewSchema, averageRating } from '@/lib/reviews/queries';
+
+const toPublicReview = (row: unknown) => PublicReviewSchema.parse(row);
 
 const ROW = {
   id: 1,

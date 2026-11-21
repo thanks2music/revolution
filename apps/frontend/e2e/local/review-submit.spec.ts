@@ -161,8 +161,8 @@ test('ネタバレの口コミは本文をたたみ、押すと開く', async ({
     .toMatchObject({ status: 'published' });
 
   await page.goto(path);
-  await expect(page.getByText('最後の部屋に原画があります')).toHaveCount(0);
-  await page.getByRole('button', { name: /表示する/ }).click();
+  await expect(page.getByText('最後の部屋に原画があります')).toBeHidden();
+  await page.getByText('表示する ›').click();
   await expect(page.getByText('最後の部屋に原画があります')).toBeVisible();
 });
 

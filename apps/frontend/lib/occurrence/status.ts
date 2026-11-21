@@ -99,13 +99,13 @@ export type StatusCount = {
  * 「終了 0」のような無情報を並べない。すべて 0 なら空配列。
  */
 export function summarizeStatusCounts(
-  counts: Partial<Record<OccurrenceStatus, number>>,
+  counts: Partial<Record<OccurrenceStatus, number>>
 ): StatusCount[] {
-  return OCCURRENCE_STATUS_ORDER.map((status) => ({
+  return OCCURRENCE_STATUS_ORDER.map(status => ({
     status,
     label: OCCURRENCE_STATUS_LABELS[status],
     count: counts[status] ?? 0,
-  })).filter((entry) => entry.count > 0);
+  })).filter(entry => entry.count > 0);
 }
 
 /**
@@ -140,4 +140,13 @@ export function diffInDays(from: string, to: string): number {
   const fromMs = Date.parse(`${from}T12:00:00Z`);
   const toMs = Date.parse(`${to}T12:00:00Z`);
   return Math.round((toMs - fromMs) / 86_400_000);
+}
+
+/**
+ * 終了までの残り日数。終了日が無い (常設・未定)・もう終わった時は null (どちらも「あと N 日」を出さない)
+ */
+export function remainingDays(endsOn: string | null | undefined, now?: Date): number | null {
+  if (!endsOn) return null;
+  const days = diffInDays(todayInJst(now), endsOn);
+  return days < 0 ? null : days;
 }

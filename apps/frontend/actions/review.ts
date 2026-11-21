@@ -16,9 +16,11 @@
 import * as Sentry from '@sentry/nextjs';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
+import { z } from 'zod';
 
 import {
   REVIEW_SCREENING_REASONS,
+  REVIEW_STATUSES,
   ReviewSubmitSchema,
   type ReviewScreeningReason,
   type ReviewSubmitInput,
@@ -27,7 +29,11 @@ import {
 import { getCurrentMember } from '@/lib/auth/member';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
-import { reviewBlockReason } from '@/lib/reviews/eligibility';
+import {
+  ownReviewStatus,
+  reviewBlockReason,
+  type OwnReviewStatus,
+} from '@/lib/reviews/eligibility';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
 import { getReviewScreener } from '@/lib/reviews/screener';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -181,7 +187,7 @@ async function screenAfterSubmit(reviewId: number, paths: string[]): Promise<voi
  * AI 審査の失敗 (ai_failure) と確認待ちは、本人には「審査中」として見せる。
  */
 export type OwnReviewState = {
-  status: 'screening' | 'published' | 'rejected' | 'hidden';
+  status: OwnReviewStatus;
   /** 差し戻しの理由のコード (rejected の時だけ) */
   reasonCode: ReviewScreeningReason | null;
   /** 訪問日 (YYYY-MM-DD)。本人にだけ日付まで見せる */
@@ -189,6 +195,14 @@ export type OwnReviewState = {
   /** 運営 (BOSS) が書いた、投稿者に見せる補足 (差し戻し・非公開の時) */
   note: string | null;
 };
+
+const OwnReviewRowSchema = z.object({
+  status: z.enum(REVIEW_STATUSES),
+  // 審査の 4 種以外 (ai_failure・通報の理由) は本人には出さない
+  reason_code: z.enum(REVIEW_SCREENING_REASONS).nullable().catch(null),
+  reason_note: z.string().nullable(),
+  visited_on: z.string(),
+});
 
 export async function getOwnReviewState(occurrenceId: number): Promise<OwnReviewState | null> {
   try {
@@ -205,22 +219,18 @@ export async function getOwnReviewState(occurrenceId: number): Promise<OwnReview
       .is('deleted_at', null)
       .maybeSingle();
     if (error) throw error;
-    if (!data || data.status === 'draft') return null;
+    if (!data) return null;
 
-    const status =
-      data.status === 'pending' || data.status === 'needs_review'
-        ? 'screening'
-        : (data.status as 'published' | 'rejected' | 'hidden');
-    const reasonCode =
-      status === 'rejected' &&
-      (REVIEW_SCREENING_REASONS as readonly string[]).includes(data.reason_code)
-        ? (data.reason_code as ReviewScreeningReason)
-        : null;
-    const note =
-      (status === 'rejected' || status === 'hidden') && data.reason_note
-        ? (data.reason_note as string)
-        : null;
-    return { status, reasonCode, visitedOn: data.visited_on as string, note };
+    const row = OwnReviewRowSchema.parse(data);
+    const status = ownReviewStatus(row.status);
+    if (!status) return null;
+    const explained = status === 'rejected' || status === 'hidden';
+    return {
+      status,
+      reasonCode: status === 'rejected' ? row.reason_code : null,
+      visitedOn: row.visited_on,
+      note: explained ? row.reason_note : null,
+    };
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'getOwnReviewState' } });
     return null;

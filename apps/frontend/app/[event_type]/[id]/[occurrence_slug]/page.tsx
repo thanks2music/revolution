@@ -36,7 +36,10 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
 import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
 import { OccurrenceCard, VENUE_NAME_FALLBACK } from '@/components/molecules/OccurrenceCard';
-import { OccurrenceReviewsSection } from '@/components/molecules/reviews/OccurrenceReviewsSection';
+import {
+  OccurrenceReviewsSection,
+  ReviewWriteBar,
+} from '@/components/molecules/reviews/OccurrenceReviewsSection';
 import Layout from '@/components/templates/Layout';
 import { getCategory } from '@/lib/category/queries';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
@@ -44,6 +47,7 @@ import { generateContentMetadata } from '@/lib/metadata';
 import { getTitleUrl } from '@/lib/title/title-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail, listOccurrenceParams } from '@/lib/occurrence/queries';
+import { reviewSectionMode } from '@/lib/reviews/eligibility';
 import { getOccurrenceReviews } from '@/lib/reviews/queries';
 import { toBadgeStatus } from '@/lib/occurrence/status';
 import { isSafeHttpUrl } from '@/lib/url-safety';
@@ -89,6 +93,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
 
   const { occurrence, event, titles, siblings } = data;
   // 口コミが読めなくても、開催の情報は出す (口コミの欄だけを出さない)
+  const reviewPath = `${getOccurrenceUrl(event, occurrence.slug)}/review`;
   const reviews = await getOccurrenceReviews(occurrence.id).catch((error: unknown) => {
     Sentry.captureException(error, { tags: { page: 'occurrence' } });
     return null;
@@ -98,7 +103,17 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
   const badgeStatus = toBadgeStatus(occurrence.status);
 
   return (
-    <Layout>
+    <Layout
+      bottomBar={
+        reviewSectionMode(occurrence.status) === 'full' ? (
+          <ReviewWriteBar
+            status={occurrence.status}
+            endsOn={occurrence.endsOn}
+            reviewPath={reviewPath}
+          />
+        ) : undefined
+      }
+    >
       <article className="mx-auto w-main py-section-sp md:py-section-pc">
         <nav aria-label="パンくず" className="mb-6 text-sm text-ink-muted">
           <ol className="flex flex-wrap items-center gap-2">
@@ -196,9 +211,10 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
           <OccurrenceReviewsSection
             occurrenceId={occurrence.id}
             status={occurrence.status}
-            endsOn={occurrence.endsOn}
-            reviewPath={`${getOccurrenceUrl(event, occurrence.slug)}/review`}
-            reviews={reviews}
+            ratingAverage={reviews.ratingAverage}
+            ratingCount={reviews.ratingCount}
+            reviewPath={reviewPath}
+            reviews={reviews.latest}
           />
         )}
 

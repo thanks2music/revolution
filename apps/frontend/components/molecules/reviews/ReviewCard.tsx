@@ -1,3 +1,4 @@
+import { formatJstDotDate } from '@/lib/date';
 import type { PublicReview } from '@/lib/reviews/queries';
 import {
   ATTENDANCE_LABELS,
@@ -8,13 +9,6 @@ import {
 
 import { ReviewStars } from './ReviewStars';
 import { SpoilerBody } from './SpoilerBody';
-
-const EDITED_AT = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
 
 /**
  * 口コミ 1 件 (Figma #3)。写真・参考になった・通報の「…」・プロフィール画像は後のチケット
@@ -59,9 +53,7 @@ export function ReviewCard({ review }: { review: PublicReview }) {
       {body && (review.hasSpoiler ? <SpoilerBody>{body}</SpoilerBody> : body)}
 
       {review.editedAt && (
-        <p className="text-xs text-ink-muted">
-          最終編集 {EDITED_AT.format(new Date(review.editedAt)).replaceAll('/', '.')}
-        </p>
+        <p className="text-xs text-ink-muted">最終編集 {formatJstDotDate(review.editedAt)}</p>
       )}
     </article>
   );
