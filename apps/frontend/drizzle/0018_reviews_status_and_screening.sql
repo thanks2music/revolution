@@ -21,7 +21,10 @@
 -- - 他人には訪問年月だけを見せるため、`visited_on` は anon / authenticated の SELECT から外し、
 --   月初の生成列 `visited_month` を読ませる。本人の日付・差し戻しの理由は、サーバーが
 --   service role で読んで本人にだけ返す
--- - 一覧に投稿者名を出すため、公開中の口コミの投稿者の profiles を読めるようにする
+-- - 一覧に投稿者名を出すため、公開中の口コミの投稿者の profiles を読めるようにする。判定には
+--   profiles に持たせた公開中の口コミの件数 (published_review_count) を使う。profiles の policy から
+--   reviews を引くと、reviews の policy (本人の判定で profiles を引く) と互いを呼び合い、
+--   `infinite recursion detected in policy` になるため (2026-11-21 に結合テストで実測)
 
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '60s';
@@ -78,6 +81,11 @@ ALTER TABLE "public"."reviews"
   ADD CONSTRAINT "reviews_required_unless_draft_chk" CHECK (
     "status" = 'draft' OR ("rating" IS NOT NULL AND "visited_on" IS NOT NULL)
   );
+--> statement-breakpoint
+
+-- 公開中の口コミの件数 (C-2 の policy の判定に使う。集計のトリガ B-3 が増減する)
+ALTER TABLE "public"."profiles"
+  ADD COLUMN "published_review_count" integer DEFAULT 0 NOT NULL;
 --> statement-breakpoint
 
 -- 1 人 1 開催 1 件は「論理削除していない行」だけで数える (削除の後に書き直せるように)
@@ -142,6 +150,11 @@ BEGIN
     NEW."submitted_at" := now();
     NEW."reason_code" := NULL;
     NEW."reason_note" := NULL;
+    -- 前の内容への AI の判断は、出し直した内容には当てはまらない
+    NEW."ai_reason" := NULL;
+    NEW."ai_error" := NULL;
+    NEW."ai_model" := NULL;
+    NEW."ai_screened_at" := NULL;
   END IF;
   RETURN NEW;
 END;
@@ -168,6 +181,12 @@ DECLARE
   occ record;
   today date := (now() AT TIME ZONE 'Asia/Tokyo')::date;
 BEGIN
+  -- UPDATE OF visited_on は、値が同じでも SET に含まれていれば発火する。変わっていなければ確かめない
+  -- (中止になった開催の口コミの本文を直す時に、訪問日を同じ値で送っても拒否しないように)
+  IF TG_OP = 'UPDATE' AND NEW."visited_on" IS NOT DISTINCT FROM OLD."visited_on" THEN
+    RETURN NEW;
+  END IF;
+
   SELECT o."starts_on", o."ends_on", o."cancelled_at"
     INTO occ
     FROM "public"."occurrences" o
@@ -206,6 +225,7 @@ CREATE TRIGGER "trg_reviews_check_occurrence"
 -- B-3. 星の集計は「公開かつ論理削除していない」だけを数える
 --
 -- 状態の変化 (公開 ⇄ それ以外) と論理削除の両方で増減する。式は 0013 と同じで、有効の判定だけを変えた。
+-- あわせて、投稿者の profiles の公開中の口コミの件数も増減する (C-2 の policy が使う)。
 CREATE OR REPLACE FUNCTION private.apply_review_delta()
 RETURNS trigger
 SET search_path = ''
@@ -253,6 +273,10 @@ BEGIN
          "rating_count" = "rating_count" + d_cnt
    WHERE "id" = ev;
 
+  UPDATE "public"."profiles"
+     SET "published_review_count" = "published_review_count" + d_cnt
+   WHERE "id" = COALESCE(NEW."user_id", OLD."user_id");
+
   RETURN NULL;
 END;
 $$;
@@ -284,13 +308,7 @@ GRANT EXECUTE ON FUNCTION private.check_review_occurrence() TO service_role;
 
 -- C-1. 口コミの SELECT
 -- anon は公開中だけ。authenticated は公開中と、状態を問わない自分の口コミ
--- (1 つの policy にまとめる。同じ役割に許可の policy が重なると Advisor の lint 0006 になるため)。
---
--- ⚠️ 本人の判定は `user_id = auth.uid()` で行い、profiles を引かない。下の C-2 で profiles の
--- policy が reviews を引くので、ここで profiles を引くと policy が互いを呼び合い、
--- `infinite recursion detected in policy` になる (2026-11-21 に結合テストで実測)。
--- profiles.id は handle_new_user が auth のユーザー ID と同じ値で作り、変わらないので、
--- profiles を引いた判定と同じ意味になる (退会すると auth のユーザーが消え、そもそもログインできない)。
+-- (1 つの policy にまとめる。同じ役割に許可の policy が重なると Advisor の lint 0006 になるため)
 DROP POLICY "reviews_select_public" ON "public"."reviews";
 --> statement-breakpoint
 CREATE POLICY "reviews_select_published"
@@ -305,39 +323,19 @@ CREATE POLICY "reviews_select_published_or_own"
   TO authenticated
   USING (
     "deleted_at" IS NULL
-    AND ("status" = 'published' OR "user_id" = (SELECT auth.uid()))
+    AND (
+      "status" = 'published'
+      OR "user_id" IN (
+        SELECT p."id" FROM "public"."profiles" p
+         WHERE p."auth_user_id" = (SELECT auth.uid())
+      )
+    )
   );
 --> statement-breakpoint
 
 -- ⚠️ 投稿者の論理削除 (UPDATE で deleted_at を入れる) は、更新後の行が上の SELECT の policy
 -- (deleted_at IS NULL) から外れるため RLS に拒否される (0013 からの挙動、2026-11-21 に確認)。
 -- 削除の入口は下書き・編集・削除のチケットで、サーバー (service role) から行う形で作る。
-
--- C-1b. 口コミの INSERT / UPDATE の本人の判定も profiles を引かない形にする (C-1 の ⚠️ と同じ理由。
--- reviews の policy が 1 つでも profiles を引くと、C-2 と輪になる)
-DROP POLICY "reviews_insert_self" ON "public"."reviews";
---> statement-breakpoint
-CREATE POLICY "reviews_insert_self"
-  ON "public"."reviews"
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    "user_id" = (SELECT auth.uid())
-    AND "occurrence_id" IN (SELECT o."id" FROM "public"."occurrences" o WHERE o."verified")
-  );
---> statement-breakpoint
-DROP POLICY "reviews_update_self" ON "public"."reviews";
---> statement-breakpoint
-CREATE POLICY "reviews_update_self"
-  ON "public"."reviews"
-  FOR UPDATE
-  TO authenticated
-  USING ("user_id" = (SELECT auth.uid()))
-  WITH CHECK (
-    "user_id" = (SELECT auth.uid())
-    AND "occurrence_id" IN (SELECT o."id" FROM "public"."occurrences" o WHERE o."verified")
-  );
---> statement-breakpoint
 
 -- C-2. 一覧に投稿者名を出すため、公開中の口コミの投稿者の profiles を読めるようにする
 DROP POLICY "profiles_select_own" ON "public"."profiles";
@@ -348,22 +346,14 @@ CREATE POLICY "profiles_select_own_or_reviewer"
   TO authenticated
   USING (
     (SELECT auth.uid()) = "auth_user_id"
-    OR "id" IN (
-      SELECT r."user_id" FROM "public"."reviews" r
-       WHERE r."status" = 'published' AND r."deleted_at" IS NULL
-    )
+    OR "published_review_count" > 0
   );
 --> statement-breakpoint
 CREATE POLICY "profiles_select_reviewer"
   ON "public"."profiles"
   FOR SELECT
   TO anon
-  USING (
-    "id" IN (
-      SELECT r."user_id" FROM "public"."reviews" r
-       WHERE r."status" = 'published' AND r."deleted_at" IS NULL
-    )
-  );
+  USING ("published_review_count" > 0);
 --> statement-breakpoint
 -- 見せる列は表示に要る物だけにする。authenticated も列で絞る (上の policy で他人の行が読めるように
 -- なったので、テーブル全体の SELECT のままだと、今後 profiles に足す列が自動で他人に見えてしまう)。

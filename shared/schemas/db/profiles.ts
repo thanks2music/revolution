@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { check, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 /**
  * Schema-SDD 真実源 (DB レイヤ): public.profiles
@@ -82,6 +82,10 @@ export const profiles = pgTable(
     displayName: text('display_name'),
     // 退会時刻。null = 現役。表示層はこれを見て「退会済みユーザー」を出す。
     withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+    // ★0018: 公開中の口コミの件数。口コミの集計のトリガ (apply_review_delta) が増減する。
+    // 一覧に投稿者名を出すための profiles の SELECT の policy が、この値で判定する
+    // (policy から reviews を引くと、reviews の policy と互いを呼び合い再帰するため)
+    publishedReviewCount: integer('published_review_count').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     // auth.users.created_at から移送した実際の登録日時 (0011 ステップ 2b)。
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
