@@ -65,15 +65,18 @@ describe('notifySlack', () => {
     expect(body.blocks).toEqual(message.blocks);
   });
 
-  it('blocks が既に上限 (50) なら、メンションは本文にだけ置き、blocks は増やさない', async () => {
+  it('blocks が既に上限 (50) なら、blocks は増やさず、最初の section の文にメンションを差し込む', async () => {
     fetchMock.mockResolvedValue(okResponse());
     const fullBlocks = Array.from({ length: 50 }, () => message.blocks[0]);
 
     await notifySlack('attention', { text: message.text, blocks: fullBlocks }, env);
 
     const body = sentBody();
+    const blocks = body.blocks as Array<{ text: { text: string } }>;
     expect(body.text).toBe('<@U_BOSS> 口コミが確認待ちになりました');
-    expect(body.blocks).toHaveLength(50);
+    expect(blocks).toHaveLength(50);
+    expect(blocks[0].text.text).toBe('<@U_BOSS> 口コミが確認待ちになりました');
+    expect(blocks[1].text.text).toBe('口コミが確認待ちになりました');
   });
 
   it('blocks が 49 個なら、メンションのブロックを足して 50 個にする', async () => {
@@ -95,6 +98,14 @@ describe('notifySlack', () => {
     expect(body.blocks).toEqual([]);
   });
 
+  it('お知らせは、メンション先が設定されていてもメンションを付けない', async () => {
+    fetchMock.mockResolvedValue(okResponse());
+
+    await notifySlack('notice', message, env);
+
+    expect(JSON.stringify(sentBody())).not.toContain('<@U_BOSS>');
+  });
+
   it('メンション先が未設定なら、要対応でもメンションなしで送る', async () => {
     fetchMock.mockResolvedValue(okResponse());
     const { SLACK_MENTION_USER_ID: _omitted, ...withoutMention } = env;
@@ -106,13 +117,36 @@ describe('notifySlack', () => {
 
   it.each([
     ['token', { ...env, SLACK_BOT_TOKEN: undefined }],
-    ['チャンネル', { ...env, SLACK_ATTENTION_CHANNEL_ID: undefined }],
+    ['要対応のチャンネル', { ...env, SLACK_ATTENTION_CHANNEL_ID: undefined }],
     ['1Password の参照のままの token', { ...env, SLACK_BOT_TOKEN: 'op://vault/slack/token' }],
   ])('%s が未設定なら送らず、エラーにもしない', async (_label, partialEnv) => {
     await expect(notifySlack('attention', message, partialEnv)).resolves.toBe(false);
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('お知らせのチャンネルが未設定なら、お知らせは送らない', async () => {
+    await expect(
+      notifySlack('notice', message, { ...env, SLACK_NOTICE_CHANNEL_ID: undefined }),
+    ).resolves.toBe(false);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('想定外の例外が起きても例外を投げず、unexpected_error として残す', async () => {
+    const brokenEnv = new Proxy(env, {
+      get() {
+        throw new Error('env is broken');
+      },
+    });
+
+    await expect(notifySlack('notice', message, brokenEnv)).resolves.toBe(false);
+
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      'Slack notification failed',
+      expect.objectContaining({ fingerprint: ['slack-notification-failed', 'unexpected_error'] }),
+    );
   });
 
   it('送信に失敗しても例外を投げず、エラーコードを Sentry に残す', async () => {

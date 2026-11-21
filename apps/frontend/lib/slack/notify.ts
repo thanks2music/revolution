@@ -73,20 +73,35 @@ export async function notifySlack(
 const MAX_BLOCKS = 50;
 
 /**
- * 本文の先頭と、blocks の最初にメンションを置く (blocks があると、表示は blocks が使われるため)。
- * blocks が既に上限なら、足すと全体が `invalid_blocks` で拒まれるので、本文の先頭にだけ置く
+ * 本文の先頭と blocks にメンションを置く。blocks があると、表示は blocks が使われ、本文 (`text`) は
+ * 通知の代わりの文になるため、blocks の側にもメンションが要る。
+ *
+ * - blocks が上限未満: 先頭にメンションのブロックを足す
+ * - blocks が上限: 足すと全体が `invalid_blocks` で拒まれるので、最初の mrkdwn の section の文の先頭に差し込む
+ * - blocks が空: メンションのブロックだけにすると本文が隠れるので、本文にだけ置く
  */
 function withMention(message: SlackMessage, userId: string): SlackMessage {
   const mention = `<@${userId}>`;
-  const { blocks } = message;
-  return {
-    text: `${mention} ${message.text}`,
-    // 空の blocks にメンションのブロックだけを足すと、表示が blocks に切り替わり本文が隠れる
-    blocks:
-      blocks && blocks.length > 0 && blocks.length < MAX_BLOCKS
-        ? [{ type: 'section', text: { type: 'mrkdwn', text: mention } }, ...blocks]
-        : blocks,
-  };
+  return { text: `${mention} ${message.text}`, blocks: blocksWithMention(message.blocks, mention) };
+}
+
+type Block = Record<string, unknown>;
+
+function blocksWithMention(blocks: Block[] | undefined, mention: string): Block[] | undefined {
+  if (!blocks || blocks.length === 0) return blocks;
+  if (blocks.length < MAX_BLOCKS) {
+    return [{ type: 'section', text: { type: 'mrkdwn', text: mention } }, ...blocks];
+  }
+  const index = blocks.findIndex(isMrkdwnSection);
+  if (index === -1) return blocks;
+  const section = blocks[index] as { text: { text: string } } & Block;
+  const updated = { ...section, text: { ...section.text, text: `${mention} ${section.text.text}` } };
+  return blocks.map((block, i) => (i === index ? updated : block));
+}
+
+function isMrkdwnSection(block: Block): boolean {
+  const text = block.text as { type?: unknown; text?: unknown } | undefined;
+  return block.type === 'section' && text?.type === 'mrkdwn' && typeof text.text === 'string';
 }
 
 /** 失敗を記録する。記録が失敗しても例外を外へ出さない (notifySlack は例外を投げない約束のため) */

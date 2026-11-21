@@ -58,6 +58,12 @@ describe('postSlackMessage', () => {
     await expect(postSlackMessage(target, message)).resolves.toEqual({ ok: false, code: 'http_429' });
   });
 
+  it('本文の error が文字列でなければ、HTTP のステータスで失敗を返す', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ok: false, error: { nested: true } }));
+
+    await expect(postSlackMessage(target, message)).resolves.toEqual({ ok: false, code: 'http_200' });
+  });
+
   it('本文が JSON でなければ、HTTP 200 でも失敗として区別する', async () => {
     fetchMock.mockResolvedValue(new Response('<html>proxy error</html>', { status: 200 }));
 

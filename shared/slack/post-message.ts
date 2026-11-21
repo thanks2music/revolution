@@ -85,7 +85,7 @@ export async function postSlackMessage(
     // 本文が JSON でない (プロキシのエラーページなど) 場合は、HTTP 200 でも失敗。
     // `http_200` だと成功と紛らわしいので区別する
     const code = body
-      ? (body.error ?? `http_${response.status}`)
+      ? (typeof body.error === 'string' ? body.error : `http_${response.status}`)
       : `invalid_response_http_${response.status}`;
     return { ok: false, code };
   } catch (error) {
