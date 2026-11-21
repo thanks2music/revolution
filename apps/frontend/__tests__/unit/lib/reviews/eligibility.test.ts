@@ -109,12 +109,22 @@ describe('authoringMode', () => {
     ).toMatchObject({ kind: 'blocked' });
   });
 
-  it('提出した口コミは、中止になった開催でも直せる', () => {
+  it('提出した口コミは、中止になった開催でも直せる (訪問日は前の日に固定する)', () => {
     expect(
       authoringMode({
         ...base,
         occurrenceStatus: 'cancelled',
         own: { status: 'published', visitedOn: '2026-11-03' },
+      })
+    ).toEqual({ kind: 'edit', range: { min: '2026-11-03', max: '2026-11-03' } });
+  });
+
+  it('開催中なら、提出した口コミの訪問日を範囲の中で選び直せる', () => {
+    expect(
+      authoringMode({
+        ...base,
+        occurrenceStatus: 'ongoing',
+        own: { status: 'rejected', visitedOn: '2026-11-03' },
       })
     ).toEqual({ kind: 'edit', range: { min: '2026-11-01', max: '2026-11-22' } });
   });

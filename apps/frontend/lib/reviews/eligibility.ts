@@ -37,8 +37,8 @@ export function visitDateRange(
 /**
  * 会員がこの開催の投稿のページで何をできるか (one-more-time #162)。投稿のページと Server Action の両方が使う。
  *
- * - 提出した口コミ (下書き以外) は、開催の状態に関わらず直せる (仕様: いつでも編集)。選べる訪問日が
- *   無くなった開催では、前の訪問日だけを選べる (変えると DB のトリガが止める)
+ * - 提出した口コミ (下書き以外) は、開催の状態に関わらず直せる (仕様: いつでも編集)。書けない開催
+ *   (中止・開催前・日程未発表) や選べる日が無い開催では、前の訪問日だけを選べる (変えると DB のトリガが止める)
  * - 新しく書く・下書きは、開催中か終了の開催で、選べる訪問日がある時だけ
  */
 export type DateRange = { min: string; max: string };
@@ -58,7 +58,9 @@ export function authoringMode(input: {
   const range = visitDateRange(input.startsOn, input.endsOn, input.today);
   const { own } = input;
   if (own && own.status !== 'draft') {
-    const editRange = range ?? (own.visitedOn ? { min: own.visitedOn, max: own.visitedOn } : null);
+    // 書けない開催 (中止など) では、訪問日を変えると DB のトリガが止めるので、前の訪問日に固定する
+    const pinned = own.visitedOn ? { min: own.visitedOn, max: own.visitedOn } : null;
+    const editRange = reviewBlockReason(input.occurrenceStatus) ? pinned : (range ?? pinned);
     return editRange
       ? { kind: 'edit', range: editRange }
       : { kind: 'blocked', reason: NO_RANGE_REASON };

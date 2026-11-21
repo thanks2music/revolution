@@ -194,6 +194,43 @@ describe('下書き・提出・編集・削除', () => {
     expect(await counts(occ.id)).toMatchObject({ rating_count: 0 });
   });
 
+  it('内容を変えない書き込みでは、状態も提出の日時も変わらない (出し直しの「変更なし」の判定が頼る)', async () => {
+    const occ = await ongoingOccurrence();
+    const member = await data.createMember();
+    const client = await signInAsMember(member);
+    const { data: inserted, error } = await client
+      .from('reviews')
+      .insert({
+        occurrence_id: occ.id,
+        user_id: member.userId,
+        rating: 2,
+        visited_on: jstDate(-1),
+        body: '同じ本文',
+      })
+      .select('id, submitted_at')
+      .single();
+    if (error) throw error;
+    await data.admin
+      .from('reviews')
+      .update({ status: 'rejected', reason_code: 'spam' })
+      .eq('id', inserted.id);
+
+    const { data: rows, error: editError } = await client
+      .from('reviews')
+      .update({ rating: 2, visited_on: jstDate(-1), body: '同じ本文' })
+      .eq('id', inserted.id)
+      .select('submitted_at');
+
+    expect(editError).toBeNull();
+    expect(rows?.[0]?.submitted_at).toBe(inserted.submitted_at);
+    const { data: after } = await data.admin
+      .from('reviews')
+      .select('status')
+      .eq('id', inserted.id)
+      .single();
+    expect(after).toMatchObject({ status: 'rejected' });
+  });
+
   it('削除は論理削除で、集計から外れ、同じ開催にもう一度書ける', async () => {
     const occ = await ongoingOccurrence();
     const member = await data.createMember();

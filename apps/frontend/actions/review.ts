@@ -98,6 +98,10 @@ const FAILURES = {
     error: '内容が前と同じです。直してから、出し直してください',
   },
   unexpected: { ok: false, error: '投稿できませんでした。時間をおいてもう一度お試しください' },
+  draftConflict: {
+    ok: false,
+    error: 'ほかの端末で同じ開催の口コミを書き始めています。ページを読み込み直してください',
+  },
   draftUnexpected: {
     ok: false,
     error: '下書きを保存できませんでした。時間をおいてもう一度お試しください',
@@ -293,9 +297,8 @@ async function saveDraftAction(
   const outcome = await guardWrite(() =>
     saveDraft(admin, { profileId, occurrenceId: detail.occurrence.id, content: parsed.data })
   );
-  // 同時に 2 つの端末で最初の下書きを作った (部分 unique) 時も、もう片方を開き直してもらう
-  if (isFailure(outcome))
-    return outcome === FAILURES.duplicate ? FAILURES.alreadySubmitted : outcome;
+  // 同時に 2 つの端末で最初の下書きを作った (部分 unique)。もう片方を開き直してもらう
+  if (isFailure(outcome)) return outcome === FAILURES.duplicate ? FAILURES.draftConflict : outcome;
   return outcome.kind === 'saved' ? { ok: true } : FAILURES.alreadySubmitted;
 }
 
