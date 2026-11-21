@@ -88,23 +88,26 @@ export default async function MyPage() {
         />
 
         {/* 自分の口コミ (Figma #12 `83:191`) */}
-        <div className="mt-12">
-          <h2 className="font-display text-xl text-ink-strong md:text-2xl">
-            自分の口コミ
-            {ownReviews && (
-              <span className="font-numeric ml-2 text-sm text-ink-muted tabular-nums">
-                {ownReviews.length}
-              </span>
+        {/* 鍵の無い環境 (Preview など) では、欄そのものを出さない */}
+        {ownReviews !== 'unavailable' && (
+          <div className="mt-12">
+            <h2 className="font-display text-xl text-ink-strong md:text-2xl">
+              自分の口コミ
+              {ownReviews && (
+                <span className="font-numeric ml-2 text-sm text-ink-muted tabular-nums">
+                  {ownReviews.length}
+                </span>
+              )}
+            </h2>
+            {ownReviews ? (
+              <OwnReviewList reviews={ownReviews} />
+            ) : (
+              <p className="mt-6 text-sm text-ink-muted">
+                口コミを読み込めませんでした。時間をおいて、ページを読み込み直してください。
+              </p>
             )}
-          </h2>
-          {ownReviews ? (
-            <OwnReviewList reviews={ownReviews} />
-          ) : (
-            <p className="mt-6 text-sm text-ink-muted">
-              口コミを読み込めませんでした。時間をおいて、ページを読み込み直してください。
-            </p>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* いいね一覧 */}
         <div className="mt-12">
@@ -161,13 +164,15 @@ export default async function MyPage() {
 
 /**
  * 会員の口コミ。理由と訪問日は本人にだけ見せる列なので、サーバーが service role で読む
- * (`lib/reviews/own-reviews.ts`)。読めない時は null にして、ページの残りは出す
+ * (`lib/reviews/own-reviews.ts`)。読めない時は null (「読み込めませんでした」を出し、ページの残りは出す)。
+ * service role の鍵が無い環境 (Preview など) では 'unavailable' (欄を出さない。開くたびに Sentry へ送らない)
  */
-async function loadOwnReviews(profileId: string): Promise<OwnReviewListItem[] | null> {
+async function loadOwnReviews(
+  profileId: string
+): Promise<OwnReviewListItem[] | null | 'unavailable'> {
   try {
     const admin = createAdminClient();
-    // 鍵の無い環境 (Preview など) では欄を出さない。開くたびに Sentry へ送らない (getOwnReviewState と同じ)
-    if (!admin) return null;
+    if (!admin) return 'unavailable';
     return await listOwnReviews(admin, profileId);
   } catch (error) {
     Sentry.captureException(error, { tags: { page: 'mypage' } });
