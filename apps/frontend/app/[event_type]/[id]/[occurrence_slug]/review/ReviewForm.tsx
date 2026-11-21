@@ -104,8 +104,8 @@ export function ReviewForm(props: ReviewFormProps) {
         </p>
       </div>
 
-      <fieldset className="pt-5 text-center">
-        <legend className="w-full text-sm text-ink-muted">この開催の満足度は?</legend>
+      <div className="pt-5 text-center">
+        <p className="text-sm text-ink-muted">この開催の満足度は?</p>
         <div className="flex justify-center gap-1 pt-2" role="radiogroup" aria-label="星の数">
           {([1, 2, 3, 4, 5] as const).map(value => (
             <button
@@ -132,7 +132,7 @@ export function ReviewForm(props: ReviewFormProps) {
           {rating !== null ? RATING_LABELS[rating as 1 | 2 | 3 | 4 | 5] : ''}
         </p>
         <FieldError message={fieldErrors.rating} />
-      </fieldset>
+      </div>
 
       <div className="flex flex-col gap-2 pt-5">
         <FieldLabel htmlFor={ids.visitedOn} required>
@@ -220,7 +220,7 @@ export function ReviewForm(props: ReviewFormProps) {
           }`}
         >
           <span
-            className={`absolute top-0.5 size-5.5 rounded-full bg-white shadow transition-transform ${
+            className={`absolute top-0.5 left-0 size-5.5 rounded-full bg-white shadow transition-transform ${
               hasSpoiler ? 'translate-x-5' : 'translate-x-0.5'
             }`}
           />

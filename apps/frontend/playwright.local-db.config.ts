@@ -89,6 +89,9 @@ export default defineConfig({
       DATABASE_URL: supabase.dbUrl,
       MIGRATION_DATABASE_URL: supabase.dbUrl,
       NEXT_PUBLIC_SITE_URL: baseURL,
+      // 口コミの審査は偽物 (本文の目印で結果が決まる)。本物の Gemini を呼ばない
+      REVIEW_SCREENER: 'fake',
+      GEMINI_API_KEY: '',
     },
   },
 });
