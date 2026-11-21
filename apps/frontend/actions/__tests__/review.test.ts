@@ -29,6 +29,16 @@ jest.mock('@/lib/reviews/screener', () => ({
   getReviewScreener: jest.fn(async () => ({ screen: jest.fn() })),
 }));
 jest.mock('@/lib/reviews/operations', () => ({ screenSubmittedReview: jest.fn() }));
+jest.mock('@/lib/reviews/authoring', () => {
+  const actual = jest.requireActual('@/lib/reviews/authoring') as Record<string, unknown>;
+  return {
+    toContentColumns: actual.toContentColumns,
+    findOwnReview: jest.fn(),
+    saveDraft: jest.fn(),
+    submitDraft: jest.fn(),
+    deleteOwnReview: jest.fn(),
+  };
+});
 jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }));
 jest.mock('next/server', () => ({ after: jest.fn() }));
 jest.mock('@/lib/supabase/server', () => {
@@ -36,6 +46,9 @@ jest.mock('@/lib/supabase/server', () => {
   builder.insert = jest.fn(() => builder);
   builder.select = jest.fn(() => builder);
   builder.single = jest.fn();
+  builder.update = jest.fn(() => builder);
+  builder.eq = jest.fn();
+  builder.is = jest.fn(() => builder);
   return {
     __builder: builder,
     createClient: jest.fn(async () => ({ from: jest.fn(() => builder) })),
@@ -46,10 +59,11 @@ import * as Sentry from '@sentry/nextjs';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 
-import { getOwnReviewState, submitReview } from '@/actions/review';
+import { deleteReview, getOwnReviewState, saveReviewDraft, submitReview } from '@/actions/review';
 import { getCurrentMember } from '@/lib/auth/member';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
+import { deleteOwnReview, findOwnReview, saveDraft, submitDraft } from '@/lib/reviews/authoring';
 
 const builder = (jest.requireMock('@/lib/supabase/server') as { __builder: any }).__builder;
 
@@ -66,7 +80,7 @@ const INPUT = {
 
 function detail(status = 'ongoing') {
   return {
-    occurrence: { id: 34, slug: 'shibuya', status },
+    occurrence: { id: 34, slug: 'shibuya', status, startsOn: '2026-01-01', endsOn: null },
     event: { id: 12, primaryCategory: { slug: 'collabo-cafe' } },
   };
 }
@@ -78,6 +92,10 @@ beforeEach(() => {
   builder.insert.mockReturnValue(builder);
   builder.select.mockReturnValue(builder);
   builder.single.mockResolvedValue({ data: { id: 56 }, error: null });
+  builder.update.mockReturnValue(builder);
+  builder.eq.mockReturnValue(builder);
+  builder.is.mockReturnValue(builder);
+  (findOwnReview as jest.Mock).mockResolvedValue(null);
 });
 
 it('開催をサーバーで引き、投稿者は会員の profiles.id で挿入する', async () => {
@@ -243,24 +261,15 @@ it('開催の状態のトリガの拒否は、まだ書けない扱いにする'
 });
 
 describe('getOwnReviewState', () => {
-  const own = (jest.requireMock('@/lib/supabase/admin') as { __ownBuilder: any }).__ownBuilder;
-  const row = (fields: Record<string, unknown>) =>
-    own.maybeSingle.mockResolvedValue({
-      data: {
-        status: 'pending',
-        reason_code: null,
-        reason_note: null,
-        visited_on: '2026-11-20',
-        ...fields,
-      },
-      error: null,
+  // 本人の行は操作の層 (findOwnReview) が読む。ここでは読んだ結果だけを与える
+  const row = (fields: { status?: string; reason_code?: string | null; reason_note?: string }) =>
+    (findOwnReview as jest.Mock).mockResolvedValue({
+      id: 1,
+      status: fields.status ?? 'pending',
+      reasonCode: fields.reason_code ?? null,
+      reasonNote: fields.reason_note ?? null,
+      visitedOn: '2026-11-20',
     });
-
-  beforeEach(() => {
-    own.select.mockReturnValue(own);
-    own.eq.mockReturnValue(own);
-    own.is.mockReturnValue(own);
-  });
 
   it.each([['pending'], ['needs_review']])('%s は本人には審査中として見せる', async status => {
     row({ status, reason_code: status === 'needs_review' ? 'ai_failure' : null });
@@ -287,15 +296,14 @@ describe('getOwnReviewState', () => {
     row({});
     await getOwnReviewState(34);
 
-    expect(own.eq).toHaveBeenCalledWith('occurrence_id', 34);
-    expect(own.eq).toHaveBeenCalledWith('user_id', 'profile-1');
+    expect(findOwnReview).toHaveBeenCalledWith(expect.anything(), 'profile-1', 34);
   });
 
   it('下書き・口コミが無い・会員でない時は null', async () => {
     row({ status: 'draft' });
     await expect(getOwnReviewState(34)).resolves.toBeNull();
 
-    own.maybeSingle.mockResolvedValue({ data: null, error: null });
+    (findOwnReview as jest.Mock).mockResolvedValue(null);
     await expect(getOwnReviewState(34)).resolves.toBeNull();
 
     (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'unauthenticated' });
@@ -304,6 +312,197 @@ describe('getOwnReviewState', () => {
 
   it('不正な開催 ID には問い合わせない', async () => {
     await expect(getOwnReviewState(0)).resolves.toBeNull();
-    expect(own.maybeSingle).not.toHaveBeenCalled();
+    expect(findOwnReview).not.toHaveBeenCalled();
+  });
+});
+
+describe('既に口コミがある開催への提出', () => {
+  const EXISTING = {
+    submittedAt: '2026-11-20T00:00:00Z',
+    rating: 3,
+    visitedOn: '2026-11-19',
+    attendance: null,
+    foodCostBand: null,
+    goodsCostBand: null,
+    body: '前の本文',
+    hasSpoiler: false,
+  };
+
+  it('下書きなら提出する (状態はサーバーが書く) し、審査を走らせる', async () => {
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 70, status: 'draft', ...EXISTING });
+    (submitDraft as jest.Mock).mockResolvedValue(true);
+
+    await expect(submitReview(ROUTE, INPUT)).resolves.toEqual({ ok: true, reviewId: 70 });
+    expect(submitDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ profileId: 'profile-1', reviewId: 70 })
+    );
+    expect(builder.insert).not.toHaveBeenCalled();
+    expect(after).toHaveBeenCalled();
+  });
+
+  it('別の端末で先に提出された下書きは、提出済みとして返す', async () => {
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 70, status: 'draft', ...EXISTING });
+    (submitDraft as jest.Mock).mockResolvedValue(false);
+
+    await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false });
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it('提出した口コミなら内容の変更にし、公開中だったらページをすぐ作り直す', async () => {
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 71, status: 'published', ...EXISTING });
+    builder.select.mockResolvedValueOnce({
+      data: [{ submitted_at: '2026-11-22T00:00:00Z' }],
+      error: null,
+    });
+
+    await expect(submitReview(ROUTE, INPUT)).resolves.toEqual({ ok: true, reviewId: 71 });
+    expect(builder.update).toHaveBeenCalledWith(
+      expect.objectContaining({ body: '楽しかった', rating: 4 })
+    );
+    expect(builder.eq).toHaveBeenCalledWith('id', 71);
+    expect(revalidatePath).toHaveBeenCalledWith('/collabo-cafe/12/shibuya');
+    expect(after).toHaveBeenCalled();
+  });
+
+  it('提出の時の DB のトリガの拒否は、利用者向けの文にする', async () => {
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 70, status: 'draft', ...EXISTING });
+    (submitDraft as jest.Mock).mockRejectedValue({
+      code: '23514',
+      message: 'review visited_on is out of range',
+    });
+
+    await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({
+      ok: false,
+      fieldErrors: { visitedOn: expect.any(String) },
+    });
+  });
+});
+
+describe('提出した口コミの直し方', () => {
+  const EXISTING = {
+    submittedAt: '2026-11-20T00:00:00Z',
+    rating: 4,
+    visitedOn: '2026-11-19',
+    attendance: null,
+    foodCostBand: null,
+    goodsCostBand: null,
+    body: '楽しかった',
+    hasSpoiler: false,
+  };
+
+  it('内容が前と同じなら出し直さない (審査に回らないのに成功に見せない)', async () => {
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 72, status: 'rejected', ...EXISTING });
+    // トリガが内容の変化を見つけなければ、提出の日時は進まない
+    builder.select.mockResolvedValueOnce({
+      data: [{ submitted_at: EXISTING.submittedAt }],
+      error: null,
+    });
+
+    await expect(submitReview(ROUTE, { ...INPUT, body: EXISTING.body })).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('前と同じ'),
+    });
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it('中止になった開催でも、提出した口コミは直せる', async () => {
+    (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail('cancelled'));
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 73, status: 'published', ...EXISTING });
+    builder.select.mockResolvedValueOnce({
+      data: [{ submitted_at: '2026-11-22T00:00:00Z' }],
+      error: null,
+    });
+
+    await expect(submitReview(ROUTE, { ...INPUT, ...EXISTING, body: '直した' })).resolves.toEqual({
+      ok: true,
+      reviewId: 73,
+    });
+  });
+
+  it('中止になった開催の下書きは、提出できない', async () => {
+    (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail('cancelled'));
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 74, status: 'draft', ...EXISTING });
+
+    await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false });
+    expect(submitDraft).not.toHaveBeenCalled();
+  });
+
+  it('読んだ後に別の端末で削除されていたら、見つからない扱いにする', async () => {
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 75, status: 'published', ...EXISTING });
+    builder.select.mockResolvedValueOnce({ data: [], error: null });
+
+    await expect(submitReview(ROUTE, { ...INPUT, body: '直した' })).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(after).not.toHaveBeenCalled();
+  });
+});
+
+describe('saveReviewDraft', () => {
+  it('星と訪問日が空でも保存する', async () => {
+    (saveDraft as jest.Mock).mockResolvedValue({ kind: 'saved', reviewId: 80 });
+
+    await expect(
+      saveReviewDraft(ROUTE, { ...INPUT, rating: null, visitedOn: null })
+    ).resolves.toEqual({ ok: true });
+    expect(saveDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ profileId: 'profile-1', occurrenceId: 34 })
+    );
+  });
+
+  it('もう提出した口コミがあれば、下書きにはしない', async () => {
+    (saveDraft as jest.Mock).mockResolvedValue({ kind: 'not_draft' });
+
+    await expect(saveReviewDraft(ROUTE, INPUT)).resolves.toMatchObject({ ok: false });
+  });
+
+  it('開催前の開催には下書きも保存できない', async () => {
+    (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail('scheduled'));
+
+    await expect(saveReviewDraft(ROUTE, INPUT)).resolves.toMatchObject({ ok: false });
+    expect(saveDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteReview', () => {
+  it('本人の口コミを削除し、公開中だったらページを作り直す', async () => {
+    (deleteOwnReview as jest.Mock).mockResolvedValue({
+      kind: 'deleted',
+      occurrenceId: 34,
+      wasPublished: true,
+    });
+
+    await expect(deleteReview(ROUTE, 71)).resolves.toEqual({ ok: true });
+    expect(deleteOwnReview).toHaveBeenCalledWith(expect.anything(), {
+      profileId: 'profile-1',
+      occurrenceId: 34,
+      reviewId: 71,
+    });
+    expect(revalidatePath).toHaveBeenCalledWith('/collabo-cafe/12/shibuya');
+  });
+
+  it('本人のものでない・無い口コミは見つからない扱いにする', async () => {
+    (deleteOwnReview as jest.Mock).mockResolvedValue({ kind: 'not_found' });
+
+    await expect(deleteReview(ROUTE, 71)).resolves.toMatchObject({ ok: false });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('onboarding を済ませていない会員には、プロフィールの登録を案内する', async () => {
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'not_onboarded' });
+
+    await expect(deleteReview(ROUTE, 71)).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('プロフィール'),
+    });
+  });
+
+  it('未ログインは消せない', async () => {
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'unauthenticated' });
+
+    await expect(deleteReview(ROUTE, 71)).resolves.toMatchObject({ ok: false, needsAuth: true });
+    expect(deleteOwnReview).not.toHaveBeenCalled();
   });
 });

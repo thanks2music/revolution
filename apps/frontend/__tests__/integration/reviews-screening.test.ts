@@ -39,7 +39,13 @@ describe('提出された口コミの審査', () => {
     const client = await signInAsMember(member);
     const { data: review, error } = await client
       .from('reviews')
-      .insert({ occurrence_id: occurrence.id, user_id: member.userId, rating: 4, visited_on: jstDate(-1), body })
+      .insert({
+        occurrence_id: occurrence.id,
+        user_id: member.userId,
+        rating: 4,
+        visited_on: jstDate(-1),
+        body,
+      })
       .select('id')
       .single();
     if (error) throw error;
@@ -59,10 +65,17 @@ describe('提出された口コミの審査', () => {
   it('問題がなければ公開にし、ログインしていない人にも見える', async () => {
     const { reviewId, occurrenceId } = await submitted('パフェが美味しかった');
 
-    const outcome = await screenSubmittedReview(reviewId, { screener: createFakeScreener(), db: data!.admin });
+    const outcome = await screenSubmittedReview(reviewId, {
+      screener: createFakeScreener(),
+      db: data!.admin,
+    });
 
     expect(outcome).toEqual({ kind: 'screened', status: 'published', occurrenceId });
-    expect(await row(reviewId)).toMatchObject({ status: 'published', reason_code: null, ai_model: 'fake-screener' });
+    expect(await row(reviewId)).toMatchObject({
+      status: 'published',
+      reason_code: null,
+      ai_model: 'fake-screener',
+    });
     const { data: visible } = await anonClient().from('reviews').select('id').eq('id', reviewId);
     expect(visible).toHaveLength(1);
   });
@@ -72,7 +85,11 @@ describe('提出された口コミの審査', () => {
 
     await screenSubmittedReview(reviewId, { screener: createFakeScreener(), db: data!.admin });
 
-    expect(await row(reviewId)).toMatchObject({ status: 'rejected', reason_code: 'resale', ai_reason: 'fake: resale' });
+    expect(await row(reviewId)).toMatchObject({
+      status: 'rejected',
+      reason_code: 'resale',
+      ai_reason: 'fake: resale',
+    });
   });
 
   it('AI が迷えば BOSS の確認待ちにする', async () => {
@@ -89,7 +106,11 @@ describe('提出された口コミの審査', () => {
     await screenSubmittedReview(reviewId, { screener: createFakeScreener(), db: data!.admin });
 
     const review = await row(reviewId);
-    expect(review).toMatchObject({ status: 'needs_review', reason_code: 'ai_failure', ai_error: 'fake failure' });
+    expect(review).toMatchObject({
+      status: 'needs_review',
+      reason_code: 'ai_failure',
+      ai_error: 'fake failure',
+    });
     expect(review.ai_screened_at).not.toBeNull();
   });
 
@@ -97,7 +118,10 @@ describe('提出された口コミの審査', () => {
     const { reviewId } = await submitted('パフェが美味しかった');
     await screenSubmittedReview(reviewId, { screener: createFakeScreener(), db: data!.admin });
 
-    const second = await screenSubmittedReview(reviewId, { screener: createFakeScreener(), db: data!.admin });
+    const second = await screenSubmittedReview(reviewId, {
+      screener: createFakeScreener(),
+      db: data!.admin,
+    });
 
     expect(second).toEqual({ kind: 'skipped', reason: 'not_pending' });
   });
@@ -121,9 +145,27 @@ describe('提出された口コミの審査', () => {
     expect(await row(reviewId)).toMatchObject({ status: 'pending' });
   });
 
+  it('審査の間に削除されたら、公開しない (集計にも入らない)', async () => {
+    const { reviewId } = await submitted('パフェが美味しかった');
+    const racing: ReviewScreener = {
+      async screen(input) {
+        await data!.admin
+          .from('reviews')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('id', reviewId);
+        return createFakeScreener().screen(input);
+      },
+    };
+
+    const outcome = await screenSubmittedReview(reviewId, { screener: racing, db: data!.admin });
+
+    expect(outcome).toEqual({ kind: 'skipped', reason: 'superseded' });
+    expect(await row(reviewId)).toMatchObject({ status: 'pending' });
+  });
+
   it('無い口コミには何もしない', async () => {
     await expect(
-      screenSubmittedReview(2_147_483_000, { screener: createFakeScreener(), db: data!.admin }),
+      screenSubmittedReview(2_147_483_000, { screener: createFakeScreener(), db: data!.admin })
     ).resolves.toEqual({ kind: 'skipped', reason: 'not_found' });
   });
 });

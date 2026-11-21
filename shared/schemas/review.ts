@@ -153,11 +153,21 @@ export const ReviewSubmitSchema = z.object({
     .string()
     .trim()
     .max(REVIEW_BODY_MAX_CHARS, `本文は ${REVIEW_BODY_MAX_CHARS} 字までです`)
-    .transform((value) => (value === '' ? null : value))
+    .transform(value => (value === '' ? null : value))
     .nullable(),
   hasSpoiler: z.boolean(),
 });
 export type ReviewSubmitInput = z.input<typeof ReviewSubmitSchema>;
+
+/**
+ * 下書きの保存の入力 (one-more-time #162)。星と訪問日は空でよい (途中まで書ける)。入っていれば提出と同じ形を求める。
+ * 訪問日の範囲は、入っていれば DB のトリガが確かめる
+ */
+export const ReviewDraftSchema = ReviewSubmitSchema.extend({
+  rating: ReviewSubmitSchema.shape.rating.nullable(),
+  visitedOn: ReviewSubmitSchema.shape.visitedOn.nullable(),
+});
+export type ReviewDraftInput = z.input<typeof ReviewDraftSchema>;
 
 /**
  * レビュー本文の更新スキーマ。**DB の列単位の `grant update` (0018) と 1:1 に対応させる**

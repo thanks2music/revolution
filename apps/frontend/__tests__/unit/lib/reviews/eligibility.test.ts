@@ -1,4 +1,5 @@
 import {
+  authoringMode,
   ownReviewStatus,
   reviewBlockReason,
   reviewSectionMode,
@@ -75,5 +76,80 @@ describe('ownReviewStatus', () => {
     ['hidden', 'hidden'],
   ] as const)('%s → %p', (status, own) => {
     expect(ownReviewStatus(status)).toBe(own);
+  });
+});
+
+describe('authoringMode', () => {
+  const base = { startsOn: '2026-11-01', endsOn: '2026-11-30', today: '2026-11-22' };
+
+  it('口コミが無ければ新しく書け、下書きがあれば続きになる (選べる日は開始日から今日まで)', () => {
+    expect(authoringMode({ ...base, occurrenceStatus: 'ongoing', own: null })).toEqual({
+      kind: 'new',
+      range: { min: '2026-11-01', max: '2026-11-22' },
+    });
+    expect(
+      authoringMode({
+        ...base,
+        occurrenceStatus: 'ongoing',
+        own: { status: 'draft', visitedOn: null },
+      })
+    ).toMatchObject({ kind: 'draft' });
+  });
+
+  it('中止の開催には、新しく書けず、下書きも続けられない', () => {
+    expect(authoringMode({ ...base, occurrenceStatus: 'cancelled', own: null })).toMatchObject({
+      kind: 'blocked',
+    });
+    expect(
+      authoringMode({
+        ...base,
+        occurrenceStatus: 'cancelled',
+        own: { status: 'draft', visitedOn: null },
+      })
+    ).toMatchObject({ kind: 'blocked' });
+  });
+
+  it('提出した口コミは、中止になった開催でも直せる (訪問日は前の日に固定する)', () => {
+    expect(
+      authoringMode({
+        ...base,
+        occurrenceStatus: 'cancelled',
+        own: { status: 'published', visitedOn: '2026-11-03' },
+      })
+    ).toEqual({ kind: 'edit', range: { min: '2026-11-03', max: '2026-11-03' } });
+  });
+
+  it('開催中なら、提出した口コミの訪問日を範囲の中で選び直せる', () => {
+    expect(
+      authoringMode({
+        ...base,
+        occurrenceStatus: 'ongoing',
+        own: { status: 'rejected', visitedOn: '2026-11-03' },
+      })
+    ).toEqual({ kind: 'edit', range: { min: '2026-11-01', max: '2026-11-22' } });
+  });
+
+  it('選べる日が無くなった開催では、提出した口コミの前の訪問日だけを選べる', () => {
+    expect(
+      authoringMode({
+        startsOn: null,
+        endsOn: null,
+        today: '2026-11-22',
+        occurrenceStatus: 'unscheduled',
+        own: { status: 'rejected', visitedOn: '2026-10-05' },
+      })
+    ).toEqual({ kind: 'edit', range: { min: '2026-10-05', max: '2026-10-05' } });
+  });
+
+  it('訪問日の無い提出した口コミ (DB の CHECK で起きない) は、選べる日が無ければ止める', () => {
+    expect(
+      authoringMode({
+        startsOn: null,
+        endsOn: null,
+        today: '2026-11-22',
+        occurrenceStatus: 'unscheduled',
+        own: { status: 'published', visitedOn: null },
+      })
+    ).toMatchObject({ kind: 'blocked' });
   });
 });

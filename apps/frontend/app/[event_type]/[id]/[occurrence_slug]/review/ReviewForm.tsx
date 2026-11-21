@@ -18,13 +18,20 @@ import {
   type ReviewGoodsCostBand,
 } from '@revolution/schemas/review';
 
-import { submitReview, type ReviewRouteParams, type SubmitReviewFailure } from '@/actions/review';
+import {
+  saveReviewDraft,
+  submitReview,
+  type ReviewRouteParams,
+  type SubmitReviewFailure,
+} from '@/actions/review';
 import {
   ATTENDANCE_LABELS,
   FOOD_COST_BAND_LABELS,
   GOODS_COST_BAND_LABELS,
   RATING_LABELS,
 } from '@/lib/reviews/labels';
+
+import type { OwnReview } from '@/lib/reviews/authoring';
 
 import { ReviewSubmitted } from './ReviewSubmitted';
 
@@ -39,18 +46,31 @@ export type ReviewFormProps = {
   maxDate: string;
   occurrencePath: string;
   shareUrl: string;
+  /** 会員のこの開催の口コミ。あればその編集になる */
+  initial?: OwnReview;
 };
 
 type Rating = keyof typeof RATING_LABELS;
 
 export function ReviewForm(props: ReviewFormProps) {
-  const [rating, setRating] = useState<Rating | null>(null);
-  const [visitedOn, setVisitedOn] = useState(props.maxDate);
-  const [attendance, setAttendance] = useState<ReviewAttendance | null>(null);
-  const [foodCostBand, setFoodCostBand] = useState<ReviewFoodCostBand | null>(null);
-  const [goodsCostBand, setGoodsCostBand] = useState<ReviewGoodsCostBand | null>(null);
-  const [body, setBody] = useState('');
-  const [hasSpoiler, setHasSpoiler] = useState(false);
+  const initial = props.initial;
+  const [rating, setRating] = useState<Rating | null>((initial?.rating as Rating | null) ?? null);
+  // 新しい口コミは今日 (選べる最後の日) から。下書きで空のままなら空にしておく
+  const [visitedOn, setVisitedOn] = useState(initial ? (initial.visitedOn ?? '') : props.maxDate);
+  const [attendance, setAttendance] = useState<ReviewAttendance | null>(
+    initial?.attendance ?? null
+  );
+  const [foodCostBand, setFoodCostBand] = useState<ReviewFoodCostBand | null>(
+    initial?.foodCostBand ?? null
+  );
+  const [goodsCostBand, setGoodsCostBand] = useState<ReviewGoodsCostBand | null>(
+    initial?.goodsCostBand ?? null
+  );
+  const [body, setBody] = useState(initial?.body ?? '');
+  const [hasSpoiler, setHasSpoiler] = useState(initial?.hasSpoiler ?? false);
+  // 提出した口コミの編集か。下書きを保存できるのは、まだ提出していない口コミだけ (提出の後は、直して出し直す)
+  const isResubmit = initial !== undefined && initial.status !== 'draft';
+  const [draftSaved, setDraftSaved] = useState(false);
   // 提出の失敗 (全体の文・欄ごとの誤り・ログインが要るか) を 1 つで持つ
   const [failure, setFailure] = useState<SubmitReviewFailure | null>(null);
   const fieldErrors = failure?.fieldErrors ?? {};
@@ -72,39 +92,56 @@ export function ReviewForm(props: ReviewFormProps) {
 
   const canSubmit = rating !== null && visitedOn !== '' && !pending;
 
-  function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    // 星が無い間は送信のボタンを押せない (型を絞るためだけの判定)
-    if (rating === null) return;
+  // 送る内容 (提出と下書きの保存で共通。下書きは星と訪問日が空でよい)
+  const content = { attendance, foodCostBand, goodsCostBand, body, hasSpoiler };
+
+  /** action を走らせ、失敗は欄の下と全体の文に出す。通信の失敗は入力を残したまま、もう一度押せるようにする */
+  function run<T extends { ok: true } | SubmitReviewFailure>(
+    action: () => Promise<T>,
+    onOk: () => void,
+    networkError: string
+  ) {
+    setDraftSaved(false);
     startTransition(async () => {
       try {
-        const result = await submitReview(props.route, {
-          rating,
-          visitedOn,
-          attendance,
-          foodCostBand,
-          goodsCostBand,
-          body,
-          hasSpoiler,
-        });
+        const result = await action();
         if (result.ok) {
-          setSubmittedAt(new Date());
-          window.scrollTo({ top: 0 });
+          setFailure(null);
+          onOk();
           return;
         }
-        setFailure(result);
+        setFailure(result as SubmitReviewFailure);
       } catch {
-        // 通信の失敗など。入力は残したまま、もう一度押せるようにする
-        setFailure({
-          ok: false,
-          error: '投稿できませんでした。通信を確かめて、もう一度お試しください',
-        });
+        setFailure({ ok: false, error: networkError });
       }
     });
   }
 
+  function onSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    // 星が無い間は送信のボタンを押せない (型を絞るためだけの判定)
+    if (rating === null) return;
+    run(
+      () => submitReview(props.route, { ...content, rating, visitedOn }),
+      () => {
+        setSubmittedAt(new Date());
+        window.scrollTo({ top: 0 });
+      },
+      '投稿できませんでした。通信を確かめて、もう一度お試しください'
+    );
+  }
+
+  function onSaveDraft() {
+    run(
+      () => saveReviewDraft(props.route, { ...content, rating, visitedOn: visitedOn || null }),
+      () => setDraftSaved(true),
+      '保存できませんでした。通信を確かめて、もう一度お試しください'
+    );
+  }
+
   return (
     <form onSubmit={onSubmit} className="flex flex-col" noValidate>
+      {initial && <EditingNotice status={initial.status} />}
       <div className="rounded-xl border border-(--line-soft) bg-primary-50/40 px-3 py-2 text-xs leading-relaxed text-ink-body">
         <p>{props.eventName}</p>
         <p className="text-ink-muted">
@@ -259,8 +296,23 @@ export function ReviewForm(props: ReviewFormProps) {
         disabled={!canSubmit}
         className="mt-5 w-full rounded-2xl bg-primary-strong p-4 font-display text-base font-bold text-white transition-colors hover:bg-primary-strong-hover disabled:opacity-50"
       >
-        {pending ? '投稿しています…' : '口コミを投稿する'}
+        {pending ? '送っています…' : isResubmit ? '直して出し直す' : '口コミを投稿する'}
       </button>
+      {!isResubmit && (
+        <button
+          type="button"
+          onClick={onSaveDraft}
+          disabled={pending}
+          className="mt-3 w-full rounded-2xl border border-(--line-soft) bg-white p-3 font-display text-sm font-bold text-ink-strong transition-colors hover:bg-muted disabled:opacity-50"
+        >
+          下書きを保存
+        </button>
+      )}
+      {draftSaved && (
+        <p role="status" className="pt-2 text-center text-xs text-ink-muted">
+          下書きを保存しました。別の端末からも続きを書けます（審査には回りません）
+        </p>
+      )}
       <p className="pt-2 text-center text-xs text-ink-muted">
         投稿された口コミは公開前に審査されます(通常1時間以内)
       </p>
@@ -354,6 +406,21 @@ function FieldError({ message }: { message?: string }) {
   return (
     <p role="alert" className="text-xs text-status-cancelled">
       {message}
+    </p>
+  );
+}
+
+/** 既にある口コミを開いた時の案内 (1 開催 1 件のため、もう 1 件ではなくその編集になる) */
+function EditingNotice(props: { status: OwnReview['status'] }) {
+  const text =
+    props.status === 'draft'
+      ? '保存した下書きの続きです。'
+      : props.status === 'published'
+        ? 'この開催にはもう口コミを書いています。公開中の口コミを直すと、もう一度審査されるまで公開されません。'
+        : 'この開催にはもう口コミを書いています。直して出し直すと、もう一度審査されます。';
+  return (
+    <p className="mb-4 rounded-xl border border-(--line-soft) bg-white p-3 text-sm text-ink-body">
+      {text}
     </p>
   );
 }

@@ -223,18 +223,81 @@ test('当たる本文は差し戻しになり、理由が残る', async ({ page,
     });
 });
 
-test('もう口コミがある開催では、書けない理由を出す', async ({ page, context, baseURL }) => {
+test('下書きは星と訪問日が空でも保存でき、別の端末から続けて提出できる', async ({
+  page,
+  context,
+  browser,
+  baseURL,
+}) => {
   const member = await data.createMember();
   await signIn(context, member, baseURL!);
-  const { path } = await occurrencePage({ startsOn: jstDate(-10), endsOn: jstDate(20) });
+  const { occurrenceId, path } = await occurrencePage({
+    startsOn: jstDate(-10),
+    endsOn: jstDate(20),
+  });
+
+  await page.goto(`${path}/review`);
+  await page.getByLabel(/^訪問日/).fill('');
+  await page.getByRole('textbox', { name: /^本文/ }).fill('途中まで書いた');
+  await page.getByRole('button', { name: '下書きを保存' }).click();
+  await expect(page.getByRole('status')).toContainText('下書きを保存しました');
+  // 下書きは審査に回らない
+  expect(await statusOf(occurrenceId, member.userId)).toMatchObject({ status: 'draft' });
+
+  // 別の端末 (別のブラウザのコンテキスト) から開くと、続きになる
+  const other = await browser.newContext();
+  await signIn(other, member, baseURL!);
+  const otherPage = await other.newPage();
+  await otherPage.goto(`${baseURL}${path}/review`);
+  await expect(otherPage.getByText('保存した下書きの続きです。')).toBeVisible();
+  await expect(otherPage.getByRole('textbox', { name: /^本文/ })).toHaveValue('途中まで書いた');
+  await otherPage.getByRole('radio', { name: /^4 つ星/ }).click();
+  await otherPage.getByLabel(/^訪問日/).fill(jstDate(-1));
+  await otherPage.getByRole('button', { name: '口コミを投稿する' }).click();
+  await expect(otherPage.getByRole('heading', { name: '投稿ステータス' })).toBeVisible();
+  await expect
+    .poll(() => statusOf(occurrenceId, member.userId), { timeout: 15_000 })
+    .toMatchObject({ status: 'published' });
+  await other.close();
+});
+
+test('もう口コミがある開催では、その編集になる。公開中に直すと審査し直し、最終編集日が出る', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const member = await data.createMember();
+  await signIn(context, member, baseURL!);
+  const { occurrenceId, path } = await occurrencePage({
+    startsOn: jstDate(-10),
+    endsOn: jstDate(20),
+  });
 
   await page.goto(`${path}/review`);
   await page.getByRole('radio', { name: /^5 つ星/ }).click();
+  await page.getByRole('textbox', { name: /^本文/ }).fill('最初の本文');
   await page.getByRole('button', { name: '口コミを投稿する' }).click();
   await expect(page.getByRole('heading', { name: '投稿ステータス' })).toBeVisible();
+  await expect
+    .poll(() => statusOf(occurrenceId, member.userId), { timeout: 15_000 })
+    .toMatchObject({ status: 'published' });
 
   await page.goto(`${path}/review`);
-  await expect(page.getByText('この開催には、もう口コミを書いています。')).toBeVisible();
+  await expect(page.getByText(/もう一度審査されるまで公開されません/)).toBeVisible();
+  await expect(page.getByRole('textbox', { name: /^本文/ })).toHaveValue('最初の本文');
+  // 提出した後は下書きに戻せない
+  await expect(page.getByRole('button', { name: '下書きを保存' })).toHaveCount(0);
+  await page.getByRole('textbox', { name: /^本文/ }).fill('直した本文');
+  await page.getByRole('button', { name: '直して出し直す' }).click();
+  await expect(page.getByRole('heading', { name: '投稿ステータス' })).toBeVisible();
+
+  await expect
+    .poll(() => statusOf(occurrenceId, member.userId), { timeout: 15_000 })
+    .toMatchObject({ status: 'published' });
+  await page.goto(path);
+  await expect(page.getByTestId('review-card')).toHaveCount(1);
+  await expect(page.getByTestId('review-card')).toContainText('直した本文');
+  await expect(page.getByTestId('review-card')).toContainText('最終編集');
 });
 
 test('開催前の開催には書けない', async ({ page, context, baseURL }) => {
