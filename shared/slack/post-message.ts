@@ -43,6 +43,8 @@ export type SlackPostResult = { ok: true } | { ok: false; code: string };
 
 /**
  * `AbortSignal.timeout` による中断か (fetch 本体と本文の読み込みのどちらでも起きる)。
+ * `AbortError` も時間切れとして扱うのは、この関数が渡す signal が `AbortSignal.timeout` だけだから。
+ * 呼び出し側の signal を受け付けるようにしたら、`AbortError` は別のコードに分けること。
  * `instanceof Error` では見ない。`DOMException` は実行環境によって別の realm の `Error` を
  * 継承していて (jest の node 環境など)、`instanceof` が偽になるため
  */

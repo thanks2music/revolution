@@ -43,6 +43,7 @@ export async function notifySlack(
   message: SlackMessage,
   env: SlackEnv = process.env,
 ): Promise<boolean> {
+  let failureCode: string;
   try {
     const token = presentEnvValue(env.SLACK_BOT_TOKEN);
     const channel = presentEnvValue(env[CHANNEL_KEY[destination]]);
@@ -56,14 +57,15 @@ export async function notifySlack(
       mentionUserId ? withMention(message, mentionUserId) : message,
     );
     if (result.ok) return true;
-
-    reportFailure(destination, result.code);
-    return false;
+    failureCode = result.code;
   } catch {
     // 組み立ての想定外の例外も呼び出し元へ伝えない (postSlackMessage 自体は投げない)
-    reportFailure(destination, 'unexpected_error');
-    return false;
+    failureCode = 'unexpected_error';
   }
+
+  // 記録は try の外で 1 回だけ行う (try の中だと、記録が投げた時に catch でもう一度記録する)
+  reportFailure(destination, failureCode);
+  return false;
 }
 
 /** Slack が 1 通に受け付ける blocks の上限 (https://docs.slack.dev/reference/methods/chat.postMessage) */
@@ -75,21 +77,27 @@ const MAX_BLOCKS = 50;
  */
 function withMention(message: SlackMessage, userId: string): SlackMessage {
   const mention = `<@${userId}>`;
-  const canAddBlock = message.blocks !== undefined && message.blocks.length < MAX_BLOCKS;
+  const { blocks } = message;
   return {
     text: `${mention} ${message.text}`,
-    blocks: canAddBlock
-      ? [{ type: 'section', text: { type: 'mrkdwn', text: mention } }, ...message.blocks!]
-      : message.blocks,
+    blocks:
+      blocks && blocks.length < MAX_BLOCKS
+        ? [{ type: 'section', text: { type: 'mrkdwn', text: mention } }, ...blocks]
+        : blocks,
   };
 }
 
+/** 失敗を記録する。記録が失敗しても例外を外へ出さない (notifySlack は例外を投げない約束のため) */
 function reportFailure(destination: SlackDestination, code: string): void {
-  console.error(`[Slack] chat.postMessage failed (${destination}): ${code}`);
-  // 通知が届かないこと自体は気づきにくいので残す。ユーザーの操作は成功しているので warning 止まり
-  Sentry.captureMessage('Slack notification failed', {
-    level: 'warning',
-    fingerprint: ['slack-notification-failed', code],
-    tags: { destination },
-  });
+  try {
+    console.error(`[Slack] chat.postMessage failed (${destination}): ${code}`);
+    // 通知が届かないこと自体は気づきにくいので残す。ユーザーの操作は成功しているので warning 止まり
+    Sentry.captureMessage('Slack notification failed', {
+      level: 'warning',
+      fingerprint: ['slack-notification-failed', code],
+      tags: { destination },
+    });
+  } catch {
+    // 記録の手段が無いので、ここでは何もしない
+  }
 }

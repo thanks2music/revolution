@@ -76,6 +76,15 @@ describe('notifySlack', () => {
     expect(body.blocks).toHaveLength(50);
   });
 
+  it('blocks が 49 個なら、メンションのブロックを足して 50 個にする', async () => {
+    fetchMock.mockResolvedValue(okResponse());
+    const blocks = Array.from({ length: 49 }, () => message.blocks[0]);
+
+    await notifySlack('attention', { text: message.text, blocks }, env);
+
+    expect(sentBody().blocks).toHaveLength(50);
+  });
+
   it('メンション先が未設定なら、要対応でもメンションなしで送る', async () => {
     fetchMock.mockResolvedValue(okResponse());
     const { SLACK_MENTION_USER_ID: _omitted, ...withoutMention } = env;
@@ -109,6 +118,16 @@ describe('notifySlack', () => {
         tags: { destination: 'notice' },
       }),
     );
+  });
+
+  it('失敗の記録そのもの (Sentry) が例外を投げても、例外を投げない', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: false, error: 'not_in_channel' })));
+    (Sentry.captureMessage as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('sentry is down');
+    });
+
+    await expect(notifySlack('notice', message, env)).resolves.toBe(false);
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
   });
 
   it('失敗のログと Sentry に token と本文を出さない', async () => {
