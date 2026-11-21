@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   check,
   date,
   index,
@@ -93,9 +94,32 @@ export const reviews = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'restrict' }),
-    rating: smallint('rating').notNull(),
+    // 下書きは途中まで書けるので nullable。下書き以外では必須 (reviews_required_unless_draft_chk)
+    rating: smallint('rating'),
     body: text('body'),
     visitedOn: date('visited_on'),
+    // 他人に見せる訪問年月 (月初の日付)。visited_on から作る生成列 (0018)
+    visitedMonth: date('visited_month').generatedAlwaysAs(
+      sql`(date_trunc('month', visited_on::timestamp))::date`,
+    ),
+    // ★0018 (S4 口コミ)。値の一覧と意味は `shared/schemas/review.ts` の定数が正本
+    // 状態。投稿者は書けず (列単位 GRANT)、投稿者の書き込みではトリガが審査中にする
+    status: text('status').notNull().default('pending'),
+    // 状態の理由 (審査の 4 種 / AI 審査の失敗)。reason_note は投稿者に見せる補足 (BOSS が書く)
+    reasonCode: text('reason_code'),
+    reasonNote: text('reason_note'),
+    // AI の判断の記録 (管理画面だけで見る。投稿者には見せない)
+    aiReason: text('ai_reason'),
+    aiError: text('ai_error'),
+    aiModel: text('ai_model'),
+    aiScreenedAt: timestamp('ai_screened_at', { withTimezone: true }),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    // 公開の後に内容を変えて出し直した日時 (一度でも公開後に編集した口コミだけ)
+    editedAt: timestamp('edited_at', { withTimezone: true }),
+    attendance: text('attendance'),
+    foodCostBand: text('food_cost_band'),
+    goodsCostBand: text('goods_cost_band'),
+    hasSpoiler: boolean('has_spoiler').notNull().default(false),
     // ★案 A: 「参考になった」件数の非正規化キャッシュ。列単位 GRANT で保護。
     helpfulCount: integer('helpful_count').notNull().default(0),
     // ソフトデリート。物理削除の経路は用意しない。
@@ -111,10 +135,43 @@ export const reviews = pgTable(
     //   EXPLAIN で実測確認済み (2026-08-06)。reviews は最も書き込みが多くなる
     //   テーブルなので、冗長な index 1 本の維持コストがそのまま効く
     //   (`/supabase-postgres-best-practices` query-composite-indexes)。
-    uniqueIndex('reviews_occurrence_user_uniq').on(table.occurrenceId, table.userId),
+    // ★0018: 論理削除していない行だけの部分 unique (削除の後に書き直せるように)
+    uniqueIndex('reviews_occurrence_user_uniq')
+      .on(table.occurrenceId, table.userId)
+      .where(sql`${table.deletedAt} is null`),
+    // 開催ページの一覧 (公開中を新着順) と公開の SELECT の policy に使う (0018)
+    index('reviews_occurrence_published_idx')
+      .on(table.occurrenceId, table.submittedAt.desc())
+      .where(sql`${table.status} = 'published' and ${table.deletedAt} is null`),
     // ★ RLS 述語 + ON DELETE RESTRICT + マイページの 3 経路が依存する。
     index('reviews_user_idx').on(table.userId),
     check('reviews_rating_chk', sql`${table.rating} between 1 and 5`),
+    // 0018 の CHECK。値は `shared/schemas/review.ts` の定数と一致させる (review.test.ts が確かめる)
+    check(
+      'reviews_status_chk',
+      sql`${table.status} in ('draft', 'pending', 'published', 'rejected', 'needs_review', 'hidden')`,
+    ),
+    check(
+      'reviews_reason_code_chk',
+      sql`${table.reasonCode} is null or ${table.reasonCode} in ('personal_info', 'abuse', 'spam', 'resale', 'ai_failure')`,
+    ),
+    check(
+      'reviews_attendance_chk',
+      sql`${table.attendance} is null or ${table.attendance} in ('walk_in', 'reservation', 'queue', 'lottery', 'other')`,
+    ),
+    check(
+      'reviews_food_cost_band_chk',
+      sql`${table.foodCostBand} is null or ${table.foodCostBand} in ('none', 'under_2000', '2000_3000', '3000_5000', 'over_5000')`,
+    ),
+    check(
+      'reviews_goods_cost_band_chk',
+      sql`${table.goodsCostBand} is null or ${table.goodsCostBand} in ('none', 'under_5000', '5000_10000', '10000_30000', 'over_30000')`,
+    ),
+    check('reviews_body_length_chk', sql`${table.body} is null or char_length(${table.body}) <= 2000`),
+    check(
+      'reviews_required_unless_draft_chk',
+      sql`${table.status} = 'draft' or (${table.rating} is not null and ${table.visitedOn} is not null)`,
+    ),
     // Layer2: DB CHECK。body は NULL or 非空白文字列 (Unicode-aware、events 継承)。
     check(
       'reviews_body_not_blank',

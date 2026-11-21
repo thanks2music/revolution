@@ -35,10 +35,14 @@ export type TestDataScope = {
   createOccurrence(input: {
     eventId: number;
     verified: boolean;
-    startsOn?: string;
+    /** null で日程未発表。省略すると今日 (JST) */
+    startsOn?: string | null;
     endsOn?: string;
+    cancelled?: boolean;
   }): Promise<{ id: number; slug: string }>;
   createMember(input?: { username?: string; onboarded?: boolean }): Promise<TestMember>;
+  /** テストの中で作られた口コミを後片付けに登録する (会員のクライアントで作った物など) */
+  trackReview(id: number): void;
   cleanup(): Promise<void>;
 };
 
@@ -78,8 +82,9 @@ export function createTestDataScope(): TestDataScope {
   async function createOccurrence(input: {
     eventId: number;
     verified: boolean;
-    startsOn?: string;
+    startsOn?: string | null;
     endsOn?: string;
+    cancelled?: boolean;
   }) {
     const slug = uniqueSlug('occ');
     const { data, error } = await admin
@@ -87,8 +92,9 @@ export function createTestDataScope(): TestDataScope {
       .insert({
         event_id: input.eventId,
         slug,
-        starts_on: input.startsOn ?? todayInJst(),
+        starts_on: input.startsOn === undefined ? todayInJst() : input.startsOn,
         ends_on: input.endsOn ?? null,
+        cancelled_at: input.cancelled ? new Date().toISOString() : null,
         verified: input.verified,
       })
       .select('id, slug')
@@ -103,6 +109,11 @@ export function createTestDataScope(): TestDataScope {
     const member = await createTestMember(admin, input);
     undo.push(() => deleteTestMember(admin, member.userId));
     return member;
+  }
+
+  function trackReview(id: number) {
+    // 口コミは開催 (restrict) と会員の profile (restrict) より先に消す。後から登録するので先に消える
+    undo.push(() => deleteById(admin, 'reviews', id));
   }
 
   async function cleanup() {
@@ -121,7 +132,7 @@ export function createTestDataScope(): TestDataScope {
     }
   }
 
-  return { admin, createEvent, createOccurrence, createMember, cleanup };
+  return { admin, createEvent, createOccurrence, createMember, trackReview, cleanup };
 }
 
 /** ログインしていない利用者 (anon) として読むクライアント */
@@ -227,6 +238,8 @@ function randomSuffix(): string {
   return randomUUID().replaceAll('-', '').slice(0, 12);
 }
 
-function todayInJst(): string {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date());
+/** 今日の日付 (JST、YYYY-MM-DD)。開催や訪問日の相対の日付を作るのに使う */
+export function todayInJst(offsetDays = 0): string {
+  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(date);
 }
