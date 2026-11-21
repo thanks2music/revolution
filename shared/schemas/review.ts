@@ -117,19 +117,18 @@ export const ReviewInsertSchema = createInsertSchema(reviews, {
   attendance: z.enum(REVIEW_ATTENDANCES).nullable().optional(),
   foodCostBand: z.enum(REVIEW_FOOD_COST_BANDS).nullable().optional(),
   goodsCostBand: z.enum(REVIEW_GOODS_COST_BANDS).nullable().optional(),
-}).omit({
-  helpfulCount: true,
-  deletedAt: true,
-  // ★0018: 状態・理由・AI の記録・提出と編集の日時はサーバーとトリガだけが書く (列単位 GRANT と二段)
-  status: true,
-  reasonCode: true,
-  reasonNote: true,
-  aiReason: true,
-  aiError: true,
-  aiModel: true,
-  aiScreenedAt: true,
-  submittedAt: true,
-  editedAt: true,
+}).pick({
+  // ★0018: 投稿者が書ける列だけを許可の一覧で持つ (列単位の `grant insert` と 1:1、review.test.ts が確かめる)。
+  // 状態・理由・AI の記録・日時・helpful_count・deleted_at はサーバーとトリガだけが書く
+  occurrenceId: true,
+  userId: true,
+  rating: true,
+  body: true,
+  visitedOn: true,
+  attendance: true,
+  foodCostBand: true,
+  goodsCostBand: true,
+  hasSpoiler: true,
 });
 
 /**
@@ -161,9 +160,8 @@ export const ReviewSubmitSchema = z.object({
 export type ReviewSubmitInput = z.input<typeof ReviewSubmitSchema>;
 
 /**
- * レビュー本文の更新スキーマ。**DB の列単位 GRANT と 1:1 に対応させる**
- * (0018 の `grant update (rating, body, visited_on, attendance, food_cost_band,
- * goods_cost_band, has_spoiler, deleted_at)`。deleted_at は ReviewSoftDeleteSchema)。
+ * レビュー本文の更新スキーマ。**DB の列単位の `grant update` (0018) と 1:1 に対応させる**
+ * (review.test.ts が migration と照らし合わせる)。
  *
  * `occurrence_id` / `user_id` / `helpful_count` を含めないのは、
  * 前 2 者が付け替え禁止 (トリガ + policy)、後者が自己インフレ防止のため。

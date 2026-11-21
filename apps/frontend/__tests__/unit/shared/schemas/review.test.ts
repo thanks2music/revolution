@@ -243,19 +243,19 @@ describe('ReviewHelpfulInsertSchema', () => {
 });
 
 describe('ReviewInsertSchema (0018 の列)', () => {
-  it.each([
-    'status',
-    'reasonCode',
-    'reasonNote',
-    'aiReason',
-    'aiError',
-    'aiModel',
-    'aiScreenedAt',
-    'submittedAt',
-    'editedAt',
-    'visitedMonth',
-  ])('サーバーとトリガだけが書く %s を入力に含めない', (key) => {
-    expect(Object.keys(ReviewInsertSchema.shape)).not.toContain(key);
+  // DB の列単位の `grant insert` (0018) と 1:1。状態・理由・AI の記録などは入力に通さない
+  it('exposes exactly the columns authenticated may insert', () => {
+    expect(Object.keys(ReviewInsertSchema.shape).sort()).toEqual([
+      'attendance',
+      'body',
+      'foodCostBand',
+      'goodsCostBand',
+      'hasSpoiler',
+      'occurrenceId',
+      'rating',
+      'userId',
+      'visitedOn',
+    ]);
   });
 
   it('2000 字を超える本文を拒否する', () => {
@@ -312,9 +312,13 @@ describe('ReviewSubmitSchema', () => {
  */
 describe('値の一覧が DB の CHECK と一致する', () => {
   const migrationsDir = path.join(__dirname, '../../../../supabase/migrations');
-  const migration = readdirSync(migrationsDir)
-    .filter((name) => name.endsWith('_reviews_status_and_screening.sql'))
-    .map((name) => readFileSync(path.join(migrationsDir, name), 'utf8'))[0];
+  const migration = readFileSync(
+    path.join(
+      migrationsDir,
+      readdirSync(migrationsDir).find((name) => name.endsWith('_reviews_status_and_screening.sql'))!,
+    ),
+    'utf8',
+  );
 
   function checkValues(constraint: string): string[] {
     const start = migration.indexOf(`"${constraint}" CHECK`);
@@ -330,5 +334,23 @@ describe('値の一覧が DB の CHECK と一致する', () => {
     ['reviews_goods_cost_band_chk', REVIEW_GOODS_COST_BANDS],
   ])('%s', (constraint, values) => {
     expect(checkValues(constraint)).toEqual([...values]);
+  });
+
+  /** `GRANT <privilege> ( ... ) ON TABLE "public"."reviews" TO authenticated` の列 (snake_case) */
+  function grantedColumns(privilege: 'INSERT' | 'UPDATE'): string[] {
+    const match = migration.match(
+      new RegExp(`GRANT ${privilege} \\(([^)]*)\\) ON TABLE "public"\\."reviews" TO authenticated`),
+    );
+    return [...(match?.[1] ?? '').matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).sort();
+  }
+
+  const toSnake = (key: string) => key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+
+  it('投稿者が INSERT できる列は ReviewInsertSchema と同じ', () => {
+    expect(grantedColumns('INSERT')).toEqual(Object.keys(ReviewInsertSchema.shape).map(toSnake).sort());
+  });
+
+  it('投稿者が UPDATE できる列は ReviewUpdateSchema と同じ', () => {
+    expect(grantedColumns('UPDATE')).toEqual(Object.keys(ReviewUpdateSchema.shape).map(toSnake).sort());
   });
 });

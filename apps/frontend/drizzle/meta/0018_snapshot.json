@@ -1,5 +1,5 @@
 {
-  "id": "67e88f8d-0cb4-4a67-bbb0-e9ea008e80dc",
+  "id": "8d6a43b0-8570-4c30-bb00-7611c5b96644",
   "prevId": "098cf8ba-df9b-4f71-8f5d-ea77b47790ed",
   "version": "7",
   "dialect": "postgresql",
@@ -679,6 +679,10 @@
         "profiles_username_format": {
           "name": "profiles_username_format",
           "value": "\"profiles\".\"username\" ~ '^[a-zA-Z0-9_]{3,24}$'"
+        },
+        "profiles_published_review_count_chk": {
+          "name": "profiles_published_review_count_chk",
+          "value": "\"profiles\".\"published_review_count\" >= 0"
         }
       },
       "isRLSEnabled": false

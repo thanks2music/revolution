@@ -85,7 +85,8 @@ ALTER TABLE "public"."reviews"
 
 -- 公開中の口コミの件数 (C-2 の policy の判定に使う。集計のトリガ B-3 が増減する)
 ALTER TABLE "public"."profiles"
-  ADD COLUMN "published_review_count" integer DEFAULT 0 NOT NULL;
+  ADD COLUMN "published_review_count" integer DEFAULT 0 NOT NULL,
+  ADD CONSTRAINT "profiles_published_review_count_chk" CHECK ("published_review_count" >= 0);
 --> statement-breakpoint
 
 -- 1 人 1 開催 1 件は「論理削除していない行」だけで数える (削除の後に書き直せるように)
@@ -116,46 +117,41 @@ SET search_path = ''
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF current_user <> 'authenticated' THEN
+  -- 素通しするのは信頼する役割だけ (審査の結果を書くサーバー・トリガ関数の所有者・管理)。
+  -- 「authenticated 以外は通す」にすると、後で足した役割が黙って状態を書けてしまう
+  IF current_user IN ('service_role', 'postgres', 'supabase_admin') THEN
     RETURN NEW;
   END IF;
 
-  IF TG_OP = 'INSERT' THEN
-    -- 下書きの入口は下書きのチケットで足す。今は提出だけ
-    NEW."status" := 'pending';
-    NEW."submitted_at" := now();
-    NEW."edited_at" := NULL;
-    NEW."reason_code" := NULL;
-    NEW."reason_note" := NULL;
-    NEW."ai_reason" := NULL;
-    NEW."ai_error" := NULL;
-    NEW."ai_model" := NULL;
-    NEW."ai_screened_at" := NULL;
-    RETURN NEW;
-  END IF;
-
-  -- 内容が変わった時だけ審査中へ戻す (論理削除だけの UPDATE では戻さない)
-  IF (NEW."rating", NEW."body", NEW."visited_on", NEW."attendance", NEW."food_cost_band",
-      NEW."goods_cost_band", NEW."has_spoiler")
-     IS DISTINCT FROM
-     (OLD."rating", OLD."body", OLD."visited_on", OLD."attendance", OLD."food_cost_band",
-      OLD."goods_cost_band", OLD."has_spoiler")
-     AND OLD."status" <> 'draft'
-  THEN
+  IF TG_OP = 'UPDATE' THEN
+    -- 内容が変わった時だけ審査中へ戻す。比べるのは「投稿者が書ける列」ではなく、
+    -- 状態・日時・生成列を除いた残り全部 (内容の列を足した時に、ここへの書き忘れで審査を
+    -- 素通りする穴にならないように)。投稿者は列単位の GRANT で内容の列しか書けないので、
+    -- 残りが違えば内容が変わったことになる。visited_month は BEFORE の時点では計算前なので除く
+    IF OLD."status" = 'draft'
+       OR (to_jsonb(NEW) - ARRAY['updated_at', 'visited_month'])
+          IS NOT DISTINCT FROM (to_jsonb(OLD) - ARRAY['updated_at', 'visited_month'])
+    THEN
+      RETURN NEW;
+    END IF;
     -- 最終編集日は「公開の後に内容を変えて出し直した」口コミだけに出す
     IF OLD."status" = 'published' THEN
       NEW."edited_at" := now();
     END IF;
-    NEW."status" := 'pending';
-    NEW."submitted_at" := now();
-    NEW."reason_code" := NULL;
-    NEW."reason_note" := NULL;
-    -- 前の内容への AI の判断は、出し直した内容には当てはまらない
-    NEW."ai_reason" := NULL;
-    NEW."ai_error" := NULL;
-    NEW."ai_model" := NULL;
-    NEW."ai_screened_at" := NULL;
+  ELSE
+    -- 下書きの入口は下書きのチケットで足す。今は提出だけ
+    NEW."edited_at" := NULL;
   END IF;
+
+  -- 提出・出し直しは審査中から始める。前の内容への理由と AI の判断は当てはまらないので消す
+  NEW."status" := 'pending';
+  NEW."submitted_at" := now();
+  NEW."reason_code" := NULL;
+  NEW."reason_note" := NULL;
+  NEW."ai_reason" := NULL;
+  NEW."ai_error" := NULL;
+  NEW."ai_model" := NULL;
+  NEW."ai_screened_at" := NULL;
   RETURN NEW;
 END;
 $$;
@@ -179,7 +175,6 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   occ record;
-  today date := (now() AT TIME ZONE 'Asia/Tokyo')::date;
 BEGIN
   -- UPDATE OF visited_on は、値が同じでも SET に含まれていれば発火する。変わっていなければ確かめない
   -- (中止になった開催の口コミの本文を直す時に、訪問日を同じ値で送っても拒否しないように)
@@ -187,27 +182,24 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT o."starts_on", o."ends_on", o."cancelled_at"
+  -- 開催の状態は occurrence_view の判定 (JST) をそのまま使う (状態の決め方を 1 か所に保つ)
+  SELECT v."status", v."starts_on", v."ends_on"
     INTO occ
-    FROM "public"."occurrences" o
-   WHERE o."id" = NEW."occurrence_id";
+    FROM "public"."occurrence_view" v
+   WHERE v."id" = NEW."occurrence_id";
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'review occurrence not found' USING ERRCODE = 'check_violation';
   END IF;
-  IF occ."cancelled_at" IS NOT NULL THEN
-    RAISE EXCEPTION 'review occurrence is cancelled' USING ERRCODE = 'check_violation';
-  END IF;
-  IF occ."starts_on" IS NULL THEN
-    RAISE EXCEPTION 'review occurrence is unscheduled' USING ERRCODE = 'check_violation';
-  END IF;
-  IF today < occ."starts_on" THEN
-    RAISE EXCEPTION 'review occurrence has not started' USING ERRCODE = 'check_violation';
+  -- 書けるのは開催中か終了した開催だけ (中止・日程未発表・開催前は不可)
+  IF occ."status" NOT IN ('ongoing', 'ended') THEN
+    RAISE EXCEPTION 'review occurrence is %', occ."status" USING ERRCODE = 'check_violation';
   END IF;
 
+  -- 訪問日は開始日から、終了日と今日の早い方まで (LEAST は NULL を無視するので、終了日が未定なら今日)
   IF NEW."visited_on" IS NOT NULL AND (
        NEW."visited_on" < occ."starts_on"
-       OR NEW."visited_on" > LEAST(COALESCE(occ."ends_on", today), today)
+       OR NEW."visited_on" > LEAST(occ."ends_on", (now() AT TIME ZONE 'Asia/Tokyo')::date)
      ) THEN
     RAISE EXCEPTION 'review visited_on is out of range' USING ERRCODE = 'check_violation';
   END IF;
@@ -273,9 +265,11 @@ BEGIN
          "rating_count" = "rating_count" + d_cnt
    WHERE "id" = ev;
 
-  UPDATE "public"."profiles"
-     SET "published_review_count" = "published_review_count" + d_cnt
-   WHERE "id" = COALESCE(NEW."user_id", OLD."user_id");
+  IF d_cnt <> 0 THEN
+    UPDATE "public"."profiles"
+       SET "published_review_count" = "published_review_count" + d_cnt
+     WHERE "id" = COALESCE(NEW."user_id", OLD."user_id");
+  END IF;
 
   RETURN NULL;
 END;
@@ -335,7 +329,7 @@ CREATE POLICY "reviews_select_published_or_own"
 
 -- ⚠️ 投稿者の論理削除 (UPDATE で deleted_at を入れる) は、更新後の行が上の SELECT の policy
 -- (deleted_at IS NULL) から外れるため RLS に拒否される (0013 からの挙動、2026-11-21 に確認)。
--- 削除の入口は下書き・編集・削除のチケットで、サーバー (service role) から行う形で作る。
+-- そのため D で deleted_at を投稿者の UPDATE の GRANT から外し、削除はサーバー (service role) が行う。
 
 -- C-2. 一覧に投稿者名を出すため、公開中の口コミの投稿者の profiles を読めるようにする
 DROP POLICY "profiles_select_own" ON "public"."profiles";
@@ -366,6 +360,15 @@ REVOKE SELECT ON TABLE "public"."profiles" FROM authenticated;
 GRANT SELECT ("id", "auth_user_id", "display_name", "username", "withdrawn_at")
   ON TABLE "public"."profiles" TO authenticated;
 --> statement-breakpoint
+-- 書き込みも列で絞る。published_review_count を会員が書き換えると、自分の profile を anon に
+-- 見せられてしまう (件数は集計のトリガだけが書く)。会員が書くのは onboarding とマイページの 2 列だけ。
+-- INSERT は handle_new_user (SECURITY DEFINER) が行うが、profiles_insert_own の policy に合わせて残す
+REVOKE INSERT, UPDATE ON TABLE "public"."profiles" FROM authenticated;
+--> statement-breakpoint
+GRANT INSERT ("id", "auth_user_id", "display_name", "username") ON TABLE "public"."profiles" TO authenticated;
+--> statement-breakpoint
+GRANT UPDATE ("display_name", "username") ON TABLE "public"."profiles" TO authenticated;
+--> statement-breakpoint
 
 -- ───────────────────────────────────────────────
 -- D. 列単位の GRANT
@@ -386,7 +389,8 @@ GRANT INSERT (
   "goods_cost_band", "has_spoiler"
 ) ON TABLE "public"."reviews" TO authenticated;
 --> statement-breakpoint
+-- deleted_at は含めない: 投稿者が UPDATE で入れると、更新後の行が本人の SELECT の policy
+-- (deleted_at IS NULL) から外れて RLS に拒否される。削除はサーバー (service role) が行う
 GRANT UPDATE (
-  "rating", "body", "visited_on", "attendance", "food_cost_band", "goods_cost_band",
-  "has_spoiler", "deleted_at"
+  "rating", "body", "visited_on", "attendance", "food_cost_band", "goods_cost_band", "has_spoiler"
 ) ON TABLE "public"."reviews" TO authenticated;

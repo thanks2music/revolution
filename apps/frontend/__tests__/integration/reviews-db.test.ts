@@ -5,7 +5,7 @@ import {
   anonClient,
   createTestDataScope,
   signInAsMember,
-  todayInJst,
+  jstDate,
   type TestDataScope,
   type TestMember,
 } from '@/test-support/test-data';
@@ -36,8 +36,8 @@ describe('口コミの DB', () => {
     return data!.createOccurrence({
       eventId: event.id,
       verified: true,
-      startsOn: todayInJst(-10),
-      endsOn: todayInJst(20),
+      startsOn: jstDate(-10),
+      endsOn: jstDate(20),
     });
   }
 
@@ -54,13 +54,12 @@ describe('口コミの DB', () => {
         occurrence_id: occurrenceId,
         user_id: member.userId,
         rating: 4,
-        visited_on: todayInJst(-1),
+        visited_on: jstDate(-1),
         body: '平日の夕方に予約なしで入れました',
         ...fields,
       })
       .select('id')
       .single();
-    if (result.data) data!.trackReview(result.data.id as number);
     return result;
   }
 
@@ -70,12 +69,9 @@ describe('口コミの DB', () => {
     if (error) throw error;
   }
 
+  /** 削除はサーバー (service role) が行う (投稿者には deleted_at の UPDATE を許していない) */
   async function softDelete(id: number) {
-    const { error } = await data!.admin
-      .from('reviews')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) throw error;
+    await setReview(id, { deleted_at: new Date().toISOString() });
   }
 
   async function adminReview(id: number) {
@@ -130,6 +126,32 @@ describe('口コミの DB', () => {
       expect((await adminReview(row!.id as number)).status).toBe('pending');
     });
 
+    it('投稿者は deleted_at を書けない (削除はサーバーが行う)', async () => {
+      const occ = await ongoingOccurrence();
+      const member = await data!.createMember();
+      const client = await signInAsMember(member);
+      const { data: row } = await submit(client, member, occ.id);
+
+      const { error } = await client
+        .from('reviews')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', row!.id);
+
+      expect(error?.code).toBe('42501');
+    });
+
+    it('会員は自分の公開中の口コミの件数を書き換えられない', async () => {
+      const member = await data!.createMember();
+      const client = await signInAsMember(member);
+
+      const { error } = await client
+        .from('profiles')
+        .update({ published_review_count: 1 })
+        .eq('id', member.userId);
+
+      expect(error?.code).toBe('42501');
+    });
+
     it('1 人 1 開催 1 件。論理削除の後は書き直せる', async () => {
       const occ = await ongoingOccurrence();
       const member = await data!.createMember();
@@ -139,8 +161,6 @@ describe('口コミの DB', () => {
       const second = await submit(client, member, occ.id);
       expect(second.error?.code).toBe('23505');
 
-      // 削除はサーバー (service role) が行う (投稿者の UPDATE で deleted_at を入れると、更新後の行が
-      // 本人の SELECT の policy から外れて RLS に拒否される。削除の入口は下書き・編集・削除のチケットで作る)
       await softDelete(first!.id as number);
       const again = await submit(client, member, occ.id);
       expect(again.error).toBeNull();
@@ -169,7 +189,7 @@ describe('口コミの DB', () => {
   describe('開催と訪問日', () => {
     it.each([
       ['中止', { cancelled: true }],
-      ['開催前', { startsOn: todayInJst(3), endsOn: todayInJst(30) }],
+      ['開催前', { startsOn: jstDate(3), endsOn: jstDate(30) }],
       ['日程未発表', { startsOn: null }],
     ])('%s の開催には提出できない', async (_label, occurrence) => {
       const event = await data!.createEvent();
@@ -177,7 +197,7 @@ describe('口コミの DB', () => {
       const member = await data!.createMember();
       const client = await signInAsMember(member);
 
-      const { error } = await submit(client, member, occ.id, { visited_on: todayInJst() });
+      const { error } = await submit(client, member, occ.id, { visited_on: jstDate() });
 
       expect(error?.code).toBe('23514');
     });
@@ -190,7 +210,7 @@ describe('口コミの DB', () => {
       const member = await data!.createMember();
       const client = await signInAsMember(member);
 
-      const { error } = await submit(client, member, occ.id, { visited_on: todayInJst(offset) });
+      const { error } = await submit(client, member, occ.id, { visited_on: jstDate(offset) });
 
       expect(error?.code).toBe('23514');
     });
@@ -200,16 +220,16 @@ describe('口コミの DB', () => {
       const occ = await data!.createOccurrence({
         eventId: event.id,
         verified: true,
-        startsOn: todayInJst(-30),
-        endsOn: todayInJst(-10),
+        startsOn: jstDate(-30),
+        endsOn: jstDate(-10),
       });
       const member = await data!.createMember();
       const client = await signInAsMember(member);
 
-      expect((await submit(client, member, occ.id, { visited_on: todayInJst(-5) })).error?.code).toBe(
+      expect((await submit(client, member, occ.id, { visited_on: jstDate(-5) })).error?.code).toBe(
         '23514',
       );
-      expect((await submit(client, member, occ.id, { visited_on: todayInJst(-10) })).error).toBeNull();
+      expect((await submit(client, member, occ.id, { visited_on: jstDate(-10) })).error).toBeNull();
     });
   });
 
@@ -304,7 +324,7 @@ describe('口コミの DB', () => {
       const occ = await ongoingOccurrence();
       const member = await data!.createMember();
       const client = await signInAsMember(member);
-      const visitedOn = todayInJst(-1);
+      const visitedOn = jstDate(-1);
       const { data: row } = await submit(client, member, occ.id, { visited_on: visitedOn });
       const { error: cancelError } = await data!.admin
         .from('occurrences')
@@ -324,7 +344,7 @@ describe('口コミの DB', () => {
       const occ = await ongoingOccurrence();
       const member = await data!.createMember();
       const { data: row } = await submit(await signInAsMember(member), member, occ.id, {
-        visited_on: todayInJst(-1),
+        visited_on: jstDate(-1),
       });
       await setReview(row!.id as number, { status: 'published' });
 
@@ -332,7 +352,7 @@ describe('口コミの DB', () => {
       const monthRead = await anonClient().from('reviews').select('visited_month').eq('id', row!.id);
 
       expect(dateRead.error?.code).toBe('42501');
-      expect(monthRead.data).toEqual([{ visited_month: `${todayInJst(-1).slice(0, 7)}-01` }]);
+      expect(monthRead.data).toEqual([{ visited_month: `${jstDate(-1).slice(0, 7)}-01` }]);
     });
 
     it('公開中の口コミの投稿者の表示名は anon に見え、口コミの無い会員の表示名は見えない', async () => {

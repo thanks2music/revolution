@@ -94,6 +94,7 @@ export const profiles = pgTable(
     // Layer2: DB CHECK。zod (Layer1) と同じ正規表現を二段防御として保持。
     // 退会時の username = null は CHECK を通過する (NULL は CHECK 対象外)。
     check('profiles_username_format', sql`${table.username} ~ '^[a-zA-Z0-9_]{3,24}$'`),
+    check('profiles_published_review_count_chk', sql`${table.publishedReviewCount} >= 0`),
     // Layer3: case-insensitive 一意。表示は入力時の大小を保持しつつ重複は大小無視で弾く。
     // 退会で null になった行は NULL != NULL のため複数共存できる。
     uniqueIndex('profiles_username_lower_idx').on(sql`lower(${table.username})`),

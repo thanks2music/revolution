@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+import { todayInJst } from '../lib/occurrence/status';
+
 import { getLocalSupabaseEnv } from './local-supabase';
 
 /**
@@ -41,8 +43,6 @@ export type TestDataScope = {
     cancelled?: boolean;
   }): Promise<{ id: number; slug: string }>;
   createMember(input?: { username?: string; onboarded?: boolean }): Promise<TestMember>;
-  /** テストの中で作られた口コミを後片付けに登録する (会員のクライアントで作った物など) */
-  trackReview(id: number): void;
   cleanup(): Promise<void>;
 };
 
@@ -64,6 +64,8 @@ export function createTestDataScope(): TestDataScope {
 
   // 後片付けは作った逆の順に行う (開催 → 企画のように、参照する側を先に消すため)
   const undo: Array<() => Promise<void>> = [];
+  // 作った開催。後片付けの最初に、これらに付いた口コミ (会員のクライアントで作った物を含む) を消す
+  const occurrenceIds: number[] = [];
 
   async function createEvent(input: { name?: string } = {}) {
     const slug = uniqueSlug('event');
@@ -92,7 +94,7 @@ export function createTestDataScope(): TestDataScope {
       .insert({
         event_id: input.eventId,
         slug,
-        starts_on: input.startsOn === undefined ? todayInJst() : input.startsOn,
+        starts_on: input.startsOn === undefined ? jstDate() : input.startsOn,
         ends_on: input.endsOn ?? null,
         cancelled_at: input.cancelled ? new Date().toISOString() : null,
         verified: input.verified,
@@ -101,6 +103,7 @@ export function createTestDataScope(): TestDataScope {
       .single();
     if (error) throw new Error(`開催を作れませんでした: ${error.message}`);
 
+    occurrenceIds.push(data.id);
     undo.push(() => deleteById(admin, 'occurrences', data.id));
     return data as { id: number; slug: string };
   }
@@ -111,13 +114,13 @@ export function createTestDataScope(): TestDataScope {
     return member;
   }
 
-  function trackReview(id: number) {
-    // 口コミは開催 (restrict) と会員の profile (restrict) より先に消す。後から登録するので先に消える
-    undo.push(() => deleteById(admin, 'reviews', id));
-  }
-
   async function cleanup() {
     const errors: unknown[] = [];
+    // 口コミは開催と会員の profile を restrict で参照するので、どちらよりも先に消す
+    if (occurrenceIds.length > 0) {
+      const { error } = await admin.from('reviews').delete().in('occurrence_id', occurrenceIds);
+      if (error) errors.push(new Error(`口コミを消せませんでした: ${error.message}`));
+    }
     while (undo.length > 0) {
       const step = undo.pop()!;
       try {
@@ -132,7 +135,7 @@ export function createTestDataScope(): TestDataScope {
     }
   }
 
-  return { admin, createEvent, createOccurrence, createMember, trackReview, cleanup };
+  return { admin, createEvent, createOccurrence, createMember, cleanup };
 }
 
 /** ログインしていない利用者 (anon) として読むクライアント */
@@ -238,8 +241,10 @@ function randomSuffix(): string {
   return randomUUID().replaceAll('-', '').slice(0, 12);
 }
 
-/** 今日の日付 (JST、YYYY-MM-DD)。開催や訪問日の相対の日付を作るのに使う */
-export function todayInJst(offsetDays = 0): string {
-  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(date);
+/**
+ * 今日から offsetDays 日ずらした日付 (JST、YYYY-MM-DD)。開催や訪問日の相対の日付を作るのに使う。
+ * JST の今日の決め方はアプリと同じ関数 (`lib/occurrence/status.ts` の todayInJst) に任せる
+ */
+export function jstDate(offsetDays = 0): string {
+  return todayInJst(new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000));
 }
