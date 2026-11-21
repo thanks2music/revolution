@@ -18,3 +18,17 @@ const BLOCK_REASONS = {
 export function reviewBlockReason(status: OccurrenceStatus): string | null {
   return BLOCK_REASONS[status];
 }
+
+/**
+ * 訪問日に選べる範囲 (開始日 〜 終了日と今日の早い方、どれも JST の YYYY-MM-DD)。
+ * 開始日が無い・今日より後で範囲が空になる時は null (書けない画面に倒す。状態の判定とずれた時の守り)
+ */
+export function visitDateRange(
+  startsOn: string | null,
+  endsOn: string | null,
+  today: string
+): { min: string; max: string } | null {
+  if (!startsOn) return null;
+  const max = endsOn && endsOn < today ? endsOn : today;
+  return startsOn <= max ? { min: startsOn, max } : null;
+}

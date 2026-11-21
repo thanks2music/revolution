@@ -199,3 +199,35 @@ it('DB の障害は Sentry に送る', async () => {
   expect(Sentry.captureException).toHaveBeenCalled();
   expect(after).not.toHaveBeenCalled();
 });
+
+it('会員でなければ、入力の誤りより先にログインの案内を返す', async () => {
+  (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'unauthenticated' });
+
+  await expect(submitReview(ROUTE, { ...INPUT, rating: 0 })).resolves.toMatchObject({
+    ok: false,
+    needsAuth: true,
+  });
+});
+
+it('トリガ以外の CHECK の違反は想定外として Sentry に送る', async () => {
+  builder.single.mockResolvedValue({
+    data: null,
+    error: { code: '23514', message: 'new row violates check constraint "reviews_rating_chk"' },
+  });
+
+  await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false });
+  expect(Sentry.captureException).toHaveBeenCalled();
+});
+
+it('開催の状態のトリガの拒否は、まだ書けない扱いにする', async () => {
+  builder.single.mockResolvedValue({
+    data: null,
+    error: { code: '23514', message: 'review occurrence is scheduled' },
+  });
+
+  await expect(submitReview(ROUTE, INPUT)).resolves.toEqual({
+    ok: false,
+    error: 'この開催には、まだ口コミを書けません',
+  });
+  expect(Sentry.captureException).not.toHaveBeenCalled();
+});

@@ -8,6 +8,7 @@
  * 開催のページ (`../page.tsx`) と違い、cookie を読むので動的に描く (会員ごとの画面のため)。
  */
 
+import * as Sentry from '@sentry/nextjs';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
@@ -21,7 +22,7 @@ import { getOccurrenceUrl } from '@/lib/event/event-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { todayInJst } from '@/lib/occurrence/status';
-import { reviewBlockReason } from '@/lib/reviews/eligibility';
+import { reviewBlockReason, visitDateRange } from '@/lib/reviews/eligibility';
 import { buildXShareUrl } from '@/lib/reviews/share';
 import { createClient } from '@/lib/supabase/server';
 import type { OccurrencePageProps } from '@/types/page-props';
@@ -44,7 +45,11 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
   // 会員の判定 (cookie と profiles) は開催と関係なく引けるので、並べて走らせる
   const [data, member] = await Promise.all([
     getOccurrenceDetail(id, occurrence_slug),
-    getCurrentMember().catch(() => null),
+    // 確かめられない時は書かせる側に倒す (提出の時にもう一度確かめる)。障害は Sentry に送る
+    getCurrentMember().catch((error: unknown) => {
+      Sentry.captureException(error, { tags: { page: 'review-submit' } });
+      return null;
+    }),
   ]);
 
   if (!data) notFound();
@@ -56,8 +61,10 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
   const { occurrence, event } = data;
   const occurrencePath = getOccurrenceUrl(event, occurrence.slug);
   const venueName = occurrence.venueName ?? VENUE_NAME_FALLBACK;
+  const dateRange = visitDateRange(occurrence.startsOn, occurrence.endsOn, todayInJst());
   const blocked =
     reviewBlockReason(occurrence.status) ??
+    (dateRange ? null : 'この開催には、まだ口コミを書けません。') ??
     (member?.ok && (await hasOwnReview(occurrence.id, member.profileId))
       ? 'この開催には、もう口コミを書いています。'
       : null);
@@ -68,7 +75,7 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
         <h1 className="mb-4 text-center font-display text-lg font-bold text-ink-strong">
           口コミを書く
         </h1>
-        {blocked ? (
+        {blocked || !dateRange ? (
           <div className="flex flex-col gap-4 text-center">
             <p className="rounded-xl border border-(--line-soft) bg-white p-4 text-sm text-ink-body">
               {blocked}
@@ -83,8 +90,8 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
             eventName={event.name}
             venueName={venueName}
             period={formatPeriod(occurrence.startsOn, occurrence.endsOn)}
-            minDate={occurrence.startsOn!}
-            maxDate={earlierDate(occurrence.endsOn, todayInJst())}
+            minDate={dateRange.min}
+            maxDate={dateRange.max}
             occurrencePath={occurrencePath}
             shareUrl={buildXShareUrl({
               eventName: event.name,
@@ -112,10 +119,6 @@ async function hasOwnReview(occurrenceId: number, profileId: string): Promise<bo
     .eq('user_id', profileId)
     .is('deleted_at', null)
     .maybeSingle();
+  if (error) Sentry.captureException(error, { tags: { page: 'review-submit' } });
   return !error && data !== null;
-}
-
-/** 開催の終わりと今日の早い方 (訪問日に選べる最後の日) */
-function earlierDate(endsOn: string | null, today: string): string {
-  return endsOn && endsOn < today ? endsOn : today;
 }

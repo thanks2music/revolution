@@ -30,6 +30,11 @@ import { createClient } from '@/lib/supabase/server';
 
 const PG_UNIQUE_VIOLATION = '23505';
 const PG_CHECK_VIOLATION = '23514';
+/** 開催と訪問日のトリガが投げる文言の一部 (migration 20261121070749 の RAISE) */
+const TRIGGER_MESSAGES = {
+  visitedOn: 'review visited_on is out of range',
+  occurrence: 'review occurrence',
+} as const;
 
 export type ReviewRouteParams = { eventType: string; eventId: string; occurrenceSlug: string };
 
@@ -85,6 +90,10 @@ async function submit(
     getCurrentMember(),
   ]);
   if (!detail || detail.event.primaryCategory.slug !== route.eventType) return FAILURES.notFound;
+  // 会員でなければ、入力の検証より先に返す (ログインの案内を優先する)
+  if (!member.ok) {
+    return member.reason === 'not_onboarded' ? FAILURES.needsOnboarding : FAILURES.needsLogin;
+  }
   if (reviewBlockReason(detail.occurrence.status)) return FAILURES.notReviewable;
 
   const parsed = ReviewSubmitSchema.safeParse({ ...input, occurrenceId: detail.occurrence.id });
@@ -95,10 +104,6 @@ async function submit(
       if (field && !fieldErrors[field]) fieldErrors[field] = issue.message;
     }
     return { ok: false, error: '入力を確かめてください', fieldErrors };
-  }
-
-  if (!member.ok) {
-    return member.reason === 'not_onboarded' ? FAILURES.needsOnboarding : FAILURES.needsLogin;
   }
 
   const value = parsed.data;
@@ -121,11 +126,11 @@ async function submit(
 
   if (error) {
     if (error.code === PG_UNIQUE_VIOLATION) return FAILURES.duplicate;
-    // DB のトリガ (private.check_review_occurrence) の拒否。本文の長さなどの CHECK は zod が先に止める
+    // DB のトリガ (private.check_review_occurrence) の拒否だけを利用者向けの文にする。文言は migration の
+    // RAISE と結合テスト (reviews-db.test.ts) で固定している。ほかの CHECK の違反は想定外として投げる
     if (error.code === PG_CHECK_VIOLATION) {
-      return error.message.includes('visited_on')
-        ? FAILURES.visitedOnOutOfRange
-        : FAILURES.notReviewable;
+      if (error.message.includes(TRIGGER_MESSAGES.visitedOn)) return FAILURES.visitedOnOutOfRange;
+      if (error.message.includes(TRIGGER_MESSAGES.occurrence)) return FAILURES.notReviewable;
     }
     throw error;
   }
