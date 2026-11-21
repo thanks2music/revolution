@@ -1,7 +1,58 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-21T13:07:37.206Z",
+  "totalArticles": 12,
   "articles": [
+    {
+      "slug": "01m7z3ex0de0cktp",
+      "title": "サンエックスユニバース コラボカフェ in 全国 11月24日より開催",
+      "date": "2026-11-21T10:04:16.000Z",
+      "excerpt": "「サンエックスキャラクターズ」と「セボンスター」のコラボレーションによるスペシャルコラボカフェが、2026年11月24日より全国の各会場にて開催されます。両ブランドの人気キャラクターたちが集結するコラボメニューがお楽しみいただけます。",
+      "categories": [
+        "サンエックスユニバース（リラックマ、すみっコぐらし）",
+        "グッズ販売"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/goods-sales/san-x-universe/01m7z3ex0de0cktp.mdx",
+      "post_id": "01m7z3ex0de0cktp",
+      "year": 2026,
+      "event_type": "goods-sales",
+      "event_title": "グッズ販売",
+      "work_title": "サンエックスユニバース（リラックマ、すみっコぐらし）",
+      "work_titles": [
+        "サンエックスキャラクターズ",
+        "セボンスター"
+      ],
+      "work_slug": "san-x-universe",
+      "prefectures": [
+        "全国"
+      ],
+      "prefecture_slugs": [
+        "nationwide"
+      ],
+      "ogImage": "https://images.anime-events.com/goods-sales/2026/01m7z3ex0de0cktp/ed249269fa7799a97c8657cd0a566cdf.webp",
+      "event_start_date": "2026-11-24",
+      "venue": "全国",
+      "official_url": "https://www.san-x.co.jp/ja/blog/2026-11-post-0451580/",
+      "event_data": {
+        "primary_category_slug": "chain-store",
+        "title_slugs": [
+          "san-x",
+          "sebon-star"
+        ],
+        "event_name": "セボンスター サンエックスコラボver.",
+        "event_slug": "sebon-star-san-x-collabo-ver",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "全国",
+            "starts_on": "2026-11-24",
+            "ends_on": null,
+            "official_url": "https://www.san-x.co.jp/ja/blog/2026-11-post-0451580/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m7ydys18ckpgbj",
       "title": "BANANA FISH カフェ in 新宿 11月26日よりコラボ開催",
