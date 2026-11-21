@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import { OccurrenceStatusSchema } from '@revolution/schemas/occurrence';
@@ -101,18 +102,22 @@ export async function listOwnReviews(
   if (error) throw error;
   // 編集できるかは今日 (JST) に依るので、行の読み取りとは分けて 1 回だけ日付を取る
   const today = todayInJst();
-  return z
-    .array(OwnReviewListRowSchema)
-    .parse(data ?? [])
-    .map(review => ({
-      ...review,
-      canEdit:
-        authoringMode({
-          occurrenceStatus: review.occurrence.status,
-          startsOn: review.occurrence.startsOn,
-          endsOn: review.occurrence.endsOn,
-          today,
-          own: review,
-        }).kind !== 'blocked',
-    }));
+  // 1 件が読めなくても一覧ごと出せなくしない (ほかの口コミの削除・編集はできるように)。読めない行は Sentry へ
+  const reviews: z.output<typeof OwnReviewListRowSchema>[] = [];
+  for (const row of data ?? []) {
+    const parsed = OwnReviewListRowSchema.safeParse(row);
+    if (parsed.success) reviews.push(parsed.data);
+    else Sentry.captureException(parsed.error, { tags: { page: 'mypage', part: 'own-reviews' } });
+  }
+  return reviews.map(review => ({
+    ...review,
+    canEdit:
+      authoringMode({
+        occurrenceStatus: review.occurrence.status,
+        startsOn: review.occurrence.startsOn,
+        endsOn: review.occurrence.endsOn,
+        today,
+        own: review,
+      }).kind !== 'blocked',
+  }));
 }

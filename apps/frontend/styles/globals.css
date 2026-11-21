@@ -247,7 +247,8 @@
   --status-unscheduled-line: #a9becc;
   /* 成功・公開中を表す緑 (最初の使い道は Figma #12 `83:199` の口コミの「公開中」のバッジ)。2026-11-22 追加 */
   --success-surface: #e3f6ea;
-  --success-ink: #1e8a4c;
+  /* Figma の #1e8a4c は淡い地に対して 3.89:1 で AA に届かないため、近い色で 4.77:1 にした */
+  --success-ink: #197a43;
 
   /*
    * 残日数の色。**v6 の指定と完全一致**していたため変更なし。

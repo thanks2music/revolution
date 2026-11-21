@@ -10,7 +10,12 @@ import { useState, useTransition } from 'react';
 
 import { deleteReview, type ReviewRouteParams } from '@/actions/review';
 
-export function DeleteOwnReviewButton(props: { route: ReviewRouteParams; reviewId: number }) {
+export function DeleteOwnReviewButton(props: {
+  route: ReviewRouteParams;
+  reviewId: number;
+  /** 読み上げで、どの口コミの削除かを伝える (開催の名前) */
+  label: string;
+}) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +42,7 @@ export function DeleteOwnReviewButton(props: { route: ReviewRouteParams; reviewI
       <button
         type="button"
         onClick={() => setConfirming(true)}
+        aria-label={`${props.label}の口コミを削除`}
         className="text-ink-muted hover:underline"
       >
         削除
@@ -50,6 +56,7 @@ export function DeleteOwnReviewButton(props: { route: ReviewRouteParams; reviewI
         type="button"
         onClick={onDelete}
         disabled={pending}
+        aria-label={`${props.label}の口コミを削除する`}
         className="text-status-cancelled hover:underline disabled:opacity-50"
       >
         {pending ? '削除しています…' : '削除する'}

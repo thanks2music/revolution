@@ -83,7 +83,7 @@ function OwnReviewItem({ review }: { review: OwnReviewListItem }) {
             {view.editLabel}
           </Link>
         )}
-        <DeleteOwnReviewButton route={review.route} reviewId={review.id} />
+        <DeleteOwnReviewButton route={review.route} reviewId={review.id} label={title} />
       </div>
     </article>
   );

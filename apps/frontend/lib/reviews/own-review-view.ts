@@ -42,7 +42,7 @@ export function ownReviewView(input: {
     const detail = [code && `${REJECTION_REASON_LABELS[code]}。`, input.reasonNote]
       .filter(Boolean)
       .join('');
-    const prefix = REASON_PREFIX[input.status as keyof typeof REASON_PREFIX];
+    const prefix = REASON_PREFIX[input.status];
     reason = detail ? `${prefix}: ${detail}` : null;
   }
   return { ...VIEWS[input.status], reason };
