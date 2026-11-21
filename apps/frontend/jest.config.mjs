@@ -34,6 +34,10 @@ const config = {
     '!**/__tests__/test-helpers/**',
   ],
 
+  // 結合テスト (ローカルの Supabase が要る) は `pnpm test:integration` で別に走らせる
+  // (jest.integration.config.mjs)。ここで拾うと、DB の無い環境で `pnpm test` が落ちる。
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', '<rootDir>/__tests__/integration/'],
+
   // path alias 解決 (SWC は transform 時に inline するが、related-test 探索の
   // resolver は解決しないため明示する。ai-writer と同方針)。
   moduleNameMapper: {
