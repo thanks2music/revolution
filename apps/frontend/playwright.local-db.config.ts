@@ -17,10 +17,12 @@ import { MEMBER_STATE_PATH } from './e2e/local/paths';
  * process.env を優先する)。`.env.local` が staging を向いていても、ローカルの DB しか触らない。
  * DB に触る env を足したら、ここにも足すこと。
  *
- * - CI: production build を起動する (`next build && next start`)。dev のページごとのコンパイルで
- *   待ち時間がぶれないようにするため
- * - 手元: `next dev`。既に動いている dev サーバは使い回さない (それが staging を向いていると、
- *   ローカルで作った会員でログインできず、原因の分かりにくい失敗になるため)
+ * CI でも手元でも `next dev` で動かす。production build (`next start`) は使えない:
+ * `middleware.ts` が production では http のリクエストを https へ 301 で転送するため、
+ * `http://localhost` のテストがすべて https へ飛ばされる。
+ *
+ * 既に動いている dev サーバは使い回さない (それが staging を向いていると、
+ * ローカルで作った会員でログインできず、原因の分かりにくい失敗になるため)。
  *
  * ポートは `E2E_PORT` (既定 4455)。worktree の dev サーバ (4444 や `.worktree.env` のポート) と
  * 重ならない値にしている。
@@ -73,14 +75,12 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: isCI
-      ? `pnpm exec next build && pnpm exec next start --port ${port}`
-      : `pnpm exec next dev --port ${port}`,
+    command: `pnpm exec next dev --port ${port}`,
     url: baseURL,
     reuseExistingServer: false,
-    // CI の build を含めて待つ
-    timeout: 300_000,
-    stdout: 'ignore',
+    timeout: 120_000,
+    // CI では起動の様子をログに残す (止まった所が分かるように)
+    stdout: isCI ? 'pipe' : 'ignore',
     stderr: 'pipe',
     env: {
       NEXT_PUBLIC_SUPABASE_URL: supabase.url,
