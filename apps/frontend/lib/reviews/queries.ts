@@ -91,7 +91,7 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
   const ratingCount = Number(ratingResult.data?.rating_count ?? 0);
   const ratingSum = Number(ratingResult.data?.rating_sum ?? 0);
   return {
-    ratingAverage: ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
+    ratingAverage: averageRating(ratingSum, ratingCount),
     ratingCount,
     latest: z
       .array(ReviewRowSchema)
@@ -100,7 +100,12 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
   };
 }
 
-function toPublicReview(row: z.infer<typeof ReviewRowSchema>): PublicReview {
+/** 星の平均 (小数 1 桁に丸める)。0 件なら null */
+export function averageRating(sum: number, count: number): number | null {
+  return count > 0 ? Math.round((sum / count) * 10) / 10 : null;
+}
+
+export function toPublicReview(row: z.infer<typeof ReviewRowSchema>): PublicReview {
   const author = row.profiles;
   return {
     id: row.id,

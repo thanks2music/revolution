@@ -55,7 +55,9 @@ export function OccurrenceReviewsSection(props: {
           >
             {reviews.ratingAverage !== null ? reviews.ratingAverage.toFixed(1) : '—'}
           </p>
-          <ReviewStars rating={reviews.ratingAverage ?? 0} className="mt-1 block text-[15px]" />
+          {reviews.ratingAverage !== null && (
+            <ReviewStars rating={reviews.ratingAverage} className="mt-1 block text-[15px]" />
+          )}
           <p className="mt-1 text-xs text-ink-muted" data-testid="rating-count">
             {reviews.ratingCount}件
           </p>
@@ -88,7 +90,9 @@ export function OccurrenceReviewsSection(props: {
       </div>
 
       {/* 画面の下に固定の「口コミを書く」(Figma #3)。本文の中のボタンと同じ先へ行く */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-(--line-soft) bg-white/95 px-4 pt-3 pb-4 backdrop-blur md:hidden">
+      {/* 下のタブのバー (BottomTabBar、高さ --space-bottom-tab) の上に重ねる。最後の内容が隠れないよう、同じ高さの余白を置く */}
+      <div aria-hidden="true" className="h-20 md:hidden" />
+      <div className="fixed inset-x-0 bottom-(--space-bottom-tab) z-30 border-t border-(--line-soft) bg-white/95 px-4 pt-3 pb-4 backdrop-blur md:hidden">
         <div className="mx-auto flex max-w-md items-center gap-2">
           {daysLeft !== null && daysLeft >= 0 && (
             <p className="shrink-0 text-xs leading-snug text-ink-muted">

@@ -14,7 +14,17 @@
 jest.mock('@/lib/env', () => ({ env: {} }));
 jest.mock('@/lib/occurrence/queries', () => ({ getOccurrenceDetail: jest.fn() }));
 jest.mock('@/lib/auth/member', () => ({ getCurrentMember: jest.fn() }));
-jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn(() => ({ admin: true })) }));
+jest.mock('@/lib/supabase/admin', () => {
+  const ownBuilder: any = {};
+  ownBuilder.select = jest.fn(() => ownBuilder);
+  ownBuilder.eq = jest.fn(() => ownBuilder);
+  ownBuilder.is = jest.fn(() => ownBuilder);
+  ownBuilder.maybeSingle = jest.fn();
+  return {
+    __ownBuilder: ownBuilder,
+    createAdminClient: jest.fn(() => ({ admin: true, from: jest.fn(() => ownBuilder) })),
+  };
+});
 jest.mock('@/lib/reviews/screener', () => ({
   getReviewScreener: jest.fn(async () => ({ screen: jest.fn() })),
 }));
@@ -36,7 +46,7 @@ import * as Sentry from '@sentry/nextjs';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 
-import { submitReview } from '@/actions/review';
+import { getOwnReviewState, submitReview } from '@/actions/review';
 import { getCurrentMember } from '@/lib/auth/member';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
@@ -110,7 +120,7 @@ it('挿入の後に審査を走らせ、公開になったら開催のページ�
   await task();
   expect(screenSubmittedReview).toHaveBeenCalledWith(
     56,
-    expect.objectContaining({ db: { admin: true } })
+    expect.objectContaining({ db: expect.objectContaining({ admin: true }) })
   );
   expect(revalidatePath).toHaveBeenCalledWith('/collabo-cafe/12/shibuya');
   expect(revalidatePath).toHaveBeenCalledWith('/collabo-cafe/12');
@@ -230,4 +240,70 @@ it('開催の状態のトリガの拒否は、まだ書けない扱いにする'
     error: 'この開催には、まだ口コミを書けません',
   });
   expect(Sentry.captureException).not.toHaveBeenCalled();
+});
+
+describe('getOwnReviewState', () => {
+  const own = (jest.requireMock('@/lib/supabase/admin') as { __ownBuilder: any }).__ownBuilder;
+  const row = (fields: Record<string, unknown>) =>
+    own.maybeSingle.mockResolvedValue({
+      data: {
+        status: 'pending',
+        reason_code: null,
+        reason_note: null,
+        visited_on: '2026-11-20',
+        ...fields,
+      },
+      error: null,
+    });
+
+  beforeEach(() => {
+    own.select.mockReturnValue(own);
+    own.eq.mockReturnValue(own);
+    own.is.mockReturnValue(own);
+  });
+
+  it.each([['pending'], ['needs_review']])('%s は本人には審査中として見せる', async status => {
+    row({ status, reason_code: status === 'needs_review' ? 'ai_failure' : null });
+
+    await expect(getOwnReviewState(34)).resolves.toEqual({
+      status: 'screening',
+      reasonCode: null,
+      visitedOn: '2026-11-20',
+      note: null,
+    });
+  });
+
+  it('差し戻しは理由のコードと運営の補足を返す', async () => {
+    row({ status: 'rejected', reason_code: 'spam', reason_note: '宣伝の URL が含まれていたため' });
+
+    await expect(getOwnReviewState(34)).resolves.toMatchObject({
+      status: 'rejected',
+      reasonCode: 'spam',
+      note: '宣伝の URL が含まれていたため',
+    });
+  });
+
+  it('本人の行は会員の profiles.id で引く', async () => {
+    row({});
+    await getOwnReviewState(34);
+
+    expect(own.eq).toHaveBeenCalledWith('occurrence_id', 34);
+    expect(own.eq).toHaveBeenCalledWith('user_id', 'profile-1');
+  });
+
+  it('下書き・口コミが無い・会員でない時は null', async () => {
+    row({ status: 'draft' });
+    await expect(getOwnReviewState(34)).resolves.toBeNull();
+
+    own.maybeSingle.mockResolvedValue({ data: null, error: null });
+    await expect(getOwnReviewState(34)).resolves.toBeNull();
+
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'unauthenticated' });
+    await expect(getOwnReviewState(34)).resolves.toBeNull();
+  });
+
+  it('不正な開催 ID には問い合わせない', async () => {
+    await expect(getOwnReviewState(0)).resolves.toBeNull();
+    expect(own.maybeSingle).not.toHaveBeenCalled();
+  });
 });

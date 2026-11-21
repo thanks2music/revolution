@@ -136,6 +136,10 @@ test('公開された口コミは開催のページに出て、星の平均と�
   await expect(page.getByTestId('rating-count')).toHaveText('1件');
   await expect(page.getByTestId('own-review-status')).toContainText('公開中です');
   await page.screenshot({ path: testInfo.outputPath('occurrence-reviews.png'), fullPage: true });
+  // スマホの幅では「口コミを書く」が下のタブのバーの上に固定される
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByRole('link', { name: '口コミを書く' }).last()).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('occurrence-reviews-mobile.png') });
 });
 
 test('ネタバレの口コミは本文をたたみ、押すと開く', async ({ page, context, baseURL }) => {
@@ -192,7 +196,7 @@ test('差し戻された口コミは開催のページに出ず、本人にだ�
 
   // ログインしていない人には、本人の欄も出ない
   await context.clearCookies();
-  await page.goto(path);
+  await page.goto(path, { waitUntil: 'networkidle' });
   await expect(page.getByTestId('rating-count')).toHaveText('0件');
   await expect(page.getByTestId('own-review-status')).toHaveCount(0);
 });

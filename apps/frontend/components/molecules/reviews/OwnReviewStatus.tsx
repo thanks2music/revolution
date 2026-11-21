@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { getOwnReviewState, type OwnReviewState } from '@/actions/review';
+import { useAuthNav } from '@/components/molecules/AuthNavProvider';
 import { REJECTION_REASON_LABELS } from '@/lib/reviews/labels';
 
 /**
@@ -11,8 +12,11 @@ import { REJECTION_REASON_LABELS } from '@/lib/reviews/labels';
  */
 export function OwnReviewStatus({ occurrenceId }: { occurrenceId: number }) {
   const [state, setState] = useState<OwnReviewState | null>(null);
+  // ログインしていない人には口コミが無いので、問い合わせない (匿名の閲覧ごとに関数を起こさない)
+  const { isAuthed } = useAuthNav();
 
   useEffect(() => {
+    if (!isAuthed) return;
     let active = true;
     getOwnReviewState(occurrenceId)
       .then(value => {
@@ -22,7 +26,7 @@ export function OwnReviewStatus({ occurrenceId }: { occurrenceId: number }) {
     return () => {
       active = false;
     };
-  }, [occurrenceId]);
+  }, [occurrenceId, isAuthed]);
 
   if (!state) return null;
   const visitedOn = state.visitedOn.replaceAll('-', '.');
@@ -45,6 +49,7 @@ export function OwnReviewStatus({ occurrenceId }: { occurrenceId: number }) {
         </p>
       )}
       {state.status === 'hidden' && <p>非公開になっています。</p>}
+      {state.note && <p>運営より: {state.note}</p>}
     </div>
   );
 }

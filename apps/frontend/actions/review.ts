@@ -186,6 +186,8 @@ export type OwnReviewState = {
   reasonCode: ReviewScreeningReason | null;
   /** 訪問日 (YYYY-MM-DD)。本人にだけ日付まで見せる */
   visitedOn: string;
+  /** 運営 (BOSS) が書いた、投稿者に見せる補足 (差し戻し・非公開の時) */
+  note: string | null;
 };
 
 export async function getOwnReviewState(occurrenceId: number): Promise<OwnReviewState | null> {
@@ -197,7 +199,7 @@ export async function getOwnReviewState(occurrenceId: number): Promise<OwnReview
 
     const { data, error } = await db
       .from('reviews')
-      .select('status, reason_code, visited_on')
+      .select('status, reason_code, reason_note, visited_on')
       .eq('occurrence_id', occurrenceId)
       .eq('user_id', member.profileId)
       .is('deleted_at', null)
@@ -214,7 +216,11 @@ export async function getOwnReviewState(occurrenceId: number): Promise<OwnReview
       (REVIEW_SCREENING_REASONS as readonly string[]).includes(data.reason_code)
         ? (data.reason_code as ReviewScreeningReason)
         : null;
-    return { status, reasonCode, visitedOn: data.visited_on as string };
+    const note =
+      (status === 'rejected' || status === 'hidden') && data.reason_note
+        ? (data.reason_note as string)
+        : null;
+    return { status, reasonCode, visitedOn: data.visited_on as string, note };
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'getOwnReviewState' } });
     return null;
