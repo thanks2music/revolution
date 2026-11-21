@@ -38,6 +38,16 @@ export const env = createEnv({
     // drizzle-kit / migrate を max:1 で使用する接続文字列。
     // Supabase Dashboard → Connect → Session pooler (5432)。M1 以降で使用。
     MIGRATION_DATABASE_URL: z.string().url().optional(),
+
+    // Slack 通知 (lib/slack/notify.ts)。未設定なら通知しないだけなので、すべて optional。
+    // ⚠️ ここに書くのは env レジストリとしての記録が目的で、送信側は `process.env` を直読みする
+    // (NEXT_PUBLIC_SENTRY_DSN と同じ扱い。テストで env を差し替えられるようにするため)。
+    SLACK_BOT_TOKEN: z.string().optional(),
+    // 要対応 (BOSS へのメンション付き) / お知らせ (メンションなし) のチャンネル ID
+    SLACK_ATTENTION_CHANNEL_ID: z.string().optional(),
+    SLACK_NOTICE_CHANNEL_ID: z.string().optional(),
+    // 要対応で鳴らすユーザー ID。Vercel では Production にだけ設定する
+    SLACK_MENTION_USER_ID: z.string().optional(),
   },
 
   /*
@@ -96,6 +106,10 @@ export const env = createEnv({
     SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
     DATABASE_URL: process.env.DATABASE_URL,
     MIGRATION_DATABASE_URL: process.env.MIGRATION_DATABASE_URL,
+    SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
+    SLACK_ATTENTION_CHANNEL_ID: process.env.SLACK_ATTENTION_CHANNEL_ID,
+    SLACK_NOTICE_CHANNEL_ID: process.env.SLACK_NOTICE_CHANNEL_ID,
+    SLACK_MENTION_USER_ID: process.env.SLACK_MENTION_USER_ID,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
