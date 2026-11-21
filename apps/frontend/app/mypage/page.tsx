@@ -29,7 +29,6 @@ import { resolveArticleByKey } from '@/lib/mdx/article-url';
 import { hasEmail, hasGoogle } from '@/lib/auth/provider';
 import type { ArticleIndexItem } from '@/lib/mdx/article-types';
 import { OwnReviewList } from '@/components/molecules/reviews/OwnReviewList';
-import { getCurrentMember } from '@/lib/auth/member';
 import { listOwnReviews, type OwnReviewListItem } from '@/lib/reviews/own-reviews';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { AccountManager } from './AccountManager';
@@ -54,13 +53,16 @@ export default async function MyPage() {
   const { data: profile } = user
     ? await supabase
         .from('profiles')
-        .select('username, display_name')
+        .select('id, username, display_name')
         .eq('auth_user_id', user.id)
         .maybeSingle()
     : { data: null };
 
   // 自分の口コミといいね一覧は互いに依存しないので、並べて引く
-  const [ownReviews, favoritesResult] = await Promise.all([loadOwnReviews(), getFavorites()]);
+  const [ownReviews, favoritesResult] = await Promise.all([
+    profile ? loadOwnReviews(profile.id as string) : Promise.resolve([]),
+    getFavorites(),
+  ]);
 
   // いいね一覧 → 記事へ逆引き (resolveArticleByKey は Layer1 純粋関数)。
   const allArticles = getAllArticles();
@@ -161,14 +163,12 @@ export default async function MyPage() {
  * 会員の口コミ。理由と訪問日は本人にだけ見せる列なので、サーバーが service role で読む
  * (`lib/reviews/own-reviews.ts`)。読めない時は null にして、ページの残りは出す
  */
-async function loadOwnReviews(): Promise<OwnReviewListItem[] | null> {
+async function loadOwnReviews(profileId: string): Promise<OwnReviewListItem[] | null> {
   try {
-    const member = await getCurrentMember();
-    if (!member.ok) return [];
     const admin = createAdminClient();
     // 鍵の無い環境 (Preview など) では欄を出さない。開くたびに Sentry へ送らない (getOwnReviewState と同じ)
     if (!admin) return null;
-    return await listOwnReviews(admin, member.profileId);
+    return await listOwnReviews(admin, profileId);
   } catch (error) {
     Sentry.captureException(error, { tags: { page: 'mypage' } });
     return null;

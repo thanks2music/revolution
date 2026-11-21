@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { OccurrenceStatusSchema } from '@revolution/schemas/occurrence';
 import { REVIEW_REASON_CODES, REVIEW_STATUSES } from '@revolution/schemas/review';
 
+import type { ReviewRouteParams } from '@/actions/review';
+import { getOccurrenceUrl } from '@/lib/event/event-url';
 import { todayInJst } from '@/lib/occurrence/status';
 import { authoringMode } from '@/lib/reviews/eligibility';
 
@@ -55,24 +57,28 @@ const OwnReviewListRowSchema = z
     eventName: row.occurrence.events.name,
     /** 会場の名前。無ければ開催の表示名 */
     venueName: row.occurrence.venues?.name ?? row.occurrence.venue_label,
-    /** 開催のページの URL を作るのに要るもの */
-    route: {
-      eventId: row.occurrence.events.id,
-      eventType: row.occurrence.events.primaryCategory.slug,
-      occurrenceSlug: row.occurrence.slug,
+    /** 開催の状態と日付 (編集できるかの判定に使う) */
+    occurrence: {
+      status: row.occurrence.status,
+      startsOn: row.occurrence.starts_on,
+      endsOn: row.occurrence.ends_on,
     },
-    /** 投稿のページで続き・編集ができるか (中止になった開催の下書きなどは、削除だけ) */
-    canEdit:
-      authoringMode({
-        occurrenceStatus: row.occurrence.status,
-        startsOn: row.occurrence.starts_on,
-        endsOn: row.occurrence.ends_on,
-        today: todayInJst(),
-        own: { status: row.status, visitedOn: row.visited_on },
-      }).kind !== 'blocked',
+    /** 削除の action に渡す開催の道筋 (URL の種別・企画 ID・開催の slug) */
+    route: {
+      eventType: row.occurrence.events.primaryCategory.slug,
+      eventId: String(row.occurrence.events.id),
+      occurrenceSlug: row.occurrence.slug,
+    } satisfies ReviewRouteParams,
+    occurrencePath: getOccurrenceUrl(
+      { id: row.occurrence.events.id, primaryCategory: row.occurrence.events.primaryCategory },
+      row.occurrence.slug
+    ),
   }));
 
-export type OwnReviewListItem = z.output<typeof OwnReviewListRowSchema>;
+export type OwnReviewListItem = z.output<typeof OwnReviewListRowSchema> & {
+  /** 投稿のページで続き・編集ができるか (中止になった開催の下書きなどは、削除だけ) */
+  canEdit: boolean;
+};
 
 const SELECT =
   'id, status, rating, visited_on, helpful_count, reason_code, reason_note, updated_at, ' +
@@ -93,5 +99,20 @@ export async function listOwnReviews(
     .order('updated_at', { ascending: false })
     .order('id', { ascending: false });
   if (error) throw error;
-  return z.array(OwnReviewListRowSchema).parse(data ?? []);
+  // 編集できるかは今日 (JST) に依るので、行の読み取りとは分けて 1 回だけ日付を取る
+  const today = todayInJst();
+  return z
+    .array(OwnReviewListRowSchema)
+    .parse(data ?? [])
+    .map(review => ({
+      ...review,
+      canEdit:
+        authoringMode({
+          occurrenceStatus: review.occurrence.status,
+          startsOn: review.occurrence.startsOn,
+          endsOn: review.occurrence.endsOn,
+          today,
+          own: review,
+        }).kind !== 'blocked',
+    }));
 }

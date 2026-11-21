@@ -7,16 +7,16 @@
 
 import Link from 'next/link';
 
-import { getOccurrenceUrl } from '@/lib/event/event-url';
 import type { OwnReviewListItem } from '@/lib/reviews/own-reviews';
 import { ownReviewMeta, ownReviewView, type OwnReviewTone } from '@/lib/reviews/own-review-view';
 
 import { DeleteOwnReviewButton } from './DeleteOwnReviewButton';
+import { ReviewStars } from './ReviewStars';
 
 const BADGE_TONES: Record<OwnReviewTone, string> = {
   draft: 'bg-status-scheduled-surface text-status-scheduled-ink',
   screening: 'bg-primary-50 text-primary-700',
-  published: 'bg-review-published-surface text-review-published-ink',
+  published: 'bg-success-surface text-success-ink',
   problem: 'bg-status-cancelled-surface text-status-cancelled',
 };
 
@@ -42,10 +42,6 @@ export function OwnReviewList(props: { reviews: OwnReviewListItem[] }) {
 function OwnReviewItem({ review }: { review: OwnReviewListItem }) {
   const view = ownReviewView(review);
   const meta = ownReviewMeta(review);
-  const occurrencePath = getOccurrenceUrl(
-    { id: review.route.eventId, primaryCategory: { slug: review.route.eventType } },
-    review.route.occurrenceSlug
-  );
   const title = review.venueName ? `${review.eventName} ${review.venueName}` : review.eventName;
 
   return (
@@ -61,11 +57,17 @@ function OwnReviewItem({ review }: { review: OwnReviewListItem }) {
         </span>
       </p>
       <h3 className="text-sm font-bold text-ink-strong">
-        <Link href={occurrencePath} className="text-ink-strong hover:underline">
+        <Link href={review.occurrencePath} className="text-ink-strong hover:underline">
           {title}
         </Link>
       </h3>
-      {meta && <p className="text-[11px] text-ink-muted">{meta}</p>}
+      {(review.rating !== null || meta) && (
+        <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-ink-muted">
+          {review.rating !== null && <ReviewStars rating={review.rating} className="text-xs" />}
+          {review.rating !== null && meta && <span aria-hidden="true">・</span>}
+          {meta && <span>{meta}</span>}
+        </p>
+      )}
       {view.reason && (
         <p className="rounded-[10px] bg-status-cancelled-surface px-3 py-2.5 text-[11px] text-status-cancelled">
           {view.reason}
@@ -74,18 +76,14 @@ function OwnReviewItem({ review }: { review: OwnReviewListItem }) {
       <div className="flex items-center gap-4 text-xs font-bold">
         {/* 中止になった開催の下書きなど、もう続きを書けない口コミは削除だけにする */}
         {review.canEdit && (
-          <Link href={`${occurrencePath}/review`} className="text-primary-700 hover:underline">
+          <Link
+            href={`${review.occurrencePath}/review`}
+            className="text-primary-700 hover:underline"
+          >
             {view.editLabel}
           </Link>
         )}
-        <DeleteOwnReviewButton
-          route={{
-            eventType: review.route.eventType,
-            eventId: String(review.route.eventId),
-            occurrenceSlug: review.route.occurrenceSlug,
-          }}
-          reviewId={review.id}
-        />
+        <DeleteOwnReviewButton route={review.route} reviewId={review.id} />
       </div>
     </article>
   );

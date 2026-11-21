@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { formatStars, ownReviewMeta, ownReviewView } from '@/lib/reviews/own-review-view';
+import { ownReviewMeta, ownReviewView } from '@/lib/reviews/own-review-view';
 
 describe('ownReviewView', () => {
   it('状態ごとにバッジと編集の入口の言葉を決める', () => {
@@ -48,28 +48,18 @@ describe('ownReviewView', () => {
 describe('ownReviewMeta', () => {
   const base = { helpfulCount: 0, updatedAt: '2026-11-17T16:00:00Z' };
 
-  it('星と訪問日を並べ、公開中なら参考になった数を足す', () => {
+  it('訪問日を出し、公開中なら参考になった数を足す', () => {
     expect(
       ownReviewMeta({
         ...base,
         status: 'published',
-        rating: 4,
         visitedOn: '2026-07-19',
         helpfulCount: 24,
       })
-    ).toBe('★★★★☆ ・ 2026年7月19日 訪問 ・ 参考になった 24');
+    ).toBe('2026年7月19日 訪問 ・ 参考になった 24');
   });
 
   it('下書きは入っている所だけと、保存日 (JST) を出す', () => {
-    expect(ownReviewMeta({ ...base, status: 'draft', rating: null, visitedOn: null })).toBe(
-      '2026.11.18 保存'
-    );
-  });
-});
-
-describe('formatStars', () => {
-  it('星の数を 5 文字で表す', () => {
-    expect(formatStars(1)).toBe('★☆☆☆☆');
-    expect(formatStars(5)).toBe('★★★★★');
+    expect(ownReviewMeta({ ...base, status: 'draft', visitedOn: null })).toBe('2026.11.18 保存');
   });
 });

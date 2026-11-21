@@ -57,8 +57,8 @@
   --color-status-cancelled-surface: var(--status-cancelled-surface);
   --color-status-cancelled: var(--status-cancelled);
   --color-status-unscheduled-line: var(--status-unscheduled-line);
-  --color-review-published-surface: var(--review-published-surface);
-  --color-review-published-ink: var(--review-published-ink);
+  --color-success-surface: var(--success-surface);
+  --color-success-ink: var(--success-ink);
 
   --color-days-soon: var(--days-soon);
   --color-days-urgent: var(--days-urgent);
@@ -245,9 +245,9 @@
   --status-cancelled: #b4382f;
   /* 日程未発表の破線ボーダー。v6 が「唯一の新規トークン」と呼ぶもの。 */
   --status-unscheduled-line: #a9becc;
-  /* 口コミの「公開中」のバッジ (Figma #12 `83:199`、マイページの自分の口コミ)。2026-11-22 追加 */
-  --review-published-surface: #e3f6ea;
-  --review-published-ink: #1e8a4c;
+  /* 成功・公開中を表す緑 (最初の使い道は Figma #12 `83:199` の口コミの「公開中」のバッジ)。2026-11-22 追加 */
+  --success-surface: #e3f6ea;
+  --success-ink: #1e8a4c;
 
   /*
    * 残日数の色。**v6 の指定と完全一致**していたため変更なし。

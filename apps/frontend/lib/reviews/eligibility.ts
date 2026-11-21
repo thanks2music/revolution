@@ -109,3 +109,8 @@ const OWN_STATUSES = {
 export function ownReviewStatus(status: ReviewStatus): OwnReviewStatus | null {
   return OWN_STATUSES[status];
 }
+
+/** 投稿者に理由を見せる状態 (差し戻しと非公開。どちらも理由を見て直せる、仕様 #156) */
+export function explainsReason(status: ReviewStatus): boolean {
+  return status === 'rejected' || status === 'hidden';
+}

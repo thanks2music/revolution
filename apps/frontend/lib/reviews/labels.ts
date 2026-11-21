@@ -1,8 +1,10 @@
-import type {
-  ReviewAttendance,
-  ReviewScreeningReason,
-  ReviewFoodCostBand,
-  ReviewGoodsCostBand,
+import {
+  REVIEW_SCREENING_REASONS,
+  type ReviewAttendance,
+  type ReviewFoodCostBand,
+  type ReviewGoodsCostBand,
+  type ReviewReasonCode,
+  type ReviewScreeningReason,
 } from '@revolution/schemas/review';
 
 /**
@@ -57,4 +59,12 @@ export const REJECTION_REASON_LABELS: Record<ReviewScreeningReason, string> = {
 export function formatVisitedMonth(visitedMonth: string): string {
   const [year, month] = visitedMonth.split('-');
   return `${year}年${Number(month)}月`;
+}
+
+/**
+ * 理由のコードのうち、投稿者に言葉で見せるもの (審査の 4 種)。ほか (ai_failure・後で足す通報の理由) は null。
+ * マイページと開催のページの本人の欄の両方が使う
+ */
+export function toScreeningReason(code: ReviewReasonCode | null): ReviewScreeningReason | null {
+  return REVIEW_SCREENING_REASONS.find(reason => reason === code) ?? null;
 }

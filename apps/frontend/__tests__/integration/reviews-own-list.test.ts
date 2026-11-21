@@ -74,7 +74,11 @@ describe('自分の口コミの一覧', () => {
       reasonNote: '譲渡の呼びかけの部分を直してください',
       visitedOn: jstDate(-1),
       eventName: expect.stringContaining('テスト企画'),
-      route: { eventId: b.event.id, eventType: b.event.categorySlug, occurrenceSlug: b.occ.slug },
+      route: {
+        eventId: String(b.event.id),
+        eventType: b.event.categorySlug,
+        occurrenceSlug: b.occ.slug,
+      },
     });
   });
 

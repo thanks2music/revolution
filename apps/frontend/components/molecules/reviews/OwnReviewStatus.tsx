@@ -44,13 +44,10 @@ export function OwnReviewStatus({ occurrenceId }: { occurrenceId: number }) {
         <p>審査中です（通常1時間以内）。公開されると、ここに表示されます。</p>
       )}
       {state.status === 'published' && <p>公開中です。</p>}
-      {state.status === 'rejected' && (
-        <>
-          <p>審査に通らなかったため、公開されていません。</p>
-          {state.reasonCode && <p>理由: {REJECTION_REASON_LABELS[state.reasonCode]}</p>}
-        </>
-      )}
+      {state.status === 'rejected' && <p>審査に通らなかったため、公開されていません。</p>}
       {state.status === 'hidden' && <p>非公開になっています。</p>}
+      {/* 差し戻しと非公開の理由 (getOwnReviewState が、見せてよい時だけ返す) */}
+      {state.reasonCode && <p>理由: {REJECTION_REASON_LABELS[state.reasonCode]}</p>}
       {state.note && <p>運営より: {state.note}</p>}
     </div>
   );
