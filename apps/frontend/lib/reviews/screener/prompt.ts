@@ -12,6 +12,9 @@ import { z } from 'zod';
  * `next.config.mjs` の `outputFileTracingIncludes` でサーバーの関数に含める。
  *
  * 文面の中の `{{body}}` を本文に置き換えて渡す。
+ *
+ * 下の形 (必須のキー・thinking_level の値・`<review>{{body}}</review>`) は、revolution-templates の CI
+ * (`.github/workflows/validate-review-prompt.yml`) が同じ規則を手で持っている。ここを変えたら、向こうも合わせる。
  */
 const ScreeningPromptSchema = z.object({
   version: z.number().int(),
