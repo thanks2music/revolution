@@ -23,7 +23,7 @@ import { getOccurrenceUrl } from '@/lib/event/event-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { todayInJst } from '@/lib/occurrence/status';
-import { reviewBlockReason, visitDateRange } from '@/lib/reviews/eligibility';
+import { authoringMode } from '@/lib/reviews/eligibility';
 import { buildXShareUrl } from '@/lib/reviews/share';
 import { findOwnReview, type OwnReview } from '@/lib/reviews/authoring';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -63,20 +63,15 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
   const { occurrence, event } = data;
   const occurrencePath = getOccurrenceUrl(event, occurrence.slug);
   const venueName = occurrence.venueName ?? VENUE_NAME_FALLBACK;
-  const dateRange = visitDateRange(occurrence.startsOn, occurrence.endsOn, todayInJst());
   // 同じ開催にもう書いていれば、その口コミの編集にする (仕様: 1 開催 1 件、既にあれば編集へ案内する)
   const own = member?.ok ? await loadOwnReview(occurrence.id, member.profileId) : null;
-  const submitted = own !== null && own.status !== 'draft';
-  // 提出した口コミは、開催が中止などになった後も直せる (仕様: いつでも編集)。
-  // 選べる訪問日が無い開催では、前の訪問日のままにする (変えるとトリガが止める)
-  const range =
-    submitted && own.visitedOn
-      ? (dateRange ?? { min: own.visitedOn, max: own.visitedOn })
-      : dateRange;
-  const blocked = submitted
-    ? null
-    : (reviewBlockReason(occurrence.status) ??
-      (dateRange ? null : 'この開催には、まだ口コミを書けません。'));
+  const mode = authoringMode({
+    occurrenceStatus: occurrence.status,
+    startsOn: occurrence.startsOn,
+    endsOn: occurrence.endsOn,
+    today: todayInJst(),
+    own,
+  });
 
   return (
     <Layout>
@@ -84,10 +79,10 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
         <h1 className="mb-4 text-center font-display text-lg font-bold text-ink-strong">
           口コミを書く
         </h1>
-        {blocked || !range ? (
+        {mode.kind === 'blocked' ? (
           <div className="flex flex-col gap-4 text-center">
             <p className="rounded-xl border border-(--line-soft) bg-white p-4 text-sm text-ink-body">
-              {blocked}
+              {mode.reason}
             </p>
             <Link href={occurrencePath} className="text-sm text-primary-700 underline">
               開催ページに戻る
@@ -99,8 +94,8 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
             eventName={event.name}
             venueName={venueName}
             period={formatPeriod(occurrence.startsOn, occurrence.endsOn)}
-            minDate={range.min}
-            maxDate={range.max}
+            minDate={mode.range.min}
+            maxDate={mode.range.max}
             occurrencePath={occurrencePath}
             initial={own ?? undefined}
             shareUrl={buildXShareUrl({

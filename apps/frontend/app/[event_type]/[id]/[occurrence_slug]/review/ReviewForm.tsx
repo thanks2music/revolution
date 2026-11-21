@@ -68,9 +68,9 @@ export function ReviewForm(props: ReviewFormProps) {
   );
   const [body, setBody] = useState(initial?.body ?? '');
   const [hasSpoiler, setHasSpoiler] = useState(initial?.hasSpoiler ?? false);
-  // 下書きを保存できるのは、まだ提出していない口コミだけ (提出の後は、直して出し直す)
-  const canSaveDraft = !initial || initial.status === 'draft';
-  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  // 提出した口コミの編集か。下書きを保存できるのは、まだ提出していない口コミだけ (提出の後は、直して出し直す)
+  const isResubmit = initial !== undefined && initial.status !== 'draft';
+  const [draftSaved, setDraftSaved] = useState(false);
   // 提出の失敗 (全体の文・欄ごとの誤り・ログインが要るか) を 1 つで持つ
   const [failure, setFailure] = useState<SubmitReviewFailure | null>(null);
   const fieldErrors = failure?.fieldErrors ?? {};
@@ -92,64 +92,51 @@ export function ReviewForm(props: ReviewFormProps) {
 
   const canSubmit = rating !== null && visitedOn !== '' && !pending;
 
-  function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    // 星が無い間は送信のボタンを押せない (型を絞るためだけの判定)
-    if (rating === null) return;
+  // 送る内容 (提出と下書きの保存で共通。下書きは星と訪問日が空でよい)
+  const content = { attendance, foodCostBand, goodsCostBand, body, hasSpoiler };
+
+  /** action を走らせ、失敗は欄の下と全体の文に出す。通信の失敗は入力を残したまま、もう一度押せるようにする */
+  function run<T extends { ok: true } | SubmitReviewFailure>(
+    action: () => Promise<T>,
+    onOk: () => void,
+    networkError: string
+  ) {
+    setDraftSaved(false);
     startTransition(async () => {
       try {
-        const result = await submitReview(props.route, {
-          rating,
-          visitedOn,
-          attendance,
-          foodCostBand,
-          goodsCostBand,
-          body,
-          hasSpoiler,
-        });
+        const result = await action();
         if (result.ok) {
-          setSubmittedAt(new Date());
-          window.scrollTo({ top: 0 });
+          setFailure(null);
+          onOk();
           return;
         }
-        setFailure(result);
+        setFailure(result as SubmitReviewFailure);
       } catch {
-        setFailure({
-          ok: false,
-          error: '投稿できませんでした。通信を確かめて、もう一度お試しください',
-        });
+        setFailure({ ok: false, error: networkError });
       }
     });
   }
 
+  function onSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    // 星が無い間は送信のボタンを押せない (型を絞るためだけの判定)
+    if (rating === null) return;
+    run(
+      () => submitReview(props.route, { ...content, rating, visitedOn }),
+      () => {
+        setSubmittedAt(new Date());
+        window.scrollTo({ top: 0 });
+      },
+      '投稿できませんでした。通信を確かめて、もう一度お試しください'
+    );
+  }
+
   function onSaveDraft() {
-    startTransition(async () => {
-      try {
-        const result = await saveReviewDraft(props.route, {
-          rating,
-          visitedOn: visitedOn === '' ? null : visitedOn,
-          attendance,
-          foodCostBand,
-          goodsCostBand,
-          body,
-          hasSpoiler,
-        });
-        if (result.ok) {
-          setFailure(null);
-          setDraftSavedAt(new Date());
-          return;
-        }
-        setDraftSavedAt(null);
-        setFailure(result);
-      } catch {
-        setDraftSavedAt(null);
-        // 通信の失敗など。入力は残したまま、もう一度押せるようにする
-        setFailure({
-          ok: false,
-          error: '保存できませんでした。通信を確かめて、もう一度お試しください',
-        });
-      }
-    });
+    run(
+      () => saveReviewDraft(props.route, { ...content, rating, visitedOn: visitedOn || null }),
+      () => setDraftSaved(true),
+      '保存できませんでした。通信を確かめて、もう一度お試しください'
+    );
   }
 
   return (
@@ -309,13 +296,9 @@ export function ReviewForm(props: ReviewFormProps) {
         disabled={!canSubmit}
         className="mt-5 w-full rounded-2xl bg-primary-strong p-4 font-display text-base font-bold text-white transition-colors hover:bg-primary-strong-hover disabled:opacity-50"
       >
-        {pending
-          ? '送っています…'
-          : initial && initial.status !== 'draft'
-            ? '直して出し直す'
-            : '口コミを投稿する'}
+        {pending ? '送っています…' : isResubmit ? '直して出し直す' : '口コミを投稿する'}
       </button>
-      {canSaveDraft && (
+      {!isResubmit && (
         <button
           type="button"
           onClick={onSaveDraft}
@@ -325,7 +308,7 @@ export function ReviewForm(props: ReviewFormProps) {
           下書きを保存
         </button>
       )}
-      {draftSavedAt && (
+      {draftSaved && (
         <p role="status" className="pt-2 text-center text-xs text-ink-muted">
           下書きを保存しました。別の端末からも続きを書けます（審査には回りません）
         </p>

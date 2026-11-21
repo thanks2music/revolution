@@ -79,7 +79,7 @@ const INPUT = {
 
 function detail(status = 'ongoing') {
   return {
-    occurrence: { id: 34, slug: 'shibuya', status },
+    occurrence: { id: 34, slug: 'shibuya', status, startsOn: '2026-01-01', endsOn: null },
     event: { id: 12, primaryCategory: { slug: 'collabo-cafe' } },
   };
 }
@@ -259,24 +259,15 @@ it('開催の状態のトリガの拒否は、まだ書けない扱いにする'
 });
 
 describe('getOwnReviewState', () => {
-  const own = (jest.requireMock('@/lib/supabase/admin') as { __ownBuilder: any }).__ownBuilder;
-  const row = (fields: Record<string, unknown>) =>
-    own.maybeSingle.mockResolvedValue({
-      data: {
-        status: 'pending',
-        reason_code: null,
-        reason_note: null,
-        visited_on: '2026-11-20',
-        ...fields,
-      },
-      error: null,
+  // 本人の行は操作の層 (findOwnReview) が読む。ここでは読んだ結果だけを与える
+  const row = (fields: { status?: string; reason_code?: string | null; reason_note?: string }) =>
+    (findOwnReview as jest.Mock).mockResolvedValue({
+      id: 1,
+      status: fields.status ?? 'pending',
+      reasonCode: fields.reason_code ?? null,
+      reasonNote: fields.reason_note ?? null,
+      visitedOn: '2026-11-20',
     });
-
-  beforeEach(() => {
-    own.select.mockReturnValue(own);
-    own.eq.mockReturnValue(own);
-    own.is.mockReturnValue(own);
-  });
 
   it.each([['pending'], ['needs_review']])('%s は本人には審査中として見せる', async status => {
     row({ status, reason_code: status === 'needs_review' ? 'ai_failure' : null });
@@ -303,15 +294,14 @@ describe('getOwnReviewState', () => {
     row({});
     await getOwnReviewState(34);
 
-    expect(own.eq).toHaveBeenCalledWith('occurrence_id', 34);
-    expect(own.eq).toHaveBeenCalledWith('user_id', 'profile-1');
+    expect(findOwnReview).toHaveBeenCalledWith(expect.anything(), 'profile-1', 34);
   });
 
   it('下書き・口コミが無い・会員でない時は null', async () => {
     row({ status: 'draft' });
     await expect(getOwnReviewState(34)).resolves.toBeNull();
 
-    own.maybeSingle.mockResolvedValue({ data: null, error: null });
+    (findOwnReview as jest.Mock).mockResolvedValue(null);
     await expect(getOwnReviewState(34)).resolves.toBeNull();
 
     (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'unauthenticated' });
@@ -320,12 +310,13 @@ describe('getOwnReviewState', () => {
 
   it('不正な開催 ID には問い合わせない', async () => {
     await expect(getOwnReviewState(0)).resolves.toBeNull();
-    expect(own.maybeSingle).not.toHaveBeenCalled();
+    expect(findOwnReview).not.toHaveBeenCalled();
   });
 });
 
 describe('既に口コミがある開催への提出', () => {
   const EXISTING = {
+    submittedAt: '2026-11-20T00:00:00Z',
     rating: 3,
     visitedOn: '2026-11-19',
     attendance: null,
@@ -358,7 +349,10 @@ describe('既に口コミがある開催への提出', () => {
 
   it('提出した口コミなら内容の変更にし、公開中だったらページをすぐ作り直す', async () => {
     (findOwnReview as jest.Mock).mockResolvedValue({ id: 71, status: 'published', ...EXISTING });
-    builder.select.mockResolvedValueOnce({ data: [{ id: 71 }], error: null });
+    builder.select.mockResolvedValueOnce({
+      data: [{ submitted_at: '2026-11-22T00:00:00Z' }],
+      error: null,
+    });
 
     await expect(submitReview(ROUTE, INPUT)).resolves.toEqual({ ok: true, reviewId: 71 });
     expect(builder.update).toHaveBeenCalledWith(
@@ -385,6 +379,7 @@ describe('既に口コミがある開催への提出', () => {
 
 describe('提出した口コミの直し方', () => {
   const EXISTING = {
+    submittedAt: '2026-11-20T00:00:00Z',
     rating: 4,
     visitedOn: '2026-11-19',
     attendance: null,
@@ -396,19 +391,26 @@ describe('提出した口コミの直し方', () => {
 
   it('内容が前と同じなら出し直さない (審査に回らないのに成功に見せない)', async () => {
     (findOwnReview as jest.Mock).mockResolvedValue({ id: 72, status: 'rejected', ...EXISTING });
+    // トリガが内容の変化を見つけなければ、提出の日時は進まない
+    builder.select.mockResolvedValueOnce({
+      data: [{ submitted_at: EXISTING.submittedAt }],
+      error: null,
+    });
 
-    await expect(submitReview(ROUTE, { ...INPUT, ...EXISTING })).resolves.toMatchObject({
+    await expect(submitReview(ROUTE, { ...INPUT, body: EXISTING.body })).resolves.toMatchObject({
       ok: false,
       error: expect.stringContaining('前と同じ'),
     });
-    expect(builder.update).not.toHaveBeenCalled();
     expect(after).not.toHaveBeenCalled();
   });
 
   it('中止になった開催でも、提出した口コミは直せる', async () => {
     (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail('cancelled'));
     (findOwnReview as jest.Mock).mockResolvedValue({ id: 73, status: 'published', ...EXISTING });
-    builder.select.mockResolvedValueOnce({ data: [{ id: 73 }], error: null });
+    builder.select.mockResolvedValueOnce({
+      data: [{ submitted_at: '2026-11-22T00:00:00Z' }],
+      error: null,
+    });
 
     await expect(submitReview(ROUTE, { ...INPUT, ...EXISTING, body: '直した' })).resolves.toEqual({
       ok: true,
@@ -441,7 +443,7 @@ describe('saveReviewDraft', () => {
 
     await expect(
       saveReviewDraft(ROUTE, { ...INPUT, rating: null, visitedOn: null })
-    ).resolves.toEqual({ ok: true, reviewId: 80 });
+    ).resolves.toEqual({ ok: true });
     expect(saveDraft).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ profileId: 'profile-1', occurrenceId: 34 })

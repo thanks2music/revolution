@@ -7,7 +7,11 @@ import {
   REVIEW_ATTENDANCES,
   REVIEW_FOOD_COST_BANDS,
   REVIEW_GOODS_COST_BANDS,
+  REVIEW_REASON_CODES,
   REVIEW_STATUSES,
+  type ReviewAttendance,
+  type ReviewFoodCostBand,
+  type ReviewGoodsCostBand,
 } from '@revolution/schemas/review';
 
 /**
@@ -23,9 +27,9 @@ import {
 export type ReviewContent = {
   rating: number | null;
   visitedOn: string | null;
-  attendance: (typeof REVIEW_ATTENDANCES)[number] | null;
-  foodCostBand: (typeof REVIEW_FOOD_COST_BANDS)[number] | null;
-  goodsCostBand: (typeof REVIEW_GOODS_COST_BANDS)[number] | null;
+  attendance: ReviewAttendance | null;
+  foodCostBand: ReviewFoodCostBand | null;
+  goodsCostBand: ReviewGoodsCostBand | null;
   body: string | null;
   hasSpoiler: boolean;
 };
@@ -42,42 +46,26 @@ export function toContentColumns(content: ReviewContent) {
   };
 }
 
-const OwnReviewSchema = z.object({
-  id: z.number(),
-  status: z.enum(REVIEW_STATUSES),
-  rating: z.number().int().nullable(),
-  visited_on: z.string().nullable(),
-  attendance: z.enum(REVIEW_ATTENDANCES).nullable(),
-  food_cost_band: z.enum(REVIEW_FOOD_COST_BANDS).nullable(),
-  goods_cost_band: z.enum(REVIEW_GOODS_COST_BANDS).nullable(),
-  body: z.string().nullable(),
-  has_spoiler: z.boolean(),
-});
-
-export type OwnReview = {
-  id: number;
-  status: z.infer<typeof OwnReviewSchema>['status'];
-} & ReviewContent;
-
-/** 会員のこの開催の口コミ (論理削除していないもの)。無ければ null */
-export async function findOwnReview(
-  db: SupabaseClient,
-  profileId: string,
-  occurrenceId: number
-): Promise<OwnReview | null> {
-  const { data, error } = await db
-    .from('reviews')
-    .select(
-      'id, status, rating, visited_on, attendance, food_cost_band, goods_cost_band, body, has_spoiler'
-    )
-    .eq('occurrence_id', occurrenceId)
-    .eq('user_id', profileId)
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
-  const row = OwnReviewSchema.parse(data);
-  return {
+/**
+ * 本人の口コミ 1 件 (編集の初期値・本人の状態の表示・内容の変更の判定に使う)。
+ * 理由と訪問日は anon・authenticated に GRANT していない列なので、service role で読む
+ */
+const OwnReviewSchema = z
+  .object({
+    id: z.number(),
+    status: z.enum(REVIEW_STATUSES),
+    rating: z.number().int().nullable(),
+    visited_on: z.string().nullable(),
+    attendance: z.enum(REVIEW_ATTENDANCES).nullable(),
+    food_cost_band: z.enum(REVIEW_FOOD_COST_BANDS).nullable(),
+    goods_cost_band: z.enum(REVIEW_GOODS_COST_BANDS).nullable(),
+    body: z.string().nullable(),
+    has_spoiler: z.boolean(),
+    reason_code: z.enum(REVIEW_REASON_CODES).nullable(),
+    reason_note: z.string().nullable(),
+    submitted_at: z.string().nullable(),
+  })
+  .transform(row => ({
     id: row.id,
     status: row.status,
     rating: row.rating,
@@ -87,7 +75,32 @@ export async function findOwnReview(
     goodsCostBand: row.goods_cost_band,
     body: row.body,
     hasSpoiler: row.has_spoiler,
-  };
+    reasonCode: row.reason_code,
+    reasonNote: row.reason_note,
+    submittedAt: row.submitted_at,
+  }));
+
+export type OwnReview = z.output<typeof OwnReviewSchema>;
+
+const OWN_REVIEW_COLUMNS =
+  'id, status, rating, visited_on, attendance, food_cost_band, goods_cost_band, body, has_spoiler, ' +
+  'reason_code, reason_note, submitted_at';
+
+/** 会員のこの開催の口コミ (論理削除していないもの)。無ければ null */
+export async function findOwnReview(
+  db: SupabaseClient,
+  profileId: string,
+  occurrenceId: number
+): Promise<OwnReview | null> {
+  const { data, error } = await db
+    .from('reviews')
+    .select(OWN_REVIEW_COLUMNS)
+    .eq('occurrence_id', occurrenceId)
+    .eq('user_id', profileId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? OwnReviewSchema.parse(data) : null;
 }
 
 export type SaveDraftOutcome =

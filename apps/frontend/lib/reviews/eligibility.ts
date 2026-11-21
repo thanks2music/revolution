@@ -35,6 +35,40 @@ export function visitDateRange(
 }
 
 /**
+ * 会員がこの開催の投稿のページで何をできるか (one-more-time #162)。投稿のページと Server Action の両方が使う。
+ *
+ * - 提出した口コミ (下書き以外) は、開催の状態に関わらず直せる (仕様: いつでも編集)。選べる訪問日が
+ *   無くなった開催では、前の訪問日だけを選べる (変えると DB のトリガが止める)
+ * - 新しく書く・下書きは、開催中か終了の開催で、選べる訪問日がある時だけ
+ */
+export type DateRange = { min: string; max: string };
+
+export type AuthoringMode =
+  { kind: 'blocked'; reason: string } | { kind: 'new' | 'draft' | 'edit'; range: DateRange };
+
+const NO_RANGE_REASON = 'この開催には、まだ口コミを書けません。';
+
+export function authoringMode(input: {
+  occurrenceStatus: OccurrenceStatus;
+  startsOn: string | null;
+  endsOn: string | null;
+  today: string;
+  own: { status: ReviewStatus; visitedOn: string | null } | null;
+}): AuthoringMode {
+  const range = visitDateRange(input.startsOn, input.endsOn, input.today);
+  const { own } = input;
+  if (own && own.status !== 'draft') {
+    const editRange = range ?? (own.visitedOn ? { min: own.visitedOn, max: own.visitedOn } : null);
+    return editRange
+      ? { kind: 'edit', range: editRange }
+      : { kind: 'blocked', reason: NO_RANGE_REASON };
+  }
+  const blocked = reviewBlockReason(input.occurrenceStatus) ?? (range ? null : NO_RANGE_REASON);
+  if (blocked || !range) return { kind: 'blocked', reason: blocked ?? NO_RANGE_REASON };
+  return { kind: own ? 'draft' : 'new', range };
+}
+
+/**
  * 開催のページの口コミの欄の出し方 (仕様 #156)。
  * - full: 評価・投稿の入口・口コミの一覧 (開催中・終了)
  * - notYet: 始まったら書けることだけ (開催前)
