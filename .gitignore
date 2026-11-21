@@ -286,6 +286,9 @@ test-artifacts/
 #    列数アサーション (こちらは repo に載る)。
 **/e2e/**/*-snapshots/
 
+# Playwright の E2E が保存するログイン状態 (cookie とテスト会員の ID。apps/frontend/e2e/local/paths.ts)
+**/e2e/**/.auth/
+
 # カバレッジ
 coverage/
 .nyc_output/
