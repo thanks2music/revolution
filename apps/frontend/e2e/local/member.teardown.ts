@@ -18,9 +18,14 @@ teardown('setup で作った会員を消す', async () => {
   try {
     await deleteTestMember(admin, userId);
   } catch (error) {
-    // 会員がもう消えている (前回の後片付けの途中で止まった時など) なら、目的は果たせている
+    // 会員も、退会のトリガが残す profile の行も、もう無いなら目的は果たせている
+    // (前回の後片付けの途中で止まった時など)。どちらかが残っていれば失敗として知らせる
     const { data } = await admin.auth.admin.getUserById(userId);
-    if (data.user) throw error;
+    const { count } = await admin
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('id', userId);
+    if (data.user || count) throw error;
   }
   await rm(MEMBER_RECORD_PATH, { force: true });
   await rm(MEMBER_STATE_PATH, { force: true });
