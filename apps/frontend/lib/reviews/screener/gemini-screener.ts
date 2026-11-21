@@ -88,8 +88,8 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
           ok: true,
           decision: parsed.decision,
           reasonCode: parsed.reason_code,
-          // 説明は管理画面で読む物。長すぎる応答も判定は生かし、ここで切る
-          reason: parsed.reason.slice(0, REASON_MAX_CHARS),
+          // 説明は管理画面で読む物。長すぎる応答も判定は生かし、ここで切る (絵文字などを途中で割らないよう文字単位で)
+          reason: Array.from(parsed.reason).slice(0, REASON_MAX_CHARS).join(''),
           model,
         };
       } catch (error) {

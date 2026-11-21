@@ -111,6 +111,13 @@ describe('createGeminiScreener', () => {
       'ブロック (SAFETY)',
       response({ decision: 'publish', reason_code: null, reason: 'x' }, 'SAFETY'),
     ],
+    [
+      '入力のブロック (candidates なし)',
+      {
+        promptFeedback: { blockReason: 'SAFETY' },
+        candidates: [],
+      } as unknown as GenerateContentResponse,
+    ],
   ])('%s の応答は失敗にし、やり直さない', async (_label, res) => {
     const m = models(res, res);
     const result = await createGeminiScreener({ models: m, prompt, retry: noWait }).screen({
@@ -141,6 +148,15 @@ describe('createGeminiScreener', () => {
 
     expect(result).toMatchObject({ ok: true, decision: 'publish' });
     expect(result.ok && result.reason.length).toBe(500);
+  });
+
+  it('説明は文字単位で切り、絵文字を途中で割らない', async () => {
+    const m = models(
+      response({ decision: 'publish', reason_code: null, reason: '😀'.repeat(600) })
+    );
+    const result = await createGeminiScreener({ models: m, prompt }).screen({ body: 'x' });
+
+    expect(result.ok && result.reason).toBe('😀'.repeat(500));
   });
 
   it('プロンプトの {{body}} はすべて置き換える', async () => {

@@ -51,7 +51,7 @@ if [ -n "${TEMPLATES_SOURCE_PATH:-}" ]; then
 elif [ -n "${TEMPLATES_READ_TOKEN:-}" ]; then
   for file in "${FILES[@]}"; do
     mkdir -p "$STAGING/$(dirname "$file")"
-    status=$(curl -sS --retry 2 -o "$STAGING/$file" -w '%{http_code}' \
+    status=$(curl -sS --retry 2 --max-time 30 -o "$STAGING/$file" -w '%{http_code}' \
       -H "Authorization: Bearer ${TEMPLATES_READ_TOKEN}" \
       -H "Accept: application/vnd.github.raw+json" \
       -H "X-GitHub-Api-Version: 2022-11-28" \
