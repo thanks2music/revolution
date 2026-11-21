@@ -365,8 +365,16 @@ CREATE POLICY "profiles_select_reviewer"
     )
   );
 --> statement-breakpoint
--- anon に見せる列は表示に要る物だけ
+-- 見せる列は表示に要る物だけにする。authenticated も列で絞る (上の policy で他人の行が読めるように
+-- なったので、テーブル全体の SELECT のままだと、今後 profiles に足す列が自動で他人に見えてしまう)。
+-- authenticated の列は、本人の画面と Server Action が読む物 (id / auth_user_id / username / display_name)
+-- と withdrawn_at。updated_at / created_at は読ませない
 GRANT SELECT ("id", "display_name", "username", "withdrawn_at") ON TABLE "public"."profiles" TO anon;
+--> statement-breakpoint
+REVOKE SELECT ON TABLE "public"."profiles" FROM authenticated;
+--> statement-breakpoint
+GRANT SELECT ("id", "auth_user_id", "display_name", "username", "withdrawn_at")
+  ON TABLE "public"."profiles" TO authenticated;
 --> statement-breakpoint
 
 -- ───────────────────────────────────────────────

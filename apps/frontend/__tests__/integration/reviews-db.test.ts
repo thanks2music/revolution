@@ -314,5 +314,20 @@ describe('口コミの DB', () => {
 
       expect(profiles).toEqual([{ id: author.userId, display_name: author.username }]);
     });
+
+    it('他人の profile は表示に使う列だけが読め、それ以外の列は読めない', async () => {
+      const occ = await ongoingOccurrence();
+      const author = await data!.createMember();
+      const viewer = await data!.createMember();
+      const { data: row } = await submit(await signInAsMember(author), author, occ.id);
+      await data!.admin.from('reviews').update({ status: 'published' }).eq('id', row!.id);
+      const viewerClient = await signInAsMember(viewer);
+
+      const shown = await viewerClient.from('profiles').select('display_name').eq('id', author.userId);
+      const hidden = await viewerClient.from('profiles').select('updated_at').eq('id', author.userId);
+
+      expect(shown.data).toEqual([{ display_name: author.username }]);
+      expect(hidden.error?.code).toBe('42501');
+    });
   });
 });
