@@ -37,7 +37,7 @@ const PROTECTED_PREFIXES = ['/mypage', '/onboarding'];
 const AUTH_PAGES = ['/login'];
 
 // 口コミの投稿 `/{種別}/{企画 ID}/{開催の slug}/review` (one-more-time #161)。前方一致では書けないので形で見る
-const REVIEW_SUBMIT_PATH = /^\/[^/]+\/[^/]+\/[^/]+\/review\/?$/;
+const REVIEW_SUBMIT_PATH = /^\/[^/]+\/\d+\/[^/]+\/review\/?$/;
 
 export function isPathProtected(pathname: string): boolean {
   return (

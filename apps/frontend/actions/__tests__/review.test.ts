@@ -15,16 +15,22 @@ jest.mock('@/lib/env', () => ({ env: {} }));
 jest.mock('@/lib/occurrence/queries', () => ({ getOccurrenceDetail: jest.fn() }));
 jest.mock('@/lib/auth/current-user', () => ({ getCachedUser: jest.fn() }));
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn(() => ({ admin: true })) }));
-jest.mock('@/lib/reviews/screener', () => ({ getReviewScreener: jest.fn(async () => ({ screen: jest.fn() })) }));
+jest.mock('@/lib/reviews/screener', () => ({
+  getReviewScreener: jest.fn(async () => ({ screen: jest.fn() })),
+}));
 jest.mock('@/lib/reviews/operations', () => ({ screenSubmittedReview: jest.fn() }));
 jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }));
 jest.mock('next/server', () => ({ after: jest.fn() }));
+jest.mock('@/lib/reviews/profile', () => ({ findProfileId: jest.fn() }));
 jest.mock('@/lib/supabase/server', () => {
   const builder: any = {};
   builder.insert = jest.fn(() => builder);
   builder.select = jest.fn(() => builder);
   builder.single = jest.fn();
-  return { __builder: builder, createClient: jest.fn(async () => ({ from: jest.fn(() => builder) })) };
+  return {
+    __builder: builder,
+    createClient: jest.fn(async () => ({ from: jest.fn(() => builder) })),
+  };
 });
 
 import * as Sentry from '@sentry/nextjs';
@@ -35,6 +41,7 @@ import { submitReview } from '@/actions/review';
 import { getCachedUser } from '@/lib/auth/current-user';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
+import { findProfileId } from '@/lib/reviews/profile';
 
 const builder = (jest.requireMock('@/lib/supabase/server') as { __builder: any }).__builder;
 
@@ -59,33 +66,70 @@ function detail(status = 'ongoing') {
 beforeEach(() => {
   jest.clearAllMocks();
   (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail());
-  (getCachedUser as jest.Mock).mockResolvedValue({ data: { user: { id: 'user-1' } } });
+  (getCachedUser as jest.Mock).mockResolvedValue({
+    data: { user: { id: 'auth-1', user_metadata: { onboarded: true } } },
+  });
+  (findProfileId as jest.Mock).mockResolvedValue('profile-1');
   builder.insert.mockReturnValue(builder);
   builder.select.mockReturnValue(builder);
   builder.single.mockResolvedValue({ data: { id: 56 }, error: null });
 });
 
-it('開催をサーバーで引き、投稿者を getUser() から入れて挿入する', async () => {
+it('開催をサーバーで引き、投稿者は会員の profiles.id で挿入する', async () => {
   await expect(submitReview(ROUTE, INPUT)).resolves.toEqual({ ok: true, reviewId: 56 });
 
   expect(getOccurrenceDetail).toHaveBeenCalledWith('12', 'shibuya');
   expect(builder.insert).toHaveBeenCalledWith(
-    expect.objectContaining({ occurrence_id: 34, user_id: 'user-1', rating: 4, visited_on: '2026-11-20' }),
+    expect.objectContaining({
+      occurrence_id: 34,
+      user_id: 'profile-1',
+      rating: 4,
+      visited_on: '2026-11-20',
+    })
   );
+  expect(findProfileId).toHaveBeenCalledWith(expect.anything(), 'auth-1');
+});
+
+it('onboarding を済ませていない会員は書けない (Server Action はどのルートからも呼べるため)', async () => {
+  (getCachedUser as jest.Mock).mockResolvedValue({
+    data: { user: { id: 'auth-1', user_metadata: {} } },
+  });
+
+  await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false, needsAuth: true });
+  expect(builder.insert).not.toHaveBeenCalled();
+});
+
+it('開催の取得が例外を投げても、型付きの結果で返し、Sentry に送る', async () => {
+  (getOccurrenceDetail as jest.Mock).mockRejectedValue(new Error('failed to load'));
+
+  await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false });
+  expect(Sentry.captureException).toHaveBeenCalled();
 });
 
 it('挿入の後に審査を走らせ、公開になったら開催のページを作り直す', async () => {
-  (screenSubmittedReview as jest.Mock).mockResolvedValue({ kind: 'screened', status: 'published', occurrenceId: 34 });
+  (screenSubmittedReview as jest.Mock).mockResolvedValue({
+    kind: 'screened',
+    status: 'published',
+    occurrenceId: 34,
+  });
   await submitReview(ROUTE, INPUT);
 
   const task = (after as jest.Mock).mock.calls[0][0] as () => Promise<void>;
   await task();
-  expect(screenSubmittedReview).toHaveBeenCalledWith(56, expect.objectContaining({ db: { admin: true } }));
+  expect(screenSubmittedReview).toHaveBeenCalledWith(
+    56,
+    expect.objectContaining({ db: { admin: true } })
+  );
   expect(revalidatePath).toHaveBeenCalledWith('/collabo-cafe/12/shibuya');
+  expect(revalidatePath).toHaveBeenCalledWith('/collabo-cafe/12');
 });
 
 it('公開以外の結果ではページを作り直さない', async () => {
-  (screenSubmittedReview as jest.Mock).mockResolvedValue({ kind: 'screened', status: 'rejected', occurrenceId: 34 });
+  (screenSubmittedReview as jest.Mock).mockResolvedValue({
+    kind: 'screened',
+    status: 'rejected',
+    occurrenceId: 34,
+  });
   await submitReview(ROUTE, INPUT);
   await ((after as jest.Mock).mock.calls[0][0] as () => Promise<void>)();
 
@@ -96,11 +140,13 @@ it('審査が例外になっても Sentry に送るだけで、投げない', as
   (screenSubmittedReview as jest.Mock).mockRejectedValue(new Error('db down'));
   await submitReview(ROUTE, INPUT);
 
-  await expect(((after as jest.Mock).mock.calls[0][0] as () => Promise<void>)()).resolves.toBeUndefined();
+  await expect(
+    ((after as jest.Mock).mock.calls[0][0] as () => Promise<void>)()
+  ).resolves.toBeUndefined();
   expect(Sentry.captureException).toHaveBeenCalled();
 });
 
-it.each([['scheduled'], ['unscheduled'], ['cancelled']])('%s の開催には書けない', async (status) => {
+it.each([['scheduled'], ['unscheduled'], ['cancelled']])('%s の開催には書けない', async status => {
   (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail(status));
 
   await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false });
@@ -152,7 +198,10 @@ it('期間外の訪問日は訪問日の欄の誤りにする', async () => {
 });
 
 it('DB の障害は Sentry に送る', async () => {
-  builder.single.mockResolvedValue({ data: null, error: { code: '08006', message: 'connection failure' } });
+  builder.single.mockResolvedValue({
+    data: null,
+    error: { code: '08006', message: 'connection failure' },
+  });
 
   await expect(submitReview(ROUTE, INPUT)).resolves.toMatchObject({ ok: false });
   expect(Sentry.captureException).toHaveBeenCalled();

@@ -50,6 +50,7 @@ export function ReviewForm(props: ReviewFormProps) {
   const [body, setBody] = useState('');
   const [hasSpoiler, setHasSpoiler] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<ReviewFieldErrors>({});
   const [submittedAt, setSubmittedAt] = useState<Date | null>(null);
   const [pending, startTransition] = useTransition();
@@ -72,26 +73,35 @@ export function ReviewForm(props: ReviewFormProps) {
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (rating === null) {
+      setError(null);
+      setNeedsAuth(false);
       setFieldErrors({ rating: '星を選んでください' });
       return;
     }
     startTransition(async () => {
-      const result = await submitReview(props.route, {
-        rating,
-        visitedOn,
-        attendance,
-        foodCostBand,
-        goodsCostBand,
-        body,
-        hasSpoiler,
-      });
-      if (result.ok) {
-        setSubmittedAt(new Date());
-        window.scrollTo({ top: 0 });
-        return;
+      try {
+        const result = await submitReview(props.route, {
+          rating,
+          visitedOn,
+          attendance,
+          foodCostBand,
+          goodsCostBand,
+          body,
+          hasSpoiler,
+        });
+        if (result.ok) {
+          setSubmittedAt(new Date());
+          window.scrollTo({ top: 0 });
+          return;
+        }
+        setError(result.error);
+        setNeedsAuth(result.needsAuth ?? false);
+        setFieldErrors(result.fieldErrors ?? {});
+      } catch {
+        // 通信の失敗など。入力は残したまま、もう一度押せるようにする
+        setError('投稿できませんでした。通信を確かめて、もう一度お試しください');
+        setNeedsAuth(false);
       }
-      setError(result.error);
-      setFieldErrors(result.fieldErrors ?? {});
     });
   }
 
@@ -233,6 +243,17 @@ export function ReviewForm(props: ReviewFormProps) {
           className="mt-5 rounded-xl bg-status-cancelled-surface px-3 py-2 text-sm text-status-cancelled"
         >
           {error}
+          {needsAuth && (
+            <>
+              {' '}
+              <Link
+                href={`/login?next=${encodeURIComponent(`${props.occurrencePath}/review`)}`}
+                className="underline"
+              >
+                ログインする
+              </Link>
+            </>
+          )}
         </p>
       )}
 

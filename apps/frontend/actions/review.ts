@@ -20,9 +20,11 @@ import { after } from 'next/server';
 import { ReviewSubmitSchema, type ReviewSubmitInput } from '@revolution/schemas/review';
 
 import { getCachedUser } from '@/lib/auth/current-user';
-import { getOccurrenceUrl } from '@/lib/event/event-url';
+import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
+import { isOnboardedFromMetadata } from '@/lib/auth/onboarding-status';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
+import { findProfileId } from '@/lib/reviews/profile';
 import { getReviewScreener } from '@/lib/reviews/screener';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -44,7 +46,20 @@ export type SubmitReviewResult =
 
 export async function submitReview(
   route: ReviewRouteParams,
-  input: Omit<ReviewSubmitInput, 'occurrenceId'>,
+  input: Omit<ReviewSubmitInput, 'occurrenceId'>
+): Promise<SubmitReviewResult> {
+  try {
+    return await submit(route, input);
+  } catch (error) {
+    // 開催の取得・認証・DB の接続などが投げた例外。画面の入力を失わせないよう、型付きの結果で返す
+    Sentry.captureException(error, { tags: { action: 'submitReview' } });
+    return { ok: false, error: '投稿できませんでした。時間をおいてもう一度お試しください' };
+  }
+}
+
+async function submit(
+  route: ReviewRouteParams,
+  input: Omit<ReviewSubmitInput, 'occurrenceId'>
 ): Promise<SubmitReviewResult> {
   const detail = await getOccurrenceDetail(route.eventId, route.occurrenceSlug);
   if (!detail || detail.event.primaryCategory.slug !== route.eventType) {
@@ -68,14 +83,26 @@ export async function submitReview(
     data: { user },
   } = await getCachedUser();
   if (!user) return { ok: false, error: 'ログインしてください', needsAuth: true };
+  // Server Action はどのルートからも呼べるので、middleware の onboarding の強制に頼らず、ここでも見る
+  if (!isOnboardedFromMetadata(user.user_metadata)) {
+    return {
+      ok: false,
+      error: 'プロフィールの登録を済ませてから投稿してください',
+      needsAuth: true,
+    };
+  }
 
   const value = parsed.data;
   const supabase = await createClient();
+  // 投稿者は profiles.id (永続 ID)。auth のユーザー ID ではない (shared/schemas/db/reviews.ts)
+  const profileId = await findProfileId(supabase, user.id);
+  if (!profileId) return { ok: false, error: 'ログインしてください', needsAuth: true };
+
   const { data, error } = await supabase
     .from('reviews')
     .insert({
       occurrence_id: value.occurrenceId,
-      user_id: user.id,
+      user_id: profileId,
       rating: value.rating,
       visited_on: value.visitedOn,
       attendance: value.attendance,
@@ -106,8 +133,9 @@ export async function submitReview(
   }
 
   const reviewId = data.id as number;
-  const occurrencePath = getOccurrenceUrl(detail.event, detail.occurrence.slug);
-  after(() => screenAfterSubmit(reviewId, occurrencePath));
+  // 公開になったら作り直すページ: 開催 (口コミの一覧・星) と企画 (開催ごとの星の集計)
+  const paths = [getOccurrenceUrl(detail.event, detail.occurrence.slug), getEventUrl(detail.event)];
+  after(() => screenAfterSubmit(reviewId, paths));
 
   return { ok: true, reviewId };
 }
@@ -116,15 +144,22 @@ export async function submitReview(
  * 応答の後に審査を走らせる。失敗しても口コミは審査中のまま残り、管理画面の「30 分以上審査中」の
  * 一覧で BOSS が拾える (仕様 #156)
  */
-async function screenAfterSubmit(reviewId: number, occurrencePath: string): Promise<void> {
+async function screenAfterSubmit(reviewId: number, paths: string[]): Promise<void> {
   const db = createAdminClient();
   if (!db) {
-    Sentry.captureMessage('review screening skipped: SUPABASE_SECRET_KEY is not set', { level: 'error' });
+    Sentry.captureMessage('review screening skipped: SUPABASE_SECRET_KEY is not set', {
+      level: 'error',
+    });
     return;
   }
   try {
-    const outcome = await screenSubmittedReview(reviewId, { screener: await getReviewScreener(), db });
-    if (outcome.kind === 'screened' && outcome.status === 'published') revalidatePath(occurrencePath);
+    const outcome = await screenSubmittedReview(reviewId, {
+      screener: await getReviewScreener(),
+      db,
+    });
+    if (outcome.kind === 'screened' && outcome.status === 'published') {
+      for (const path of paths) revalidatePath(path);
+    }
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'screenAfterSubmit' } });
   }

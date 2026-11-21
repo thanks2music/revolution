@@ -20,7 +20,11 @@ import type { ReviewScreener, ReviewScreeningResult } from './screener/types';
 
 export type ScreenReviewOutcome =
   /** 審査の結果を書いた */
-  | { kind: 'screened'; status: Extract<ReviewStatus, 'published' | 'rejected' | 'needs_review'>; occurrenceId: number }
+  | {
+      kind: 'screened';
+      status: Extract<ReviewStatus, 'published' | 'rejected' | 'needs_review'>;
+      occurrenceId: number;
+    }
   /** 審査中でない・見つからない・審査の間に提出し直された (何も書いていない) */
   | { kind: 'skipped'; reason: 'not_found' | 'not_pending' | 'superseded' };
 
@@ -56,7 +60,7 @@ export function toScreeningWrite(result: ReviewScreeningResult): ScreeningWrite 
 
 export async function screenSubmittedReview(
   reviewId: number,
-  deps: { screener: ReviewScreener; db: SupabaseClient; now?: () => Date },
+  deps: { screener: ReviewScreener; db: SupabaseClient; now?: () => Date }
 ): Promise<ScreenReviewOutcome> {
   const { data: review, error: readError } = await deps.db
     .from('reviews')

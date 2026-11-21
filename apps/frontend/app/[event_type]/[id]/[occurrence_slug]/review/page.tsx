@@ -22,6 +22,7 @@ import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { todayInJst } from '@/lib/occurrence/status';
 import { buildXShareUrl } from '@/lib/reviews/labels';
+import { findProfileId } from '@/lib/reviews/profile';
 import { createClient } from '@/lib/supabase/server';
 import type { OccurrencePageProps } from '@/types/page-props';
 
@@ -107,11 +108,13 @@ async function blockedReason(occurrence: { id: number; status: string; startsOn:
   } = await getCachedUser();
   if (!user) return 'ログインしてください。';
   const supabase = await createClient();
+  const profileId = await findProfileId(supabase, user.id).catch(() => null);
+  if (!profileId) return null;
   const { data: existing, error } = await supabase
     .from('reviews')
     .select('id')
     .eq('occurrence_id', occurrence.id)
-    .eq('user_id', user.id)
+    .eq('user_id', profileId)
     .is('deleted_at', null)
     .maybeSingle();
   // 確かめられない時は書かせる側に倒す (二重の投稿は DB の部分 unique が止める)
