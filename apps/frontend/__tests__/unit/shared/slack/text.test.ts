@@ -1,3 +1,5 @@
+// shared/slack (`@revolution/slack`) のテスト。shared のパッケージは自分の jest を持たないので、
+// shared/schemas と同じく、CI で単体テストを走らせている apps/frontend の側に置く。
 import { describe, expect, it } from '@jest/globals';
 
 import { presentEnvValue } from '@revolution/slack/env';

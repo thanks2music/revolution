@@ -19,6 +19,8 @@
  * - 失敗は Sentry に warning で残す (エラーコードだけ。token と本文は出さない)
  * - 応答を遅らせないよう、Server Action などからは `after()` (next/server) の中で呼ぶ
  * - 外部から来た値 (表示名・本文など) は `@revolution/slack/text` で切り詰めてからエスケープする
+ * - section の文は Slack の上限 (3,000 字) より 50 字以上短くする。要対応では、メンション
+ *   (`<@ユーザーID> `) をその前に足すことがあるため
  *
  * @module lib/slack/notify
  */
@@ -77,7 +79,9 @@ const MAX_BLOCKS = 50;
  * 通知の代わりの文になるため、blocks の側にもメンションが要る。
  *
  * - blocks が上限未満: 先頭にメンションのブロックを足す
- * - blocks が上限: 足すと全体が `invalid_blocks` で拒まれるので、最初の mrkdwn の section の文の先頭に差し込む
+ * - blocks が上限: 足すと全体が `invalid_blocks` で拒まれるので、最初の mrkdwn の section の文の先頭に差し込む。
+ *   そういう section が無ければ、末尾の 1 つを外してメンションのブロックを入れる (要対応は鳴らすことが目的なので、
+ *   末尾の内容より優先する)
  * - blocks が空: メンションのブロックだけにすると本文が隠れるので、本文にだけ置く
  */
 function withMention(message: SlackMessage, userId: string): SlackMessage {
@@ -93,7 +97,9 @@ function blocksWithMention(blocks: Block[] | undefined, mention: string): Block[
     return [{ type: 'section', text: { type: 'mrkdwn', text: mention } }, ...blocks];
   }
   const index = blocks.findIndex(isMrkdwnSection);
-  if (index === -1) return blocks;
+  if (index === -1) {
+    return [{ type: 'section', text: { type: 'mrkdwn', text: mention } }, ...blocks.slice(0, MAX_BLOCKS - 1)];
+  }
   const section = blocks[index] as { text: { text: string } } & Block;
   const updated = { ...section, text: { ...section.text, text: `${mention} ${section.text.text}` } };
   return blocks.map((block, i) => (i === index ? updated : block));

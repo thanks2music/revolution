@@ -98,6 +98,18 @@ describe('notifySlack', () => {
     expect(body.blocks).toEqual([]);
   });
 
+  it('blocks が上限で mrkdwn の section が無ければ、末尾の 1 つを外してメンションのブロックを入れる', async () => {
+    fetchMock.mockResolvedValue(okResponse());
+    const divider = { type: 'divider' };
+    const fullBlocks = Array.from({ length: 50 }, () => divider);
+
+    await notifySlack('attention', { text: message.text, blocks: fullBlocks }, env);
+
+    const blocks = sentBody().blocks as Array<Record<string, unknown>>;
+    expect(blocks).toHaveLength(50);
+    expect(blocks[0]).toEqual({ type: 'section', text: { type: 'mrkdwn', text: '<@U_BOSS>' } });
+  });
+
   it('お知らせは、メンション先が設定されていてもメンションを付けない', async () => {
     fetchMock.mockResolvedValue(okResponse());
 
