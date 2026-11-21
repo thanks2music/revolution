@@ -1,8 +1,18 @@
 import { describe, expect, it } from '@jest/globals';
 
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import {
+  REVIEW_ATTENDANCES,
+  REVIEW_BODY_MAX_CHARS,
+  REVIEW_FOOD_COST_BANDS,
+  REVIEW_GOODS_COST_BANDS,
   REVIEW_RATING_MAX,
   REVIEW_RATING_MIN,
+  REVIEW_REASON_CODES,
+  REVIEW_STATUSES,
+  ReviewSubmitSchema,
   ReviewHelpfulInsertSchema,
   ReviewImageInsertSchema,
   ReviewImageUpdateSchema,
@@ -100,11 +110,15 @@ describe('ReviewInsertSchema', () => {
 });
 
 describe('ReviewUpdateSchema', () => {
-  // DB の `grant update (rating, body, visited_on, deleted_at)` と 1:1 に対応させる。
+  // DB の列単位の `grant update` (0018) と 1:1 に対応させる。
   // deleted_at はソフトデリート専用スキーマ側が持つ。
   it('exposes exactly the columns authenticated may update', () => {
     expect(Object.keys(ReviewUpdateSchema.shape).sort()).toEqual([
+      'attendance',
       'body',
+      'foodCostBand',
+      'goodsCostBand',
+      'hasSpoiler',
       'rating',
       'visitedOn',
     ]);
@@ -225,5 +239,119 @@ describe('ReviewHelpfulInsertSchema', () => {
 
   it('rejects a non-uuid user_id', () => {
     expect(() => ReviewHelpfulInsertSchema.parse({ reviewId: 1, userId: 'nope' })).toThrow();
+  });
+});
+
+describe('ReviewInsertSchema (0018 の列)', () => {
+  // DB の列単位の `grant insert` (0018) と 1:1。状態・理由・AI の記録などは入力に通さない
+  it('exposes exactly the columns authenticated may insert', () => {
+    expect(Object.keys(ReviewInsertSchema.shape).sort()).toEqual([
+      'attendance',
+      'body',
+      'foodCostBand',
+      'goodsCostBand',
+      'hasSpoiler',
+      'occurrenceId',
+      'rating',
+      'userId',
+      'visitedOn',
+    ]);
+  });
+
+  it('2000 字を超える本文を拒否する', () => {
+    expect(() =>
+      ReviewInsertSchema.parse({ ...base, body: 'あ'.repeat(REVIEW_BODY_MAX_CHARS + 1) }),
+    ).toThrow();
+  });
+
+  it('決まっていない参加のしかたを拒否する', () => {
+    expect(() => ReviewInsertSchema.parse({ ...base, attendance: 'vip' })).toThrow();
+  });
+});
+
+describe('ReviewSubmitSchema', () => {
+  const valid = {
+    occurrenceId: 1,
+    rating: 4,
+    visitedOn: '2026-07-19',
+    attendance: 'walk_in',
+    foodCostBand: '2000_3000',
+    goodsCostBand: null,
+    body: '  五条パフェが大きかった  ',
+    hasSpoiler: false,
+  };
+
+  it('提出の入力を受け付け、本文の前後の空白を除く', () => {
+    expect(ReviewSubmitSchema.parse(valid).body).toBe('五条パフェが大きかった');
+  });
+
+  it('空の本文は null にする', () => {
+    expect(ReviewSubmitSchema.parse({ ...valid, body: '   ' }).body).toBeNull();
+  });
+
+  it('星が無ければ「星を選んでください」で拒否する', () => {
+    const result = ReviewSubmitSchema.safeParse({ ...valid, rating: undefined });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe('星を選んでください');
+  });
+
+  it('訪問日が無ければ拒否する', () => {
+    expect(ReviewSubmitSchema.safeParse({ ...valid, visitedOn: undefined }).success).toBe(false);
+  });
+
+  it('2000 字までは受け付け、超えたら拒否する', () => {
+    const max = 'あ'.repeat(REVIEW_BODY_MAX_CHARS);
+    expect(ReviewSubmitSchema.safeParse({ ...valid, body: max }).success).toBe(true);
+    expect(ReviewSubmitSchema.safeParse({ ...valid, body: `${max}あ` }).success).toBe(false);
+  });
+});
+
+/**
+ * 値の一覧は zod の定数と DB の CHECK の二段で固定している。片方だけ変えると、
+ * 画面では選べるのに DB が拒否する (またはその逆) ので、migration の CHECK と照らし合わせる。
+ */
+describe('値の一覧が DB の CHECK と一致する', () => {
+  const migrationsDir = path.join(__dirname, '../../../../supabase/migrations');
+  const migration = readFileSync(
+    path.join(
+      migrationsDir,
+      readdirSync(migrationsDir).find((name) => name.endsWith('_reviews_status_and_screening.sql'))!,
+    ),
+    'utf8',
+  );
+
+  function checkValues(constraint: string): string[] {
+    const start = migration.indexOf(`"${constraint}" CHECK`);
+    if (start === -1) throw new Error(`migration に ${constraint} が見つかりません`);
+    const body = migration.slice(start, migration.indexOf('),', start));
+    return [...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1]);
+  }
+
+  it.each([
+    ['reviews_status_chk', REVIEW_STATUSES],
+    ['reviews_reason_code_chk', REVIEW_REASON_CODES],
+    ['reviews_attendance_chk', REVIEW_ATTENDANCES],
+    ['reviews_food_cost_band_chk', REVIEW_FOOD_COST_BANDS],
+    ['reviews_goods_cost_band_chk', REVIEW_GOODS_COST_BANDS],
+  ])('%s', (constraint, values) => {
+    expect(checkValues(constraint)).toEqual([...values]);
+  });
+
+  /** `GRANT <privilege> ( ... ) ON TABLE "public"."reviews" TO authenticated` の列 (snake_case) */
+  function grantedColumns(privilege: 'INSERT' | 'UPDATE'): string[] {
+    const match = migration.match(
+      new RegExp(`GRANT ${privilege} \\(([^)]*)\\) ON TABLE "public"\\."reviews" TO authenticated`),
+    );
+    return [...(match?.[1] ?? '').matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).sort();
+  }
+
+  const toSnake = (key: string) => key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+
+  it('投稿者が INSERT できる列は ReviewInsertSchema と同じ', () => {
+    expect(grantedColumns('INSERT')).toEqual(Object.keys(ReviewInsertSchema.shape).map(toSnake).sort());
+  });
+
+  it('投稿者が UPDATE できる列は ReviewUpdateSchema と同じ', () => {
+    expect(grantedColumns('UPDATE')).toEqual(Object.keys(ReviewUpdateSchema.shape).map(toSnake).sort());
   });
 });
