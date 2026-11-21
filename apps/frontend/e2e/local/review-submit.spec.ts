@@ -104,6 +104,99 @@ test('口コミを提出すると投稿ステータスが出て、審査を通�
     });
 });
 
+test('公開された口コミは開催のページに出て、星の平均と件数に入る', async ({
+  page,
+  context,
+  baseURL,
+}, testInfo) => {
+  const member = await data.createMember();
+  await signIn(context, member, baseURL!);
+  const { occurrenceId, path } = await occurrencePage({
+    startsOn: jstDate(-10),
+    endsOn: jstDate(20),
+  });
+
+  await page.goto(`${path}/review`);
+  await page.getByRole('radio', { name: /^4 つ星/ }).click();
+  await page.getByRole('radio', { name: '並ばずそのまま入った' }).click();
+  await page.getByRole('textbox', { name: /^本文/ }).fill('展示が充実していて満足です');
+  await page.getByRole('button', { name: '口コミを投稿する' }).click();
+  await expect(page.getByRole('heading', { name: '投稿ステータス' })).toBeVisible();
+  await expect
+    .poll(() => statusOf(occurrenceId, member.userId), { timeout: 15_000 })
+    .toMatchObject({ status: 'published' });
+
+  await page.goto(path);
+  const card = page.getByTestId('review-card');
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText('展示が充実していて満足です');
+  await expect(card).toContainText('並ばずそのまま入った');
+  await expect(card).toContainText(/\d{4}年\d{1,2}月 訪問/);
+  await expect(page.getByTestId('rating-average')).toHaveText('4.0');
+  await expect(page.getByTestId('rating-count')).toHaveText('1件');
+  await expect(page.getByTestId('own-review-status')).toContainText('公開中です');
+  await page.screenshot({ path: testInfo.outputPath('occurrence-reviews.png'), fullPage: true });
+});
+
+test('ネタバレの口コミは本文をたたみ、押すと開く', async ({ page, context, baseURL }) => {
+  const member = await data.createMember();
+  await signIn(context, member, baseURL!);
+  const { occurrenceId, path } = await occurrencePage({
+    startsOn: jstDate(-10),
+    endsOn: jstDate(20),
+  });
+
+  await page.goto(`${path}/review`);
+  await page.getByRole('radio', { name: /^5 つ星/ }).click();
+  await page.getByRole('textbox', { name: /^本文/ }).fill('最後の部屋に原画があります');
+  await page.getByRole('switch').click();
+  await page.getByRole('button', { name: '口コミを投稿する' }).click();
+  await expect(page.getByRole('heading', { name: '投稿ステータス' })).toBeVisible();
+  await expect
+    .poll(() => statusOf(occurrenceId, member.userId), { timeout: 15_000 })
+    .toMatchObject({ status: 'published' });
+
+  await page.goto(path);
+  await expect(page.getByText('最後の部屋に原画があります')).toHaveCount(0);
+  await page.getByRole('button', { name: /表示する/ }).click();
+  await expect(page.getByText('最後の部屋に原画があります')).toBeVisible();
+});
+
+test('差し戻された口コミは開催のページに出ず、本人にだけ理由が見える', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const member = await data.createMember();
+  await signIn(context, member, baseURL!);
+  const { occurrenceId, path } = await occurrencePage({
+    startsOn: jstDate(-10),
+    endsOn: jstDate(20),
+  });
+
+  await page.goto(`${path}/review`);
+  await page.getByRole('radio', { name: /^1 つ星/ }).click();
+  await page.getByRole('textbox', { name: /^本文/ }).fill('[reject:spam] 当店へどうぞ');
+  await page.getByRole('button', { name: '口コミを投稿する' }).click();
+  await expect(page.getByRole('heading', { name: '投稿ステータス' })).toBeVisible();
+  await expect
+    .poll(() => statusOf(occurrenceId, member.userId), { timeout: 15_000 })
+    .toMatchObject({ status: 'rejected' });
+
+  await page.goto(path);
+  await expect(page.getByTestId('review-card')).toHaveCount(0);
+  await expect(page.getByTestId('rating-count')).toHaveText('0件');
+  await expect(page.getByTestId('own-review-status')).toContainText(
+    '宣伝や、この開催と関係のない内容'
+  );
+
+  // ログインしていない人には、本人の欄も出ない
+  await context.clearCookies();
+  await page.goto(path);
+  await expect(page.getByTestId('rating-count')).toHaveText('0件');
+  await expect(page.getByTestId('own-review-status')).toHaveCount(0);
+});
+
 test('当たる本文は差し戻しになり、理由が残る', async ({ page, context, baseURL }) => {
   const member = await data.createMember();
   await signIn(context, member, baseURL!);

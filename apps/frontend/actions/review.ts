@@ -17,7 +17,12 @@ import * as Sentry from '@sentry/nextjs';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 
-import { ReviewSubmitSchema, type ReviewSubmitInput } from '@revolution/schemas/review';
+import {
+  REVIEW_SCREENING_REASONS,
+  ReviewSubmitSchema,
+  type ReviewScreeningReason,
+  type ReviewSubmitInput,
+} from '@revolution/schemas/review';
 
 import { getCurrentMember } from '@/lib/auth/member';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
@@ -165,5 +170,53 @@ async function screenAfterSubmit(reviewId: number, paths: string[]): Promise<voi
     }
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'screenAfterSubmit' } });
+  }
+}
+
+/**
+ * 本人の口コミの状態 (開催のページの島がマウント後に呼ぶ。ページの静的な描画を壊さないため)。
+ *
+ * 理由と訪問日は anon・authenticated に GRANT していない列なので、本人の行だけを service role で読み、
+ * 本人に返す。会員でない・口コミが無い・読めない時は null (ページの表示を止めない)。
+ * AI 審査の失敗 (ai_failure) と確認待ちは、本人には「審査中」として見せる。
+ */
+export type OwnReviewState = {
+  status: 'screening' | 'published' | 'rejected' | 'hidden';
+  /** 差し戻しの理由のコード (rejected の時だけ) */
+  reasonCode: ReviewScreeningReason | null;
+  /** 訪問日 (YYYY-MM-DD)。本人にだけ日付まで見せる */
+  visitedOn: string;
+};
+
+export async function getOwnReviewState(occurrenceId: number): Promise<OwnReviewState | null> {
+  try {
+    if (!Number.isInteger(occurrenceId) || occurrenceId <= 0) return null;
+    const member = await getCurrentMember();
+    const db = createAdminClient();
+    if (!member.ok || !db) return null;
+
+    const { data, error } = await db
+      .from('reviews')
+      .select('status, reason_code, visited_on')
+      .eq('occurrence_id', occurrenceId)
+      .eq('user_id', member.profileId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data || data.status === 'draft') return null;
+
+    const status =
+      data.status === 'pending' || data.status === 'needs_review'
+        ? 'screening'
+        : (data.status as 'published' | 'rejected' | 'hidden');
+    const reasonCode =
+      status === 'rejected' &&
+      (REVIEW_SCREENING_REASONS as readonly string[]).includes(data.reason_code)
+        ? (data.reason_code as ReviewScreeningReason)
+        : null;
+    return { status, reasonCode, visitedOn: data.visited_on as string };
+  } catch (error) {
+    Sentry.captureException(error, { tags: { action: 'getOwnReviewState' } });
+    return null;
   }
 }

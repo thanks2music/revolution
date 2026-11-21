@@ -28,6 +28,7 @@
  * dynamic rendering へ落ちて「SSG で成立する塊」という S2 の前提が崩れる。
  */
 
+import * as Sentry from '@sentry/nextjs';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
@@ -35,6 +36,7 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import { RemainingDaysBadge } from '@/components/atoms/badge/RemainingDaysBadge';
 import { StatusBadge } from '@/components/atoms/badge/StatusBadge';
 import { OccurrenceCard, VENUE_NAME_FALLBACK } from '@/components/molecules/OccurrenceCard';
+import { OccurrenceReviewsSection } from '@/components/molecules/reviews/OccurrenceReviewsSection';
 import Layout from '@/components/templates/Layout';
 import { getCategory } from '@/lib/category/queries';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
@@ -42,6 +44,7 @@ import { generateContentMetadata } from '@/lib/metadata';
 import { getTitleUrl } from '@/lib/title/title-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail, listOccurrenceParams } from '@/lib/occurrence/queries';
+import { getOccurrenceReviews } from '@/lib/reviews/queries';
 import { toBadgeStatus } from '@/lib/occurrence/status';
 import { isSafeHttpUrl } from '@/lib/url-safety';
 import type { OccurrencePageProps } from '@/types/page-props';
@@ -85,6 +88,11 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
   }
 
   const { occurrence, event, titles, siblings } = data;
+  // 口コミが読めなくても、開催の情報は出す (口コミの欄だけを出さない)
+  const reviews = await getOccurrenceReviews(occurrence.id).catch((error: unknown) => {
+    Sentry.captureException(error, { tags: { page: 'occurrence' } });
+    return null;
+  });
   const venue = occurrence.venues;
   const venueName = occurrence.venueName ?? VENUE_NAME_FALLBACK;
   const badgeStatus = toBadgeStatus(occurrence.status);
@@ -99,7 +107,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
                 ホーム
               </Link>
             </li>
-            {titles.map((title) => (
+            {titles.map(title => (
               <li key={title.slug} className="flex items-center gap-2">
                 <span aria-hidden="true">/</span>
                 <Link href={getTitleUrl(title.slug)} className="hover:underline">
@@ -184,6 +192,16 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
 
         {event.description && <p className="mb-10 text-ink-body">{event.description}</p>}
 
+        {reviews && (
+          <OccurrenceReviewsSection
+            occurrenceId={occurrence.id}
+            status={occurrence.status}
+            endsOn={occurrence.endsOn}
+            reviewPath={`${getOccurrenceUrl(event, occurrence.slug)}/review`}
+            reviews={reviews}
+          />
+        )}
+
         {siblings.length > 0 && (
           <section>
             <h2 className="mb-4 font-display text-xl font-bold text-ink-strong">
@@ -191,7 +209,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             </h2>
             {/* 横 1 行型のカードなので 2 列止まり (理由は `OccurrenceCard` の docstring)。 */}
             <ul className="grid gap-3 md:grid-cols-2" data-grid-layout="row">
-              {siblings.map((sibling) => (
+              {siblings.map(sibling => (
                 <li key={sibling.id}>
                   <OccurrenceCard event={event} occurrence={sibling} />
                 </li>

@@ -1,0 +1,118 @@
+import { z } from 'zod';
+
+import {
+  REVIEW_ATTENDANCES,
+  REVIEW_FOOD_COST_BANDS,
+  REVIEW_GOODS_COST_BANDS,
+} from '@revolution/schemas/review';
+
+import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
+
+/**
+ * 開催のページに出す口コミ (one-more-time #161 の PR④)。
+ *
+ * cookie を触らない公開のクライアントで読み、開催のページの SSG / ISR を保つ。RLS で、公開中かつ
+ * 論理削除していない口コミだけが見える。他人の訪問日は年月 (`visited_month`) だけ (日付の列は
+ * anon・authenticated に GRANT していない)。投稿者は、公開中の口コミがある会員の表示名だけが見える。
+ */
+
+/** 新着から何件を出すか。すべての一覧のページは後のチケット */
+export const LATEST_REVIEWS_LIMIT = 10;
+
+const ReviewRowSchema = z.object({
+  id: z.number(),
+  rating: z.number().int(),
+  body: z.string().nullable(),
+  visited_month: z.string().nullable(),
+  attendance: z.enum(REVIEW_ATTENDANCES).nullable(),
+  food_cost_band: z.enum(REVIEW_FOOD_COST_BANDS).nullable(),
+  goods_cost_band: z.enum(REVIEW_GOODS_COST_BANDS).nullable(),
+  has_spoiler: z.boolean(),
+  edited_at: z.string().nullable(),
+  profiles: z
+    .object({
+      display_name: z.string().nullable(),
+      username: z.string().nullable(),
+      withdrawn_at: z.string().nullable(),
+    })
+    .nullable(),
+});
+
+export type PublicReview = {
+  id: number;
+  rating: number;
+  body: string | null;
+  /** 訪問した年と月 (YYYY-MM) */
+  visitedMonth: string | null;
+  attendance: z.infer<typeof ReviewRowSchema>['attendance'];
+  foodCostBand: z.infer<typeof ReviewRowSchema>['food_cost_band'];
+  goodsCostBand: z.infer<typeof ReviewRowSchema>['goods_cost_band'];
+  hasSpoiler: boolean;
+  editedAt: string | null;
+  /** 投稿者の表示名。退会した会員・見えない時は null */
+  authorName: string | null;
+};
+
+export type OccurrenceReviews = {
+  /** 公開中の口コミの星の平均 (小数 1 桁)。0 件なら null */
+  ratingAverage: number | null;
+  ratingCount: number;
+  latest: PublicReview[];
+};
+
+const EMPTY: OccurrenceReviews = { ratingAverage: null, ratingCount: 0, latest: [] };
+
+export async function getOccurrenceReviews(occurrenceId: number): Promise<OccurrenceReviews> {
+  // 資格情報の無いビルド (CI の Build Apps) では 0 件として描く (開催の取得と同じ扱い)
+  if (!hasPublicSupabaseCredentials()) return EMPTY;
+  const supabase = createPublicClient();
+
+  const [ratingResult, reviewsResult] = await Promise.all([
+    supabase
+      .from('occurrence_view')
+      .select('rating_sum, rating_count')
+      .eq('id', occurrenceId)
+      .maybeSingle(),
+    supabase
+      .from('reviews')
+      .select(
+        'id, rating, body, visited_month, attendance, food_cost_band, goods_cost_band, has_spoiler, edited_at, profiles!reviews_user_id_profiles_id_fk(display_name, username, withdrawn_at)'
+      )
+      .eq('occurrence_id', occurrenceId)
+      .eq('status', 'published')
+      .is('deleted_at', null)
+      .order('submitted_at', { ascending: false })
+      .limit(LATEST_REVIEWS_LIMIT),
+  ]);
+  if (ratingResult.error) throw new Error(`failed to load ratings: ${ratingResult.error.message}`);
+  if (reviewsResult.error)
+    throw new Error(`failed to load reviews: ${reviewsResult.error.message}`);
+
+  const ratingCount = Number(ratingResult.data?.rating_count ?? 0);
+  const ratingSum = Number(ratingResult.data?.rating_sum ?? 0);
+  return {
+    ratingAverage: ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
+    ratingCount,
+    latest: z
+      .array(ReviewRowSchema)
+      .parse(reviewsResult.data ?? [])
+      .map(toPublicReview),
+  };
+}
+
+function toPublicReview(row: z.infer<typeof ReviewRowSchema>): PublicReview {
+  const author = row.profiles;
+  return {
+    id: row.id,
+    rating: row.rating,
+    body: row.body,
+    visitedMonth: row.visited_month?.slice(0, 7) ?? null,
+    attendance: row.attendance,
+    foodCostBand: row.food_cost_band,
+    goodsCostBand: row.goods_cost_band,
+    hasSpoiler: row.has_spoiler,
+    editedAt: row.edited_at,
+    authorName:
+      author && !author.withdrawn_at ? (author.display_name ?? author.username ?? null) : null,
+  };
+}

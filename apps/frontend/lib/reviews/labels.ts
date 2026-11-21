@@ -1,5 +1,6 @@
 import type {
   ReviewAttendance,
+  ReviewScreeningReason,
   ReviewFoodCostBand,
   ReviewGoodsCostBand,
 } from '@revolution/schemas/review';
@@ -10,8 +11,7 @@ import type {
  */
 
 /**
- * 星の数ごとの満足度の言葉。Figma #7 には 4 つ星の「満足した」だけがあり、ほかは仮置き
- * (BOSS の確認待ち。one-more-time #161 の PR③ の本文に書いた)
+ * 星の数ごとの満足度の言葉。4 つ星の「満足した」は Figma #7、ほかは 2026-11-22 に BOSS が確定した
  */
 export const RATING_LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
   1: '不満だった',
@@ -44,3 +44,17 @@ export const GOODS_COST_BAND_LABELS: Record<ReviewGoodsCostBand, string> = {
   '10000_30000': '¥10,000〜30,000',
   over_30000: '¥30,000〜',
 };
+
+/** 差し戻しの理由 (審査の 4 種)。投稿者本人にだけ見せる (投稿ガイドラインの言葉に合わせる) */
+export const REJECTION_REASON_LABELS: Record<ReviewScreeningReason, string> = {
+  personal_info: '個人情報やほかの人を特定できる内容が含まれています',
+  abuse: '誹謗中傷・差別・性的な表現が含まれています',
+  spam: '宣伝や、この開催と関係のない内容が含まれています',
+  resale: 'グッズの譲渡・交換・転売の呼びかけが含まれています',
+};
+
+/** 訪問した年月 (YYYY-MM) を「2026年7月」の形にする */
+export function formatVisitedMonth(visitedMonth: string): string {
+  const [year, month] = visitedMonth.split('-');
+  return `${year}年${Number(month)}月`;
+}
