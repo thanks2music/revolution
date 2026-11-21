@@ -3,6 +3,7 @@
  *
  * middleware が「認証済み + onboarding 完了」を保証する到達点。M3 で M2 の最小版を
  * 発展させ、以下を提供する:
+ *   - 自分の口コミ (状態・理由・編集と削除の入口。S4 #162、`lib/reviews/own-reviews.ts`)
  *   - いいねした記事一覧 (getFavorites + resolveArticleByKey で記事カード表示)
  *   - アカウント管理 (ID / 表示名 / メール / パスワード / ログアウト)
  *   - パスワード未設定時の設定推奨導線
@@ -14,6 +15,7 @@
  * - provider 判定 (hasGoogle/hasEmail = Layer1) で email 変更可否を UI 制御する。
  */
 
+import * as Sentry from '@sentry/nextjs';
 import type { Metadata } from 'next';
 
 import Layout from '@/components/templates/Layout';
@@ -26,6 +28,10 @@ import { getAllArticles } from '@/lib/mdx/articles';
 import { resolveArticleByKey } from '@/lib/mdx/article-url';
 import { hasEmail, hasGoogle } from '@/lib/auth/provider';
 import type { ArticleIndexItem } from '@/lib/mdx/article-types';
+import { OwnReviewList } from '@/components/molecules/reviews/OwnReviewList';
+import { getCurrentMember } from '@/lib/auth/member';
+import { listOwnReviews, type OwnReviewListItem } from '@/lib/reviews/own-reviews';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { AccountManager } from './AccountManager';
 import { SignOutButton } from './SignOutButton';
 
@@ -53,12 +59,14 @@ export default async function MyPage() {
         .maybeSingle()
     : { data: null };
 
+  const ownReviews = await loadOwnReviews();
+
   // いいね一覧 → 記事へ逆引き (resolveArticleByKey は Layer1 純粋関数)。
   const favoritesResult = await getFavorites();
   const allArticles = getAllArticles();
   const likedArticles: ArticleIndexItem[] = favoritesResult.ok
     ? favoritesResult.favorites
-        .map((f) => resolveArticleByKey(f.targetKey, allArticles))
+        .map(f => resolveArticleByKey(f.targetKey, allArticles))
         .filter((a): a is ArticleIndexItem => a !== null)
     : [];
 
@@ -74,8 +82,27 @@ export default async function MyPage() {
         <SectionHeader
           eyebrow="Account"
           title="マイページ"
-          subtitle="プロフィールの編集と、いいねした記事を確認できます。"
+          subtitle="自分の口コミ・いいねした記事・プロフィールを確認できます。"
         />
+
+        {/* 自分の口コミ (Figma #12 `83:191`) */}
+        <div className="mt-12">
+          <h2 className="font-display text-xl text-ink-strong md:text-2xl">
+            自分の口コミ
+            {ownReviews && (
+              <span className="font-numeric ml-2 text-sm text-ink-muted tabular-nums">
+                {ownReviews.length}
+              </span>
+            )}
+          </h2>
+          {ownReviews ? (
+            <OwnReviewList reviews={ownReviews} />
+          ) : (
+            <p className="mt-6 text-sm text-ink-muted">
+              口コミを読み込めませんでした。時間をおいて、ページを読み込み直してください。
+            </p>
+          )}
+        </div>
 
         {/* いいね一覧 */}
         <div className="mt-12">
@@ -89,7 +116,7 @@ export default async function MyPage() {
           </h2>
           {likedArticles.length > 0 ? (
             <ul className="mt-6 grid gap-5 sm:grid-cols-2">
-              {likedArticles.map((article) => (
+              {likedArticles.map(article => (
                 <li key={article.filePath}>
                   <ArticleCard article={article} />
                 </li>
@@ -104,9 +131,7 @@ export default async function MyPage() {
 
         {/* アカウント管理 */}
         <div className="mt-16">
-          <h2 className="font-display text-xl text-ink-strong md:text-2xl">
-            アカウント管理
-          </h2>
+          <h2 className="font-display text-xl text-ink-strong md:text-2xl">アカウント管理</h2>
           {/*
             migration 0011 (M1) 以降、`display_name` / `username` は**退会時に null 化**される
             (PII 匿名化)。ただし退会済みユーザーは認証を通れないため本ページには到達せず、
@@ -130,4 +155,21 @@ export default async function MyPage() {
       </section>
     </Layout>
   );
+}
+
+/**
+ * 会員の口コミ。理由と訪問日は本人にだけ見せる列なので、サーバーが service role で読む
+ * (`lib/reviews/own-reviews.ts`)。読めない時は null にして、ページの残りは出す
+ */
+async function loadOwnReviews(): Promise<OwnReviewListItem[] | null> {
+  try {
+    const member = await getCurrentMember();
+    if (!member.ok) return [];
+    const admin = createAdminClient();
+    if (!admin) throw new Error('own reviews skipped: SUPABASE_SECRET_KEY is not set');
+    return await listOwnReviews(admin, member.profileId);
+  } catch (error) {
+    Sentry.captureException(error, { tags: { page: 'mypage' } });
+    return null;
+  }
 }
