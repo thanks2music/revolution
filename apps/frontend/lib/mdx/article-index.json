@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-21T10:12:10.550Z",
+  "totalArticles": 12,
   "articles": [
     {
       "slug": "01m7ydys18ckpgbj",
@@ -51,6 +51,51 @@
             "starts_on": "2026-11-26",
             "ends_on": "2027-01-17",
             "official_url": "https://bananafish-cafe.ltr-online.com/"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "01m7ysdfr0wdkapf",
+      "title": "ONE PIECE カフェ in ミティークラボ 1月1日よりコラボ開催",
+      "date": "2026-11-20T15:12:01.000Z",
+      "excerpt": "「ミティークラボ」のコラボカフェが、ミティークラボにて2026年1月1日より開催されます。店内では、作品の世界観やキャラクターをイメージしたコラボメニューがお楽しみいただけます。「ミティークラボ」ファンの皆様必見のイベントです。",
+      "categories": [
+        "ONE PIECE",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/one-piece/01m7ysdfr0wdkapf.mdx",
+      "post_id": "01m7ysdfr0wdkapf",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "ONE PIECE",
+      "work_titles": [
+        "ミティークラボ"
+      ],
+      "work_slug": "one-piece",
+      "prefectures": [],
+      "prefecture_slugs": [],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m7ysdfr0wdkapf/19a615e0a82b4a3d2d2dbde788ebeea3.png",
+      "event_start_date": "2026-01-01",
+      "venue": "ミティークラボ",
+      "official_url": "https://www.mythique.shop",
+      "event_data": {
+        "primary_category_slug": "other",
+        "title_slugs": [
+          "one-piece"
+        ],
+        "event_name": "ミティークラボ",
+        "event_slug": "one-piece",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "ミティークラボ",
+            "starts_on": "2026-01-01",
+            "ends_on": null,
+            "official_url": "https://www.mythique.shop"
           }
         ]
       }
