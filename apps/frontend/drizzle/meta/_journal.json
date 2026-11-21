@@ -134,6 +134,13 @@
       "when": 1795245773340,
       "tag": "0018_reviews_status_and_screening",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795291269077,
+      "tag": "0019_reviews_check_on_submit",
+      "breakpoints": true
     }
   ]
 }
