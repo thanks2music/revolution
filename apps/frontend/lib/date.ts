@@ -10,3 +10,14 @@ export function formatJstDate(iso: string, month: 'long' | 'numeric' = 'long'): 
     day: 'numeric',
   });
 }
+
+/** 日付 (YYYY-MM-DD) を「2026.07.03」の形にする (サイトの日付の表記) */
+export function toDotDate(ymd: string): string {
+  return ymd.replaceAll('-', '.');
+}
+
+/** 日時 (ISO) を日本時間の日付にして「2026.07.03」の形にする */
+export function formatJstDotDate(iso: string): string {
+  // en-CA は YYYY-MM-DD で返す (日本時間の日付を取り出すため)
+  return toDotDate(new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' }));
+}

@@ -14,11 +14,11 @@
  *      (cookie 整合性のため。コピーしないと refresh が失われる)。
  *
  * M2 スコープ: ② の認証呼び出し後に ③ 保護判定を追加する。
- *   - `/mypage`, `/onboarding` のみ保護 (他は公開、未認証でも記事を読める)
+ *   - `/mypage`, `/onboarding` と口コミの投稿 (`/{種別}/{id}/{開催}/review`) を保護 (他は公開、未認証でも記事を読める)
  *   - 未認証で保護ルート → `/login`
  *   - 認証済みで onboarding 未完了 → `/onboarding` 強制 (案B = JWT claims で判定、
  *     DB を叩かない)
- *   - onboarding 完了済みで `/login` or `/onboarding` 再訪 → `/mypage`
+ *   - onboarding 完了済みで `/login` or `/onboarding` 再訪 → `next` (無ければ `/mypage`)
  *
  * 参考: https://supabase.com/docs/guides/auth/server-side/nextjs
  */
@@ -30,15 +30,18 @@ import { createServerClient } from '@supabase/ssr';
 import { env } from '@/lib/env';
 import { isOnboardedFromClaims } from '@/lib/auth/onboarding-status';
 import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
+import { isReviewSubmitPath, REVIEW_PICKER_PATH } from '@/lib/reviews/paths';
 
 // 認証が必要なルート (前方一致)。これ以外はすべて公開 (記事閲覧は維持)。
-const PROTECTED_PREFIXES = ['/mypage', '/onboarding'];
-// 認証関連ページ (完了済みユーザーが再訪したら /mypage へ送る)。
+// /review は口コミを書く開催を選ぶページ (7-0、one-more-time #166)
+const PROTECTED_PREFIXES = ['/mypage', '/onboarding', REVIEW_PICKER_PATH];
+// 認証関連ページ (完了済みユーザーが再訪したら next か /mypage へ送る)。
 const AUTH_PAGES = ['/login'];
 
-function isPathProtected(pathname: string): boolean {
-  return PROTECTED_PREFIXES.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
+export function isPathProtected(pathname: string): boolean {
+  return (
+    PROTECTED_PREFIXES.some(p => pathname === p || pathname.startsWith(`${p}/`)) ||
+    isReviewSubmitPath(pathname)
   );
 }
 
@@ -56,18 +59,16 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({
             request,
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
+            supabaseResponse.cookies.set(name, value, options)
           );
         },
       },
-    },
+    }
   );
 
   // IMPORTANT: createServerClient と getClaims() の間にコードを書かない (公式原則)。
@@ -90,19 +91,27 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (isAuthenticated) {
-    // (b) 認証済みだが onboarding 未完了 → /onboarding を除く保護ルートで強制誘導
+    // 戻り先 (?next=)。onboarding を挟んでも、来た画面へ戻す (one-more-time #166)。
+    // 無い・外部の URL は /mypage に倒れる (sanitizeNextPath)
+    const requestedNext = request.nextUrl.searchParams.get('next');
+    const next = requestedNext ? sanitizeNextPath(requestedNext) : null;
+
+    // (b) 認証済みだが onboarding 未完了 → /onboarding を除く保護ルートで強制誘導 (元の画面を next に)
     if (!onboarded && isPathProtected(pathname) && !pathname.startsWith('/onboarding')) {
-      return redirectTo(request, supabaseResponse, '/onboarding');
+      const returnTo = sanitizeNextPath(`${pathname}${request.nextUrl.search}`);
+      return redirectTo(request, supabaseResponse, '/onboarding', returnTo);
     }
 
-    // (c) 完了済みで /onboarding 再訪 → /mypage へ
+    // (c) 完了済みで /onboarding 再訪 → 戻り先 (無ければ /mypage) へ
     if (onboarded && pathname.startsWith('/onboarding')) {
-      return redirectTo(request, supabaseResponse, '/mypage');
+      return redirectTo(request, supabaseResponse, next ?? '/mypage');
     }
 
-    // (d) 認証済みで /login (auth ページ) 再訪 → onboarding 状態に応じて誘導
-    if (AUTH_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
-      return redirectTo(request, supabaseResponse, onboarded ? '/mypage' : '/onboarding');
+    // (d) 認証済みで /login (auth ページ) 再訪 → onboarding 状態に応じて誘導 (戻り先は持ち越す)
+    if (AUTH_PAGES.some(p => pathname === p || pathname.startsWith(`${p}/`))) {
+      return onboarded
+        ? redirectTo(request, supabaseResponse, next ?? '/mypage')
+        : redirectTo(request, supabaseResponse, '/onboarding', next ?? undefined);
     }
   }
 
@@ -122,16 +131,18 @@ function redirectTo(
   request: NextRequest,
   supabaseResponse: NextResponse,
   destination: string,
-  returnTo?: string,
+  returnTo?: string
 ): NextResponse {
+  // 行き先は内部のパス。戻り先 (next) をそのまま使う時はクエリも含むので、パスとクエリに分けて当てる
+  const target = new URL(destination, request.nextUrl.origin);
   const url = request.nextUrl.clone();
-  url.pathname = destination;
-  url.search = '';
+  url.pathname = target.pathname;
+  url.search = target.search;
   if (returnTo) {
     url.searchParams.set('next', returnTo);
   }
   const redirectResponse = NextResponse.redirect(url);
-  supabaseResponse.cookies.getAll().forEach((cookie) => {
+  supabaseResponse.cookies.getAll().forEach(cookie => {
     redirectResponse.cookies.set(cookie);
   });
   return redirectResponse;
