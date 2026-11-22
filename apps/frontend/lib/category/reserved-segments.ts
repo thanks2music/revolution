@@ -22,6 +22,7 @@ export const APP_ROUTE_SEGMENTS = [
   'login',
   'mypage',
   'onboarding',
+  'review',
   'titles',
   'venues',
 ] as const;

@@ -41,8 +41,11 @@ const isCI = !!process.env.CI;
 export default defineConfig({
   testDir: './e2e/local',
 
-  // テストごとにデータを分けるので並列にできる。CI は 2 コアなので 1 に抑える
-  workers: isCI ? 1 : undefined,
+  // テストごとにデータは分けているが、手元でも 1 に抑える。開発サーバー (next dev) は、複数の worker が
+  // 同時にまだ組み立てていないページを開くと、自分の manifest を読みかけで 500 を返したり
+  // ("Unexpected end of JSON input")、応答が遅れて待ちの上限を超えたりする (2026-11-22、#166 で実測:
+  // 並列では 4 回中 3 回落ち、1 にすると 3 回とも通った)。本番のビルドで動かせば並列にできる (Todoist)
+  workers: 1,
   fullyParallel: true,
   forbidOnly: isCI,
   // CI の初回だけ 1 回やり直す (落ちた時の trace を残すため)。やり直して通ったものは flaky として報告される

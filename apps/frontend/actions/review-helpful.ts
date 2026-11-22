@@ -12,9 +12,9 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
-import { z } from 'zod';
 
 import { getCurrentMember, memberRedirect } from '@/lib/auth/member';
+import { parseIdList } from '@/lib/validation/id-list';
 import { createClient } from '@/lib/supabase/server';
 
 const PG_UNIQUE_VIOLATION = '23505';
@@ -35,18 +35,17 @@ type HelpfulState = { viewer: Viewer; marked: number[] };
 /** 会員が「参考になった」を押した口コミ (渡した中から) */
 export async function getHelpfulState(reviewIds: number[]): Promise<HelpfulState> {
   try {
-    // 上限を超えた分は尋ねない (黙って全部を未押下にしない)
-    const ids = z.array(z.number().int().positive()).safeParse(reviewIds.slice(0, MAX_STATE_IDS));
+    const idsToAsk = parseIdList(reviewIds, MAX_STATE_IDS);
     const member = await getCurrentMember();
     if (!member.ok) return { viewer: memberRedirect(member.reason), marked: [] };
-    if (!ids.success || ids.data.length === 0) return { viewer: 'member', marked: [] };
+    if (idsToAsk.length === 0) return { viewer: 'member', marked: [] };
 
     const supabase = await createClient();
     const { data, error } = await supabase
       .from('review_helpful')
       .select('review_id')
       .eq('user_id', member.profileId)
-      .in('review_id', ids.data);
+      .in('review_id', idsToAsk);
     if (error) throw error;
     return { viewer: 'member', marked: (data ?? []).map(row => row.review_id as number) };
   } catch (error) {
