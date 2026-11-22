@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - 'apps/ai-writer/**'
+      # イメージに入る共有パッケージ (apps/ai-writer/Dockerfile が shared/ をコピーする)。
+      # これらだけを直した PR でも、本番の Service と Job (deploy-ai-writer-job.yml) に届くようにする
+      - 'shared/schemas/**'
+      - 'shared/slack/**'
       - '.github/workflows/deploy-ai-writer.yml'
   workflow_dispatch:
 

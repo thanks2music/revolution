@@ -23,6 +23,9 @@ COPY apps/ai-writer/package.json ./apps/ai-writer/
 # package.json が無いと pnpm がワークスペースリンクを張れず、ビルド時に
 # 'Module not found: @revolution/schemas/*' となる
 COPY shared/schemas/package.json ./shared/schemas/
+# shared/slack (@revolution/slack) も同じ理由で要る。こちらは依存を持たないので node_modules は
+# できず、後のステージで個別にコピーするものはない (依存を足したら schemas と同じ COPY を足す)
+COPY shared/slack/package.json ./shared/slack/
 
 # pnpm node-linker=hoisted でシンボリックリンクを実体化
 ENV PNPM_NODE_LINKER=hoisted

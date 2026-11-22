@@ -33,6 +33,8 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  // 会員の操作の E2E はローカルの Supabase を向く別の設定 (playwright.local-db.config.ts) で走らせる
+  testIgnore: ['local/**'],
 
   // レイアウト計測は並列にしても速くならず、スクリーンショットの安定性だけが
   // 落ちる (同一 dev サーバへの同時アクセスで描画タイミングがぶれる)。

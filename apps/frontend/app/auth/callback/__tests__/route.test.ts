@@ -24,12 +24,24 @@ jest.mock('@/lib/supabase/server', () => ({
   })),
 }));
 
+import { NextRequest } from 'next/server';
+
 import { GET } from '@/app/auth/callback/route';
 
 const ORIGIN = 'http://localhost:4444';
 
-function callbackRequest(query: string): Request {
-  return new Request(`${ORIGIN}/auth/callback${query}`);
+function callbackRequest(query: string, cookie?: string): NextRequest {
+  return new NextRequest(`${ORIGIN}/auth/callback${query}`, { headers: cookie ? { cookie } : {} });
+}
+
+/** 戻り先の cookie を消す Set-Cookie が付いているか */
+function clearsReturnCookie(res: Response): boolean {
+  const header = res.headers.get('set-cookie') ?? '';
+  return (
+    /oauth_next=;/.test(header) &&
+    /Path=\/auth\/callback/i.test(header) &&
+    /Max-Age=0/i.test(header)
+  );
 }
 
 beforeEach(() => {
@@ -65,5 +77,33 @@ describe('GET /auth/callback', () => {
     exchangeCodeForSession.mockResolvedValue({ error: null });
     const res = await GET(callbackRequest('?code=ok'));
     expect(res.headers.get('location')).toBe(`${ORIGIN}/mypage`);
+  });
+});
+
+describe('Google ログインの戻り先の cookie (one-more-time #166)', () => {
+  beforeEach(() => exchangeCodeForSession.mockResolvedValue({ error: null }));
+
+  it('URL に next が無ければ cookie から読み、使ったら消す', async () => {
+    const res = await GET(callbackRequest('?code=ok', 'oauth_next=%2Freview%3Fq%3D100%2525'));
+    expect(res.headers.get('location')).toBe(`${ORIGIN}/review?q=100%25`);
+    expect(clearsReturnCookie(res)).toBe(true);
+  });
+
+  it('URL の next を cookie より優先する', async () => {
+    const res = await GET(callbackRequest('?code=ok&next=/mypage', 'oauth_next=%2Freview'));
+    expect(res.headers.get('location')).toBe(`${ORIGIN}/mypage`);
+  });
+
+  it('書き換えた cookie (外部の URL) は /mypage に正規化する', async () => {
+    const res = await GET(callbackRequest('?code=ok', 'oauth_next=%2F%2Fevil.com'));
+    expect(res.headers.get('location')).toBe(`${ORIGIN}/mypage`);
+  });
+
+  it('交換に失敗しても、コードが無くても cookie は消す', async () => {
+    exchangeCodeForSession.mockResolvedValue({ error: { message: 'invalid grant' } });
+    expect(
+      clearsReturnCookie(await GET(callbackRequest('?code=bad', 'oauth_next=%2Freview')))
+    ).toBe(true);
+    expect(clearsReturnCookie(await GET(callbackRequest('', 'oauth_next=%2Freview')))).toBe(true);
   });
 });
