@@ -110,6 +110,19 @@ export function ownReviewStatus(status: ReviewStatus): OwnReviewStatus | null {
   return OWN_STATUSES[status];
 }
 
+/**
+ * 写真を足すと審査し直しになる状態 (DB のトリガ `requeue_review_on_image_insert` と同じ列挙)。
+ * 下書きと審査中は、そのまま (提出の時・審査の時に写真も見る)
+ */
+export function rescreensOnPhotoAdd(status: ReviewStatus): boolean {
+  return (
+    status === 'published' ||
+    status === 'rejected' ||
+    status === 'needs_review' ||
+    status === 'hidden'
+  );
+}
+
 /** 投稿者に理由を見せる状態 (差し戻しと非公開。どちらも理由を見て直せる、仕様 #156) */
 export function explainsReason(status: ReviewStatus): status is 'rejected' | 'hidden' {
   return status === 'rejected' || status === 'hidden';

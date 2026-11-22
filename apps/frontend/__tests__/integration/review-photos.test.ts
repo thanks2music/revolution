@@ -471,6 +471,87 @@ describe('口コミの写真', () => {
     });
   });
 
+  it('上げる前でも、取り込んでいない URL が 20 あれば、新しい URL を出さない', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const request = () =>
+      requestPhotoUpload(ctx, {
+        profileId: member.userId,
+        reviewId,
+        file: { contentType: 'image/jpeg', size: 10 },
+      });
+    // 1 枚も上げずに、URL だけを取る。18 本は 1 本ずつ、残りの枠 (2) を 4 本で同時に取り合う
+    // (22 本を一度に投げると、ローカルの Supabase の入り口が 502 を返すことがあるため)
+    for (let i = 0; i < 18; i++) expect((await request()).kind).toBe('ok');
+    const results = await Promise.all(Array.from({ length: 4 }, request));
+
+    expect(results.filter(result => result.kind === 'ok')).toHaveLength(2);
+    expect(results.filter(result => result.kind === 'busy')).toHaveLength(2);
+  });
+
+  it('URL を出せなかった時は、出した記録を残さない', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const broken = {
+      ...storage,
+      presignIntakeUpload: async () => {
+        throw new Error('presign failed');
+      },
+    };
+    await expect(
+      requestPhotoUpload(
+        { ...ctx, storage: broken },
+        { profileId: member.userId, reviewId, file: { contentType: 'image/jpeg', size: 10 } }
+      )
+    ).rejects.toThrow('presign failed');
+    const { count } = await data.admin
+      .from('review_photo_uploads')
+      .select('photo_id', { count: 'exact', head: true })
+      .eq('review_id', reviewId);
+    expect(count).toBe(0);
+  });
+
+  it('上げる前に取り込みを呼んでも、出した記録は消えない (上限を空けられない)', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const ticket = await requestPhotoUpload(ctx, {
+      profileId: member.userId,
+      reviewId,
+      file: { contentType: 'image/jpeg', size: 10 },
+    });
+    if (ticket.kind !== 'ok') throw new Error(ticket.kind);
+
+    await expect(
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId: ticket.photoId })
+    ).resolves.toEqual({ kind: 'missing' });
+    const { count } = await data.admin
+      .from('review_photo_uploads')
+      .select('photo_id', { count: 'exact', head: true })
+      .eq('photo_id', ticket.photoId);
+    expect(count).toBe(1);
+  });
+
+  it('サーバーが URL を出していない写真は、受け取り場所にあっても取り込まない', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const photoId = '11111111-1111-4111-8111-111111111111';
+    await storage.writeIntake(
+      `preview/reviews/${reviewId}/${photoId}`,
+      await jpegWithGps(400, 300)
+    );
+
+    await expect(
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId })
+    ).resolves.toEqual({
+      kind: 'missing',
+    });
+  });
+
+  it('出した URL の記録は、会員からも anon からも読めない', async () => {
+    const { member } = await reviewOf('draft');
+    const owner = await signInAsMember(member);
+    const own = await owner.from('review_photo_uploads').select('photo_id');
+    const anon = await anonClient().from('review_photo_uploads').select('photo_id');
+    expect(own.error?.code).toBe('42501');
+    expect(anon.error?.code).toBe('42501');
+  });
+
   it('並べ替えに同じ写真を 2 回渡すと断る', async () => {
     const { reviewId, member } = await reviewOf('draft');
     const photoId = await upload(reviewId, member, await jpegWithGps(400, 300));

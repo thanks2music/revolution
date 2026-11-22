@@ -12,10 +12,14 @@ export const MAX_REVIEW_PHOTOS = 10;
 
 /** 1 枚の上限 (10MB)。ブラウザで断り、署名付き URL にも長さとして入れ、取り込みでも確かめる */
 export const MAX_REVIEW_PHOTO_BYTES = 10 * 1024 * 1024;
+/** 画面の文に出す上限 (MB) */
+export const MAX_REVIEW_PHOTO_MB = MAX_REVIEW_PHOTO_BYTES / (1024 * 1024);
 
 /** 受け付ける形式。ブラウザが付ける Content-Type と、中身から見分けた形式の両方で確かめる */
 export const REVIEW_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/heif'] as const;
 export type ReviewPhotoType = (typeof REVIEW_PHOTO_TYPES)[number];
+/** ファイルを選ぶ欄の accept (形式を付けないブラウザ向けに、HEIC の拡張子も足す) */
+export const REVIEW_PHOTO_ACCEPT = [...REVIEW_PHOTO_TYPES, '.heic', '.heif'].join(',');
 
 /**
  * 表示用に作る幅 (px)。一覧のサムネイル・本文の幅・拡大表示。元の写真がこれより小さい時は、

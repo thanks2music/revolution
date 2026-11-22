@@ -18,9 +18,7 @@
 import * as Sentry from '@sentry/nextjs';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 import {
   ReviewDraftSchema,
   ReviewSubmitSchema,
@@ -29,9 +27,7 @@ import {
   type ReviewSubmitInput,
 } from '@revolution/schemas/review';
 
-import { getCurrentMember, memberRedirect } from '@/lib/auth/member';
-import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
-import { getOccurrenceDetail } from '@/lib/occurrence/queries';
+import { getCurrentMember } from '@/lib/auth/member';
 import {
   deleteOwnReview,
   findOwnReview,
@@ -41,16 +37,14 @@ import {
   type OwnReview,
   type ReviewContent,
 } from '@/lib/reviews/authoring';
-import {
-  authoringMode,
-  explainsReason,
-  ownReviewStatus,
-  type OwnReviewStatus,
-} from '@/lib/reviews/eligibility';
+import { explainsReason, ownReviewStatus, type OwnReviewStatus } from '@/lib/reviews/eligibility';
 import { toScreeningReason } from '@/lib/reviews/labels';
-import { todayInJst } from '@/lib/occurrence/status';
-import { screenSubmittedReview } from '@/lib/reviews/operations';
-import { getReviewScreener } from '@/lib/reviews/screener';
+import {
+  modeFor,
+  resolveWriteContext,
+  screenAfterSubmit,
+  type WriteContextFailure,
+} from '@/lib/reviews/write-context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -113,6 +107,12 @@ const FAILURES = {
   },
 } as const satisfies Record<string, SubmitReviewFailure>;
 
+const CONTEXT_FAILURES: Record<WriteContextFailure, SubmitReviewFailure> = {
+  not_found: FAILURES.notFound,
+  needs_login: FAILURES.needsLogin,
+  needs_onboarding: FAILURES.needsOnboarding,
+};
+
 export async function submitReview(
   route: ReviewRouteParams,
   input: Omit<ReviewSubmitInput, 'occurrenceId'>
@@ -126,41 +126,11 @@ export async function submitReview(
   }
 }
 
-/** 開催と会員を引く (提出・下書きの保存・削除で共通)。書けるかは `authoringMode` で呼ぶ側が決める */
-async function resolveWriteContext(route: ReviewRouteParams) {
-  const [detail, member] = await Promise.all([
-    getOccurrenceDetail(route.eventId, route.occurrenceSlug),
-    getCurrentMember(),
-  ]);
-  if (!detail || detail.event.primaryCategory.slug !== route.eventType) {
-    return { ok: false as const, failure: FAILURES.notFound };
-  }
-  // 会員でなければ、入力の検証より先に返す (ログインの案内を優先する)
-  if (!member.ok) {
-    return {
-      ok: false as const,
-      failure:
-        memberRedirect(member.reason) === 'login' ? FAILURES.needsLogin : FAILURES.needsOnboarding,
-    };
-  }
-  const admin = createAdminClient();
-  if (!admin) throw new Error('review write skipped: SUPABASE_SECRET_KEY is not set');
-  // 公開になった・公開でなくなった時に作り直すページ: 開催 (口コミの一覧・星) と企画 (開催ごとの星の集計)
-  const paths = [getOccurrenceUrl(detail.event, detail.occurrence.slug), getEventUrl(detail.event)];
-  return { ok: true as const, detail, profileId: member.profileId, admin, paths };
-}
-
-function modeFor(
-  occurrence: { status: OccurrenceStatus; startsOn: string | null; endsOn: string | null },
-  own: OwnReview | null
-) {
-  return authoringMode({
-    occurrenceStatus: occurrence.status,
-    startsOn: occurrence.startsOn,
-    endsOn: occurrence.endsOn,
-    today: todayInJst(),
-    own,
-  });
+/** 開催と会員を引き、会員でない・開催が無い時は利用者向けの結果にする */
+async function resolveContext(route: ReviewRouteParams) {
+  const context = await resolveWriteContext(route);
+  if (context.ok) return context;
+  return { ok: false as const, failure: CONTEXT_FAILURES[context.reason] };
 }
 
 function toFieldErrors(issues: readonly { path: readonly PropertyKey[]; message: string }[]) {
@@ -204,7 +174,7 @@ async function submit(
   route: ReviewRouteParams,
   input: Omit<ReviewSubmitInput, 'occurrenceId'>
 ): Promise<SubmitReviewResult> {
-  const context = await resolveWriteContext(route);
+  const context = await resolveContext(route);
   if (!context.ok) return context.failure;
   const { detail, profileId, admin, paths } = context;
 
@@ -290,7 +260,7 @@ async function saveDraftAction(
   route: ReviewRouteParams,
   input: Omit<ReviewDraftInput, 'occurrenceId'>
 ): Promise<SaveDraftResult> {
-  const context = await resolveWriteContext(route);
+  const context = await resolveContext(route);
   if (!context.ok) return context.failure;
   const { detail, profileId, admin } = context;
   // 下書きを書けるかは開催だけで決まる (提出した口コミがあれば、saveDraft が not_draft を返す)
@@ -321,7 +291,7 @@ export async function deleteReview(
 ): Promise<DeleteReviewResult> {
   try {
     if (!Number.isInteger(reviewId) || reviewId <= 0) return FAILURES.notFound;
-    const context = await resolveWriteContext(route);
+    const context = await resolveContext(route);
     if (!context.ok) return context.failure;
     const { detail, profileId, admin, paths } = context;
 
@@ -338,28 +308,6 @@ export async function deleteReview(
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'deleteReview' } });
     return FAILURES.unexpected;
-  }
-}
-
-/**
- * 提出の後に AI の審査を走らせる (`after()` の中)。公開になったら開催と企画のページを作り直す。
- * 失敗は Sentry に送る (操作の層が状態を「AI 審査の失敗」にして BOSS の確認待ちへ回す)
- */
-async function screenAfterSubmit(
-  db: SupabaseClient,
-  reviewId: number,
-  paths: string[]
-): Promise<void> {
-  try {
-    const outcome = await screenSubmittedReview(reviewId, {
-      screener: await getReviewScreener(),
-      db,
-    });
-    if (outcome.kind === 'screened' && outcome.status === 'published') {
-      for (const path of paths) revalidatePath(path);
-    }
-  } catch (error) {
-    Sentry.captureException(error, { tags: { action: 'screenAfterSubmit' } });
   }
 }
 

@@ -11,6 +11,9 @@ import {
   ReviewPhotoUploadRequestSchema,
   type ReviewPhotoUploadRequest,
 } from '@revolution/schemas/review-photo';
+import type { ReviewStatus } from '@revolution/schemas/review';
+
+import { rescreensOnPhotoAdd } from '@/lib/reviews/eligibility';
 
 import { convertReviewPhoto, type ConvertReviewPhotoFailure } from './convert';
 import {
@@ -68,7 +71,7 @@ async function findOwnReviewStatus(
   db: SupabaseClient,
   profileId: string,
   reviewId: number
-): Promise<string | null> {
+): Promise<ReviewStatus | null> {
   const { data, error } = await db
     .from('reviews')
     .select('status')
@@ -77,7 +80,7 @@ async function findOwnReviewStatus(
     .is('deleted_at', null)
     .maybeSingle();
   if (error) throw error;
-  return (data?.status as string | undefined) ?? null;
+  return (data?.status as ReviewStatus | undefined) ?? null;
 }
 
 async function countPhotos(db: SupabaseClient, reviewId: number): Promise<number> {
@@ -92,7 +95,15 @@ async function countPhotos(db: SupabaseClient, reviewId: number): Promise<number
 export type RequestUploadOutcome =
   | { kind: 'ok'; photoId: string; url: string; headers: Record<string, string> }
   | { kind: 'not_found' }
-  | { kind: 'full' };
+  | { kind: 'full' }
+  /** 取り込んでいない URL が 1 日の間に 20 ある (上げた後に取り込みを呼ばない使い方を止める) */
+  | { kind: 'busy' };
+
+/** CHECK 違反 (トリガが上限で断った時の SQLSTATE) */
+const PG_CHECK_VIOLATION = '23514';
+
+/** 取り込んでいない URL が 1 日に 20 ある時にトリガが投げる文 (migration 20261122*_review_photo_uploads と揃える) */
+const PENDING_UPLOADS_MESSAGE = 'too many pending review photo uploads';
 
 /** 受け取り場所へ上げる署名付き URL を出す。形式と大きさは呼ぶ側が zod で確かめた物を渡す */
 export async function requestPhotoUpload(
@@ -101,15 +112,37 @@ export async function requestPhotoUpload(
 ): Promise<RequestUploadOutcome> {
   // 呼ぶ側が確かめた物でも、署名に入れる前にもう一度確かめる (この層が信頼の境目)
   ReviewPhotoUploadRequestSchema.parse(input.file);
-  if (!(await findOwnReviewStatus(ctx.db, input.profileId, input.reviewId)))
-    return { kind: 'not_found' };
-  if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
+  const [status, count] = await Promise.all([
+    findOwnReviewStatus(ctx.db, input.profileId, input.reviewId),
+    countPhotos(ctx.db, input.reviewId),
+  ]);
+  if (!status) return { kind: 'not_found' };
+  if (count >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
   const photoId = randomUUID();
-  const { url, headers } = await ctx.storage.presignIntakeUpload(
-    photoKey(ctx.prefix, input.reviewId, photoId),
-    { contentType: input.file.contentType, size: input.file.size }
-  );
-  return { kind: 'ok', photoId, url, headers };
+  // 出した URL を記録する。取り込んでいない記録が 1 日に 20 あれば、トリガが断る (同時に出しても超えない)
+  const ticket = await ctx.db
+    .from('review_photo_uploads')
+    .insert({ photo_id: photoId, review_id: input.reviewId });
+  if (ticket.error) {
+    if (
+      ticket.error.code === PG_CHECK_VIOLATION &&
+      ticket.error.message.includes(PENDING_UPLOADS_MESSAGE)
+    ) {
+      return { kind: 'busy' };
+    }
+    throw ticket.error;
+  }
+  try {
+    const { url, headers } = await ctx.storage.presignIntakeUpload(
+      photoKey(ctx.prefix, input.reviewId, photoId),
+      { contentType: input.file.contentType, size: input.file.size }
+    );
+    return { kind: 'ok', photoId, url, headers };
+  } catch (error) {
+    // URL を出せなかった記録は数えない (残すと、上げていないのに上限に近づく)
+    await deleteTicket(ctx.db, photoId);
+    throw error;
+  }
 }
 
 export type IngestOutcome =
@@ -130,24 +163,40 @@ export async function ingestPhoto(
   input: { profileId: string; reviewId: number; photoId: string }
 ): Promise<IngestOutcome> {
   if (!PhotoIdSchema.safeParse(input.photoId).success) return { kind: 'missing' };
-  const before = await findOwnReviewStatus(ctx.db, input.profileId, input.reviewId);
-  if (!before) return { kind: 'not_found' };
-
   // 受け取り場所と保管側は同じキー (バケットだけが違う)
   const key = photoKey(ctx.prefix, input.reviewId, input.photoId);
-  const existing = await findPhotoRow(ctx.db, key);
+  // 互いに依らない 3 つを一度に読む (口コミの状態・取り込み済みか・URL を出した記録)
+  const [before, existing, ticket] = await Promise.all([
+    findOwnReviewStatus(ctx.db, input.profileId, input.reviewId),
+    findPhotoRow(ctx.db, key),
+    ctx.db
+      .from('review_photo_uploads')
+      .select('photo_id')
+      .eq('photo_id', input.photoId)
+      .eq('review_id', input.reviewId)
+      .maybeSingle(),
+  ]);
+  if (!before) return { kind: 'not_found' };
   if (existing) {
     // 取り込み済み。元の写真 (位置情報が残っている唯一の物) が残っていれば消す
     await ctx.storage.deleteIntake(key).catch(() => undefined);
     return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
   }
 
+  // サーバーが URL を出した写真だけを受け付ける (出した記録が無ければ、受け取り場所も見ない)
+  if (ticket.error) throw ticket.error;
+  if (!ticket.data) return { kind: 'missing' };
+
   let row: PhotoRow;
-  // 置き場所や DB の一時的な失敗 (投げた時) は、元の写真を残してやり直せるようにする (1 日で消える)
+  // 置き場所や DB の一時的な失敗 (投げた時) は、元の写真と出した記録を残してやり直せるようにする (1 日で消える)
   let keepIntake = false;
   try {
     const original = await ctx.storage.readIntake(key);
-    if (original.kind === 'missing') return { kind: 'missing' };
+    if (original.kind === 'missing') {
+      // まだ上がっていない。記録は残す (消すと、上げる前に取り込みを呼んで上限を空け、後から上げられてしまう)
+      keepIntake = true;
+      return { kind: 'missing' };
+    }
     if (original.kind === 'too_large') return { kind: 'rejected', reason: 'too_large' };
     // 数えるのは重い変換の前に断るため。守りは DB のトリガ
     if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) {
@@ -216,12 +265,23 @@ export async function ingestPhoto(
     keepIntake = true;
     throw error;
   } finally {
-    if (!keepIntake) await ctx.storage.deleteIntake(key).catch(() => undefined);
+    if (!keepIntake) {
+      await Promise.all([
+        ctx.storage.deleteIntake(key).catch(() => undefined),
+        deleteTicket(ctx.db, input.photoId),
+      ]);
+    }
   }
   // 行を足した後の失敗 (URL の署名など) では、保管側の物を消さない (行が指している)。
   // 下書きと審査中以外は、トリガ (requeue_review_on_image_insert) が審査中に戻した
-  const requeued = before !== 'draft' && before !== 'pending';
+  const requeued = rescreensOnPhotoAdd(before);
   return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, row), requeued };
+}
+
+/** 出した URL の記録を消す。失敗しても 1 日で片付くので、取り込みの結果は変えない */
+async function deleteTicket(db: SupabaseClient, photoId: string): Promise<void> {
+  // 失敗は { error } で返る (投げない)。消せなくても 1 日で数えなくなるので、結果は見ない
+  await db.from('review_photo_uploads').delete().eq('photo_id', photoId);
 }
 
 async function findPhotoRow(db: SupabaseClient, objectKey: string): Promise<PhotoRow | null> {
@@ -253,7 +313,8 @@ async function insertPhotoRow(
     .maybeSingle();
   if (error) {
     // PostgREST は制約の名前を返さないので、トリガの RAISE の文で見分ける
-    if (error.code === '23514' && error.message.includes(MAX_PHOTOS_MESSAGE)) return 'full';
+    if (error.code === PG_CHECK_VIOLATION && error.message.includes(MAX_PHOTOS_MESSAGE))
+      return 'full';
     throw error;
   }
   return data ? PhotoRowSchema.parse(data) : null;

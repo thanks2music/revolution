@@ -32,6 +32,9 @@ import {
 } from '@/lib/reviews/labels';
 
 import type { OwnReview } from '@/lib/reviews/authoring';
+import { rescreensOnPhotoAdd } from '@/lib/reviews/eligibility';
+import type { OwnReviewPhoto } from '@/lib/reviews/photos/operations';
+import { ReviewPhotosField } from '@/components/molecules/reviews/ReviewPhotosField';
 
 import { ReviewSubmitted } from './ReviewSubmitted';
 
@@ -48,6 +51,10 @@ export type ReviewFormProps = {
   shareUrl: string;
   /** 会員のこの開催の口コミ。あればその編集になる */
   initial?: OwnReview;
+  /** 写真を付けられるか (写真の置き場所がある環境だけ。one-more-time #163) */
+  photosEnabled?: boolean;
+  /** 付けてある写真 (本人だけが見る、短時間だけ有効な URL) */
+  initialPhotos?: OwnReviewPhoto[];
 };
 
 type Rating = keyof typeof RATING_LABELS;
@@ -71,11 +78,16 @@ export function ReviewForm(props: ReviewFormProps) {
   // 提出した口コミの編集か。下書きを保存できるのは、まだ提出していない口コミだけ (提出の後は、直して出し直す)
   const isResubmit = initial !== undefined && initial.status !== 'draft';
   const [draftSaved, setDraftSaved] = useState(false);
+  // 口コミの行があるか (写真は口コミに付けるので、無ければ先に下書きを保存する)
+  const [hasReview, setHasReview] = useState(initial !== undefined);
+  // 写真の欄が作業中 (先の下書きの保存・上げる・外す・並べ替える)。その間は投稿と下書きの保存を止める
+  const [photosBusy, setPhotosBusy] = useState(false);
   // 提出の失敗 (全体の文・欄ごとの誤り・ログインが要るか) を 1 つで持つ
   const [failure, setFailure] = useState<SubmitReviewFailure | null>(null);
   const fieldErrors = failure?.fieldErrors ?? {};
   const [submittedAt, setSubmittedAt] = useState<Date | null>(null);
   const [pending, startTransition] = useTransition();
+  const locked = pending || photosBusy;
   const ids = { visitedOn: useId(), body: useId(), spoiler: useId() };
 
   if (submittedAt) {
@@ -90,7 +102,7 @@ export function ReviewForm(props: ReviewFormProps) {
     );
   }
 
-  const canSubmit = rating !== null && visitedOn !== '' && !pending;
+  const canSubmit = rating !== null && visitedOn !== '' && !locked;
 
   // 送る内容 (提出と下書きの保存で共通。下書きは星と訪問日が空でよい)
   const content = { attendance, foodCostBand, goodsCostBand, body, hasSpoiler };
@@ -131,12 +143,39 @@ export function ReviewForm(props: ReviewFormProps) {
     );
   }
 
+  /** 下書きを保存する (ボタンと、写真を付ける前の両方)。保存できなければ理由を出して false */
+  async function saveDraft(): Promise<boolean> {
+    try {
+      const result = await saveReviewDraft(props.route, {
+        ...content,
+        rating,
+        visitedOn: visitedOn || null,
+      });
+      if (result.ok) {
+        setFailure(null);
+        setHasReview(true);
+        return true;
+      }
+      setFailure(result);
+    } catch {
+      setFailure({
+        ok: false,
+        error: '保存できませんでした。通信を確かめて、もう一度お試しください',
+      });
+    }
+    return false;
+  }
+
+  /** 写真を付ける前に、口コミの行を作る (無ければ下書きを保存する) */
+  async function ensureReview(): Promise<boolean> {
+    return hasReview || saveDraft();
+  }
+
   function onSaveDraft() {
-    run(
-      () => saveReviewDraft(props.route, { ...content, rating, visitedOn: visitedOn || null }),
-      () => setDraftSaved(true),
-      '保存できませんでした。通信を確かめて、もう一度お試しください'
-    );
+    setDraftSaved(false);
+    startTransition(async () => {
+      if (await saveDraft()) setDraftSaved(true);
+    });
   }
 
   return (
@@ -248,6 +287,17 @@ export function ReviewForm(props: ReviewFormProps) {
         <FieldError message={fieldErrors.body} />
       </div>
 
+      {props.photosEnabled && (
+        <ReviewPhotosField
+          route={props.route}
+          initialPhotos={props.initialPhotos ?? []}
+          ensureReview={ensureReview}
+          onBusyChange={setPhotosBusy}
+          disabled={pending}
+          rescreensOnAdd={initial !== undefined && rescreensOnPhotoAdd(initial.status)}
+        />
+      )}
+
       <div className="flex items-center justify-between gap-4 pt-5">
         <label htmlFor={ids.spoiler} className="flex flex-col gap-0.5">
           <span className="text-xs font-bold text-ink-strong">ネタバレを含む</span>
@@ -302,7 +352,7 @@ export function ReviewForm(props: ReviewFormProps) {
         <button
           type="button"
           onClick={onSaveDraft}
-          disabled={pending}
+          disabled={locked}
           className="mt-3 w-full rounded-2xl border border-(--line-soft) bg-white p-3 font-display text-sm font-bold text-ink-strong transition-colors hover:bg-muted disabled:opacity-50"
         >
           下書きを保存
