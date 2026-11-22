@@ -141,6 +141,20 @@
       "when": 1795291269077,
       "tag": "0019_reviews_check_on_submit",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795326447456,
+      "tag": "0020_review_stats_and_helpful",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795335133976,
+      "tag": "0021_review_photos",
+      "breakpoints": true
     }
   ]
 }

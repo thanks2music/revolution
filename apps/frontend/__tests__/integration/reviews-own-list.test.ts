@@ -3,6 +3,21 @@ import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { listOwnReviews } from '@/lib/reviews/own-reviews';
 import { createTestDataScope, jstDate, type TestDataScope } from '@/test-support/test-data';
 
+// 公開と service role のクライアントは lib/env.ts から接続先を読む。ローカルの Supabase に向ける
+// (CI には .env.local が無く、手元でも本物の環境を読まないように)
+jest.mock('@/lib/env', () => {
+  const local = jest
+    .requireActual<typeof import('@/test-support/local-supabase')>('@/test-support/local-supabase')
+    .getLocalSupabaseEnv();
+  return {
+    env: {
+      NEXT_PUBLIC_SUPABASE_URL: local.url,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: local.publishableKey,
+      SUPABASE_SECRET_KEY: local.secretKey,
+    },
+  };
+});
+
 /** #12 マイページの「自分の口コミ」(one-more-time #162) をローカルの実 DB で確かめる */
 describe('自分の口コミの一覧', () => {
   let data: TestDataScope;
@@ -68,12 +83,12 @@ describe('自分の口コミの一覧', () => {
     const list = await listOwnReviews(data.admin, member.userId);
 
     expect(list.map(item => item.status).sort()).toEqual(['draft', 'rejected']);
-    expect(list.every(item => item.canEdit)).toBe(true);
+    expect(list.every(item => item.target.canWrite)).toBe(true);
     expect(list.find(item => item.id === rejected)).toMatchObject({
       reasonCode: 'resale',
       reasonNote: '譲渡の呼びかけの部分を直してください',
       visitedOn: jstDate(-1),
-      eventName: expect.stringContaining('テスト企画'),
+      target: expect.objectContaining({ eventName: expect.stringContaining('テスト企画') }),
       route: {
         eventId: String(b.event.id),
         eventType: b.event.categorySlug,
@@ -113,7 +128,7 @@ describe('自分の口コミの一覧', () => {
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({
       status: 'draft',
-      canEdit: false,
+      target: expect.objectContaining({ canWrite: false }),
       route: { occurrenceSlug: cancelledOcc.slug },
     });
   });

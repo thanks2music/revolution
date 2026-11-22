@@ -68,3 +68,21 @@ export function formatVisitedMonth(visitedMonth: string): string {
 export function toScreeningReason(code: ReviewReasonCode | null): ReviewScreeningReason | null {
   return REVIEW_SCREENING_REASONS.find(reason => reason === code) ?? null;
 }
+
+/** 「行った人のデータ」の棒グラフに出す短い言葉 (Figma #3 `83:103`) */
+export const ATTENDANCE_SHORT_LABELS: Record<ReviewAttendance, string> = {
+  walk_in: '並ばずそのまま',
+  reservation: '事前予約',
+  queue: '整理券・当日の列',
+  lottery: '抽選に当選',
+  other: 'その他',
+};
+
+/**
+ * 「〜人が最多」に続ける言葉 (Figma #3 `83:106`)。「その他」だけは「その他人」と読めてしまうので言い換える
+ * (投稿の画面の選択肢は短い「その他」のまま)
+ */
+export const ATTENDANCE_SUMMARY_LABELS: Record<ReviewAttendance, string> = {
+  ...ATTENDANCE_LABELS,
+  other: 'その他の方法で入った',
+};
