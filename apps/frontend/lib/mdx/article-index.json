@@ -1,7 +1,56 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-22T04:07:59.194Z",
+  "totalArticles": 12,
   "articles": [
+    {
+      "slug": "01m80pzhm9sgpjk3",
+      "title": "いたずらぐまのグルーミー コラボカフェ in 大阪 11月7日より開催",
+      "date": "2026-11-22T02:18:23.000Z",
+      "excerpt": "森チャック先生による作品「グルーミー」のコラボカフェが、2026年11月7日より大阪なんばにて開催されます。会場ではキャラクターをイメージしたコラボメニューが楽しめるほか、描き下ろしイラストや森チャック描き下ろしのなんばオリジナルデザインを使用したコラボグッズが多数登場します。",
+      "categories": [
+        "いたずらぐまのグルーミー",
+        "グッズ販売"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/goods-sales/gloomy-bear/01m80pzhm9sgpjk3.mdx",
+      "post_id": "01m80pzhm9sgpjk3",
+      "year": 2026,
+      "event_type": "goods-sales",
+      "event_title": "グッズ販売",
+      "work_title": "いたずらぐまのグルーミー",
+      "work_titles": [
+        "グルーミー"
+      ],
+      "work_slug": "gloomy-bear",
+      "prefectures": [
+        "大阪府"
+      ],
+      "prefecture_slugs": [
+        "osaka"
+      ],
+      "ogImage": "https://images.anime-events.com/goods-sales/2026/01m80pzhm9sgpjk3/a6b20e65813bbddbe2624dd4d178233e.jpg",
+      "event_start_date": "2026-11-07",
+      "venue": "大阪なんば",
+      "official_url": "https://gloomy-official.com/",
+      "event_data": {
+        "primary_category_slug": "pop-up-store",
+        "title_slugs": [
+          "gloomy"
+        ],
+        "event_name": "グルーミー ぐるぐるPOP UP SHOP",
+        "event_slug": "gloomy-guruguru-pop-up-shop",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "大阪なんば",
+            "starts_on": "2026-11-07",
+            "ends_on": null,
+            "official_url": "https://gloomy-official.com/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m7ydys18ckpgbj",
       "title": "BANANA FISH カフェ in 新宿 11月26日よりコラボ開催",
