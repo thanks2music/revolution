@@ -535,8 +535,8 @@ describe('generate-article-index.ts', () => {
       const articleIndexPath = join(tmpDir, 'article-index.json');
       try {
         execSync(
-          `cd ${join(__dirname, '../..')} && npx tsx scripts/generate-article-index.ts --output ${articleIndexPath}`,
-          { encoding: 'utf-8' }
+          'npx tsx scripts/generate-article-index.ts --output ' + JSON.stringify(articleIndexPath),
+          { cwd: join(__dirname, '../..'), encoding: 'utf-8' }
         );
         const indexData = JSON.parse(readFileSync(articleIndexPath, 'utf-8'));
         const result = ArticleIndexSchema.safeParse(indexData);

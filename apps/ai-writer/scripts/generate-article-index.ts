@@ -18,6 +18,12 @@
  *   apps/frontend/lib/mdx/article-index.json
  *   このファイルはコミットしない (gitignore 済み)。frontend の build / dev などが使う前に
  *   本スクリプトで作る (apps/frontend/package.json の generate:article-index)
+ *   索引に入れられない MDX (frontmatter が無い・必須項目が欠けている・読めない) が 1 件でもあれば
+ *   終了コード 1 で止まる
+ *
+ * ⚠️ 本スクリプトの import 先を増やしたら、次の一覧にも足す (frontend の build の入力として扱うため):
+ *   apps/frontend/turbo.json の inputs / scripts/vercel-ignore-build.sh の MUST_BUILD_PATHS /
+ *   .github/workflows/ingest-occurrences.yml の paths
  *
  * @module scripts/generate-article-index
  */
@@ -181,9 +187,7 @@ async function processmdxFile(
     const frontmatter = parseFrontmatter(content);
 
     if (!frontmatter) {
-      if (verbose) {
-        console.log(`  ⚠️  frontmatterなし: ${filePath}`);
-      }
+      console.error(`❌ frontmatter がありません: ${filePath}`);
       return null;
     }
 
@@ -192,9 +196,7 @@ async function processmdxFile(
     // the simplified YAML parser above can faithfully round-trip schema-strict input.
     const missingFields = validateFrontmatter(frontmatter, filePath);
     if (missingFields.length > 0) {
-      if (verbose) {
-        console.log(`  ⚠️  必須フィールド不足（スキップ）: ${filePath}`);
-      }
+      // 不足の内容は validateFrontmatter が stderr に出している
       return null;
     }
 
@@ -247,9 +249,7 @@ async function processmdxFile(
 
     return item;
   } catch (error) {
-    if (verbose) {
-      console.error(`  ❌ エラー: ${filePath}`, error);
-    }
+    console.error(`❌ 読み込みに失敗しました: ${filePath}`, error);
     return null;
   }
 }
@@ -273,8 +273,10 @@ async function main(): Promise<void> {
 
   // パス設定
   const contentDir = resolve(__dirname, '../content');
+  // 相対パスは呼んだ場所から解決する (pnpm --filter 経由だと cwd は apps/ai-writer になるため、
+  // pnpm が設定する INIT_CWD を優先する)
   const outputPath = output
-    ? resolve(process.cwd(), output)
+    ? resolve(process.env.INIT_CWD ?? process.cwd(), output)
     : resolve(__dirname, '../../frontend/lib/mdx/article-index.json');
 
   console.log(`📁 コンテンツディレクトリ: ${contentDir}`);
@@ -294,14 +296,16 @@ async function main(): Promise<void> {
   const mdxFiles = await findMdxFiles(contentDir);
   console.log(`   ${mdxFiles.length} 件のMDXファイルを発見\n`);
 
+  // 0 件でも空の索引を書く (索引はコミットしないので、書かないと frontend の build が
+  // 「article-index.json が無い」で落ちるか、手元に残った古い索引を使ってしまう)
   if (mdxFiles.length === 0) {
-    console.log('⚠️  MDXファイルが見つかりません');
-    process.exit(0);
+    console.log('⚠️  MDXファイルが見つかりません (空の索引を書きます)');
   }
 
   // 各ファイルを処理
   console.log('📖 frontmatterを解析中...');
   const articles: ArticleIndexItem[] = [];
+  const skippedFiles: string[] = [];
 
   for (const filePath of mdxFiles) {
     if (verbose) {
@@ -311,7 +315,21 @@ async function main(): Promise<void> {
     const item = await processmdxFile(filePath, contentDir, verbose);
     if (item) {
       articles.push(item);
+    } else {
+      skippedFiles.push(filePath);
     }
+  }
+
+  // 索引に入れられない記事があれば失敗させる。索引はコミットしない (build の前に作る) ので、
+  // ここで止めないと、その記事はサイトにも取り込みにも出ないまま誰も気づかない
+  if (skippedFiles.length > 0) {
+    console.error(
+      `\n❌ ${skippedFiles.length} 件の MDX を索引に入れられませんでした (理由は上のエラー):`
+    );
+    for (const filePath of skippedFiles) {
+      console.error(`   - ${filePath}`);
+    }
+    process.exit(1);
   }
 
   console.log(`   ${articles.length} 件の記事を処理\n`);

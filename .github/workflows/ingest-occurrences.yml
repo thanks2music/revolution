@@ -19,8 +19,13 @@ name: Ingest Occurrences (staging)
 on:
   push:
     branches: [main]
+    # 索引を作る元 (記事の MDX) と、索引を作るスクリプト・その import 先
+    # (apps/frontend/turbo.json の inputs と同じ一覧)
     paths:
       - "apps/ai-writer/content/**/*.mdx"
+      - "apps/ai-writer/scripts/generate-article-index.ts"
+      - "apps/ai-writer/lib/mdx/parse-frontmatter.ts"
+      - "apps/ai-writer/lib/utils/date.ts"
   workflow_dispatch:
     inputs:
       dry_run:

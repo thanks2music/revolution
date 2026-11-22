@@ -8,7 +8,8 @@
         "$TURBO_ROOT$/apps/ai-writer/content/**/*.mdx",
         "$TURBO_ROOT$/apps/ai-writer/scripts/generate-article-index.ts",
         "$TURBO_ROOT$/apps/ai-writer/lib/mdx/parse-frontmatter.ts",
-        "$TURBO_ROOT$/apps/ai-writer/lib/utils/date.ts"
+        "$TURBO_ROOT$/apps/ai-writer/lib/utils/date.ts",
+        "$TURBO_ROOT$/apps/ai-writer/package.json"
       ],
       "outputs": ["$TURBO_EXTENDS$", "lib/mdx/article-index.json"]
     },
@@ -18,7 +19,8 @@
         "$TURBO_ROOT$/apps/ai-writer/content/**/*.mdx",
         "$TURBO_ROOT$/apps/ai-writer/scripts/generate-article-index.ts",
         "$TURBO_ROOT$/apps/ai-writer/lib/mdx/parse-frontmatter.ts",
-        "$TURBO_ROOT$/apps/ai-writer/lib/utils/date.ts"
+        "$TURBO_ROOT$/apps/ai-writer/lib/utils/date.ts",
+        "$TURBO_ROOT$/apps/ai-writer/package.json"
       ]
     }
   }
