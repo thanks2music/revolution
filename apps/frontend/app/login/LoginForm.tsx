@@ -91,7 +91,8 @@ export function LoginForm({
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        // メールのコードと同じく、ログインの後に来た画面へ戻す (callback が next を解釈する)
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(destination)}`,
         skipBrowserRedirect: true,
       },
     });

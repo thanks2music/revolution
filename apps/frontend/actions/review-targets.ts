@@ -17,7 +17,10 @@ const MAX_RECENT = 10;
 
 export async function getRecentReviewTargets(occurrenceIds: number[]): Promise<ReviewTarget[]> {
   try {
-    const ids = z.array(z.number().int().positive()).safeParse(occurrenceIds.slice(0, MAX_RECENT));
+    // 公開の action なので、配列か確かめてから先頭の上限件数だけを確かめる (投げずに空を返す)
+    const ids = z
+      .array(z.number().int().positive())
+      .safeParse(Array.isArray(occurrenceIds) ? occurrenceIds.slice(0, MAX_RECENT) : null);
     if (!ids.success) return [];
     return await getReviewTargets(ids.data);
   } catch (error) {

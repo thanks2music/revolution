@@ -49,6 +49,14 @@ describe('updateSession の振り分け', () => {
     await expect(go('/login')).resolves.toBe('/mypage');
   });
 
+  it('戻り先のクエリの % や & を、onboarding を挟んでも崩さない', async () => {
+    claims = signedIn(false);
+    const toOnboarding = await go('/review?q=100%25%26A');
+    expect(toOnboarding).toBe('/onboarding?next=%2Freview%3Fq%3D100%2525%2526A');
+    claims = signedIn(true);
+    await expect(go(toOnboarding!)).resolves.toBe('/review?q=100%25%26A');
+  });
+
   it('外部の URL を戻り先にしない', async () => {
     claims = signedIn(true);
     await expect(go('/onboarding?next=https%3A%2F%2Fevil.example')).resolves.toBe('/mypage');

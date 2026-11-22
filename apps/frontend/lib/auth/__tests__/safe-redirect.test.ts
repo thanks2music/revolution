@@ -48,7 +48,7 @@ describe('sanitizeNextPath — preserves legitimate internal paths', () => {
 
   it('allows a nested internal path with query', () => {
     expect(sanitizeNextPath('/collabo-cafe/work-a/slug?ref=1')).toBe(
-      '/collabo-cafe/work-a/slug?ref=1',
+      '/collabo-cafe/work-a/slug?ref=1'
     );
   });
 
@@ -60,5 +60,18 @@ describe('sanitizeNextPath — preserves legitimate internal paths', () => {
     // middleware が url.searchParams.set('next', '/mypage?x=1') した値を Next.js が
     // decode して渡すラウンドトリップ。decode 後も内部パス形なら通す。
     expect(sanitizeNextPath('/mypage?x=1')).toBe('/mypage?x=1');
+  });
+});
+
+describe('sanitizeNextPath を重ねても戻り先が変わらない (onboarding を挟む戻り先、one-more-time #166)', () => {
+  it.each([
+    '/review?q=100%25',
+    '/review?q=A%26B',
+    '/review?q=%E5%91%AA%E8%A1%93',
+    '/mypage#reviews',
+  ])('%s', next => {
+    const once = sanitizeNextPath(next);
+    expect(once).toBe(next);
+    expect(sanitizeNextPath(once)).toBe(next);
   });
 });

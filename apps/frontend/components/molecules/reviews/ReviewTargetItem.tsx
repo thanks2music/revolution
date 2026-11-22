@@ -23,7 +23,8 @@ export function ReviewTargetItem(props: {
       <StatusBadge status={toBadgeStatus(target.status)} className="self-start text-[11px]" />
       <span className="text-sm font-bold">{title}</span>
       <span className="text-[11px] text-ink-muted">
-        {props.ownReview && '書いた口コミを直す ・ '}
+        {/* 直せない口コミ (中止になった開催の下書きなど) には「直す」を添えない。消すのはマイページから */}
+        {props.ownReview && target.canWrite && '書いた口コミを直す ・ '}
         {target.canWrite
           ? formatPeriod(target.startsOn, target.endsOn)
           : target.status === 'scheduled' && target.startsOn
