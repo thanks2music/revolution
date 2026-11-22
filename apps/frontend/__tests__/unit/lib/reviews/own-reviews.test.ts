@@ -22,6 +22,7 @@ const ROW = {
   reason_note: null,
   updated_at: '2026-11-21T00:00:00Z',
   occurrence: {
+    id: 34,
     slug: 'shibuya',
     status: 'ongoing',
     starts_on: '2026-11-01',

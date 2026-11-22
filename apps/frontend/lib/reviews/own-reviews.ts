@@ -33,6 +33,7 @@ const OwnReviewListRowSchema = z
     reason_note: z.string().nullable(),
     updated_at: z.string(),
     occurrence: z.object({
+      id: z.number(),
       slug: z.string(),
       status: OccurrenceStatusSchema,
       starts_on: z.string().nullable(),
@@ -60,6 +61,7 @@ const OwnReviewListRowSchema = z
     venueName: row.occurrence.venues?.name ?? row.occurrence.venue_label,
     /** 開催の状態と日付 (編集できるかの判定に使う) */
     occurrence: {
+      id: row.occurrence.id,
       status: row.occurrence.status,
       startsOn: row.occurrence.starts_on,
       endsOn: row.occurrence.ends_on,
@@ -83,7 +85,7 @@ export type OwnReviewListItem = z.output<typeof OwnReviewListRowSchema> & {
 
 const SELECT =
   'id, status, rating, visited_on, helpful_count, reason_code, reason_note, updated_at, ' +
-  'occurrence:occurrence_view!occurrence_id!inner(slug, status, starts_on, ends_on, venue_label, verified, ' +
+  'occurrence:occurrence_view!occurrence_id!inner(id, slug, status, starts_on, ends_on, venue_label, verified, ' +
   'venues(name), events!inner(id, name, primaryCategory:categories!primary_category_id(slug)))';
 
 /** 会員の口コミを、新しく書き換えた順に返す */

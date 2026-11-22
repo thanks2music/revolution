@@ -6,13 +6,11 @@ import { usePathname } from 'next/navigation';
 /**
  * モバイルの下部タブバー (Claude Design v3「下層バー」→ v5 #1 / v6 の全モック)。
  *
- * ## 3 タブである理由
+ * ## 4 タブ
  *
- * v5 / v6 は **「探す / 記事 / 投稿 / マイページ」の 4 タブ**を描いているが、
- * 「投稿」= レビュー投稿は **S4 の機能で未実装**。押せないタブを置くのは
- * 「データ源が無いものは描かない」という v6 の規律に反するため、
- * **投稿を除いた 3 タブで導入する** (2026-08-22 BOSS 確定)。S4 でレビューが
- * 入った時点で 4 タブへ戻す。
+ * v5 / v6 のとおり **「探す / 記事 / 投稿 / マイページ」**。「投稿」は口コミを書く開催を選ぶ 7-0 (`/review`)。
+ * 2026-08-22 から口コミが入るまでは、押せないタブを置かないため 3 タブだった (BOSS 確定)。
+ * S4 の口コミの投稿 (one-more-time #166) で 4 タブへ戻した。
  *
  * ## md 未満だけに出す
  *
@@ -47,7 +45,7 @@ type Tab = {
  * という特殊対応は静かに壊れやすいので、コンポーネントを描かずに固定する。
  */
 export function isTabActive(pathname: string, bases: string[]): boolean {
-  return bases.some((base) => pathname === base || pathname.startsWith(`${base}/`));
+  return bases.some(base => pathname === base || pathname.startsWith(`${base}/`));
 }
 
 /**
@@ -81,7 +79,7 @@ function currentValue(active: boolean, pathname: string, href: string) {
  * ⚠️ トップ (`/`) は探すの区画に入る。v5 #1 のホームは「探す」が点灯した状態で
  *    描かれており、トップ自体が探す導線の入口だから (タブに「ホーム」は無い)。
  */
-export const EXPLORE_EXCLUDES = ['/articles', '/mypage', '/login', '/onboarding', '/auth'];
+export const EXPLORE_EXCLUDES = ['/articles', '/mypage', '/login', '/onboarding', '/auth', '/review'];
 
 /** タブが現在地かどうか。`excludes` があれば判定を反転する (Layer 1、純粋関数)。 */
 export function isTabCurrent(pathname: string, tab: Pick<Tab, 'href' | 'excludes'>) {
@@ -92,6 +90,8 @@ export function isTabCurrent(pathname: string, tab: Pick<Tab, 'href' | 'excludes
 const TABS: Tab[] = [
   { href: '/titles', label: '探す', excludes: EXPLORE_EXCLUDES },
   { href: '/articles', label: '記事' },
+  // 口コミを書く開催を選ぶ (7-0、one-more-time #166)
+  { href: '/review', label: '投稿' },
   { href: '/mypage', label: 'マイページ' },
 ];
 
@@ -104,7 +104,7 @@ export const BottomTabBar = () => {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-(--line-soft) bg-bg-elevated md:hidden"
     >
       <ul className="flex">
-        {TABS.map((tab) => {
+        {TABS.map(tab => {
           const active = isTabCurrent(pathname, tab);
           return (
             <li key={tab.href} className="flex-1">

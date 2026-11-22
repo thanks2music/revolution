@@ -66,9 +66,9 @@ async function readPreviousMemberId(): Promise<string | undefined> {
 /**
  * 開発サーバー (next dev) は、まだ組み立てていないページを複数の worker が同時に開くと、自分の manifest を
  * 読みかけで 500 を返すことがある ("Unexpected end of JSON input")。並列のテストの前に、口コミのある開催の
- * ページと投稿のページを、ブラウザで一度だけ開いて組み立てておく (島の部品も含めて)。
+ * ページ・投稿のページ・7-0・マイページ・ログインを、ブラウザで一度だけ開いて組み立てておく (島の部品も含めて)。
  */
-setup('開催と投稿のページを先に組み立てる', async ({ page }) => {
+setup('口コミまわりのページを先に組み立てる', async ({ page, context, baseURL }) => {
   const data = createTestDataScope();
   try {
     const event = await data.createEvent();
@@ -91,7 +91,20 @@ setup('開催と投稿のページを先に組み立てる', async ({ page }) =>
       { id: event.id, primaryCategory: { slug: event.categorySlug } },
       occurrence.slug
     );
-    for (const url of [path, `${path}/review`]) {
+    // ログインの画面を先に (未ログインで組み立てる)。その後は会員として、口コミまわりのページを開く
+    await page.goto('/login?next=%2Freview');
+    const member = await data.createMember();
+    const { hostname } = new URL(baseURL!);
+    await context.addCookies(
+      (await sessionCookiesFor(member)).map(({ name, value }) => ({
+        name,
+        value,
+        domain: hostname,
+        path: '/',
+        sameSite: 'Lax' as const,
+      }))
+    );
+    for (const url of [path, `${path}/review`, '/review', `/review?q=warmup`, '/mypage']) {
       // 組み立ての途中の 500 は開き直す (ここで済ませておけば、並列のテストでは起きない)
       await expect(async () => {
         const response = await page.goto(url);

@@ -9,6 +9,7 @@ import type { ReviewStats } from '@/lib/reviews/stats';
 
 import { HelpfulProvider } from './HelpfulButton';
 import { OwnReviewStatus } from './OwnReviewStatus';
+import { ReviewStateCard, reviewStateKind } from './ReviewStateCard';
 import { ReviewCard } from './ReviewCard';
 import { ReviewSortTabs } from './ReviewSortTabs';
 import { RatingDistribution, VisitorData } from './ReviewStatsBars';
@@ -23,6 +24,8 @@ import { ReviewStars } from './ReviewStars';
 export function OccurrenceReviewsSection(props: {
   occurrenceId: number;
   status: OccurrenceStatus;
+  /** 開催前の「いつから書けるか」に使う */
+  startsOn: string | null;
   ratingAverage: number | null;
   ratingCount: number;
   reviewPath: string;
@@ -34,6 +37,12 @@ export function OccurrenceReviewsSection(props: {
 }) {
   const mode = reviewSectionMode(props.status);
   if (mode === 'none') return null;
+  // 口コミの状態 (開催前・0 件・終了)。開催中で口コミがある時は、大きな「口コミを書く」だけを出す
+  const stateKind = reviewStateKind({
+    mode,
+    occurrenceStatus: props.status,
+    ratingCount: props.ratingCount,
+  });
 
   return (
     <section aria-labelledby="reviews-heading" className="mb-10 flex flex-col gap-4">
@@ -42,9 +51,7 @@ export function OccurrenceReviewsSection(props: {
       </h2>
 
       {mode === 'notYet' ? (
-        <p className="rounded-2xl border border-(--line-soft) bg-white p-4 text-sm text-ink-body">
-          開催が始まったら、行った人の口コミを書けるようになります。
-        </p>
+        <ReviewStateCard kind="notYet" startsOn={props.startsOn} reviewPath={props.reviewPath} />
       ) : (
         <>
           <div className="flex items-center gap-3 rounded-2xl border border-(--line-soft) bg-primary-50/40 p-3">
@@ -62,16 +69,18 @@ export function OccurrenceReviewsSection(props: {
                 {props.ratingCount}件
               </p>
             </div>
-            {props.ratingCount > 0 ? (
-              <RatingDistribution bars={props.stats.rating} />
-            ) : (
-              <p className="text-xs leading-relaxed text-ink-body">
-                まだ口コミはありません。行った方は、最初の口コミを書いてみませんか。
-              </p>
-            )}
+            {props.ratingCount > 0 && <RatingDistribution bars={props.stats.rating} />}
           </div>
 
-          <WriteReviewButton href={props.reviewPath} />
+          {stateKind ? (
+            <ReviewStateCard
+              kind={stateKind}
+              startsOn={props.startsOn}
+              reviewPath={props.reviewPath}
+            />
+          ) : (
+            <WriteReviewButton href={props.reviewPath} />
+          )}
           <OwnReviewStatus occurrenceId={props.occurrenceId} />
 
           <VisitorData stats={props.stats} reviewCount={props.ratingCount} />

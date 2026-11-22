@@ -30,7 +30,10 @@ export type ReviewStats = {
   goodsCostBand: StatBar<(typeof REVIEW_GOODS_COST_BANDS)[number]>[];
 };
 
-/** 費用は、項目ごとに回答がこの件数そろうまで出さない (1 人の金額が分からないように、仕様 #156) */
+/**
+ * 費用のグラフは、項目ごとに回答がこの件数そろうまで出さない (仕様 #156 のストーリー 35 の表示の決まり)。
+ * 集計を出すかどうかの決まりで、データを隠すものではない (各口コミのカードには費用の帯が出る)
+ */
 export const COST_MIN_ANSWERS = 3;
 
 function bars<T extends string>(

@@ -112,7 +112,10 @@ test('参考になった順に並べ替えられ、会員は「参考になっ�
   // 参考になった数はトリガが数えるので、別の会員が押した形で 2 件にする
   for (let i = 0; i < 2; i++) {
     const voter = await data.createMember();
-    await data.admin.from('review_helpful').insert({ review_id: helpfulId, user_id: voter.userId });
+    const { error } = await data.admin
+      .from('review_helpful')
+      .insert({ review_id: helpfulId, user_id: voter.userId });
+    if (error) throw error;
   }
 
   // このプロジェクトはログインした状態で始まるので、未ログインの確認のために cookie を消す

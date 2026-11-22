@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { getHelpfulState, setHelpful } from '@/actions/review-helpful';
 import { getCurrentMember } from '@/lib/auth/member';
 
