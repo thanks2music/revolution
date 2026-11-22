@@ -48,7 +48,11 @@ describe('口コミの集計と参考になった', () => {
       .select('id')
       .single();
     if (error) throw error;
-    await data.admin.from('reviews').update({ status: 'published' }).eq('id', row.id);
+    const published = await data.admin
+      .from('reviews')
+      .update({ status: 'published' })
+      .eq('id', row.id);
+    if (published.error) throw published.error;
     return { id: row.id as number, member, client };
   }
 
@@ -75,14 +79,13 @@ describe('口コミの集計と参考になった', () => {
     // 審査中は数えない
     const member = await data.createMember();
     const client = await signInAsMember(member);
-    await client
-      .from('reviews')
-      .insert({
-        occurrence_id: occ.id,
-        user_id: member.userId,
-        rating: 1,
-        visited_on: jstDate(-1),
-      });
+    const pending = await client.from('reviews').insert({
+      occurrence_id: occ.id,
+      user_id: member.userId,
+      rating: 1,
+      visited_on: jstDate(-1),
+    });
+    if (pending.error) throw pending.error;
 
     expect(await stats(occ.id)).toEqual({
       'rating:5': 2,
@@ -148,6 +151,7 @@ describe('口コミの集計と参考になった', () => {
       .from('review_helpful')
       .insert({ review_id: pending.id, user_id: member.userId });
 
-    expect(attempt.error).not.toBeNull();
+    // action はこのコードの時だけ「公開中の口コミにだけ押せます」を返す (ほかは想定外として Sentry へ)
+    expect(attempt.error?.code).toBe('42501');
   });
 });

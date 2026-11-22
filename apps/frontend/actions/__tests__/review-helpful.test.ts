@@ -56,7 +56,7 @@ describe('setHelpful', () => {
 
   it('未ログインはログインへ案内する', async () => {
     (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'unauthenticated' });
-    await expect(setHelpful(7, true)).resolves.toMatchObject({ ok: false, needsAuth: true });
+    await expect(setHelpful(7, true)).resolves.toMatchObject({ ok: false, needs: 'login' });
     expect(builder.insert).not.toHaveBeenCalled();
   });
 });
@@ -66,6 +66,23 @@ describe('getHelpfulState', () => {
     builder.in.mockResolvedValue({ data: [{ review_id: 2 }], error: null });
     await expect(getHelpfulState([1, 2])).resolves.toEqual({ isAuthed: true, marked: [2] });
     expect(builder.in).toHaveBeenCalledWith('review_id', [1, 2]);
+  });
+
+  it('onboarding の途中の会員は、プロフィールの登録へ案内する', async () => {
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'not_onboarded' });
+    await expect(setHelpful(7, true)).resolves.toMatchObject({ ok: false, needs: 'onboarding' });
+    await expect(getHelpfulState([1])).resolves.toEqual({ isAuthed: null, marked: [] });
+  });
+
+  it('読めなかった時は「分からない」にする (ログイン済みの会員をログインへ送らない)', async () => {
+    (getCurrentMember as jest.Mock).mockRejectedValue(new Error('db down'));
+    await expect(getHelpfulState([1])).resolves.toEqual({ isAuthed: null, marked: [] });
+  });
+
+  it('上限を超えた ID は切り詰めて尋ねる', async () => {
+    builder.in.mockResolvedValue({ data: [], error: null });
+    await getHelpfulState(Array.from({ length: 60 }, (_, i) => i + 1));
+    expect(builder.in.mock.calls[0][1]).toHaveLength(50);
   });
 
   it('会員でなければ isAuthed: false。不正な ID の一覧には問い合わせない', async () => {

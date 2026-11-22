@@ -24,14 +24,21 @@ const PG_RLS_VIOLATION = '42501';
 /** 一度に状態を尋ねてよい口コミの数 (開催のページは新着と参考になった順の 2 つの一覧で最大 20 件) */
 const MAX_STATE_IDS = 50;
 
-export type HelpfulState = { isAuthed: boolean; marked: number[] };
+/**
+ * isAuthed: true = 会員 / false = ログインしていない / null = 分からない (読めなかった・onboarding の途中)。
+ * 分からない時、画面は押させて setHelpful の結果で案内を決める (ログイン済みの会員をログインへ送らないため)
+ */
+export type HelpfulState = { isAuthed: boolean | null; marked: number[] };
 
-/** 会員が「参考になった」を押した口コミ (渡した中から)。会員でなければ isAuthed: false */
+/** 会員が「参考になった」を押した口コミ (渡した中から) */
 export async function getHelpfulState(reviewIds: number[]): Promise<HelpfulState> {
   try {
-    const ids = z.array(z.number().int().positive()).max(MAX_STATE_IDS).safeParse(reviewIds);
+    // 上限を超えた分は尋ねない (黙って全部を未押下にしない)
+    const ids = z.array(z.number().int().positive()).safeParse(reviewIds.slice(0, MAX_STATE_IDS));
     const member = await getCurrentMember();
-    if (!member.ok) return { isAuthed: false, marked: [] };
+    if (!member.ok) {
+      return { isAuthed: member.reason === 'unauthenticated' ? false : null, marked: [] };
+    }
     if (!ids.success || ids.data.length === 0) return { isAuthed: true, marked: [] };
 
     const supabase = await createClient();
@@ -44,12 +51,14 @@ export async function getHelpfulState(reviewIds: number[]): Promise<HelpfulState
     return { isAuthed: true, marked: (data ?? []).map(row => row.review_id as number) };
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'getHelpfulState' } });
-    return { isAuthed: false, marked: [] };
+    return { isAuthed: null, marked: [] };
   }
 }
 
 export type SetHelpfulResult =
-  { ok: true; marked: boolean; count: number } | { ok: false; error: string; needsAuth?: boolean };
+  | { ok: true; marked: boolean; count: number }
+  /** needs: login = ログインへ、onboarding = プロフィールの登録へ案内する */
+  | { ok: false; error: string; needs?: 'login' | 'onboarding' };
 
 /** 「参考になった」を付ける (marked: true) か外す (false)。押し直しても同じ結果になる */
 export async function setHelpful(reviewId: number, marked: boolean): Promise<SetHelpfulResult> {
@@ -58,7 +67,11 @@ export async function setHelpful(reviewId: number, marked: boolean): Promise<Set
       return { ok: false, error: '口コミが見つかりません' };
     }
     const member = await getCurrentMember();
-    if (!member.ok) return { ok: false, error: 'ログインしてください', needsAuth: true };
+    if (!member.ok) {
+      return member.reason === 'unauthenticated'
+        ? { ok: false, error: 'ログインしてください', needs: 'login' }
+        : { ok: false, error: 'プロフィールの登録を済ませてください', needs: 'onboarding' };
+    }
 
     const supabase = await createClient();
     if (marked) {

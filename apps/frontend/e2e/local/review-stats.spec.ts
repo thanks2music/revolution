@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 import { getOccurrenceUrl } from '../../lib/event/event-url';
 import { sessionCookiesFor } from '../../test-support/member-session';
@@ -51,6 +51,18 @@ async function occurrencePage(input: { startsOn: string | null; endsOn: string }
   return { occurrenceId: occurrence.id, path };
 }
 
+/**
+ * 開催のページを開く。開発サーバー (next dev) は、まだ組み立てていないページを 2 つの worker が同時に
+ * 開くと、自分の manifest を読みかけで 500 を返すことがある ("Unexpected end of JSON input")。
+ * 評価の欄が出るまで開き直す
+ */
+async function openOccurrence(page: Page, path: string) {
+  await expect(async () => {
+    await page.goto(path);
+    await expect(page.getByTestId('rating-average')).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
 /** 公開中の口コミを作る (それぞれ別の会員)。新しい物ほど後に作る */
 async function publish(occurrenceId: number, fields: Record<string, unknown>) {
   const author = await data.createMember();
@@ -84,10 +96,10 @@ test('星の分布と行った人のデータを出し、費用は 3 件そろ�
   await publish(occurrenceId, { rating: 5, attendance: 'walk_in', food_cost_band: '2000_3000' });
   await publish(occurrenceId, { rating: 3, attendance: 'queue', food_cost_band: 'under_2000' });
 
-  await page.goto(path);
+  await openOccurrence(page, path);
   const distribution = page.getByTestId('rating-distribution');
-  await expect(distribution.getByLabel('星5つ 2件')).toBeVisible();
-  await expect(distribution.getByLabel('星3つ 1件')).toBeVisible();
+  await expect(distribution.getByText('星5つ 2件')).toBeAttached();
+  await expect(distribution.getByText('星3つ 1件')).toBeAttached();
 
   const visitor = page.getByTestId('visitor-data');
   await expect(visitor).toContainText('口コミ3件から');
@@ -117,7 +129,7 @@ test('参考になった順に並べ替えられ、会員は「参考になっ�
 
   // このプロジェクトはログインした状態で始まるので、未ログインの確認のために cookie を消す
   await context.clearCookies();
-  await page.goto(path);
+  await openOccurrence(page, path);
   const cards = page.getByTestId('review-card');
   await expect(cards.first()).toContainText('新しい口コミ');
   await page.getByRole('button', { name: '参考になった順' }).click();
@@ -140,6 +152,11 @@ test('参考になった順に並べ替えられ、会員は「参考になっ�
   await expect(button).toHaveAttribute('aria-pressed', 'true');
   // 件数は先に画面で変わる。保存が終わる (ボタンが押せる状態に戻る) まで待ってから読み直す
   await expect(button).toBeEnabled();
+  // 並び替えで一覧を切り替えても、押した状態と件数を保つ
+  await page.getByRole('button', { name: '新着順' }).click();
+  const sameInLatest = cards.filter({ hasText: '参考になる口コミ' }).getByTestId('helpful-button');
+  await expect(sameInLatest).toHaveText('参考になった 3');
+  await expect(sameInLatest).toHaveAttribute('aria-pressed', 'true');
 
   await page.reload();
   await page.getByRole('button', { name: '参考になった順' }).click();

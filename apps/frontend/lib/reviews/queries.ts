@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
 import {
@@ -133,7 +134,8 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
   for (const result of [latest, mostHelpful]) {
     if (result.error) throw new Error(`failed to load reviews: ${result.error.message}`);
   }
-  if (stats.error) throw new Error(`failed to load review stats: ${stats.error.message}`);
+  // 集計が読めなくても、評価と口コミの一覧は出す (分布と行った人のデータだけを出さない)
+  const statRows = stats.error ? reportStatsFailure(stats.error) : (stats.data ?? []);
 
   const ratingCount = Number(rating.data?.rating_count ?? 0);
   return {
@@ -141,6 +143,13 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
     ratingCount,
     latest: z.array(PublicReviewSchema).parse(latest.data ?? []),
     mostHelpful: z.array(PublicReviewSchema).parse(mostHelpful.data ?? []),
-    stats: toReviewStats(z.array(StatRowSchema).parse(stats.data ?? [])),
+    stats: toReviewStats(z.array(StatRowSchema).parse(statRows)),
   };
+}
+
+function reportStatsFailure(error: { message: string }): [] {
+  Sentry.captureException(new Error(`failed to load review stats: ${error.message}`), {
+    tags: { query: 'occurrence_review_stats' },
+  });
+  return [];
 }

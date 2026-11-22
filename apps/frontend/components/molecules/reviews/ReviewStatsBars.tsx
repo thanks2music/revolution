@@ -22,6 +22,9 @@ import {
   type StatBar,
 } from '@/lib/reviews/stats';
 
+/** 「〜人が最多」に続ける言葉。「その他」だけは「その他人」と読めてしまうので言い換える */
+const ATTENDANCE_SUMMARY_LABELS = { ...ATTENDANCE_LABELS, other: 'その他の方法で入った' };
+
 export function RatingDistribution({ bars }: { bars: ReviewStats['rating'] }) {
   return (
     <ul
@@ -31,11 +34,14 @@ export function RatingDistribution({ bars }: { bars: ReviewStats['rating'] }) {
     >
       {bars.map(bar => (
         <li key={bar.value} className="flex items-center gap-1 text-[11px] text-ink-muted">
-          <span className="w-4 shrink-0">{bar.value}</span>
+          <span aria-hidden="true" className="w-4 shrink-0">
+            {bar.value}
+          </span>
           <Bar percent={barPercent(bar.count, bars)} tone="sky" />
-          <span className="w-6 shrink-0 text-right" aria-label={`星${bar.value}つ ${bar.count}件`}>
+          <span aria-hidden="true" className="w-6 shrink-0 text-right">
             {bar.count}
           </span>
+          <span className="sr-only">{`星${bar.value}つ ${bar.count}件`}</span>
         </li>
       ))}
     </ul>
@@ -80,7 +86,7 @@ export function VisitorData({ stats, reviewCount }: { stats: ReviewStats; review
         stats.attendance,
         ATTENDANCE_SHORT_LABELS,
         top => `${top}人が最多`,
-        ATTENDANCE_LABELS
+        ATTENDANCE_SUMMARY_LABELS
       ),
     // 費用は、項目ごとに回答がそろうまで出さない
     totalOf(stats.foodCostBand) >= COST_MIN_ANSWERS &&
