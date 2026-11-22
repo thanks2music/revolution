@@ -339,6 +339,8 @@ describe('必須パスの一覧 (実物の repo と照合)', () => {
     expect(changed('docs', base).status).toBe(0);
     expect(changed('unknown', base).status).toBe(2);
     expect(changed('docs', 'f'.repeat(40)).status).toBe(2);
+    // 引数が足りない時は 2 (1 だと「変わった」と読まれて作ってしまう)
+    expect(spawnSync('bash', [SCRIPT, '--changed', 'docs', base], { cwd: work, env: gitEnv() }).status).toBe(2);
   });
 
   it('--paths はアプリごとの一覧を出し、知らないアプリは失敗する', () => {

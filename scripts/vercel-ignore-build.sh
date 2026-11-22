@@ -79,10 +79,12 @@ fi
 
 if [ "${1:-}" = "--changed" ]; then
   decided=1
+  # 引数が足りない時も 2 (1 は「変わった」と読まれ、作る側に倒れてしまう)
+  [ -n "${3:-}" ] && [ -n "${4:-}" ] || { echo "usage: $0 --changed <frontend|docs> <from> <to>" >&2; exit 2; }
   list=$(paths_of "${2:-}") || { echo "usage: $0 --changed <frontend|docs> <from> <to>" >&2; exit 2; }
   mapfile -t paths <<< "$list"
   # --no-renames: rename の判定はファイルの中身を読むので、blob を取らない clone では取りに行ってしまう
-  changed=$(git diff --no-renames --name-only "${3:?from}" "${4:?to}" -- "${paths[@]}") || exit 2
+  changed=$(git diff --no-renames --name-only "$3" "$4" -- "${paths[@]}") || exit 2
   [ -n "$changed" ] || exit 0
   head -n 20 <<< "$changed"
   exit 1
