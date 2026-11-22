@@ -72,8 +72,13 @@ export function sanitizeNextPath(raw: string | null | undefined): string {
     if (resolved.origin !== BASE_ORIGIN) return DEFAULT_SAFE_PATH;
     // 念のため最終形も構造判定 (resolve 過程での `//` 等の混入を再確認)。
     if (!looksLikeSafeInternalPath(resolved.pathname)) return DEFAULT_SAFE_PATH;
-    // pathname + search + hash を再構築し、同一オリジン相対パスとして返す。
-    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+    // 返すのは生値 (エンコードのまま) を resolve した形。判定は decode 後で済んでいる。
+    // decode 後の形を返すと、クエリの `%` `&` などが崩れ、もう一度サニタイズした時に decode に失敗する
+    // (onboarding を挟む戻り先は、middleware・ページ・フォームで複数回通る。one-more-time #166)
+    const original = new URL(raw, BASE_ORIGIN);
+    if (original.origin !== BASE_ORIGIN) return DEFAULT_SAFE_PATH;
+    if (!looksLikeSafeInternalPath(original.pathname)) return DEFAULT_SAFE_PATH;
+    return `${original.pathname}${original.search}${original.hash}`;
   } catch {
     return DEFAULT_SAFE_PATH;
   }

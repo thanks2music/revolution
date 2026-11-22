@@ -41,7 +41,7 @@ title: Slack 通知
 | Supabase migration (staging) の失敗 | 開発系 | なし | 同上 (staging の advisor の新規 lint は本番系へメンション付き) |
 | Supabase advisor の週次チェック | 本番系 (新規 lint) / 開発系 | 新規 lint | `supabase-advisor-check.yml` |
 | Supabase keepalive の失敗 | 本番系 | あり | `supabase-keepalive.yml` |
-| main の失敗 (`CI` / `Update MDX Article Index` / `Sentry Digest`) | 本番系 | あり | `notify-main-failures.yml` (`workflow_run`)。定期実行は成功から失敗に変わった最初の 1 回だけ |
+| main の失敗 (`CI` / `Sentry Digest`) | 本番系 | あり | `notify-main-failures.yml` (`workflow_run`)。定期実行は成功から失敗に変わった最初の 1 回だけ |
 | occurrence 取り込みの失敗、対応が要る人手キュー | 本番系 | あり | `ingest-occurrences.yml` |
 | Sentry の新規・回帰 issue | 本番系 (本番の priority High) / 開発系 | 本番の High | `sentry-digest.yml` (30 分ごと)。詳細は [sentry.md](./sentry.md) |
 | 記事生成のローカル実行 (`pnpm debug:mdx`) | 開発系 | なし | `apps/ai-writer/scripts/debug-mdx-url.ts` |
