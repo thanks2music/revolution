@@ -5,15 +5,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import {
-  DeleteObjectsCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
+import { DeleteObjectsCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 
 import {
   createFakePhotoStorage,
+  createR2Client,
   createR2PhotoStorage,
   getReviewPhotoStorage,
   reviewPhotoKeyPrefix,
@@ -29,11 +25,7 @@ const CONFIG = {
 };
 
 function r2WithFakeSend() {
-  const client = new S3Client({
-    region: 'auto',
-    endpoint: CONFIG.endpoint,
-    credentials: { accessKeyId: CONFIG.accessKeyId, secretAccessKey: CONFIG.secretAccessKey },
-  });
+  const client = createR2Client(CONFIG);
   // send は命令ごとに型が分かれるので、テストでは戻り値の型を緩める
   const send = jest.spyOn(client, 'send') as unknown as jest.Mock;
   send.mockResolvedValue({});
@@ -56,6 +48,8 @@ describe('R2 の置き場所', () => {
     expect(parsed.searchParams.get('X-Amz-SignedHeaders')?.split(';')).toEqual(
       expect.arrayContaining(['content-length', 'content-type', 'host'])
     );
+    // 空の本文のチェックサムを署名に入れない (入れるとブラウザの写真と合わず、R2 が断る)
+    expect([...parsed.searchParams.keys()].filter(name => /checksum/i.test(name))).toEqual([]);
     expect(headers).toEqual({ 'Content-Type': 'image/heic' });
   });
 
@@ -77,19 +71,24 @@ describe('R2 の置き場所', () => {
     expect(readUrl.host).toBe('photo-bucket.account.r2.cloudflarestorage.com');
   });
 
-  it('受け取った写真が無い時と、上限より大きい時は null', async () => {
+  it('受け取った写真が無い時と、上限より大きい時 (本文を閉じる) を分けて返す', async () => {
     const { storage, send } = r2WithFakeSend();
     send.mockRejectedValueOnce(Object.assign(new Error('missing'), { name: 'NoSuchKey' }));
-    await expect(storage.readIntake('x')).resolves.toBeNull();
+    await expect(storage.readIntake('x')).resolves.toEqual({ kind: 'missing' });
 
-    send.mockResolvedValueOnce({ ContentLength: 10 * 1024 * 1024 + 1, Body: {} });
-    await expect(storage.readIntake('x')).resolves.toBeNull();
+    const destroy = jest.fn();
+    send.mockResolvedValueOnce({ ContentLength: 10 * 1024 * 1024 + 1, Body: { destroy } });
+    await expect(storage.readIntake('x')).resolves.toEqual({ kind: 'too_large' });
+    expect(destroy).toHaveBeenCalled();
 
     send.mockResolvedValueOnce({
       ContentLength: 3,
       Body: { transformToByteArray: async () => new Uint8Array([1, 2, 3]) },
     });
-    await expect(storage.readIntake('x')).resolves.toEqual(new Uint8Array([1, 2, 3]));
+    await expect(storage.readIntake('x')).resolves.toEqual({
+      kind: 'ok',
+      body: new Uint8Array([1, 2, 3]),
+    });
     expect((send.mock.calls[2][0] as GetObjectCommand).input).toEqual({
       Bucket: 'intake-bucket',
       Key: 'x',
@@ -113,9 +112,12 @@ describe('偽物の置き場所 (ファイル)', () => {
   it('受け取り → 読む → 消す、保管 → 読む → 消す', async () => {
     const storage = createFakePhotoStorage(root);
     await storage.writeIntake('preview/reviews/1/a', new Uint8Array([9]));
-    await expect(storage.readIntake('preview/reviews/1/a')).resolves.toEqual(new Uint8Array([9]));
+    await expect(storage.readIntake('preview/reviews/1/a')).resolves.toEqual({
+      kind: 'ok',
+      body: new Uint8Array([9]),
+    });
     await storage.deleteIntake('preview/reviews/1/a');
-    await expect(storage.readIntake('preview/reviews/1/a')).resolves.toBeNull();
+    await expect(storage.readIntake('preview/reviews/1/a')).resolves.toEqual({ kind: 'missing' });
 
     await storage.putStored('preview/reviews/1/a/320.webp', new Uint8Array([7]), 'image/webp');
     await expect(storage.readStored('preview/reviews/1/a/320.webp')).resolves.toEqual(

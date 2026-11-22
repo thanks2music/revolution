@@ -30,14 +30,17 @@ export type ReviewPhotoStorage = {
     key: string,
     file: { contentType: string; size: number }
   ): Promise<{ url: string; headers: Record<string, string> }>;
-  /** 受け取った写真を読む。無い・上限より大きい時は null */
-  readIntake(key: string): Promise<Uint8Array | null>;
+  /** 受け取った写真を読む */
+  readIntake(key: string): Promise<IntakeRead>;
   deleteIntake(key: string): Promise<void>;
   putStored(key: string, body: Uint8Array, contentType: string): Promise<void>;
   deleteStored(keys: string[]): Promise<void>;
   /** 保管側の写真を短時間だけ見られる URL */
   presignStoredRead(key: string): Promise<string>;
 };
+
+export type IntakeRead =
+  { kind: 'ok'; body: Uint8Array } | { kind: 'missing' } | { kind: 'too_large' };
 
 /** 署名付き URL の有効期間 */
 const UPLOAD_URL_TTL_SECONDS = 10 * 60;
@@ -80,13 +83,24 @@ export type R2PhotoStorageConfig = {
   photoBucket: string;
 };
 
-export function createR2PhotoStorage(
-  config: R2PhotoStorageConfig,
-  client: S3Client = new S3Client({
+/** R2 の S3 API のクライアント */
+export function createR2Client(
+  config: Pick<R2PhotoStorageConfig, 'endpoint' | 'accessKeyId' | 'secretAccessKey'>
+): S3Client {
+  return new S3Client({
     region: 'auto',
     endpoint: config.endpoint,
     credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
-  })
+    // SDK の既定は PUT にチェックサム (CRC32) を付ける。署名付き URL では本文が無いまま計算され、
+    // 空の本文の値 (AAAAAA==) が署名に入り、ブラウザが上げる写真と合わずに R2 が断る
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
+  });
+}
+
+export function createR2PhotoStorage(
+  config: R2PhotoStorageConfig,
+  client: S3Client = createR2Client(config)
 ): ReviewPhotoStorage {
   return {
     async presignIntakeUpload(key, file) {
@@ -109,10 +123,15 @@ export function createR2PhotoStorage(
         const object = await client.send(
           new GetObjectCommand({ Bucket: config.intakeBucket, Key: key })
         );
-        if (!object.Body || (object.ContentLength ?? 0) > MAX_REVIEW_PHOTO_BYTES) return null;
-        return await object.Body.transformToByteArray();
+        if (!object.Body) return { kind: 'missing' };
+        if ((object.ContentLength ?? 0) > MAX_REVIEW_PHOTO_BYTES) {
+          // 読まない本文は閉じる (接続を返す)
+          (object.Body as { destroy?: () => void }).destroy?.();
+          return { kind: 'too_large' };
+        }
+        return { kind: 'ok', body: await object.Body.transformToByteArray() };
       } catch (error) {
-        if (isNotFound(error)) return null;
+        if (isNotFound(error)) return { kind: 'missing' };
         throw error;
       }
     },
@@ -203,10 +222,10 @@ export function createFakePhotoStorage(
     async readIntake(key) {
       try {
         const target = file('intake', key);
-        if ((await stat(target)).size > MAX_REVIEW_PHOTO_BYTES) return null;
-        return new Uint8Array(await readFile(target));
+        if ((await stat(target)).size > MAX_REVIEW_PHOTO_BYTES) return { kind: 'too_large' };
+        return { kind: 'ok', body: new Uint8Array(await readFile(target)) };
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { kind: 'missing' };
         throw error;
       }
     },

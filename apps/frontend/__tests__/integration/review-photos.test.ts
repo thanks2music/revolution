@@ -113,10 +113,12 @@ describe('口コミの写真', () => {
       requeued: false,
       photo: { width: 1200, height: 1600 },
     });
-    await expect(storage.readIntake(`preview/reviews/${reviewId}/${photoId}`)).resolves.toBeNull();
+    await expect(storage.readIntake(`preview/reviews/${reviewId}/${photoId}`)).resolves.toEqual({
+      kind: 'missing',
+    });
     const files = await storedFiles();
     expect(files.sort()).toEqual(
-      ['320.avif', '320.webp', '720.avif', '720.webp'].map(name =>
+      ['1200.avif', '1200.webp', '320.avif', '320.webp', '720.avif', '720.webp'].map(name =>
         path.join('preview/reviews', String(reviewId), photoId, name)
       )
     );
@@ -137,7 +139,9 @@ describe('口コミの写真', () => {
       kind: 'rejected',
       reason: 'unsupported',
     });
-    await expect(storage.readIntake(`preview/reviews/${reviewId}/${photoId}`)).resolves.toBeNull();
+    await expect(storage.readIntake(`preview/reviews/${reviewId}/${photoId}`)).resolves.toEqual({
+      kind: 'missing',
+    });
     await expect(storedFiles()).resolves.toEqual([]);
   });
 
@@ -211,7 +215,8 @@ describe('口コミの写真', () => {
     expect(
       (await listOwnPhotos(ctx, { profileId: member.userId, reviewId })).map(photo => photo.id)
     ).toEqual([ids[2], ids[1]]);
-    expect((await storedFiles()).length).toBe(before - 2);
+    // 外した写真 (幅 400: 320 と 400 の 2 段 × 2 形式) の分だけ減る
+    expect((await storedFiles()).length).toBe(before - 4);
   });
 
   it('本人に見せる URL は、作った段ごとの srcset になる', async () => {
@@ -284,6 +289,31 @@ describe('口コミの写真', () => {
       variant_widths: [10],
     });
     expect(direct.error?.code).toBe('42501');
+  });
+
+  it('同じ写真を 2 回取り込んでも、行は 1 つ。後から来た方は先の行を返す', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const photoId = await upload(reviewId, member, await jpegWithGps(500, 400));
+
+    const [first, second] = await Promise.all([
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId }),
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId }),
+    ]);
+    const again = await ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId });
+
+    const ids = [first, second, again].map(result =>
+      result.kind === 'ok' ? result.photo.id : result.kind
+    );
+    expect(new Set(ids).size).toBe(1);
+    const { count } = await data.admin
+      .from('review_images')
+      .select('id', { count: 'exact', head: true })
+      .eq('review_id', reviewId);
+    expect(count).toBe(1);
+    // 保管側の物は残っている (2 つ目が消していない)。写真は向きの印で縦長になり、幅は 400
+    await expect(
+      storage.readStored(`preview/reviews/${reviewId}/${photoId}/400.webp`)
+    ).resolves.not.toBeNull();
   });
 
   it('受け取り場所に無い写真と、形のおかしな写真の ID は取り込まない', async () => {

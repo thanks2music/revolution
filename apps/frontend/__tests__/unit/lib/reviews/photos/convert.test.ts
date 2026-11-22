@@ -78,9 +78,11 @@ describe('形式を中身で見分ける', () => {
 });
 
 describe('表示用の段', () => {
-  it('元より大きい段は作らない。どの段も作れない小さな写真は元の幅の 1 段', () => {
+  it('元より大きい段は作らない。1440 に届かない写真は元の幅を一番上の段にする', () => {
     expect(variantWidthsFor(4032)).toEqual([320, 720, 1440]);
-    expect(variantWidthsFor(1000)).toEqual([320, 720]);
+    expect(variantWidthsFor(1000)).toEqual([320, 720, 1000]);
+    expect(variantWidthsFor(720)).toEqual([320, 720]);
+    expect(variantWidthsFor(500)).toEqual([320, 500]);
     expect(variantWidthsFor(200)).toEqual([200]);
   });
 });
@@ -95,8 +97,8 @@ describe('写真の変換', () => {
 
     const result = expectConverted(await convertReviewPhoto(input));
 
-    // 横 1600 x 縦 1200 を右に 90 度回すと縦長になる。最大の段は幅 1440 まで縮めない (幅 1200 < 1440)
-    expect(result).toMatchObject({ width: 1200, height: 1600, variantWidths: [320, 720] });
+    // 横 1600 x 縦 1200 を右に 90 度回すと縦長になる。幅 1200 < 1440 なので縮めず、元の幅を一番上の段にする
+    expect(result).toMatchObject({ width: 1200, height: 1600, variantWidths: [320, 720, 1200] });
     for (const variant of result.variants) {
       const meta = await sharp(variant.body).metadata();
       expect(meta.format).toBe(variant.format === 'webp' ? 'webp' : 'heif');
@@ -109,6 +111,8 @@ describe('写真の変換', () => {
       '320.avif',
       '720.webp',
       '720.avif',
+      '1200.webp',
+      '1200.avif',
     ]);
   });
 
@@ -117,7 +121,7 @@ describe('写真の変換', () => {
 
     const result = expectConverted(await convertReviewPhoto(input));
 
-    expect(result).toMatchObject({ width: 800, height: 600, variantWidths: [320, 720] });
+    expect(result).toMatchObject({ width: 800, height: 600, variantWidths: [320, 720, 800] });
     const largest = await sharp(
       result.variants.find(v => v.width === 720 && v.format === 'webp')!.body
     )

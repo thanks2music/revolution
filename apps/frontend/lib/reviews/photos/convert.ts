@@ -27,7 +27,7 @@ export type ReviewPhotoVariant = { width: number; format: 'webp' | 'avif'; body:
 
 export type ConvertedReviewPhoto = {
   ok: true;
-  /** 最大の段の寸法 (向きを直した後) */
+  /** 最大の段の寸法 (向きを直した後)。幅は variantWidths の最後と同じ */
   width: number;
   height: number;
   /** 作った段の幅 (小さい順) */
@@ -60,10 +60,19 @@ function ascii(buffer: Uint8Array, start: number, end: number): string {
   return String.fromCharCode(...buffer.subarray(start, end));
 }
 
-/** 段の幅を決める。元の写真より大きい段は作らない。どの段も作れなければ元の幅の 1 段 */
+/**
+ * 段の幅を決める。元の写真より大きい段は作らない (拡大しない)。最大の段 (1440) に届かない写真は、
+ * 元の幅を一番上の段にする (1000px の写真を 720px までしか出せない、とならないように)
+ */
 export function variantWidthsFor(width: number): number[] {
-  const widths = REVIEW_PHOTO_WIDTHS.filter(target => target <= width);
-  return widths.length > 0 ? [...widths] : [width];
+  const widths: number[] = REVIEW_PHOTO_WIDTHS.filter(target => target <= width);
+  if (
+    widths[widths.length - 1] !== width &&
+    width < REVIEW_PHOTO_WIDTHS[REVIEW_PHOTO_WIDTHS.length - 1]
+  ) {
+    widths.push(width);
+  }
+  return widths;
 }
 
 export async function convertReviewPhoto(

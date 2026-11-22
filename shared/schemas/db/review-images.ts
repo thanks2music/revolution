@@ -5,6 +5,7 @@ import {
   index,
   integer,
   pgTable,
+  uniqueIndex,
   smallint,
   text,
   timestamp,
@@ -88,6 +89,8 @@ export const reviewImages = pgTable(
   (table) => [
     // ★ RLS の全 policy が依存する。
     index('review_images_review_idx').on(table.reviewId),
+    // 1 つの写真に 1 行 (同じ写真の取り込みが 2 回走っても、行は 1 つ。0021)
+    uniqueIndex('review_images_object_key_unique').on(table.objectKey),
     // Layer2: DB CHECK。空白のみのオブジェクトキーを拒否 (Unicode-aware)。
     check(
       'review_images_object_key_not_blank',

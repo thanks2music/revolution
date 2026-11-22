@@ -19,7 +19,7 @@ export type ReviewPhotoType = (typeof REVIEW_PHOTO_TYPES)[number];
 
 /**
  * 表示用に作る幅 (px)。一覧のサムネイル・本文の幅・拡大表示。元の写真がこれより小さい時は、
- * その段を作らない (拡大しない)。どの段も無い小さな写真は、元の幅の 1 段だけを作る
+ * その段を作らず (拡大しない)、元の幅を一番上の段にする (`variantWidthsFor`)
  */
 export const REVIEW_PHOTO_WIDTHS = [320, 720, 1440] as const;
 

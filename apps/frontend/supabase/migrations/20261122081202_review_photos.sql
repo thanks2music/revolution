@@ -40,6 +40,11 @@ ALTER TABLE "public"."review_images"
     CHECK (cardinality("variant_widths") > 0 AND 0 < ALL ("variant_widths"));
 --> statement-breakpoint
 
+-- 1 つの写真に 1 行。同じ写真の取り込みが 2 回走っても、行は 1 つだけになる (2 つ目は 23505)。
+-- 行が 2 つになると、片方を外した時に、もう片方が使う保管側の物まで消えるため
+CREATE UNIQUE INDEX "review_images_object_key_unique" ON "public"."review_images" ("object_key");
+--> statement-breakpoint
+
 -- ───────────────────────────────────────────────
 -- B. トリガ
 -- ───────────────────────────────────────────────
@@ -124,4 +129,12 @@ REVOKE SELECT ON TABLE "public"."review_images" FROM anon;
 --> statement-breakpoint
 REVOKE INSERT ON TABLE "public"."review_images" FROM authenticated;
 --> statement-breakpoint
-GRANT SELECT ("width", "height", "variant_widths") ON TABLE "public"."review_images" TO authenticated;
+
+-- トリガ関数は呼ぶ人に開けない (既存の private の関数と同じ作法)。トリガとしての実行には要らない
+REVOKE EXECUTE ON FUNCTION private.limit_review_images() FROM public;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION private.limit_review_images() TO service_role;
+--> statement-breakpoint
+REVOKE EXECUTE ON FUNCTION private.requeue_review_on_image_insert() FROM public;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION private.requeue_review_on_image_insert() TO service_role;

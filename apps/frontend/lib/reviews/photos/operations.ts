@@ -120,52 +120,83 @@ export async function ingestPhoto(
   if (!before) return { kind: 'not_found' };
 
   const intake = intakeKey(ctx.prefix, input.reviewId, input.photoId);
+  const objectKey = storedPhotoKey(ctx.prefix, input.reviewId, input.photoId);
+  let row: PhotoRow;
   try {
     const original = await ctx.storage.readIntake(intake);
-    if (!original) return { kind: 'missing' };
+    if (original.kind === 'missing') {
+      // 同じ写真の 2 回目 (1 回目が元の写真を消した後)。1 回目の行があれば、それを返す
+      const existing = await findPhotoRow(ctx.db, objectKey);
+      if (!existing) return { kind: 'missing' };
+      return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
+    }
+    if (original.kind === 'too_large') return { kind: 'rejected', reason: 'too_large' };
     if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
 
-    const converted = await convertReviewPhoto(original);
+    const converted = await convertReviewPhoto(original.body);
     if (!converted.ok) return { kind: 'rejected', reason: converted.reason };
 
-    const objectKey = storedPhotoKey(ctx.prefix, input.reviewId, input.photoId);
     const keys = converted.variants.map(variant =>
       storedVariantKey(objectKey, variant.width, variant.format)
     );
-    try {
-      await Promise.all(
-        converted.variants.map((variant, i) =>
-          ctx.storage.putStored(keys[i], variant.body, `image/${variant.format}`)
-        )
-      );
-      const row = await insertPhotoRow(ctx.db, input.reviewId, {
-        object_key: objectKey,
-        width: converted.width,
-        height: converted.height,
-        variant_widths: converted.variantWidths,
-      });
-      if (!row) {
-        await ctx.storage.deleteStored(keys);
-        return { kind: 'full' };
-      }
-      const requeued = ['published', 'rejected', 'needs_review', 'hidden'].includes(before);
-      return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, row), requeued };
-    } catch (error) {
-      // 行を足せなかった写真を保管側に残さない
-      await ctx.storage.deleteStored(keys).catch(() => undefined);
-      throw error;
+    const cleanUp = () => ctx.storage.deleteStored(keys).catch(() => undefined);
+    // 全部の書き込みが終わってから片付ける (途中で消すと、後から終わった物が残る)
+    const puts = await Promise.allSettled(
+      converted.variants.map((variant, i) =>
+        ctx.storage.putStored(keys[i], variant.body, `image/${variant.format}`)
+      )
+    );
+    const failedPut = puts.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected'
+    );
+    if (failedPut) {
+      await cleanUp();
+      throw failedPut.reason;
     }
+    const inserted = await insertPhotoRow(ctx.db, input.reviewId, {
+      object_key: objectKey,
+      width: converted.width,
+      height: converted.height,
+      variant_widths: converted.variantWidths,
+    }).catch(async (error: unknown) => {
+      await cleanUp();
+      throw error;
+    });
+    if (inserted === 'full') {
+      await cleanUp();
+      return { kind: 'full' };
+    }
+    if (inserted === 'duplicate') {
+      // 同じ写真の取り込みが同時に走り、もう一方が先に行を足した。保管側の物は同じキーなので消さない
+      const existing = await findPhotoRow(ctx.db, objectKey);
+      if (!existing) throw new Error('review photo row is missing after a duplicate insert');
+      return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
+    }
+    row = inserted;
   } finally {
     await ctx.storage.deleteIntake(intake).catch(() => undefined);
   }
+  // 行を足した後の失敗 (URL の署名など) では、保管側の物を消さない (行が指している)
+  const requeued = ['published', 'rejected', 'needs_review', 'hidden'].includes(before);
+  return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, row), requeued };
 }
 
-/** 行を足す。10 枚を超える (トリガが断る) 時は null */
+async function findPhotoRow(db: SupabaseClient, objectKey: string): Promise<PhotoRow | null> {
+  const { data, error } = await db
+    .from('review_images')
+    .select(PHOTO_COLUMNS)
+    .eq('object_key', objectKey)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? PhotoRowSchema.parse(data) : null;
+}
+
+/** 行を足す。10 枚を超える (トリガが断る) 時は 'full'、同じ写真の行が既にある時は 'duplicate' */
 async function insertPhotoRow(
   db: SupabaseClient,
   reviewId: number,
   photo: { object_key: string; width: number; height: number; variant_widths: number[] }
-): Promise<PhotoRow | null> {
+): Promise<PhotoRow | 'full' | 'duplicate'> {
   const last = await db
     .from('review_images')
     .select('sort_order')
@@ -184,7 +215,8 @@ async function insertPhotoRow(
     .select(PHOTO_COLUMNS)
     .single();
   if (error) {
-    if (error.code === '23514' && error.message.includes('at most 10 images')) return null;
+    if (error.code === '23514' && error.message.includes('at most 10 images')) return 'full';
+    if (error.code === '23505') return 'duplicate';
     throw error;
   }
   return PhotoRowSchema.parse(data);
