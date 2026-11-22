@@ -189,7 +189,7 @@ export function getRelatedArticles(
 }
 
 // 記事の MDX は apps/frontend の外 (apps/ai-writer/content) にある。読む場所を変えたら、Vercel の
-// Ignored Build Step の必須パス (scripts/vercel-ignore-build.sh の MUST_BUILD_PATHS) も直す
+// Ignored Build Step の必須パス (scripts/vercel-ignore-build.sh の FRONTEND_PATHS。frontend の Preview を作るかの判定) も直す
 export function readArticleContentFile(filePath: string): string {
   const resolvedPath = resolvePathRelativeToFrontend(filePath);
 
