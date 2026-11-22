@@ -471,17 +471,43 @@ describe('口コミの写真', () => {
     });
   });
 
-  it('取り込んでいない写真が溜まっていると、上げる URL を出さない', async () => {
+  it('上げる前でも、出したまま取り込んでいない URL が 10 あれば、新しい URL を出さない', async () => {
     const { reviewId, member } = await reviewOf('draft');
-    for (let i = 0; i < 10; i++) await upload(reviewId, member, Buffer.from([0xff, 0xd8, 0xff, i]));
-
-    await expect(
+    const request = () =>
       requestPhotoUpload(ctx, {
         profileId: member.userId,
         reviewId,
         file: { contentType: 'image/jpeg', size: 10 },
-      })
-    ).resolves.toEqual({ kind: 'busy' });
+      });
+    // 1 枚も上げずに、URL だけを同時にまとめて取る
+    const results = await Promise.all(Array.from({ length: 12 }, request));
+
+    expect(results.filter(result => result.kind === 'ok')).toHaveLength(10);
+    expect(results.filter(result => result.kind === 'busy')).toHaveLength(2);
+  });
+
+  it('サーバーが URL を出していない写真は、受け取り場所にあっても取り込まない', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const photoId = '11111111-1111-4111-8111-111111111111';
+    await storage.writeIntake(
+      `preview/reviews/${reviewId}/${photoId}`,
+      await jpegWithGps(400, 300)
+    );
+
+    await expect(
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId })
+    ).resolves.toEqual({
+      kind: 'missing',
+    });
+  });
+
+  it('出した URL の記録は、会員からも anon からも読めない', async () => {
+    const { member } = await reviewOf('draft');
+    const owner = await signInAsMember(member);
+    const own = await owner.from('review_photo_uploads').select('photo_id');
+    const anon = await anonClient().from('review_photo_uploads').select('photo_id');
+    expect(own.error?.code).toBe('42501');
+    expect(anon.error?.code).toBe('42501');
   });
 
   it('並べ替えに同じ写真を 2 回渡すと断る', async () => {

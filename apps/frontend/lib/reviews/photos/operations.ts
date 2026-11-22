@@ -93,11 +93,11 @@ export type RequestUploadOutcome =
   | { kind: 'ok'; photoId: string; url: string; headers: Record<string, string> }
   | { kind: 'not_found' }
   | { kind: 'full' }
-  /** 取り込んでいない写真が受け取り場所に溜まっている (上げた後に取り込みを呼ばない使い方を止める) */
+  /** 出したまま取り込んでいない URL が多い (期限内に 10。上げた後に取り込みを呼ばない使い方を止める) */
   | { kind: 'busy' };
 
-/** 1 つの口コミについて、受け取り場所に置いておける取り込み前の写真の数 */
-export const MAX_PENDING_UPLOADS = MAX_REVIEW_PHOTOS;
+/** 期限内の URL が多すぎる時にトリガが投げる文 (migration 20261122*_review_photo_uploads と揃える) */
+const PENDING_UPLOADS_MESSAGE = 'too many pending review photo uploads';
 
 /** 受け取り場所へ上げる署名付き URL を出す。形式と大きさは呼ぶ側が zod で確かめた物を渡す */
 export async function requestPhotoUpload(
@@ -109,13 +109,17 @@ export async function requestPhotoUpload(
   if (!(await findOwnReviewStatus(ctx.db, input.profileId, input.reviewId)))
     return { kind: 'not_found' };
   if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
-  // 取り込みは上げた直後に呼ぶので、溜まるのは失敗した物か、取り込みを呼ばない使い方だけ (1 日で消える)
-  const pending = await ctx.storage.countIntake(
-    photoKey(ctx.prefix, input.reviewId, ''),
-    MAX_PENDING_UPLOADS
-  );
-  if (pending >= MAX_PENDING_UPLOADS) return { kind: 'busy' };
   const photoId = randomUUID();
+  // 出した URL を記録する。期限内の記録が上限に達していれば、トリガが断る (同時に出しても超えない)
+  const ticket = await ctx.db
+    .from('review_photo_uploads')
+    .insert({ photo_id: photoId, review_id: input.reviewId });
+  if (ticket.error) {
+    if (ticket.error.code === '23514' && ticket.error.message.includes(PENDING_UPLOADS_MESSAGE)) {
+      return { kind: 'busy' };
+    }
+    throw ticket.error;
+  }
   const { url, headers } = await ctx.storage.presignIntakeUpload(
     photoKey(ctx.prefix, input.reviewId, photoId),
     { contentType: input.file.contentType, size: input.file.size }
@@ -153,8 +157,18 @@ export async function ingestPhoto(
     return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
   }
 
+  // サーバーが URL を出した写真だけを受け付ける (出した記録が無ければ、受け取り場所も見ない)
+  const ticket = await ctx.db
+    .from('review_photo_uploads')
+    .select('photo_id')
+    .eq('photo_id', input.photoId)
+    .eq('review_id', input.reviewId)
+    .maybeSingle();
+  if (ticket.error) throw ticket.error;
+  if (!ticket.data) return { kind: 'missing' };
+
   let row: PhotoRow;
-  // 置き場所や DB の一時的な失敗 (投げた時) は、元の写真を残してやり直せるようにする (1 日で消える)
+  // 置き場所や DB の一時的な失敗 (投げた時) は、元の写真と出した記録を残してやり直せるようにする (1 日で消える)
   let keepIntake = false;
   try {
     const original = await ctx.storage.readIntake(key);
@@ -227,12 +241,27 @@ export async function ingestPhoto(
     keepIntake = true;
     throw error;
   } finally {
-    if (!keepIntake) await ctx.storage.deleteIntake(key).catch(() => undefined);
+    if (!keepIntake) {
+      await ctx.storage.deleteIntake(key).catch(() => undefined);
+      await deleteTicket(ctx.db, input.photoId);
+    }
   }
   // 行を足した後の失敗 (URL の署名など) では、保管側の物を消さない (行が指している)。
   // 下書きと審査中以外は、トリガ (requeue_review_on_image_insert) が審査中に戻した
   const requeued = before !== 'draft' && before !== 'pending';
   return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, row), requeued };
+}
+
+/** 出した URL の記録を消す。失敗しても 1 日で片付くので、取り込みの結果は変えない */
+async function deleteTicket(db: SupabaseClient, photoId: string): Promise<void> {
+  await db
+    .from('review_photo_uploads')
+    .delete()
+    .eq('photo_id', photoId)
+    .then(
+      () => undefined,
+      () => undefined
+    );
 }
 
 async function findPhotoRow(db: SupabaseClient, objectKey: string): Promise<PhotoRow | null> {

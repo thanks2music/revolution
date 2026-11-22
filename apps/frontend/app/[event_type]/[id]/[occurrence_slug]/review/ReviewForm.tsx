@@ -32,6 +32,8 @@ import {
 } from '@/lib/reviews/labels';
 
 import type { OwnReview } from '@/lib/reviews/authoring';
+import type { OwnReviewPhoto } from '@/lib/reviews/photos/operations';
+import { ReviewPhotosField } from '@/components/molecules/reviews/ReviewPhotosField';
 
 import { ReviewSubmitted } from './ReviewSubmitted';
 
@@ -48,6 +50,10 @@ export type ReviewFormProps = {
   shareUrl: string;
   /** 会員のこの開催の口コミ。あればその編集になる */
   initial?: OwnReview;
+  /** 写真を付けられるか (写真の置き場所がある環境だけ。one-more-time #163) */
+  photosEnabled?: boolean;
+  /** 付けてある写真 (本人だけが見る、短時間だけ有効な URL) */
+  initialPhotos?: OwnReviewPhoto[];
 };
 
 type Rating = keyof typeof RATING_LABELS;
@@ -71,6 +77,8 @@ export function ReviewForm(props: ReviewFormProps) {
   // 提出した口コミの編集か。下書きを保存できるのは、まだ提出していない口コミだけ (提出の後は、直して出し直す)
   const isResubmit = initial !== undefined && initial.status !== 'draft';
   const [draftSaved, setDraftSaved] = useState(false);
+  // 口コミの行があるか (写真は口コミに付けるので、無ければ先に下書きを保存する)
+  const [hasReview, setHasReview] = useState(initial !== undefined);
   // 提出の失敗 (全体の文・欄ごとの誤り・ログインが要るか) を 1 つで持つ
   const [failure, setFailure] = useState<SubmitReviewFailure | null>(null);
   const fieldErrors = failure?.fieldErrors ?? {};
@@ -131,10 +139,29 @@ export function ReviewForm(props: ReviewFormProps) {
     );
   }
 
+  /** 写真を付ける前に、口コミの行を作る (下書きの保存)。保存できなければ理由を出して false */
+  async function ensureReview(): Promise<boolean> {
+    if (hasReview) return true;
+    try {
+      const result = await saveReviewDraft(props.route, { ...content, rating, visitedOn: visitedOn || null });
+      if (result.ok) {
+        setHasReview(true);
+        return true;
+      }
+      setFailure(result);
+    } catch {
+      setFailure({ ok: false, error: '保存できませんでした。通信を確かめて、もう一度お試しください' });
+    }
+    return false;
+  }
+
   function onSaveDraft() {
     run(
       () => saveReviewDraft(props.route, { ...content, rating, visitedOn: visitedOn || null }),
-      () => setDraftSaved(true),
+      () => {
+        setDraftSaved(true);
+        setHasReview(true);
+      },
       '保存できませんでした。通信を確かめて、もう一度お試しください'
     );
   }
@@ -247,6 +274,17 @@ export function ReviewForm(props: ReviewFormProps) {
         </p>
         <FieldError message={fieldErrors.body} />
       </div>
+
+      {props.photosEnabled && (
+        <ReviewPhotosField
+          route={props.route}
+          initialPhotos={props.initialPhotos ?? []}
+          ensureReview={ensureReview}
+          rescreensOnAdd={
+            initial !== undefined && initial.status !== 'draft' && initial.status !== 'pending'
+          }
+        />
+      )}
 
       <div className="flex items-center justify-between gap-4 pt-5">
         <label htmlFor={ids.spoiler} className="flex flex-col gap-0.5">

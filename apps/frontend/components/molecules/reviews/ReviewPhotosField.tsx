@@ -98,7 +98,9 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
     null
   );
   const [errors, setErrors] = useState<string[]>([]);
-  const busy = upload !== null;
+  // 外す・並べ替えるの保存中 (画面は先に変える)。保存中は次の操作を止める
+  const [saving, setSaving] = useState(false);
+  const busy = upload !== null || saving;
 
   async function onFiles(list: FileList | null) {
     const files = Array.from(list ?? []);
@@ -149,6 +151,7 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
     const previous = photos;
     setPhotos(next);
     setErrors([]);
+    setSaving(true);
     try {
       const result = await save();
       if (!result.ok) {
@@ -158,6 +161,8 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
     } catch {
       setPhotos(previous);
       setErrors(['保存できませんでした。通信を確かめて、もう一度お試しください']);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -189,13 +194,12 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
           任意
         </span>
       </p>
-      <ul className="flex flex-wrap gap-2" aria-label="付けた写真">
+      <ul className="flex flex-wrap gap-2" aria-label="付けた写真" aria-busy={busy}>
         {photos.map((photo, index) => (
           <li key={photo.id} className="relative size-[76px]">
             <picture>
               <source type="image/avif" srcSet={photo.avifSrcSet} sizes="76px" />
               {/* 自前で作った大きさを出す (Vercel の画像変換を通さない。仕様 #156) */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={photo.src}
                 srcSet={photo.webpSrcSet}
@@ -276,7 +280,7 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
           </li>
         )}
       </ul>
-      <p className="text-xs leading-relaxed text-ink-muted" role="status">
+      <p className="text-xs leading-relaxed text-ink-muted" aria-live="polite">
         {upload
           ? `アップロード中… ${upload.done + 1}/${upload.total} 枚`
           : 'JPEG・PNG・HEIC、1 枚 10MB まで。位置情報などは消してから保存します'}
