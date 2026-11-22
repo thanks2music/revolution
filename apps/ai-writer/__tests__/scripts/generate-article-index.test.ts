@@ -47,9 +47,9 @@
  * - Optional (1): ogImage
  */
 
-import { describe, it, expect } from '@jest/globals';
-import { execSync } from 'child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { afterEach, beforeEach, describe, it, expect } from '@jest/globals';
+import { execFileSync, execSync } from 'child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ArticleIndexSchema } from '@revolution/schemas/article-index';
@@ -546,6 +546,82 @@ describe('generate-article-index.ts', () => {
       } finally {
         rmSync(tmpDir, { recursive: true, force: true });
       }
+    });
+  });
+
+  // 索引はコミットしない (build の前に作る) ので、作れない時は終了コード 1 で止まり、
+  // 書き出し先を取り違えないことを確かめる
+  describe('Failure handling and options', () => {
+    const AI_WRITER_ROOT = join(__dirname, '../..');
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = mkdtempSync(join(tmpdir(), 'article-index-opts-'));
+    });
+    afterEach(() => {
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    /** スクリプトを実行し、終了コードと出力を返す (失敗でも例外にしない) */
+    function run(args: string[], env: Record<string, string> = {}) {
+      try {
+        // npx (npm) は INIT_CWD を自分の cwd で上書きするので、tsx を直接呼ぶ
+        const stdout = execFileSync(join(AI_WRITER_ROOT, 'node_modules/.bin/tsx'), [SCRIPT_PATH, ...args], {
+          cwd: AI_WRITER_ROOT,
+          encoding: 'utf-8',
+          stdio: 'pipe',
+          env: { ...process.env, INIT_CWD: AI_WRITER_ROOT, ...env },
+        });
+        return { status: 0, output: stdout };
+      } catch (error) {
+        const e = error as { status: number; stdout: string; stderr: string };
+        return { status: e.status, output: `${e.stdout}${e.stderr}` };
+      }
+    }
+
+    it('exits 1 and names the file when an MDX cannot be indexed', () => {
+      const contentDir = join(tmpDir, 'content');
+      mkdirSync(contentDir);
+      writeFileSync(join(contentDir, 'broken.mdx'), '---\ntitle: x\n---\nbody\n');
+      const outputPath = join(tmpDir, 'index.json');
+
+      const result = run(['--content-dir', contentDir, '--output', outputPath]);
+
+      expect(result.status).toBe(1);
+      expect(result.output).toContain('broken.mdx');
+      expect(() => readFileSync(outputPath)).toThrow();
+    });
+
+    it('writes an empty index when there are no MDX files', () => {
+      const contentDir = join(tmpDir, 'content');
+      mkdirSync(contentDir);
+      const outputPath = join(tmpDir, 'index.json');
+
+      const result = run(['--content-dir', contentDir, `--output=${outputPath}`]);
+
+      expect(result.status).toBe(0);
+      const index = JSON.parse(readFileSync(outputPath, 'utf-8'));
+      expect(index.totalArticles).toBe(0);
+      expect(index.articles).toEqual([]);
+    });
+
+    it('resolves a relative --output against INIT_CWD (the directory pnpm was called from)', () => {
+      const contentDir = join(tmpDir, 'content');
+      mkdirSync(contentDir);
+
+      const result = run(['--content-dir', contentDir, '--output', 'relative.json'], {
+        INIT_CWD: tmpDir,
+      });
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(readFileSync(join(tmpDir, 'relative.json'), 'utf-8')).articles).toEqual([]);
+    });
+
+    it.each([
+      ['--output without a value', ['--output']],
+      ['an unknown option', ['--outptu', 'x.json']],
+    ])('exits 1 on %s', (_label, args) => {
+      expect(run(args).status).toBe(1);
     });
   });
 });

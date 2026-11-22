@@ -13,6 +13,8 @@
  *   --dry-run          ファイル出力をスキップ（プレビューのみ）
  *   --verbose          詳細ログを出力
  *   --output <path>    出力先を変える (テスト用。既定は下の出力先)
+ *   --content-dir <path> 記事の MDX を探すディレクトリを変える (テスト用。既定は content/)
+ *   相対パスは呼んだ場所から解決する。知らないオプションは終了コード 1
  *
  * 出力先:
  *   apps/frontend/lib/mdx/article-index.json
@@ -29,6 +31,7 @@
  */
 
 import { fileURLToPath } from 'url';
+import { parseArgs as parseCliArgs } from 'util';
 import { dirname, resolve, join, relative } from 'path';
 import { readdir, readFile, writeFile, stat } from 'fs/promises';
 import type { MdxFrontmatter, EventData } from '@revolution/schemas/mdx-frontmatter';
@@ -47,6 +50,8 @@ interface CliArgs {
   verbose: boolean;
   /** 出力先。未指定なら frontend の lib/mdx/article-index.json */
   output?: string;
+  /** 記事の MDX を探すディレクトリ。未指定なら ai-writer の content/ (テスト用) */
+  contentDir?: string;
 }
 
 /**
@@ -105,18 +110,29 @@ interface ArticleIndex {
  * コマンドライン引数をパース
  */
 function parseArgs(): CliArgs {
-  const args = process.argv.slice(2);
-  const outputIndex = args.indexOf('--output');
-  const output = outputIndex === -1 ? undefined : args[outputIndex + 1];
-  if (outputIndex !== -1 && (!output || output.startsWith('--'))) {
-    console.error('❌ --output には出力先のパスを指定してください');
+  // strict: 知らないフラグや値の無い --output は例外にする (黙って既定の出力先に書かないため)
+  try {
+    const { values } = parseCliArgs({
+      args: process.argv.slice(2),
+      options: {
+        'dry-run': { type: 'boolean', default: false },
+        verbose: { type: 'boolean', default: false },
+        output: { type: 'string' },
+        'content-dir': { type: 'string' },
+      },
+      strict: true,
+      allowPositionals: false,
+    });
+    return {
+      dryRun: values['dry-run'],
+      verbose: values.verbose,
+      output: values.output,
+      contentDir: values['content-dir'],
+    };
+  } catch (error) {
+    console.error(`❌ 引数が正しくありません: ${(error as Error).message}`);
     process.exit(1);
   }
-  return {
-    dryRun: args.includes('--dry-run'),
-    verbose: args.includes('--verbose'),
-    output,
-  };
 }
 
 /**
@@ -257,7 +273,7 @@ async function processmdxFile(
  * メイン処理
  */
 async function main(): Promise<void> {
-  const { dryRun, verbose, output } = parseArgs();
+  const { dryRun, verbose, output, contentDir: contentDirArg } = parseArgs();
 
   console.log('📚 article-index.json 生成スクリプト\n');
   console.log('='.repeat(60));
@@ -271,11 +287,14 @@ async function main(): Promise<void> {
   console.log();
 
   // パス設定
-  const contentDir = resolve(__dirname, '../content');
   // 相対パスは呼んだ場所から解決する (pnpm --filter 経由だと cwd は apps/ai-writer になるため、
   // pnpm が設定する INIT_CWD を優先する)
+  const callerCwd = process.env.INIT_CWD ?? process.cwd();
+  const contentDir = contentDirArg
+    ? resolve(callerCwd, contentDirArg)
+    : resolve(__dirname, '../content');
   const outputPath = output
-    ? resolve(process.env.INIT_CWD ?? process.cwd(), output)
+    ? resolve(callerCwd, output)
     : resolve(__dirname, '../../frontend/lib/mdx/article-index.json');
 
   console.log(`📁 コンテンツディレクトリ: ${contentDir}`);
