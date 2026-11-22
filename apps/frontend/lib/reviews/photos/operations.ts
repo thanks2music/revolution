@@ -130,8 +130,11 @@ export async function ingestPhoto(
   // 受け取り場所と保管側は同じキー (バケットだけが違う)
   const key = photoKey(ctx.prefix, input.reviewId, input.photoId);
   const existing = await findPhotoRow(ctx.db, key);
-  if (existing)
+  if (existing) {
+    // 取り込み済み。元の写真 (位置情報が残っている唯一の物) が残っていれば消す
+    await ctx.storage.deleteIntake(key).catch(() => undefined);
     return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
+  }
 
   let row: PhotoRow;
   // 置き場所や DB の一時的な失敗 (投げた時) は、元の写真を残してやり直せるようにする (1 日で消える)
