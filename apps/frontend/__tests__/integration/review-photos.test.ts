@@ -403,6 +403,49 @@ describe('口コミの写真', () => {
     ).resolves.not.toBeNull();
   });
 
+  it('保管側に置けなかった時は、置けた物を片付け、元の写真を残してやり直せる', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const photoId = await upload(reviewId, member, await jpegWithGps(800, 600));
+    let calls = 0;
+    const flaky = {
+      ...storage,
+      putStored: (key: string, body: Uint8Array, type: string) =>
+        ++calls === 2
+          ? Promise.reject(new Error('R2 is down'))
+          : storage.putStored(key, body, type),
+    };
+
+    await expect(
+      ingestPhoto({ ...ctx, storage: flaky }, { profileId: member.userId, reviewId, photoId })
+    ).rejects.toThrow('R2 is down');
+    await expect(storedFiles()).resolves.toEqual([]);
+    await expect(
+      storage.readIntake(`preview/reviews/${reviewId}/${photoId}`)
+    ).resolves.toMatchObject({
+      kind: 'ok',
+    });
+
+    await expect(
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId })
+    ).resolves.toMatchObject({
+      kind: 'ok',
+    });
+  });
+
+  it('並べ替えに同じ写真を 2 回渡すと断る', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const photoId = await upload(reviewId, member, await jpegWithGps(400, 300));
+    const result = await ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId });
+    if (result.kind !== 'ok') throw new Error(result.kind);
+    await expect(
+      reorderPhotos(ctx, {
+        profileId: member.userId,
+        reviewId,
+        photoIds: [result.photo.id, result.photo.id],
+      })
+    ).resolves.toEqual({ kind: 'mismatch' });
+  });
+
   it('受け取り場所に無い写真と、形のおかしな写真の ID は取り込まない', async () => {
     const { reviewId, member } = await reviewOf('draft');
     await expect(

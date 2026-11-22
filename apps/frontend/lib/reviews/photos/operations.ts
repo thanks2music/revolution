@@ -115,8 +115,8 @@ export type IngestOutcome =
   | { kind: 'rejected'; reason: ConvertReviewPhotoFailure['reason'] };
 
 /**
- * 受け取った写真を変換して保管側に置き、行を足す。受け取り場所の元の写真は、成否に関わらず消す
- * (残っても R2 のライフサイクルが 1 日で消す)。同じ写真を 2 回取り込んでも、行は 1 つ
+ * 受け取った写真を変換して保管側に置き、行を足す。受け取り場所の元の写真は、取り込めた時と断った時に
+ * 消す。一時的な失敗 (投げた時) は残し、同じ写真でやり直せるようにする (R2 のライフサイクルが 1 日で消す)。同じ写真を 2 回取り込んでも、行は 1 つ
  * (object_key の一意の索引)。後から来た方は先の行を返す
  */
 export async function ingestPhoto(
@@ -134,6 +134,8 @@ export async function ingestPhoto(
     return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
 
   let row: PhotoRow;
+  // 置き場所や DB の一時的な失敗 (投げた時) は、元の写真を残してやり直せるようにする (1 日で消える)
+  let keepIntake = false;
   try {
     const original = await ctx.storage.readIntake(key);
     if (original.kind === 'missing') return { kind: 'missing' };
@@ -191,8 +193,11 @@ export async function ingestPhoto(
       return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, winner), requeued: false };
     }
     row = inserted;
+  } catch (error) {
+    keepIntake = true;
+    throw error;
   } finally {
-    await ctx.storage.deleteIntake(key).catch(() => undefined);
+    if (!keepIntake) await ctx.storage.deleteIntake(key).catch(() => undefined);
   }
   // 行を足した後の失敗 (URL の署名など) では、保管側の物を消さない (行が指している)。
   // 下書きと審査中以外は、トリガ (requeue_review_on_image_insert) が審査中に戻した
