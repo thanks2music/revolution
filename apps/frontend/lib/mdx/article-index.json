@@ -1,7 +1,57 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-22T04:07:05.139Z",
+  "totalArticles": 12,
   "articles": [
+    {
+      "slug": "01m80pxpdd2qy5wr",
+      "title": "ペルソナ コラボカフェ in 上野の森美術館 1月21日より開催",
+      "date": "2026-11-22T04:05:26.246Z",
+      "excerpt": "「ペルソナ」と上野の森美術館のコラボカフェが、2027年1月21日〜2月7日まで開催されます。描き下ろしイラストを使用した会場では、ゲームの世界観やキャラクターをイメージしたコラボメニューが楽しめるほか、シリーズ作品のアートや立体造形、本展初公開の制作資料などが展示されます。",
+      "categories": [
+        "ペルソナ",
+        "展覧会"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/exhibition/persona/01m80pxpdd2qy5wr.mdx",
+      "post_id": "01m80pxpdd2qy5wr",
+      "year": 2026,
+      "event_type": "exhibition",
+      "event_title": "展覧会",
+      "work_title": "ペルソナ",
+      "work_titles": [
+        "ペルソナ"
+      ],
+      "work_slug": "persona",
+      "prefectures": [
+        "東京都"
+      ],
+      "prefecture_slugs": [
+        "tokyo"
+      ],
+      "ogImage": "https://images.anime-events.com/exhibition/2026/01m80pxpdd2qy5wr/c41f782939bae858fede263a294efd15.webp",
+      "event_start_date": "2027-01-21",
+      "event_end_date": "2027-02-07",
+      "venue": "上野の森美術館",
+      "official_url": "https://event-info.kadokawa.co.jp/persona30th-ex/",
+      "event_data": {
+        "primary_category_slug": "exhibition",
+        "title_slugs": [
+          "persona"
+        ],
+        "event_name": "PERSONA 30th EX.",
+        "event_slug": "persona-30th-ex",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "上野の森美術館",
+            "starts_on": "2027-01-21",
+            "ends_on": "2027-02-07",
+            "official_url": "https://event-info.kadokawa.co.jp/persona30th-ex/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m7ydys18ckpgbj",
       "title": "BANANA FISH カフェ in 新宿 11月26日よりコラボ開催",
