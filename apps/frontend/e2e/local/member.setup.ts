@@ -1,13 +1,15 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { test as setup } from '@playwright/test';
+import { expect, test as setup } from '@playwright/test';
 
+import { getOccurrenceUrl } from '../../lib/event/event-url';
 import { sessionCookiesFor } from '../../test-support/member-session';
 import {
   createTestDataScope,
   createTestMember,
   deleteTestMember,
+  jstDate,
 } from '../../test-support/test-data';
 import { MEMBER_RECORD_PATH, MEMBER_STATE_PATH } from './paths';
 
@@ -31,13 +33,6 @@ setup('会員としてログインした状態を保存する', async ({ baseURL
   // teardown が必ず消せるように、cookie を作る前に記録する
   await mkdir(path.dirname(MEMBER_RECORD_PATH), { recursive: true });
   await writeFile(MEMBER_RECORD_PATH, JSON.stringify({ userId: member.userId }));
-
-  // 開発サーバー (next dev) は、まだ組み立てていないページを複数の worker が同時に開くと、自分の
-  // manifest を読みかけで 500 を返すことがある ("Unexpected end of JSON input")。並列の前に、開催と
-  // 投稿のページを一度だけ組み立てておく (中身は 404 でよい。組み立てが済めばよい)
-  for (const warmup of ['/collabo-cafe/1/warmup', '/collabo-cafe/1/warmup/review']) {
-    await fetch(new URL(warmup, baseURL)).catch(() => undefined);
-  }
 
   const cookies = await sessionCookiesFor(member);
   const { hostname } = new URL(baseURL!);
@@ -67,3 +62,44 @@ async function readPreviousMemberId(): Promise<string | undefined> {
     return undefined;
   }
 }
+
+/**
+ * 開発サーバー (next dev) は、まだ組み立てていないページを複数の worker が同時に開くと、自分の manifest を
+ * 読みかけで 500 を返すことがある ("Unexpected end of JSON input")。並列のテストの前に、口コミのある開催の
+ * ページと投稿のページを、ブラウザで一度だけ開いて組み立てておく (島の部品も含めて)。
+ */
+setup('開催と投稿のページを先に組み立てる', async ({ page }) => {
+  const data = createTestDataScope();
+  try {
+    const event = await data.createEvent();
+    const occurrence = await data.createOccurrence({
+      eventId: event.id,
+      verified: true,
+      startsOn: jstDate(-10),
+      endsOn: jstDate(20),
+    });
+    const author = await data.createMember();
+    await data.admin.from('reviews').insert({
+      occurrence_id: occurrence.id,
+      user_id: author.userId,
+      status: 'published',
+      rating: 4,
+      visited_on: jstDate(-1),
+      attendance: 'walk_in',
+    });
+    const path = getOccurrenceUrl(
+      { id: event.id, primaryCategory: { slug: event.categorySlug } },
+      occurrence.slug
+    );
+    for (const url of [path, `${path}/review`]) {
+      // 組み立ての途中の 500 は開き直す (ここで済ませておけば、並列のテストでは起きない)
+      await expect(async () => {
+        const response = await page.goto(url);
+        expect(response?.status()).toBeLessThan(500);
+      }).toPass({ timeout: 60_000 });
+      await page.waitForLoadState('networkidle');
+    }
+  } finally {
+    await data.cleanup();
+  }
+});
