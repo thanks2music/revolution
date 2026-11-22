@@ -1,7 +1,52 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-22T04:09:21.362Z",
+  "totalArticles": 12,
   "articles": [
+    {
+      "slug": "01m80q1ydc3wez3r",
+      "title": "PEANUTS × ジェラート ピケ カフェ 11月5日よりコラボ開催",
+      "date": "2026-11-22T01:01:56.000Z",
+      "excerpt": "「PEANUTS」とGELATO PIQUE CAFEのコラボカフェが、2026年11月5日よりGELATO PIQUE CAFEにて開催されます。作品の世界観やキャラクターをイメージしたコラボメニューが楽しめるほか、「PEANUTS meets GELATO PIQUE CAFE」をテーマにしたコラボグッズも発売さ…",
+      "categories": [
+        "PEANUTS",
+        "コラボカフェ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collabo-cafe/snoopy/01m80q1ydc3wez3r.mdx",
+      "post_id": "01m80q1ydc3wez3r",
+      "year": 2026,
+      "event_type": "collabo-cafe",
+      "event_title": "コラボカフェ",
+      "work_title": "PEANUTS",
+      "work_titles": [
+        "PEANUTS"
+      ],
+      "work_slug": "snoopy",
+      "prefectures": [],
+      "prefecture_slugs": [],
+      "ogImage": "https://images.anime-events.com/collabo-cafe/2026/01m80q1ydc3wez3r/10c62a73440dbc8e49d09df3e044b727.png",
+      "event_start_date": "2026-11-05",
+      "venue": "GELATO PIQUE CAFE",
+      "official_url": "https://pique-cafe.com/",
+      "event_data": {
+        "primary_category_slug": "collabo-cafe",
+        "title_slugs": [
+          "snoopy"
+        ],
+        "event_name": "PEANUTS meets GELATO PIQUE CAFE",
+        "event_slug": "snoopy-meets-gelato-pique-cafe",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "GELATO PIQUE CAFE",
+            "starts_on": "2026-11-05",
+            "ends_on": null,
+            "official_url": "https://pique-cafe.com/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m7ydys18ckpgbj",
       "title": "BANANA FISH カフェ in 新宿 11月26日よりコラボ開催",
