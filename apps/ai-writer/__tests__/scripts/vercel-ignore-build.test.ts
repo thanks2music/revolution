@@ -17,8 +17,8 @@
  * 検証項目:
  *   1. Production 以外 (Preview / VERCEL_ENV が無い) は常にビルドする (Preview は GitHub Actions が
  *      要る時だけ作っているため)
- *   2. Production は、そのアプリの入力が変わった時だけビルドする。frontend = apps/frontend / 記事の MDX /
- *      shared / ルートの依存の定義、docs = apps/docs / docs/ 直下の *.md / docs/meta.json / shared / 依存
+ *   2. frontend の Production は常にビルドする (templates の Deploy Hook のため)。docs の Production は
+ *      docs の入力 (apps/docs / docs/ 直下の *.md / docs/meta.json / shared / 依存) が変わった時だけビルドする
  *   3. 比べる commit: 前回の成功デプロイ。浅い clone に無ければ取得する。分からなければビルドする
  *   4. 判定できない時 (取得できない / 存在しない / git の外 / 前回と同じ commit / アプリの指定が無い) はビルドする
  *   5. 必須パスの一覧が、frontend の実物の workspace 依存を覆っている。--paths で一覧を出せる
@@ -42,6 +42,7 @@ const INITIAL_FILES: Record<string, string> = {
   'apps/ai-writer/content/collabo-cafe/a.mdx': '# a\n',
   'apps/ai-writer/package.json': '{"name":"ai-writer"}\n',
   'apps/docs/page.mdx': '# docs\n',
+  'apps/docs/vercel.json': '{}\n',
   'docs/readme.md': '# readme\n',
   'docs/meta.json': '{}\n',
   'docs/archive/old.md': '# old\n',
@@ -190,76 +191,44 @@ describe('vercel-ignore-build.sh', () => {
     });
   });
 
-  describe('frontend の Production: 前回の成功デプロイと比べる', () => {
-    it.each([
-      ['ai-writer の lib', IRRELEVANT],
-      [
-        'ai-writer の package.json (ルートの package.json ではない)',
-        { 'apps/ai-writer/package.json': '{"name":"x"}\n' },
-      ],
-      [
-        'docs / apps/docs / .github',
-        {
-          'docs/readme.md': '# changed\n',
-          'apps/docs/page.mdx': '# changed\n',
-          '.github/workflows/ci.yml': 'name: CI2\n',
-        },
-      ],
-    ])('%s だけの変更はビルドしない', (_label, files) => {
-      const r = runAfter(files);
-      expect(r.status).toBe(SKIP);
-      expect(r.stdout).toContain('前回の成功デプロイ');
-    });
-
-    it.each([
-      ['記事の MDX', 'apps/ai-writer/content/collabo-cafe/a.mdx'],
-      ['記事の MDX の追加', 'apps/ai-writer/content/collabo-cafe/new.mdx'],
-      ['shared', 'shared/schemas/index.ts'],
-      ['pnpm-lock.yaml', 'pnpm-lock.yaml'],
-      ['pnpm-workspace.yaml', 'pnpm-workspace.yaml'],
-      ['ルートの package.json', 'package.json'],
-      ['turbo.json', 'turbo.json'],
-      ['.npmrc の追加', '.npmrc'],
-      ['.pnpmfile.cjs の追加', '.pnpmfile.cjs'],
-      ['patches の追加', 'patches/next.patch'],
-      ['apps/frontend/vercel.json', 'apps/frontend/vercel.json'],
-      ['このスクリプト自身', 'scripts/vercel-ignore-build.sh'],
-    ])('%s の変更はビルドし、変わったファイルを出す', (_label, path) => {
-      const r = runAfter({ [path]: 'changed\n' });
+  describe('frontend の Production は常にビルドする', () => {
+    it('frontend の入力に関係ない変更でもビルドする (templates の Deploy Hook を本番に届けるため)', () => {
+      const r = runAfter(IRRELEVANT);
       expect(r.status).toBe(BUILD);
-      expect(r.stdout).toContain(path);
+      expect(r.stdout).toContain('frontend の本番は常にビルドする');
     });
+  });
 
-    it('apps/frontend の外へ移したファイルがあればビルドする', () => {
+  describe('比べ方 (docs の Production で確かめる)', () => {
+    it('apps/docs の外へ移したファイルがあればビルドする', () => {
       const prev = head();
-      git(work, 'mv', 'apps/frontend/app/page.tsx', 'apps/page.tsx');
+      git(work, 'mv', 'apps/docs/page.mdx', 'apps/page.mdx');
       git(work, 'commit', '-q', '-m', 'move');
-      const r = runIgnore({ previousSha: prev });
+      const r = runIgnore({ previousSha: prev, app: 'docs' });
       expect(r.status).toBe(BUILD);
     });
 
-    it('前回の成功デプロイが浅い clone の外 (12 commit 前) でも、取得して比べる', () => {
+    it('前回の成功デプロイが浅い clone の外 (12 commit 前) でも、取得して比べる。checkout の浅い履歴は短くならない', () => {
       const prev = head();
       commit(IRRELEVANT);
       emptyCommits(11);
-      const r = runIgnore({ previousSha: prev });
+      const r = runIgnore({ previousSha: prev, app: 'docs' });
       expect(r.status).toBe(SKIP);
+      // 取得は使い捨ての repo に行う (ビルドが使う checkout の履歴を変えない)
+      expect(git(r.clone, 'rev-list', '--count', 'HEAD')).toBe('10');
     });
 
     it.each([
-      ['frontend は変わらない', {}, SKIP],
+      ['docs は変わらない', {}, SKIP],
       ['lockfile も変わる', { 'pnpm-lock.yaml': 'changed\n' }, BUILD],
-    ])(
-      'rebase で前回の commit が祖先でなくなっても、取得して比べる (%s)',
-      (_label, extra, expected) => {
-        commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 3;\n' });
-        const prev = head();
-        git(work, 'reset', '-q', '--hard', 'main');
-        commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 4;\n', ...extra });
-        const r = runIgnore({ previousSha: prev });
-        expect(r.status).toBe(expected);
-      }
-    );
+    ])('rebase で前回の commit が祖先でなくなっても、取得して比べる (%s)', (_label, extra, expected) => {
+      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 3;\n' });
+      const prev = head();
+      git(work, 'reset', '-q', '--hard', 'main');
+      commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 4;\n', ...extra });
+      const r = runIgnore({ previousSha: prev, app: 'docs' });
+      expect(r.status).toBe(expected);
+    });
   });
 
   describe('docs の Production: 前回の成功デプロイと比べる', () => {
@@ -289,7 +258,7 @@ describe('vercel-ignore-build.sh', () => {
   describe('判定できない時はビルドする', () => {
     it('前回の成功デプロイが分からない (初めての本番)', () => {
       commit(IRRELEVANT);
-      const r = runIgnore();
+      const r = runIgnore({ app: 'docs' });
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain('前回の成功デプロイが分からない');
     });
@@ -304,35 +273,35 @@ describe('vercel-ignore-build.sh', () => {
       const prev = head();
       commit(IRRELEVANT);
       emptyCommits(11);
-      const r = runIgnore({ previousSha: prev, origin: join(root, 'missing') });
+      const r = runIgnore({ previousSha: prev, origin: join(root, 'missing'), app: 'docs' });
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain('を取得できない');
     });
 
     it('前回と同じ commit (手動の Redeploy)', () => {
       commit(IRRELEVANT);
-      const r = runIgnore({ previousSha: head() });
+      const r = runIgnore({ previousSha: head(), app: 'docs' });
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain('前回と同じ commit');
     });
 
     it('前回の SHA が commit の SHA の形ではない (git のオプションとして読まれない)', () => {
       commit(IRRELEVANT);
-      const r = runIgnore({ previousSha: '--upload-pack=touch-pwned' });
+      const r = runIgnore({ previousSha: '--upload-pack=touch-pwned', app: 'docs' });
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain('commit の SHA ではない');
     });
 
     it('前回の commit がどこにも存在しない', () => {
       commit(IRRELEVANT);
-      const r = runIgnore({ previousSha: 'f'.repeat(40) });
+      const r = runIgnore({ previousSha: 'f'.repeat(40), app: 'docs' });
       expect(r.status).toBe(BUILD);
     });
 
     it('git の作業ツリーの外で実行された', () => {
       const outside = join(root, 'outside');
       mkdirSync(outside);
-      const r = runScriptIn(outside, { previousSha: 'f'.repeat(40) });
+      const r = runScriptIn(outside, { previousSha: 'f'.repeat(40), app: 'docs' });
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain('git の作業ツリーではない');
     });
@@ -345,6 +314,21 @@ describe('必須パスの一覧 (実物の repo と照合)', () => {
     if (r.status !== 0) throw new Error(`--paths ${app} failed: ${r.stderr}`);
     return r.stdout.split('\n').filter(Boolean);
   }
+
+  it('frontend の一覧は、記事の MDX・shared・依存の定義・判定そのものを含む (Preview の判定が使う)', () => {
+    expect(mustBuildPaths('frontend')).toEqual(
+      expect.arrayContaining([
+        'apps/frontend',
+        'apps/ai-writer/content',
+        'shared',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        'turbo.json',
+        'scripts/vercel-ignore-build.sh',
+      ])
+    );
+  });
 
   it('--paths はアプリごとの一覧を出し、知らないアプリは失敗する', () => {
     expect(mustBuildPaths('frontend')).toContain('apps/frontend');

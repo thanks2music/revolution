@@ -5,8 +5,11 @@
 # (2026-11-22 の実績で確かめた)。そのため deploy を作るかどうかは、ここより前で決める:
 #   - Preview: Git からの自動 deploy は main 以外で止めてある (apps/*/vercel.json の git.deploymentEnabled)。
 #     GitHub Actions (.github/workflows/vercel-preview.yml) が、要る時だけ API で作る。ここでは常にビルドする
-#   - Production (main へのマージ): Git からの自動 deploy のまま。そのアプリの入力が、前回の成功デプロイ
-#     (VERCEL_GIT_PREVIOUS_SHA) から変わっていなければビルドしない (Vercel 上は CANCELED。回数には数えられる)
+#   - Production (main へのマージ): Git からの自動 deploy のまま
+#     - frontend: 常にビルドする。build の時に private の templates repo から審査のプロンプトを取り込むので、
+#       templates だけの変更 (revolution-templates の Deploy Hook) を本番に届けるため。止めても deploy の
+#       回数は減らない (CANCELED も数えられる)
+#     - docs: docs の入力が、前回の成功デプロイ (VERCEL_GIT_PREVIOUS_SHA) から変わっていなければビルドしない
 # 判定できない時は必ずビルドする (ビルドしないのは「変わっていない」と確かめられた時だけ)。
 # Vercel の環境変数やプロジェクト設定だけを変えた時は commit に差分が出ないので、本番はビルドしない。
 # 反映するには、Vercel の Redeploy で「Use project's Ignore Build Step」を外す。
@@ -91,6 +94,7 @@ case "$app" in
   *) build "アプリの指定が無い・知らない (${app:-未指定})" ;;
 esac
 
+
 # ビルドしない判定に進むのは Production だけ。Preview は Actions が要る時だけ作っている。
 # VERCEL_ENV が無い時 (システム環境変数を公開する設定が外れた時など) もビルドする
 case "${VERCEL_ENV:-}" in
@@ -98,6 +102,7 @@ case "${VERCEL_ENV:-}" in
   preview) build "Preview は GitHub Actions が要る時だけ作っている" ;;
   *) build "Production ではない (VERCEL_ENV=${VERCEL_ENV:-未設定})" ;;
 esac
+[ "$app" = docs ] || build "frontend の本番は常にビルドする (templates の取り込みのため)"
 
 head_sha=$(git rev-parse --verify --quiet 'HEAD^{commit}') || build "git の作業ツリーではない (HEAD を読めない)"
 base=${VERCEL_GIT_PREVIOUS_SHA:-}
