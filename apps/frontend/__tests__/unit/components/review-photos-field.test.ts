@@ -2,7 +2,10 @@ jest.mock('@/actions/review-photos', () => ({}));
 
 import { MAX_REVIEW_PHOTO_BYTES } from '@revolution/schemas/review-photo';
 
-import { photoTypeOf, screenSelectedPhotos } from '@/components/molecules/reviews/ReviewPhotosField';
+import {
+  photoTypeOf,
+  screenSelectedPhotos,
+} from '@/components/molecules/reviews/ReviewPhotosField';
 
 /** 写真の欄が、選んだその場で断る理由 (one-more-time #163) */
 describe('photoTypeOf', () => {
