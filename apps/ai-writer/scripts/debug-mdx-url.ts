@@ -695,8 +695,7 @@ async function main() {
         console.log('💡 次のステップ:');
         console.log(`  1. 保存されたMDXファイルを確認: ${savedFilePath}`);
         console.log('  2. 画像URLが正しくR2のURLになっているか確認');
-        console.log('  3. 記事インデックスを再生成: pnpm generate:article-index');
-        console.log('  4. 開発サーバーで確認: pnpm dev');
+        console.log('  3. 開発サーバーで確認: frontend の pnpm dev (起動の前に記事インデックスを作り直す)');
         console.log();
         console.log('💡 本番実行するには --upload-images を外して実行してください:');
         console.log(`  pnpm debug:mdx ${url}`);
@@ -713,8 +712,7 @@ async function main() {
       if (savedFilePath) {
         console.log('💡 次のステップ:');
         console.log(`  1. 保存されたMDXファイルを確認: ${savedFilePath}`);
-        console.log('  2. 記事インデックスを再生成: pnpm generate:article-index');
-        console.log('  3. 開発サーバーで確認: pnpm dev');
+        console.log('  2. 開発サーバーで確認: frontend の pnpm dev (起動の前に記事インデックスを作り直す)');
         console.log();
         console.log('💡 画像をR2にアップロードしたい場合:');
         console.log(`  pnpm debug:mdx --upload-images ${url}`);

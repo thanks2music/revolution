@@ -1,3 +1,4 @@
+import { toDotDate } from '@/lib/date';
 import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 
 /**
@@ -21,9 +22,9 @@ import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
  */
 export function formatPeriod(startsOn: string | null, endsOn: string | null): string {
   if (!startsOn) return '日程未発表';
-  const start = startsOn.replace(/-/g, '.');
+  const start = toDotDate(startsOn);
   if (!endsOn) return `${start} 〜 (終了日未定)`;
-  return `${start} 〜 ${endsOn.replace(/-/g, '.')}`;
+  return `${start} 〜 ${toDotDate(endsOn)}`;
 }
 
 /**
@@ -45,10 +46,7 @@ export function formatPeriod(startsOn: string | null, endsOn: string | null): st
  *    (2026-08-22 `/code-review` 指摘、view 定義で再現性を確認)。
  *    **`startsOn` の有無で判定する**のが正しい。
  */
-export function formatPeriodTense(
-  status: OccurrenceStatus,
-  startsOn: string | null,
-): string {
+export function formatPeriodTense(status: OccurrenceStatus, startsOn: string | null): string {
   if (startsOn === null) return '';
   return PERIOD_TENSE[status];
 }

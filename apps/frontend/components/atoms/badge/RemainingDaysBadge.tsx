@@ -1,4 +1,4 @@
-import { diffInDays, todayInJst } from '@/lib/occurrence/status';
+import { remainingDays } from '@/lib/occurrence/status';
 
 /**
  * 残日数バッジ (3 段階)。「あと N 日」を出す。
@@ -59,13 +59,9 @@ type Props = {
 };
 
 export const RemainingDaysBadge = ({ endsOn, now, className = '' }: Props) => {
-  // 終了日未定 / 常設 → 出さない (確定仕様)。
-  if (!endsOn) return null;
-
-  const daysLeft = diffInDays(todayInJst(now), endsOn);
-
-  // 終了済み → 出さない。状態バッジの「終了」が事実を伝える。
-  if (daysLeft < 0) return null;
+  // 終了日未定 / 常設、終了済みは出さない (確定仕様。終了は状態バッジの「終了」が伝える)。
+  const daysLeft = remainingDays(endsOn, now);
+  if (daysLeft === null) return null;
 
   const tier = toTier(daysLeft);
 

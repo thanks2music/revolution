@@ -48,6 +48,23 @@ export const env = createEnv({
     SLACK_NOTICE_CHANNEL_ID: z.string().optional(),
     // 要対応で鳴らすユーザー ID。Vercel では Production にだけ設定する
     SLACK_MENTION_USER_ID: z.string().optional(),
+
+    // 口コミの AI 審査 (lib/reviews/screener)。Slack と同じく、ここは env レジストリとしての記録で、
+    // 審査器は `process.env` を直読みする (テストで env を差し替えるため)。未設定なら審査は失敗として扱う
+    GEMINI_API_KEY: z.string().optional(),
+    REVIEW_SCREENING_MODEL: z.string().optional(),
+    // fake の時だけ偽物を使う。ほかの値は無視する (値の誤りで起動を止めないため)
+    REVIEW_SCREENER: z.string().optional(),
+
+    // 口コミの写真の置き場所 (lib/reviews/photos/storage.ts)。審査器と同じく env レジストリとしての記録で、
+    // 置き場所は `process.env` を直読みする。5 つそろわなければ写真を付けられない (口コミ自体は書ける)
+    REVIEW_R2_ENDPOINT: z.string().optional(),
+    REVIEW_R2_ACCESS_KEY_ID: z.string().optional(),
+    REVIEW_R2_SECRET_ACCESS_KEY: z.string().optional(),
+    REVIEW_R2_INTAKE_BUCKET: z.string().optional(),
+    REVIEW_R2_PHOTO_BUCKET: z.string().optional(),
+    // fake の時だけ偽物 (ファイル) を使う。手元と E2E の確認用
+    REVIEW_PHOTO_STORAGE: z.string().optional(),
   },
 
   /*
@@ -110,6 +127,15 @@ export const env = createEnv({
     SLACK_ATTENTION_CHANNEL_ID: process.env.SLACK_ATTENTION_CHANNEL_ID,
     SLACK_NOTICE_CHANNEL_ID: process.env.SLACK_NOTICE_CHANNEL_ID,
     SLACK_MENTION_USER_ID: process.env.SLACK_MENTION_USER_ID,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    REVIEW_SCREENING_MODEL: process.env.REVIEW_SCREENING_MODEL,
+    REVIEW_SCREENER: process.env.REVIEW_SCREENER,
+    REVIEW_R2_ENDPOINT: process.env.REVIEW_R2_ENDPOINT,
+    REVIEW_R2_ACCESS_KEY_ID: process.env.REVIEW_R2_ACCESS_KEY_ID,
+    REVIEW_R2_SECRET_ACCESS_KEY: process.env.REVIEW_R2_SECRET_ACCESS_KEY,
+    REVIEW_R2_INTAKE_BUCKET: process.env.REVIEW_R2_INTAKE_BUCKET,
+    REVIEW_R2_PHOTO_BUCKET: process.env.REVIEW_R2_PHOTO_BUCKET,
+    REVIEW_PHOTO_STORAGE: process.env.REVIEW_PHOTO_STORAGE,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,

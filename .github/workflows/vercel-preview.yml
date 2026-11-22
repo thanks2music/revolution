@@ -1,0 +1,161 @@
+name: Vercel Preview
+
+# PR の Vercel の Preview を、要る時だけ作る。方針と理由は docs/build.md の「Vercel の Preview と、ビルドする条件」。
+# - frontend: PR に `preview` のラベルがある時 (付けた時と、その後の frontend の入力を変えた push)
+# - docs: docs の入力を変えた push
+# 「入力を変えた」は、この branch で最後に成功した Preview の commit (無ければ base との分岐点) と比べる
+# (scripts/vercel-ignore-build.sh --changed)。判定できない時は作らない。fork と Dependabot の PR では動かない
+#
+# secrets: VERCEL_FRONTEND_TOKEN / VERCEL_DOCS_TOKEN (それぞれのプロジェクトだけを範囲にしたトークン)
+# variables: VERCEL_TEAM_ID / VERCEL_FRONTEND_PROJECT_ID / VERCEL_DOCS_PROJECT_ID
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    # fork からの PR と Dependabot の PR では動かない (どちらも Actions の secret が渡らない)
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: frontend
+            label: preview
+            token_secret: VERCEL_FRONTEND_TOKEN
+            project_var: VERCEL_FRONTEND_PROJECT_ID
+          - app: docs
+            label: ''
+            token_secret: VERCEL_DOCS_TOKEN
+            project_var: VERCEL_DOCS_PROJECT_ID
+    # 途中で止めない (ラベルを付けた時の実行が、後の実行に止められて Preview が作られないのを防ぐ)。
+    # 比べる相手は「この branch で最後に作った Preview」なので、続けて走っても取りこぼさない
+    concurrency:
+      group: vercel-preview-${{ matrix.app }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # トークンは Vercel を呼ぶ 2 つの step だけに渡す (PR のスクリプトを動かす step には渡さない)。
+    # アプリごとの secret / variable だけを読む (無い時に別のアプリの値へ落ちないように)
+    env:
+      APP: ${{ matrix.app }}
+      PROJECT_NAME: revolution-phoenix-${{ matrix.app }}
+      TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+      PROJECT_ID: ${{ vars[matrix.project_var] }}
+    steps:
+      # checkout の前に、ラベルで決まる物を決める (ラベルの無い PR で clone しない)
+      - name: Check the label
+        id: gate
+        env:
+          REQUIRED_LABEL: ${{ matrix.label }}
+          ACTION: ${{ github.event.action }}
+          ADDED_LABEL: ${{ github.event.label.name }}
+          HAS_LABEL: ${{ matrix.label != '' && contains(github.event.pull_request.labels.*.name, matrix.label) }}
+          HAS_TOKEN: ${{ secrets[matrix.token_secret] != '' }}
+        run: |
+          set -euo pipefail
+          go() { echo "go=$1" >> "$GITHUB_OUTPUT"; echo "$APP: $2"; exit 0; }
+          if [ -n "$REQUIRED_LABEL" ] && [ "$HAS_LABEL" != "true" ]; then go false "ラベル ${REQUIRED_LABEL} が無い"; fi
+          if [ "$ACTION" = "labeled" ] && [ "$ADDED_LABEL" != "$REQUIRED_LABEL" ]; then go false "ほかのラベルの追加"; fi
+          if [ "$HAS_TOKEN" != "true" ] || [ -z "$TEAM_ID" ] || [ -z "$PROJECT_ID" ]; then
+            echo "::error title=Missing setting::Vercel のトークン・チーム・プロジェクトのどれかが設定されていない (secrets / variables)"
+            exit 1
+          fi
+          go true "次へ"
+
+      - name: Checkout
+        if: steps.gate.outputs.go == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          # 比べるのは commit と木だけ (ファイルの中身は要らない)
+          filter: blob:none
+          persist-credentials: false
+
+      # Vercel だけを呼ぶ (PR のコードは動かさない)
+      - name: Find the branch's latest Preview
+        id: last
+        if: steps.gate.outputs.go == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets[matrix.token_secret] }}
+          REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          # 成功した (READY の) Preview のうち、この branch の最新の commit。一覧は新しい順。
+          # Vercel から読めない時は作らない (判定できない時は作らない側に倒す)
+          if ! list=$(curl -sS --fail -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            "https://api.vercel.com/v6/deployments?teamId=${TEAM_ID}&projectId=${PROJECT_ID}&target=preview&state=READY&limit=50"); then
+            echo "::warning title=Vercel API::これまでの Preview を読めないので、作らない (もう一度 push するか、ラベルを付け直す)"
+            echo "readable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sha=$(jq -r --arg ref "$REF" '[.deployments[] | select(.state == "READY" and .meta.githubCommitRef == $ref) | .meta.githubCommitSha][0] // empty' <<< "$list")
+          echo "readable=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # PR のスクリプトを動かすので、トークンは渡さない
+      - name: Decide whether to deploy
+        id: decide
+        if: steps.gate.outputs.go == 'true'
+        env:
+          REQUIRED_LABEL: ${{ matrix.label }}
+          READABLE: ${{ steps.last.outputs.readable }}
+          LAST: ${{ steps.last.outputs.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          decide() { echo "deploy=$1" >> "$GITHUB_OUTPUT"; echo "$APP: $2"; exit 0; }
+
+          if [ "$READABLE" != "true" ]; then decide false "これまでの Preview を読めない"; fi
+          if [ "$LAST" = "$HEAD_SHA" ]; then decide false "この commit の Preview はもうある"; fi
+          # 比べる相手: この branch で最後に成功した Preview の commit。無ければ base との分岐点
+          if [ -n "$LAST" ] && git cat-file -e "${LAST}^{commit}" 2>/dev/null; then
+            from="$LAST"
+          elif [ -n "$REQUIRED_LABEL" ]; then
+            decide true "ラベル ${REQUIRED_LABEL} があり、この branch の Preview がまだ無い"
+          else
+            from=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
+          fi
+
+          set +e
+          bash scripts/vercel-ignore-build.sh --changed "$APP" "$from" "$HEAD_SHA"
+          rc=$?
+          set -e
+          case "$rc" in
+            0) decide false "入力が ${from:0:12} から変わっていない" ;;
+            1) decide true "入力が ${from:0:12} から変わった (上の一覧)" ;;
+            *) echo "::error::入力の比べ方に誤り (exit $rc)"; exit 1 ;;
+          esac
+
+      - name: Create the Preview deployment
+        if: steps.decide.outputs.deploy == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets[matrix.token_secret] }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          REF: ${{ github.event.pull_request.head.ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Git の commit から Vercel に build させる (プロジェクトの環境変数がそのまま使われる)
+          body=$(jq -n --arg name "$PROJECT_NAME" --arg project "$PROJECT_ID" \
+            --arg org "$OWNER" --arg repo "$REPO" --arg ref "$REF" --arg sha "$SHA" \
+            '{name: $name, project: $project, gitSource: {type: "github", org: $org, repo: $repo, ref: $ref, sha: $sha}}')
+          response=$(mktemp)
+          status=$(curl -sS -o "$response" -w '%{http_code}' -X POST \
+            "https://api.vercel.com/v13/deployments?teamId=${TEAM_ID}&skipAutoDetectionConfirmation=1" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" -H 'Content-Type: application/json' -d "$body")
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            # 応答の本文はそのまま出さない (エラーの種類と文だけ)
+            echo "::error title=Vercel API ${status}::$(jq -r '.error.code + ": " + .error.message' "$response" 2>/dev/null || echo 'unreadable response')"
+            exit 1
+          fi
+          url=$(jq -r '.url // empty' "$response")
+          echo "Preview: https://${url}"
+          echo "- ${PROJECT_NAME}: https://${url}" >> "$GITHUB_STEP_SUMMARY"
