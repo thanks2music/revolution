@@ -1,7 +1,73 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-22T01:08:08.679Z",
+  "totalArticles": 12,
   "articles": [
+    {
+      "slug": "01m80cp36294kde9",
+      "title": "うたプリ × アニメイトカフェグラッテ 10月4日よりコラボ開催",
+      "date": "2026-11-21T16:19:45.000Z",
+      "excerpt": "「うたの☆プリンスさまっ♪ Shining Live」のコラボカフェが、2026年10月4日より全4会場にて開催されます。一十木音也、聖川真斗、四ノ宮那月、一ノ瀬トキヤ、神宮寺レン、来栖翔、愛島セシル、寿嶺二、黒崎蘭丸、美風藍、カミュらをイメージしたコラボメニューが楽しめます。",
+      "categories": [
+        "うたの☆プリンスさまっ♪ Shining Live",
+        "オンリーショップ"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/pop-up-store/utano-princesama-shining-live/01m80cp36294kde9.mdx",
+      "post_id": "01m80cp36294kde9",
+      "year": 2026,
+      "event_type": "pop-up-store",
+      "event_title": "オンリーショップ",
+      "work_title": "うたの☆プリンスさまっ♪ Shining Live",
+      "work_titles": [
+        "うたの☆プリンスさまっ♪ Shining Live"
+      ],
+      "work_slug": "utano-princesama-shining-live",
+      "prefectures": [],
+      "prefecture_slugs": [],
+      "ogImage": "https://images.anime-events.com/pop-up-store/2026/01m80cp36294kde9/20e93f972ca4e7262288fb87c4430076.jpg",
+      "event_start_date": "2026-10-04",
+      "venue": "アニメイト",
+      "official_url": "https://sp.utapri.com/shininglive_switch/",
+      "event_data": {
+        "primary_category_slug": "chain-store",
+        "title_slugs": [
+          "utano-princesama-shining-live"
+        ],
+        "event_name": "うたの☆プリンスさまっ♪ Shining Live for Nintendo Switch 小売店特典",
+        "event_slug": "utano-princesama-shining-live-for-nintendo-switch-privilege",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "アニメイト",
+            "starts_on": "2026-10-04",
+            "ends_on": null,
+            "official_url": "https://sp.utapri.com/shininglive_switch/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "ステラワース",
+            "starts_on": "2026-10-04",
+            "ends_on": "2026-10-04",
+            "official_url": "https://sp.utapri.com/shininglive_switch/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "ブロッコリーオンライン",
+            "starts_on": "2026-10-04",
+            "ends_on": null,
+            "official_url": "https://sp.utapri.com/shininglive_switch/"
+          },
+          {
+            "venue_slug": null,
+            "venue_label": "Amazon.co.jp",
+            "starts_on": "2026-10-04",
+            "ends_on": null,
+            "official_url": "https://sp.utapri.com/shininglive_switch/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m7ydys18ckpgbj",
       "title": "BANANA FISH カフェ in 新宿 11月26日よりコラボ開催",
