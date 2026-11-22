@@ -34,3 +34,13 @@ export async function getCurrentMember(): Promise<CurrentMember> {
   if (!data) return { ok: false, reason: 'no_profile' };
   return { ok: true, profileId: data.id as string };
 }
+
+/**
+ * 会員でない時に案内する先。ログインしていなければログイン、それ以外 (onboarding の途中・profiles の行が
+ * 無い) はプロフィールの登録 (onboarding が profiles の行を作る)。Server Action はこれで案内を揃える
+ */
+export function memberRedirect(
+  reason: Extract<CurrentMember, { ok: false }>['reason']
+): 'login' | 'onboarding' {
+  return reason === 'unauthenticated' ? 'login' : 'onboarding';
+}

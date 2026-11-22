@@ -29,7 +29,7 @@ import {
   type ReviewSubmitInput,
 } from '@revolution/schemas/review';
 
-import { getCurrentMember } from '@/lib/auth/member';
+import { getCurrentMember, memberRedirect } from '@/lib/auth/member';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import {
@@ -139,7 +139,8 @@ async function resolveWriteContext(route: ReviewRouteParams) {
   if (!member.ok) {
     return {
       ok: false as const,
-      failure: member.reason === 'not_onboarded' ? FAILURES.needsOnboarding : FAILURES.needsLogin,
+      failure:
+        memberRedirect(member.reason) === 'login' ? FAILURES.needsLogin : FAILURES.needsOnboarding,
     };
   }
   const admin = createAdminClient();

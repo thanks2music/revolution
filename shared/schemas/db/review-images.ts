@@ -3,7 +3,9 @@ import {
   bigint,
   check,
   index,
+  integer,
   pgTable,
+  uniqueIndex,
   smallint,
   text,
   timestamp,
@@ -50,6 +52,13 @@ import { reviews } from './reviews';
  * ★ `review_images_review_idx` は RLS の全 policy が `review_id in (select ...)`
  *   で依存するため必須 (Supabase 公式 security-rls-performance)。
  *
+ * 0021 (one-more-time #163) の変更:
+ *   - 行を足すのはサーバー (service role) だけ。変換して保管側に置いた後に足す。authenticated の
+ *     INSERT は取り上げた (任意の object_key を指す行を作らせない)
+ *   - 読めるのは本人だけ (公開の SELECT は写真の公開と一緒に #164 で足す)
+ *   - `trg_review_images_limit`: 1 つの口コミに 10 枚まで (口コミの行を押さえてから数える)
+ *   - `trg_review_images_requeue`: 下書きでない口コミに写真を足したら、口コミを審査中に戻す
+ *
  * トリガ (0013 の custom SQL):
  *   - `trg_review_images_freeze_review` (BEFORE UPDATE OF review_id) →
  *     付け替え禁止。RLS だけでは「**自分が所有する別のアクティブなレビュー**へ
@@ -69,18 +78,30 @@ export const reviewImages = pgTable(
     // R2 オブジェクトキー (フル URL ではない)。
     objectKey: text('object_key').notNull(),
     sortOrder: smallint('sort_order').notNull().default(0),
+    // 変換後の寸法 (向きを直した後)。表示の時にレイアウトのずれを防ぐ (0021)
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    // 作った表示用の幅。小さい写真は大きい段を作らないので、写真ごとに違う (0021)
+    variantWidths: smallint('variant_widths').array().notNull(),
     // 孤児画像回収ジョブ用。
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     // ★ RLS の全 policy が依存する。
     index('review_images_review_idx').on(table.reviewId),
+    // 1 つの写真に 1 行 (同じ写真の取り込みが 2 回走っても、行は 1 つ。0021)
+    uniqueIndex('review_images_object_key_unique').on(table.objectKey),
     // Layer2: DB CHECK。空白のみのオブジェクトキーを拒否 (Unicode-aware)。
     check(
       'review_images_object_key_not_blank',
       sql`btrim(${table.objectKey}, E' \t\n\r　') <> ''`,
     ),
     check('review_images_sort_order_chk', sql`${table.sortOrder} >= 0`),
+    check('review_images_size_chk', sql`${table.width} > 0 AND ${table.height} > 0`),
+    check(
+      'review_images_variant_widths_chk',
+      sql`cardinality(${table.variantWidths}) > 0 AND 0 < ALL (${table.variantWidths})`,
+    ),
   ],
 );
 
