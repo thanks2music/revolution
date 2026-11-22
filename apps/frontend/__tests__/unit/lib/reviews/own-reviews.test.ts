@@ -1,3 +1,5 @@
+jest.mock('@/lib/env', () => ({ env: {} }));
+
 import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 

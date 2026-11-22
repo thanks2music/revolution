@@ -15,6 +15,7 @@
 import { useState, useTransition } from 'react';
 
 import { sendOtp, verifyOtp } from '@/actions/auth';
+import { oauthReturnCookie } from '@/lib/auth/oauth-return';
 import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
 import { createClient } from '@/lib/supabase/client';
 
@@ -88,11 +89,13 @@ export function LoginForm({
     // 注: provider 未設定でも signInWithOAuth は error:null + data.url を返すため、
     // error だけでは未設定を検知できない (実測)。data.url を取得後、遷移前に
     // authorize エンドポイントを先読みして provider 無効 (4xx + 生 JSON) を検知する。
+    // メールのコードと同じく、ログインの後に来た画面へ戻す
+    document.cookie = oauthReturnCookie(destination, window.location.protocol === 'https:');
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // メールのコードと同じく、ログインの後に来た画面へ戻す (callback が next を解釈する)
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(destination)}`,
+        // 戻り先は URL ではなく cookie で callback に渡す (lib/auth/oauth-return.ts)
+        redirectTo: `${window.location.origin}/auth/callback`,
         skipBrowserRedirect: true,
       },
     });

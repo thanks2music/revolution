@@ -8,8 +8,8 @@
 
 import type { Metadata } from 'next';
 
-import { isReviewWritingPath } from '@/lib/reviews/paths';
 import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
+import { isReviewWritingPath } from '@/lib/reviews/paths';
 import Layout from '@/components/templates/Layout';
 import { LoginForm } from './LoginForm';
 

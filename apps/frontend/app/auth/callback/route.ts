@@ -10,7 +10,7 @@
  *   ため、本番では x-forwarded-host を優先して最終リダイレクト URL を組み立てる。
  *
  * セッション確立後の遷移先は middleware が onboarding 状態に応じて再誘導するため、
- * ここでは `next` (既定 `/mypage`) へ送る。未完了ユーザーは middleware が
+ * ここでは `next` (URL か、Google ログインなら cookie。既定 `/mypage`) へ送る。未完了ユーザーは middleware が
  * `/onboarding` へ強制リダイレクトする。
  *
  * 参考: https://supabase.com/docs/guides/auth/server-side/nextjs
@@ -18,8 +18,20 @@
 
 import { NextResponse } from 'next/server';
 
+import {
+  OAUTH_RETURN_COOKIE,
+  OAUTH_RETURN_COOKIE_PATH,
+  readOauthReturn,
+} from '@/lib/auth/oauth-return';
 import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
 import { createClient } from '@/lib/supabase/server';
+
+/** 戻り先の cookie は 1 回で使い切る (成否を問わず消す) */
+function redirectClearingReturn(url: string): NextResponse {
+  const response = NextResponse.redirect(url);
+  response.cookies.set(OAUTH_RETURN_COOKIE, '', { path: OAUTH_RETURN_COOKIE_PATH, maxAge: 0 });
+  return response;
+}
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -28,7 +40,16 @@ export async function GET(request: Request) {
   // 許可する。protocol-relative (`//host`) / backslash (`/\host`) / 二重エンコード
   // (`%5C` `%2F%2F`) / 外部 URL はすべて `/mypage` にフォールバックする。
   // login ページ (app/login/page.tsx) / LoginForm と同一ロジックを共有しドリフトを防ぐ。
-  const next = sanitizeNextPath(searchParams.get('next'));
+  // Google ログインの戻り先は cookie で届く (lib/auth/oauth-return.ts)。URL の next を優先する
+  const cookieNext = readOauthReturn(
+    request.headers
+      .get('cookie')
+      ?.split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${OAUTH_RETURN_COOKIE}=`))
+      ?.slice(OAUTH_RETURN_COOKIE.length + 1),
+  );
+  const next = sanitizeNextPath(searchParams.get('next') ?? cookieNext);
 
   if (code) {
     const supabase = await createClient();
@@ -57,16 +78,16 @@ export async function GET(request: Request) {
 
       if (isLocalEnv) {
         // 開発環境: ロードバランサがないため origin をそのまま使う
-        return NextResponse.redirect(`${origin}${next}`);
+        return redirectClearingReturn(`${origin}${next}`);
       } else if (forwardedHost && allowedHost && forwardedHost === allowedHost) {
         // 本番 (プロキシ配下): 許可ホストと一致する x-forwarded-host のみ採用 (https 固定)
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
+        return redirectClearingReturn(`https://${forwardedHost}${next}`);
       } else {
-        return NextResponse.redirect(`${origin}${next}`);
+        return redirectClearingReturn(`${origin}${next}`);
       }
     }
   }
 
   // コード欠落 or 交換失敗 → ログインへエラー表示付きで戻す
-  return NextResponse.redirect(`${origin}/login?error=auth`);
+  return redirectClearingReturn(`${origin}/login?error=auth`);
 }

@@ -1,7 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import { getReviewTargets, searchReviewTargets } from '@/lib/reviews/picker';
 import { createTestDataScope, jstDate, type TestDataScope } from '@/test-support/test-data';
+
+// 公開と service role のクライアントは lib/env.ts から接続先を読む。ローカルの Supabase に向ける
+// (CI には .env.local が無く、手元でも本物の環境を読まないように)
+jest.mock('@/lib/env', () => {
+  const local = jest
+    .requireActual<typeof import('@/test-support/local-supabase')>('@/test-support/local-supabase')
+    .getLocalSupabaseEnv();
+  return {
+    env: {
+      NEXT_PUBLIC_SUPABASE_URL: local.url,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: local.publishableKey,
+      SUPABASE_SECRET_KEY: local.secretKey,
+    },
+  };
+});
 
 /** 口コミを書く開催を選ぶ (7-0、one-more-time #166) の検索と取得を、ローカルの実 DB で確かめる */
 describe('口コミを書く開催を選ぶ', () => {
@@ -85,6 +100,40 @@ describe('口コミを書く開催を選ぶ', () => {
     const targets = await searchReviewTargets(marker);
 
     expect(targets[0]).toMatchObject({ occurrenceId: ongoing.id, canWrite: true });
+  });
+
+  it('作品の別名でも探せる (別名の表は service role で照合する)', async () => {
+    const stamp = Date.now();
+    const event = await data.createEvent();
+    const occurrence = await data.createOccurrence({
+      eventId: event.id,
+      verified: true,
+      startsOn: jstDate(-3),
+      endsOn: jstDate(3),
+    });
+    const { data: title, error } = await data.admin
+      .from('titles')
+      .insert({ slug: `picker-alias-${stamp}`, name: `正式名${stamp}`, kind: 'anime' })
+      .select('id')
+      .single();
+    if (error) throw error;
+    try {
+      const link = await data.admin
+        .from('event_titles')
+        .insert({ event_id: event.id, title_id: title.id });
+      if (link.error) throw link.error;
+      const alias = await data.admin
+        .from('title_aliases')
+        .insert({ alias: `べつめい${stamp}`, title_id: title.id });
+      if (alias.error) throw alias.error;
+
+      await expect(searchReviewTargets(`べつめい${stamp}`)).resolves.toEqual([
+        expect.objectContaining({ occurrenceId: occurrence.id }),
+      ]);
+    } finally {
+      await data.admin.from('event_titles').delete().eq('title_id', title.id);
+      await data.admin.from('titles').delete().eq('id', title.id);
+    }
   });
 
   it('会場がマスタに無い開催は、会場の表示名で探せる。`*` で何でも当たらない', async () => {

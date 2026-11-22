@@ -1,7 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import { listOwnReviews } from '@/lib/reviews/own-reviews';
 import { createTestDataScope, jstDate, type TestDataScope } from '@/test-support/test-data';
+
+// 公開と service role のクライアントは lib/env.ts から接続先を読む。ローカルの Supabase に向ける
+// (CI には .env.local が無く、手元でも本物の環境を読まないように)
+jest.mock('@/lib/env', () => {
+  const local = jest
+    .requireActual<typeof import('@/test-support/local-supabase')>('@/test-support/local-supabase')
+    .getLocalSupabaseEnv();
+  return {
+    env: {
+      NEXT_PUBLIC_SUPABASE_URL: local.url,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: local.publishableKey,
+      SUPABASE_SECRET_KEY: local.secretKey,
+    },
+  };
+});
 
 /** #12 マイページの「自分の口コミ」(one-more-time #162) をローカルの実 DB で確かめる */
 describe('自分の口コミの一覧', () => {

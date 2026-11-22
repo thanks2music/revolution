@@ -77,6 +77,7 @@ export function sanitizeNextPath(raw: string | null | undefined): string {
     // (onboarding を挟む戻り先は、middleware・ページ・フォームで複数回通る。one-more-time #166)
     const original = new URL(raw, BASE_ORIGIN);
     if (original.origin !== BASE_ORIGIN) return DEFAULT_SAFE_PATH;
+    if (!looksLikeSafeInternalPath(original.pathname)) return DEFAULT_SAFE_PATH;
     return `${original.pathname}${original.search}${original.hash}`;
   } catch {
     return DEFAULT_SAFE_PATH;

@@ -18,7 +18,7 @@
  *   - 未認証で保護ルート → `/login`
  *   - 認証済みで onboarding 未完了 → `/onboarding` 強制 (案B = JWT claims で判定、
  *     DB を叩かない)
- *   - onboarding 完了済みで `/login` or `/onboarding` 再訪 → `/mypage`
+ *   - onboarding 完了済みで `/login` or `/onboarding` 再訪 → `next` (無ければ `/mypage`)
  *
  * 参考: https://supabase.com/docs/guides/auth/server-side/nextjs
  */
@@ -29,15 +29,14 @@ import { createServerClient } from '@supabase/ssr';
 
 import { env } from '@/lib/env';
 import { isOnboardedFromClaims } from '@/lib/auth/onboarding-status';
-import { isReviewSubmitPath, REVIEW_PICKER_PATH } from '@/lib/reviews/paths';
 import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
+import { isReviewSubmitPath, REVIEW_PICKER_PATH } from '@/lib/reviews/paths';
 
 // 認証が必要なルート (前方一致)。これ以外はすべて公開 (記事閲覧は維持)。
 // /review は口コミを書く開催を選ぶページ (7-0、one-more-time #166)
 const PROTECTED_PREFIXES = ['/mypage', '/onboarding', REVIEW_PICKER_PATH];
-// 認証関連ページ (完了済みユーザーが再訪したら /mypage へ送る)。
+// 認証関連ページ (完了済みユーザーが再訪したら next か /mypage へ送る)。
 const AUTH_PAGES = ['/login'];
-
 
 export function isPathProtected(pathname: string): boolean {
   return (

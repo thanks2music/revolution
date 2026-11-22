@@ -75,3 +75,19 @@ describe('sanitizeNextPath を重ねても戻り先が変わらない (onboardin
     expect(sanitizeNextPath(once)).toBe(next);
   });
 });
+
+describe('エンコードした点や斜線で、外へ出たり形を崩したりしない', () => {
+  it.each([
+    ['/%2e%2e/review', '/review'],
+    ['/a/%2e%2e/%2e%2e/mypage', '/mypage'],
+  ])('%s → %s (点の区切りは URL として解決する)', (next, expected) => {
+    expect(sanitizeNextPath(next)).toBe(expected);
+  });
+
+  it.each(['/%2F%2Fevil.example', '/%2f%2fevil.example/x', '/%5Cevil.example'])(
+    '%s は既定へ',
+    next => {
+      expect(sanitizeNextPath(next)).toBe(DEFAULT_SAFE_PATH);
+    }
+  );
+});

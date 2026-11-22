@@ -126,6 +126,8 @@ const WRITABLE_STATUSES = ['ongoing', 'ended'] as const;
  * 別々に引き、書ける開催を先に出す (開催前の開催が多くても、書ける開催が押し出されないように)。
  * どちらも開始日の新しい順
  */
+// 呼ぶのは会員だけが開ける 7-0 のページ (app/review/page.tsx) だけ。公開の Server Action にしない
+// (別名の照合に service role を使うため)
 export async function searchReviewTargets(query: string): Promise<ReviewTarget[]> {
   if (!hasPublicSupabaseCredentials()) return [];
   const supabase = createPublicClient();
@@ -197,6 +199,8 @@ export async function searchReviewTargets(query: string): Promise<ReviewTarget[]
       .order('id', { ascending: false })
       .limit(SEARCH_LIMIT);
   };
+  // 書ける側の 30 件には、状態は終了でも選べる日が無い開催 (訪問日の範囲外) も入りうる。
+  // 件数の上限の中で後ろへ回すだけにし、追加では引かない (検索の言葉を絞れば出る)
   const [writable, notYet] = await Promise.all([list(true), list(false)]);
   if (writable.error) throw writable.error;
   if (notYet.error) throw notYet.error;
