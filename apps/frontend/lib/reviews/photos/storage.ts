@@ -1,12 +1,13 @@
 import 'server-only';
 
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -35,6 +36,8 @@ export type ReviewPhotoStorage = {
   /** 受け取った写真を読む */
   readIntake(key: string): Promise<IntakeRead>;
   deleteIntake(key: string): Promise<void>;
+  /** 受け取り場所にある、まだ取り込んでいない写真の数 (先頭が prefix の物。上限まで数えれば足りる) */
+  countIntake(prefix: string, limit: number): Promise<number>;
   putStored(key: string, body: Uint8Array, contentType: string): Promise<void>;
   deleteStored(keys: string[]): Promise<void>;
   /** 保管側の写真を短時間だけ見られる URL */
@@ -157,6 +160,13 @@ export function createR2PhotoStorage(
       );
     },
 
+    async countIntake(prefix, limit) {
+      const listed = await client.send(
+        new ListObjectsV2Command({ Bucket: config.intakeBucket, Prefix: prefix, MaxKeys: limit })
+      );
+      return listed.KeyCount ?? 0;
+    },
+
     async putStored(key, body, contentType) {
       await client.send(
         new PutObjectCommand({
@@ -243,6 +253,16 @@ export function createFakePhotoStorage(
     },
     async deleteIntake(key) {
       await rm(file('intake', key), { force: true });
+    },
+    async countIntake(prefix, limit) {
+      const dir = path.resolve(root, 'intake', prefix);
+      try {
+        const names = await readdir(dir, { recursive: true, withFileTypes: true });
+        return Math.min(names.filter(entry => entry.isFile()).length, limit);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+        throw error;
+      }
     },
     async putStored(key, body) {
       await write(file('stored', key), body);

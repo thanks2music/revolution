@@ -92,7 +92,12 @@ async function countPhotos(db: SupabaseClient, reviewId: number): Promise<number
 export type RequestUploadOutcome =
   | { kind: 'ok'; photoId: string; url: string; headers: Record<string, string> }
   | { kind: 'not_found' }
-  | { kind: 'full' };
+  | { kind: 'full' }
+  /** 取り込んでいない写真が受け取り場所に溜まっている (上げた後に取り込みを呼ばない使い方を止める) */
+  | { kind: 'busy' };
+
+/** 1 つの口コミについて、受け取り場所に置いておける取り込み前の写真の数 */
+export const MAX_PENDING_UPLOADS = MAX_REVIEW_PHOTOS;
 
 /** 受け取り場所へ上げる署名付き URL を出す。形式と大きさは呼ぶ側が zod で確かめた物を渡す */
 export async function requestPhotoUpload(
@@ -104,6 +109,12 @@ export async function requestPhotoUpload(
   if (!(await findOwnReviewStatus(ctx.db, input.profileId, input.reviewId)))
     return { kind: 'not_found' };
   if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
+  // 取り込みは上げた直後に呼ぶので、溜まるのは失敗した物か、取り込みを呼ばない使い方だけ (1 日で消える)
+  const pending = await ctx.storage.countIntake(
+    photoKey(ctx.prefix, input.reviewId, ''),
+    MAX_PENDING_UPLOADS
+  );
+  if (pending >= MAX_PENDING_UPLOADS) return { kind: 'busy' };
   const photoId = randomUUID();
   const { url, headers } = await ctx.storage.presignIntakeUpload(
     photoKey(ctx.prefix, input.reviewId, photoId),

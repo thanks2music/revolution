@@ -471,6 +471,19 @@ describe('口コミの写真', () => {
     });
   });
 
+  it('取り込んでいない写真が溜まっていると、上げる URL を出さない', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    for (let i = 0; i < 10; i++) await upload(reviewId, member, Buffer.from([0xff, 0xd8, 0xff, i]));
+
+    await expect(
+      requestPhotoUpload(ctx, {
+        profileId: member.userId,
+        reviewId,
+        file: { contentType: 'image/jpeg', size: 10 },
+      })
+    ).resolves.toEqual({ kind: 'busy' });
+  });
+
   it('並べ替えに同じ写真を 2 回渡すと断る', async () => {
     const { reviewId, member } = await reviewOf('draft');
     const photoId = await upload(reviewId, member, await jpegWithGps(400, 300));

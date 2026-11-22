@@ -5,6 +5,7 @@
  * - 書けるのは開催中か終了の開催だけ。開催前・中止・日程未発表は、書けない理由を出す
  * - もう口コミがある開催では、その口コミの編集になる (下書きの続き・出し直し・公開後の編集、#162)
  * - 提出は Server Action (`actions/review.ts`)。審査は応答の後 (`after()`) に走る
+ * - 写真は `actions/review-photos.ts` (one-more-time #163)。写真の変換 (sharp・libheif) もこのページの関数で動く
  *
  * 開催のページ (`../page.tsx`) と違い、cookie を読むので動的に描く (会員ごとの画面のため)。
  */
@@ -26,6 +27,8 @@ import { todayInJst } from '@/lib/occurrence/status';
 import { authoringMode } from '@/lib/reviews/eligibility';
 import { buildXShareUrl } from '@/lib/reviews/share';
 import { findOwnReview, type OwnReview } from '@/lib/reviews/authoring';
+import { listOwnPhotos, type OwnReviewPhoto } from '@/lib/reviews/photos/operations';
+import { getReviewPhotoStorage, type ReviewPhotoStorage } from '@/lib/reviews/photos/storage';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { OccurrencePageProps } from '@/types/page-props';
 
@@ -65,6 +68,12 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
   const venueName = occurrence.venueName ?? VENUE_NAME_FALLBACK;
   // 同じ開催にもう書いていれば、その口コミの編集にする (仕様: 1 開催 1 件、既にあれば編集へ案内する)
   const own = member?.ok ? await loadOwnReview(occurrence.id, member.profileId) : null;
+  // 写真の置き場所が無い環境 (R2 の env が無い) では、写真の欄を出さない
+  const photoStorage = getReviewPhotoStorage();
+  const photos =
+    own && member?.ok && photoStorage
+      ? await loadOwnPhotos(own.id, member.profileId, photoStorage)
+      : [];
   const mode = authoringMode({
     occurrenceStatus: occurrence.status,
     startsOn: occurrence.startsOn,
@@ -98,6 +107,8 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
             maxDate={mode.range.max}
             occurrencePath={occurrencePath}
             initial={own ?? undefined}
+            photosEnabled={photoStorage !== null}
+            initialPhotos={photos}
             shareUrl={buildXShareUrl({
               eventName: event.name,
               venueName,
@@ -115,6 +126,22 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
  * 会員のこの開催の口コミ (編集の初期値)。本人の訪問日は他人に見せない列なので、サーバーが service role で読む。
  * 確かめられない時は新しい口コミとして開く (二重の投稿は DB の部分 unique が止め、提出の時に理由を返す)
  */
+async function loadOwnPhotos(
+  reviewId: number,
+  profileId: string,
+  storage: ReviewPhotoStorage
+): Promise<OwnReviewPhoto[]> {
+  const db = createAdminClient();
+  if (!db) return [];
+  try {
+    return await listOwnPhotos({ db, storage }, { profileId, reviewId });
+  } catch (error) {
+    // 写真が読めなくても、口コミは書けるようにする
+    Sentry.captureException(error, { tags: { page: 'review-submit', part: 'photos' } });
+    return [];
+  }
+}
+
 async function loadOwnReview(occurrenceId: number, profileId: string): Promise<OwnReview | null> {
   const admin = createAdminClient();
   if (!admin) return null;
