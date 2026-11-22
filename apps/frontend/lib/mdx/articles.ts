@@ -59,8 +59,9 @@ export type { ArticleIndex, ArticleIndexItem };
  * Note: Turbopackの静的解析警告を回避するため、固定パスを使用
  *
  * Dev caveat: `next dev` で Fast Refresh の cycle を跨いでもこの module-level
- * シングルトンは Node プロセス寿命の間生き残る。ビルド済みの
- * `article-index.json` を更新したら dev サーバを再起動して反映させること。
+ * シングルトンは Node プロセス寿命の間生き残る。記事の MDX を足したら、
+ * dev サーバを再起動して反映させること (`pnpm dev` は起動の前に `article-index.json` を作り直す。
+ * このファイルはコミットしない派生物)。
  */
 let cachedIndex: ArticleIndex | null = null;
 
@@ -79,7 +80,7 @@ export function getArticleIndex(): ArticleIndex {
 
   if (!fs.existsSync(indexPath)) {
     throw new Error(
-      `article-index.json not found at ${indexPath}. Please run \`pnpm --filter @revolution/frontend generate:article-index\` before building.`
+      `article-index.json not found at ${indexPath}. It is not committed; run \`pnpm --filter frontend-nextjs-headless-cms generate:article-index\` (build / dev / type-check run it first).`
     );
   }
 
@@ -188,7 +189,7 @@ export function getRelatedArticles(
 }
 
 // 記事の MDX は apps/frontend の外 (apps/ai-writer/content) にある。読む場所を変えたら、Vercel の
-// Ignored Build Step の必須パス (scripts/vercel-ignore-build.sh の MUST_BUILD_PATHS) も直す
+// Ignored Build Step の必須パス (scripts/vercel-ignore-build.sh の FRONTEND_PATHS。frontend の Preview を作るかの判定) も直す
 export function readArticleContentFile(filePath: string): string {
   const resolvedPath = resolvePathRelativeToFrontend(filePath);
 
