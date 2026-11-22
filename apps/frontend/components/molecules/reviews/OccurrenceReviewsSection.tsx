@@ -5,16 +5,20 @@ import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 import { remainingDays } from '@/lib/occurrence/status';
 import { reviewSectionMode } from '@/lib/reviews/eligibility';
 import type { PublicReview } from '@/lib/reviews/queries';
+import type { ReviewStats } from '@/lib/reviews/stats';
 
+import { HelpfulProvider } from './HelpfulButton';
 import { OwnReviewStatus } from './OwnReviewStatus';
 import { ReviewCard } from './ReviewCard';
+import { ReviewSortTabs } from './ReviewSortTabs';
+import { RatingDistribution, VisitorData } from './ReviewStatsBars';
 import { ReviewStars } from './ReviewStars';
 
 /**
  * 開催のページの口コミの欄 (Figma #3)。評価 (星の平均・件数)・「口コミを書く」・みんなの口コミ (新着順)。
  * 状態ごとの出し方は `reviewSectionMode` (開催前は始まったら書けることだけ、中止・日程未発表は出さない)。
  *
- * 星の分布・行った人のデータ・並び替え・写真・参考になった・通報は後のチケット (#165 ほか)。
+ * 星の分布・行った人のデータ・並び替え (新着順 / 参考になった順)・参考になった は #165。写真・通報は後のチケット。
  */
 export function OccurrenceReviewsSection(props: {
   occurrenceId: number;
@@ -22,7 +26,11 @@ export function OccurrenceReviewsSection(props: {
   ratingAverage: number | null;
   ratingCount: number;
   reviewPath: string;
+  /** 新着順 */
   reviews: PublicReview[];
+  /** 参考になった順 */
+  mostHelpful: PublicReview[];
+  stats: ReviewStats;
 }) {
   const mode = reviewSectionMode(props.status);
   if (mode === 'none') return null;
@@ -54,27 +62,35 @@ export function OccurrenceReviewsSection(props: {
                 {props.ratingCount}件
               </p>
             </div>
-            <p className="text-xs leading-relaxed text-ink-body">
-              {props.ratingCount > 0
-                ? '行った人の満足度の平均です。'
-                : 'まだ口コミはありません。行った方は、最初の口コミを書いてみませんか。'}
-            </p>
+            {props.ratingCount > 0 ? (
+              <RatingDistribution bars={props.stats.rating} />
+            ) : (
+              <p className="text-xs leading-relaxed text-ink-body">
+                まだ口コミはありません。行った方は、最初の口コミを書いてみませんか。
+              </p>
+            )}
           </div>
 
           <WriteReviewButton href={props.reviewPath} />
           <OwnReviewStatus occurrenceId={props.occurrenceId} />
 
-          <div className="rounded-2xl border border-(--line-soft) bg-white p-4">
+          <VisitorData stats={props.stats} reviewCount={props.ratingCount} />
+
+          <div className="flex flex-col gap-3 rounded-2xl border border-(--line-soft) bg-white p-4">
             {props.reviews.length === 0 ? (
               <p className="text-sm text-ink-muted">まだ口コミはありません。</p>
             ) : (
-              <ul className="flex flex-col divide-y divide-(--line-soft)">
-                {props.reviews.map(review => (
-                  <li key={review.id} className="py-4 first:pt-0 last:pb-0">
-                    <ReviewCard review={review} />
-                  </li>
-                ))}
-              </ul>
+              // 会員が押したかどうかは、2 つの一覧の口コミをまとめて 1 回で取る
+              <HelpfulProvider
+                reviewIds={[
+                  ...new Set([...props.reviews, ...props.mostHelpful].map(review => review.id)),
+                ]}
+              >
+                <ReviewSortTabs
+                  latest={<ReviewList reviews={props.reviews} />}
+                  helpful={<ReviewList reviews={props.mostHelpful} />}
+                />
+              </HelpfulProvider>
             )}
           </div>
         </>
@@ -107,6 +123,18 @@ export function ReviewWriteBar(props: {
       )}
       <WriteReviewButton href={props.reviewPath} compact />
     </div>
+  );
+}
+
+function ReviewList({ reviews }: { reviews: PublicReview[] }) {
+  return (
+    <ul className="flex flex-col divide-y divide-(--line-soft)">
+      {reviews.map(review => (
+        <li key={review.id} className="py-4 first:pt-0 last:pb-0">
+          <ReviewCard review={review} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
