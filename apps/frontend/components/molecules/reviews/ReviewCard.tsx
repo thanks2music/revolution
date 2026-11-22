@@ -7,6 +7,7 @@ import {
   formatVisitedMonth,
 } from '@/lib/reviews/labels';
 
+import { HelpfulButton } from './HelpfulButton';
 import { ReviewStars } from './ReviewStars';
 import { SpoilerBody } from './SpoilerBody';
 
@@ -52,9 +53,11 @@ export function ReviewCard({ review }: { review: PublicReview }) {
 
       {body && (review.hasSpoiler ? <SpoilerBody>{body}</SpoilerBody> : body)}
 
-      {review.editedAt && (
-        <p className="text-xs text-ink-muted">最終編集 {formatJstDotDate(review.editedAt)}</p>
-      )}
+      {/* 足元: 参考になった ・ 最終編集 (Figma #3 `6:219`) */}
+      <p className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+        <HelpfulButton reviewId={review.id} count={review.helpfulCount} />
+        {review.editedAt && <span>最終編集 {formatJstDotDate(review.editedAt)}</span>}
+      </p>
     </article>
   );
 }
