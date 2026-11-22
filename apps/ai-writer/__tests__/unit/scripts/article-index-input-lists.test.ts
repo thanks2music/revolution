@@ -4,7 +4,7 @@
  * 索引はコミットせず、frontend の build の前に作る。そのため、索引を作るスクリプトと、それが
  * 実行時に読み込むファイルは、frontend の build の入力として次の 3 か所に手で並べてある:
  * - apps/frontend/turbo.json の build / type-check の inputs (turbo のキャッシュ)
- * - scripts/vercel-ignore-build.sh の MUST_BUILD_PATHS (Vercel の Preview をビルドするか)
+ * - scripts/vercel-ignore-build.sh の FRONTEND_PATHS (frontend の Vercel の Preview を作るか)
  * - .github/workflows/ingest-occurrences.yml の push の paths (staging への取り込み)
  * スクリプトの import を増やしてどれかに足し忘れると、古いキャッシュ・Preview のスキップ・
  * 取り込みの漏れが黙って起きるので、ここで止める。
@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
+import { spawnSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import yaml from 'js-yaml';
 import { dirname, join, relative, resolve } from 'path';
@@ -78,12 +79,12 @@ describe('article index generator input lists', () => {
     }
   });
 
-  it('lists every file in MUST_BUILD_PATHS of vercel-ignore-build.sh', () => {
-    const script = readFileSync(join(REPO_ROOT, 'scripts/vercel-ignore-build.sh'), 'utf-8');
-    const paths = script.match(/MUST_BUILD_PATHS=\(([\s\S]*?)\n\)/)![1]
-      .split('\n')
-      .map((line) => line.replace(/#.*/, '').trim())
-      .filter(Boolean);
+  it('lists every file in FRONTEND_PATHS of vercel-ignore-build.sh', () => {
+    const listed = spawnSync('bash', [join(REPO_ROOT, 'scripts/vercel-ignore-build.sh'), '--paths', 'frontend'], {
+      encoding: 'utf-8',
+    });
+    expect(listed.status).toBe(0);
+    const paths = listed.stdout.split('\n').filter(Boolean);
     const missing = files.filter((file) => !paths.includes(file));
     expect(missing).toEqual([]);
   });

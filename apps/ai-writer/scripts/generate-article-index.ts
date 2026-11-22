@@ -24,7 +24,7 @@
  *   終了コード 1 で止まる
  *
  * ⚠️ 本スクリプトの import 先を増やしたら、次の一覧にも足す (frontend の build の入力として扱うため):
- *   apps/frontend/turbo.json の inputs / scripts/vercel-ignore-build.sh の MUST_BUILD_PATHS /
+ *   apps/frontend/turbo.json の inputs / scripts/vercel-ignore-build.sh の FRONTEND_PATHS /
  *   .github/workflows/ingest-occurrences.yml の paths
  *
  * @module scripts/generate-article-index
