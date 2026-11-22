@@ -1,7 +1,77 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-22T01:07:28.178Z",
+  "totalArticles": 12,
   "articles": [
+    {
+      "slug": "01m80cmbptd4j15g",
+      "title": "ゼンレスゾーンゼロ × GiGO 12月5日より第3弾コラボ開催",
+      "date": "2026-11-22T01:05:54.726Z",
+      "excerpt": "「ゼンレスゾーンゼロ」とGiGO各店舗のコラボカフェが、2026年12月5日から2027年4月19日まで開催されます。期間中は、ゲームの世界観やキャラクターをイメージしたコラボメニュー全2品をお楽しみいただけます。作品の魅力を堪能できるイベントです。",
+      "categories": [
+        "ゼンレスゾーンゼロ",
+        "コラボキャンペーン"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/collaboration-campaign/zenless-zone-zero/01m80cmbptd4j15g.mdx",
+      "post_id": "01m80cmbptd4j15g",
+      "year": 2026,
+      "event_type": "collaboration-campaign",
+      "event_title": "コラボキャンペーン",
+      "work_title": "ゼンレスゾーンゼロ",
+      "work_titles": [
+        "ゼンレスゾーンゼロ"
+      ],
+      "work_slug": "zenless-zone-zero",
+      "prefectures": [
+        "東京都",
+        "大阪府",
+        "愛知県",
+        "福岡県",
+        "宮城県",
+        "神奈川県",
+        "兵庫県",
+        "徳島県",
+        "宮崎県",
+        "福島県",
+        "岐阜県"
+      ],
+      "prefecture_slugs": [
+        "tokyo",
+        "osaka",
+        "aichi",
+        "fukuoka",
+        "miyagi",
+        "kanagawa",
+        "hyogo",
+        "tokushima",
+        "miyazaki",
+        "fukushima",
+        "gifu"
+      ],
+      "ogImage": "https://images.anime-events.com/collaboration-campaign/2026/01m80cmbptd4j15g/41e1daf2fe9eb12d0cb4874e9c0c184b.jpg",
+      "event_start_date": "2026-12-05",
+      "event_end_date": "2027-04-19",
+      "venue": "GiGO各店舗",
+      "official_url": "https://campaign.gendagigo.jp/2612/zenless/",
+      "event_data": {
+        "primary_category_slug": "chain-store",
+        "title_slugs": [
+          "zenless-zone-zero"
+        ],
+        "event_name": "ゼンレスゾーンゼロ×GiGOキャンペーン第3弾",
+        "event_slug": "zenless-zone-zero-gigo-campaign-3rd",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "GiGO各店舗",
+            "starts_on": "2026-12-05",
+            "ends_on": "2027-04-19",
+            "official_url": "https://campaign.gendagigo.jp/2612/zenless/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m7ydys18ckpgbj",
       "title": "BANANA FISH カフェ in 新宿 11月26日よりコラボ開催",
