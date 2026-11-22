@@ -93,7 +93,7 @@ export type RequestUploadOutcome =
   | { kind: 'ok'; photoId: string; url: string; headers: Record<string, string> }
   | { kind: 'not_found' }
   | { kind: 'full' }
-  /** 出したまま取り込んでいない URL が多い (期限内に 10。上げた後に取り込みを呼ばない使い方を止める) */
+  /** 取り込んでいない URL が 1 日の間に 20 ある (上げた後に取り込みを呼ばない使い方を止める) */
   | { kind: 'busy' };
 
 /** 期限内の URL が多すぎる時にトリガが投げる文 (migration 20261122*_review_photo_uploads と揃える) */
@@ -172,7 +172,11 @@ export async function ingestPhoto(
   let keepIntake = false;
   try {
     const original = await ctx.storage.readIntake(key);
-    if (original.kind === 'missing') return { kind: 'missing' };
+    if (original.kind === 'missing') {
+      // まだ上がっていない。記録は残す (消すと、上げる前に取り込みを呼んで上限を空け、後から上げられてしまう)
+      keepIntake = true;
+      return { kind: 'missing' };
+    }
     if (original.kind === 'too_large') return { kind: 'rejected', reason: 'too_large' };
     // 数えるのは重い変換の前に断るため。守りは DB のトリガ
     if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) {

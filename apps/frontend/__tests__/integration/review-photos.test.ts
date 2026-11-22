@@ -471,7 +471,7 @@ describe('口コミの写真', () => {
     });
   });
 
-  it('上げる前でも、出したまま取り込んでいない URL が 10 あれば、新しい URL を出さない', async () => {
+  it('上げる前でも、取り込んでいない URL が 20 あれば、新しい URL を出さない', async () => {
     const { reviewId, member } = await reviewOf('draft');
     const request = () =>
       requestPhotoUpload(ctx, {
@@ -480,10 +480,29 @@ describe('口コミの写真', () => {
         file: { contentType: 'image/jpeg', size: 10 },
       });
     // 1 枚も上げずに、URL だけを同時にまとめて取る
-    const results = await Promise.all(Array.from({ length: 12 }, request));
+    const results = await Promise.all(Array.from({ length: 22 }, request));
 
-    expect(results.filter(result => result.kind === 'ok')).toHaveLength(10);
+    expect(results.filter(result => result.kind === 'ok')).toHaveLength(20);
     expect(results.filter(result => result.kind === 'busy')).toHaveLength(2);
+  });
+
+  it('上げる前に取り込みを呼んでも、出した記録は消えない (上限を空けられない)', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const ticket = await requestPhotoUpload(ctx, {
+      profileId: member.userId,
+      reviewId,
+      file: { contentType: 'image/jpeg', size: 10 },
+    });
+    if (ticket.kind !== 'ok') throw new Error(ticket.kind);
+
+    await expect(
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId: ticket.photoId })
+    ).resolves.toEqual({ kind: 'missing' });
+    const { count } = await data.admin
+      .from('review_photo_uploads')
+      .select('photo_id', { count: 'exact', head: true })
+      .eq('photo_id', ticket.photoId);
+    expect(count).toBe(1);
   });
 
   it('サーバーが URL を出していない写真は、受け取り場所にあっても取り込まない', async () => {
