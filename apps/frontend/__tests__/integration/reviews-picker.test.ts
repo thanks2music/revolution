@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 
 import { getReviewTargets, searchReviewTargets } from '@/lib/reviews/picker';
 import { createTestDataScope, jstDate, type TestDataScope } from '@/test-support/test-data';

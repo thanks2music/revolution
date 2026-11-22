@@ -16,13 +16,9 @@
  * 参考: https://supabase.com/docs/guides/auth/server-side/nextjs
  */
 
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
-import {
-  OAUTH_RETURN_COOKIE,
-  OAUTH_RETURN_COOKIE_PATH,
-  readOauthReturn,
-} from '@/lib/auth/oauth-return';
+import { OAUTH_RETURN_COOKIE, OAUTH_RETURN_COOKIE_PATH } from '@/lib/auth/oauth-return';
 import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
 import { createClient } from '@/lib/supabase/server';
 
@@ -33,7 +29,7 @@ function redirectClearingReturn(url: string): NextResponse {
   return response;
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
   // open redirect 防止: 共有サニタイザ (lib/auth/safe-redirect) で安全な内部パスのみ
@@ -41,14 +37,8 @@ export async function GET(request: Request) {
   // (`%5C` `%2F%2F`) / 外部 URL はすべて `/mypage` にフォールバックする。
   // login ページ (app/login/page.tsx) / LoginForm と同一ロジックを共有しドリフトを防ぐ。
   // Google ログインの戻り先は cookie で届く (lib/auth/oauth-return.ts)。URL の next を優先する
-  const cookieNext = readOauthReturn(
-    request.headers
-      .get('cookie')
-      ?.split(';')
-      .map((part) => part.trim())
-      .find((part) => part.startsWith(`${OAUTH_RETURN_COOKIE}=`))
-      ?.slice(OAUTH_RETURN_COOKIE.length + 1),
-  );
+  // request.cookies は値を decode して返す (もう一度 decode しない)
+  const cookieNext = request.cookies.get(OAUTH_RETURN_COOKIE)?.value ?? null;
   const next = sanitizeNextPath(searchParams.get('next') ?? cookieNext);
 
   if (code) {

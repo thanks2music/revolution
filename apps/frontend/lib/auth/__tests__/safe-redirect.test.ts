@@ -91,3 +91,14 @@ describe('エンコードした点や斜線で、外へ出たり形を崩した�
     }
   );
 });
+
+describe('クエリに `//` を含む戻り先 (今の挙動を固定する)', () => {
+  // decode した形も確かめるため、エンコードしていても URL を値に持つクエリは既定へ戻す (安全側)。
+  // 本サイトの戻り先 (7-0 の検索など) に URL を入れるクエリは無い
+  it.each(['/review?ref=https://example.com', '/review?ref=https%3A%2F%2Fexample.com'])(
+    '%s',
+    next => {
+      expect(sanitizeNextPath(next)).toBe(DEFAULT_SAFE_PATH);
+    }
+  );
+});

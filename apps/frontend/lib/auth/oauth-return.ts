@@ -23,13 +23,3 @@ export function oauthReturnCookie(destination: string, secure: boolean): string 
     ...(secure ? ['Secure'] : []),
   ].join('; ');
 }
-
-/** cookie の値 (エンコード済み) を戻り先の候補にする。読めなければ null */
-export function readOauthReturn(value: string | undefined): string | null {
-  if (!value) return null;
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return null;
-  }
-}

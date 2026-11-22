@@ -32,7 +32,10 @@ export type ReviewTarget = {
 
 /** 検索で返す件数の上限 */
 const SEARCH_LIMIT = 30;
-/** 名前で探す時に、作品・企画・会場それぞれから拾う件数の上限 */
+/**
+ * 名前で探す時に、作品・企画・会場それぞれから拾う件数の上限。超えた分は新しい物 (ID の大きい順) を残す。
+ * 短くてよくある言葉だと、合う開催が漏れることがある (言葉を足せば出る)
+ */
 const MATCH_LIMIT = 50;
 /** 検索の言葉の長さの上限 (7-0 の入力欄の maxLength も使う) */
 export const MAX_QUERY_LENGTH = 50;
@@ -142,21 +145,43 @@ export async function searchReviewTargets(query: string): Promise<ReviewTarget[]
       .from('titles')
       .select('event_titles(event_id)')
       .ilike('name', pattern)
+      .order('id', { ascending: false })
       .limit(MATCH_LIMIT),
     admin
       ? admin
           .from('title_aliases')
           .select('titles(event_titles(event_id))')
           .ilike('alias', pattern)
+          .order('alias')
           .limit(MATCH_LIMIT)
       : noRows,
-    supabase.from('events').select('id').ilike('name', pattern).limit(MATCH_LIMIT),
-    supabase.from('venues').select('id').ilike('name', pattern).limit(MATCH_LIMIT),
+    supabase
+      .from('events')
+      .select('id')
+      .ilike('name', pattern)
+      .order('id', { ascending: false })
+      .limit(MATCH_LIMIT),
+    supabase
+      .from('venues')
+      .select('id')
+      .ilike('name', pattern)
+      .order('id', { ascending: false })
+      .limit(MATCH_LIMIT),
     admin
-      ? admin.from('venue_aliases').select('venue_id').ilike('alias', pattern).limit(MATCH_LIMIT)
+      ? admin
+          .from('venue_aliases')
+          .select('venue_id')
+          .ilike('alias', pattern)
+          .order('alias')
+          .limit(MATCH_LIMIT)
       : noRows,
     // 会場がマスタに無い開催は、表示名 (venue_label) で探す
-    supabase.from('occurrence_view').select('id').ilike('venue_label', pattern).limit(MATCH_LIMIT),
+    supabase
+      .from('occurrence_view')
+      .select('id')
+      .ilike('venue_label', pattern)
+      .order('id', { ascending: false })
+      .limit(MATCH_LIMIT),
   ]);
   for (const result of [titles, titleAliases, events, venues, venueAliases, labelled]) {
     if (result.error) throw result.error;
