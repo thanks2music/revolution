@@ -1,26 +1,18 @@
 #!/bin/bash
-# Vercel の Ignored Build Step (revolution-phoenix-frontend と revolution-phoenix-docs)
-#
-# Vercel Hobby の deploy は 1 日 100 回まで。build を止めた deploy (CANCELED) も数えられる
-# (2026-11-22 の実績で確かめた)。そのため deploy を作るかどうかは、ここより前で決める:
-#   - Preview: Git からの自動 deploy は main 以外で止めてある (apps/*/vercel.json の git.deploymentEnabled)。
-#     GitHub Actions (.github/workflows/vercel-preview.yml) が、要る時だけ API で作る。ここでは常にビルドする
-#   - Production (main へのマージ): Git からの自動 deploy のまま
-#     - frontend: 常にビルドする。build の時に private の templates repo から審査のプロンプトを取り込むので、
-#       templates だけの変更 (revolution-templates の Deploy Hook) を本番に届けるため。止めても deploy の
-#       回数は減らない (CANCELED も数えられる)
-#     - docs: docs の入力が、前回の成功デプロイ (VERCEL_GIT_PREVIOUS_SHA) から変わっていなければビルドしない
-# 判定できない時は必ずビルドする (ビルドしないのは「変わっていない」と確かめられた時だけ)。
-# Vercel の環境変数やプロジェクト設定だけを変えた時は commit に差分が出ないので、本番はビルドしない。
-# 反映するには、Vercel の Redeploy で「Use project's Ignore Build Step」を外す。
+# Vercel の deploy の判定 (方針と理由は docs/build.md の「Vercel の Preview と、ビルドする条件」)
 #
 # Usage:
-#   bash ../../scripts/vercel-ignore-build.sh <frontend|docs>   # Vercel の ignoreCommand (Root Directory = apps/<app>)
-#   bash scripts/vercel-ignore-build.sh --paths <frontend|docs> # そのアプリの入力の一覧を 1 行ずつ出す (Actions が使う)
+#   bash ../../scripts/vercel-ignore-build.sh docs                       # docs の Ignored Build Step (apps/docs/vercel.json)
+#   bash scripts/vercel-ignore-build.sh --changed <frontend|docs> <from> <to> # 入力が変わったか (.github/workflows/vercel-preview.yml)
+#   bash scripts/vercel-ignore-build.sh --paths <frontend|docs>            # 入力の一覧を 1 行ずつ出す
 #
-# 終了コード (Vercel の規約): 0 = ビルドしない / 1 = ビルドする
+# Ignored Build Step としては: Preview は常にビルドする (Actions が要る時だけ作っている)。Production は、
+# docs の入力が前回の成功デプロイ (VERCEL_GIT_PREVIOUS_SHA) から変わった時だけビルドする。判定できない時は
+# 必ずビルドする。終了コード (Vercel の規約): 0 = ビルドしない / 1 = ビルドする
 #   https://vercel.com/docs/project-configuration/vercel-json#ignorecommand
+# --changed の終了コード: 0 = 変わっていない / 1 = 変わった (変わったファイルの先頭 20 件を出す) / 2 = 誤り
 # 読む環境変数: VERCEL_ENV / VERCEL_GIT_PREVIOUS_SHA / VERCEL_GIT_REPO_OWNER / VERCEL_GIT_REPO_SLUG
+# frontend は Ignored Build Step を使わない (本番は毎回ビルドする。templates の取り込みのため)
 
 set -euo pipefail
 
@@ -42,13 +34,8 @@ trap on_exit EXIT
 # アプリのビルド結果を変えうるパス (リポジトリのルートからの git の pathspec。ディレクトリならその配下すべてに当たる)。
 # 足すのは自由。消すのは、そのアプリの build も実行時も読まないと確かめてから。
 # lockfile はファイル単位なので、そのアプリに関係ない依存の更新でもビルドする
-FRONTEND_PATHS=(
-  apps/frontend                  # アプリ本体 (vercel.json を含む)
-  apps/ai-writer/content         # 記事の MDX (lib/mdx/articles.ts が build 時と実行時に読む。build の前に作る索引の元)
-  apps/ai-writer/scripts/generate-article-index.ts # build の前に索引を作るスクリプトと、その import 先
-  apps/ai-writer/lib/mdx/parse-frontmatter.ts
-  apps/ai-writer/lib/utils/date.ts
-  shared                         # @revolution/schemas など (next.config.mjs の transpilePackages)
+COMMON_PATHS=(
+  shared                         # @revolution/schemas など
   package.json                   # ルートの package.json だけに当たる
   pnpm-lock.yaml
   pnpm-workspace.yaml
@@ -56,44 +43,54 @@ FRONTEND_PATHS=(
   .pnpmfile.cjs
   patches
   turbo.json
-  scripts/vercel-ignore-build.sh # この判定そのもの
+)
+FRONTEND_PATHS=(
+  apps/frontend                  # アプリ本体 (vercel.json を含む)
+  apps/ai-writer/content         # 記事の MDX (lib/mdx/articles.ts が build 時と実行時に読む。build の前に作る索引の元)
+  apps/ai-writer/scripts/generate-article-index.ts # build の前に索引を作るスクリプトと、その import 先
+  apps/ai-writer/lib/mdx/parse-frontmatter.ts
+  apps/ai-writer/lib/utils/date.ts
+  "${COMMON_PATHS[@]}"
 )
 DOCS_PATHS=(
   apps/docs                      # アプリ本体 (vercel.json を含む)
   ':(glob)docs/*.md'             # repo 直下の docs/ の直下だけ (apps/docs/lib/source.ts が読む。archive/ などは読まない)
   docs/meta.json
-  shared
-  package.json
-  pnpm-lock.yaml
-  pnpm-workspace.yaml
-  .npmrc
-  .pnpmfile.cjs
-  patches
-  turbo.json
-  scripts/vercel-ignore-build.sh
+  scripts/vercel-ignore-build.sh # docs の本番の判定そのもの
+  "${COMMON_PATHS[@]}"
 )
-
 
 build() { decided=1; echo "[ignore-build] build: $*"; exit 1; }
 skip() { decided=1; echo "[ignore-build] skip: $*"; exit 0; }
 
-if [ "${1:-}" = "--paths" ]; then
-  decided=1
-  case "${2:-}" in
+paths_of() {
+  case "${1:-}" in
     frontend) printf '%s\n' "${FRONTEND_PATHS[@]}" ;;
     docs) printf '%s\n' "${DOCS_PATHS[@]}" ;;
-    *) echo "usage: $0 --paths <frontend|docs>" >&2; exit 2 ;;
+    *) return 1 ;;
   esac
+}
+
+if [ "${1:-}" = "--paths" ]; then
+  decided=1
+  paths_of "${2:-}" || { echo "usage: $0 --paths <frontend|docs>" >&2; exit 2; }
   exit 0
 fi
 
-app="${1:-}"
-case "$app" in
-  frontend) MUST_BUILD_PATHS=("${FRONTEND_PATHS[@]}") ;;
-  docs) MUST_BUILD_PATHS=("${DOCS_PATHS[@]}") ;;
-  *) build "アプリの指定が無い・知らない (${app:-未指定})" ;;
-esac
+if [ "${1:-}" = "--changed" ]; then
+  decided=1
+  list=$(paths_of "${2:-}") || { echo "usage: $0 --changed <frontend|docs> <from> <to>" >&2; exit 2; }
+  mapfile -t paths <<< "$list"
+  # --no-renames: rename の判定はファイルの中身を読むので、blob を取らない clone では取りに行ってしまう
+  changed=$(git diff --no-renames --name-only "${3:?from}" "${4:?to}" -- "${paths[@]}") || exit 2
+  [ -n "$changed" ] || exit 0
+  head -n 20 <<< "$changed"
+  exit 1
+fi
 
+app="${1:-}"
+[ "$app" = docs ] || build "アプリの指定が docs ではない (${app:-未指定})"
+MUST_BUILD_PATHS=("${DOCS_PATHS[@]}")
 
 # ビルドしない判定に進むのは Production だけ。Preview は Actions が要る時だけ作っている。
 # VERCEL_ENV が無い時 (システム環境変数を公開する設定が外れた時など) もビルドする
@@ -102,7 +99,6 @@ case "${VERCEL_ENV:-}" in
   preview) build "Preview は GitHub Actions が要る時だけ作っている" ;;
   *) build "Production ではない (VERCEL_ENV=${VERCEL_ENV:-未設定})" ;;
 esac
-[ "$app" = docs ] || build "frontend の本番は常にビルドする (templates の取り込みのため)"
 
 head_sha=$(git rev-parse --verify --quiet 'HEAD^{commit}') || build "git の作業ツリーではない (HEAD を読めない)"
 base=${VERCEL_GIT_PREVIOUS_SHA:-}

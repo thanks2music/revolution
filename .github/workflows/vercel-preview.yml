@@ -1,19 +1,10 @@
 name: Vercel Preview
 
-# PR の Vercel の Preview を、要る時だけ作る。
-#
-# Vercel Hobby の deploy は 1 日 100 回まで。build を止めた deploy (Ignored Build Step で CANCELED) も
-# 数えられる。そのため Git からの自動 deploy は main 以外で止め (apps/*/vercel.json の
-# git.deploymentEnabled)、Preview はここから Vercel の API で作る。本番 (main) は Git からの自動のまま。
-#
-# | アプリ   | 作る時                                                                 |
-# |----------|------------------------------------------------------------------------|
-# | frontend | PR に `preview` のラベルがある時。付けた時と、その後の frontend の入力を変えた push |
-# | docs     | docs の入力を変えた push (ラベルは要らない)                            |
-#
-# 「入力を変えた」は、この branch で最後に作った Preview の commit (無ければ base との分岐点) と比べる。
-# 入力の一覧は scripts/vercel-ignore-build.sh の --paths (docs の本番の判定と同じ一覧)。
-# fork からの PR では動かない (secret が渡らない)。
+# PR の Vercel の Preview を、要る時だけ作る。方針と理由は docs/build.md の「Vercel の Preview と、ビルドする条件」。
+# - frontend: PR に `preview` のラベルがある時 (付けた時と、その後の frontend の入力を変えた push)
+# - docs: docs の入力を変えた push
+# 「入力を変えた」は、この branch で最後に作った Preview の commit (無ければ base との分岐点) と比べる
+# (scripts/vercel-ignore-build.sh --changed)。判定できない時は作らない。fork からの PR では動かない
 #
 # secrets: VERCEL_FRONTEND_TOKEN / VERCEL_DOCS_TOKEN (それぞれのプロジェクトだけを範囲にしたトークン)
 # variables: VERCEL_TEAM_ID / VERCEL_FRONTEND_PROJECT_ID / VERCEL_DOCS_PROJECT_ID
@@ -33,12 +24,10 @@ jobs:
       matrix:
         include:
           - app: frontend
-            project: revolution-phoenix-frontend
             label: preview
             token_secret: VERCEL_FRONTEND_TOKEN
             project_var: VERCEL_FRONTEND_PROJECT_ID
           - app: docs
-            project: revolution-phoenix-docs
             label: ''
             token_secret: VERCEL_DOCS_TOKEN
             project_var: VERCEL_DOCS_PROJECT_ID
@@ -50,80 +39,86 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
+      APP: ${{ matrix.app }}
+      PROJECT_NAME: revolution-phoenix-${{ matrix.app }}
       # アプリごとの secret / variable だけを読む (無い時に別のアプリの値へ落ちないように)
       VERCEL_TOKEN: ${{ secrets[matrix.token_secret] }}
       TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
       PROJECT_ID: ${{ vars[matrix.project_var] }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Decide whether to deploy
-        id: decide
+      # checkout の前に、ラベルで決まる物を決める (ラベルの無い PR で clone しない)
+      - name: Check the label
+        id: gate
         env:
-          APP: ${{ matrix.app }}
           REQUIRED_LABEL: ${{ matrix.label }}
           ACTION: ${{ github.event.action }}
           ADDED_LABEL: ${{ github.event.label.name }}
           HAS_LABEL: ${{ matrix.label != '' && contains(github.event.pull_request.labels.*.name, matrix.label) }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          decide() { echo "deploy=$1" >> "$GITHUB_OUTPUT"; echo "$APP: $2"; exit 0; }
+          go() { echo "go=$1" >> "$GITHUB_OUTPUT"; echo "$APP: $2"; exit 0; }
+          if [ -n "$REQUIRED_LABEL" ] && [ "$HAS_LABEL" != "true" ]; then go false "ラベル ${REQUIRED_LABEL} が無い"; fi
+          if [ "$ACTION" = "labeled" ] && [ "$ADDED_LABEL" != "$REQUIRED_LABEL" ]; then go false "ほかのラベルの追加"; fi
           for name in VERCEL_TOKEN TEAM_ID PROJECT_ID; do
             if [ -z "${!name}" ]; then
               echo "::error title=Missing setting::$name が設定されていない (secrets / variables)"
               exit 1
             fi
           done
+          go true "次へ"
 
-          if [ -n "$REQUIRED_LABEL" ] && [ "$HAS_LABEL" != "true" ]; then
-            decide false "ラベル ${REQUIRED_LABEL} が無い"
-          fi
-          if [ "$ACTION" = "labeled" ] && [ "$ADDED_LABEL" != "$REQUIRED_LABEL" ]; then
-            decide false "ほかのラベルの追加"
-          fi
+      - name: Checkout
+        if: steps.gate.outputs.go == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          # 比べるのは commit と木だけ (ファイルの中身は要らない)
+          filter: blob:none
+          persist-credentials: false
 
-          # 比べる相手: この branch で最後に作った Preview の commit。無ければ base との分岐点
-          # (Vercel の一覧は新しい順。読めない時も分岐点に倒す)
-          last=$(curl -sS --fail -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-            "https://api.vercel.com/v6/deployments?teamId=${TEAM_ID}&projectId=${PROJECT_ID}&target=preview&limit=50" \
-            | jq -r --arg ref "$REF" '[.deployments[] | select(.meta.githubCommitRef == $ref) | .meta.githubCommitSha][0] // empty' \
-            ) || last=""
-          if [ "$last" = "$HEAD_SHA" ]; then
-            decide false "この commit の Preview はもうある"
+      - name: Decide whether to deploy
+        id: decide
+        if: steps.gate.outputs.go == 'true'
+        env:
+          REQUIRED_LABEL: ${{ matrix.label }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          decide() { echo "deploy=$1" >> "$GITHUB_OUTPUT"; echo "$APP: $2"; exit 0; }
+
+          # 比べる相手: この branch で最後に作った Preview の commit。無ければ base との分岐点。
+          # Vercel から読めない時は作らない (判定できない時は作らない側に倒す)。一覧は新しい順
+          if ! list=$(curl -sS --fail -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            "https://api.vercel.com/v6/deployments?teamId=${TEAM_ID}&projectId=${PROJECT_ID}&target=preview&limit=50"); then
+            echo "::warning title=Vercel API::これまでの Preview を読めないので、作らない (もう一度 push するか、ラベルを付け直す)"
+            decide false "これまでの Preview を読めない"
           fi
+          last=$(jq -r --arg ref "$REF" '[.deployments[] | select(.meta.githubCommitRef == $ref) | .meta.githubCommitSha][0] // empty' <<< "$list")
+          if [ "$last" = "$HEAD_SHA" ]; then decide false "この commit の Preview はもうある"; fi
           if [ -n "$last" ] && git cat-file -e "${last}^{commit}" 2>/dev/null; then
             from="$last"
           elif [ -n "$REQUIRED_LABEL" ]; then
-            # ラベルの付いた PR で、まだ Preview が無い: 入力を見ずに作る
             decide true "ラベル ${REQUIRED_LABEL} があり、この branch の Preview がまだ無い"
           else
             from=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
           fi
 
-          # 一覧の取得に失敗したら止める (空の一覧で git diff が全ファイルに当たるのを防ぐ)
-          out=$(bash scripts/vercel-ignore-build.sh --paths "$APP")
-          mapfile -t paths <<< "$out"
-          [ "${#paths[@]}" -gt 0 ] && [ -n "${paths[0]}" ] || { echo "::error::入力の一覧が空"; exit 1; }
-          changed=$(git diff --no-renames --name-only "$from" "$HEAD_SHA" -- "${paths[@]}")
-          if [ -z "$changed" ]; then
-            decide false "入力が ${from:0:12} から変わっていない"
-          fi
-          echo "変わったファイル (先頭 20 件):"
-          head -n 20 <<< "$changed"
-          decide true "入力が ${from:0:12} から変わった"
+          set +e
+          bash scripts/vercel-ignore-build.sh --changed "$APP" "$from" "$HEAD_SHA"
+          rc=$?
+          set -e
+          case "$rc" in
+            0) decide false "入力が ${from:0:12} から変わっていない" ;;
+            1) decide true "入力が ${from:0:12} から変わった (上の一覧)" ;;
+            *) echo "::error::入力の比べ方に誤り (exit $rc)"; exit 1 ;;
+          esac
 
       - name: Create the Preview deployment
         if: steps.decide.outputs.deploy == 'true'
         env:
-          PROJECT_NAME: ${{ matrix.project }}
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
           REF: ${{ github.event.pull_request.head.ref }}

@@ -50,7 +50,7 @@ Vercel Hobby の deploy は 1 日 100 回まで。ビルドを止めた deploy (
 | ドキュメントサイト | docs の入力を変えた push で作る (ラベルは要らない) | docs の入力が変わった時だけビルドする |
 
 - 仕組み: Git からの自動 deploy は main 以外で止めている (`apps/*/vercel.json` の `git.deploymentEnabled`。パターン `**` は `/` を含む branch 名にも当たる)。Preview は [`.github/workflows/vercel-preview.yml`](../.github/workflows/vercel-preview.yml) が Vercel の API で作る。「入力を変えた」は、その branch で最後に作った Preview の commit (無ければ base との分岐点) と比べる。本番は Git からの自動 deploy のまま、[`scripts/vercel-ignore-build.sh`](../scripts/vercel-ignore-build.sh) (Ignored Build Step) が docs の入力の変化を見る
-- 入力の一覧は `scripts/vercel-ignore-build.sh` の 1 か所にある (`bash scripts/vercel-ignore-build.sh --paths <frontend|docs>` で出せる)。Preview の判定も同じ一覧を使う
+- 入力の一覧と比べ方は `scripts/vercel-ignore-build.sh` の 1 か所にある (`--paths <frontend|docs>` で一覧、`--changed <frontend|docs> <from> <to>` で変わったか)。Preview の判定も docs の本番の判定も、これを使う。frontend には Ignored Build Step を置かない (本番は毎回ビルドする)
 - 環境変数やプロジェクト設定だけを変えた時、ドキュメントサイトは commit に差分が出ないので本番をビルドしない。反映するには Vercel の Redeploy で「Use project's Ignore Build Step」を外す
 - この仕組みより前に切った branch には新しい `vercel.json` が無いので、push のたびに自動の Preview が作られる (回数に数えられる)。main を取り込むと止まる
 - 画面の確認は、ふだんは手元の開発サーバーで行う。Vercel の環境 (環境変数・R2 など) で見たい PR にだけ `preview` のラベルを付ける
