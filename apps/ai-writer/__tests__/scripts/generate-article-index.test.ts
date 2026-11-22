@@ -592,6 +592,27 @@ describe('generate-article-index.ts', () => {
       expect(() => readFileSync(outputPath)).toThrow();
     });
 
+    it('writes no partial index when valid and broken MDX are mixed', () => {
+      const contentDir = join(tmpDir, 'content');
+      mkdirSync(contentDir);
+      const validMdx = execFileSync('git', ['ls-files', '*.mdx'], {
+        cwd: join(AI_WRITER_ROOT, 'content'),
+        encoding: 'utf-8',
+      }).split('\n')[0];
+      writeFileSync(
+        join(contentDir, 'valid.mdx'),
+        readFileSync(join(AI_WRITER_ROOT, 'content', validMdx), 'utf-8')
+      );
+      writeFileSync(join(contentDir, 'broken.mdx'), '---\ntitle: x\n---\nbody\n');
+      const outputPath = join(tmpDir, 'index.json');
+
+      const result = run(['--content-dir', contentDir, '--output', outputPath]);
+
+      expect(result.status).toBe(1);
+      expect(result.output).toContain('broken.mdx');
+      expect(() => readFileSync(outputPath)).toThrow();
+    });
+
     it('writes an empty index when there are no MDX files', () => {
       const contentDir = join(tmpDir, 'content');
       mkdirSync(contentDir);

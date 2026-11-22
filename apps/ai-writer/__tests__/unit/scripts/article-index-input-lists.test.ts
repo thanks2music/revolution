@@ -11,13 +11,34 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { dirname, join, relative, resolve } from 'path';
 
 const REPO_ROOT = resolve(__dirname, '../../../../..');
 const GENERATOR = 'apps/ai-writer/scripts/generate-article-index.ts';
 
-/** 実行時に読み込む相対 import (import type は除く) をたどり、リポジトリのルートからのパスで返す */
+/**
+ * import / export ... from の相対パス (import type / export type は除く)。引用符はどちらでもよい。
+ * パッケージの import (`js-yaml`、`@revolution/schemas` など) は対象外: 依存の版は lockfile が、
+ * 型だけの import は実行時の出力に関わらない
+ */
+const RELATIVE_FROM =
+  /^(?:import|export)\s+(?!type\b)[^;]*?from\s+['"](\.{1,2}\/[^'"]+)['"]/gm;
+/** 動的 import と require は書き方を追いきれないので、使われたら落として一覧の扱いを決めさせる */
+const UNSUPPORTED = /\bimport\s*\(|\brequire\s*\(/;
+
+/** 相対 import の行き先を探す。見つからなければ落とす (見逃して通るのを防ぐ) */
+function resolveImport(fromFile: string, specifier: string): string {
+  const base = resolve(REPO_ROOT, dirname(fromFile), specifier);
+  const candidates = [`${base}.ts`, `${base}.tsx`, join(base, 'index.ts'), join(base, 'index.tsx')];
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) {
+    throw new Error(`cannot resolve '${specifier}' imported from ${fromFile}`);
+  }
+  return relative(REPO_ROOT, found);
+}
+
+/** 実行時に読み込む相対 import をたどり、リポジトリのルートからのパスで返す */
 function collectRuntimeImports(entry: string): string[] {
   const seen = new Set<string>();
   const queue = [entry];
@@ -26,9 +47,11 @@ function collectRuntimeImports(entry: string): string[] {
     if (seen.has(file)) continue;
     seen.add(file);
     const source = readFileSync(join(REPO_ROOT, file), 'utf-8');
-    for (const match of source.matchAll(/^import\s+(?!type\b)[^;]*?from\s+'(\.{1,2}\/[^']+)'/gm)) {
-      const target = relative(REPO_ROOT, resolve(REPO_ROOT, dirname(file), `${match[1]}.ts`));
-      queue.push(target);
+    if (UNSUPPORTED.test(source)) {
+      throw new Error(`${file} uses a dynamic import or require; update this test and the lists`);
+    }
+    for (const match of source.matchAll(RELATIVE_FROM)) {
+      queue.push(resolveImport(file, match[1]));
     }
   }
   return [...seen].sort();
