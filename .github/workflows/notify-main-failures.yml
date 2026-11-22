@@ -1,6 +1,6 @@
 name: Notify Main Failures
 
-# main で CI / Update MDX Article Index / Sentry Digest が失敗した時に、本番系へメンション付きで知らせる。
+# main で CI / Sentry Digest が失敗した時に、本番系へメンション付きで知らせる。
 #
 # ⚠️ workflow_run は workflow の name で一致させる。対象の workflow の `name:` を変えると、
 #    通知が黙って止まる (運用手順書にも記載)。main での失敗を知らせたい workflow はここに名前を足す。
@@ -15,7 +15,6 @@ on:
   workflow_run:
     workflows:
       - CI
-      - Update MDX Article Index
       - Sentry Digest
     types:
       - completed

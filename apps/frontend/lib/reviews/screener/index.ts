@@ -6,6 +6,8 @@ import { GoogleGenAI } from '@google/genai';
 
 import { presentEnvValue } from '@revolution/slack/env';
 
+import { allowsFakeBackends } from '@/lib/reviews/fake-backends';
+
 import { createFakeScreener } from './fake-screener';
 import { createGeminiScreener } from './gemini-screener';
 import { DEFAULT_TEMPLATES_DIR, loadScreeningPrompt } from './prompt';
@@ -32,7 +34,7 @@ export async function getReviewScreener(
   env: Record<string, string | undefined> = process.env,
   options: { templatesDir?: string } = {}
 ): Promise<ReviewScreener> {
-  if (env.REVIEW_SCREENER === 'fake' && allowsFake(env)) {
+  if (env.REVIEW_SCREENER === 'fake' && allowsFakeBackends(env)) {
     return createFakeScreener();
   }
 
@@ -56,15 +58,6 @@ export async function getReviewScreener(
   });
   screeners.set(key, screener);
   return screener;
-}
-
-/**
- * 偽物を使ってよいか。手元の開発とテスト (`NODE_ENV` が development か test) だけに限る。
- * Vercel の Preview も含めて、ビルドした物 (`NODE_ENV=production`) では使わない
- */
-function allowsFake(env: Record<string, string | undefined>): boolean {
-  if (env.VERCEL_ENV === 'production') return false;
-  return env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
 }
 
 function failingScreener(error: string): ReviewScreener {

@@ -292,6 +292,11 @@ test-artifacts/
 # 公開サイトが build の時に private の templates repo から取り込むプロンプト (apps/frontend/scripts/fetch-templates.sh)
 apps/frontend/templates/
 
+# 記事の索引 (記事の MDX の frontmatter から作る派生物)。frontend の build / dev / ingest:occurrences /
+# seed:masters が使う前に作る (apps/frontend/package.json の generate:article-index)。
+# コミットしない: CI が GITHUB_TOKEN で記事 PR に索引をコミットすると、その後の CI が承認待ちになっていたため
+apps/frontend/lib/mdx/article-index.json
+
 # カバレッジ
 coverage/
 .nyc_output/

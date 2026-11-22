@@ -40,6 +40,7 @@ import {
   OccurrenceReviewsSection,
   ReviewWriteBar,
 } from '@/components/molecules/reviews/OccurrenceReviewsSection';
+import { RecordOccurrenceVisit } from '@/components/molecules/reviews/RecordOccurrenceVisit';
 import Layout from '@/components/templates/Layout';
 import { getCategory } from '@/lib/category/queries';
 import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
@@ -207,14 +208,19 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
 
         {event.description && <p className="mb-10 text-ink-body">{event.description}</p>}
 
+        {/* 7-0 の「最近見た開催」のために、見たことをブラウザに残す */}
+        <RecordOccurrenceVisit occurrenceId={occurrence.id} />
         {reviews && (
           <OccurrenceReviewsSection
             occurrenceId={occurrence.id}
             status={occurrence.status}
+            startsOn={occurrence.startsOn}
             ratingAverage={reviews.ratingAverage}
             ratingCount={reviews.ratingCount}
             reviewPath={reviewPath}
             reviews={reviews.latest}
+            mostHelpful={reviews.mostHelpful}
+            stats={reviews.stats}
           />
         )}
 

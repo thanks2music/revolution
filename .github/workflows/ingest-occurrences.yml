@@ -1,7 +1,8 @@
 # occurrence 取り込み (S3 = mvp-definition A-4、staging 限定)
 #
-# 記事マージ → update-mdx-article-index.yml が article-index.json を再生成・commit →
-# その main への push を本 workflow が拾い、event_data を staging Supabase へ upsert する。
+# 記事のマージ (main で記事の MDX が変わる push) を本 workflow が拾い、記事の索引
+# (article-index.json) を作ってから、その event_data を staging Supabase へ upsert する。
+# 索引はコミットしない派生物で、`pnpm ingest:occurrences` が最初に作る (apps/frontend/package.json)。
 #
 # - 取り込み先は **staging のみ** (2026-08-15 BOSS 確定)。production の
 #   service role key / DB password は CI に置かない。規約が実測で固まってから広げる
@@ -18,8 +19,13 @@ name: Ingest Occurrences (staging)
 on:
   push:
     branches: [main]
+    # 索引を作る元 (記事の MDX) と、索引を作るスクリプト・その import 先
+    # (apps/frontend/turbo.json の inputs と同じ一覧)
     paths:
-      - "apps/frontend/lib/mdx/article-index.json"
+      - "apps/ai-writer/content/**/*.mdx"
+      - "apps/ai-writer/scripts/generate-article-index.ts"
+      - "apps/ai-writer/lib/mdx/parse-frontmatter.ts"
+      - "apps/ai-writer/lib/utils/date.ts"
   workflow_dispatch:
     inputs:
       dry_run:
