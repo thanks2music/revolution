@@ -42,7 +42,8 @@ export function OwnReviewList(props: { reviews: OwnReviewListItem[] }) {
 function OwnReviewItem({ review }: { review: OwnReviewListItem }) {
   const view = ownReviewView(review);
   const meta = ownReviewMeta(review);
-  const title = review.venueName ? `${review.eventName} ${review.venueName}` : review.eventName;
+  const { target } = review;
+  const title = target.venueName ? `${target.eventName} ${target.venueName}` : target.eventName;
 
   return (
     <article
@@ -57,7 +58,7 @@ function OwnReviewItem({ review }: { review: OwnReviewListItem }) {
         </span>
       </p>
       <h3 className="text-sm font-bold text-ink-strong">
-        <Link href={review.occurrencePath} className="text-ink-strong hover:underline">
+        <Link href={target.occurrencePath} className="text-ink-strong hover:underline">
           {title}
         </Link>
       </h3>
@@ -75,9 +76,9 @@ function OwnReviewItem({ review }: { review: OwnReviewListItem }) {
       )}
       <div className="flex items-center gap-4 text-xs font-bold">
         {/* 中止になった開催の下書きなど、もう続きを書けない口コミは削除だけにする */}
-        {review.canEdit && (
+        {target.canWrite && (
           <Link
-            href={`${review.occurrencePath}/review`}
+            href={`${target.occurrencePath}/review`}
             className="text-primary-700 hover:underline"
           >
             {view.editLabel}

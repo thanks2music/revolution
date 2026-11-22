@@ -114,3 +114,21 @@ export function ownReviewStatus(status: ReviewStatus): OwnReviewStatus | null {
 export function explainsReason(status: ReviewStatus): status is 'rejected' | 'hidden' {
   return status === 'rejected' || status === 'hidden';
 }
+
+/**
+ * 開催のページの「口コミの状態」(Figma 追加画面 `93:196`、one-more-time #166)。欄の出し方
+ * (`reviewSectionMode`) と件数から選ぶ。null は「状態の部品を出さない」(中止・日程未発表は欄ごと出さず、
+ * 開催中で口コミがある時は大きな「口コミを書く」だけを出す)
+ */
+export type ReviewStateKind = 'notYet' | 'empty' | 'ended';
+
+export function reviewStateKind(
+  status: OccurrenceStatus,
+  ratingCount: number
+): ReviewStateKind | null {
+  const mode = reviewSectionMode(status);
+  if (mode === 'none') return null;
+  if (mode === 'notYet') return 'notYet';
+  if (ratingCount === 0) return 'empty';
+  return status === 'ended' ? 'ended' : null;
+}

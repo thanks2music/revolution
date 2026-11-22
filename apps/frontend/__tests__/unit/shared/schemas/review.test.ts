@@ -159,7 +159,13 @@ describe('ReviewSoftDeleteSchema', () => {
 });
 
 describe('ReviewImageInsertSchema', () => {
-  const image = { reviewId: 1, objectKey: 'reviews/1/abc.webp' };
+  const image = {
+    reviewId: 1,
+    objectKey: 'reviews/1/abc',
+    width: 1440,
+    height: 1080,
+    variantWidths: [320, 720, 1440],
+  };
 
   it('accepts an R2 object key', () => {
     expect(() => ReviewImageInsertSchema.parse(image)).not.toThrow();
@@ -167,6 +173,12 @@ describe('ReviewImageInsertSchema', () => {
 
   it('accepts an explicit sort_order', () => {
     expect(() => ReviewImageInsertSchema.parse({ ...image, sortOrder: 3 })).not.toThrow();
+  });
+
+  it('rejects a non-positive size and an empty list of widths', () => {
+    expect(() => ReviewImageInsertSchema.parse({ ...image, width: 0 })).toThrow();
+    expect(() => ReviewImageInsertSchema.parse({ ...image, variantWidths: [] })).toThrow();
+    expect(() => ReviewImageInsertSchema.parse({ ...image, variantWidths: [0] })).toThrow();
   });
 
   it('rejects a blank object_key', () => {

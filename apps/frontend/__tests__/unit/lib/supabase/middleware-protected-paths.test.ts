@@ -7,6 +7,8 @@ describe('isPathProtected', () => {
     ['/mypage', true],
     ['/mypage/settings', true],
     ['/onboarding', true],
+    ['/review', true],
+    ['/reviews', false],
     ['/collabo-cafe/12/shibuya/review', true],
     ['/collabo-cafe/12/shibuya/review/', true],
     ['/collabo-cafe/12/shibuya', false],

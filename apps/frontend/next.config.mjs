@@ -8,20 +8,30 @@ const nextConfig = {
   // Next.js 公式推奨: shared/schemas/ workspace の .ts ファイルを直接 transpile する
   transpilePackages: ['@revolution/schemas', '@revolution/slack'],
 
+  // HEIC を読む libheif (WebAssembly を JS に埋め込んだ物) をバンドルせず、node_modules から読む
+  // (one-more-time #163)。sharp は Next の既定でバンドルの外にある
+  serverExternalPackages: ['heic-decode', 'libheif-js'],
+
   /**
    * Vercel Functions に sharp を入れない (Vercel の Functions Storage の削減)
    * - next/og (ImageResponse) は sharp を任意で読み込み、無ければ同梱の resvg で PNG を作る。
    *   frontend は sharp を直接使っておらず、画像の最適化は Vercel 側で行われる
    * - next 本体は Vercel 上で sharp をサーバー本体のトレースからしか外さず、OG 画像と記事ページの
    *   関数には sharp と libvips (約 17MB) が入っていた
-   * - キーは全ルート。値は apps/frontend からの glob で、`**` は親 (../../node_modules) まで届かない。
+   * - 値は apps/frontend からの glob で、`**` は親 (../../node_modules) まで届かない。
    *   pnpm の実体 (.pnpm/<名前>@<版>) と、そこを指す symlink の両方を外す (symlink だけ残ると、行き先の無い
    *   symlink が関数に入る)。pnpm の配置を変えたら、ここが効いているか .nft.json で確かめる
    * - Vercel 以外 (standalone など) で配るなら見直す。そこでは画像の最適化に sharp が要る
+   * - キーは sharp を引き込むルート (next/og の OG 画像がある記事) だけにする。口コミの写真の変換は
+   *   sharp を使うので、全ルート (`/*`) にすると写真を変換するルートからも消える (one-more-time #163)。
+   *   否定のキー (`!…`) は使わない。Next は除外のキーを `next-server` にも照らし (picomatch、
+   *   next/dist/build/collect-build-traces.js)、否定は当たってしまうため、全ルートの除外に広がる。
+   *   2026-11-22 の本番ビルドで、30 ルートのどれにも sharp が入らないことを .nft.json で確かめた
+   *   (写真の変換をまだどのルートからも呼んでいない時点)。next/og を使うルートを足したら、ここに足す
    * https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats
    */
   outputFileTracingExcludes: {
-    '/*': [
+    '/articles/**': [
       '../../node_modules/.pnpm/sharp@*/**',
       '../../node_modules/.pnpm/@img+sharp-*/**',
       '../../node_modules/.pnpm/node_modules/sharp',

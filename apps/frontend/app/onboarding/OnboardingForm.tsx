@@ -18,6 +18,8 @@ import {
   USERNAME_MAX_LENGTH,
 } from '@revolution/schemas/profile';
 
+import { DEFAULT_SAFE_PATH, sanitizeNextPath } from '@/lib/auth/safe-redirect';
+
 import {
   checkUsernameAvailability,
   completeOnboarding,
@@ -37,8 +39,11 @@ type UsernameStatus = 'idle' | 'checking' | UsernameAvailability['status'];
 
 export function OnboardingForm({
   defaultDisplayName = '',
+  next = DEFAULT_SAFE_PATH,
 }: {
   defaultDisplayName?: string;
+  /** 終わったら戻る画面 (サニタイズ済みの内部パス)。口コミを書きに来た人を元の画面へ戻す */
+  next?: string;
 }) {
   const [displayName, setDisplayName] = useState(defaultDisplayName);
   const [username, setUsername] = useState('');
@@ -120,8 +125,8 @@ export function OnboardingForm({
         // 案B: completeOnboarding が updateUser で新 JWT (onboarded:true) を cookie に
         // 書き込む。soft navigation (router.replace) だと middleware が更新前の JWT を
         // 読み /onboarding に弾き返すことがあるため、フルナビゲーションで最新 cookie を
-        // middleware に確実に渡す。middleware が onboarded を見て /mypage を通す。
-        window.location.assign('/mypage');
+        // middleware に確実に渡す。middleware が onboarded を見て戻り先を通す。
+        window.location.assign(sanitizeNextPath(next));
         return;
       }
       if (result.field === 'username') setUsernameError(result.error);

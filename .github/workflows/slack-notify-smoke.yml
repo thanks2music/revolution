@@ -26,7 +26,6 @@ on:
       # notify-main-failures の対象 (名前と cancel-in-progress を確かめる)
       - '.github/workflows/notify-main-failures.yml'
       - '.github/workflows/ci.yml'
-      - '.github/workflows/update-mdx-article-index.yml'
       - '.github/workflows/sentry-digest.yml'
       - '.github/workflows/slack-notify-smoke.yml'
 
