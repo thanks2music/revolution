@@ -13,7 +13,10 @@
 
 jest.mock('@/lib/env', () => ({ env: {} }));
 jest.mock('@/lib/occurrence/queries', () => ({ getOccurrenceDetail: jest.fn() }));
-jest.mock('@/lib/auth/member', () => ({ getCurrentMember: jest.fn() }));
+jest.mock('@/lib/auth/member', () => ({
+  getCurrentMember: jest.fn(),
+  memberRedirect: (reason: string) => (reason === 'unauthenticated' ? 'login' : 'onboarding'),
+}));
 jest.mock('@/lib/supabase/admin', () => {
   const ownBuilder: any = {};
   ownBuilder.select = jest.fn(() => ownBuilder);

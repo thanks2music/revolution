@@ -41,7 +41,8 @@
     "./occurrence": "./occurrence.ts",
     "./review": "./review.ts",
     "./alias": "./alias.ts",
-    "./review-screening-response": "./review-screening-response.ts"
+    "./review-screening-response": "./review-screening-response.ts",
+    "./review-photo": "./review-photo.ts"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.36.0",

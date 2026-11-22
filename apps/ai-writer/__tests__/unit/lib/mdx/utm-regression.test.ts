@@ -2,7 +2,8 @@
  * UTM 混入回帰検出 (Layer 1 regression gate)
  *
  * Sprint C-β P14: `collabo-cafe.com` origin から抽出された utm 付き URL が
- * 既存 MDX 記事や derived article-index.json に混入することを CI 段階で捕捉する。
+ * 既存 MDX 記事に混入することを CI 段階で捕捉する (article-index.json は MDX から作る
+ * 派生物でコミットしないため、MDX だけを見れば足りる)。
  * `remove-utm-from-articles.ts` script 実行忘れや、Templates 側で utm ルールが
  * 誤って再導入されるケースへの safety net。
  *
@@ -19,14 +20,6 @@ import { findMdxFiles } from '../../../../lib/utils/mdx-files';
 
 const AI_WRITER_ROOT = resolve(__dirname, '..', '..', '..', '..');
 const CONTENT_ROOT = join(AI_WRITER_ROOT, 'content');
-const FRONTEND_ARTICLE_INDEX = resolve(
-  AI_WRITER_ROOT,
-  '..',
-  'frontend',
-  'lib',
-  'mdx',
-  'article-index.json',
-);
 
 const COLLABO_CAFE_UTM_REGEX = /utm_(?:source|medium|campaign|id)=collabo_cafe_dot_com/i;
 
@@ -50,18 +43,6 @@ describe('UTM regression gate (Sprint C-β P14)', () => {
             `Original error: ${(err as Error).message}`,
         );
       }
-    }
-  });
-
-  it('article-index.json に collabo-cafe.com origin の utm 参照が混入していない', async () => {
-    try {
-      await assertNoUtmInFile(FRONTEND_ARTICLE_INDEX);
-    } catch (err) {
-      throw new Error(
-        `UTM regression detected in article-index.json.\n` +
-          `Run \`pnpm --filter ai-writer run clean:utm && pnpm --filter ai-writer run generate:article-index\` to fix.\n` +
-          `Original error: ${(err as Error).message}`,
-      );
     }
   });
 });
