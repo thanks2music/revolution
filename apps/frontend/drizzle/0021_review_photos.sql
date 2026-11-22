@@ -10,7 +10,8 @@
 --
 -- - 行を足すのはサーバー (service role) だけ。変換して保管側に置いた後に足す。投稿者から INSERT を
 --   取り上げる (任意の object_key を指す行を作らせない)
--- - 投稿者は自分の写真の並び (sort_order) を変え、自分の写真を外せる (既存の policy のまま)
+-- - 写真を外すのもサーバーだけ (保管側の物も一緒に消す)。投稿者から DELETE を取り上げる。
+--   並び (sort_order) の UPDATE は既存の列単位の GRANT と policy のまま
 -- - 1 つの口コミに 10 枚まで。足す時に口コミの行を FOR UPDATE で押さえてから数え、並び (sort_order) を
 --   最後に付ける (同時に足しても、超えない・並びが重ならない)
 -- - 下書きでない口コミに写真を足したら、口コミを審査中に戻す (写真も審査の対象のため)
@@ -129,6 +130,9 @@ DROP POLICY IF EXISTS "review_images_select_public" ON "public"."review_images";
 --> statement-breakpoint
 DROP POLICY IF EXISTS "review_images_insert_own" ON "public"."review_images";
 --> statement-breakpoint
+-- 外すのもサーバーだけ (保管側の物も一緒に消すため。会員が行だけを消すと、保管側の物が残る)
+DROP POLICY IF EXISTS "review_images_delete_own" ON "public"."review_images";
+--> statement-breakpoint
 
 CREATE POLICY "review_images_select_own" ON "public"."review_images"
   AS PERMISSIVE FOR SELECT TO "authenticated"
@@ -143,7 +147,7 @@ CREATE POLICY "review_images_select_own" ON "public"."review_images"
 
 REVOKE SELECT ON TABLE "public"."review_images" FROM anon;
 --> statement-breakpoint
-REVOKE INSERT ON TABLE "public"."review_images" FROM authenticated;
+REVOKE INSERT, DELETE ON TABLE "public"."review_images" FROM authenticated;
 --> statement-breakpoint
 
 -- トリガ関数は呼ぶ人に開けない (既存の private の関数と同じ作法)。トリガとしての実行には要らない

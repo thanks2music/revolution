@@ -6,7 +6,11 @@ import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
-import { MAX_REVIEW_PHOTOS, type ReviewPhotoUploadRequest } from '@revolution/schemas/review-photo';
+import {
+  MAX_REVIEW_PHOTOS,
+  ReviewPhotoUploadRequestSchema,
+  type ReviewPhotoUploadRequest,
+} from '@revolution/schemas/review-photo';
 
 import { convertReviewPhoto, type ConvertReviewPhotoFailure } from './convert';
 import {
@@ -95,6 +99,8 @@ export async function requestPhotoUpload(
   ctx: PhotoContext,
   input: { profileId: string; reviewId: number; file: ReviewPhotoUploadRequest }
 ): Promise<RequestUploadOutcome> {
+  // 呼ぶ側が確かめた物でも、署名に入れる前にもう一度確かめる (この層が信頼の境目)
+  ReviewPhotoUploadRequestSchema.parse(input.file);
   if (!(await findOwnReviewStatus(ctx.db, input.profileId, input.reviewId)))
     return { kind: 'not_found' };
   if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
@@ -144,7 +150,11 @@ export async function ingestPhoto(
     if (original.kind === 'missing') return { kind: 'missing' };
     if (original.kind === 'too_large') return { kind: 'rejected', reason: 'too_large' };
     // 数えるのは重い変換の前に断るため。守りは DB のトリガ
-    if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
+    if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) {
+      // 1 枚外してからやり直せるように、元の写真を残す (1 日で消える)
+      keepIntake = true;
+      return { kind: 'full' };
+    }
 
     const converted = await convertReviewPhoto(original.body);
     if (!converted.ok) return { kind: 'rejected', reason: converted.reason };
@@ -152,8 +162,13 @@ export async function ingestPhoto(
     const keys = variantKeys(key, converted.variantWidths);
     // 片付けの前に、同じ写真の行が無いかを見る。同時に走ったもう一方の取り込みが行を足していれば、
     // 保管側の物は同じキーでその行が指しているので消さない (10 枚目を取り合って片方が断られた時など)
+    // 行を確かめられなかった時も消さない (行が指す物を消すより、使われない物が残る方が害が小さい)
     const cleanUp = async () => {
-      if (await findPhotoRow(ctx.db, key).catch(() => null)) return;
+      const owned = await findPhotoRow(ctx.db, key).then(
+        row => row !== null,
+        () => true
+      );
+      if (owned) return;
       await ctx.storage.deleteStored(keys).catch(() => undefined);
     };
     // 全部の書き込みが終わってから片付ける (途中で消すと、後から終わった物が残る)
@@ -187,6 +202,7 @@ export async function ingestPhoto(
       if (winner)
         return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, winner), requeued: false };
       await cleanUp();
+      keepIntake = true;
       return { kind: 'full' };
     }
     if (!inserted) {

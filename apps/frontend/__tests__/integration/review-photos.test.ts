@@ -351,6 +351,19 @@ describe('口コミの写真', () => {
       variant_widths: [10],
     });
     expect(direct.error?.code).toBe('42501');
+    // 外すのも、object_key を書き換えるのもサーバー経由だけ
+    const deleted = await owner
+      .from('review_images')
+      .delete()
+      .eq('review_id', reviewId)
+      .select('id');
+    expect(deleted.error?.code).toBe('42501');
+    const repointed = await owner
+      .from('review_images')
+      .update({ object_key: 'someone-else/photo' })
+      .eq('review_id', reviewId)
+      .select('id');
+    expect(repointed.error?.code).toBe('42501');
   });
 
   it('同じ写真を 2 回取り込んでも、行は 1 つ。後から来た方は先の行を返す', async () => {
@@ -427,6 +440,32 @@ describe('口コミの写真', () => {
 
     await expect(
       ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId })
+    ).resolves.toMatchObject({
+      kind: 'ok',
+    });
+  });
+
+  it('10 枚で断った時は、元の写真を残す (1 枚外してからやり直せる)', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const photoId = await upload(reviewId, member, await jpegWithGps(400, 300));
+    const filled = await data.admin.from('review_images').insert(
+      Array.from({ length: 10 }, (_, i) => ({
+        review_id: reviewId,
+        object_key: `preview/reviews/${reviewId}/full${i}`,
+        width: 10,
+        height: 10,
+        variant_widths: [10],
+      }))
+    );
+    if (filled.error) throw filled.error;
+
+    await expect(
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId })
+    ).resolves.toEqual({
+      kind: 'full',
+    });
+    await expect(
+      storage.readIntake(`preview/reviews/${reviewId}/${photoId}`)
     ).resolves.toMatchObject({
       kind: 'ok',
     });
