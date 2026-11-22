@@ -48,7 +48,7 @@ describe('sanitizeNextPath — preserves legitimate internal paths', () => {
 
   it('allows a nested internal path with query', () => {
     expect(sanitizeNextPath('/collabo-cafe/work-a/slug?ref=1')).toBe(
-      '/collabo-cafe/work-a/slug?ref=1',
+      '/collabo-cafe/work-a/slug?ref=1'
     );
   });
 
@@ -61,4 +61,44 @@ describe('sanitizeNextPath — preserves legitimate internal paths', () => {
     // decode して渡すラウンドトリップ。decode 後も内部パス形なら通す。
     expect(sanitizeNextPath('/mypage?x=1')).toBe('/mypage?x=1');
   });
+});
+
+describe('sanitizeNextPath を重ねても戻り先が変わらない (onboarding を挟む戻り先、one-more-time #166)', () => {
+  it.each([
+    '/review?q=100%25',
+    '/review?q=A%26B',
+    '/review?q=%E5%91%AA%E8%A1%93',
+    '/mypage#reviews',
+  ])('%s', next => {
+    const once = sanitizeNextPath(next);
+    expect(once).toBe(next);
+    expect(sanitizeNextPath(once)).toBe(next);
+  });
+});
+
+describe('エンコードした点や斜線で、外へ出たり形を崩したりしない', () => {
+  it.each([
+    ['/%2e%2e/review', '/review'],
+    ['/a/%2e%2e/%2e%2e/mypage', '/mypage'],
+  ])('%s → %s (点の区切りは URL として解決する)', (next, expected) => {
+    expect(sanitizeNextPath(next)).toBe(expected);
+  });
+
+  it.each(['/%2F%2Fevil.example', '/%2f%2fevil.example/x', '/%5Cevil.example'])(
+    '%s は既定へ',
+    next => {
+      expect(sanitizeNextPath(next)).toBe(DEFAULT_SAFE_PATH);
+    }
+  );
+});
+
+describe('クエリに `//` を含む戻り先 (今の挙動を固定する)', () => {
+  // decode した形も確かめるため、エンコードしていても URL を値に持つクエリは既定へ戻す (安全側)。
+  // 本サイトの戻り先 (7-0 の検索など) に URL を入れるクエリは無い
+  it.each(['/review?ref=https://example.com', '/review?ref=https%3A%2F%2Fexample.com'])(
+    '%s',
+    next => {
+      expect(sanitizeNextPath(next)).toBe(DEFAULT_SAFE_PATH);
+    }
+  );
 });

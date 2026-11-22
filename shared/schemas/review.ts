@@ -153,11 +153,21 @@ export const ReviewSubmitSchema = z.object({
     .string()
     .trim()
     .max(REVIEW_BODY_MAX_CHARS, `本文は ${REVIEW_BODY_MAX_CHARS} 字までです`)
-    .transform((value) => (value === '' ? null : value))
+    .transform(value => (value === '' ? null : value))
     .nullable(),
   hasSpoiler: z.boolean(),
 });
 export type ReviewSubmitInput = z.input<typeof ReviewSubmitSchema>;
+
+/**
+ * 下書きの保存の入力 (one-more-time #162)。星と訪問日は空でよい (途中まで書ける)。入っていれば提出と同じ形を求める。
+ * 訪問日の範囲は、入っていれば DB のトリガが確かめる
+ */
+export const ReviewDraftSchema = ReviewSubmitSchema.extend({
+  rating: ReviewSubmitSchema.shape.rating.nullable(),
+  visitedOn: ReviewSubmitSchema.shape.visitedOn.nullable(),
+});
+export type ReviewDraftInput = z.input<typeof ReviewDraftSchema>;
 
 /**
  * レビュー本文の更新スキーマ。**DB の列単位の `grant update` (0018) と 1:1 に対応させる**
@@ -195,6 +205,8 @@ export const ReviewImageSchema = createSelectSchema(reviewImages);
  * - object_key: **R2 のオブジェクトキー**。フル URL を入れない (配信 URL は
  *   読み取り時に組み立てる)。空白のみは拒否。
  * - sort_order: 0 以上。default 0。
+ * - width / height / variantWidths: 変換後の寸法と、作った表示用の幅 (one-more-time #163)。
+ *   行を足すのは変換したサーバーだけ (authenticated の INSERT は無い)
  */
 export const ReviewImageInsertSchema = createInsertSchema(reviewImages, {
   objectKey: z.string().trim().min(1, 'object_key must be non-blank'),
@@ -205,6 +217,10 @@ export const ReviewImageInsertSchema = createInsertSchema(reviewImages, {
     .int('sort_order must be an integer')
     .min(0, 'sort_order must be >= 0')
     .optional(),
+  // 変換後の寸法と作った段 (0021)。DB の CHECK (review_images_size_chk / _variant_widths_chk) と二段
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  variantWidths: z.array(z.number().int().positive()).min(1),
 });
 
 /**

@@ -33,7 +33,10 @@ import { getLocalSupabaseEnv } from './local-supabase';
 export type TestDataScope = {
   /** RLS を通らない管理用のクライアント。データの準備と後片付けにだけ使う */
   admin: SupabaseClient;
-  createEvent(input?: { name?: string }): Promise<{ id: number; slug: string }>;
+  /** categorySlug は企画の種別 (URL の第 1 階層) */
+  createEvent(input?: {
+    name?: string;
+  }): Promise<{ id: number; slug: string; categorySlug: string }>;
   createOccurrence(input: {
     eventId: number;
     verified: boolean;
@@ -69,16 +72,16 @@ export function createTestDataScope(): TestDataScope {
 
   async function createEvent(input: { name?: string } = {}) {
     const slug = uniqueSlug('event');
-    const categoryId = await anyCategoryId(admin);
+    const category = await anyCategory(admin);
     const { data, error } = await admin
       .from('events')
-      .insert({ slug, name: input.name ?? `テスト企画 ${slug}`, primary_category_id: categoryId })
+      .insert({ slug, name: input.name ?? `テスト企画 ${slug}`, primary_category_id: category.id })
       .select('id, slug')
       .single();
     if (error) throw new Error(`企画を作れませんでした: ${error.message}`);
 
     undo.push(() => deleteById(admin, 'events', data.id));
-    return data as { id: number; slug: string };
+    return { ...(data as { id: number; slug: string }), categorySlug: category.slug };
   }
 
   async function createOccurrence(input: {
@@ -165,7 +168,7 @@ export async function signInAsMember(member: TestMember): Promise<SupabaseClient
  */
 export async function createTestMember(
   admin: SupabaseClient,
-  input: { username?: string; onboarded?: boolean } = {},
+  input: { username?: string; onboarded?: boolean } = {}
 ): Promise<TestMember> {
   const suffix = randomSuffix();
   const email = `${TEST_DATA_PREFIX}${suffix}@example.com`;
@@ -220,16 +223,17 @@ async function deleteById(admin: SupabaseClient, table: string, id: number | str
   if (error) throw new Error(`${table} の ${id} を消せませんでした: ${error.message}`);
 }
 
-async function anyCategoryId(admin: SupabaseClient): Promise<number> {
+async function anyCategory(admin: SupabaseClient): Promise<{ id: number; slug: string }> {
   // 毎回同じカテゴリを使う (順序を決めないと、実行ごとに選ばれるカテゴリが変わりうる)
   const { data, error } = await admin
     .from('categories')
-    .select('id')
+    .select('id, slug')
     .order('id')
     .limit(1)
     .single();
-  if (error) throw new Error(`カテゴリが 1 件もありません (migration を確かめる): ${error.message}`);
-  return data.id as number;
+  if (error)
+    throw new Error(`カテゴリが 1 件もありません (migration を確かめる): ${error.message}`);
+  return data as { id: number; slug: string };
 }
 
 function uniqueSlug(kind: string): string {

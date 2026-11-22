@@ -53,7 +53,7 @@ function readBlock(selector: string): Tokens {
  * (子孫の要素に .dark を付けると、継承されるのは計算済みの値なので、この解決とは合わない)。
  */
 function makeResolver(...layers: Tokens[]) {
-  const lookup = (name: string) => layers.map((l) => l[name]).find((v) => v !== undefined);
+  const lookup = (name: string) => layers.map(l => l[name]).find(v => v !== undefined);
   const resolve = (v: string, depth = 0): string => {
     if (depth > 10) throw new Error(`var() の参照が循環している: ${v}`);
     const ref = v.match(/^var\((--[a-z0-9-]+)\)$/);
@@ -73,10 +73,8 @@ function channelLuminance(int8: number): number {
 
 function relativeLuminance(hex: string): number {
   const h = hex.replace('#', '');
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
-  return (
-    0.2126 * channelLuminance(r) + 0.7152 * channelLuminance(g) + 0.0722 * channelLuminance(b)
-  );
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+  return 0.2126 * channelLuminance(r) + 0.7152 * channelLuminance(g) + 0.0722 * channelLuminance(b);
 }
 
 /** WCAG コントラスト比 (1〜21)。 */
@@ -113,6 +111,7 @@ describe('デザイントークンの WCAG AA (4.5:1)', () => {
     ['開催予定バッジ', '--status-scheduled-ink', '--status-scheduled-surface'],
     ['終了バッジ', '--status-ended-ink', '--status-ended-surface'],
     ['中止バッジ', '--status-cancelled', '--status-cancelled-surface'],
+    ['公開中バッジ (口コミ)', '--success-ink', '--success-surface'],
     ['日程未発表バッジ (塗りなし)', '--status-scheduled-ink', '--bg-elevated'],
     // 残日数バッジ (淡色地に暗文字。白文字を載せてはいけない)
     ['残日数 soon', '--ink-strong', '--days-soon'],
@@ -190,7 +189,9 @@ describe('意味のトークンの WCAG AA (4.5:1、ライトとダーク)', () 
   });
 
   it('ダークのブロックは、文字の組と罫線・入力欄・フォーカスの意味のトークンを上書きする', () => {
-    const semantic = new Set(SEMANTIC_PAIRS.flatMap(([, fg, bg]) => [fg, bg]).concat(SEMANTIC_LINES));
+    const semantic = new Set(
+      SEMANTIC_PAIRS.flatMap(([, fg, bg]) => [fg, bg]).concat(SEMANTIC_LINES)
+    );
     for (const name of semantic) {
       expect(root).toHaveProperty([name]);
       expect(dark).toHaveProperty([name]);
@@ -222,7 +223,7 @@ describe('animate-[…] が参照する @keyframes の存在', () => {
 
   /** `components/` 配下の tsx を再帰的に読む。 */
   function readAllTsx(dir: string): string[] {
-    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) return readAllTsx(full);
       return entry.name.endsWith('.tsx') ? [readFileSync(full, 'utf8')] : [];
