@@ -46,6 +46,9 @@ export function HelpfulProvider(props: { reviewIds: number[]; children: ReactNod
 
   useEffect(() => {
     let active = true;
+    // ページが作り直されて一覧が変わったら、押した後の値を捨てて、描いた値から始め直す
+    setEntries(new Map());
+    setState(null);
     const ids = key ? key.split(',').map(Number) : [];
     getHelpfulState(ids)
       .then(result => active && setState(result))
@@ -116,8 +119,11 @@ export function HelpfulButton(props: { reviewId: number; count: number }) {
     if (!context) return;
     setError(null);
     setPending(true);
-    setError(await context.toggle(props.reviewId, entry));
-    setPending(false);
+    try {
+      setError(await context.toggle(props.reviewId, entry));
+    } finally {
+      setPending(false);
+    }
   }
 
   return (

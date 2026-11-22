@@ -129,7 +129,7 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
     if (result.error) throw new Error(`failed to load reviews: ${result.error.message}`);
   }
   // 集計が読めなくても、評価と口コミの一覧は出す (分布と行った人のデータだけを出さない)
-  const statRows = stats.error ? reportStatsFailure(stats.error) : (stats.data ?? []);
+  const statRows = stats.error ? reportStatsFailure(stats.error) : parseStatRows(stats.data ?? []);
 
   const ratingCount = Number(rating.data?.rating_count ?? 0);
   return {
@@ -137,7 +137,7 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
     ratingCount,
     latest: z.array(PublicReviewSchema).parse(latest.data ?? []),
     mostHelpful: z.array(PublicReviewSchema).parse(mostHelpful.data ?? []),
-    stats: toReviewStats(z.array(StatRowSchema).parse(statRows)),
+    stats: toReviewStats(statRows),
   };
 }
 
@@ -146,4 +146,14 @@ function reportStatsFailure(error: { message: string }): [] {
     tags: { query: 'occurrence_review_stats' },
   });
   return [];
+}
+
+/** 集計の行を読む。形の合わない行があっても欄ごと落とさず、読めた行だけで出す (読めない行は Sentry へ) */
+function parseStatRows(rows: unknown[]) {
+  const parsed = rows.map(row => StatRowSchema.safeParse(row));
+  const failed = parsed.filter(result => !result.success);
+  if (failed.length > 0) {
+    Sentry.captureException(failed[0].error, { tags: { query: 'occurrence_review_stats' } });
+  }
+  return parsed.flatMap(result => (result.success ? [result.data] : []));
 }

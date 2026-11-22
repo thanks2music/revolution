@@ -126,6 +126,13 @@ describe('口コミの集計と参考になった', () => {
       (await anonClient().from('reviews').select('helpful_count').eq('id', review.id).single()).data
         ?.helpful_count;
     expect(await count()).toBe(1);
+    // 件数の更新は内容の変更ではない (審査中に戻さず、最終編集日も入れない)
+    const { data: after } = await data.admin
+      .from('reviews')
+      .select('status, edited_at')
+      .eq('id', review.id)
+      .single();
+    expect(after).toEqual({ status: 'published', edited_at: null });
 
     const removed = await readerClient
       .from('review_helpful')
