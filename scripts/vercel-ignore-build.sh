@@ -1,16 +1,19 @@
 #!/bin/bash
-# Vercel の Ignored Build Step (revolution-phoenix-frontend 専用)
+# Vercel の Ignored Build Step (revolution-phoenix-frontend と revolution-phoenix-docs)
 #
-# Preview は、frontend のビルド結果を変えうるファイルが「比べる commit」から変わっていなければ
-# ビルドしない (Vercel 上は CANCELED になる)。比べる commit は、この branch で最後に成功した
-# デプロイ (VERCEL_GIT_PREVIOUS_SHA)。branch の初回デプロイでは main の先頭と比べる。
-# Production は常にビルドする。判定できない時は必ずビルドする
-# (ビルドしないのは「変わっていない」と確かめられた時だけ)。
-# Vercel の環境変数やプロジェクト設定だけを変えた時は commit に差分が出ないので、Preview はビルドしない。
-# Preview に反映するには、Vercel の Redeploy で「Use project's Ignore Build Step」を外す。
+# Vercel Hobby の deploy は 1 日 100 回まで。build を止めた deploy (CANCELED) も数えられる
+# (2026-11-22 の実績で確かめた)。そのため deploy を作るかどうかは、ここより前で決める:
+#   - Preview: Git からの自動 deploy は main 以外で止めてある (apps/*/vercel.json の git.deploymentEnabled)。
+#     GitHub Actions (.github/workflows/vercel-preview.yml) が、要る時だけ API で作る。ここでは常にビルドする
+#   - Production (main へのマージ): Git からの自動 deploy のまま。そのアプリの入力が、前回の成功デプロイ
+#     (VERCEL_GIT_PREVIOUS_SHA) から変わっていなければビルドしない (Vercel 上は CANCELED。回数には数えられる)
+# 判定できない時は必ずビルドする (ビルドしないのは「変わっていない」と確かめられた時だけ)。
+# Vercel の環境変数やプロジェクト設定だけを変えた時は commit に差分が出ないので、本番はビルドしない。
+# 反映するには、Vercel の Redeploy で「Use project's Ignore Build Step」を外す。
 #
-# Usage (apps/frontend/vercel.json の ignoreCommand。Vercel は Root Directory = apps/frontend で実行する):
-#   bash ../../scripts/vercel-ignore-build.sh
+# Usage:
+#   bash ../../scripts/vercel-ignore-build.sh <frontend|docs>   # Vercel の ignoreCommand (Root Directory = apps/<app>)
+#   bash scripts/vercel-ignore-build.sh --paths <frontend|docs> # そのアプリの入力の一覧を 1 行ずつ出す (Actions が使う)
 #
 # 終了コード (Vercel の規約): 0 = ビルドしない / 1 = ビルドする
 #   https://vercel.com/docs/project-configuration/vercel-json#ignorecommand
@@ -33,16 +36,16 @@ on_exit() {
 }
 trap on_exit EXIT
 
-# frontend のビルド結果を変えうるパス (リポジトリのルートからの pathspec。ディレクトリならその配下すべてに当たる)。
-# 足すのは自由。消すのは、frontend の build も実行時も読まないと確かめてから。
-# lockfile はファイル単位なので、frontend に関係ない依存の更新でもビルドする
-MUST_BUILD_PATHS=(
+# アプリのビルド結果を変えうるパス (リポジトリのルートからの git の pathspec。ディレクトリならその配下すべてに当たる)。
+# 足すのは自由。消すのは、そのアプリの build も実行時も読まないと確かめてから。
+# lockfile はファイル単位なので、そのアプリに関係ない依存の更新でもビルドする
+FRONTEND_PATHS=(
   apps/frontend                  # アプリ本体 (vercel.json を含む)
   apps/ai-writer/content         # 記事の MDX (lib/mdx/articles.ts が build 時と実行時に読む。build の前に作る索引の元)
   apps/ai-writer/scripts/generate-article-index.ts # build の前に索引を作るスクリプトと、その import 先
   apps/ai-writer/lib/mdx/parse-frontmatter.ts
   apps/ai-writer/lib/utils/date.ts
-  shared                         # @revolution/schemas (next.config.mjs の transpilePackages)
+  shared                         # @revolution/schemas など (next.config.mjs の transpilePackages)
   package.json                   # ルートの package.json だけに当たる
   pnpm-lock.yaml
   pnpm-workspace.yaml
@@ -52,23 +55,55 @@ MUST_BUILD_PATHS=(
   turbo.json
   scripts/vercel-ignore-build.sh # この判定そのもの
 )
-BASE_BRANCH=main
+DOCS_PATHS=(
+  apps/docs                      # アプリ本体 (vercel.json を含む)
+  ':(glob)docs/*.md'             # repo 直下の docs/ の直下だけ (apps/docs/lib/source.ts が読む。archive/ などは読まない)
+  docs/meta.json
+  shared
+  package.json
+  pnpm-lock.yaml
+  pnpm-workspace.yaml
+  .npmrc
+  .pnpmfile.cjs
+  patches
+  turbo.json
+  scripts/vercel-ignore-build.sh
+)
+
 
 build() { decided=1; echo "[ignore-build] build: $*"; exit 1; }
 skip() { decided=1; echo "[ignore-build] skip: $*"; exit 0; }
 
-# ビルドしない判定に進むのは Preview だけ。VERCEL_ENV が無い時 (システム環境変数を公開する設定が
-# 外れた時など) もビルドする
+if [ "${1:-}" = "--paths" ]; then
+  decided=1
+  case "${2:-}" in
+    frontend) printf '%s\n' "${FRONTEND_PATHS[@]}" ;;
+    docs) printf '%s\n' "${DOCS_PATHS[@]}" ;;
+    *) echo "usage: $0 --paths <frontend|docs>" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
+
+app="${1:-}"
+case "$app" in
+  frontend) MUST_BUILD_PATHS=("${FRONTEND_PATHS[@]}") ;;
+  docs) MUST_BUILD_PATHS=("${DOCS_PATHS[@]}") ;;
+  *) build "アプリの指定が無い・知らない (${app:-未指定})" ;;
+esac
+
+# ビルドしない判定に進むのは Production だけ。Preview は Actions が要る時だけ作っている。
+# VERCEL_ENV が無い時 (システム環境変数を公開する設定が外れた時など) もビルドする
 case "${VERCEL_ENV:-}" in
-  preview) ;;
-  production) build "Production は常にビルドする" ;;
-  *) build "Preview ではない (VERCEL_ENV=${VERCEL_ENV:-未設定})" ;;
+  production) ;;
+  preview) build "Preview は GitHub Actions が要る時だけ作っている" ;;
+  *) build "Production ではない (VERCEL_ENV=${VERCEL_ENV:-未設定})" ;;
 esac
 
 head_sha=$(git rev-parse --verify --quiet 'HEAD^{commit}') || build "git の作業ツリーではない (HEAD を読めない)"
 base=${VERCEL_GIT_PREVIOUS_SHA:-}
+[ -n "$base" ] || build "前回の成功デプロイが分からない (このアプリの初めての本番)"
 # git の引数に渡すので、commit の SHA (40 桁の 16 進数) でなければビルドする
-if [ -n "$base" ] && ! [[ "$base" =~ ^[0-9a-f]{40}$ ]]; then
+if ! [[ "$base" =~ ^[0-9a-f]{40}$ ]]; then
   build "VERCEL_GIT_PREVIOUS_SHA が commit の SHA ではない"
 fi
 [ "$base" != "$head_sha" ] || build "前回と同じ commit (手動の Redeploy)"
@@ -90,23 +125,17 @@ fetch_commit() {
     fetch --quiet --no-tags --depth=1 --filter=blob:none "$remote" "$1" 2>/dev/null
 }
 
-if [ -z "$base" ]; then
-  fetch_commit "refs/heads/$BASE_BRANCH" || build "branch の初回デプロイで $BASE_BRANCH を取得できない"
-  base=$(sgit rev-parse --verify --quiet 'FETCH_HEAD^{commit}') || build "$BASE_BRANCH の commit を読めない"
-  against="$BASE_BRANCH の先頭 (${base:0:12})"
-else
-  against="前回の成功デプロイ (${base:0:12})"
-  if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-    fetch_commit "$base" || build "$against を取得できない"
-    sgit cat-file -e "$base^{commit}" 2>/dev/null || build "$against が無い"
-  fi
+against="前回の成功デプロイ (${base:0:12})"
+if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+  fetch_commit "$base" || build "$against を取得できない"
+  sgit cat-file -e "$base^{commit}" 2>/dev/null || build "$against が無い"
 fi
 git rev-parse --path-format=absolute --git-path objects > "$scratch/objects/info/alternates"
 
 # --no-renames: rename の判定はファイルの中身を読むため、取っていない blob を取りに行ってしまう
 changed=$(sgit diff --no-renames --name-only "$base" "$head_sha" -- "${MUST_BUILD_PATHS[@]}") \
   || build "git diff が失敗した"
-[ -n "$changed" ] || skip "frontend の入力は $against から変わっていない"
+[ -n "$changed" ] || skip "$app の入力は $against から変わっていない"
 echo "[ignore-build] 変わったファイル (先頭 20 件):"
 head -n 20 <<< "$changed"
-build "frontend の入力が $against から変わった"
+build "$app の入力が $against から変わった"

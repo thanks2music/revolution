@@ -1,0 +1,130 @@
+name: Vercel Preview
+
+# PR の Vercel の Preview を、要る時だけ作る。
+#
+# Vercel Hobby の deploy は 1 日 100 回まで。build を止めた deploy (Ignored Build Step で CANCELED) も
+# 数えられる。そのため Git からの自動 deploy は main 以外で止め (apps/*/vercel.json の
+# git.deploymentEnabled)、Preview はここから Vercel の API で作る。本番 (main) は Git からの自動のまま。
+#
+# | アプリ   | 作る時                                                                 |
+# |----------|------------------------------------------------------------------------|
+# | frontend | PR に `preview` のラベルがある時。付けた時と、その後の frontend の入力を変えた push |
+# | docs     | docs の入力を変えた push (ラベルは要らない)                            |
+#
+# 入力の一覧は scripts/vercel-ignore-build.sh の --paths (本番の判定と同じ一覧)。
+# fork からの PR では動かない (secret が渡らない)。
+#
+# secrets: VERCEL_FRONTEND_TOKEN / VERCEL_DOCS_TOKEN (それぞれのプロジェクトだけを範囲にしたトークン)
+# variables: VERCEL_TEAM_ID / VERCEL_FRONTEND_PROJECT_ID / VERCEL_DOCS_PROJECT_ID
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: frontend
+            project: revolution-phoenix-frontend
+            label: preview
+          - app: docs
+            project: revolution-phoenix-docs
+            label: ''
+    concurrency:
+      group: vercel-preview-${{ matrix.app }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide whether to deploy
+        id: decide
+        env:
+          APP: ${{ matrix.app }}
+          REQUIRED_LABEL: ${{ matrix.label }}
+          ACTION: ${{ github.event.action }}
+          ADDED_LABEL: ${{ github.event.label.name }}
+          HAS_LABEL: ${{ matrix.label != '' && contains(github.event.pull_request.labels.*.name, matrix.label) }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          decide() { echo "deploy=$1" >> "$GITHUB_OUTPUT"; echo "$APP: $2"; exit 0; }
+
+          if [ -n "$REQUIRED_LABEL" ] && [ "$HAS_LABEL" != "true" ]; then
+            decide false "ラベル ${REQUIRED_LABEL} が無い"
+          fi
+          if [ "$ACTION" = "labeled" ]; then
+            # 付けたのがこのアプリのラベルなら、入力を見ずに作る。ほかのラベルでは作らない
+            if [ -n "$REQUIRED_LABEL" ] && [ "$ADDED_LABEL" = "$REQUIRED_LABEL" ]; then
+              decide true "ラベル ${REQUIRED_LABEL} を付けた"
+            fi
+            decide false "ほかのラベルの追加"
+          fi
+
+          # push (synchronize) は push の前と比べる。前の commit が無い (force push など) 時と、
+          # opened / reopened は base との分岐点と比べる
+          from=""
+          if [ "$ACTION" = "synchronize" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            from="$BEFORE"
+          else
+            from=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
+          fi
+          mapfile -t paths < <(bash scripts/vercel-ignore-build.sh --paths "$APP")
+          changed=$(git diff --no-renames --name-only "$from" "$HEAD_SHA" -- "${paths[@]}")
+          if [ -z "$changed" ]; then
+            decide false "入力が ${from:0:12} から変わっていない"
+          fi
+          echo "変わったファイル (先頭 20 件):"
+          head -n 20 <<< "$changed"
+          decide true "入力が ${from:0:12} から変わった"
+
+      - name: Create the Preview deployment
+        if: steps.decide.outputs.deploy == 'true'
+        env:
+          VERCEL_TOKEN: ${{ matrix.app == 'frontend' && secrets.VERCEL_FRONTEND_TOKEN || secrets.VERCEL_DOCS_TOKEN }}
+          TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+          PROJECT_ID: ${{ matrix.app == 'frontend' && vars.VERCEL_FRONTEND_PROJECT_ID || vars.VERCEL_DOCS_PROJECT_ID }}
+          PROJECT_NAME: ${{ matrix.project }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          REF: ${{ github.event.pull_request.head.ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          for name in VERCEL_TOKEN TEAM_ID PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error title=Missing setting::$name が設定されていない (secrets / variables)"
+              exit 1
+            fi
+          done
+          # Git の commit から Vercel に build させる (プロジェクトの環境変数がそのまま使われる)
+          body=$(jq -n --arg name "$PROJECT_NAME" --arg project "$PROJECT_ID" \
+            --arg org "$OWNER" --arg repo "$REPO" --arg ref "$REF" --arg sha "$SHA" \
+            '{name: $name, project: $project, gitSource: {type: "github", org: $org, repo: $repo, ref: $ref, sha: $sha}}')
+          response=$(mktemp)
+          status=$(curl -sS -o "$response" -w '%{http_code}' -X POST \
+            "https://api.vercel.com/v13/deployments?teamId=${TEAM_ID}&skipAutoDetectionConfirmation=1" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" -H 'Content-Type: application/json' -d "$body")
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            # 応答の本文はそのまま出さない (エラーの種類と文だけ)
+            echo "::error title=Vercel API ${status}::$(jq -r '.error.code + ": " + .error.message' "$response" 2>/dev/null || echo 'unreadable response')"
+            exit 1
+          fi
+          url=$(jq -r '.url // empty' "$response")
+          echo "Preview: https://${url}"
+          echo "- ${PROJECT_NAME}: https://${url}" >> "$GITHUB_STEP_SUMMARY"
