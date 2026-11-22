@@ -12,9 +12,9 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
-import { z } from 'zod';
 
 import { getCurrentMember, memberRedirect } from '@/lib/auth/member';
+import { parseIdList } from '@/lib/validation/id-list';
 import { createClient } from '@/lib/supabase/server';
 
 const PG_UNIQUE_VIOLATION = '23505';
@@ -35,11 +35,7 @@ type HelpfulState = { viewer: Viewer; marked: number[] };
 /** 会員が「参考になった」を押した口コミ (渡した中から) */
 export async function getHelpfulState(reviewIds: number[]): Promise<HelpfulState> {
   try {
-    // 配列か確かめてから先頭の上限件数だけを確かめる (投げずに、確かめる量も上限に抑える)
-    const ids = z
-      .array(z.number().int().positive())
-      .safeParse(Array.isArray(reviewIds) ? reviewIds.slice(0, MAX_STATE_IDS) : null);
-    const idsToAsk = ids.success ? ids.data : [];
+    const idsToAsk = parseIdList(reviewIds, MAX_STATE_IDS);
     const member = await getCurrentMember();
     if (!member.ok) return { viewer: memberRedirect(member.reason), marked: [] };
     if (idsToAsk.length === 0) return { viewer: 'member', marked: [] };

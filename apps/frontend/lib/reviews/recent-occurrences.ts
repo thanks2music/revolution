@@ -2,7 +2,7 @@
  * 最近見た開催 (7-0 の「最近見た開催」、one-more-time #166)。ブラウザの localStorage に、新しい順で ID を残す。
  * 読めない・書けない時 (プライベートブラウズなど) は、何もしない (画面の表示を止めない)。
  */
-export const RECENT_OCCURRENCES_KEY = 'recent-occurrences';
+const RECENT_OCCURRENCES_KEY = 'recent-occurrences';
 export const RECENT_OCCURRENCES_LIMIT = 10;
 
 /** 新しく見た開催を先頭に足す (同じ開催は前の位置から外す) */

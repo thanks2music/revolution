@@ -3,7 +3,9 @@ import 'server-only';
 import { z } from 'zod';
 
 import { OccurrenceStatusSchema, type OccurrenceStatus } from '@revolution/schemas/occurrence';
+import type { ReviewStatus } from '@revolution/schemas/review';
 
+import { PRIMARY_CATEGORY_EMBED } from '@/lib/event/contracts';
 import { getOccurrenceUrl } from '@/lib/event/event-url';
 import { todayInJst } from '@/lib/occurrence/status';
 import { authoringMode } from '@/lib/reviews/eligibility';
@@ -32,14 +34,15 @@ export type ReviewTarget = {
 const SEARCH_LIMIT = 30;
 /** 名前で探す時に、作品・企画・会場それぞれから拾う件数の上限 */
 const MATCH_LIMIT = 50;
-/** 検索の言葉の長さの上限 */
-const MAX_QUERY_LENGTH = 50;
+/** 検索の言葉の長さの上限 (7-0 の入力欄の maxLength も使う) */
+export const MAX_QUERY_LENGTH = 50;
 
-const TARGET_COLUMNS =
+/** 口コミを書く開催の 1 行に要る列。自分の口コミの一覧 (own-reviews.ts) も同じ列を埋め込む */
+export const REVIEW_TARGET_COLUMNS =
   'id, slug, status, starts_on, ends_on, venue_label, venues(name), ' +
-  'events!inner(id, name, primaryCategory:categories!primary_category_id(slug))';
+  `events!inner(id, name, ${PRIMARY_CATEGORY_EMBED})`;
 
-const TargetRowSchema = z.object({
+export const ReviewTargetRowSchema = z.object({
   id: z.number(),
   slug: z.string(),
   status: OccurrenceStatusSchema,
@@ -53,8 +56,17 @@ const TargetRowSchema = z.object({
     primaryCategory: z.object({ slug: z.string() }),
   }),
 });
+export type ReviewTargetRow = z.infer<typeof ReviewTargetRowSchema>;
 
-function toTarget(row: z.infer<typeof TargetRowSchema>, today: string): ReviewTarget {
+/**
+ * 行を画面の形にする。own (会員のこの開催の口コミ) を渡すと、書けるかは「その口コミを直せるか」になる
+ * (提出した口コミは、中止になった開催でも直せる。`authoringMode`)
+ */
+export function toTarget(
+  row: ReviewTargetRow,
+  today: string,
+  own: { status: ReviewStatus; visitedOn: string | null } | null = null
+): ReviewTarget {
   return {
     occurrenceId: row.id,
     eventName: row.events.name,
@@ -72,7 +84,7 @@ function toTarget(row: z.infer<typeof TargetRowSchema>, today: string): ReviewTa
         startsOn: row.starts_on,
         endsOn: row.ends_on,
         today,
-        own: null,
+        own,
       }).kind !== 'blocked',
   };
 }
@@ -80,7 +92,7 @@ function toTarget(row: z.infer<typeof TargetRowSchema>, today: string): ReviewTa
 function parseTargets(rows: unknown[]): ReviewTarget[] {
   const today = todayInJst();
   return z
-    .array(TargetRowSchema)
+    .array(ReviewTargetRowSchema)
     .parse(rows)
     .map(row => toTarget(row, today));
 }
@@ -172,7 +184,10 @@ export async function searchReviewTargets(query: string): Promise<ReviewTarget[]
   ].filter(Boolean);
   if (conditions.length === 0) return [];
   const list = (writable: boolean) => {
-    const query = supabase.from('occurrence_view').select(TARGET_COLUMNS).or(conditions.join(','));
+    const query = supabase
+      .from('occurrence_view')
+      .select(REVIEW_TARGET_COLUMNS)
+      .or(conditions.join(','));
     return (
       writable
         ? query.in('status', WRITABLE_STATUSES)
@@ -199,7 +214,7 @@ export async function getReviewTargets(occurrenceIds: number[]): Promise<ReviewT
   const supabase = createPublicClient();
   const { data, error } = await supabase
     .from('occurrence_view')
-    .select(TARGET_COLUMNS)
+    .select(REVIEW_TARGET_COLUMNS)
     .in('id', occurrenceIds);
   if (error) throw error;
   const byId = new Map(parseTargets(data ?? []).map(target => [target.occurrenceId, target]));

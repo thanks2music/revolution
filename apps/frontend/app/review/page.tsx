@@ -17,7 +17,12 @@ import {
 import Layout from '@/components/templates/Layout';
 import { getCurrentMember } from '@/lib/auth/member';
 import { listOwnReviews } from '@/lib/reviews/own-reviews';
-import { normalizeQuery, searchReviewTargets, type ReviewTarget } from '@/lib/reviews/picker';
+import {
+  MAX_QUERY_LENGTH,
+  normalizeQuery,
+  searchReviewTargets,
+  type ReviewTarget,
+} from '@/lib/reviews/picker';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const metadata: Metadata = {
@@ -52,7 +57,7 @@ export default async function ReviewPickerPage(props: { searchParams: Promise<{ 
             name="q"
             defaultValue={query ?? ''}
             placeholder="作品名・会場名で探す"
-            maxLength={50}
+            maxLength={MAX_QUERY_LENGTH}
             className="w-full rounded-xl border border-(--line-soft) bg-muted/40 px-4 py-3 text-sm text-ink-strong placeholder:text-ink-muted"
           />
         </form>
@@ -99,17 +104,7 @@ async function loadOwnTargets(): Promise<ReviewTarget[]> {
     const member = await getCurrentMember();
     const admin = createAdminClient();
     if (!member.ok || !admin) return [];
-    const reviews = await listOwnReviews(admin, member.profileId);
-    return reviews.map(review => ({
-      occurrenceId: review.occurrence.id,
-      eventName: review.eventName,
-      venueName: review.venueName,
-      status: review.occurrence.status,
-      startsOn: review.occurrence.startsOn,
-      endsOn: review.occurrence.endsOn,
-      occurrencePath: review.occurrencePath,
-      canWrite: review.canEdit,
-    }));
+    return (await listOwnReviews(admin, member.profileId)).map(review => review.target);
   } catch (error) {
     Sentry.captureException(error, { tags: { page: 'review-picker', part: 'own-reviews' } });
     return [];

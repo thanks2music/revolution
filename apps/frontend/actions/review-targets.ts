@@ -8,21 +8,14 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
-import { z } from 'zod';
 
 import { getReviewTargets, type ReviewTarget } from '@/lib/reviews/picker';
-
-/** 最近見た開催の件数の上限 (ブラウザに残す数と同じ) */
-const MAX_RECENT = 10;
+import { RECENT_OCCURRENCES_LIMIT } from '@/lib/reviews/recent-occurrences';
+import { parseIdList } from '@/lib/validation/id-list';
 
 export async function getRecentReviewTargets(occurrenceIds: number[]): Promise<ReviewTarget[]> {
   try {
-    // 公開の action なので、配列か確かめてから先頭の上限件数だけを確かめる (投げずに空を返す)
-    const ids = z
-      .array(z.number().int().positive())
-      .safeParse(Array.isArray(occurrenceIds) ? occurrenceIds.slice(0, MAX_RECENT) : null);
-    if (!ids.success) return [];
-    return await getReviewTargets(ids.data);
+    return await getReviewTargets(parseIdList(occurrenceIds, RECENT_OCCURRENCES_LIMIT));
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'getRecentReviewTargets' } });
     return [];

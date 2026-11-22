@@ -19,11 +19,10 @@ export function RecentReviewTargets(props: {
   excludeIds: number[];
 }) {
   const [targets, setTargets] = useState<ReviewTarget[] | null>(null);
-  const exclude = props.excludeIds.join(',');
 
   useEffect(() => {
     let active = true;
-    const excluded = new Set(exclude ? exclude.split(',').map(Number) : []);
+    const excluded = new Set(props.excludeIds);
     const ids = readRecent().filter(id => !excluded.has(id));
     // 0 件でも action を通す (action は空の一覧に空を返す。effect の中で直に state を書かない)
     getRecentReviewTargets(ids)
@@ -32,7 +31,7 @@ export function RecentReviewTargets(props: {
     return () => {
       active = false;
     };
-  }, [exclude]);
+  }, [props.excludeIds]);
 
   if (!targets || targets.length === 0) return null;
   const writable = targets.filter(target => target.canWrite);

@@ -3,14 +3,13 @@
  * - notYet: 開催前。始まると書けること (いつから書けるか)
  * - empty: 開催中・終了で 0 件。最初の口コミを書く
  * - ended: 終了した開催 (口コミあり)。終わった後も書ける
- * 中止・日程未発表には出さない (評価の欄ごと出さない。`reviewSectionMode`)。
+ * どれを出すかは `reviewStateKind` (lib/reviews/eligibility.ts) が決める。
  */
 
 import Link from 'next/link';
 
 import { toDotDate } from '@/lib/date';
-
-export type ReviewStateKind = 'notYet' | 'empty' | 'ended';
+import type { ReviewStateKind } from '@/lib/reviews/eligibility';
 
 const CARDS = {
   notYet: { title: '開催が始まると口コミを書けます', tone: 'bg-muted/60' },
@@ -48,15 +47,4 @@ export function ReviewStateCard(props: {
       )}
     </div>
   );
-}
-
-/** 開催の状態と件数から、出す状態を選ぶ (開催中で口コミがある時は、大きな「口コミを書く」だけを出すので null) */
-export function reviewStateKind(input: {
-  mode: 'full' | 'notYet';
-  occurrenceStatus: string;
-  ratingCount: number;
-}): ReviewStateKind | null {
-  if (input.mode === 'notYet') return 'notYet';
-  if (input.ratingCount === 0) return 'empty';
-  return input.occurrenceStatus === 'ended' ? 'ended' : null;
 }

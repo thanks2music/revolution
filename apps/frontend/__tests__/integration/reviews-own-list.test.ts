@@ -68,12 +68,12 @@ describe('自分の口コミの一覧', () => {
     const list = await listOwnReviews(data.admin, member.userId);
 
     expect(list.map(item => item.status).sort()).toEqual(['draft', 'rejected']);
-    expect(list.every(item => item.canEdit)).toBe(true);
+    expect(list.every(item => item.target.canWrite)).toBe(true);
     expect(list.find(item => item.id === rejected)).toMatchObject({
       reasonCode: 'resale',
       reasonNote: '譲渡の呼びかけの部分を直してください',
       visitedOn: jstDate(-1),
-      eventName: expect.stringContaining('テスト企画'),
+      target: expect.objectContaining({ eventName: expect.stringContaining('テスト企画') }),
       route: {
         eventId: String(b.event.id),
         eventType: b.event.categorySlug,
@@ -113,7 +113,7 @@ describe('自分の口コミの一覧', () => {
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({
       status: 'draft',
-      canEdit: false,
+      target: expect.objectContaining({ canWrite: false }),
       route: { occurrenceSlug: cancelledOcc.slug },
     });
   });

@@ -39,8 +39,7 @@ describe('listOwnReviews', () => {
 
     expect(list.map(review => review.id)).toEqual([1]);
     expect(list[0]).toMatchObject({
-      canEdit: true,
-      occurrencePath: '/collabo-cafe/12/shibuya',
+      target: { canWrite: true, occurrencePath: '/collabo-cafe/12/shibuya' },
       route: { eventType: 'collabo-cafe', eventId: '12', occurrenceSlug: 'shibuya' },
     });
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);

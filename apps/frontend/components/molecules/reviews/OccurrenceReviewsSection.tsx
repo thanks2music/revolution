@@ -3,13 +3,13 @@ import Link from 'next/link';
 import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 
 import { remainingDays } from '@/lib/occurrence/status';
-import { reviewSectionMode } from '@/lib/reviews/eligibility';
+import { reviewSectionMode, reviewStateKind } from '@/lib/reviews/eligibility';
 import type { PublicReview } from '@/lib/reviews/queries';
 import type { ReviewStats } from '@/lib/reviews/stats';
 
 import { HelpfulProvider } from './HelpfulButton';
 import { OwnReviewStatus } from './OwnReviewStatus';
-import { ReviewStateCard, reviewStateKind } from './ReviewStateCard';
+import { ReviewStateCard } from './ReviewStateCard';
 import { ReviewCard } from './ReviewCard';
 import { ReviewSortTabs } from './ReviewSortTabs';
 import { RatingDistribution, VisitorData } from './ReviewStatsBars';
@@ -38,11 +38,7 @@ export function OccurrenceReviewsSection(props: {
   const mode = reviewSectionMode(props.status);
   if (mode === 'none') return null;
   // 口コミの状態 (開催前・0 件・終了)。開催中で口コミがある時は、大きな「口コミを書く」だけを出す
-  const stateKind = reviewStateKind({
-    mode,
-    occurrenceStatus: props.status,
-    ratingCount: props.ratingCount,
-  });
+  const stateKind = reviewStateKind(props.status, props.ratingCount);
 
   return (
     <section aria-labelledby="reviews-heading" className="mb-10 flex flex-col gap-4">
