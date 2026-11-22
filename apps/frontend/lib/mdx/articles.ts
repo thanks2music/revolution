@@ -59,8 +59,9 @@ export type { ArticleIndex, ArticleIndexItem };
  * Note: Turbopackの静的解析警告を回避するため、固定パスを使用
  *
  * Dev caveat: `next dev` で Fast Refresh の cycle を跨いでもこの module-level
- * シングルトンは Node プロセス寿命の間生き残る。ビルド済みの
- * `article-index.json` を更新したら dev サーバを再起動して反映させること。
+ * シングルトンは Node プロセス寿命の間生き残る。記事の MDX を足したら、
+ * dev サーバを再起動して反映させること (`pnpm dev` は起動の前に `article-index.json` を作り直す。
+ * このファイルはコミットしない派生物)。
  */
 let cachedIndex: ArticleIndex | null = null;
 
@@ -79,7 +80,7 @@ export function getArticleIndex(): ArticleIndex {
 
   if (!fs.existsSync(indexPath)) {
     throw new Error(
-      `article-index.json not found at ${indexPath}. Please run \`pnpm --filter @revolution/frontend generate:article-index\` before building.`
+      `article-index.json not found at ${indexPath}. It is not committed; run \`pnpm --filter frontend-nextjs-headless-cms generate:article-index\` (build / dev / type-check run it first).`
     );
   }
 

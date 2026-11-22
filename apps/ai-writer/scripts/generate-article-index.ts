@@ -7,13 +7,17 @@
  *   pnpm generate:article-index
  *   pnpm generate:article-index --dry-run
  *   pnpm generate:article-index --verbose
+ *   pnpm generate:article-index --output /tmp/article-index.json
  *
  * オプション:
- *   --dry-run    ファイル出力をスキップ（プレビューのみ）
- *   --verbose    詳細ログを出力
+ *   --dry-run          ファイル出力をスキップ（プレビューのみ）
+ *   --verbose          詳細ログを出力
+ *   --output <path>    出力先を変える (テスト用。既定は下の出力先)
  *
  * 出力先:
  *   apps/frontend/lib/mdx/article-index.json
+ *   このファイルはコミットしない (gitignore 済み)。frontend の build / dev などが使う前に
+ *   本スクリプトで作る (apps/frontend/package.json の generate:article-index)
  *
  * @module scripts/generate-article-index
  */
@@ -35,6 +39,8 @@ const __dirname = dirname(__filename);
 interface CliArgs {
   dryRun: boolean;
   verbose: boolean;
+  /** 出力先。未指定なら frontend の lib/mdx/article-index.json */
+  output?: string;
 }
 
 /**
@@ -94,9 +100,16 @@ interface ArticleIndex {
  */
 function parseArgs(): CliArgs {
   const args = process.argv.slice(2);
+  const outputIndex = args.indexOf('--output');
+  const output = outputIndex === -1 ? undefined : args[outputIndex + 1];
+  if (outputIndex !== -1 && (!output || output.startsWith('--'))) {
+    console.error('❌ --output には出力先のパスを指定してください');
+    process.exit(1);
+  }
   return {
     dryRun: args.includes('--dry-run'),
     verbose: args.includes('--verbose'),
+    output,
   };
 }
 
@@ -245,7 +258,7 @@ async function processmdxFile(
  * メイン処理
  */
 async function main(): Promise<void> {
-  const { dryRun, verbose } = parseArgs();
+  const { dryRun, verbose, output } = parseArgs();
 
   console.log('📚 article-index.json 生成スクリプト\n');
   console.log('='.repeat(60));
@@ -260,7 +273,9 @@ async function main(): Promise<void> {
 
   // パス設定
   const contentDir = resolve(__dirname, '../content');
-  const outputPath = resolve(__dirname, '../../frontend/lib/mdx/article-index.json');
+  const outputPath = output
+    ? resolve(process.cwd(), output)
+    : resolve(__dirname, '../../frontend/lib/mdx/article-index.json');
 
   console.log(`📁 コンテンツディレクトリ: ${contentDir}`);
   console.log(`📄 出力先: ${outputPath}`);

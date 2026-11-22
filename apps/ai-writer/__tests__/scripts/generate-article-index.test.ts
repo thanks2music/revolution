@@ -49,7 +49,8 @@
 
 import { describe, it, expect } from '@jest/globals';
 import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import { ArticleIndexSchema } from '@revolution/schemas/article-index';
 
@@ -526,18 +527,25 @@ describe('generate-article-index.ts', () => {
     });
   });
 
-  // commit 済みの article-index.json (出荷物) が schema 契約に適合するかを検証する回帰テスト
+  // 実際に書き出す article-index.json が schema 契約に適合するかを検証する回帰テスト。
+  // 索引はコミットしない (build の前に作る) ので、一時ディレクトリに書き出して確かめる
   describe('Schema-SDD compliance', () => {
     it('article-index.json should pass ArticleIndexSchema.safeParse', () => {
-      const articleIndexPath = join(
-        __dirname,
-        '../../../frontend/lib/mdx/article-index.json'
-      );
-      const indexData = JSON.parse(readFileSync(articleIndexPath, 'utf-8'));
-      const result = ArticleIndexSchema.safeParse(indexData);
-      // result.error?.issues を [] と比較することで失敗時に Jest が diff として
-      // issues を表示。1 expect で「成功確認」と「失敗時の詳細」を兼ねる。
-      expect(result.error?.issues ?? []).toEqual([]);
+      const tmpDir = mkdtempSync(join(tmpdir(), 'article-index-'));
+      const articleIndexPath = join(tmpDir, 'article-index.json');
+      try {
+        execSync(
+          `cd ${join(__dirname, '../..')} && npx tsx scripts/generate-article-index.ts --output ${articleIndexPath}`,
+          { encoding: 'utf-8' }
+        );
+        const indexData = JSON.parse(readFileSync(articleIndexPath, 'utf-8'));
+        const result = ArticleIndexSchema.safeParse(indexData);
+        // result.error?.issues を [] と比較することで失敗時に Jest が diff として
+        // issues を表示。1 expect で「成功確認」と「失敗時の詳細」を兼ねる。
+        expect(result.error?.issues ?? []).toEqual([]);
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 });

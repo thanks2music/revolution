@@ -36,6 +36,8 @@ case "$CMD" in
   frontend)
     echo "Starting frontend on port $FRONTEND_PORT..."
     cd "$WORKTREE_ROOT/apps/frontend"
+    # 記事の索引はコミットしていないので、起動の前に作る (apps/frontend/package.json の generate:article-index)
+    pnpm generate:article-index
     exec pnpm exec next dev --port "$FRONTEND_PORT"
     ;;
   ai-writer)
