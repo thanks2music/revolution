@@ -1,7 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 
 import type { AiProvider } from '@/lib/ai/providers/ai-provider.interface';
-import { TitleGenerationService } from '@/lib/services/title-generation.service';
+import { TitleGenerationError, TitleGenerationService } from '@/lib/services/title-generation.service';
 import type { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loader.service';
 
 /**
@@ -53,5 +53,114 @@ describe('TitleGenerationService の開催都市', () => {
     const result = await service.generateTitle({ ...REQUEST, extractedCityLabel: '4都市' });
 
     expect(result.title).toBe('ヒロアカ カフェ in 4都市 10月16日よりコラボ開催');
+  });
+});
+
+/**
+ * 応答の形と文字数の扱い (2026-11-18)。
+ *
+ * Gemini が `[ { "title": ... } ]` と配列で返し、以前の「応答の最初の行をタイトルにする」処理で
+ * タイトルが「[」になった。文字数を外れても警告だけで記事に使っていたので、PR まで進んだ。
+ */
+describe('TitleGenerationService の応答の検証と作り直し', () => {
+  const VALID = 'BANANA FISH カフェ&バー in 新宿 11月26日よりコラボ開催'; // 38 字
+  const USAGE = { promptTokens: 10, completionTokens: 5, totalTokens: 15 };
+
+  function setupSequence(contents: string[]) {
+    const sendMessage = jest.fn(async (_prompt: string, _options?: unknown) => ({
+      content: contents[Math.min(sendMessage.mock.calls.length - 1, contents.length - 1)],
+      model: 'test-model',
+      usage: USAGE,
+    }));
+    const loader = { loadModularTemplate: async () => TEMPLATE } as unknown as YamlTemplateLoaderService;
+    const service = new TitleGenerationService(loader, { sendMessage } as unknown as AiProvider);
+    return { service, sendMessage };
+  }
+
+  const json = (title: string) => JSON.stringify({ title, _reasoning: '理由' });
+
+  it('応答の形 (title と _reasoning) を schema として provider に渡す', async () => {
+    const { service, sendMessage } = setupSequence([json(VALID)]);
+    await service.generateTitle(REQUEST);
+
+    const options = sendMessage.mock.calls[0][1] as {
+      responseSchema?: { schema: { required?: string[]; additionalProperties?: boolean } };
+    };
+    expect(options.responseSchema?.schema.required).toEqual(['title', '_reasoning']);
+    // OpenAI の Structured Outputs (strict) は additionalProperties: false を要求する
+    expect(options.responseSchema?.schema.additionalProperties).toBe(false);
+  });
+
+  it('配列で包んだ応答は読まずに作り直し、2 回目のタイトルを使う', async () => {
+    const { service, sendMessage } = setupSequence([`[\n${json(VALID)}\n]`, json(VALID)]);
+    const result = await service.generateTitle(REQUEST);
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ title: VALID, is_valid: true });
+    // 作り直した回の費用も含める
+    expect(result.usage).toEqual({ promptTokens: 20, completionTokens: 10, totalTokens: 30 });
+  });
+
+  it('2 回とも読めなければ、応答の 1 行目をタイトルにせず TitleGenerationError を投げる', async () => {
+    const { service, sendMessage } = setupSequence(['[\n{"title": 1}\n]', 'これはJSONではない']);
+    const error = await service.generateTitle(REQUEST).catch((e: unknown) => e);
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(error).toBeInstanceOf(TitleGenerationError);
+    expect((error as TitleGenerationError).usage).toEqual({ promptTokens: 20, completionTokens: 10, totalTokens: 30 });
+    expect((error as TitleGenerationError).model).toBe('test-model');
+  });
+
+  it('文字数が足りなければ作り直し、満たしたタイトルを使う', async () => {
+    const { service, sendMessage } = setupSequence([json('BANANA FISH カフェ'), json(VALID)]);
+    const result = await service.generateTitle(REQUEST);
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(result.title).toBe(VALID);
+  });
+
+  it('2 回とも 40 字を超えれば TitleGenerationError を投げる (警告だけで記事に使わない)', async () => {
+    const tooLong = 'BANANA FISH カフェ&バー in 新宿 東口 11月26日よりコラボカフェ開催決定'; // 46 字
+    const { service, sendMessage } = setupSequence([json(tooLong)]);
+
+    await expect(service.generateTitle(REQUEST)).rejects.toThrow(/28〜40文字/);
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('作り直しの呼び出しで provider が失敗しても、1 回目の費用を TitleGenerationError で返す', async () => {
+    const sendMessage = jest
+      .fn(async (_prompt: string, _options?: unknown) => ({
+        content: json('BANANA FISH カフェ'),
+        model: 'test-model',
+        usage: USAGE,
+      }))
+      .mockImplementationOnce(async () => ({ content: '[', model: 'test-model', usage: USAGE }))
+      .mockImplementationOnce(async () => {
+        throw new Error('503 Service Unavailable');
+      });
+    const loader = { loadModularTemplate: async () => TEMPLATE } as unknown as YamlTemplateLoaderService;
+    const service = new TitleGenerationService(loader, { sendMessage } as unknown as AiProvider);
+    const error = await service.generateTitle(REQUEST).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TitleGenerationError);
+    expect((error as TitleGenerationError).message).toMatch(/503/);
+    expect((error as TitleGenerationError).cause).toBeInstanceOf(Error);
+    expect((error as TitleGenerationError).usage).toEqual(USAGE);
+    expect((error as TitleGenerationError).model).toBe('test-model');
+  });
+
+  it('空白だけのタイトルは読めないものとして作り直す', async () => {
+    const { service, sendMessage } = setupSequence([json('   '), json(VALID)]);
+    const result = await service.generateTitle(REQUEST);
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(result.title).toBe(VALID);
+  });
+
+  it('_reasoning が無い応答も読む (schema を使わない provider がある)', async () => {
+    const { service } = setupSequence([JSON.stringify({ title: VALID })]);
+    const result = await service.generateTitle(REQUEST);
+
+    expect(result).toMatchObject({ title: VALID, _reasoning: undefined });
   });
 });

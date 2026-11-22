@@ -10,6 +10,7 @@
     "./subpage-extraction-response": "./subpage-extraction-response.ts",
     "./article-points-response": "./article-points-response.ts",
     "./excerpt-response": "./excerpt-response.ts",
+    "./title-response": "./title-response.ts",
     "./ai-provider-response": "./ai-provider-response.ts",
     "./article-index": "./article-index.ts",
     "./vision-api-extraction": "./vision-api-extraction.ts",
@@ -39,7 +40,9 @@
     "./event": "./event.ts",
     "./occurrence": "./occurrence.ts",
     "./review": "./review.ts",
-    "./alias": "./alias.ts"
+    "./alias": "./alias.ts",
+    "./review-screening-response": "./review-screening-response.ts",
+    "./review-photo": "./review-photo.ts"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.36.0",
