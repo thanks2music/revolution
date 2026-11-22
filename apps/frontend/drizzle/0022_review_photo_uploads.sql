@@ -36,12 +36,12 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   PERFORM 1 FROM "public"."reviews" WHERE "id" = NEW."review_id" FOR UPDATE;
-  -- 期限を過ぎた行は、この口コミの分だけ片付ける (表が溜まらないように)
+  -- 1 日を過ぎた行は、この口コミの分だけ片付ける。残った行 (1 日以内) を数える
   DELETE FROM "public"."review_photo_uploads"
   WHERE "review_id" = NEW."review_id" AND "created_at" < now() - interval '1 day';
   IF (
     SELECT count(*) FROM "public"."review_photo_uploads"
-    WHERE "review_id" = NEW."review_id" AND "created_at" > now() - interval '1 day'
+    WHERE "review_id" = NEW."review_id"
   ) >= 20 THEN
     RAISE EXCEPTION 'too many pending review photo uploads'
       USING ERRCODE = 'check_violation', CONSTRAINT = 'review_photo_uploads_max_pending';

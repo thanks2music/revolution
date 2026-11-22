@@ -19,6 +19,7 @@ import { after } from 'next/server';
 import { z } from 'zod';
 
 import {
+  MAX_REVIEW_PHOTO_MB,
   MAX_REVIEW_PHOTOS,
   ReviewPhotoUploadRequestSchema,
 } from '@revolution/schemas/review-photo';
@@ -33,7 +34,12 @@ import {
   type OwnReviewPhoto,
 } from '@/lib/reviews/photos/operations';
 import { getReviewPhotoStorage, reviewPhotoKeyPrefix } from '@/lib/reviews/photos/storage';
-import { modeFor, resolveWriteContext, screenAfterSubmit } from '@/lib/reviews/write-context';
+import {
+  modeFor,
+  resolveWriteContext,
+  screenAfterSubmit,
+  type WriteContextFailure,
+} from '@/lib/reviews/write-context';
 
 export type ReviewPhotoFailure = { ok: false; error: string; needsAuth?: boolean };
 
@@ -54,9 +60,12 @@ const FAILURES = {
     error:
       '取り込めていない写真が多いため、今は写真を付けられません。明日以降にもう一度お試しください',
   },
-  invalidFile: { ok: false, error: 'JPEG・PNG・HEIC の、10MB までの写真を選んでください' },
+  invalidFile: {
+    ok: false,
+    error: `JPEG・PNG・HEIC の、${MAX_REVIEW_PHOTO_MB}MB までの写真を選んでください`,
+  },
   missing: { ok: false, error: '写真を受け取れませんでした。もう一度選び直してください' },
-  tooLarge: { ok: false, error: '10MB を超える写真は付けられません' },
+  tooLarge: { ok: false, error: `${MAX_REVIEW_PHOTO_MB}MB を超える写真は付けられません` },
   unsupported: { ok: false, error: 'JPEG・PNG・HEIC の写真を選んでください' },
   unreadable: { ok: false, error: '写真を読み取れませんでした。別の写真を選んでください' },
   mismatch: {
@@ -69,17 +78,17 @@ const FAILURES = {
   },
 } as const satisfies Record<string, ReviewPhotoFailure>;
 
+const CONTEXT_FAILURES: Record<WriteContextFailure, ReviewPhotoFailure> = {
+  not_found: FAILURES.notFound,
+  needs_login: FAILURES.needsLogin,
+  needs_onboarding: FAILURES.needsOnboarding,
+};
+
 /** 写真を付けられる口コミを引く (会員の、この開催の、書ける状態の口コミ) */
 async function resolvePhotoContext(route: ReviewRouteParams) {
   const context = await resolveWriteContext(route);
   if (!context.ok) {
-    const failure =
-      context.reason === 'needs_login'
-        ? FAILURES.needsLogin
-        : context.reason === 'needs_onboarding'
-          ? FAILURES.needsOnboarding
-          : FAILURES.notFound;
-    return { ok: false as const, failure };
+    return { ok: false as const, failure: CONTEXT_FAILURES[context.reason] };
   }
   const { detail, profileId, admin, paths } = context;
   const own = await findOwnReview(admin, profileId, detail.occurrence.id);

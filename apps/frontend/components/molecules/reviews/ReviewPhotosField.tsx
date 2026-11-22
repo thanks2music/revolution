@@ -16,7 +16,9 @@ import { useEffect, useId, useState } from 'react';
 
 import {
   MAX_REVIEW_PHOTO_BYTES,
+  MAX_REVIEW_PHOTO_MB,
   MAX_REVIEW_PHOTOS,
+  REVIEW_PHOTO_ACCEPT,
   REVIEW_PHOTO_TYPES,
   type ReviewPhotoType,
 } from '@revolution/schemas/review-photo';
@@ -39,6 +41,8 @@ export type ReviewPhotosFieldProps = {
   rescreensOnAdd: boolean;
   /** 下書きの保存・上げる・外す・並べ替えるの最中か (フォームは、その間の投稿と下書きの保存を止める) */
   onBusyChange?: (busy: boolean) => void;
+  /** フォームが投稿・下書きの保存の最中か (その間は写真を足す・外す・並べ替えるを止める) */
+  disabled?: boolean;
 };
 
 /** ブラウザが形式を付けない HEIC (Windows など) は拡張子で見分ける */
@@ -64,7 +68,8 @@ export function screenSelectedPhotos(
   files.forEach((file, index) => {
     const type = photoTypeOf(file);
     if (!type) errors.push(`${file.name}: JPEG・PNG・HEIC の写真を選んでください`);
-    else if (file.size > MAX_REVIEW_PHOTO_BYTES) errors.push(`${file.name}: 10MB を超えています`);
+    else if (file.size > MAX_REVIEW_PHOTO_BYTES)
+      errors.push(`${file.name}: ${MAX_REVIEW_PHOTO_MB}MB を超えています`);
     else if (accepted.length >= room) overflow = true;
     else accepted.push({ index, type });
   });
@@ -100,11 +105,9 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
     null
   );
   const [errors, setErrors] = useState<string[]>([]);
-  // 外す・並べ替えるの保存中 (画面は先に変える)。保存中は次の操作を止める
-  const [saving, setSaving] = useState(false);
-  // 写真を選んでから上げ終わるまで (先に下書きを保存する間を含む)
-  const [uploading, setUploading] = useState(false);
-  const busy = uploading || saving;
+  // 作業中 (写真を選んでから上げ終わるまで = 先の下書きの保存を含む、外す・並べ替えるの保存)
+  const [busy, setBusy] = useState(false);
+  const locked = busy || props.disabled === true;
   const { onBusyChange } = props;
   useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
 
@@ -117,19 +120,19 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
     );
     setErrors(refused);
     if (accepted.length === 0) return;
-    setUploading(true);
+    setBusy(true);
     try {
       if (await props.ensureReview()) await uploadAll(files, accepted);
     } finally {
-      setUploading(false);
+      setBusy(false);
     }
   }
 
   async function uploadAll(files: File[], accepted: { index: number; type: ReviewPhotoType }[]) {
     const failed: string[] = [];
-    setUpload({ done: 0, total: accepted.length, progress: 0 });
     for (const [done, { index, type }] of accepted.entries()) {
       const file = files[index];
+      const sendFailed = `${file.name}: 写真を送れませんでした。通信を確かめて、もう一度お試しください`;
       setUpload({ done, total: accepted.length, progress: 0 });
       try {
         const ticket = await requestReviewPhotoUpload(props.route, {
@@ -144,16 +147,14 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
           setUpload({ done, total: accepted.length, progress })
         );
         if (!sent) {
-          failed.push(
-            `${file.name}: 写真を送れませんでした。通信を確かめて、もう一度お試しください`
-          );
+          failed.push(sendFailed);
           continue;
         }
         const attached = await attachReviewPhoto(props.route, ticket.photoId);
         if (attached.ok) setPhotos(current => [...current, attached.photo]);
         else failed.push(`${file.name}: ${attached.error}`);
       } catch {
-        failed.push(`${file.name}: 写真を送れませんでした。通信を確かめて、もう一度お試しください`);
+        failed.push(sendFailed);
       }
     }
     setUpload(null);
@@ -164,7 +165,7 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
     const previous = photos;
     setPhotos(next);
     setErrors([]);
-    setSaving(true);
+    setBusy(true);
     try {
       const result = await save();
       if (!result.ok) {
@@ -175,7 +176,7 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
       setPhotos(previous);
       setErrors(['保存できませんでした。通信を確かめて、もう一度お試しください']);
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
@@ -226,7 +227,7 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
             <button
               type="button"
               onClick={() => remove(photo)}
-              disabled={busy}
+              disabled={locked}
               aria-label={`写真 ${index + 1} を外す`}
               className="absolute -top-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full bg-ink-strong text-xs text-white shadow disabled:opacity-50"
             >
@@ -237,7 +238,7 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
                 <button
                   type="button"
                   onClick={() => move(index, -1)}
-                  disabled={busy || index === 0}
+                  disabled={locked || index === 0}
                   aria-label={`写真 ${index + 1} を前へ`}
                   className="flex size-6 items-center justify-center rounded-full bg-white/90 text-xs text-ink-strong disabled:invisible"
                 >
@@ -246,7 +247,7 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
                 <button
                   type="button"
                   onClick={() => move(index, 1)}
-                  disabled={busy || index === photos.length - 1}
+                  disabled={locked || index === photos.length - 1}
                   aria-label={`写真 ${index + 1} を後へ`}
                   className="flex size-6 items-center justify-center rounded-full bg-white/90 text-xs text-ink-strong disabled:invisible"
                 >
@@ -271,7 +272,7 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
             <label
               htmlFor={inputId}
               className={`flex size-[78px] items-center justify-center rounded-xl border border-dashed border-(--line-soft) text-xl text-primary-500 ${
-                busy ? 'pointer-events-none opacity-50' : 'cursor-pointer'
+                locked ? 'pointer-events-none opacity-50' : 'cursor-pointer'
               }`}
             >
               <span aria-hidden>＋</span>
@@ -280,9 +281,9 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
             <input
               id={inputId}
               type="file"
-              accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
+              accept={REVIEW_PHOTO_ACCEPT}
               multiple
-              disabled={busy}
+              disabled={locked}
               className="sr-only"
               onChange={event => {
                 const files = event.target.files;
@@ -296,7 +297,7 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
       <p className="text-xs leading-relaxed text-ink-muted" aria-live="polite">
         {upload
           ? `アップロード中… ${upload.done + 1}/${upload.total} 枚`
-          : 'JPEG・PNG・HEIC、1 枚 10MB まで。位置情報などは消してから保存します'}
+          : `JPEG・PNG・HEIC、1 枚 ${MAX_REVIEW_PHOTO_MB}MB まで。位置情報などは消してから保存します`}
       </p>
       {props.rescreensOnAdd && (
         <p className="text-xs leading-relaxed text-ink-muted">

@@ -32,6 +32,7 @@ import {
 } from '@/lib/reviews/labels';
 
 import type { OwnReview } from '@/lib/reviews/authoring';
+import { rescreensOnPhotoAdd } from '@/lib/reviews/eligibility';
 import type { OwnReviewPhoto } from '@/lib/reviews/photos/operations';
 import { ReviewPhotosField } from '@/components/molecules/reviews/ReviewPhotosField';
 
@@ -142,9 +143,8 @@ export function ReviewForm(props: ReviewFormProps) {
     );
   }
 
-  /** 写真を付ける前に、口コミの行を作る (下書きの保存)。保存できなければ理由を出して false */
-  async function ensureReview(): Promise<boolean> {
-    if (hasReview) return true;
+  /** 下書きを保存する (ボタンと、写真を付ける前の両方)。保存できなければ理由を出して false */
+  async function saveDraft(): Promise<boolean> {
     try {
       const result = await saveReviewDraft(props.route, {
         ...content,
@@ -152,8 +152,8 @@ export function ReviewForm(props: ReviewFormProps) {
         visitedOn: visitedOn || null,
       });
       if (result.ok) {
-        setHasReview(true);
         setFailure(null);
+        setHasReview(true);
         return true;
       }
       setFailure(result);
@@ -166,15 +166,16 @@ export function ReviewForm(props: ReviewFormProps) {
     return false;
   }
 
+  /** 写真を付ける前に、口コミの行を作る (無ければ下書きを保存する) */
+  async function ensureReview(): Promise<boolean> {
+    return hasReview || saveDraft();
+  }
+
   function onSaveDraft() {
-    run(
-      () => saveReviewDraft(props.route, { ...content, rating, visitedOn: visitedOn || null }),
-      () => {
-        setDraftSaved(true);
-        setHasReview(true);
-      },
-      '保存できませんでした。通信を確かめて、もう一度お試しください'
-    );
+    setDraftSaved(false);
+    startTransition(async () => {
+      if (await saveDraft()) setDraftSaved(true);
+    });
   }
 
   return (
@@ -292,9 +293,8 @@ export function ReviewForm(props: ReviewFormProps) {
           initialPhotos={props.initialPhotos ?? []}
           ensureReview={ensureReview}
           onBusyChange={setPhotosBusy}
-          rescreensOnAdd={
-            initial !== undefined && initial.status !== 'draft' && initial.status !== 'pending'
-          }
+          disabled={pending}
+          rescreensOnAdd={initial !== undefined && rescreensOnPhotoAdd(initial.status)}
         />
       )}
 
