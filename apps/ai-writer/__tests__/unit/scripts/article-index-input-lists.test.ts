@@ -8,10 +8,14 @@
  * - .github/workflows/ingest-occurrences.yml の push の paths (staging への取り込み)
  * スクリプトの import を増やしてどれかに足し忘れると、古いキャッシュ・Preview のスキップ・
  * 取り込みの漏れが黙って起きるので、ここで止める。
+ * apps/ai-writer/package.json は turbo の inputs にだけ置く (turbo は frontend が依存しない
+ * ai-writer の依存の版をハッシュに入れないため)。Vercel の判定は pnpm-lock.yaml の変更で足りる。
+ * 取り込みは依存の更新では走らせない (次の記事のマージか、手動の実行で反映する)
  */
 
 import { describe, it, expect } from '@jest/globals';
 import { existsSync, readFileSync } from 'fs';
+import yaml from 'js-yaml';
 import { dirname, join, relative, resolve } from 'path';
 
 const REPO_ROOT = resolve(__dirname, '../../../../..');
@@ -85,8 +89,12 @@ describe('article index generator input lists', () => {
   });
 
   it('lists every file in the push paths of ingest-occurrences.yml', () => {
-    const workflow = readFileSync(join(REPO_ROOT, '.github/workflows/ingest-occurrences.yml'), 'utf-8');
-    const missing = files.filter((file) => !workflow.includes(`- "${file}"`));
+    // YAML として読み、on.push.paths だけを見る (コメントや paths-ignore の行に一致させない)
+    const workflow = yaml.load(
+      readFileSync(join(REPO_ROOT, '.github/workflows/ingest-occurrences.yml'), 'utf-8')
+    ) as { on: { push: { paths: string[] } } };
+    const paths = workflow.on.push.paths;
+    const missing = files.filter((file) => !paths.includes(file));
     expect(missing).toEqual([]);
   });
 });

@@ -33,7 +33,7 @@
 import { fileURLToPath } from 'url';
 import { parseArgs as parseCliArgs } from 'util';
 import { dirname, resolve, join, relative } from 'path';
-import { readdir, readFile, writeFile, stat } from 'fs/promises';
+import { readdir, readFile, rename, writeFile, stat } from 'fs/promises';
 import type { MdxFrontmatter, EventData } from '@revolution/schemas/mdx-frontmatter';
 import { toIsoMsDate } from '../lib/utils/date';
 import { parseFrontmatter } from '../lib/mdx/parse-frontmatter';
@@ -397,7 +397,11 @@ async function main(): Promise<void> {
     console.log('-'.repeat(60));
   } else {
     console.log('💾 ファイルを出力中...');
-    await writeFile(outputPath, JSON.stringify(index, null, 2) + '\n', 'utf-8');
+    // 一時ファイルに書いてから置き換える (同じ checkout で dev と build などが同時に作っても、
+    // 書きかけの索引を読ませない。rename は同じディレクトリの中なら原子的)
+    const tmpPath = `${outputPath}.${process.pid}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(index, null, 2) + '\n', 'utf-8');
+    await rename(tmpPath, outputPath);
     console.log(`✅ 出力完了: ${outputPath}`);
   }
 
