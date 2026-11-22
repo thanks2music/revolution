@@ -1,0 +1,127 @@
+-- 0021: 口コミの写真を付ける (one-more-time #163)
+--
+-- 写真はブラウザから R2 の受け取り場所へ直接上げ、サーバーが取り出して変換し (EXIF を消し、
+-- 表示用の数段の大きさの WebP / AVIF にする)、非公開の保管側に置いてから行を足す。
+-- この migration は、その行の守りを入れる。写真の公開 (配信側・公開の SELECT) は #164 で足す。
+--
+-- 前提: 本番と staging の review_images は 0 件 (2026-11-22 に確かめる)。既存の行の移行は考えない。
+--
+-- ## 誰が何を書けるか
+--
+-- - 行を足すのはサーバー (service role) だけ。変換して保管側に置いた後に足す。投稿者から INSERT を
+--   取り上げる (任意の object_key を指す行を作らせない)
+-- - 投稿者は自分の写真の並び (sort_order) を変え、自分の写真を外せる (既存の policy のまま)
+-- - 1 つの口コミに 10 枚まで。足す時に口コミの行を FOR UPDATE で押さえてから数える (同時に足しても超えない)
+-- - 下書きでない口コミに写真を足したら、口コミを審査中に戻す (写真も審査の対象のため)
+--
+-- ## 見せ方
+--
+-- - 写真を読めるのは本人だけにする。今までの review_images_select_public は「論理削除していない
+--   口コミの写真」を誰にでも見せており、審査中の口コミの写真も読めた
+-- - 写真は非公開の保管側にあり、本人は短時間だけ有効な URL で見る (サーバーが出す)
+
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '60s';
+
+-- ───────────────────────────────────────────────
+-- A. 列
+-- ───────────────────────────────────────────────
+
+-- 変換後の大きさ (向きを直した後の寸法)。表示の時に寸法を知るため (レイアウトのずれを防ぐ)
+ALTER TABLE "public"."review_images"
+  ADD COLUMN "width" integer NOT NULL,
+  ADD COLUMN "height" integer NOT NULL,
+  -- 作った表示用の幅 (小さい写真は大きい段を作らないので、写真ごとに違う)
+  ADD COLUMN "variant_widths" smallint[] NOT NULL;
+--> statement-breakpoint
+ALTER TABLE "public"."review_images"
+  ADD CONSTRAINT "review_images_size_chk" CHECK ("width" > 0 AND "height" > 0),
+  ADD CONSTRAINT "review_images_variant_widths_chk"
+    CHECK (cardinality("variant_widths") > 0 AND 0 < ALL ("variant_widths"));
+--> statement-breakpoint
+
+-- ───────────────────────────────────────────────
+-- B. トリガ
+-- ───────────────────────────────────────────────
+
+-- B-1. 1 つの口コミに 10 枚まで
+CREATE OR REPLACE FUNCTION private.limit_review_images()
+RETURNS trigger
+SET search_path = ''
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  -- 同じ口コミへの同時の追加を順に並べる (数えてから足すまでの間に、別の追加が入らないように)
+  PERFORM 1 FROM "public"."reviews" WHERE "id" = NEW."review_id" FOR UPDATE;
+  IF (SELECT count(*) FROM "public"."review_images" WHERE "review_id" = NEW."review_id") >= 10 THEN
+    RAISE EXCEPTION 'a review can have at most 10 images'
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'review_images_max_per_review';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+
+CREATE TRIGGER "trg_review_images_limit"
+  BEFORE INSERT ON "public"."review_images"
+  FOR EACH ROW EXECUTE FUNCTION private.limit_review_images();
+--> statement-breakpoint
+
+-- B-2. 下書きでない口コミに写真を足したら、審査中に戻す
+--
+-- 行を足すのはサーバー (service role) なので、口コミの書き込みを見張るトリガ
+-- (guard_review_author_write) は素通りする。ここで、投稿者が内容を変えた時と同じ戻し方をする。
+-- 星の集計は apply_review_delta が状態の変化を見て直す。
+CREATE OR REPLACE FUNCTION private.requeue_review_on_image_insert()
+RETURNS trigger
+SET search_path = ''
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE "public"."reviews"
+  SET "status" = 'pending',
+      "submitted_at" = now(),
+      "edited_at" = CASE WHEN "status" = 'published' THEN now() ELSE "edited_at" END,
+      "reason_code" = NULL,
+      "reason_note" = NULL,
+      "ai_reason" = NULL,
+      "ai_error" = NULL,
+      "ai_model" = NULL,
+      "ai_screened_at" = NULL
+  WHERE "id" = NEW."review_id"
+    AND "status" IN ('published', 'rejected', 'needs_review', 'hidden');
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+
+CREATE TRIGGER "trg_review_images_requeue"
+  AFTER INSERT ON "public"."review_images"
+  FOR EACH ROW EXECUTE FUNCTION private.requeue_review_on_image_insert();
+--> statement-breakpoint
+
+-- ───────────────────────────────────────────────
+-- C. RLS と GRANT
+-- ───────────────────────────────────────────────
+
+DROP POLICY IF EXISTS "review_images_select_public" ON "public"."review_images";
+--> statement-breakpoint
+DROP POLICY IF EXISTS "review_images_insert_own" ON "public"."review_images";
+--> statement-breakpoint
+
+CREATE POLICY "review_images_select_own" ON "public"."review_images"
+  AS PERMISSIVE FOR SELECT TO "authenticated"
+  USING ("review_id" IN (
+    SELECT r."id" FROM "public"."reviews" r
+    WHERE r."deleted_at" IS NULL
+      AND r."user_id" IN (
+        SELECT p."id" FROM "public"."profiles" p WHERE p."auth_user_id" = (SELECT auth.uid())
+      )
+  ));
+--> statement-breakpoint
+
+REVOKE SELECT ON TABLE "public"."review_images" FROM anon;
+--> statement-breakpoint
+REVOKE INSERT ON TABLE "public"."review_images" FROM authenticated;
+--> statement-breakpoint
+GRANT SELECT ("width", "height", "variant_widths") ON TABLE "public"."review_images" TO authenticated;

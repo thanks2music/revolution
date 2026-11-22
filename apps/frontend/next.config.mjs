@@ -8,6 +8,10 @@ const nextConfig = {
   // Next.js 公式推奨: shared/schemas/ workspace の .ts ファイルを直接 transpile する
   transpilePackages: ['@revolution/schemas', '@revolution/slack'],
 
+  // HEIC を読む libheif (WebAssembly を JS に埋め込んだ物) をバンドルせず、node_modules から読む
+  // (one-more-time #163)。sharp は Next の既定でバンドルの外にある
+  serverExternalPackages: ['heic-decode', 'libheif-js'],
+
   /**
    * Vercel Functions に sharp を入れない (Vercel の Functions Storage の削減)
    * - next/og (ImageResponse) は sharp を任意で読み込み、無ければ同梱の resvg で PNG を作る。
@@ -18,10 +22,13 @@ const nextConfig = {
    *   pnpm の実体 (.pnpm/<名前>@<版>) と、そこを指す symlink の両方を外す (symlink だけ残ると、行き先の無い
    *   symlink が関数に入る)。pnpm の配置を変えたら、ここが効いているか .nft.json で確かめる
    * - Vercel 以外 (standalone など) で配るなら見直す。そこでは画像の最適化に sharp が要る
+   * - 例外: 口コミの投稿のページ (の Server Action) は、写真の変換に sharp を使う (one-more-time #163)。
+   *   キーを否定のパターンにして、このルートだけを除外から外す。キーは picomatch (`contains: true`) で
+   *   ルートと照らされる (next/dist/build/collect-build-traces.js)。写真を変換するルートを足したら、ここも直す
    * https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats
    */
   outputFileTracingExcludes: {
-    '/*': [
+    '!**/\\[occurrence_slug\\]/review{,/page}': [
       '../../node_modules/.pnpm/sharp@*/**',
       '../../node_modules/.pnpm/@img+sharp-*/**',
       '../../node_modules/.pnpm/node_modules/sharp',
