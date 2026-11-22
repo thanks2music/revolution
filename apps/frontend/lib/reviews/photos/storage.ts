@@ -13,6 +13,8 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { presentEnvValue } from '@revolution/slack/env';
+
+import { allowsFakeBackends } from '@/lib/reviews/fake-backends';
 import { MAX_REVIEW_PHOTO_BYTES } from '@revolution/schemas/review-photo';
 
 /**
@@ -53,22 +55,31 @@ export function reviewPhotoKeyPrefix(
   return env.VERCEL_ENV === 'production' ? 'production/' : 'preview/';
 }
 
-/** 受け取り場所のキー。口コミと、写真ごとの ID (サーバーが決める) から作る */
-export function intakeKey(prefix: string, reviewId: number, photoId: string): string {
+/**
+ * 写真のキー。受け取り場所 (元の写真) と保管側 (段ごとの物の元。DB の object_key) で同じ。
+ * 写真ごとの ID はサーバーが決める
+ */
+export function photoKey(prefix: string, reviewId: number, photoId: string): string {
   return `${prefix}reviews/${reviewId}/${photoId}`;
 }
 
-/** 保管側の写真の元のキー (DB の object_key)。段ごとの物は `storedVariantKey` */
-export function storedPhotoKey(prefix: string, reviewId: number, photoId: string): string {
-  return `${prefix}reviews/${reviewId}/${photoId}`;
-}
+/** 保管する形式。段ごとに両方を作る (順は WebP, AVIF) */
+export const REVIEW_PHOTO_FORMATS = ['webp', 'avif'] as const;
+export type StoredPhotoFormat = (typeof REVIEW_PHOTO_FORMATS)[number];
 
 export function storedVariantKey(
   objectKey: string,
   width: number,
-  format: 'webp' | 'avif'
+  format: StoredPhotoFormat
 ): string {
   return `${objectKey}/${width}.${format}`;
+}
+
+/** 写真 1 枚の、保管側の段ごとの物のキー全部 */
+export function variantKeys(objectKey: string, widths: readonly number[]): string[] {
+  return widths.flatMap(width =>
+    REVIEW_PHOTO_FORMATS.map(format => storedVariantKey(objectKey, width, format))
+  );
 }
 
 // ───────────────────────────────────────────────
@@ -273,7 +284,8 @@ export function createFakePhotoStorage(
 export function getReviewPhotoStorage(
   env: Record<string, string | undefined> = process.env
 ): ReviewPhotoStorage | null {
-  if (env.REVIEW_PHOTO_STORAGE === 'fake' && allowsFake(env)) return createFakePhotoStorage();
+  if (env.REVIEW_PHOTO_STORAGE === 'fake' && allowsFakeBackends(env))
+    return createFakePhotoStorage();
   const config = {
     endpoint: presentEnvValue(env.REVIEW_R2_ENDPOINT),
     accessKeyId: presentEnvValue(env.REVIEW_R2_ACCESS_KEY_ID),
@@ -283,9 +295,4 @@ export function getReviewPhotoStorage(
   };
   if (Object.values(config).some(value => !value)) return null;
   return createR2PhotoStorage(config as R2PhotoStorageConfig);
-}
-
-export function allowsFake(env: Record<string, string | undefined>): boolean {
-  if (env.VERCEL_ENV === 'production') return false;
-  return env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
 }

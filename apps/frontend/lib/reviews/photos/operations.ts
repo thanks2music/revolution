@@ -8,7 +8,13 @@ import { z } from 'zod';
 import { MAX_REVIEW_PHOTOS, type ReviewPhotoUploadRequest } from '@revolution/schemas/review-photo';
 
 import { convertReviewPhoto, type ConvertReviewPhotoFailure } from './convert';
-import { intakeKey, storedPhotoKey, storedVariantKey, type ReviewPhotoStorage } from './storage';
+import {
+  photoKey,
+  REVIEW_PHOTO_FORMATS,
+  storedVariantKey,
+  variantKeys,
+  type ReviewPhotoStorage,
+} from './storage';
 
 /**
  * 口コミの写真の操作 (one-more-time #163)。Server Action はこの層だけを呼ぶ。
@@ -93,7 +99,7 @@ export async function requestPhotoUpload(
   if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
   const photoId = randomUUID();
   const { url, headers } = await ctx.storage.presignIntakeUpload(
-    intakeKey(ctx.prefix, input.reviewId, photoId),
+    photoKey(ctx.prefix, input.reviewId, photoId),
     { contentType: input.file.contentType, size: input.file.size }
   );
   return { kind: 'ok', photoId, url, headers };
@@ -109,7 +115,8 @@ export type IngestOutcome =
 
 /**
  * 受け取った写真を変換して保管側に置き、行を足す。受け取り場所の元の写真は、成否に関わらず消す
- * (残っても R2 のライフサイクルが 1 日で消す)
+ * (残っても R2 のライフサイクルが 1 日で消す)。同じ写真を 2 回取り込んでも、行は 1 つ
+ * (object_key の一意の索引)。後から来た方は先の行を返す
  */
 export async function ingestPhoto(
   ctx: PhotoContext,
@@ -119,31 +126,33 @@ export async function ingestPhoto(
   const before = await findOwnReviewStatus(ctx.db, input.profileId, input.reviewId);
   if (!before) return { kind: 'not_found' };
 
-  const intake = intakeKey(ctx.prefix, input.reviewId, input.photoId);
-  const objectKey = storedPhotoKey(ctx.prefix, input.reviewId, input.photoId);
+  // 受け取り場所と保管側は同じキー (バケットだけが違う)
+  const key = photoKey(ctx.prefix, input.reviewId, input.photoId);
+  const existing = await findPhotoRow(ctx.db, key);
+  if (existing)
+    return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
+
   let row: PhotoRow;
   try {
-    const original = await ctx.storage.readIntake(intake);
-    if (original.kind === 'missing') {
-      // 同じ写真の 2 回目 (1 回目が元の写真を消した後)。1 回目の行があれば、それを返す
-      const existing = await findPhotoRow(ctx.db, objectKey);
-      if (!existing) return { kind: 'missing' };
-      return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
-    }
+    const original = await ctx.storage.readIntake(key);
+    if (original.kind === 'missing') return { kind: 'missing' };
     if (original.kind === 'too_large') return { kind: 'rejected', reason: 'too_large' };
+    // 数えるのは重い変換の前に断るため。守りは DB のトリガ
     if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
 
     const converted = await convertReviewPhoto(original.body);
     if (!converted.ok) return { kind: 'rejected', reason: converted.reason };
 
-    const keys = converted.variants.map(variant =>
-      storedVariantKey(objectKey, variant.width, variant.format)
-    );
+    const keys = variantKeys(key, converted.variantWidths);
     const cleanUp = () => ctx.storage.deleteStored(keys).catch(() => undefined);
     // 全部の書き込みが終わってから片付ける (途中で消すと、後から終わった物が残る)
     const puts = await Promise.allSettled(
-      converted.variants.map((variant, i) =>
-        ctx.storage.putStored(keys[i], variant.body, `image/${variant.format}`)
+      converted.variants.map(variant =>
+        ctx.storage.putStored(
+          storedVariantKey(key, variant.width, variant.format),
+          variant.body,
+          `image/${variant.format}`
+        )
       )
     );
     const failedPut = puts.find(
@@ -154,7 +163,7 @@ export async function ingestPhoto(
       throw failedPut.reason;
     }
     const inserted = await insertPhotoRow(ctx.db, input.reviewId, {
-      object_key: objectKey,
+      object_key: key,
       width: converted.width,
       height: converted.height,
       variant_widths: converted.variantWidths,
@@ -166,18 +175,19 @@ export async function ingestPhoto(
       await cleanUp();
       return { kind: 'full' };
     }
-    if (inserted === 'duplicate') {
+    if (!inserted) {
       // 同じ写真の取り込みが同時に走り、もう一方が先に行を足した。保管側の物は同じキーなので消さない
-      const existing = await findPhotoRow(ctx.db, objectKey);
-      if (!existing) throw new Error('review photo row is missing after a duplicate insert');
-      return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
+      const winner = await findPhotoRow(ctx.db, key);
+      if (!winner) throw new Error('review photo row is missing after a duplicate insert');
+      return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, winner), requeued: false };
     }
     row = inserted;
   } finally {
-    await ctx.storage.deleteIntake(intake).catch(() => undefined);
+    await ctx.storage.deleteIntake(key).catch(() => undefined);
   }
-  // 行を足した後の失敗 (URL の署名など) では、保管側の物を消さない (行が指している)
-  const requeued = ['published', 'rejected', 'needs_review', 'hidden'].includes(before);
+  // 行を足した後の失敗 (URL の署名など) では、保管側の物を消さない (行が指している)。
+  // 下書きと審査中以外は、トリガ (requeue_review_on_image_insert) が審査中に戻した
+  const requeued = before !== 'draft' && before !== 'pending';
   return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, row), requeued };
 }
 
@@ -191,35 +201,29 @@ async function findPhotoRow(db: SupabaseClient, objectKey: string): Promise<Phot
   return data ? PhotoRowSchema.parse(data) : null;
 }
 
-/** 行を足す。10 枚を超える (トリガが断る) 時は 'full'、同じ写真の行が既にある時は 'duplicate' */
+/** 10 枚のトリガが投げる文 (migration 20261122081202 の limit_review_images と揃える) */
+export const MAX_PHOTOS_MESSAGE = `a review can have at most ${MAX_REVIEW_PHOTOS} images`;
+
+/**
+ * 行を足す。並び (sort_order) はトリガが最後に付ける。10 枚を超える (トリガが断る) 時は 'full'、
+ * 同じ写真の行が既にある時は null (一意の索引で無視する)
+ */
 async function insertPhotoRow(
   db: SupabaseClient,
   reviewId: number,
   photo: { object_key: string; width: number; height: number; variant_widths: number[] }
-): Promise<PhotoRow | 'full' | 'duplicate'> {
-  const last = await db
-    .from('review_images')
-    .select('sort_order')
-    .eq('review_id', reviewId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (last.error) throw last.error;
+): Promise<PhotoRow | 'full' | null> {
   const { data, error } = await db
     .from('review_images')
-    .insert({
-      review_id: reviewId,
-      sort_order: ((last.data?.sort_order as number | undefined) ?? -1) + 1,
-      ...photo,
-    })
+    .upsert({ review_id: reviewId, ...photo }, { onConflict: 'object_key', ignoreDuplicates: true })
     .select(PHOTO_COLUMNS)
-    .single();
+    .maybeSingle();
   if (error) {
-    if (error.code === '23514' && error.message.includes('at most 10 images')) return 'full';
-    if (error.code === '23505') return 'duplicate';
+    // PostgREST は制約の名前を返さないので、トリガの RAISE の文で見分ける
+    if (error.code === '23514' && error.message.includes(MAX_PHOTOS_MESSAGE)) return 'full';
     throw error;
   }
-  return PhotoRowSchema.parse(data);
+  return data ? PhotoRowSchema.parse(data) : null;
 }
 
 /** 会員の口コミの写真を、並びの順に短時間だけ有効な URL 付きで返す */
@@ -244,23 +248,27 @@ export async function listOwnPhotos(
 }
 
 async function toOwnPhoto(storage: ReviewPhotoStorage, row: PhotoRow): Promise<OwnReviewPhoto> {
-  const srcSet = async (format: 'webp' | 'avif') =>
-    (
-      await Promise.all(
-        row.variant_widths.map(
-          async width =>
-            `${await storage.presignStoredRead(storedVariantKey(row.object_key, width, format))} ${width}w`
-        )
+  // 段 × 形式の URL をまとめて作る (R2 の署名は手元の計算だけ)
+  const [webp, avif] = await Promise.all(
+    REVIEW_PHOTO_FORMATS.map(format =>
+      Promise.all(
+        row.variant_widths.map(async width => ({
+          width,
+          url: await storage.presignStoredRead(storedVariantKey(row.object_key, width, format)),
+        }))
       )
-    ).join(', ');
-  const largest = Math.max(...row.variant_widths);
+    )
+  );
+  const toSrcSet = (urls: { width: number; url: string }[]) =>
+    urls.map(({ width, url }) => `${url} ${width}w`).join(', ');
   return {
     id: row.id,
     width: row.width,
     height: row.height,
-    avifSrcSet: await srcSet('avif'),
-    webpSrcSet: await srcSet('webp'),
-    src: await storage.presignStoredRead(storedVariantKey(row.object_key, largest, 'webp')),
+    avifSrcSet: toSrcSet(avif),
+    webpSrcSet: toSrcSet(webp),
+    // 段は小さい順なので、最後が最大の WebP
+    src: webp[webp.length - 1].url,
   };
 }
 
@@ -281,12 +289,7 @@ export async function removePhoto(
   if (error) throw error;
   if (!data) return { kind: 'not_found' };
   const row = data as { object_key: string; variant_widths: number[] };
-  await ctx.storage.deleteStored(
-    row.variant_widths.flatMap(width => [
-      storedVariantKey(row.object_key, width, 'webp'),
-      storedVariantKey(row.object_key, width, 'avif'),
-    ])
-  );
+  await ctx.storage.deleteStored(variantKeys(row.object_key, row.variant_widths));
   return { kind: 'removed' };
 }
 
@@ -311,14 +314,17 @@ export async function reorderPhotos(
   ) {
     return { kind: 'mismatch' };
   }
-  // 10 枚までなので 1 枚ずつ書く (sort_order に一意の制約は無い)
-  for (const [index, id] of input.photoIds.entries()) {
-    const { error: updateError } = await ctx.db
-      .from('review_images')
-      .update({ sort_order: index })
-      .eq('id', id)
-      .eq('review_id', input.reviewId);
-    if (updateError) throw updateError;
-  }
+  // 10 枚までなので、1 枚ずつの更新を並べて送る (sort_order に一意の制約は無い)
+  const results = await Promise.all(
+    input.photoIds.map((id, index) =>
+      ctx.db
+        .from('review_images')
+        .update({ sort_order: index })
+        .eq('id', id)
+        .eq('review_id', input.reviewId)
+    )
+  );
+  const failed = results.find(result => result.error);
+  if (failed?.error) throw failed.error;
   return { kind: 'reordered' };
 }

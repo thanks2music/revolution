@@ -11,7 +11,8 @@
 -- - 行を足すのはサーバー (service role) だけ。変換して保管側に置いた後に足す。投稿者から INSERT を
 --   取り上げる (任意の object_key を指す行を作らせない)
 -- - 投稿者は自分の写真の並び (sort_order) を変え、自分の写真を外せる (既存の policy のまま)
--- - 1 つの口コミに 10 枚まで。足す時に口コミの行を FOR UPDATE で押さえてから数える (同時に足しても超えない)
+-- - 1 つの口コミに 10 枚まで。足す時に口コミの行を FOR UPDATE で押さえてから数え、並び (sort_order) を
+--   最後に付ける (同時に足しても、超えない・並びが重ならない)
 -- - 下書きでない口コミに写真を足したら、口コミを審査中に戻す (写真も審査の対象のため)
 --
 -- ## 見せ方
@@ -49,7 +50,10 @@ CREATE UNIQUE INDEX "review_images_object_key_unique" ON "public"."review_images
 -- B. トリガ
 -- ───────────────────────────────────────────────
 
--- B-1. 1 つの口コミに 10 枚まで
+-- B-1. 1 つの口コミに 10 枚まで。並び (sort_order) は最後に付ける
+--
+-- 数える・並びを付けるを、口コミの行を押さえた中で行う (同時に足しても、超えない・並びが重ならない)。
+-- 10 は shared/schemas/review-photo.ts の MAX_REVIEW_PHOTOS と揃える (単体テストで確かめる)
 CREATE OR REPLACE FUNCTION private.limit_review_images()
 RETURNS trigger
 SET search_path = ''
@@ -62,6 +66,10 @@ BEGIN
     RAISE EXCEPTION 'a review can have at most 10 images'
       USING ERRCODE = 'check_violation', CONSTRAINT = 'review_images_max_per_review';
   END IF;
+  NEW."sort_order" := coalesce(
+    (SELECT max("sort_order") + 1 FROM "public"."review_images" WHERE "review_id" = NEW."review_id"),
+    0
+  );
   RETURN NEW;
 END;
 $$;
@@ -75,7 +83,8 @@ CREATE TRIGGER "trg_review_images_limit"
 -- B-2. 下書きでない口コミに写真を足したら、審査中に戻す
 --
 -- 行を足すのはサーバー (service role) なので、口コミの書き込みを見張るトリガ
--- (guard_review_author_write) は素通りする。ここで、投稿者が内容を変えた時と同じ戻し方をする。
+-- (guard_review_author_write、20261121070749) は素通りする。ここで、投稿者が内容を変えた時と同じ戻し方を
+-- する。消す列は guard_review_author_write と同じ。口コミに審査の列を足したら、両方を直す
 -- 星の集計は apply_review_delta が状態の変化を見て直す。
 CREATE OR REPLACE FUNCTION private.requeue_review_on_image_insert()
 RETURNS trigger

@@ -79,7 +79,16 @@ function currentValue(active: boolean, pathname: string, href: string) {
  * ⚠️ トップ (`/`) は探すの区画に入る。v5 #1 のホームは「探す」が点灯した状態で
  *    描かれており、トップ自体が探す導線の入口だから (タブに「ホーム」は無い)。
  */
-export const EXPLORE_EXCLUDES = ['/articles', '/mypage', '/login', '/onboarding', '/auth', '/review'];
+export const EXPLORE_EXCLUDES = [
+  '/articles',
+  '/mypage',
+  '/login',
+  '/onboarding',
+  '/auth',
+  '/review',
+  // 画面ではない (開発用の route など)
+  '/api',
+];
 
 /** タブが現在地かどうか。`excludes` があれば判定を反転する (Layer 1、純粋関数)。 */
 export function isTabCurrent(pathname: string, tab: Pick<Tab, 'href' | 'excludes'>) {
