@@ -37,8 +37,11 @@ trap on_exit EXIT
 # 足すのは自由。消すのは、frontend の build も実行時も読まないと確かめてから。
 # lockfile はファイル単位なので、frontend に関係ない依存の更新でもビルドする
 MUST_BUILD_PATHS=(
-  apps/frontend                  # アプリ本体 (vercel.json と lib/mdx/article-index.json を含む)
-  apps/ai-writer/content         # 記事の MDX (lib/mdx/articles.ts が build 時と実行時に読む)
+  apps/frontend                  # アプリ本体 (vercel.json を含む)
+  apps/ai-writer/content         # 記事の MDX (lib/mdx/articles.ts が build 時と実行時に読む。build の前に作る索引の元)
+  apps/ai-writer/scripts/generate-article-index.ts # build の前に索引を作るスクリプトと、その import 先
+  apps/ai-writer/lib/mdx/parse-frontmatter.ts
+  apps/ai-writer/lib/utils/date.ts
   shared                         # @revolution/schemas (next.config.mjs の transpilePackages)
   package.json                   # ルートの package.json だけに当たる
   pnpm-lock.yaml
