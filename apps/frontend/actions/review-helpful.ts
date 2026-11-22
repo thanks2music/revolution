@@ -14,7 +14,7 @@
 import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
-import { getCurrentMember } from '@/lib/auth/member';
+import { getCurrentMember, memberRedirect } from '@/lib/auth/member';
 import { createClient } from '@/lib/supabase/server';
 
 const PG_UNIQUE_VIOLATION = '23505';
@@ -25,10 +25,12 @@ const PG_RLS_VIOLATION = '42501';
 const MAX_STATE_IDS = 50;
 
 /**
- * isAuthed: true = 会員 / false = ログインしていない / null = 分からない (読めなかった・onboarding の途中)。
- * 分からない時、画面は押させて setHelpful の結果で案内を決める (ログイン済みの会員をログインへ送らないため)
+ * 閲覧者の状態。member = 押せる / login・onboarding = 押すとそこへ案内する /
+ * unknown = 読めなかった (押させて、setHelpful の結果で決める。ログイン済みの会員をログインへ送らないため)
  */
-export type HelpfulState = { isAuthed: boolean | null; marked: number[] };
+type Viewer = 'member' | 'login' | 'onboarding' | 'unknown';
+
+type HelpfulState = { viewer: Viewer; marked: number[] };
 
 /** 会員が「参考になった」を押した口コミ (渡した中から) */
 export async function getHelpfulState(reviewIds: number[]): Promise<HelpfulState> {
@@ -36,10 +38,8 @@ export async function getHelpfulState(reviewIds: number[]): Promise<HelpfulState
     // 上限を超えた分は尋ねない (黙って全部を未押下にしない)
     const ids = z.array(z.number().int().positive()).safeParse(reviewIds.slice(0, MAX_STATE_IDS));
     const member = await getCurrentMember();
-    if (!member.ok) {
-      return { isAuthed: member.reason === 'unauthenticated' ? false : null, marked: [] };
-    }
-    if (!ids.success || ids.data.length === 0) return { isAuthed: true, marked: [] };
+    if (!member.ok) return { viewer: memberRedirect(member.reason), marked: [] };
+    if (!ids.success || ids.data.length === 0) return { viewer: 'member', marked: [] };
 
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -48,14 +48,14 @@ export async function getHelpfulState(reviewIds: number[]): Promise<HelpfulState
       .eq('user_id', member.profileId)
       .in('review_id', ids.data);
     if (error) throw error;
-    return { isAuthed: true, marked: (data ?? []).map(row => row.review_id as number) };
+    return { viewer: 'member', marked: (data ?? []).map(row => row.review_id as number) };
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'getHelpfulState' } });
-    return { isAuthed: null, marked: [] };
+    return { viewer: 'unknown', marked: [] };
   }
 }
 
-export type SetHelpfulResult =
+type SetHelpfulResult =
   | { ok: true; marked: boolean; count: number }
   /** needs: login = ログインへ、onboarding = プロフィールの登録へ案内する */
   | { ok: false; error: string; needs?: 'login' | 'onboarding' };
@@ -68,9 +68,12 @@ export async function setHelpful(reviewId: number, marked: boolean): Promise<Set
     }
     const member = await getCurrentMember();
     if (!member.ok) {
-      return member.reason === 'unauthenticated'
-        ? { ok: false, error: 'ログインしてください', needs: 'login' }
-        : { ok: false, error: 'プロフィールの登録を済ませてください', needs: 'onboarding' };
+      const needs = memberRedirect(member.reason);
+      return {
+        ok: false,
+        error: needs === 'login' ? 'ログインしてください' : 'プロフィールの登録を済ませてください',
+        needs,
+      };
     }
 
     const supabase = await createClient();

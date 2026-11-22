@@ -7,7 +7,7 @@ import {
   REVIEW_GOODS_COST_BANDS,
 } from '@revolution/schemas/review';
 
-import { toReviewStats, type ReviewStats } from '@/lib/reviews/stats';
+import { StatRowSchema, toReviewStats, type ReviewStats } from '@/lib/reviews/stats';
 import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
 
 /**
@@ -21,12 +21,6 @@ import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase
 
 /** 新着から何件を出すか。すべての一覧のページは後のチケット */
 export const LATEST_REVIEWS_LIMIT = 10;
-
-const StatRowSchema = z.object({
-  dimension: z.string(),
-  value: z.string(),
-  count: z.number().int(),
-});
 
 const ReviewRowSchema = z.object({
   id: z.number(),

@@ -7,8 +7,8 @@
  *   (口コミごとに尋ねない)
  * - 押した状態と件数は Provider が持つ (並び替えで一覧を切り替えても、押した結果を保つ)
  * - 押すと件数を先に画面で変え、Server Action の結果で確定する (失敗したら元に戻す)
- * - ログインしていないと分かっている時だけ、押した時にログインへ案内する。分からない時 (読めなかった・
- *   onboarding の途中) は押させて、Server Action の結果で案内を決める
+ * - ログインしていない・onboarding の途中と分かっている時は、押すとそこへ案内する。分からない時
+ *   (読めなかった) は押させて、Server Action の結果で案内を決める
  */
 
 import {
@@ -23,6 +23,7 @@ import {
 } from 'react';
 
 import { getHelpfulState, setHelpful } from '@/actions/review-helpful';
+import { goToLogin, goToOnboarding } from '@/lib/auth/client-redirect';
 
 type Entry = { marked: boolean; count: number };
 
@@ -36,15 +37,9 @@ type HelpfulContextValue = {
 
 const HelpfulContext = createContext<HelpfulContextValue | null>(null);
 
-function redirectTo(path: '/login' | '/onboarding') {
-  const next = encodeURIComponent(window.location.pathname);
-  window.location.assign(path === '/login' ? `/login?next=${next}` : path);
-}
-
 export function HelpfulProvider(props: { reviewIds: number[]; children: ReactNode }) {
-  const [ready, setReady] = useState(false);
-  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
-  const [marked, setMarked] = useState<Set<number>>(new Set());
+  // マウント後に取る閲覧者の状態 (null の間は取っている途中)
+  const [state, setState] = useState<Awaited<ReturnType<typeof getHelpfulState>> | null>(null);
   const [entries, setEntries] = useState<Map<number, Entry>>(new Map());
   const inFlight = useRef(new Set<number>());
   const key = props.reviewIds.join(',');
@@ -53,20 +48,16 @@ export function HelpfulProvider(props: { reviewIds: number[]; children: ReactNod
     let active = true;
     const ids = key ? key.split(',').map(Number) : [];
     getHelpfulState(ids)
-      .then(state => {
-        if (!active) return;
-        setIsAuthed(state.isAuthed);
-        setMarked(new Set(state.marked));
-        setReady(true);
-      })
-      .catch(() => {
-        // 取れなくても押せるようにする (ログインの要否は押した時の結果で分かる)
-        if (active) setReady(true);
-      });
+      .then(result => active && setState(result))
+      // 取れなくても押せるようにする (案内は押した時の結果で分かる)
+      .catch(() => active && setState({ viewer: 'unknown', marked: [] }));
     return () => {
       active = false;
     };
   }, [key]);
+
+  const marked = useMemo(() => new Set(state?.marked), [state]);
+  const viewer = state?.viewer;
 
   const setEntry = useCallback((reviewId: number, entry: Entry) => {
     setEntries(current => new Map(current).set(reviewId, entry));
@@ -75,8 +66,9 @@ export function HelpfulProvider(props: { reviewIds: number[]; children: ReactNod
   const toggle = useCallback(
     async (reviewId: number, current: Entry): Promise<string | null> => {
       if (inFlight.current.has(reviewId)) return null;
-      if (isAuthed === false) {
-        redirectTo('/login');
+      if (viewer === 'login' || viewer === 'onboarding') {
+        if (viewer === 'login') goToLogin();
+        else goToOnboarding();
         return null;
       }
       const next = !current.marked;
@@ -89,7 +81,8 @@ export function HelpfulProvider(props: { reviewIds: number[]; children: ReactNod
           return null;
         }
         setEntry(reviewId, current);
-        if (result.needs) redirectTo(result.needs === 'login' ? '/login' : '/onboarding');
+        if (result.needs === 'login') goToLogin();
+        if (result.needs === 'onboarding') goToOnboarding();
         return result.error;
       } catch {
         setEntry(reviewId, current);
@@ -98,12 +91,12 @@ export function HelpfulProvider(props: { reviewIds: number[]; children: ReactNod
         inFlight.current.delete(reviewId);
       }
     },
-    [isAuthed, setEntry]
+    [viewer, setEntry]
   );
 
   const value = useMemo<HelpfulContextValue>(
-    () => ({ ready, entries, isMarked: reviewId => marked.has(reviewId), toggle }),
-    [ready, entries, marked, toggle]
+    () => ({ ready: state !== null, entries, isMarked: reviewId => marked.has(reviewId), toggle }),
+    [state, entries, marked, toggle]
   );
   return <HelpfulContext.Provider value={value}>{props.children}</HelpfulContext.Provider>;
 }

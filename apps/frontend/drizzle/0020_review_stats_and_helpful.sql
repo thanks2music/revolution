@@ -12,25 +12,17 @@ SET LOCAL statement_timeout = '60s';
 
 CREATE VIEW "public"."occurrence_review_stats"
 WITH (security_invoker = on) AS
-SELECT r."occurrence_id", 'rating'::text AS "dimension", r."rating"::text AS "value", count(*)::integer AS "count"
+SELECT r."occurrence_id", v."dimension", v."value", count(*)::integer AS "count"
   FROM "public"."reviews" r
- WHERE r."status" = 'published' AND r."deleted_at" IS NULL AND r."rating" IS NOT NULL
- GROUP BY r."occurrence_id", r."rating"
-UNION ALL
-SELECT r."occurrence_id", 'attendance', r."attendance", count(*)::integer
-  FROM "public"."reviews" r
- WHERE r."status" = 'published' AND r."deleted_at" IS NULL AND r."attendance" IS NOT NULL
- GROUP BY r."occurrence_id", r."attendance"
-UNION ALL
-SELECT r."occurrence_id", 'food_cost_band', r."food_cost_band", count(*)::integer
-  FROM "public"."reviews" r
- WHERE r."status" = 'published' AND r."deleted_at" IS NULL AND r."food_cost_band" IS NOT NULL
- GROUP BY r."occurrence_id", r."food_cost_band"
-UNION ALL
-SELECT r."occurrence_id", 'goods_cost_band', r."goods_cost_band", count(*)::integer
-  FROM "public"."reviews" r
- WHERE r."status" = 'published' AND r."deleted_at" IS NULL AND r."goods_cost_band" IS NOT NULL
- GROUP BY r."occurrence_id", r."goods_cost_band";
+  -- 1 回の読み取りで、4 つの次元を縦に並べ直す (次元ごとに表を読み直さない)
+ CROSS JOIN LATERAL (VALUES
+   ('rating', r."rating"::text),
+   ('attendance', r."attendance"),
+   ('food_cost_band', r."food_cost_band"),
+   ('goods_cost_band', r."goods_cost_band")
+ ) AS v("dimension", "value")
+ WHERE r."status" = 'published' AND r."deleted_at" IS NULL AND v."value" IS NOT NULL
+ GROUP BY r."occurrence_id", v."dimension", v."value";
 --> statement-breakpoint
 
 REVOKE ALL ON TABLE "public"."occurrence_review_stats" FROM anon, authenticated;

@@ -8,8 +8,8 @@
  */
 
 import {
-  ATTENDANCE_LABELS,
   ATTENDANCE_SHORT_LABELS,
+  ATTENDANCE_SUMMARY_LABELS,
   FOOD_COST_BAND_LABELS,
   GOODS_COST_BAND_LABELS,
 } from '@/lib/reviews/labels';
@@ -21,9 +21,6 @@ import {
   type ReviewStats,
   type StatBar,
 } from '@/lib/reviews/stats';
-
-/** 「〜人が最多」に続ける言葉。「その他」だけは「その他人」と読めてしまうので言い換える */
-const ATTENDANCE_SUMMARY_LABELS = { ...ATTENDANCE_LABELS, other: 'その他の方法で入った' };
 
 export function RatingDistribution({ bars }: { bars: ReviewStats['rating'] }) {
   return (

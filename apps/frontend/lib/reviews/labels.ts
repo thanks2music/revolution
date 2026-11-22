@@ -77,3 +77,12 @@ export const ATTENDANCE_SHORT_LABELS: Record<ReviewAttendance, string> = {
   lottery: '抽選に当選',
   other: 'その他',
 };
+
+/**
+ * 「〜人が最多」に続ける言葉 (Figma #3 `83:106`)。「その他」だけは「その他人」と読めてしまうので言い換える
+ * (投稿の画面の選択肢は短い「その他」のまま)
+ */
+export const ATTENDANCE_SUMMARY_LABELS: Record<ReviewAttendance, string> = {
+  ...ATTENDANCE_LABELS,
+  other: 'その他の方法で入った',
+};

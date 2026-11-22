@@ -4,7 +4,11 @@ import path from 'node:path';
 import { test as setup } from '@playwright/test';
 
 import { sessionCookiesFor } from '../../test-support/member-session';
-import { createTestDataScope, createTestMember, deleteTestMember } from '../../test-support/test-data';
+import {
+  createTestDataScope,
+  createTestMember,
+  deleteTestMember,
+} from '../../test-support/test-data';
 import { MEMBER_RECORD_PATH, MEMBER_STATE_PATH } from './paths';
 
 /**
@@ -28,6 +32,13 @@ setup('会員としてログインした状態を保存する', async ({ baseURL
   await mkdir(path.dirname(MEMBER_RECORD_PATH), { recursive: true });
   await writeFile(MEMBER_RECORD_PATH, JSON.stringify({ userId: member.userId }));
 
+  // 開発サーバー (next dev) は、まだ組み立てていないページを複数の worker が同時に開くと、自分の
+  // manifest を読みかけで 500 を返すことがある ("Unexpected end of JSON input")。並列の前に、開催と
+  // 投稿のページを一度だけ組み立てておく (中身は 404 でよい。組み立てが済めばよい)
+  for (const warmup of ['/collabo-cafe/1/warmup', '/collabo-cafe/1/warmup/review']) {
+    await fetch(new URL(warmup, baseURL)).catch(() => undefined);
+  }
+
   const cookies = await sessionCookiesFor(member);
   const { hostname } = new URL(baseURL!);
 
@@ -45,7 +56,7 @@ setup('会員としてログインした状態を保存する', async ({ baseURL
         sameSite: 'Lax',
       })),
       origins: [],
-    }),
+    })
   );
 });
 

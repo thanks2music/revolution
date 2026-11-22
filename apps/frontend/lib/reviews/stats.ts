@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import {
   REVIEW_ATTENDANCES,
   REVIEW_FOOD_COST_BANDS,
@@ -8,13 +10,21 @@ import {
  * 開催の口コミの集計 (Figma #3 の星の分布 `6:121` と「行った人のデータ」`83:99`、one-more-time #165)。
  * DB の集計のビュー (`occurrence_review_stats`、公開中の口コミだけ) の行を、画面の形にする。
  */
-export type StatRow = { dimension: string; value: string; count: number };
+/** 集計のビューの 1 行 */
+export const StatRowSchema = z.object({
+  dimension: z.string(),
+  value: z.string(),
+  count: z.number().int(),
+});
+type StatRow = z.infer<typeof StatRowSchema>;
+
+const RATING_ORDER = ['5', '4', '3', '2', '1'] as const;
 
 export type StatBar<T extends string> = { value: T; count: number };
 
 export type ReviewStats = {
   /** 星 5 → 1 の順 */
-  rating: StatBar<'5' | '4' | '3' | '2' | '1'>[];
+  rating: StatBar<(typeof RATING_ORDER)[number]>[];
   attendance: StatBar<(typeof REVIEW_ATTENDANCES)[number]>[];
   foodCostBand: StatBar<(typeof REVIEW_FOOD_COST_BANDS)[number]>[];
   goodsCostBand: StatBar<(typeof REVIEW_GOODS_COST_BANDS)[number]>[];
@@ -22,8 +32,6 @@ export type ReviewStats = {
 
 /** 費用は、項目ごとに回答がこの件数そろうまで出さない (1 人の金額が分からないように、仕様 #156) */
 export const COST_MIN_ANSWERS = 3;
-
-const RATING_ORDER = ['5', '4', '3', '2', '1'] as const;
 
 function bars<T extends string>(
   rows: StatRow[],
