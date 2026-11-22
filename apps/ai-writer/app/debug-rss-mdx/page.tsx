@@ -438,12 +438,7 @@ function MdxArticleDisplay({ result }: { result: MdxGenerationResult }) {
             <li>GitHub PRをレビュー</li>
             <li>問題なければPRをマージ</li>
             <li>ローカル環境で <code className="bg-gray-100 px-1 py-0.5 rounded">git pull</code></li>
-            <li>
-              <code className="bg-gray-100 px-1 py-0.5 rounded">
-                pnpm --filter @revolution/frontend generate:article-index
-              </code> を実行
-            </li>
-            <li>フロントエンドをビルドして記事を確認</li>
+            <li>フロントエンドをビルドして記事を確認 (ビルドの前に記事の索引が作られます)</li>
           </ol>
         </div>
       </div>

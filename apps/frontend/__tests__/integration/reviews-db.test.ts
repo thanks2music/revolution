@@ -46,7 +46,7 @@ describe('口コミの DB', () => {
     client: SupabaseClient,
     member: TestMember,
     occurrenceId: number,
-    fields: Record<string, unknown> = {},
+    fields: Record<string, unknown> = {}
   ) {
     const result = await client
       .from('reviews')
@@ -75,7 +75,11 @@ describe('口コミの DB', () => {
   }
 
   async function adminReview(id: number) {
-    const { data: row, error } = await data!.admin.from('reviews').select('*').eq('id', id).single();
+    const { data: row, error } = await data!.admin
+      .from('reviews')
+      .select('*')
+      .eq('id', id)
+      .single();
     if (error) throw error;
     return row as Record<string, unknown>;
   }
@@ -182,7 +186,9 @@ describe('口コミの DB', () => {
       const client = await signInAsMember(member);
 
       expect((await submit(client, member, occ.id, { rating: null })).error?.code).toBe('23514');
-      expect((await submit(client, member, occ.id, { visited_on: null })).error?.code).toBe('23514');
+      expect((await submit(client, member, occ.id, { visited_on: null })).error?.code).toBe(
+        '23514'
+      );
     });
   });
 
@@ -193,13 +199,19 @@ describe('口コミの DB', () => {
       ['日程未発表', { startsOn: null }],
     ])('%s の開催には提出できない', async (_label, occurrence) => {
       const event = await data!.createEvent();
-      const occ = await data!.createOccurrence({ eventId: event.id, verified: true, ...occurrence });
+      const occ = await data!.createOccurrence({
+        eventId: event.id,
+        verified: true,
+        ...occurrence,
+      });
       const member = await data!.createMember();
       const client = await signInAsMember(member);
 
       const { error } = await submit(client, member, occ.id, { visited_on: jstDate() });
 
       expect(error?.code).toBe('23514');
+      // 提出の action はこの文言で利用者向けの文を選ぶ (actions/review.ts の TRIGGER_MESSAGES)
+      expect(error?.message).toContain('review occurrence');
     });
 
     it.each([
@@ -213,6 +225,8 @@ describe('口コミの DB', () => {
       const { error } = await submit(client, member, occ.id, { visited_on: jstDate(offset) });
 
       expect(error?.code).toBe('23514');
+      // 提出の action はこの文言で訪問日の欄の誤りにする (actions/review.ts の TRIGGER_MESSAGES)
+      expect(error?.message).toContain('review visited_on is out of range');
     });
 
     it('終了日の後には訪問日を置けない', async () => {
@@ -227,7 +241,7 @@ describe('口コミの DB', () => {
       const client = await signInAsMember(member);
 
       expect((await submit(client, member, occ.id, { visited_on: jstDate(-5) })).error?.code).toBe(
-        '23514',
+        '23514'
       );
       expect((await submit(client, member, occ.id, { visited_on: jstDate(-10) })).error).toBeNull();
     });
@@ -242,7 +256,12 @@ describe('口コミの DB', () => {
       const { data: row } = await submit(authorClient, author, occ.id);
 
       const asAnon = await anonClient().from('reviews').select('id').eq('id', row!.id);
-      const asOther = await (await signInAsMember(other)).from('reviews').select('id').eq('id', row!.id);
+      const asOther = await (
+        await signInAsMember(other)
+      )
+        .from('reviews')
+        .select('id')
+        .eq('id', row!.id);
       const asAuthor = await authorClient.from('reviews').select('id, status').eq('id', row!.id);
 
       expect(asAnon.data).toEqual([]);
@@ -253,7 +272,9 @@ describe('口コミの DB', () => {
     it('公開すると anon に見え、星の合計と件数に入る。外すと戻る', async () => {
       const occ = await ongoingOccurrence();
       const member = await data!.createMember();
-      const { data: row } = await submit(await signInAsMember(member), member, occ.id, { rating: 4 });
+      const { data: row } = await submit(await signInAsMember(member), member, occ.id, {
+        rating: 4,
+      });
       expect(await occurrenceRating(occ.id)).toEqual({ rating_sum: 0, rating_count: 0 });
 
       await setReview(row!.id as number, { status: 'published' });
@@ -279,7 +300,8 @@ describe('口コミの DB', () => {
         return (profile as { published_review_count: number }).published_review_count;
       };
       const visibleToAnon = async () =>
-        ((await anonClient().from('profiles').select('id').eq('id', member.userId)).data ?? []).length;
+        ((await anonClient().from('profiles').select('id').eq('id', member.userId)).data ?? [])
+          .length;
 
       expect(await count()).toBe(0);
       await setReview(row!.id as number, { status: 'published' });
@@ -292,17 +314,26 @@ describe('口コミの DB', () => {
     });
 
     // 仕様 (状態の遷移の表): 非公開・BOSS の確認待ちも、投稿者が直して出し直すと審査中に戻り、もう一度 AI の審査を通る
-    it.each(['hidden', 'needs_review'])('%s の口コミも、投稿者が直すと審査中に戻る', async (status) => {
-      const occ = await ongoingOccurrence();
-      const member = await data!.createMember();
-      const client = await signInAsMember(member);
-      const { data: row } = await submit(client, member, occ.id);
-      await setReview(row!.id as number, { status, reason_code: status === 'hidden' ? 'spam' : null });
+    it.each(['hidden', 'needs_review'])(
+      '%s の口コミも、投稿者が直すと審査中に戻る',
+      async status => {
+        const occ = await ongoingOccurrence();
+        const member = await data!.createMember();
+        const client = await signInAsMember(member);
+        const { data: row } = await submit(client, member, occ.id);
+        await setReview(row!.id as number, {
+          status,
+          reason_code: status === 'hidden' ? 'spam' : null,
+        });
 
-      await client.from('reviews').update({ body: '直しました' }).eq('id', row!.id);
+        await client.from('reviews').update({ body: '直しました' }).eq('id', row!.id);
 
-      expect(await adminReview(row!.id as number)).toMatchObject({ status: 'pending', reason_code: null });
-    });
+        expect(await adminReview(row!.id as number)).toMatchObject({
+          status: 'pending',
+          reason_code: null,
+        });
+      }
+    );
 
     it('公開中の口コミを論理削除すると集計から外れ、anon に見えなくなる', async () => {
       const occ = await ongoingOccurrence();
@@ -324,7 +355,10 @@ describe('口コミの DB', () => {
       const { data: row } = await submit(client, member, occ.id, { rating: 3 });
       await setReview(row!.id as number, { status: 'published' });
 
-      const { error } = await client.from('reviews').update({ body: '書き直しました' }).eq('id', row!.id);
+      const { error } = await client
+        .from('reviews')
+        .update({ body: '書き直しました' })
+        .eq('id', row!.id);
 
       expect(error).toBeNull();
       const stored = await adminReview(row!.id as number);
@@ -387,7 +421,10 @@ describe('口コミの DB', () => {
       await setReview(row!.id as number, { status: 'published' });
 
       const dateRead = await anonClient().from('reviews').select('visited_on').eq('id', row!.id);
-      const monthRead = await anonClient().from('reviews').select('visited_month').eq('id', row!.id);
+      const monthRead = await anonClient()
+        .from('reviews')
+        .select('visited_month')
+        .eq('id', row!.id);
 
       expect(dateRead.error?.code).toBe('42501');
       expect(monthRead.data).toEqual([{ visited_month: `${jstDate(-1).slice(0, 7)}-01` }]);
@@ -416,8 +453,14 @@ describe('口コミの DB', () => {
       await setReview(row!.id as number, { status: 'published' });
       const viewerClient = await signInAsMember(viewer);
 
-      const shown = await viewerClient.from('profiles').select('display_name').eq('id', author.userId);
-      const hidden = await viewerClient.from('profiles').select('updated_at').eq('id', author.userId);
+      const shown = await viewerClient
+        .from('profiles')
+        .select('display_name')
+        .eq('id', author.userId);
+      const hidden = await viewerClient
+        .from('profiles')
+        .select('updated_at')
+        .eq('id', author.userId);
 
       expect(shown.data).toEqual([{ display_name: author.username }]);
       expect(hidden.error?.code).toBe('42501');
