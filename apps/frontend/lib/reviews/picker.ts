@@ -37,6 +37,8 @@ const SEARCH_LIMIT = 30;
  * 短くてよくある言葉だと、合う開催が漏れることがある (言葉を足せば出る)
  */
 const MATCH_LIMIT = 50;
+/** 開催を引く時に渡す企画の ID の数の上限 (URL の長さを抑える) */
+const MAX_EVENT_IDS = 200;
 /** 検索の言葉の長さの上限 (7-0 の入力欄の maxLength も使う) */
 export const MAX_QUERY_LENGTH = 50;
 
@@ -197,6 +199,8 @@ export async function searchReviewTargets(query: string): Promise<ReviewTarget[]
   for (const title of titleRows) {
     for (const link of title.event_titles ?? []) eventIds.add(link.event_id);
   }
+  // 作品 1 つに企画が多く結び付くと ID の一覧が長くなり、URL の長さの上限に当たる。新しい企画を残す
+  const boundedEventIds = [...eventIds].sort((a, b) => b - a).slice(0, MAX_EVENT_IDS);
   const venueIds = new Set<number>([
     ...(venues.data ?? []).map(row => row.id as number),
     ...(venueAliases.data ?? []).map(row => row.venue_id as number),
@@ -205,20 +209,20 @@ export async function searchReviewTargets(query: string): Promise<ReviewTarget[]
   const labelledIds = (labelled.data ?? []).map(row => row.id as number);
   // 利用者の言葉は .or() の文字列に入れない (`,` や `)` で崩れるため)。ID だけを並べる
   const conditions = [
-    eventIds.size > 0 && `event_id.in.(${[...eventIds].join(',')})`,
+    boundedEventIds.length > 0 && `event_id.in.(${boundedEventIds.join(',')})`,
     venueIds.size > 0 && `venue_id.in.(${[...venueIds].join(',')})`,
     labelledIds.length > 0 && `id.in.(${labelledIds.join(',')})`,
   ].filter(Boolean);
   if (conditions.length === 0) return [];
   const list = (writable: boolean) => {
-    const query = supabase
+    const base = supabase
       .from('occurrence_view')
       .select(REVIEW_TARGET_COLUMNS)
       .or(conditions.join(','));
     return (
       writable
-        ? query.in('status', WRITABLE_STATUSES)
-        : query.not('status', 'in', `(${WRITABLE_STATUSES.join(',')})`)
+        ? base.in('status', WRITABLE_STATUSES)
+        : base.not('status', 'in', `(${WRITABLE_STATUSES.join(',')})`)
     )
       .order('starts_on', { ascending: false, nullsFirst: false })
       .order('id', { ascending: false })

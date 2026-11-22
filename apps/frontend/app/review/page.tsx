@@ -9,14 +9,16 @@
 import * as Sentry from '@sentry/nextjs';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 import {
   RecentReviewTargets,
   TargetSection,
 } from '@/components/molecules/reviews/RecentReviewTargets';
 import Layout from '@/components/templates/Layout';
-import { getCurrentMember } from '@/lib/auth/member';
+import { getCurrentMember, memberRedirect } from '@/lib/auth/member';
 import { listOwnReviews } from '@/lib/reviews/own-reviews';
+import { REVIEW_PICKER_PATH } from '@/lib/reviews/paths';
 import {
   MAX_QUERY_LENGTH,
   normalizeQuery,
@@ -32,9 +34,17 @@ export const metadata: Metadata = {
 
 export default async function ReviewPickerPage(props: { searchParams: Promise<{ q?: string }> }) {
   const query = normalizeQuery((await props.searchParams).q);
+  // middleware も止めるが、検索は service role を使うので、ページでも会員かを先に確かめる
+  const member = await getCurrentMember();
+  if (!member.ok) {
+    const returnTo = query
+      ? `${REVIEW_PICKER_PATH}?q=${encodeURIComponent(query)}`
+      : REVIEW_PICKER_PATH;
+    redirect(`/${memberRedirect(member.reason)}?next=${encodeURIComponent(returnTo)}`);
+  }
   const [results, ownTargets] = await Promise.all([
     query ? searchReviewTargets(query).catch(reportAndEmpty) : Promise.resolve(null),
-    loadOwnTargets(),
+    loadOwnTargets(member.profileId),
   ]);
 
   return (
@@ -99,12 +109,11 @@ function reportAndEmpty(error: unknown): ReviewTarget[] {
  * 会員が口コミを書いた開催 (直す入口)。下書きも含める。理由と訪問日を含む行なので service role で読む。
  * 読めない時は出さない (ページの残りは使える)
  */
-async function loadOwnTargets(): Promise<ReviewTarget[]> {
+async function loadOwnTargets(profileId: string): Promise<ReviewTarget[]> {
   try {
-    const member = await getCurrentMember();
     const admin = createAdminClient();
-    if (!member.ok || !admin) return [];
-    return (await listOwnReviews(admin, member.profileId)).map(review => review.target);
+    if (!admin) return [];
+    return (await listOwnReviews(admin, profileId)).map(review => review.target);
   } catch (error) {
     Sentry.captureException(error, { tags: { page: 'review-picker', part: 'own-reviews' } });
     return [];
