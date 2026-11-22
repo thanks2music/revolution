@@ -1,7 +1,56 @@
 {
-  "generatedAt": "2026-11-21T06:52:13.208Z",
-  "totalArticles": 11,
+  "generatedAt": "2026-11-22T01:09:14.102Z",
+  "totalArticles": 12,
   "articles": [
+    {
+      "slug": "01m80cr58v44g7km",
+      "title": "ポケットモンスター カフェ in 石川 12月1日よりコラボ開催",
+      "date": "2026-11-21T15:14:55.000Z",
+      "excerpt": "「モンポケ」とHOKUBI KANAZAWAのコラボカフェが、2026年12月1日より開催されます。「はじめまして、をあつめよう。」をテーマに、ゲームの世界観やキャラクターをイメージしたコラボメニューをお楽しみいただけます。ファン必見のスペシャルアイテムも登場します。",
+      "categories": [
+        "ポケットモンスター",
+        "グッズ販売"
+      ],
+      "tags": [],
+      "author": "thanks2music",
+      "filePath": "apps/ai-writer/content/goods-sales/pokemon/01m80cr58v44g7km.mdx",
+      "post_id": "01m80cr58v44g7km",
+      "year": 2026,
+      "event_type": "goods-sales",
+      "event_title": "グッズ販売",
+      "work_title": "ポケットモンスター",
+      "work_titles": [
+        "モンポケ"
+      ],
+      "work_slug": "pokemon",
+      "prefectures": [
+        "石川県"
+      ],
+      "prefecture_slugs": [
+        "ishikawa"
+      ],
+      "ogImage": "https://images.anime-events.com/goods-sales/2026/01m80cr58v44g7km/c941c680290f7f0b515eb02e6716ee48.png",
+      "event_start_date": "2026-12-01",
+      "venue": "HOKUBI KANAZAWA",
+      "official_url": "https://hamico.jp/",
+      "event_data": {
+        "primary_category_slug": "chain-store",
+        "title_slugs": [
+          "pokemon"
+        ],
+        "event_name": "HAMICO × モンポケ スペシャルアイテム",
+        "event_slug": "hamico-pokemon-special-items",
+        "occurrences": [
+          {
+            "venue_slug": null,
+            "venue_label": "HOKUBI KANAZAWA",
+            "starts_on": "2026-12-01",
+            "ends_on": null,
+            "official_url": "https://hamico.jp/"
+          }
+        ]
+      }
+    },
     {
       "slug": "01m7ydys18ckpgbj",
       "title": "BANANA FISH カフェ in 新宿 11月26日よりコラボ開催",
