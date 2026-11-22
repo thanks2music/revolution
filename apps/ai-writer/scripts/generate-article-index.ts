@@ -179,8 +179,7 @@ async function findMdxFiles(dir: string): Promise<string[]> {
  */
 async function processmdxFile(
   filePath: string,
-  contentDir: string,
-  verbose: boolean
+  contentDir: string
 ): Promise<ArticleIndexItem | null> {
   try {
     const content = await readFile(filePath, 'utf-8');
@@ -312,7 +311,7 @@ async function main(): Promise<void> {
       console.log(`  処理中: ${filePath}`);
     }
 
-    const item = await processmdxFile(filePath, contentDir, verbose);
+    const item = await processmdxFile(filePath, contentDir);
     if (item) {
       articles.push(item);
     } else {
