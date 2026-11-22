@@ -12,7 +12,7 @@
  * (デザインの依頼: one-more-time/docs/design/2026-11-kuchikomi-missing-screens/request.md)。
  */
 
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 
 import {
   MAX_REVIEW_PHOTO_BYTES,
@@ -79,6 +79,8 @@ export function screenSelectedPhotos(
 }
 
 /** 署名付き URL へ上げる (進み具合を知るため XMLHttpRequest を使う) */
+const UPLOAD_TIMEOUT_MS = 3 * 60 * 1000;
+
 function putFile(
   url: string,
   headers: Record<string, string>,
@@ -92,8 +94,12 @@ function putFile(
     xhr.upload.onprogress = event => {
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     };
+    // 止まった通信で、欄とフォームが作業中のまま固まらないように打ち切る (10MB を遅い回線でも上げられる長さ)
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
     xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
     xhr.onerror = () => resolve(false);
+    xhr.ontimeout = () => resolve(false);
+    xhr.onabort = () => resolve(false);
     xhr.send(file);
   });
 }
@@ -106,10 +112,13 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
   );
   const [errors, setErrors] = useState<string[]>([]);
   // 作業中 (写真を選んでから上げ終わるまで = 先の下書きの保存を含む、外す・並べ替えるの保存)
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
   const locked = busy || props.disabled === true;
-  const { onBusyChange } = props;
-  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
+  // フォームへは同じ処理の中で知らせる (effect を待つと、1 回の描画の間フォームのボタンが押せてしまう)
+  function setBusy(value: boolean) {
+    setBusyState(value);
+    props.onBusyChange?.(value);
+  }
 
   async function onFiles(list: FileList | null) {
     const files = Array.from(list ?? []);
