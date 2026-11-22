@@ -14,6 +14,7 @@ const ROW = {
   goods_cost_band: '5000_10000' as const,
   has_spoiler: false,
   edited_at: null,
+  helpful_count: 2,
   profiles: { display_name: 'みかん', username: 'mikan', withdrawn_at: null },
 };
 
