@@ -479,10 +479,12 @@ describe('口コミの写真', () => {
         reviewId,
         file: { contentType: 'image/jpeg', size: 10 },
       });
-    // 1 枚も上げずに、URL だけを同時にまとめて取る
-    const results = await Promise.all(Array.from({ length: 22 }, request));
+    // 1 枚も上げずに、URL だけを取る。18 本は 1 本ずつ、残りの枠 (2) を 4 本で同時に取り合う
+    // (22 本を一度に投げると、ローカルの Supabase の入り口が 502 を返すことがあるため)
+    for (let i = 0; i < 18; i++) expect((await request()).kind).toBe('ok');
+    const results = await Promise.all(Array.from({ length: 4 }, request));
 
-    expect(results.filter(result => result.kind === 'ok')).toHaveLength(20);
+    expect(results.filter(result => result.kind === 'ok')).toHaveLength(2);
     expect(results.filter(result => result.kind === 'busy')).toHaveLength(2);
   });
 
