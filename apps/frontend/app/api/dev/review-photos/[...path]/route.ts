@@ -12,15 +12,15 @@ import { NextResponse } from 'next/server';
 
 import { MAX_REVIEW_PHOTO_BYTES, REVIEW_PHOTO_TYPES } from '@revolution/schemas/review-photo';
 
-import { createFakePhotoStorage, getReviewPhotoStorage } from '@/lib/reviews/photos/storage';
+import { createFakePhotoStorage } from '@/lib/reviews/photos/storage';
 import { allowsFakeBackends } from '@/lib/reviews/fake-backends';
 
 type Params = { params: Promise<{ path: string[] }> };
 
 function fakeStorage() {
   if (process.env.REVIEW_PHOTO_STORAGE !== 'fake' || !allowsFakeBackends(process.env)) return null;
-  // getReviewPhotoStorage と同じ置き場所 (既定の一時ディレクトリ)
-  return getReviewPhotoStorage() ? createFakePhotoStorage() : null;
+  // getReviewPhotoStorage が選ぶ偽物と同じ置き場所 (既定の一時ディレクトリ)
+  return createFakePhotoStorage();
 }
 
 const notFound = () => new NextResponse(null, { status: 404 });

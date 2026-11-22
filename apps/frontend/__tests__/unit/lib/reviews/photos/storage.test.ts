@@ -71,7 +71,7 @@ describe('R2 の置き場所', () => {
     expect(readUrl.host).toBe('photo-bucket.account.r2.cloudflarestorage.com');
   });
 
-  it('受け取った写真が無い時と、上限より大きい時 (本文を閉じる) を分けて返す', async () => {
+  it('受け取った写真が無い時と、上限より大きい・長さが分からない時 (本文を閉じる) を分けて返す', async () => {
     const { storage, send } = r2WithFakeSend();
     send.mockRejectedValueOnce(Object.assign(new Error('missing'), { name: 'NoSuchKey' }));
     await expect(storage.readIntake('x')).resolves.toEqual({ kind: 'missing' });
@@ -81,6 +81,9 @@ describe('R2 の置き場所', () => {
     await expect(storage.readIntake('x')).resolves.toEqual({ kind: 'too_large' });
     expect(destroy).toHaveBeenCalled();
 
+    send.mockResolvedValueOnce({ Body: { destroy } });
+    await expect(storage.readIntake('x')).resolves.toEqual({ kind: 'too_large' });
+
     send.mockResolvedValueOnce({
       ContentLength: 3,
       Body: { transformToByteArray: async () => new Uint8Array([1, 2, 3]) },
@@ -89,7 +92,7 @@ describe('R2 の置き場所', () => {
       kind: 'ok',
       body: new Uint8Array([1, 2, 3]),
     });
-    expect((send.mock.calls[2][0] as GetObjectCommand).input).toEqual({
+    expect((send.mock.calls[3][0] as GetObjectCommand).input).toEqual({
       Bucket: 'intake-bucket',
       Key: 'x',
     });

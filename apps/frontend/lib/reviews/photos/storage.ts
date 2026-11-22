@@ -135,7 +135,8 @@ export function createR2PhotoStorage(
           new GetObjectCommand({ Bucket: config.intakeBucket, Key: key })
         );
         if (!object.Body) return { kind: 'missing' };
-        if ((object.ContentLength ?? 0) > MAX_REVIEW_PHOTO_BYTES) {
+        // 長さが分からない物も読まない (上限の無い読み込みを避ける)
+        if (object.ContentLength === undefined || object.ContentLength > MAX_REVIEW_PHOTO_BYTES) {
           // 読まない本文は閉じる (接続を返す)
           (object.Body as { destroy?: () => void }).destroy?.();
           return { kind: 'too_large' };

@@ -145,7 +145,12 @@ export async function ingestPhoto(
     if (!converted.ok) return { kind: 'rejected', reason: converted.reason };
 
     const keys = variantKeys(key, converted.variantWidths);
-    const cleanUp = () => ctx.storage.deleteStored(keys).catch(() => undefined);
+    // 片付けの前に、同じ写真の行が無いかを見る。同時に走ったもう一方の取り込みが行を足していれば、
+    // 保管側の物は同じキーでその行が指しているので消さない (10 枚目を取り合って片方が断られた時など)
+    const cleanUp = async () => {
+      if (await findPhotoRow(ctx.db, key).catch(() => null)) return;
+      await ctx.storage.deleteStored(keys).catch(() => undefined);
+    };
     // 全部の書き込みが終わってから片付ける (途中で消すと、後から終わった物が残る)
     const puts = await Promise.allSettled(
       converted.variants.map(variant =>
@@ -173,6 +178,9 @@ export async function ingestPhoto(
       throw error;
     });
     if (inserted === 'full') {
+      const winner = await findPhotoRow(ctx.db, key);
+      if (winner)
+        return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, winner), requeued: false };
       await cleanUp();
       return { kind: 'full' };
     }

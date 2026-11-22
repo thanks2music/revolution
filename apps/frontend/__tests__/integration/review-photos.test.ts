@@ -378,6 +378,31 @@ describe('口コミの写真', () => {
     ).resolves.not.toBeNull();
   });
 
+  it('9 枚の口コミで同じ写真を同時に取り込んでも、先の行の保管側の物を消さない', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const filled = await data.admin.from('review_images').insert(
+      Array.from({ length: 9 }, (_, i) => ({
+        review_id: reviewId,
+        object_key: `preview/reviews/${reviewId}/filler${i}`,
+        width: 10,
+        height: 10,
+        variant_widths: [10],
+      }))
+    );
+    if (filled.error) throw filled.error;
+    const photoId = await upload(reviewId, member, await jpegWithGps(500, 400));
+
+    const results = await Promise.all([
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId }),
+      ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId }),
+    ]);
+
+    expect(results.map(result => result.kind)).toEqual(['ok', 'ok']);
+    await expect(
+      storage.readStored(`preview/reviews/${reviewId}/${photoId}/400.webp`)
+    ).resolves.not.toBeNull();
+  });
+
   it('受け取り場所に無い写真と、形のおかしな写真の ID は取り込まない', async () => {
     const { reviewId, member } = await reviewOf('draft');
     await expect(
