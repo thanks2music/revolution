@@ -122,10 +122,7 @@ export default async function ReviewSubmitPage(props: OccurrencePageProps) {
   );
 }
 
-/**
- * 会員のこの開催の口コミ (編集の初期値)。本人の訪問日は他人に見せない列なので、サーバーが service role で読む。
- * 確かめられない時は新しい口コミとして開く (二重の投稿は DB の部分 unique が止め、提出の時に理由を返す)
- */
+/** 会員の口コミに付けた写真 (本人だけが見る、短時間だけ有効な URL) */
 async function loadOwnPhotos(
   reviewId: number,
   profileId: string,
@@ -142,6 +139,10 @@ async function loadOwnPhotos(
   }
 }
 
+/**
+ * 会員のこの開催の口コミ (編集の初期値)。本人の訪問日は他人に見せない列なので、サーバーが service role で読む。
+ * 確かめられない時は新しい口コミとして開く (二重の投稿は DB の部分 unique が止め、提出の時に理由を返す)
+ */
 async function loadOwnReview(occurrenceId: number, profileId: string): Promise<OwnReview | null> {
   const admin = createAdminClient();
   if (!admin) return null;

@@ -37,11 +37,7 @@ import {
   type OwnReview,
   type ReviewContent,
 } from '@/lib/reviews/authoring';
-import {
-  explainsReason,
-  ownReviewStatus,
-  type OwnReviewStatus,
-} from '@/lib/reviews/eligibility';
+import { explainsReason, ownReviewStatus, type OwnReviewStatus } from '@/lib/reviews/eligibility';
 import { toScreeningReason } from '@/lib/reviews/labels';
 import {
   modeFor,
@@ -314,11 +310,6 @@ export async function deleteReview(
     return FAILURES.unexpected;
   }
 }
-
-/**
- * 提出の後に AI の審査を走らせる (`after()` の中)。公開になったら開催と企画のページを作り直す。
- * 失敗は Sentry に送る (操作の層が状態を「AI 審査の失敗」にして BOSS の確認待ちへ回す)
- */
 
 /**
  * 本人の口コミの状態 (開催のページの島がマウント後に呼ぶ。ページの静的な描画を壊さないため)。

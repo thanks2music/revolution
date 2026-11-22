@@ -486,6 +486,27 @@ describe('口コミの写真', () => {
     expect(results.filter(result => result.kind === 'busy')).toHaveLength(2);
   });
 
+  it('URL を出せなかった時は、出した記録を残さない', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const broken = {
+      ...storage,
+      presignIntakeUpload: async () => {
+        throw new Error('presign failed');
+      },
+    };
+    await expect(
+      requestPhotoUpload(
+        { ...ctx, storage: broken },
+        { profileId: member.userId, reviewId, file: { contentType: 'image/jpeg', size: 10 } }
+      )
+    ).rejects.toThrow('presign failed');
+    const { count } = await data.admin
+      .from('review_photo_uploads')
+      .select('photo_id', { count: 'exact', head: true })
+      .eq('review_id', reviewId);
+    expect(count).toBe(0);
+  });
+
   it('上げる前に取り込みを呼んでも、出した記録は消えない (上限を空けられない)', async () => {
     const { reviewId, member } = await reviewOf('draft');
     const ticket = await requestPhotoUpload(ctx, {

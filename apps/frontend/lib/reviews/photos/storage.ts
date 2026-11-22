@@ -46,7 +46,8 @@ export type IntakeRead =
 
 /** 署名付き URL の有効期間 */
 const UPLOAD_URL_TTL_SECONDS = 10 * 60;
-const READ_URL_TTL_SECONDS = 10 * 60;
+// 読む URL は本人の投稿の画面の写真に使う。書いている間 (長い口コミ・戻る) に切れないよう、長めにする
+const READ_URL_TTL_SECONDS = 60 * 60;
 
 /** 環境ごとのキーの先頭。本番だけ production/、それ以外 (Preview・手元・テスト) は preview/ */
 export function reviewPhotoKeyPrefix(

@@ -79,11 +79,14 @@ export function ReviewForm(props: ReviewFormProps) {
   const [draftSaved, setDraftSaved] = useState(false);
   // 口コミの行があるか (写真は口コミに付けるので、無ければ先に下書きを保存する)
   const [hasReview, setHasReview] = useState(initial !== undefined);
+  // 写真の欄が作業中 (先の下書きの保存・上げる・外す・並べ替える)。その間は投稿と下書きの保存を止める
+  const [photosBusy, setPhotosBusy] = useState(false);
   // 提出の失敗 (全体の文・欄ごとの誤り・ログインが要るか) を 1 つで持つ
   const [failure, setFailure] = useState<SubmitReviewFailure | null>(null);
   const fieldErrors = failure?.fieldErrors ?? {};
   const [submittedAt, setSubmittedAt] = useState<Date | null>(null);
   const [pending, startTransition] = useTransition();
+  const locked = pending || photosBusy;
   const ids = { visitedOn: useId(), body: useId(), spoiler: useId() };
 
   if (submittedAt) {
@@ -98,7 +101,7 @@ export function ReviewForm(props: ReviewFormProps) {
     );
   }
 
-  const canSubmit = rating !== null && visitedOn !== '' && !pending;
+  const canSubmit = rating !== null && visitedOn !== '' && !locked;
 
   // 送る内容 (提出と下書きの保存で共通。下書きは星と訪問日が空でよい)
   const content = { attendance, foodCostBand, goodsCostBand, body, hasSpoiler };
@@ -143,14 +146,22 @@ export function ReviewForm(props: ReviewFormProps) {
   async function ensureReview(): Promise<boolean> {
     if (hasReview) return true;
     try {
-      const result = await saveReviewDraft(props.route, { ...content, rating, visitedOn: visitedOn || null });
+      const result = await saveReviewDraft(props.route, {
+        ...content,
+        rating,
+        visitedOn: visitedOn || null,
+      });
       if (result.ok) {
         setHasReview(true);
+        setFailure(null);
         return true;
       }
       setFailure(result);
     } catch {
-      setFailure({ ok: false, error: '保存できませんでした。通信を確かめて、もう一度お試しください' });
+      setFailure({
+        ok: false,
+        error: '保存できませんでした。通信を確かめて、もう一度お試しください',
+      });
     }
     return false;
   }
@@ -280,6 +291,7 @@ export function ReviewForm(props: ReviewFormProps) {
           route={props.route}
           initialPhotos={props.initialPhotos ?? []}
           ensureReview={ensureReview}
+          onBusyChange={setPhotosBusy}
           rescreensOnAdd={
             initial !== undefined && initial.status !== 'draft' && initial.status !== 'pending'
           }
@@ -340,7 +352,7 @@ export function ReviewForm(props: ReviewFormProps) {
         <button
           type="button"
           onClick={onSaveDraft}
-          disabled={pending}
+          disabled={locked}
           className="mt-3 w-full rounded-2xl border border-(--line-soft) bg-white p-3 font-display text-sm font-bold text-ink-strong transition-colors hover:bg-muted disabled:opacity-50"
         >
           下書きを保存

@@ -12,7 +12,7 @@
  * (デザインの依頼: one-more-time/docs/design/2026-11-kuchikomi-missing-screens/request.md)。
  */
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import {
   MAX_REVIEW_PHOTO_BYTES,
@@ -37,6 +37,8 @@ export type ReviewPhotosFieldProps = {
   ensureReview: () => Promise<boolean>;
   /** 写真を足すと審査し直しになる口コミか (公開中・差し戻し・確認待ち・非公開) */
   rescreensOnAdd: boolean;
+  /** 下書きの保存・上げる・外す・並べ替えるの最中か (フォームは、その間の投稿と下書きの保存を止める) */
+  onBusyChange?: (busy: boolean) => void;
 };
 
 /** ブラウザが形式を付けない HEIC (Windows など) は拡張子で見分ける */
@@ -100,7 +102,11 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
   const [errors, setErrors] = useState<string[]>([]);
   // 外す・並べ替えるの保存中 (画面は先に変える)。保存中は次の操作を止める
   const [saving, setSaving] = useState(false);
-  const busy = upload !== null || saving;
+  // 写真を選んでから上げ終わるまで (先に下書きを保存する間を含む)
+  const [uploading, setUploading] = useState(false);
+  const busy = uploading || saving;
+  const { onBusyChange } = props;
+  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
 
   async function onFiles(list: FileList | null) {
     const files = Array.from(list ?? []);
@@ -111,8 +117,15 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
     );
     setErrors(refused);
     if (accepted.length === 0) return;
-    if (!(await props.ensureReview())) return;
+    setUploading(true);
+    try {
+      if (await props.ensureReview()) await uploadAll(files, accepted);
+    } finally {
+      setUploading(false);
+    }
+  }
 
+  async function uploadAll(files: File[], accepted: { index: number; type: ReviewPhotoType }[]) {
     const failed: string[] = [];
     setUpload({ done: 0, total: accepted.length, progress: 0 });
     for (const [done, { index, type }] of accepted.entries()) {
@@ -292,8 +305,8 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
       )}
       {errors.length > 0 && (
         <ul role="alert" className="flex flex-col gap-1 text-xs text-status-cancelled">
-          {errors.map(message => (
-            <li key={message}>{message}</li>
+          {errors.map((message, index) => (
+            <li key={`${index}:${message}`}>{message}</li>
           ))}
         </ul>
       )}

@@ -96,7 +96,7 @@ export type RequestUploadOutcome =
   /** 取り込んでいない URL が 1 日の間に 20 ある (上げた後に取り込みを呼ばない使い方を止める) */
   | { kind: 'busy' };
 
-/** 期限内の URL が多すぎる時にトリガが投げる文 (migration 20261122*_review_photo_uploads と揃える) */
+/** 取り込んでいない URL が 1 日に 20 ある時にトリガが投げる文 (migration 20261122*_review_photo_uploads と揃える) */
 const PENDING_UPLOADS_MESSAGE = 'too many pending review photo uploads';
 
 /** 受け取り場所へ上げる署名付き URL を出す。形式と大きさは呼ぶ側が zod で確かめた物を渡す */
@@ -110,7 +110,7 @@ export async function requestPhotoUpload(
     return { kind: 'not_found' };
   if ((await countPhotos(ctx.db, input.reviewId)) >= MAX_REVIEW_PHOTOS) return { kind: 'full' };
   const photoId = randomUUID();
-  // 出した URL を記録する。期限内の記録が上限に達していれば、トリガが断る (同時に出しても超えない)
+  // 出した URL を記録する。取り込んでいない記録が 1 日に 20 あれば、トリガが断る (同時に出しても超えない)
   const ticket = await ctx.db
     .from('review_photo_uploads')
     .insert({ photo_id: photoId, review_id: input.reviewId });
@@ -120,11 +120,17 @@ export async function requestPhotoUpload(
     }
     throw ticket.error;
   }
-  const { url, headers } = await ctx.storage.presignIntakeUpload(
-    photoKey(ctx.prefix, input.reviewId, photoId),
-    { contentType: input.file.contentType, size: input.file.size }
-  );
-  return { kind: 'ok', photoId, url, headers };
+  try {
+    const { url, headers } = await ctx.storage.presignIntakeUpload(
+      photoKey(ctx.prefix, input.reviewId, photoId),
+      { contentType: input.file.contentType, size: input.file.size }
+    );
+    return { kind: 'ok', photoId, url, headers };
+  } catch (error) {
+    // URL を出せなかった記録は数えない (残すと、上げていないのに上限に近づく)
+    await deleteTicket(ctx.db, photoId);
+    throw error;
+  }
 }
 
 export type IngestOutcome =

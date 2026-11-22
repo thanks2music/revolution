@@ -143,7 +143,7 @@ describe('requestReviewPhotoUpload', () => {
 
   it.each([
     ['full', '10 枚まで'],
-    ['busy', '混み合って'],
+    ['busy', '取り込めていない写真が多い'],
   ])('%s は理由の文にする', async (kind, text) => {
     mocked(requestPhotoUpload).mockResolvedValue({ kind });
     await expect(

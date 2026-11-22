@@ -51,7 +51,8 @@ const FAILURES = {
   full: { ok: false, error: `写真は ${MAX_REVIEW_PHOTOS} 枚までです` },
   busy: {
     ok: false,
-    error: '写真の取り込みが混み合っています。しばらくしてから、もう一度お試しください',
+    error:
+      '取り込めていない写真が多いため、今は写真を付けられません。明日以降にもう一度お試しください',
   },
   invalidFile: { ok: false, error: 'JPEG・PNG・HEIC の、10MB までの写真を選んでください' },
   missing: { ok: false, error: '写真を受け取れませんでした。もう一度選び直してください' },
@@ -184,7 +185,7 @@ export async function removeReviewPhoto(
   photoId: number
 ): Promise<ReviewPhotoChangeResult> {
   return guard('removeReviewPhoto', async () => {
-    if (!Number.isInteger(photoId) || photoId <= 0) return FAILURES.notFound;
+    if (!Number.isInteger(photoId) || photoId <= 0) return FAILURES.unexpected;
     const context = await resolvePhotoContext(route);
     if (!context.ok) return context.failure;
     const outcome = await removePhoto(context.ctx, {

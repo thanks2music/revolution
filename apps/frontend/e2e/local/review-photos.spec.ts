@@ -89,6 +89,8 @@ test('写真を付ける・断る・並べ替える・外す。口コミが無�
       .toBuffer(),
   };
   await page.locator('input[type="file"]').setInputFiles([await jpeg(400), gif, await jpeg(600)]);
+  // 上げている間は、投稿と下書きの保存を止める (先に保存する下書きと二重に作らない)
+  await expect(page.getByRole('button', { name: '下書きを保存' })).toBeDisabled();
 
   // 形式の違う写真は、選んだその場で名前つきの理由を出す
   await expect(page.getByRole('alert').filter({ hasText: 'anim.gif' })).toContainText(
