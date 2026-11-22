@@ -127,6 +127,34 @@
       "when": 1793698383013,
       "tag": "0017_categories_reduce_to_five",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795245773340,
+      "tag": "0018_reviews_status_and_screening",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795291269077,
+      "tag": "0019_reviews_check_on_submit",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795326447456,
+      "tag": "0020_review_stats_and_helpful",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795335133976,
+      "tag": "0021_review_photos",
+      "breakpoints": true
     }
   ]
 }

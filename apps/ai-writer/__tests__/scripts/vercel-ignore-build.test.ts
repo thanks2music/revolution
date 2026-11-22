@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 /**
- * Tests for scripts/vercel-ignore-build.sh (frontend の Vercel の Ignored Build Step)
+ * Tests for scripts/vercel-ignore-build.sh (frontend と docs の Vercel の Ignored Build Step)
  *
  * Layer 戦略:
  *   - 一時ディレクトリの作業用 repo (GitHub 役も兼ねる) から、Vercel と同じ浅い clone
@@ -15,12 +15,13 @@
  *   - 初期状態の repo は beforeAll で 1 回だけ作り、テストごとにコピーする
  *
  * 検証項目:
- *   1. Preview 以外 (Production / VERCEL_ENV が無い) は常にビルドする
- *   2. Preview は frontend の入力 (apps/frontend / 記事の MDX / shared / ルートの依存の定義) が
- *      変わった時だけビルドする
- *   3. 比べる commit: 前回の成功デプロイ。初回は main の先頭。浅い clone に無ければ取得する
- *   4. 判定できない時 (取得できない / 存在しない / git の外 / 前回と同じ commit) はビルドする
- *   5. 必須パスの一覧が、frontend の実物の workspace 依存を覆っている
+ *   1. Production 以外 (Preview / VERCEL_ENV が無い) は常にビルドする (Preview は GitHub Actions が
+ *      要る時だけ作っているため)
+ *   2. frontend の Production は常にビルドする (templates の Deploy Hook のため)。docs の Production は
+ *      docs の入力 (apps/docs / docs/ 直下の *.md / docs/meta.json / shared / 依存) が変わった時だけビルドする
+ *   3. 比べる commit: 前回の成功デプロイ。浅い clone に無ければ取得する。分からなければビルドする
+ *   4. 判定できない時 (取得できない / 存在しない / git の外 / 前回と同じ commit / アプリの指定が無い) はビルドする
+ *   5. 必須パスの一覧が、frontend の実物の workspace 依存を覆っている。--paths で一覧を出せる
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
@@ -39,10 +40,11 @@ const INITIAL_FILES: Record<string, string> = {
   'apps/frontend/app/page.tsx': 'export default function Page() {}\n',
   'apps/ai-writer/lib/pipeline.ts': 'export const v = 1;\n',
   'apps/ai-writer/content/collabo-cafe/a.mdx': '# a\n',
-  'apps/ai-writer/package.json': '{"name":"ai-writer"}\n',
   'apps/docs/page.mdx': '# docs\n',
+  'apps/docs/vercel.json': '{}\n',
   'docs/readme.md': '# readme\n',
-  '.github/workflows/ci.yml': 'name: CI\n',
+  'docs/meta.json': '{}\n',
+  'docs/archive/old.md': '# old\n',
   'shared/schemas/index.ts': 'export {};\n',
   'package.json': '{"name":"revolution"}\n',
   'pnpm-lock.yaml': 'lockfileVersion: 9.0\n',
@@ -104,7 +106,9 @@ function emptyCommits(n: number): void {
 }
 
 interface RunOptions {
-  /** VERCEL_ENV。既定は preview、null なら設定しない */
+  /** 判定するアプリ (スクリプトの引数)。既定は docs、null なら渡さない */
+  app?: string | null;
+  /** VERCEL_ENV。既定は production、null なら設定しない */
   env?: string | null;
   previousSha?: string;
   /** GitHub の URL の向け先。既定は作業用 repo */
@@ -120,17 +124,24 @@ function runScriptIn(cwd: string, opts: RunOptions): { status: number | null; st
     GIT_CONFIG_KEY_0: `url.file://${opts.origin ?? work}.insteadOf`,
     GIT_CONFIG_VALUE_0: GITHUB_URL,
   };
-  if (opts.env !== null) env.VERCEL_ENV = opts.env ?? 'preview';
+  if (opts.env !== null) env.VERCEL_ENV = opts.env ?? 'production';
   if (opts.previousSha !== undefined) env.VERCEL_GIT_PREVIOUS_SHA = opts.previousSha;
-  const r = spawnSync('bash', [SCRIPT], { cwd, env, encoding: 'utf-8' });
+  const args = opts.app === null ? [] : [opts.app ?? 'docs'];
+  const r = spawnSync('bash', [SCRIPT, ...args], { cwd, env, encoding: 'utf-8' });
   return { status: r.status, stdout: r.stdout };
 }
 
-/** Vercel と同じく feature branch を depth 10 で clone し、apps/frontend でスクリプトを実行する */
-function runIgnore(opts: RunOptions = {}): { status: number | null; stdout: string; clone: string } {
+/** Vercel と同じく branch を depth 10 で clone し、apps/<app> でスクリプトを実行する */
+function runIgnore(opts: RunOptions = {}): {
+  status: number | null;
+  stdout: string;
+  clone: string;
+} {
   const clone = join(root, 'clone');
   git(root, 'clone', '-q', '--depth=10', '--branch', 'feature', `file://${work}`, clone);
-  return { ...runScriptIn(join(clone, 'apps/frontend'), opts), clone };
+  // docs 以外の指定も、実在するディレクトリで動かす
+  const dir = opts.app === undefined || opts.app === 'docs' ? 'apps/docs' : 'apps/frontend';
+  return { ...runScriptIn(join(clone, dir), opts), clone };
 }
 
 /** 今の HEAD を前回の成功デプロイとして、files を commit してから判定する */
@@ -167,72 +178,46 @@ afterEach(() => {
 });
 
 describe('vercel-ignore-build.sh', () => {
-  describe('Preview 以外は常にビルドする', () => {
+  describe('Production 以外は常にビルドする', () => {
     it.each([
-      ['production', 'Production は常にビルドする'],
-      [null, 'Preview ではない'],
-    ])('VERCEL_ENV=%s なら、frontend に関係ない変更でもビルドする', (env, reason) => {
+      ['preview', 'Preview は GitHub Actions が要る時だけ作っている'],
+      [null, 'Production ではない'],
+    ])('VERCEL_ENV=%s なら、入力に関係ない変更でもビルドする', (env, reason) => {
       const r = runAfter({ 'docs/readme.md': '# changed\n' }, { env });
       expect(r.status).toBe(BUILD);
       expect(r.stdout).toContain(reason);
     });
   });
 
-  describe('Preview: 前回の成功デプロイと比べる', () => {
-    it.each([
-      ['ai-writer の lib', IRRELEVANT],
-      ['ai-writer の package.json (ルートの package.json ではない)', { 'apps/ai-writer/package.json': '{"name":"x"}\n' }],
-      [
-        'docs / apps/docs / .github',
-        {
-          'docs/readme.md': '# changed\n',
-          'apps/docs/page.mdx': '# changed\n',
-          '.github/workflows/ci.yml': 'name: CI2\n',
-        },
-      ],
-    ])('%s だけの変更はビルドしない', (_label, files) => {
-      const r = runAfter(files);
-      expect(r.status).toBe(SKIP);
-      expect(r.stdout).toContain('前回の成功デプロイ');
+  describe('frontend は Ignored Build Step を使わない (本番は毎回ビルドする)', () => {
+    it('apps/frontend/vercel.json に ignoreCommand が無い (templates の Deploy Hook を本番に届けるため)', () => {
+      const config = JSON.parse(readFileSync(join(REPO_ROOT, 'apps/frontend/vercel.json'), 'utf-8'));
+      expect(config.ignoreCommand).toBeUndefined();
+      expect(config.git.deploymentEnabled).toEqual({ '**': false, main: true });
     });
+  });
 
-    it.each([
-      ['記事の MDX', 'apps/ai-writer/content/collabo-cafe/a.mdx'],
-      ['記事の MDX の追加', 'apps/ai-writer/content/collabo-cafe/new.mdx'],
-      ['shared', 'shared/schemas/index.ts'],
-      ['pnpm-lock.yaml', 'pnpm-lock.yaml'],
-      ['pnpm-workspace.yaml', 'pnpm-workspace.yaml'],
-      ['ルートの package.json', 'package.json'],
-      ['turbo.json', 'turbo.json'],
-      ['.npmrc の追加', '.npmrc'],
-      ['.pnpmfile.cjs の追加', '.pnpmfile.cjs'],
-      ['patches の追加', 'patches/next.patch'],
-      ['apps/frontend/vercel.json', 'apps/frontend/vercel.json'],
-      ['このスクリプト自身', 'scripts/vercel-ignore-build.sh'],
-    ])('%s の変更はビルドし、変わったファイルを出す', (_label, path) => {
-      const r = runAfter({ [path]: 'changed\n' });
-      expect(r.status).toBe(BUILD);
-      expect(r.stdout).toContain(path);
-    });
-
-    it('apps/frontend の外へ移したファイルがあればビルドする', () => {
+  describe('比べ方 (docs の Production で確かめる)', () => {
+    it('apps/docs の外へ移したファイルがあればビルドする', () => {
       const prev = head();
-      git(work, 'mv', 'apps/frontend/app/page.tsx', 'apps/page.tsx');
+      git(work, 'mv', 'apps/docs/page.mdx', 'apps/page.mdx');
       git(work, 'commit', '-q', '-m', 'move');
       const r = runIgnore({ previousSha: prev });
       expect(r.status).toBe(BUILD);
     });
 
-    it('前回の成功デプロイが浅い clone の外 (12 commit 前) でも、取得して比べる', () => {
+    it('前回の成功デプロイが浅い clone の外 (12 commit 前) でも、取得して比べる。checkout の浅い履歴は短くならない', () => {
       const prev = head();
       commit(IRRELEVANT);
       emptyCommits(11);
       const r = runIgnore({ previousSha: prev });
       expect(r.status).toBe(SKIP);
+      // 取得は使い捨ての repo に行う (ビルドが使う checkout の履歴を変えない)
+      expect(git(r.clone, 'rev-list', '--count', 'HEAD')).toBe('10');
     });
 
     it.each([
-      ['frontend は変わらない', {}, SKIP],
+      ['docs は変わらない', {}, SKIP],
       ['lockfile も変わる', { 'pnpm-lock.yaml': 'changed\n' }, BUILD],
     ])('rebase で前回の commit が祖先でなくなっても、取得して比べる (%s)', (_label, extra, expected) => {
       commit({ 'apps/ai-writer/lib/pipeline.ts': 'export const v = 3;\n' });
@@ -244,41 +229,53 @@ describe('vercel-ignore-build.sh', () => {
     });
   });
 
-  describe('Preview: branch の初回デプロイは main の先頭と比べる', () => {
-    it('frontend の入力が main と同じならビルドしない', () => {
-      commit(IRRELEVANT);
-      const r = runIgnore();
+  describe('docs の Production: 前回の成功デプロイと比べる', () => {
+    it.each([
+      ['frontend', { 'apps/frontend/app/page.tsx': 'export default function Page2() {}\n' }],
+      ['記事の MDX', { 'apps/ai-writer/content/collabo-cafe/a.mdx': '# changed\n' }],
+      ['docs/ の下の階層 (archive)', { 'docs/archive/old.md': '# changed\n' }],
+    ])('%s だけの変更はビルドしない', (_label, files) => {
+      const r = runAfter(files, {});
       expect(r.status).toBe(SKIP);
-      expect(r.stdout).toContain('main の先頭');
+      expect(r.stdout).toContain('docs の入力は');
     });
 
-    it('frontend の入力を変えていればビルドする', () => {
-      commit({ 'apps/frontend/app/page.tsx': 'export default function Page2() {}\n' });
-      const r = runIgnore();
+    it.each([
+      ['docs/ 直下の文書', 'docs/readme.md'],
+      ['docs/meta.json', 'docs/meta.json'],
+      ['apps/docs', 'apps/docs/page.mdx'],
+      ['shared', 'shared/schemas/index.ts'],
+      ['pnpm-lock.yaml', 'pnpm-lock.yaml'],
+    ])('%s の変更はビルドする', (_label, path) => {
+      const r = runAfter({ [path]: 'changed\n' }, {});
       expect(r.status).toBe(BUILD);
-    });
-
-    it('main を取得しても、ビルドが使う checkout の浅い履歴は短くならない', () => {
-      // main の先頭が clone の範囲 (depth 10) に入る形: main 5 commit + feature 5 commit
-      git(work, 'checkout', '-q', 'main');
-      emptyCommits(4);
-      git(work, 'checkout', '-q', '-B', 'feature', 'main');
-      commit(IRRELEVANT);
-      emptyCommits(4);
-      const r = runIgnore();
-      expect(r.status).toBe(SKIP);
-      expect(git(r.clone, 'rev-list', '--count', 'HEAD')).toBe('10');
-    });
-
-    it('main を取得できなければビルドする', () => {
-      commit(IRRELEVANT);
-      const r = runIgnore({ origin: join(root, 'missing') });
-      expect(r.status).toBe(BUILD);
-      expect(r.stdout).toContain('main を取得できない');
+      expect(r.stdout).toContain(path);
     });
   });
 
   describe('判定できない時はビルドする', () => {
+    it('前回の成功デプロイが分からない (初めての本番)', () => {
+      commit(IRRELEVANT);
+      const r = runIgnore({});
+      expect(r.status).toBe(BUILD);
+      expect(r.stdout).toContain('前回の成功デプロイが分からない');
+    });
+
+    it.each([[null], ['unknown'], ['frontend']])('アプリの指定が docs ではない (%s)', app => {
+      const r = runAfter(IRRELEVANT, { app });
+      expect(r.status).toBe(BUILD);
+      expect(r.stdout).toContain('アプリの指定が docs ではない');
+    });
+
+    it('前回の成功デプロイを取得できない', () => {
+      const prev = head();
+      commit(IRRELEVANT);
+      emptyCommits(11);
+      const r = runIgnore({ previousSha: prev, origin: join(root, 'missing') });
+      expect(r.status).toBe(BUILD);
+      expect(r.stdout).toContain('を取得できない');
+    });
+
     it('前回と同じ commit (手動の Redeploy)', () => {
       commit(IRRELEVANT);
       const r = runIgnore({ previousSha: head() });
@@ -310,14 +307,49 @@ describe('vercel-ignore-build.sh', () => {
 });
 
 describe('必須パスの一覧 (実物の repo と照合)', () => {
-  function mustBuildPaths(): string[] {
-    const body = readFileSync(SCRIPT, 'utf-8').match(/^MUST_BUILD_PATHS=\(\n([\s\S]*?)\n\)/m);
-    if (!body) throw new Error('MUST_BUILD_PATHS が見つからない');
-    return body[1]
-      .split('\n')
-      .map((line) => line.replace(/#.*/, '').trim())
-      .filter(Boolean);
+  function mustBuildPaths(app: string): string[] {
+    const r = spawnSync('bash', [SCRIPT, '--paths', app], { encoding: 'utf-8' });
+    if (r.status !== 0) throw new Error(`--paths ${app} failed: ${r.stderr}`);
+    return r.stdout.split('\n').filter(Boolean);
   }
+
+  it('frontend の一覧は、記事の MDX・shared・依存の定義・判定そのものを含む (Preview の判定が使う)', () => {
+    expect(mustBuildPaths('frontend')).toEqual(
+      expect.arrayContaining([
+        'apps/frontend',
+        'apps/ai-writer/content',
+        'shared',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        'turbo.json',
+      ])
+    );
+    // 判定のスクリプトは frontend のビルドに効かない (frontend の Preview を作り直す理由にならない)
+    expect(mustBuildPaths('frontend')).not.toContain('scripts/vercel-ignore-build.sh');
+  });
+
+  it('--changed は、入力が変わったかを終了コードで返し、変わったファイルを出す (Preview の判定が使う)', () => {
+    const changed = (app: string, from: string, to = 'HEAD') =>
+      spawnSync('bash', [SCRIPT, '--changed', app, from, to], { cwd: work, env: gitEnv(), encoding: 'utf-8' });
+    const base = head();
+    commit({ 'apps/frontend/app/page.tsx': 'export default function Page2() {}\n' });
+
+    expect(changed('frontend', base)).toMatchObject({ status: 1, stdout: 'apps/frontend/app/page.tsx\n' });
+    expect(changed('docs', base).status).toBe(0);
+    expect(changed('unknown', base).status).toBe(2);
+    expect(changed('docs', 'f'.repeat(40)).status).toBe(2);
+    // 引数が足りない時は 2 (1 だと「変わった」と読まれて作ってしまう)
+    expect(spawnSync('bash', [SCRIPT, '--changed', 'docs', base], { cwd: work, env: gitEnv() }).status).toBe(2);
+  });
+
+  it('--paths はアプリごとの一覧を出し、知らないアプリは失敗する', () => {
+    expect(mustBuildPaths('frontend')).toContain('apps/frontend');
+    expect(mustBuildPaths('docs')).toEqual(
+      expect.arrayContaining(['apps/docs', ':(glob)docs/*.md', 'docs/meta.json'])
+    );
+    expect(spawnSync('bash', [SCRIPT, '--paths', 'unknown'], { encoding: 'utf-8' }).status).toBe(2);
+  });
 
   it('frontend が依存する workspace パッケージは、すべて必須パスに覆われている', () => {
     const readJson = (path: string) => JSON.parse(readFileSync(join(REPO_ROOT, path), 'utf-8'));
@@ -326,21 +358,30 @@ describe('必須パスの一覧 (実物の repo と照合)', () => {
       .filter(([, version]) => String(version).startsWith('workspace:'))
       .map(([name]) => name);
     // pnpm-workspace.yaml の packages (`- 'apps/*'` の形) から、パッケージ名 → ディレクトリを引く
-    const globs = [...readFileSync(join(REPO_ROOT, 'pnpm-workspace.yaml'), 'utf-8').matchAll(/^\s*-\s*'([^']+)\/\*'/gm)];
+    const globs = [
+      ...readFileSync(join(REPO_ROOT, 'pnpm-workspace.yaml'), 'utf-8').matchAll(
+        /^\s*-\s*'([^']+)\/\*'/gm
+      ),
+    ];
     const dirByName = new Map<string, string>();
     for (const [, parent] of globs) {
       for (const child of readdirSync(join(REPO_ROOT, parent))) {
         const dir = `${parent}/${child}`;
-        if (existsSync(join(REPO_ROOT, dir, 'package.json'))) dirByName.set(readJson(`${dir}/package.json`).name, dir);
+        if (existsSync(join(REPO_ROOT, dir, 'package.json')))
+          dirByName.set(readJson(`${dir}/package.json`).name, dir);
       }
     }
-    const paths = mustBuildPaths();
-    const covered = (dir: string) => paths.some((p) => dir === p || dir.startsWith(`${p}/`));
+    const paths = mustBuildPaths('frontend');
+    const covered = (dir: string) => paths.some(p => dir === p || dir.startsWith(`${p}/`));
 
     expect(workspaceDeps.length).toBeGreaterThan(0);
     for (const name of workspaceDeps) {
       const dir = dirByName.get(name);
-      expect({ name, dir, covered: dir !== undefined && covered(dir) }).toEqual({ name, dir, covered: true });
+      expect({ name, dir, covered: dir !== undefined && covered(dir) }).toEqual({
+        name,
+        dir,
+        covered: true,
+      });
     }
   });
 });

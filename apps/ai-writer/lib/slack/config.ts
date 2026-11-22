@@ -12,6 +12,8 @@
  * @module lib/slack/config
  */
 
+import { presentEnvValue as presentValue } from '@revolution/slack/env';
+
 import { isCloudRun } from '@/lib/utils/cloud-run';
 
 export type SlackRuntime = 'cloud-run' | 'local';
@@ -27,20 +29,6 @@ export interface SlackConfig {
    * まとめをここへ送る。無ければ `channel` へメンションなしで送る
    */
   devChannel?: string;
-}
-
-/**
- * 値が「設定されている」とみなせるか。
- *
- * `op://` で始まる値は 1Password の参照のまま `op run` を通さずに起動した状態。
- * それを token として送ると必ず `invalid_auth` になるうえ、参照パスが
- * エラーログに出るため、未設定と同じ扱いにする。
- */
-function presentValue(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  if (trimmed === '' || trimmed.startsWith('op://')) return undefined;
-  return trimmed;
 }
 
 /**

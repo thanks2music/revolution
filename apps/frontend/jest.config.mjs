@@ -34,11 +34,16 @@ const config = {
     '!**/__tests__/test-helpers/**',
   ],
 
+  // 結合テスト (ローカルの Supabase が要る) は `pnpm test:integration` で別に走らせる
+  // (jest.integration.config.mjs)。ここで拾うと、DB の無い環境で `pnpm test` が落ちる。
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', '<rootDir>/__tests__/integration/'],
+
   // path alias 解決 (SWC は transform 時に inline するが、related-test 探索の
   // resolver は解決しないため明示する。ai-writer と同方針)。
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^@revolution/schemas/(.*)$': '<rootDir>/../../shared/schemas/$1',
+    '^@revolution/slack/(.*)$': '<rootDir>/../../shared/slack/$1',
     // `@sentry/nextjs` は常に手動 mock へ解決する。実体は @sentry/node +
     // @opentelemetry/* の巨大依存を引き、transform 対象にすると遅く・壊れやすい。
     // ⚠️ 下の transformIgnorePatterns は触らない (@t3-oss の allowlist を壊さないため)。

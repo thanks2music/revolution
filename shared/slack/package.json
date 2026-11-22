@@ -1,0 +1,12 @@
+{
+  "name": "@revolution/slack",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Slack sending shared by every app: chat.postMessage without throwing or retrying, text helpers, env helpers",
+  "exports": {
+    "./post-message": "./post-message.ts",
+    "./text": "./text.ts",
+    "./env": "./env.ts"
+  }
+}

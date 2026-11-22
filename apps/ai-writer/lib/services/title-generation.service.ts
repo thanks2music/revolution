@@ -18,10 +18,50 @@ import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
 import { enforceTitleCityLabel } from '@/lib/utils/enforce-title-city-label';
 import { PIPELINE_PROMPTS } from './pipeline-prompts';
+import { TitleResponseSchema } from '@revolution/schemas/title-response';
+import type { TokenUsage } from '@revolution/schemas/ai-provider-response';
+import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
+import { parseJson, sumUsage } from '@/lib/services/subpage-extraction.service';
 
 /** タイトルの文字数の下限と上限 (上限の根拠は generateTitle 内の ★ を参照) */
 const TITLE_MIN_LENGTH = 28;
 const TITLE_MAX_LENGTH = 40;
+
+/** 応答の形 (`{ title, _reasoning }`) を provider に強制する */
+const TITLE_RESPONSE_SCHEMA = zodToOpenAiSchema(TitleResponseSchema, 'TitleResponse');
+
+/** 応答を読む時の形。`_reasoning` はデバッグ用なので、無くても読む (Anthropic は responseSchema を使わない) */
+const TITLE_RESPONSE_PARSER = TitleResponseSchema.partial({ _reasoning: true });
+
+/**
+ * 1 記事で LLM を呼ぶ回数の上限 (最初の 1 回 + 作り直し 1 回)。
+ * 応答を読めない・文字数を満たさない時に作り直し、それでもだめなら {@link TitleGenerationError} を投げる
+ */
+const MAX_ATTEMPTS = 2;
+
+/**
+ * タイトルを作れなかった (応答を読めない・文字数を満たさない状態が {@link MAX_ATTEMPTS} 回続いた)。
+ * 呼び出し側が費用を記録できるよう、全回の usage を合算して持つ
+ */
+export class TitleGenerationError extends Error {
+  constructor(
+    message: string,
+    readonly model: string | undefined,
+    readonly usage: TokenUsage | undefined,
+    options?: ErrorOptions
+  ) {
+    super(message, options);
+    this.name = 'TitleGenerationError';
+  }
+}
+
+/** 応答を読めなかった (1 回分の失敗。作り直しの対象) */
+class TitleParseError extends Error {
+  constructor(cause: unknown) {
+    super(`タイトルの応答を読めない: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = 'TitleParseError';
+  }
+}
 
 /**
  * タイトル生成サービス
@@ -47,6 +87,9 @@ export class TitleGenerationService {
   async generateTitle(
     request: TitleGenerationRequest
   ): Promise<TitleGenerationResult> {
+    // 失敗した時も呼び出し側が費用を記録できるよう、try の外で持つ
+    let usage: TokenUsage | undefined;
+    let model: string | undefined;
     try {
       console.log('[TitleGeneration] タイトル生成開始:', request.rss_title);
 
@@ -70,74 +113,90 @@ export class TitleGenerationService {
         console.log('[TitleGeneration] ========== プロンプト終了 ==========\n');
       }
 
-      // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
-      const response = await this.aiProvider.sendMessage(prompt, {
-        stepId: 'title-generation',
-        maxTokens: 800, // JSON形式 + reasoning のため増加
-        temperature: 0.7, // 創造性と正確性のバランス
-        responseFormat: 'json',
-      });
+      let lastFailure = '';
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
+        const response = await this.aiProvider.sendMessage(prompt, {
+          stepId: 'title-generation',
+          maxTokens: 800, // JSON形式 + reasoning のため増加
+          temperature: 0.7, // 創造性と正確性のバランス (作り直しで別の案が出る)
+          responseFormat: 'json',
+          responseSchema: TITLE_RESPONSE_SCHEMA,
+        });
+        usage = sumUsage([usage, response.usage]); // 作り直した回の費用も記録する
+        model = response.model;
 
-      // レスポンスからタイトルとreasoningを抽出
-      const { title: rawTitle, _reasoning } = this.parseResponse(response.content);
+        let parsed: { title: string; _reasoning?: string };
+        try {
+          parsed = this.parseResponse(response.content);
+        } catch (error) {
+          lastFailure = error instanceof Error ? error.message : String(error);
+          console.warn(`[TitleGeneration] ${lastFailure} (${attempt}/${MAX_ATTEMPTS} 回目)`);
+          continue;
+        }
+        const { title: rawTitle, _reasoning } = parsed;
 
-      // 開催地は確定値を強制する (プロンプトは確率的にしか守られないための安全網)
-      const title = enforceTitleCityLabel(rawTitle, request.extractedCityLabel, TITLE_MAX_LENGTH);
-      if (title !== rawTitle) {
-        console.warn(`[TitleGeneration] 開催地を確定値へ置き換えました: ${rawTitle} → ${title}`);
+        // 開催地は確定値を強制する (プロンプトは確率的にしか守られないための安全網)
+        const title = enforceTitleCityLabel(rawTitle, request.extractedCityLabel, TITLE_MAX_LENGTH);
+        if (title !== rawTitle) {
+          console.warn(`[TitleGeneration] 開催地を確定値へ置き換えました: ${rawTitle} → ${title}`);
+        }
+
+        // タイトルの文字数を検証
+        const length = this.countCharacters(title);
+        // ★ S1-d Phase 3 で 42 → 40 に是正。従来は 3 箇所で上限が食い違っていた:
+        //   - 本 service: 42
+        //   - 3-title.yaml の短縮ラダー: 40 を目標に短縮
+        //   - CI (generate-article-index.test.ts): 40 超で **fail**
+        //   41-42 文字は service では valid なのに CI で落ちる状態だった。
+        //   実害の出る CI 側 (SEO 由来の 40) に合わせる。
+        const is_valid = length >= TITLE_MIN_LENGTH && length <= TITLE_MAX_LENGTH;
+
+        console.log('[TitleGeneration] タイトル生成完了:', {
+          title,
+          length,
+          is_valid,
+          attempt,
+          recommended: length >= 32 && length <= 36,
+        });
+
+        // デバッグモード時は reasoning を表示
+        //
+        // ★ プロンプト全文と同じ理由で抑止する。`_reasoning` は応答の一部であり、
+        //   recorder が有効なら `responseText` として JSONL に丸ごと残っている。
+        //   出力は小さいが「情報が二重に出る」経路をここだけ残す理由がない
+        //   (claude[bot] 指摘 2026-08-12)。
+        if (
+          process.env.DEBUG_TITLE_PROMPT === 'true' &&
+          !shouldSuppressInlinePromptDump('title-generation') &&
+          _reasoning
+        ) {
+          console.log('\n[TitleGeneration] === タイトル生成理由 ===');
+          console.log(_reasoning);
+          console.log('[TitleGeneration] === 理由終了 ===\n');
+        }
+
+        // 返すのは文字数を満たしたタイトルだけなので is_valid は常に true (型の互換のために残す)
+        if (is_valid) {
+          return { title, length, is_valid, _reasoning, model, usage };
+        }
+
+        // ★ 文字数を外れたタイトルは使わない (2026-11-18 BOSS 決定)。以前は警告だけで記事に使っており、
+        //   応答の形が崩れた時に「[」がタイトルと画像の alt に入った。41 字以上は記事一覧の生成 (CI) でも落ちる
+        lastFailure = `タイトルが文字数制約（${TITLE_MIN_LENGTH}〜${TITLE_MAX_LENGTH}文字）を満たしていません: ${length}文字「${title}」`;
+        console.warn(`[TitleGeneration] ${lastFailure} (${attempt}/${MAX_ATTEMPTS} 回目)`);
       }
 
-      // タイトルの文字数を検証
-      const length = this.countCharacters(title);
-      // ★ S1-d Phase 3 で 42 → 40 に是正。従来は 3 箇所で上限が食い違っていた:
-      //   - 本 service: 42
-      //   - 3-title.yaml の短縮ラダー: 40 を目標に短縮
-      //   - CI (generate-article-index.test.ts): 40 超で **fail**
-      //   41-42 文字は service では valid なのに CI で落ちる状態だった。
-      //   実害の出る CI 側 (SEO 由来の 40) に合わせる。
-      const is_valid = length >= TITLE_MIN_LENGTH && length <= TITLE_MAX_LENGTH;
-
-      console.log('[TitleGeneration] タイトル生成完了:', {
-        title,
-        length,
-        is_valid,
-        recommended: length >= 32 && length <= 36,
-      });
-
-      // デバッグモード時は reasoning を表示
-      //
-      // ★ プロンプト全文と同じ理由で抑止する。`_reasoning` は応答の一部であり、
-      //   recorder が有効なら `responseText` として JSONL に丸ごと残っている。
-      //   出力は小さいが「情報が二重に出る」経路をここだけ残す理由がない
-      //   (claude[bot] 指摘 2026-08-12)。
-      if (
-        process.env.DEBUG_TITLE_PROMPT === 'true' &&
-        !shouldSuppressInlinePromptDump('title-generation') &&
-        _reasoning
-      ) {
-        console.log('\n[TitleGeneration] === タイトル生成理由 ===');
-        console.log(_reasoning);
-        console.log('[TitleGeneration] === 理由終了 ===\n');
-      }
-
-      if (!is_valid) {
-        console.warn(
-          `[TitleGeneration] タイトルが文字数制約（${TITLE_MIN_LENGTH}〜${TITLE_MAX_LENGTH}文字）を満たしていません: ${length}文字`
-        );
-      }
-
-      return {
-        title,
-        length,
-        is_valid,
-        _reasoning,
-        model: response.model,
-        usage: response.usage,
-      };
+      throw new TitleGenerationError(`タイトル生成失敗: ${lastFailure}`, model, usage);
     } catch (error) {
+      if (error instanceof TitleGenerationError) throw error;
       console.error('[TitleGeneration] タイトル生成エラー:', error);
-      throw new Error(
-        `タイトル生成失敗: ${error instanceof Error ? error.message : 'Unknown error'}`
+      // 2 回目の呼び出しで provider が失敗しても、1 回目の費用を落とさない
+      throw new TitleGenerationError(
+        `タイトル生成失敗: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        model,
+        usage,
+        { cause: error }
       );
     }
   }
@@ -370,41 +429,23 @@ ${rulesText}`);
 
   /**
    * AI APIのレスポンスをパース（JSON形式）
+   *
+   * 応答は `{ title, _reasoning }` の形でなければ読めないものとして扱う ({@link TitleParseError})。
+   * ★ 以前は読めない時に「応答の最初の行」をタイトルにしていた。Gemini が `[ { "title": ... } ]` と
+   *   配列で包んで返した時に、最初の行の「[」がそのままタイトルになった (2026-11-18)
    * @param response レスポンステキスト
    * @returns タイトルとreasoning
    */
   private parseResponse(response: string): { title: string; _reasoning?: string } {
-    let content = response.trim();
-
-    // マークダウンコードブロックが含まれている場合は除去
-    const codeBlockMatch = content.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
-    if (codeBlockMatch) {
-      content = codeBlockMatch[1].trim();
-    }
-
+    let parsed: { title: string; _reasoning?: string };
     try {
-      // JSON形式でパース
-      const parsed = JSON.parse(content);
-
-      if (parsed.title) {
-        return {
-          title: parsed.title.trim(),
-          _reasoning: parsed._reasoning || undefined,
-        };
-      }
-    } catch (e) {
-      // JSONパースに失敗した場合はフォールバック
-      console.warn('[TitleGeneration] JSONパース失敗、テキストモードにフォールバック');
+      parsed = TITLE_RESPONSE_PARSER.parse(parseJson(response.trim()));
+    } catch (error) {
+      throw new TitleParseError(error);
     }
-
-    // フォールバック: 最初の行をタイトルとして扱う
-    const lines = content.split('\n').filter((line) => line.trim().length > 0);
-    let title = lines[0] || content;
-
-    // 前後の引用符を削除
-    title = title.replace(/^["']|["']$/g, '');
-
-    return { title: title.trim() };
+    const title = parsed.title.trim();
+    if (title === '') throw new TitleParseError(new Error('タイトルが空'));
+    return { title, _reasoning: parsed._reasoning || undefined };
   }
 
   /**
