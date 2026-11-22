@@ -2,6 +2,7 @@ import 'server-only';
 
 import { randomUUID } from 'node:crypto';
 
+import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
@@ -289,7 +290,10 @@ export async function removePhoto(
   if (error) throw error;
   if (!data) return { kind: 'not_found' };
   const row = data as { object_key: string; variant_widths: number[] };
-  await ctx.storage.deleteStored(variantKeys(row.object_key, row.variant_widths));
+  // 行は消えたので、利用者には外せたと返す。保管側の物を消せなかった時は Sentry に残す (行が無いので見えない)
+  await ctx.storage.deleteStored(variantKeys(row.object_key, row.variant_widths)).catch(error => {
+    Sentry.captureException(error, { tags: { part: 'review-photos', step: 'remove-stored' } });
+  });
   return { kind: 'removed' };
 }
 

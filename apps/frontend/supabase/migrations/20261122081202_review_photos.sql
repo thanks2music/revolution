@@ -60,8 +60,15 @@ SET search_path = ''
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  -- 同じ口コミへの同時の追加を順に並べる (数えてから足すまでの間に、別の追加が入らないように)
-  PERFORM 1 FROM "public"."reviews" WHERE "id" = NEW."review_id" FOR UPDATE;
+  -- 同じ口コミへの同時の追加を順に並べる (数えてから足すまでの間に、別の追加が入らないように)。
+  -- 消した (論理削除した) 口コミには足さない (変換の間に消された時)
+  PERFORM 1 FROM "public"."reviews"
+  WHERE "id" = NEW."review_id" AND "deleted_at" IS NULL
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'review images can only be added to a review that is not deleted'
+      USING ERRCODE = 'check_violation';
+  END IF;
   IF (SELECT count(*) FROM "public"."review_images" WHERE "review_id" = NEW."review_id") >= 10 THEN
     RAISE EXCEPTION 'a review can have at most 10 images'
       USING ERRCODE = 'check_violation', CONSTRAINT = 'review_images_max_per_review';

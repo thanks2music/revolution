@@ -66,6 +66,18 @@ describe('偽の写真の置き場所の route (開発用)', () => {
     expect(missing.status).toBe(404);
   });
 
+  it('置き場所の外を指すキーは 404', async () => {
+    const response = await PUT(
+      new Request('http://localhost/api/dev/review-photos/intake/x?size=1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: Buffer.from([1]),
+      }),
+      params('intake', '..', '..', 'escape')
+    );
+    expect(response.status).toBe(404);
+  });
+
   it('偽物を使わない設定では、どちらも 404', async () => {
     process.env.REVIEW_PHOTO_STORAGE = '';
     expect((await put(new Uint8Array([1]), 1)).status).toBe(404);

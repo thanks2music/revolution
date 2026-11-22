@@ -46,7 +46,9 @@ describe('口コミの写真', () => {
     await rm(storage.root, { recursive: true, force: true });
   });
 
-  async function reviewOf(status: 'draft' | 'published') {
+  async function reviewOf(
+    status: 'draft' | 'pending' | 'published' | 'rejected' | 'needs_review' | 'hidden'
+  ) {
     const event = await data.createEvent();
     const occurrence = await data.createOccurrence({
       eventId: event.id,
@@ -63,7 +65,7 @@ describe('口コミの写真', () => {
         status,
         rating: 4,
         visited_on: jstDate(-1),
-        ...(status === 'published' ? { submitted_at: new Date().toISOString() } : {}),
+        ...(status !== 'draft' ? { submitted_at: new Date().toISOString() } : {}),
       })
       .select('id')
       .single();
@@ -184,6 +186,66 @@ describe('口コミの写真', () => {
       .eq('id', reviewId)
       .single();
     expect(review).toMatchObject({ status: 'pending', edited_at: expect.any(String) });
+  });
+
+  it.each([
+    ['published', 'pending', true],
+    ['rejected', 'pending', true],
+    ['needs_review', 'pending', true],
+    ['hidden', 'pending', true],
+    ['pending', 'pending', false],
+    ['draft', 'draft', false],
+  ] as const)(
+    '%s の口コミに写真を足すと %s (審査中に戻したか: %p)',
+    async (status, after, requeued) => {
+      const { reviewId, member } = await reviewOf(status);
+      const photoId = await upload(reviewId, member, await jpegWithGps(400, 300));
+
+      await expect(
+        ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId })
+      ).resolves.toMatchObject({
+        kind: 'ok',
+        requeued,
+      });
+      const { data: review } = await data.admin
+        .from('reviews')
+        .select('status')
+        .eq('id', reviewId)
+        .single();
+      expect(review?.status).toBe(after);
+    }
+  );
+
+  it('消した口コミには、トリガが写真の行を足させない', async () => {
+    const { reviewId } = await reviewOf('draft');
+    await data.admin
+      .from('reviews')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', reviewId);
+    const { error } = await data.admin.from('review_images').insert({
+      review_id: reviewId,
+      object_key: `preview/reviews/${reviewId}/deleted`,
+      width: 10,
+      height: 10,
+      variant_widths: [10],
+    });
+    expect(error?.message).toContain('not deleted');
+  });
+
+  it('外した後に保管側の物を消せなくても、外せたと返す', async () => {
+    const { reviewId, member } = await reviewOf('draft');
+    const photoId = await upload(reviewId, member, await jpegWithGps(400, 300));
+    const result = await ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId });
+    if (result.kind !== 'ok') throw new Error(result.kind);
+    const failing = { ...storage, deleteStored: () => Promise.reject(new Error('R2 is down')) };
+
+    await expect(
+      removePhoto(
+        { ...ctx, storage: failing },
+        { profileId: member.userId, reviewId, photoId: result.photo.id }
+      )
+    ).resolves.toEqual({ kind: 'removed' });
+    await expect(listOwnPhotos(ctx, { profileId: member.userId, reviewId })).resolves.toEqual([]);
   });
 
   it('並べ替えと外す。外すと保管側の物も消える', async () => {

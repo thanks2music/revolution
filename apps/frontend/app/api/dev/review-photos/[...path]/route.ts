@@ -39,8 +39,12 @@ export async function PUT(request: Request, { params }: Params) {
   if (body.length !== expected || body.length > MAX_REVIEW_PHOTO_BYTES) {
     return new NextResponse('size does not match', { status: 400 });
   }
-  await storage.writeIntake(rest.join('/'), body);
-  return new NextResponse(null, { status: 200 });
+  // 置き場所の外を指すキーは、置き場所が断る (invalid key)
+  const written = await storage.writeIntake(rest.join('/'), body).then(
+    () => true,
+    () => false
+  );
+  return new NextResponse(null, { status: written ? 200 : 404 });
 }
 
 const CONTENT_TYPES: Record<string, string> = { webp: 'image/webp', avif: 'image/avif' };
