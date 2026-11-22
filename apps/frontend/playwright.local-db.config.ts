@@ -78,7 +78,8 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `pnpm exec next dev --port ${port}`,
+    // 記事の索引はコミットしていないので、起動の前に作る (package.json の generate:article-index)
+    command: `pnpm generate:article-index && pnpm exec next dev --port ${port}`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000,

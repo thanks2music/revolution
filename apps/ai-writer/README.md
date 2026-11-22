@@ -176,7 +176,7 @@ pnpm debug:mdx --upload-images https://g-tekketsu.theme-cafe.jp/
 > - フロントエンドとの統合テストをローカルで行いたい場合
 > - GitHub PR を作成せずに記事内容を検証したい場合
 >
-> ローカル保存後は `pnpm generate:article-index` で記事インデックスを再生成し、`pnpm dev` で開発サーバーを起動して確認できます。
+> ローカル保存後は、frontend の `pnpm dev` で開発サーバーを起動して確認できます (起動の前に記事インデックスを作り直します。dev サーバーの起動中に足した記事は、`pnpm generate:article-index` で作り直してから再起動します)。
 
 > **💡 `--upload-images` の利用シーン**
 >
