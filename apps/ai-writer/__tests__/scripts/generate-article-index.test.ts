@@ -53,6 +53,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ArticleIndexSchema } from '@revolution/schemas/article-index';
+import { findMdxFiles } from '../../lib/utils/mdx-files';
 
 const SCRIPT_PATH = join(__dirname, '../../scripts/generate-article-index.ts');
 
@@ -592,17 +593,12 @@ describe('generate-article-index.ts', () => {
       expect(() => readFileSync(outputPath)).toThrow();
     });
 
-    it('writes no partial index when valid and broken MDX are mixed', () => {
+    it('writes no partial index when valid and broken MDX are mixed', async () => {
       const contentDir = join(tmpDir, 'content');
       mkdirSync(contentDir);
-      const validMdx = execFileSync('git', ['ls-files', '*.mdx'], {
-        cwd: join(AI_WRITER_ROOT, 'content'),
-        encoding: 'utf-8',
-      }).split('\n')[0];
-      writeFileSync(
-        join(contentDir, 'valid.mdx'),
-        readFileSync(join(AI_WRITER_ROOT, 'content', validMdx), 'utf-8')
-      );
+      // git を使わない (git の hook の中では GIT_DIR などが設定され、git の呼び出しが壊れる)
+      const [validMdx] = await findMdxFiles(join(AI_WRITER_ROOT, 'content'));
+      writeFileSync(join(contentDir, 'valid.mdx'), readFileSync(validMdx, 'utf-8'));
       writeFileSync(join(contentDir, 'broken.mdx'), '---\ntitle: x\n---\nbody\n');
       const outputPath = join(tmpDir, 'index.json');
 
