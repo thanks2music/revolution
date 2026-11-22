@@ -9,6 +9,7 @@
 import type { Metadata } from 'next';
 
 import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
+import { isReviewWritingPath } from '@/lib/reviews/paths';
 import Layout from '@/components/templates/Layout';
 import { LoginForm } from './LoginForm';
 
@@ -34,7 +35,18 @@ export default async function LoginPage({
   return (
     <Layout>
       <section className="w-main mx-auto flex min-h-[60vh] items-center justify-center py-12 md:py-20">
-        <LoginForm initialError={error} next={safeNext} />
+        <div className="flex w-full max-w-md flex-col gap-4">
+          {/* 口コミを書きに来た人には、来た理由を出す (ログインの後にその画面へ戻る。one-more-time #166) */}
+          {isReviewWritingPath(safeNext) && (
+            <p
+              role="status"
+              className="rounded-xl border border-(--line-soft) bg-white p-3 text-sm text-ink-body"
+            >
+              口コミを書くには、ログインしてください。ログインの後に、元の画面へ戻ります。
+            </p>
+          )}
+          <LoginForm initialError={error} next={safeNext} />
+        </div>
       </section>
     </Layout>
   );

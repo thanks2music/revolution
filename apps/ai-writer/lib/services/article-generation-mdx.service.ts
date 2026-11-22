@@ -75,7 +75,7 @@ import {
   type ArticleSelectionRequest,
   type ArticleSelectionResult,
 } from '@/lib/types/article-selection';
-import { TitleGenerationService } from './title-generation.service';
+import { TitleGenerationError, TitleGenerationService } from './title-generation.service';
 import {
   type TitleGenerationRequest,
   type TitleGenerationResult,
@@ -1215,6 +1215,12 @@ export class ArticleGenerationMdxService {
             extractedWorkName: titleWorkName,
             // v2.3.0: 開催回数（第N弾形式）
             extractedEventNumber: detailedExtraction?.開催回数 ?? undefined,
+          }).catch((error: unknown) => {
+            // タイトルを作れずに記事を止める時も、呼んだ分の費用は記録する
+            if (error instanceof TitleGenerationError && error.model && error.usage) {
+              costTracker.recordUsage('title-generation', error.model, error.usage);
+            }
+            throw error;
           });
 
       // コストを記録

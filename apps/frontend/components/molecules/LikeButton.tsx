@@ -22,6 +22,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 
 import { getFavoriteState, toggleFavorite } from '@/actions/favorite';
+import { goToLogin } from '@/lib/auth/client-redirect';
 
 type Props = {
   /** buildArticleKey(article) で生成した favorites.target_key。 */
@@ -45,16 +46,6 @@ const HeartIcon = ({ filled }: { filled: boolean }) => (
   </svg>
 );
 
-function goToLogin() {
-  // pathname だけでなく query / hash も保持し、ログイン後に閲覧時の状態へ戻す
-  // (?category= 等のフィルタやページネーション、アンカーを失わない)。値は login 側の
-  // sanitizeNextPath で同一オリジン内部パスに正規化される。
-  const next = encodeURIComponent(
-    window.location.pathname + window.location.search + window.location.hash,
-  );
-  window.location.assign(`/login?next=${next}`);
-}
-
 export function LikeButton({ targetKey }: Props) {
   const [ready, setReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
@@ -76,7 +67,7 @@ export function LikeButton({ targetKey }: Props) {
   useEffect(() => {
     let active = true;
     getFavoriteState(targetKey)
-      .then((state) => {
+      .then(state => {
         if (!active) return;
         setIsAuthed(state.isAuthed);
         setLiked(state.liked);
@@ -137,8 +128,7 @@ export function LikeButton({ targetKey }: Props) {
         // transport 例外 (Server Action POST の fetch reject / サーバ 500 等)。
         // throw のままだと error boundary (app/error.tsx) が発火し記事ページから
         // 離脱してしまうため、ここで握って optimistic をロールバック + 汎用文言。
-        if (process.env.NODE_ENV === 'development')
-          console.error('[LikeButton] toggle failed:', e);
+        if (process.env.NODE_ENV === 'development') console.error('[LikeButton] toggle failed:', e);
         if (seq !== requestSeqRef.current) return;
         setLiked(previous);
         setError('通信に失敗しました。時間をおいて再度お試しください。');
