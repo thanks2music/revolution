@@ -16,6 +16,7 @@
 
 /** `app/` 直下の静的ルート (ディレクトリ)。 */
 export const APP_ROUTE_SEGMENTS = [
+  'api',
   'articles',
   'auth',
   'events',
