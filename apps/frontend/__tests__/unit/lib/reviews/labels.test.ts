@@ -12,7 +12,7 @@ import {
   REJECTION_REASON_LABELS,
   formatVisitedMonth,
   toScreeningReason,
-} from '@/lib/reviews/labels';
+} from '@revolution/reviews/labels';
 
 describe('口コミの画面の言葉', () => {
   it('値の一覧と同じ順・同じ数の言葉がある (DB の値を足したら、ここも足す)', () => {

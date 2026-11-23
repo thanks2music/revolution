@@ -5,7 +5,7 @@ import {
   FOOD_COST_BAND_LABELS,
   GOODS_COST_BAND_LABELS,
   formatVisitedMonth,
-} from '@/lib/reviews/labels';
+} from '@revolution/reviews/labels';
 
 import { HelpfulButton } from './HelpfulButton';
 import { ReviewPhotoThumb } from './ReviewPhotoThumb';

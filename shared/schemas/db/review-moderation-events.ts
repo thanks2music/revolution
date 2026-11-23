@@ -40,6 +40,15 @@ export const reviewModerationEvents = pgTable(
       'review_moderation_events_action_chk',
       sql`${table.action} IN ('screened', 'published', 'rejected', 'requeued')`
     ),
+    // 0027: 口コミの状態と理由の CHECK と同じ値
+    check(
+      'review_moderation_events_to_status_chk',
+      sql`${table.toStatus} IN ('draft', 'pending', 'published', 'rejected', 'needs_review', 'hidden')`
+    ),
+    check(
+      'review_moderation_events_reason_code_chk',
+      sql`${table.reasonCode} IS NULL OR ${table.reasonCode} IN ('personal_info', 'abuse', 'spam', 'resale', 'ai_failure')`
+    ),
     check(
       'review_moderation_events_admin_user_chk',
       sql`(${table.actor} = 'admin') = (${table.actorUserId} IS NOT NULL)`

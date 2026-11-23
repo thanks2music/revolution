@@ -42,7 +42,7 @@ import {
   ownReviewStatus,
   type OwnReviewStatus,
 } from '@revolution/reviews/eligibility';
-import { toScreeningReason } from '@/lib/reviews/labels';
+import { toScreeningReason } from '@revolution/reviews/labels';
 import {
   modeFor,
   resolveWriteContext,
