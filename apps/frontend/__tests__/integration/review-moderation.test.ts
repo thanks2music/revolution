@@ -417,11 +417,10 @@ describe('BOSS の操作', () => {
     });
   });
 
-  it('写真の判断に抜けや重複があれば DB が断る (抜けた写真に前の印が残らないように)', async () => {
+  it('写真の判断に抜けがあれば書かず、重複があれば DB が断る (抜けた写真に前の印が残らないように)', async () => {
     const { reviewId } = await screenedReview('迷う [unsure]', 2);
     const [first, second] = await photoRows(reviewId);
     const { submitted_at } = await reviewRow(reviewId);
-    const ids = [first.id, second.id];
     const call = (marks: unknown) =>
       bossDb.rpc('admin_decide_review', {
         p_review_id: reviewId,
@@ -429,11 +428,12 @@ describe('BOSS の操作', () => {
         p_decision: 'publish',
         p_reason_code: null,
         p_reason_note: null,
-        p_photo_ids: ids,
         p_photo_marks: marks,
       });
 
-    expect((await call([{ id: first.id, hide: false }])).error?.code).toBe('22023');
+    // 抜けは「写真が変わった」と同じ扱い (何も書かない)
+    expect((await call([{ id: first.id, hide: false }])).data).toBe('photos_changed');
+    expect((await call([{ id: second.id, hide: false }])).data).toBe('photos_changed');
     expect(
       (
         await call([

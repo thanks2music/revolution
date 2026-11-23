@@ -19,6 +19,7 @@ import {
 import { screenSubmittedReview, type ScreenReviewOutcome } from './operations';
 import { syncPhotoDeliverySafely } from './photos/delivery';
 import { toStoredPhotoView } from './photos/operations';
+import { PublicPhotoRowSchema } from './photos/public';
 import type { ReviewPhotoStorage, ReviewPhotoView } from './photos/storage';
 import type { ReviewScreener } from './screener/types';
 
@@ -74,6 +75,11 @@ export type ReviewQueueItem = {
   photoCount: number;
 };
 
+function queueKind(row: z.infer<typeof QueueRowSchema>): ReviewQueueItem['kind'] {
+  if (row.status === 'pending') return 'stuck';
+  return row.reason_code === 'ai_failure' ? 'ai_failure' : 'unsure';
+}
+
 export async function listReviewQueue(
   adminDb: SupabaseClient,
   options: { stuckMinutes?: number } = {}
@@ -88,12 +94,7 @@ export async function listReviewQueue(
     .parse(data ?? [])
     .map(row => ({
       reviewId: row.review_id,
-      kind:
-        row.status === 'pending'
-          ? ('stuck' as const)
-          : row.reason_code === 'ai_failure'
-            ? ('ai_failure' as const)
-            : ('unsure' as const),
+      kind: queueKind(row),
       aiReason: row.ai_reason,
       submittedAt: row.submitted_at,
       rating: row.rating,
@@ -136,12 +137,7 @@ const DetailSchema = z.object({
   occurrence: z.object({ id: z.number(), slug: z.string(), venue_name: z.string().nullable() }),
   author: z.object({ display_name: z.string().nullable(), username: z.string().nullable() }),
   photos: z.array(
-    z.object({
-      id: z.number(),
-      object_key: z.string(),
-      width: z.number(),
-      height: z.number(),
-      variant_widths: z.array(z.number()),
+    PublicPhotoRowSchema.extend({
       sort_order: z.number(),
       hidden_reason_code: z.enum(REVIEW_SCREENING_REASONS).nullable(),
     })
@@ -171,15 +167,17 @@ export type ModerationPhoto = {
   view: ReviewPhotoView | null;
 };
 
+type Detail = z.infer<typeof DetailSchema>;
+
 export type ModerationReview = {
-  review: z.infer<typeof DetailSchema>['review'];
-  event: z.infer<typeof DetailSchema>['event'];
-  occurrence: z.infer<typeof DetailSchema>['occurrence'];
+  review: Detail['review'];
+  event: Detail['event'];
+  occurrence: Detail['occurrence'];
   authorName: string | null;
   /** 並び順。非公開の写真も含む (保管側の短時間だけ有効な URL) */
   photos: ModerationPhoto[];
   /** 判断の記録 (古い順) */
-  history: z.infer<typeof DetailSchema>['events'];
+  history: Detail['events'];
 };
 
 export async function getReviewForModeration(
@@ -242,7 +240,7 @@ export type ReviewDecision =
   | { decision: 'reject'; reasonCode: ReviewScreeningReason; reasonNote: string | null };
 
 /**
- * 公開か差し戻し。`photos` は口コミの全部の写真の判断 (非公開にする写真には理由)。読んだ時の `submittedAt` と
+ * 公開か差し戻し。`photos` は読んだ写真の全部の判断 (非公開にする写真には理由)。読んだ時の `submittedAt` と
  * 写真の集まりが今と違えば書かない。書けたら配信側を合わせる (公開なら非公開でない写真を写し、差し戻しなら消す)
  */
 export async function decideReview(
@@ -255,7 +253,6 @@ export async function decideReview(
     p_decision: input.decision,
     p_reason_code: input.decision === 'reject' ? input.reasonCode : null,
     p_reason_note: input.decision === 'reject' ? input.reasonNote : null,
-    p_photo_ids: input.photos.map(photo => photo.id),
     p_photo_marks: input.photos.map(photo => ({
       id: photo.id,
       hide: photo.hide,

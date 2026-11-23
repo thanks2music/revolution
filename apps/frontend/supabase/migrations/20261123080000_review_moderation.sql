@@ -92,6 +92,42 @@ $$;
 REVOKE EXECUTE ON FUNCTION private.is_admin() FROM public;
 --> statement-breakpoint
 
+-- admin でなければ 42501 'admin only' で止める (管理アプリはこの文で「admin でない」を見分ける)
+CREATE OR REPLACE FUNCTION private.assert_admin()
+RETURNS void
+STABLE
+SET search_path = ''
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NOT private.is_admin() THEN
+    RAISE EXCEPTION 'admin only' USING ERRCODE = '42501';
+  END IF;
+END;
+$$;
+--> statement-breakpoint
+REVOKE EXECUTE ON FUNCTION private.assert_admin() FROM public;
+--> statement-breakpoint
+
+-- 口コミの今の写真の集まりが、読んだ時の集まり (p_photo_ids) と同じか。審査と BOSS の判断の両方で、
+-- 見ていない写真を公開しないために使う (呼ぶ側が口コミの行を押さえた後で比べる)
+CREATE OR REPLACE FUNCTION private.review_photo_ids_match(p_review_id bigint, p_photo_ids bigint[])
+RETURNS boolean
+STABLE
+SET search_path = ''
+LANGUAGE sql
+AS $$
+  SELECT (
+    SELECT coalesce(array_agg("id" ORDER BY "id"), '{}')
+    FROM "public"."review_images" WHERE "review_id" = p_review_id
+  ) IS NOT DISTINCT FROM (
+    SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM unnest(p_photo_ids) AS x
+  )
+$$;
+--> statement-breakpoint
+REVOKE EXECUTE ON FUNCTION private.review_photo_ids_match(bigint, bigint[]) FROM public;
+--> statement-breakpoint
+
 -- ───────────────────────────────────────────────
 -- C. AI の審査の書き込みでも記録を残す (0023 の関数に記録を足す。引数と戻り値は変えない)。記録の表に書けるよう
 -- SECURITY DEFINER にする (呼べるのは service role だけのまま)
@@ -114,11 +150,9 @@ SECURITY DEFINER
 SET search_path = ''
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  v_updated integer;
 BEGIN
   -- 口コミの行を押さえ、まだ審査中で読んだ時の提出のままかを先に見る (出し直し・削除なら審査し直さない)。
-  -- その後で写真の集まりを比べる (押さえた後なので、比べた後に写真が足されない)
+  -- その後で写真の集まりを比べる (押さえた後なので、比べた後に写真が足されず、状態も変わらない)
   PERFORM 1 FROM "public"."reviews"
   WHERE "id" = p_review_id AND "status" = 'pending' AND "submitted_at" = p_submitted_at
     AND "deleted_at" IS NULL
@@ -126,12 +160,7 @@ BEGIN
   IF NOT FOUND THEN
     RETURN 'superseded';
   END IF;
-  IF (
-    SELECT coalesce(array_agg("id" ORDER BY "id"), '{}')
-    FROM "public"."review_images" WHERE "review_id" = p_review_id
-  ) IS DISTINCT FROM (
-    SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM unnest(p_photo_ids) AS x
-  ) THEN
+  IF NOT private.review_photo_ids_match(p_review_id, p_photo_ids) THEN
     RETURN 'photos_changed';
   END IF;
 
@@ -142,14 +171,7 @@ BEGIN
       "ai_error" = p_ai_error,
       "ai_model" = p_ai_model,
       "ai_screened_at" = p_screened_at
-  WHERE "id" = p_review_id
-    AND "status" = 'pending'
-    AND "submitted_at" = p_submitted_at
-    AND "deleted_at" IS NULL;
-  GET DIAGNOSTICS v_updated = ROW_COUNT;
-  IF v_updated = 0 THEN
-    RETURN 'superseded';
-  END IF;
+  WHERE "id" = p_review_id;
 
   IF p_photo_marks IS NOT NULL THEN
     UPDATE "public"."review_images" AS i
@@ -218,6 +240,11 @@ GRANT EXECUTE ON FUNCTION public.give_up_review_screening(bigint, timestamptz, t
 -- D. BOSS の操作 (管理アプリから、BOSS のログインで呼ぶ)
 -- ───────────────────────────────────────────────
 
+-- 確認待ちの一覧 (D-1) を、公開済みの口コミを読まずに古い順で引く
+CREATE INDEX "reviews_moderation_queue_idx" ON "public"."reviews" USING btree ("submitted_at", "id")
+  WHERE "deleted_at" IS NULL AND "status" IN ('needs_review', 'pending');
+--> statement-breakpoint
+
 -- D-1. 確認待ちの一覧: BOSS の確認待ちと、審査中のまま p_stuck_minutes 分以上の口コミ。古い順
 CREATE OR REPLACE FUNCTION public.admin_list_review_queue(p_stuck_minutes integer DEFAULT 30)
 RETURNS TABLE (
@@ -239,9 +266,7 @@ SET search_path = ''
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF NOT private.is_admin() THEN
-    RAISE EXCEPTION 'admin only' USING ERRCODE = '42501';
-  END IF;
+  PERFORM private.assert_admin();
   RETURN QUERY
   SELECT r."id", r."status", r."reason_code", r."ai_reason", r."ai_error", r."submitted_at", r."rating",
          e."name", coalesce(v."name", o."venue_label"),
@@ -274,9 +299,7 @@ AS $$
 DECLARE
   v_result jsonb;
 BEGIN
-  IF NOT private.is_admin() THEN
-    RAISE EXCEPTION 'admin only' USING ERRCODE = '42501';
-  END IF;
+  PERFORM private.assert_admin();
   SELECT jsonb_build_object(
     'review', to_jsonb(r) - 'user_id',
     'event', jsonb_build_object('id', e."id", 'name', e."name", 'slug', e."slug", 'category_slug', c."slug"),
@@ -309,15 +332,15 @@ $$;
 --> statement-breakpoint
 
 -- D-3. 公開か差し戻し。読んだ時の submitted_at と、確認待ちか審査中であることを条件に書く (その間に投稿者が
--- 出し直していたら 'superseded')。写真の集まりが読んだ時と違えば 'photos_changed' (見ていない写真を公開しない)。
--- p_photo_marks は [{"id", "hide", "reason"}] で、読んだ写真の全部の印を書き直す (抜けと重複は断る)。差し戻しの理由は審査の 4 種だけ
+-- 出し直していたら 'superseded')。p_photo_marks は [{"id", "hide", "reason"}] で、読んだ写真の全部に 1 つずつ
+-- (重複は断る)。その集まりが今の写真と違えば 'photos_changed' (見ていない写真を公開しない)。
+-- 差し戻しの理由は審査の 4 種だけ
 CREATE OR REPLACE FUNCTION public.admin_decide_review(
   p_review_id bigint,
   p_submitted_at timestamptz,
   p_decision text,
   p_reason_code text,
   p_reason_note text,
-  p_photo_ids bigint[],
   p_photo_marks jsonb
 )
 RETURNS text
@@ -328,11 +351,12 @@ AS $$
 DECLARE
   v_from text;
   v_to text;
+  v_note text := nullif(btrim(p_reason_note), '');
+  v_photo_ids bigint[];
+  -- 審査の理由 (REVIEW_SCREENING_REASONS と、0023 の hidden_reason_code の CHECK と揃える)
   v_reasons constant text[] := ARRAY['personal_info', 'abuse', 'spam', 'resale'];
 BEGIN
-  IF NOT private.is_admin() THEN
-    RAISE EXCEPTION 'admin only' USING ERRCODE = '42501';
-  END IF;
+  PERFORM private.assert_admin();
   IF p_decision = 'publish' THEN
     v_to := 'published';
     IF p_reason_code IS NOT NULL OR p_reason_note IS NOT NULL THEN
@@ -346,13 +370,13 @@ BEGIN
   ELSE
     RAISE EXCEPTION 'unknown decision' USING ERRCODE = '22023';
   END IF;
-  -- 写真の判断は、読んだ写真の全部にちょうど 1 つずつ (抜けた写真に前の印が残らない・重複で結果が揺れないように)
-  IF p_photo_marks IS NULL OR jsonb_typeof(p_photo_marks) <> 'array' OR (
-    SELECT coalesce(array_agg(m."id" ORDER BY m."id"), '{}')
-    FROM jsonb_to_recordset(p_photo_marks) AS m("id" bigint)
-  ) IS DISTINCT FROM (
-    SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM unnest(p_photo_ids) AS x
-  ) OR (SELECT count(DISTINCT x) FROM unnest(p_photo_ids) AS x) <> coalesce(cardinality(p_photo_ids), 0) THEN
+  -- 写真の判断は 1 枚に 1 つ (重複で結果が揺れないように)。抜けは下の写真の集まりの比較で photos_changed になる
+  IF p_photo_marks IS NULL OR jsonb_typeof(p_photo_marks) <> 'array' THEN
+    RAISE EXCEPTION 'photo decisions must be an array' USING ERRCODE = '22023';
+  END IF;
+  SELECT coalesce(array_agg(m."id"), '{}') INTO v_photo_ids
+  FROM jsonb_to_recordset(p_photo_marks) AS m("id" bigint);
+  IF cardinality(v_photo_ids) <> (SELECT count(DISTINCT x) FROM unnest(v_photo_ids) AS x) THEN
     RAISE EXCEPTION 'photo decisions must cover each photo once' USING ERRCODE = '22023';
   END IF;
   IF EXISTS (
@@ -369,19 +393,14 @@ BEGIN
   IF NOT FOUND THEN
     RETURN 'superseded';
   END IF;
-  IF (
-    SELECT coalesce(array_agg("id" ORDER BY "id"), '{}')
-    FROM "public"."review_images" WHERE "review_id" = p_review_id
-  ) IS DISTINCT FROM (
-    SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM unnest(p_photo_ids) AS x
-  ) THEN
+  IF NOT private.review_photo_ids_match(p_review_id, v_photo_ids) THEN
     RETURN 'photos_changed';
   END IF;
 
   UPDATE "public"."reviews"
   SET "status" = v_to,
       "reason_code" = p_reason_code,
-      "reason_note" = nullif(btrim(p_reason_note), '')
+      "reason_note" = v_note
   WHERE "id" = p_review_id;
 
   UPDATE "public"."review_images" AS i
@@ -394,8 +413,7 @@ BEGIN
     ("review_id", "actor", "actor_user_id", "action", "from_status", "to_status", "reason_code",
      "reason_note", "photo_marks")
   VALUES
-    (p_review_id, 'admin', (SELECT auth.uid()), CASE WHEN v_to = 'published' THEN 'published' ELSE 'rejected' END,
-     v_from, v_to, p_reason_code, nullif(btrim(p_reason_note), ''), p_photo_marks);
+    (p_review_id, 'admin', (SELECT auth.uid()), v_to, v_from, v_to, p_reason_code, v_note, p_photo_marks);
   RETURN 'applied';
 END;
 $$;
@@ -412,9 +430,7 @@ AS $$
 DECLARE
   v_from text;
 BEGIN
-  IF NOT private.is_admin() THEN
-    RAISE EXCEPTION 'admin only' USING ERRCODE = '42501';
-  END IF;
+  PERFORM private.assert_admin();
   SELECT r."status" INTO v_from FROM "public"."reviews" r
   WHERE r."id" = p_review_id AND r."deleted_at" IS NULL AND r."submitted_at" = p_submitted_at
     AND r."status" IN ('needs_review', 'pending')
@@ -451,9 +467,9 @@ REVOKE EXECUTE ON FUNCTION public.admin_get_review(bigint) FROM public, anon;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION public.admin_get_review(bigint) TO authenticated;
 --> statement-breakpoint
-REVOKE EXECUTE ON FUNCTION public.admin_decide_review(bigint, timestamptz, text, text, text, bigint[], jsonb) FROM public, anon;
+REVOKE EXECUTE ON FUNCTION public.admin_decide_review(bigint, timestamptz, text, text, text, jsonb) FROM public, anon;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.admin_decide_review(bigint, timestamptz, text, text, text, bigint[], jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_decide_review(bigint, timestamptz, text, text, text, jsonb) TO authenticated;
 --> statement-breakpoint
 REVOKE EXECUTE ON FUNCTION public.admin_requeue_review(bigint, timestamptz) FROM public, anon;
 --> statement-breakpoint

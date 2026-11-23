@@ -1352,6 +1352,28 @@
           "method": "btree",
           "with": {}
         },
+        "reviews_moderation_queue_idx": {
+          "name": "reviews_moderation_queue_idx",
+          "columns": [
+            {
+              "expression": "submitted_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"reviews\".\"deleted_at\" is null and \"reviews\".\"status\" in ('needs_review', 'pending')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "reviews_user_idx": {
           "name": "reviews_user_idx",
           "columns": [
