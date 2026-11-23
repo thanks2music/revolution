@@ -1,10 +1,12 @@
 'use client';
 
 import { DEFAULT_CRON } from '@/lib/firestore/mappers';
+import { DEFAULT_NOTIFY_MODE, NOTIFY_MODES, NOTIFY_MODE_LABELS, isNotifyMode } from '@/lib/target/notify-mode';
 import type { TargetFieldErrors, TargetFormValues } from '@/lib/schemas/target-form.schema';
 import { FormField } from '@/components/form-field';
 import { FrequencySelect } from '@/components/targets/frequency-select';
 import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 
 /** 作成と編集で共有する入力欄。検証は呼ぶ側が行い、結果を errors で渡す */
 
@@ -13,6 +15,7 @@ export const EMPTY_TARGET_FORM: TargetFormValues = {
   url: 'https://',
   selector: '',
   cron: DEFAULT_CRON,
+  notifyMode: DEFAULT_NOTIFY_MODE,
 };
 
 export function TargetFields({
@@ -80,6 +83,32 @@ export function TargetFields({
           onChange={cron => onChange({ cron })}
           onValidityChange={onCronValidityChange}
         />
+      </div>
+
+      <div className="sm:col-span-2">
+        <FormField
+          label="通知の仕方"
+          error={errors.notifyMode}
+          hint="AI ライターに渡すと、更新検知で新しく現れたリンクを、AI ライターの定期実行が記事にするかどうか確かめます。"
+        >
+          {control => (
+            <NativeSelect
+              {...control}
+              className="w-full"
+              value={values.notifyMode}
+              disabled={disabled}
+              onChange={event => {
+                if (isNotifyMode(event.target.value)) onChange({ notifyMode: event.target.value });
+              }}
+            >
+              {NOTIFY_MODES.map(mode => (
+                <NativeSelectOption key={mode} value={mode}>
+                  {NOTIFY_MODE_LABELS[mode]}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          )}
+        </FormField>
       </div>
     </div>
   );

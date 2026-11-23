@@ -22,8 +22,8 @@ import type { Target, TargetInput } from '@/types/target';
  *
  * 守ること (rules が同じ条件で止めるので、外すと保存できない):
  *
- * 1. 書いてよいキーは、作成が `url, selector, title, cron, createdAt, createdBy`、更新が
- *    `url, selector, title, cron, updatedAt, updatedBy` だけ。`checkedAt` は Functions だけが書く
+ * 1. 書いてよいキーは、作成が `url, selector, title, cron, notifyMode, createdAt, createdBy`、更新が
+ *    `url, selector, title, cron, notifyMode, updatedAt, updatedBy` だけ。`checkedAt` は Functions だけが書く
  *    (画面が未来の値を書くと、見回りがその監視対象を飛ばし続ける)
  * 2. 更新は `updateDoc`。`setDoc` (全置換) は `createdAt`・`createdBy` を消す。`updateDoc` は存在しない
  *    ドキュメントへの書き込みも失敗させる
@@ -85,6 +85,7 @@ export class TargetService {
       selector: input.selector,
       title: input.title,
       cron: input.cron,
+      notifyMode: input.notifyMode,
       createdAt,
       createdBy: uid,
     });
@@ -104,6 +105,7 @@ export class TargetService {
       selector: input.selector,
       title: input.title,
       cron: input.cron,
+      notifyMode: input.notifyMode,
       updatedAt,
       updatedBy: uid,
     });

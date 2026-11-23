@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { matchPreset } from '@/lib/target/frequency-presets';
+import { NOTIFY_MODE_LABELS } from '@/lib/target/notify-mode';
 import { formatJst } from '@/lib/format-date';
 import { Button, buttonVariants } from '@/components/ui/button';
 import type { Target } from '@/types/target';
@@ -55,6 +56,9 @@ export function TargetRow({
                 <code>{target.cron}</code>
               )}
             </dd>
+
+            <dt className="font-medium text-foreground">通知の仕方</dt>
+            <dd>{NOTIFY_MODE_LABELS[target.notifyMode]}</dd>
 
             <dt className="font-medium text-foreground">最後に見に行った日時</dt>
             <dd>{formatJst(target.checkedAt)}</dd>

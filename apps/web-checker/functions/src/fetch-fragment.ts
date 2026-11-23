@@ -7,6 +7,8 @@ import { Agent } from 'undici';
 
 import { BlockedHostError, assertPublicHost, isBlockedIpv4, isBlockedIpv6 } from '@revolution/net/safe-host';
 
+import { isHttpUrl } from './http-url';
+
 const TIMEOUT_MS = 30_000;
 /** ページ 1 枚の上限。お知らせ欄のページは大きくても数 MB */
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -88,12 +90,14 @@ interface FetchedPage {
   body: Buffer;
   /** レスポンスの Content-Type (文字コードの判定に使う) */
   contentType: string | null;
+  /** リダイレクトを追った後の URL */
+  finalUrl: string;
 }
 
 async function fetchPage(rawUrl: string): Promise<FetchedPage> {
   let current = new URL(rawUrl);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    if (current.protocol !== 'https:' && current.protocol !== 'http:') {
+    if (!isHttpUrl(current)) {
       throw new PermanentFetchError(`Blocked URL scheme "${current.protocol}": ${current.href}`);
     }
     // 内部アドレスなら BlockedHostError (試し直さない)。名前を解決できない時は DNS の一時的な失敗かもしれないので試し直す
@@ -122,7 +126,11 @@ async function fetchPage(rawUrl: string): Promise<FetchedPage> {
       const retryable = response.status >= 500 || response.status === 429;
       throw retryable ? new Error(message) : new PermanentFetchError(message);
     }
-    return { body: await readBody(response, current.href), contentType: response.headers.get('content-type') };
+    return {
+      body: await readBody(response, current.href),
+      contentType: response.headers.get('content-type'),
+      finalUrl: current.href,
+    };
   }
   throw new PermanentFetchError(`Too many redirects (> ${MAX_REDIRECTS}): ${rawUrl}`);
 }
@@ -149,9 +157,30 @@ function decode(page: FetchedPage): string {
   return iconv.decode(page.body, guessed && iconv.encodingExists(guessed) ? guessed : 'utf-8');
 }
 
-/** HTML から、セレクタに一致した最初の要素の中身 (HTML) を返す。一致しなければ `null` */
-export function extractFragment(html: string, selector: string): string | null {
-  return cheerio.load(html)(selector || 'body').html();
+export interface FetchedFragment {
+  /** セレクタに一致した最初の要素の中身 (HTML)。一致しなければ `null` */
+  html: string | null;
+  /**
+   * 抜き出した HTML の相対リンクを直す基準の URL。ページの `<base href>` があればそれ、無ければ
+   * リダイレクトを追った後の URL (監視対象の URL とは違うことがある)
+   */
+  baseUrl: string;
+}
+
+/** HTML から抜き出す。セレクタの書き方が壊れていれば、cheerio の例外がそのまま出る */
+export function extractFragment(html: string, selector: string, pageUrl: string): FetchedFragment {
+  const $ = cheerio.load(html);
+  let baseUrl = pageUrl;
+  const baseHref = $('base[href]').first().attr('href');
+  if (baseHref) {
+    try {
+      const resolved = new URL(baseHref, pageUrl);
+      if (isHttpUrl(resolved)) baseUrl = resolved.href;
+    } catch {
+      // 読めない <base> は無視する
+    }
+  }
+  return { html: $(selector || 'body').html(), baseUrl };
 }
 
 interface FetchFragmentOptions {
@@ -160,19 +189,24 @@ interface FetchFragmentOptions {
 }
 
 /**
- * 監視対象のページを取得し、抜き出す部分の HTML を返す。要素が無ければ `null`。
- * 通信のエラー・時間切れ・5xx・429 なら、間を空けて 3 回まで試す。
+ * 監視対象のページを取得し、抜き出す部分の HTML と、相対リンクの基準の URL を返す。
+ * 通信のエラー・時間切れ・5xx・429 なら、間を空けて 3 回まで試す。抜き出しは取得の後に 1 回だけ行う
+ * (セレクタの誤りは何度試しても同じなので、取得し直さない)。
  */
 export async function fetchFragment(
   url: string,
   selector: string,
   options: FetchFragmentOptions = {},
-): Promise<string | null> {
-  const retryDelayMs = options.retryDelayMs ?? RETRY_DELAY_MS;
+): Promise<FetchedFragment> {
+  const page = await fetchPageWithRetry(url, options.retryDelayMs ?? RETRY_DELAY_MS);
+  return extractFragment(decode(page), selector, page.finalUrl);
+}
+
+async function fetchPageWithRetry(url: string, retryDelayMs: number): Promise<FetchedPage> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      return extractFragment(decode(await fetchPage(url)), selector);
+      return await fetchPage(url);
     } catch (error) {
       lastError = error;
       if (error instanceof PermanentFetchError || error instanceof BlockedHostError) break;

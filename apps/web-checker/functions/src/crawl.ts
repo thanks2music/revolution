@@ -1,7 +1,9 @@
 import type { SlackMessage } from '@revolution/slack/post-message';
 
+import { newLinks, type LinkHandoff } from './detected-links';
+import type { FetchedFragment } from './fetch-fragment';
 import { buildErrorMessage, buildNoContentMessage, buildUpdateMessage } from './slack-message';
-import type { Snapshot, Target } from './targets';
+import type { DetectedLink, Snapshot, Target } from './targets';
 import { formatLineDiff, toComparableText } from './text-diff';
 
 /** 見に行った結果の記録。`alertedAt: null` は消す (問題が解消した) */
@@ -17,11 +19,16 @@ export interface TargetStore {
   /** 履歴を足す。監視対象がもう無ければ足さずに `false` (削除と見回りが重なった時に、履歴だけ残さない) */
   addSnapshot(targetId: string, snapshot: Snapshot): Promise<boolean>;
   recordCheck(targetId: string, record: CheckRecord): Promise<void>;
+  /**
+   * 検知リンクを記録する (AI ライターに渡す)。1 件ずつ記録し、一部が失敗しても残りは記録する。
+   * すでに記録されている URL (別の監視対象が先に検知した時など) は飛ばし、added にも failed にも数えない
+   */
+  addDetectedLinks(links: DetectedLink[]): Promise<LinkHandoff>;
 }
 
 export interface CrawlDeps {
   store: TargetStore;
-  fetchFragment: (url: string, selector: string) => Promise<string | null>;
+  fetchFragment: (url: string, selector: string) => Promise<FetchedFragment>;
   /** Slack に送る。失敗しても例外を投げない (`postSlackMessage` の決まり) */
   notify: (message: SlackMessage) => Promise<void>;
   /** WEB チェッカーの画面の URL (通知のリンクに使う) */
@@ -79,14 +86,15 @@ export async function crawlTarget(
   const previousPromise = deps.store.getLatestSnapshot(targetId);
   previousPromise.catch(() => undefined); // 取得の失敗で使われなかった時に、未処理の reject にしない
 
-  let fragment: string | null;
+  let fetched: FetchedFragment;
   try {
-    fragment = await deps.fetchFragment(target.url, target.selector);
+    fetched = await deps.fetchFragment(target.url, target.selector);
   } catch (error) {
     await alert(buildErrorMessage(target, deps.siteUrl, error));
     return 'error';
   }
 
+  const fragment = fetched.html;
   if (fragment === null) {
     await alert(buildNoContentMessage(target, deps.siteUrl));
     return 'no-content';
@@ -108,14 +116,26 @@ export async function crawlTarget(
     return 'unchanged';
   }
 
-  let saved: boolean;
-  try {
-    saved = await deps.store.addSnapshot(targetId, { content: fragment, time: startedAt });
-  } catch (error) {
-    await alert(buildErrorMessage(target, deps.siteUrl, error));
-    return 'error';
+  // AI ライターへの受け渡しは、履歴を保存する前に行う。記録に失敗したリンクがあれば、この回は履歴を保存しない:
+  // 保存すると、次の見回りでそのリンクが「前回にあった」扱いになり、二度と渡されないため。保存しなければ、
+  // 次の見回りで同じリンクがまた新しく見え、渡し直される (記録できた分は「すでにある」として数えない)。
+  // 登録・編集の直後は渡さない: 前回の履歴は前の URL かセレクタの物なので、今回のリンクが全部新しく見える
+  const handoff =
+    previous && target.notifyMode === 'ai-writer' && !options.afterEdit
+      ? await handOff(deps, targetId, target, previous.content, fragment, fetched.baseUrl, startedAt)
+      : undefined;
+  const retryHandoff = (handoff?.failed ?? 0) > 0;
+
+  if (!retryHandoff) {
+    let saved: boolean;
+    try {
+      saved = await deps.store.addSnapshot(targetId, { content: fragment, time: startedAt });
+    } catch (error) {
+      await alert(buildErrorMessage(target, deps.siteUrl, error));
+      return 'error';
+    }
+    if (!saved) return 'missing';
   }
-  if (!saved) return 'missing';
 
   const newText = toComparableText(fragment);
   const oldText = previous ? toComparableText(previous.content) : '';
@@ -128,8 +148,28 @@ export async function crawlTarget(
       previousAt: previous?.time,
       content: newText,
       diff: formatLineDiff(oldText, newText),
+      handoff: handoff && { ...handoff, willRetry: retryHandoff },
     }),
   );
   await deps.store.recordCheck(targetId, resolved);
   return previous ? 'updated' : 'first';
+}
+
+/**
+ * 通知の仕方が「AI ライターに渡す」の監視対象で、新しく現れたリンクを検知リンクとして記録する。
+ * 最初のクロール (前回が無い) と登録・編集の直後は呼ばない: 抜き出した部分が丸ごと新しく見え、
+ * 過去のリンクまで渡してしまうため。記録に失敗しても更新検知の通知は送る (失敗は通知に書く)。
+ */
+async function handOff(
+  deps: CrawlDeps,
+  targetId: string,
+  target: Target,
+  previousHtml: string,
+  html: string,
+  baseUrl: string,
+  detectedAt: number,
+): Promise<LinkHandoff> {
+  const urls = newLinks(previousHtml, html, { baseUrl, pageUrl: target.url });
+  if (urls.length === 0) return { links: [], failed: 0 };
+  return deps.store.addDetectedLinks(urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt })));
 }

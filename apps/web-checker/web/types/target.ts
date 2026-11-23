@@ -1,3 +1,5 @@
+import type { NotifyMode } from '@/lib/target/notify-mode';
+
 /**
  * 監視対象 (`web_checker_targets` コレクションのドキュメント) を画面で扱う形。
  *
@@ -18,6 +20,8 @@ export interface Target {
   title: string;
   /** 見に行く頻度 (cron、Asia/Tokyo) */
   cron: string;
+  /** 通知の仕方。値が無いドキュメントは「Slack のみ」に倒す */
+  notifyMode: NotifyMode;
   /** 最後に見に行った日時。書くのは Functions だけで、画面は読むだけ */
   checkedAt: number | null;
   createdAt: number | null;
@@ -34,4 +38,4 @@ export interface Target {
  * `checkedAt` は Functions だけが書くので含めない。`createdAt`・`createdBy`・`updatedAt`・`updatedBy` は
  * Service が付ける。rules が書いてよいキーを限っているので、ここに無いキーを足すと保存できなくなる。
  */
-export type TargetInput = Pick<Target, 'url' | 'selector' | 'title' | 'cron'>;
+export type TargetInput = Pick<Target, 'url' | 'selector' | 'title' | 'cron' | 'notifyMode'>;

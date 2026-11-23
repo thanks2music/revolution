@@ -1,5 +1,6 @@
 import type { DocumentData } from 'firebase/firestore';
 
+import { DEFAULT_NOTIFY_MODE, isNotifyMode } from '@/lib/target/notify-mode';
 import type { Snapshot } from '@/types/snapshot';
 import type { Target } from '@/types/target';
 
@@ -49,6 +50,8 @@ export function toTarget(id: string, data: DocumentData): Target {
     title: asString(data.title),
     // 空も既定に倒す。Functions も `target.cron || DEFAULT_CRON` で同じ既定を使うので、表示と動きがそろう
     cron: asString(data.cron) || DEFAULT_CRON,
+    // 値が無い (この欄より前に作った) ・知らない値は「Slack のみ」。Functions も 'ai-writer' の時だけ渡す
+    notifyMode: isNotifyMode(data.notifyMode) ? data.notifyMode : DEFAULT_NOTIFY_MODE,
     checkedAt: asEpochMillis(data.checkedAt),
     createdAt: asEpochMillis(data.createdAt),
     createdBy: asStringOrNull(data.createdBy),

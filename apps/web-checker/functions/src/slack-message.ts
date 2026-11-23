@@ -1,6 +1,7 @@
 import type { SlackMessage } from '@revolution/slack/post-message';
 import { escapeAndTruncate } from '@revolution/slack/text';
 
+import type { LinkHandoff } from './detected-links';
 import type { Target } from './targets';
 
 /** Block Kit の section の text の上限は 3000 字。見出しの分を残して切る */
@@ -50,6 +51,32 @@ export function historyUrl(siteUrl: string, targetId: string): string {
   return `${siteUrl.replace(/\/+$/, '')}/detail?targetId=${encodeURIComponent(targetId)}`;
 }
 
+/** 通知に載せる、渡したリンクの件数の上限 (残りは件数だけ書く) */
+const HANDOFF_LINKS_SHOWN = 5;
+/**
+ * リンクの一覧に使ってよい字数。section の上限 (3000 字) から、「ほか N 件」と失敗の行の分を残す。
+ * URL はリンクの記法の中で切れないので、収まらない URL は件数に回す
+ */
+const HANDOFF_LINKS_BUDGET = 2400;
+
+function handoffSection(handoff: LinkHandoff): Block {
+  const lines = [`*AI ライターに渡したリンク: ${handoff.links.length} 件*`];
+  let length = lines[0].length;
+  for (const url of handoff.links.slice(0, HANDOFF_LINKS_SHOWN)) {
+    const line = `• ${link(url, safe(url, 200))}`;
+    if (length + line.length + 1 > HANDOFF_LINKS_BUDGET) break;
+    lines.push(line);
+    length += line.length + 1;
+  }
+  const rest = handoff.links.length - (lines.length - 1);
+  if (rest > 0) lines.push(`ほか ${rest} 件`);
+  if (handoff.failed > 0) {
+    const retry = handoff.willRetry ? ' (次の見回りで渡し直します)' : '';
+    lines.push(`*${handoff.failed} 件は渡せませんでした${retry}*: ${safe(handoff.error ?? '', ERROR_MAX)}`);
+  }
+  return section(lines.join('\n'));
+}
+
 export interface UpdateMessageInput {
   targetId: string;
   target: Pick<Target, 'title' | 'url'>;
@@ -61,6 +88,7 @@ export interface UpdateMessageInput {
   content: string;
   /** 行の差分 (`formatLineDiff` の結果) */
   diff: string;
+  handoff?: LinkHandoff;
 }
 
 /** 更新検知 (最初のクロールでは「新規追加」) の通知 */
@@ -85,6 +113,7 @@ export function buildUpdateMessage(input: UpdateMessageInput): SlackMessage {
     section(`*更新内容*\n${safe(input.content.trim(), CONTENT_MAX) || '-'}`),
   ];
   if (input.diff.trim()) blocks.push(section(`*差分*\n${safe(input.diff.trim(), DIFF_MAX)}`));
+  if (input.handoff) blocks.push(handoffSection(input.handoff));
 
   return { text: heading, blocks };
 }

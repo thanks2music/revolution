@@ -14,6 +14,7 @@ import {
 
 // DNS を引かないよう、IP リテラルの公開アドレス (TEST-NET ではなく実在の公開帯) を使う
 const PUBLIC = 'https://93.184.215.14';
+const PAGE_URL = 'https://example.com/news';
 
 const realFetch = global.fetch;
 
@@ -35,11 +36,17 @@ function html(body: string, init: ResponseInit = {}): Response {
 
 describe('extractFragment', () => {
   it('セレクタに一致した最初の要素の中身を返す', () => {
-    expect(extractFragment('<div id="a"><b>x</b></div><div id="a">y</div>', '#a')).toBe('<b>x</b>');
+    expect(extractFragment('<div id="a"><b>x</b></div><div id="a">y</div>', '#a', PAGE_URL).html).toBe('<b>x</b>');
   });
 
   it('一致しなければ null', () => {
-    expect(extractFragment('<p>x</p>', '#none')).toBeNull();
+    expect(extractFragment('<p>x</p>', '#none', PAGE_URL).html).toBeNull();
+  });
+
+  it('相対リンクの基準は、<base href> があればそれ、無ければページの URL', () => {
+    expect(extractFragment('<p>x</p>', 'p', PAGE_URL).baseUrl).toBe(PAGE_URL);
+    expect(extractFragment('<base href="/info/"><p>x</p>', 'p', PAGE_URL).baseUrl).toBe('https://example.com/info/');
+    expect(extractFragment('<base href="javascript:x"><p>x</p>', 'p', PAGE_URL).baseUrl).toBe(PAGE_URL);
   });
 });
 
@@ -65,14 +72,14 @@ describe('declaredCharset', () => {
 describe('fetchFragment', () => {
   it('ページを取得して、抜き出す部分の HTML を返す', async () => {
     fetchMock.mockResolvedValue(html('<ul id="news"><li>A</li></ul>'));
-    await expect(fetchFragment(`${PUBLIC}/news`, '#news')).resolves.toBe('<li>A</li>');
+    await expect(fetchFragment(`${PUBLIC}/news`, '#news')).resolves.toMatchObject({ html: '<li>A</li>' });
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'manual' });
   });
 
   it('Shift_JIS のページも読める', async () => {
     const body = iconv.encode('<ul id="news"><li>お知らせのページです。新しい企画が始まりました。</li></ul>', 'Shift_JIS');
     fetchMock.mockResolvedValue(new Response(new Uint8Array(body), { status: 200 }));
-    await expect(fetchFragment(`${PUBLIC}/news`, '#news')).resolves.toContain('新しい企画');
+    await expect(fetchFragment(`${PUBLIC}/news`, '#news')).resolves.toMatchObject({ html: expect.stringContaining('新しい企画') });
   });
 
   it('内部アドレスは取得しない', async () => {
@@ -96,7 +103,7 @@ describe('fetchFragment', () => {
       .mockResolvedValueOnce(new Response('', { status: 503 }))
       .mockResolvedValueOnce(new Response('', { status: 503 }))
       .mockResolvedValueOnce(html('<p id="a">ok</p>'));
-    await expect(fetchFragment(`${PUBLIC}/`, '#a', { retryDelayMs: 0 })).resolves.toBe('ok');
+    await expect(fetchFragment(`${PUBLIC}/`, '#a', { retryDelayMs: 0 })).resolves.toMatchObject({ html: 'ok' });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -116,7 +123,20 @@ describe('fetchFragment', () => {
     fetchMock
       .mockResolvedValueOnce(new Response('', { status: 429 }))
       .mockResolvedValueOnce(html('<p id="a">ok</p>'));
-    await expect(fetchFragment(`${PUBLIC}/`, '#a', { retryDelayMs: 0 })).resolves.toBe('ok');
+    await expect(fetchFragment(`${PUBLIC}/`, '#a', { retryDelayMs: 0 })).resolves.toMatchObject({ html: 'ok' });
+  });
+
+  it('リダイレクトを追った後の URL を、相対リンクの基準として返す', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 301, headers: { location: `${PUBLIC}/info/news/` } }))
+      .mockResolvedValueOnce(html('<p id="a">ok</p>'));
+    await expect(fetchFragment(`${PUBLIC}/news`, '#a')).resolves.toEqual({ html: 'ok', baseUrl: `${PUBLIC}/info/news/` });
+  });
+
+  it('セレクタの書き方が壊れていれば、取得し直さずに失敗する', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(html('<p>x</p>')));
+    await expect(fetchFragment(`${PUBLIC}/`, 'p[', { retryDelayMs: 0 })).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('大きすぎる本文は途中で読むのをやめ、試し直さない', async () => {
@@ -132,7 +152,7 @@ describe('fetchFragment', () => {
     fetchMock.mockResolvedValue(
       new Response(body, { status: 200, headers: { 'content-type': 'text/html; charset=UTF-8' } }),
     );
-    await expect(fetchFragment(`${PUBLIC}/`, '#a')).resolves.toBe('Café ニュース');
+    await expect(fetchFragment(`${PUBLIC}/`, '#a')).resolves.toMatchObject({ html: 'Café ニュース' });
   });
 });
 
