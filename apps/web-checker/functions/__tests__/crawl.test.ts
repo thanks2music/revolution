@@ -2,7 +2,9 @@ import { describe, expect, it } from '@jest/globals';
 import type { SlackMessage } from '@revolution/slack/post-message';
 
 import { ALERT_INTERVAL_MS, MAX_SNAPSHOT_CHARS, crawlTarget, type CrawlDeps, type TargetStore } from '../src/crawl';
-import type { DetectedLink, Snapshot, Target } from '../src/targets';
+import type { DetectedLink } from '@revolution/schemas/detected-link';
+
+import type { Snapshot, Target } from '../src/targets';
 
 const target: Target = {
   url: 'https://example.com/news',
@@ -207,7 +209,13 @@ describe('crawlTarget', () => {
 
       await expect(crawlTarget(d, 'target-1')).resolves.toBe('updated');
       expect(state.detectedLinks).toEqual([
-        { url: 'https://example.com/news/2', targetId: 'target-1', targetTitle: 'サンプル公式サイト', detectedAt: NOW },
+        {
+          url: 'https://example.com/news/2',
+          targetId: 'target-1',
+          targetTitle: 'サンプル公式サイト',
+          detectedAt: NOW,
+          status: 'pending',
+        },
       ]);
       expect(JSON.stringify(sent[0].blocks)).toContain('AI ライターに渡したリンク: 1 件');
     });
@@ -223,7 +231,13 @@ describe('crawlTarget', () => {
 
     it('すでに記録されているリンクは数えない', async () => {
       const { store, state } = memoryStore({ target: aiTarget, snapshots: [{ content: before, time: 1 }] });
-      state.detectedLinks.push({ url: 'https://example.com/news/2', targetId: 'other', targetTitle: '別', detectedAt: 1 });
+      state.detectedLinks.push({
+        url: 'https://example.com/news/2',
+        targetId: 'other',
+        targetTitle: '別',
+        detectedAt: 1,
+        status: 'pending',
+      });
       const { deps: d, sent } = deps(store, () => Promise.resolve(after));
 
       await crawlTarget(d, 'target-1');

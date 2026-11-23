@@ -1,10 +1,10 @@
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 
 import { attemptDocId } from '@revolution/net/attempt-url';
+import { DETECTED_LINKS_COLLECTION } from '@revolution/schemas/detected-link';
 
 import type { TargetStore } from './crawl';
 import {
-  DETECTED_LINKS_COLLECTION,
   SNAPSHOTS_SUBCOLLECTION,
   TARGETS_COLLECTION,
   type Snapshot,

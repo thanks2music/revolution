@@ -3,7 +3,9 @@ import type { SlackMessage } from '@revolution/slack/post-message';
 import { newLinks, type LinkHandoff } from './detected-links';
 import type { FetchedFragment } from './fetch-fragment';
 import { buildErrorMessage, buildNoContentMessage, buildUpdateMessage } from './slack-message';
-import type { DetectedLink, Snapshot, Target } from './targets';
+import type { DetectedLink } from '@revolution/schemas/detected-link';
+
+import type { Snapshot, Target } from './targets';
 import { formatLineDiff, toComparableText } from './text-diff';
 
 /** 見に行った結果の記録。`alertedAt: null` は消す (問題が解消した) */
@@ -171,5 +173,7 @@ async function handOff(
 ): Promise<LinkHandoff> {
   const urls = newLinks(previousHtml, html, { baseUrl, pageUrl: target.url });
   if (urls.length === 0) return { links: [], failed: 0 };
-  return deps.store.addDetectedLinks(urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt })));
+  return deps.store.addDetectedLinks(
+    urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt, status: 'pending' })),
+  );
 }

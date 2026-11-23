@@ -7,6 +7,7 @@ const config = {
   transform: { '^.+\\.ts$': ['ts-jest', { useESM: true }] },
   moduleNameMapper: {
     '^@revolution/net/(.*)$': '<rootDir>/../../../shared/net/$1',
+    '^@revolution/schemas/(.*)$': '<rootDir>/../../../shared/schemas/$1',
     '^@revolution/slack/(.*)$': '<rootDir>/../../../shared/slack/$1',
   },
 };
