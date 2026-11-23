@@ -55,7 +55,7 @@ describe('findSamePageSections', () => {
   });
 
   it('id・class は 1 語ずつ完全一致で比べる (gnav-menu に当てない)。大文字・小文字は区別しない', () => {
-    const html = `<div class="gnav-menu"><img src="img/a.png"></div><div class="Item GOODS"><img src="img/b.png"></div>`;
+    const html = `<div class="gnav-menu"><h2>x</h2><img src="img/a.png"></div><div class="Item GOODS"><h2>商品</h2><img src="img/b.png"></div>`;
     const sections = findSamePageSections(html, CONFIG);
 
     expect(sections.menu).toBeUndefined();
@@ -69,11 +69,37 @@ describe('findSamePageSections', () => {
   });
 
   it('同じカテゴリの節が複数あれば、つないで返す', () => {
-    const html = `<section id="goods"><img src="img/a.jpg"></section><section class="goods"><img src="img/b.jpg"></section>`;
+    const html = `<section id="goods"><h2>A</h2><img src="img/a.jpg"></section><section class="goods"><h2>B</h2><img src="img/b.jpg"></section>`;
     const goods = findSamePageSections(html, CONFIG).goods ?? '';
 
     expect(goods).toContain('img/a.jpg');
     expect(goods).toContain('img/b.jpg');
+  });
+
+  it('見出しを包む div が同じカテゴリに当たっても、外側の節を使う (見出しの兄弟の画像を落とさない)', () => {
+    const html = `<section id="goods"><div class="ttl"><h2>GOODS</h2></div><div class="list"><img src="img/g1.jpg"></div></section>`;
+
+    expect(findSamePageSections(html, CONFIG).goods).toContain('img/g1.jpg');
+  });
+
+  it('見出しと画像が平らに並ぶ要素は、最初の見出しだけで 1 つの節にしない (全画像が 1 カテゴリに入らない)', () => {
+    const html = `<div id="main"><h2>メニュー</h2><img src="img/food.jpg"><h2>グッズ</h2><img src="img/goods.jpg"></div>`;
+
+    expect(findSamePageSections(html, CONFIG)).toEqual({});
+  });
+
+  it('見出しを持たない要素は、id が当たっても節にしない (ナビの <div id="menu">)', () => {
+    const html = `<div id="menu"><ul><li><a href="#goods"><img src="img/n_goods.png"></a></li></ul></div>`;
+
+    expect(findSamePageSections(html, CONFIG)).toEqual({});
+  });
+
+  it('属性の当たりを見出しの当たりより優先する (id が goods で見出しが「特典」ならグッズ)', () => {
+    const html = `<section id="goods"><h3>特典</h3><img src="img/x.jpg"></section>`;
+    const sections = findSamePageSections(html, CONFIG);
+
+    expect(sections.goods).toContain('img/x.jpg');
+    expect(sections.novelty).toBeUndefined();
   });
 
   it('設定が無ければ何も返さない (Templates が古い)', () => {
