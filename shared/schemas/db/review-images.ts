@@ -102,10 +102,10 @@ export const reviewImages = pgTable(
     ),
     check('review_images_sort_order_chk', sql`${table.sortOrder} >= 0`),
     check('review_images_size_chk', sql`${table.width} > 0 AND ${table.height} > 0`),
-    // 理由は審査の 4 種 (REVIEW_SCREENING_REASONS、shared/schemas/review.ts と揃える)
+    // 理由は通報の 8 つ (REVIEW_REPORT_REASONS。審査の 4 種を含む。0028 で広げた)
     check(
       'review_images_hidden_reason_chk',
-      sql`${table.hiddenReasonCode} IS NULL OR ${table.hiddenReasonCode} IN ('personal_info', 'abuse', 'spam', 'resale')`,
+      sql`${table.hiddenReasonCode} IS NULL OR ${table.hiddenReasonCode} IN ('personal_info', 'abuse', 'spam', 'resale', 'spoiler_unmarked', 'photo_reposted', 'not_attended', 'other')`,
     ),
     check(
       'review_images_hidden_pair_chk',

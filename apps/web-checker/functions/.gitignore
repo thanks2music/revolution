@@ -1,0 +1,5 @@
+# esbuild の出力 (firebase deploy の predeploy で作る)
+dist/
+# Functions の params の値 (.env / .env.<project ID>)。プロジェクト ID やサイトの URL を public に出さない
+.env*
+firestore-debug.log

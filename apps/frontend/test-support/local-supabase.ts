@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
+import postgres from 'postgres';
+
 /**
  * 結合テストと E2E が接続する、ローカルの Supabase の接続情報。
  *
@@ -104,7 +106,9 @@ export function assertLocalUrl(url: string): void {
     host = new URL(url).hostname;
   } catch {
     // 値に秘密 (DB のパスワード) が入りうるので、エラーには値を出さない
-    throw new Error('ローカルの Supabase の接続先が URL として読めません (パスワードの記号のエスケープ漏れなど)');
+    throw new Error(
+      'ローカルの Supabase の接続先が URL として読めません (パスワードの記号のエスケープ漏れなど)',
+    );
   }
   if (!LOCAL_HOSTS.has(host)) {
     throw new Error(
@@ -116,4 +120,12 @@ export function assertLocalUrl(url: string): void {
 /** `apps/frontend` の絶対パス (`supabase/config.toml` がある所)。どこから起動しても同じ所を指す */
 function frontendRoot(): string {
   return path.resolve(__dirname, '..');
+}
+
+/**
+ * ローカルの Postgres に直接つなぐ (RLS も GRANT も通らない)。API のロールに渡していない表
+ * (通報の表など) の中身を、テストで確かめる時だけ使う。使い終えたら `end()` する
+ */
+export function localSql() {
+  return postgres(getLocalSupabaseEnv().dbUrl, { max: 1, onnotice: () => {} });
 }

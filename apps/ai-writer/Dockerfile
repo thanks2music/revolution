@@ -26,6 +26,8 @@ COPY shared/schemas/package.json ./shared/schemas/
 # shared/slack (@revolution/slack) も同じ理由で要る。こちらは依存を持たないので node_modules は
 # できず、後のステージで個別にコピーするものはない (依存を足したら schemas と同じ COPY を足す)
 COPY shared/slack/package.json ./shared/slack/
+# shared/net (@revolution/net) も同じ。依存を持たない
+COPY shared/net/package.json ./shared/net/
 
 # pnpm node-linker=hoisted でシンボリックリンクを実体化
 ENV PNPM_NODE_LINKER=hoisted

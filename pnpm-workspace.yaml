@@ -1,5 +1,7 @@
 packages:
   - 'apps/*'
+  # WEB チェッカーは Functions と画面の 2 つの package を持つ (apps/web-checker 自体は package ではない)
+  - 'apps/web-checker/*'
   - 'shared/*'
 
 # minimumReleaseAge は既定 (1440 分 = 1 日) のまま。公開から 1 日未満の版は

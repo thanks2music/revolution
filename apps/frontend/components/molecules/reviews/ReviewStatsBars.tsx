@@ -12,7 +12,7 @@ import {
   ATTENDANCE_SUMMARY_LABELS,
   FOOD_COST_BAND_LABELS,
   GOODS_COST_BAND_LABELS,
-} from '@/lib/reviews/labels';
+} from '@revolution/reviews/labels';
 import {
   barPercent,
   COST_MIN_ANSWERS,

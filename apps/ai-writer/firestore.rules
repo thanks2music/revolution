@@ -1,0 +1,127 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ユーザーが認証されているかチェック
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // ユーザーが管理者権限を持っているかチェック
+    function isAdmin() {
+      return isAuthenticated() &&
+             request.auth.token.admin == true;
+    }
+
+    // ユーザーが編集権限を持っているかチェック
+    function isAllowedEditor() {
+      return isAuthenticated() &&
+             (request.auth.token.admin == true ||
+              request.auth.token.allowedEditor == true);
+    }
+
+    // RSS Feeds コレクション
+    match /rss_feeds/{feedId} {
+      // 読み取り: 編集権限を持つユーザーのみ
+      allow read: if isAllowedEditor();
+
+      // 作成: 編集権限を持つユーザーのみ、作成者情報を含める
+      allow create: if isAllowedEditor()
+                    && request.resource.data.keys().hasAll(['url', 'isActive', 'createdAt', 'updatedAt', 'createdBy'])
+                    && request.resource.data.createdBy == request.auth.uid;
+
+      // 更新: 編集権限を持つユーザーのみ
+      allow update: if isAllowedEditor();
+
+      // 削除: 管理者のみ
+      allow delete: if isAdmin();
+    }
+
+    // Articles コレクション (将来の実装用)
+    match /articles/{articleId} {
+      allow read: if isAllowedEditor();
+      allow write: if isAllowedEditor();
+    }
+
+    // Discovery Settings コレクション (将来の実装用)
+    match /discovery_settings/{settingId} {
+      allow read: if isAllowedEditor();
+      allow write: if isAdmin();
+    }
+
+    // Event Canonical Keys コレクション (重複判定用)
+    // Phase 0.1: MDX生成システムで使用
+    match /event_canonical_keys/{canonicalKey} {
+      // 読み取り: 編集権限を持つユーザーのみ
+      allow read: if isAllowedEditor();
+
+      // 作成: 編集権限を持つユーザーのみ、必須フィールドをチェック
+      allow create: if isAllowedEditor()
+                    && request.resource.data.keys().hasAll([
+                         'canonicalKey', 'workSlug', 'storeSlug',
+                         'eventType', 'year', 'postId', 'status',
+                         'createdAt', 'updatedAt'
+                       ])
+                    && request.resource.data.status in ['pending', 'generated', 'failed', 'retryable'];
+
+      // 更新: 編集権限を持つユーザーのみ、ステータス変更を許可
+      allow update: if isAllowedEditor()
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['canonicalKey', 'year']))
+                    && request.resource.data.status in ['pending', 'generated', 'failed', 'retryable'];
+
+      // 削除: 管理者のみ
+      allow delete: if isAdmin();
+    }
+
+    // Allowed Users コレクション (管理者のみアクセス可能)
+    match /allowed_users/{userId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ===== WEB チェッカー (apps/web-checker) =====
+    // 監視対象 = 決まった頻度で見に行くウェブページの一部。読み書きできるのは、AI ライターと同じ編集権限の人だけ。
+    // 履歴 (snapshots) と checkedAt を書くのは Functions (Admin SDK) だけ。
+    // 検知リンク (web_checker_detected_links) は Functions が書き、AI ライターの定期実行が読む。どちらも Admin SDK
+    // なので、ここには書かない (クライアントからは読み書きできない)
+
+    // https のみ。Functions は登録・変更の直後に、この URL を取得しに行く (内部アドレスの拒否は取得する側でも行う)
+    function isWebCheckerUrl(url) {
+      return url is string && url.matches('^https://.+') && url.size() < 2048;
+    }
+
+    function isWebCheckerTarget(data) {
+      return isWebCheckerUrl(data.url)
+        && data.selector is string && data.selector.size() > 0 && data.selector.size() < 512
+        && data.title is string && data.title.size() > 0 && data.title.size() < 200
+        && data.cron is string && data.cron.size() < 100
+        // 通知の仕方。無ければ「Slack のみ」として扱う
+        && (!('notifyMode' in data) || data.notifyMode in ['slack', 'ai-writer']);
+    }
+
+    match /web_checker_targets/{targetId} {
+      allow read: if isAllowedEditor();
+
+      allow create: if isAllowedEditor()
+        && request.resource.data.keys().hasOnly(['url', 'selector', 'title', 'cron', 'notifyMode', 'createdAt', 'createdBy'])
+        && request.resource.data.keys().hasAll(['url', 'selector', 'title', 'cron', 'createdAt', 'createdBy'])
+        && isWebCheckerTarget(request.resource.data)
+        && request.resource.data.createdAt is int
+        && request.resource.data.createdBy == request.auth.uid;
+
+      // checkedAt を未来にされると見回りが止まるので、クライアントには変えさせない
+      allow update: if isAllowedEditor()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['url', 'selector', 'title', 'cron', 'notifyMode', 'updatedAt', 'updatedBy'])
+        && isWebCheckerTarget(request.resource.data)
+        && request.resource.data.updatedAt is int
+        && request.resource.data.updatedBy == request.auth.uid;
+
+      allow delete: if isAllowedEditor();
+
+      match /snapshots/{snapshotId} {
+        allow read: if isAllowedEditor();
+        allow write: if false;
+      }
+    }
+  }
+}

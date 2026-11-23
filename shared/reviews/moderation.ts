@@ -11,8 +11,10 @@ import {
   REVIEW_MODERATION_ACTIONS,
   REVIEW_MODERATION_ACTORS,
   REVIEW_REASON_CODES,
+  REVIEW_REPORT_REASONS,
   REVIEW_SCREENING_REASONS,
   REVIEW_STATUSES,
+  type ReviewReportReason,
   type ReviewScreeningReason,
 } from '@revolution/schemas/review';
 
@@ -34,13 +36,10 @@ import type { ReviewScreener } from './screener/types';
  * - 結果は型付きで返す。読んだ後に投稿者が出し直した (`superseded`) / 写真が変わった (`photos_changed`)
  */
 
-/** 確認待ちの一覧に出す、審査中のまま止まっている時間 (仕様 #156) */
-export const STUCK_PENDING_MINUTES = 30;
-
 type Failure = { kind: 'forbidden' };
 
 /** admin の関数が admin でない時に投げる物 (migration 0026)。ほかの 42501 (GRANT の抜けなど) は不具合として投げ直す */
-function isForbidden(error: { code?: string; message?: string } | null): boolean {
+export function isForbidden(error: { code?: string; message?: string } | null): boolean {
   return error?.code === '42501' && error.message === 'admin only';
 }
 
@@ -60,6 +59,9 @@ const QueueRowSchema = z.object({
   venue_name: z.string().nullable(),
   author_name: z.string().nullable(),
   photo_count: z.number().int().min(0),
+  // migration 0027 で足した列。0027 の前の DB (アプリの deploy が migration より先に終わった時) でも
+  // 一覧が壊れないよう、無ければ提出の時刻を使う
+  pending_since: z.string().optional(),
 });
 
 export type ReviewQueueItem = {
@@ -67,7 +69,11 @@ export type ReviewQueueItem = {
   /** AI が迷った / AI の審査に失敗した (BOSS の確認待ち) / 審査中のまま止まっている */
   kind: 'unsure' | 'ai_failure' | 'stuck';
   aiReason: string | null;
+  /** AI の審査に失敗した時の内容 (審査器の内部の文) */
+  aiError: string | null;
   submittedAt: string;
+  /** 審査中になった時刻 (提出か、最後の「もう一度 AI にかける」の遅い方)。止まっている時間はここから数える */
+  pendingSince: string;
   rating: number;
   eventName: string;
   venueName: string | null;
@@ -82,11 +88,14 @@ function queueKind(row: z.infer<typeof QueueRowSchema>): ReviewQueueItem['kind']
 
 export async function listReviewQueue(
   adminDb: SupabaseClient,
+  /** 「止まっている」とみなす分数。省くと DB の既定 (private.review_stuck_minutes、30 分) */
   options: { stuckMinutes?: number } = {}
 ): Promise<{ kind: 'ok'; items: ReviewQueueItem[] } | Failure> {
-  const { data, error } = await adminDb.rpc('admin_list_review_queue', {
-    p_stuck_minutes: options.stuckMinutes ?? STUCK_PENDING_MINUTES,
-  });
+  // 分数を省いた時は引数ごと送らない (DB の関数の既定を使う。0027 の前の DB でも同じ既定の 30 分になる)
+  const { data, error } = await adminDb.rpc(
+    'admin_list_review_queue',
+    options.stuckMinutes === undefined ? {} : { p_stuck_minutes: options.stuckMinutes }
+  );
   if (isForbidden(error)) return { kind: 'forbidden' };
   if (error) throw error;
   const items = z
@@ -96,7 +105,9 @@ export async function listReviewQueue(
       reviewId: row.review_id,
       kind: queueKind(row),
       aiReason: row.ai_reason,
+      aiError: row.ai_error,
       submittedAt: row.submitted_at,
+      pendingSince: row.pending_since ?? row.submitted_at,
       rating: row.rating,
       eventName: row.event_name,
       venueName: row.venue_name,
@@ -111,6 +122,9 @@ export async function listReviewQueue(
 // ───────────────────────────────────────────────
 
 const DetailSchema = z.object({
+  // migration 0027 で足した値。0027 の前の DB では無いので、審査中なら止まっている扱いにする (0026 の挙動)
+  pending_since: z.string().nullable().optional(),
+  stuck: z.boolean().optional(),
   review: z.object({
     id: z.number(),
     status: z.enum(REVIEW_STATUSES),
@@ -139,9 +153,20 @@ const DetailSchema = z.object({
   photos: z.array(
     PublicPhotoRowSchema.extend({
       sort_order: z.number(),
-      hidden_reason_code: z.enum(REVIEW_SCREENING_REASONS).nullable(),
+      hidden_reason_code: z.enum(REVIEW_REPORT_REASONS).nullable(),
     })
   ),
+  // migration 0029 で足した値 (未処理の通報)。0029 の前の DB では無いので空にする
+  open_reports: z
+    .array(
+      z.object({
+        id: z.number(),
+        reason_code: z.enum(REVIEW_REPORT_REASONS),
+        created_at: z.string(),
+      })
+    )
+    .optional()
+    .default([]),
   events: z.array(
     z.object({
       id: z.number(),
@@ -162,7 +187,7 @@ const DetailSchema = z.object({
 export type ModerationPhoto = {
   id: number;
   /** 非公開の理由 (非公開でなければ null) */
-  hiddenReason: ReviewScreeningReason | null;
+  hiddenReason: ReviewReportReason | null;
   /** 保管側の短時間だけ有効な URL。置き場所の無い環境では null (それでも判断はできる) */
   view: ReviewPhotoView | null;
 };
@@ -171,6 +196,10 @@ type Detail = z.infer<typeof DetailSchema>;
 
 export type ModerationReview = {
   review: Detail['review'];
+  /** 審査中のまま「止まっている」か (一覧・もう一度 AI にかける条件と同じ DB の判定) */
+  stuck: boolean;
+  /** 審査中になった時刻 (提出か、最後の「もう一度 AI にかける」の遅い方) */
+  pendingSince: string | null;
   event: Detail['event'];
   occurrence: Detail['occurrence'];
   authorName: string | null;
@@ -178,6 +207,8 @@ export type ModerationReview = {
   photos: ModerationPhoto[];
   /** 判断の記録 (古い順) */
   history: Detail['events'];
+  /** 未処理の通報 (古い順。通報した人は持たない) */
+  openReports: { id: number; reasonCode: ReviewReportReason; createdAt: string }[];
 };
 
 export async function getReviewForModeration(
@@ -202,11 +233,18 @@ export async function getReviewForModeration(
     kind: 'ok',
     review: {
       review: detail.review,
+      stuck: detail.stuck ?? detail.review.status === 'pending',
+      pendingSince: detail.pending_since ?? detail.review.submitted_at,
       event: detail.event,
       occurrence: detail.occurrence,
       authorName: detail.author.display_name ?? detail.author.username,
       photos,
       history: detail.events,
+      openReports: detail.open_reports.map(report => ({
+        id: report.id,
+        reasonCode: report.reason_code,
+        createdAt: report.created_at,
+      })),
     },
   };
 }
@@ -231,9 +269,9 @@ export type ModerationWriteOutcome =
   | { kind: 'photos_changed' }
   | Failure;
 
-/** 写真ごとの判断。非公開にする写真には理由が要る */
+/** 写真ごとの判断。非公開にする写真には理由 (通報の 8 つのどれか。0029 で広げた) が要る */
 export type PhotoDecision =
-  { id: number; hide: false } | { id: number; hide: true; reason: ReviewScreeningReason };
+  { id: number; hide: false } | { id: number; hide: true; reason: ReviewReportReason };
 
 export type ReviewDecision =
   | { decision: 'publish' }
@@ -253,11 +291,7 @@ export async function decideReview(
     p_decision: input.decision,
     p_reason_code: input.decision === 'reject' ? input.reasonCode : null,
     p_reason_note: input.decision === 'reject' ? input.reasonNote : null,
-    p_photo_marks: input.photos.map(photo => ({
-      id: photo.id,
-      hide: photo.hide,
-      reason: photo.hide ? photo.reason : null,
-    })),
+    p_photo_marks: toPhotoMarks(input.photos),
   });
   const outcome = toWriteOutcome(data, error);
   if (outcome.kind === 'applied' && deps.storage) {
@@ -272,11 +306,18 @@ export async function decideReview(
  * 30 分たつと確認待ちの一覧に「止まっている」として出る)
  */
 export async function requeueReview(
-  deps: ModerationDeps & { screener: ReviewScreener },
+  deps: ModerationDeps & {
+    screener: ReviewScreener;
+    /**
+     * 審査を応答の後に回す時に渡す (Next の `after()` など)。渡すと審査を待たずに `scheduled` を返す。
+     * 審査の結果は数分で出る (管理アプリの「もう一度 AI にかける」、Figma 13 のトースト)
+     */
+    schedule?: (task: () => Promise<unknown>) => void;
+  },
   input: { reviewId: number; submittedAt: string }
 ): Promise<
   | Exclude<ModerationWriteOutcome, { kind: 'applied' }>
-  | { kind: 'applied'; screening: ScreenReviewOutcome | { kind: 'error' } }
+  | { kind: 'applied'; screening: ScreenReviewOutcome | { kind: 'error' } | { kind: 'scheduled' } }
 > {
   const { data, error } = await deps.adminDb.rpc('admin_requeue_review', {
     p_review_id: input.reviewId,
@@ -284,20 +325,35 @@ export async function requeueReview(
   });
   const outcome = toWriteOutcome(data, error);
   if (outcome.kind !== 'applied') return outcome;
-  try {
-    const screening = await screenSubmittedReview(input.reviewId, {
-      screener: deps.screener,
-      db: deps.serviceDb,
-      storage: deps.storage,
-    });
-    return { kind: 'applied', screening };
-  } catch (error) {
-    Sentry.captureException(error, { tags: { part: 'review-moderation', step: 'requeue' } });
-    return { kind: 'applied', screening: { kind: 'error' } };
+  const run = async (): Promise<ScreenReviewOutcome | { kind: 'error' }> => {
+    try {
+      return await screenSubmittedReview(input.reviewId, {
+        screener: deps.screener,
+        db: deps.serviceDb,
+        storage: deps.storage,
+      });
+    } catch (error) {
+      Sentry.captureException(error, { tags: { part: 'review-moderation', step: 'requeue' } });
+      return { kind: 'error' };
+    }
+  };
+  if (deps.schedule) {
+    deps.schedule(run);
+    return { kind: 'applied', screening: { kind: 'scheduled' } };
   }
+  return { kind: 'applied', screening: await run() };
 }
 
-function toWriteOutcome(
+/** 写真の判断を DB の関数に渡す形にする (非公開でない写真は理由を持たない) */
+export function toPhotoMarks(photos: PhotoDecision[]) {
+  return photos.map(photo => ({
+    id: photo.id,
+    hide: photo.hide,
+    reason: photo.hide ? photo.reason : null,
+  }));
+}
+
+export function toWriteOutcome(
   data: unknown,
   error: { code?: string; message?: string } | null
 ): ModerationWriteOutcome {

@@ -1,0 +1,11 @@
+{
+  "name": "@revolution/net",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Network helpers shared by every app: blocking internal hosts before server-side fetches (SSRF guard) and the URL key that tells whether a page was already tried",
+  "exports": {
+    "./safe-host": "./safe-host.ts",
+    "./attempt-url": "./attempt-url.ts"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "name": "@revolution/admin",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": "24.x",
+    "pnpm": ">=12.0.0"
+  },
+  "scripts": {
+    "dev": "next dev --port 4466",
+    "build": "bash scripts/fetch-templates.sh && NODE_ENV=production next build",
+    "templates:fetch": "bash scripts/fetch-templates.sh",
+    "start": "next start",
+    "lint": "eslint .",
+    "type-check": "next typegen && tsc --noEmit",
+    "test": "jest",
+    "test:e2e:local": "playwright test -c playwright.local-db.config.ts",
+    "clean": "rm -rf .next .turbo node_modules/.cache"
+  },
+  "dependencies": {
+    "@fontsource-variable/noto-sans-jp": "^5.3.1",
+    "@fontsource/zen-kaku-gothic-new": "^5.3.1",
+    "@revolution/reviews": "workspace:*",
+    "@revolution/schemas": "workspace:*",
+    "@revolution/slack": "workspace:*",
+    "@sentry/nextjs": "^10.70.0",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.106.1",
+    "@t3-oss/env-nextjs": "^0.13.8",
+    "heic-decode": "^2.1.0",
+    "next": "16.4.5",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "sharp": "^0.35.5",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.4.1",
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.11",
+    "jest": "^30.4.2",
+    "postcss": "^8",
+    "tailwindcss": "^4.3.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5"
+  }
+}

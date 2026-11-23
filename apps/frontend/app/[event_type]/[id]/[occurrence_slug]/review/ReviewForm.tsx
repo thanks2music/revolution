@@ -16,7 +16,7 @@ import {
   type ReviewAttendance,
   type ReviewFoodCostBand,
   type ReviewGoodsCostBand,
-} from '@revolution/schemas/review';
+} from '@revolution/schemas/review-constants';
 
 import {
   saveReviewDraft,
@@ -29,7 +29,7 @@ import {
   FOOD_COST_BAND_LABELS,
   GOODS_COST_BAND_LABELS,
   RATING_LABELS,
-} from '@/lib/reviews/labels';
+} from '@revolution/reviews/labels';
 
 import type { OwnReview } from '@/lib/reviews/authoring';
 import { rescreensOnPhotoAdd } from '@revolution/reviews/eligibility';

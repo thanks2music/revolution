@@ -2,24 +2,26 @@ import {
   REVIEW_ATTENDANCES,
   REVIEW_FOOD_COST_BANDS,
   REVIEW_GOODS_COST_BANDS,
-  REVIEW_SCREENING_REASONS,
+  REVIEW_REPORT_REASONS,
 } from '@revolution/schemas/review';
 
 import {
   ATTENDANCE_LABELS,
   FOOD_COST_BAND_LABELS,
   GOODS_COST_BAND_LABELS,
-  REJECTION_REASON_LABELS,
+  REPORT_REASON_LABELS,
+  REVIEW_REASON_LABELS,
   formatVisitedMonth,
-  toScreeningReason,
-} from '@/lib/reviews/labels';
+  toExplainedReason,
+} from '@revolution/reviews/labels';
 
 describe('口コミの画面の言葉', () => {
   it('値の一覧と同じ順・同じ数の言葉がある (DB の値を足したら、ここも足す)', () => {
     expect(Object.keys(ATTENDANCE_LABELS)).toEqual([...REVIEW_ATTENDANCES]);
     expect(Object.keys(FOOD_COST_BAND_LABELS)).toEqual([...REVIEW_FOOD_COST_BANDS]);
     expect(Object.keys(GOODS_COST_BAND_LABELS)).toEqual([...REVIEW_GOODS_COST_BANDS]);
-    expect(Object.keys(REJECTION_REASON_LABELS)).toEqual([...REVIEW_SCREENING_REASONS]);
+    expect(Object.keys(REVIEW_REASON_LABELS)).toEqual([...REVIEW_REPORT_REASONS]);
+    expect(Object.keys(REPORT_REASON_LABELS)).toEqual([...REVIEW_REPORT_REASONS]);
   });
 });
 
@@ -32,10 +34,11 @@ describe('formatVisitedMonth', () => {
   });
 });
 
-describe('toScreeningReason', () => {
-  it('審査の 4 種だけを通し、ほか (AI の失敗・知らない値) は null にする', () => {
-    expect(toScreeningReason('resale')).toBe('resale');
-    expect(toScreeningReason('ai_failure')).toBeNull();
-    expect(toScreeningReason(null)).toBeNull();
+describe('toExplainedReason', () => {
+  it('審査の 4 種と通報で足した 4 種を通し、AI の失敗と空は null にする', () => {
+    expect(toExplainedReason('resale')).toBe('resale');
+    expect(toExplainedReason('not_attended')).toBe('not_attended');
+    expect(toExplainedReason('ai_failure')).toBeNull();
+    expect(toExplainedReason(null)).toBeNull();
   });
 });

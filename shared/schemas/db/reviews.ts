@@ -157,7 +157,7 @@ export const reviews = pgTable(
     ),
     check(
       'reviews_reason_code_chk',
-      sql`${table.reasonCode} is null or ${table.reasonCode} in ('personal_info', 'abuse', 'spam', 'resale', 'ai_failure')`,
+      sql`${table.reasonCode} is null or ${table.reasonCode} in ('personal_info', 'abuse', 'spam', 'resale', 'spoiler_unmarked', 'photo_reposted', 'not_attended', 'other', 'ai_failure')`,
     ),
     check(
       'reviews_attendance_chk',

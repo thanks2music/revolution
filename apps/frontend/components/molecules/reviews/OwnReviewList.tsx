@@ -7,7 +7,7 @@
 
 import Link from 'next/link';
 
-import { REJECTION_REASON_LABELS } from '@/lib/reviews/labels';
+import { REVIEW_REASON_LABELS } from '@revolution/reviews/labels';
 import type { OwnReviewListItem } from '@/lib/reviews/own-reviews';
 import { ownReviewMeta, ownReviewView, type OwnReviewTone } from '@/lib/reviews/own-review-view';
 
@@ -60,7 +60,7 @@ function HiddenPhotos({ photos }: { photos: OwnReviewListItem['hiddenPhotos'] })
               className="size-12 shrink-0 rounded-lg object-cover"
             />
             <span className="text-[11px] text-status-cancelled">
-              {REJECTION_REASON_LABELS[photo.reasonCode]}
+              {REVIEW_REASON_LABELS[photo.reasonCode]}
             </span>
           </li>
         ))}

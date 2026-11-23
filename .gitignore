@@ -180,6 +180,12 @@ gcp-service-account.json
 **/firestore.rules
 **/firestore.indexes.json
 **/storage.rules
+# 例外: Firestore の rules と indexes はプロジェクト ID も個人の情報も持たないので、CI のテストとレビューのために管理する。
+# 本番への反映は今も手で行う。WEB チェッカーの firebase.json も ID とサイト名を持たない (デプロイの workflow が使う)
+!apps/ai-writer/firestore.rules
+!apps/ai-writer/firestore.indexes.json
+!apps/web-checker/firebase.json
+!apps/web-checker/firebase.rules-test.json
 
 # Firebase CLI cache and debug logs
 .firebase/
@@ -261,6 +267,8 @@ temp/
 # 分析データ
 .analytics/
 reports/
+# 管理アプリの通報の一覧のページ (one-more-time #168) は分析データではない
+!apps/admin/app/reports/
 coverage/
 
 # パフォーマンス測定
@@ -291,6 +299,8 @@ test-artifacts/
 
 # 公開サイトが build の時に private の templates repo から取り込むプロンプト (apps/frontend/scripts/fetch-templates.sh)
 apps/frontend/templates/
+# 管理アプリも同じプロンプトを取り込む (apps/admin/scripts/fetch-templates.sh)
+apps/admin/templates/
 
 # 記事の索引 (記事の MDX の frontmatter から作る派生物)。frontend の build / dev / ingest:occurrences /
 # seed:masters が使う前に作る (apps/frontend/package.json の generate:article-index)。

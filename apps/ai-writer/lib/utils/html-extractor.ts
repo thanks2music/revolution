@@ -32,6 +32,7 @@ import { assertPublicHost } from '@/lib/utils/safe-image-fetch';
 import { BROWSER_USER_AGENT, FETCH_TIMEOUT_MS } from '@/lib/utils/http-constants';
 import { expandInertiaPayload } from '@/lib/utils/inertia-payload';
 import { HttpStatusError } from '@/lib/utils/http-status-error';
+import { unwrapGoogleRedirect } from '@revolution/net/attempt-url';
 
 /**
  * SSL証明書エラーのコード一覧
@@ -414,6 +415,10 @@ const MIN_HTML_SIZE_BYTES = 1000;
 /**
  * Google リダイレクトURLから実際のURLを抽出
  *
+ * 判定は `@revolution/net/attempt-url` の `unwrapGoogleRedirect` に任せる (ホスト名とパスで判定)。
+ * 定期実行の「試した URL」のキー (`normalizeAttemptUrl`) と同じ判定にしないと、同じページを別の URL として
+ * 2 度試しうるため。
+ *
  * @param url 元のURL（Google リダイレクトURLの可能性あり）
  * @returns 実際のURL
  *
@@ -422,37 +427,12 @@ const MIN_HTML_SIZE_BYTES = 1000;
  * // => 'https://example.com'
  */
 export function extractActualUrl(url: string): string {
-  // Google リダイレクトURLの場合
-  if (url.includes('google.com/url')) {
-    try {
-      // URLを '?' で分割してクエリパラメータ部分を取得
-      const queryString = url.split('?')[1];
-      if (!queryString) {
-        console.warn(`[HTMLExtractor] Google URL detected but no query string found: ${url}`);
-        return url;
-      }
-
-      const urlParams = new URLSearchParams(queryString);
-      const actualUrl = urlParams.get('url');
-
-      if (actualUrl) {
-        console.log(`[HTMLExtractor] Google リダイレクトURL検出: ${url.substring(0, 100)}...`);
-        console.log(`[HTMLExtractor] 実際のURL抽出: ${actualUrl}`);
-        return actualUrl;
-      } else {
-        console.warn(`[HTMLExtractor] Google URL detected but 'url' parameter not found: ${url}`);
-        return url;
-      }
-    } catch (error) {
-      console.error(`[HTMLExtractor] Failed to extract actual URL from Google redirect:`, error);
-      return url;
-    }
+  const actualUrl = unwrapGoogleRedirect(url);
+  if (actualUrl !== url) {
+    console.log(`[HTMLExtractor] Google リダイレクトURL検出: ${url.substring(0, 100)}...`);
+    console.log(`[HTMLExtractor] 実際のURL抽出: ${actualUrl}`);
   }
-
-  // その他のリダイレクトURLパターン（将来的な拡張用）
-  // 例: bit.ly, t.co など
-
-  return url;
+  return actualUrl;
 }
 
 /**

@@ -19,6 +19,8 @@ export interface RunItem {
   url: string;
   /** Registered by hand from the admin UI (its first try or a retry) */
   registered: boolean;
+  /** A link the WEB checker handed over (its first try or a retry) */
+  detected?: boolean;
   title?: string;
   outcome: OutcomeKind;
   /** The skip reason or the error */

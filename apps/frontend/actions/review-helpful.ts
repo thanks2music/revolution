@@ -14,6 +14,7 @@
 import * as Sentry from '@sentry/nextjs';
 
 import { getCurrentMember, memberRedirect } from '@/lib/auth/member';
+import { emptyHelpfulState, type HelpfulState } from '@/lib/reviews/helpful-state';
 import { parseIdList } from '@/lib/validation/id-list';
 import { createClient } from '@/lib/supabase/server';
 
@@ -24,33 +25,33 @@ const PG_RLS_VIOLATION = '42501';
 /** 一度に状態を尋ねてよい口コミの数 (開催のページは新着と参考になった順の 2 つの一覧で最大 20 件) */
 const MAX_STATE_IDS = 50;
 
-/**
- * 閲覧者の状態。member = 押せる / login・onboarding = 押すとそこへ案内する /
- * unknown = 読めなかった (押させて、setHelpful の結果で決める。ログイン済みの会員をログインへ送らないため)
- */
-type Viewer = 'member' | 'login' | 'onboarding' | 'unknown';
-
-type HelpfulState = { viewer: Viewer; marked: number[] };
-
-/** 会員が「参考になった」を押した口コミ (渡した中から) */
+/** 会員が「参考になった」を押した口コミと、本人の口コミ (渡した中から) */
 export async function getHelpfulState(reviewIds: number[]): Promise<HelpfulState> {
   try {
     const idsToAsk = parseIdList(reviewIds, MAX_STATE_IDS);
     const member = await getCurrentMember();
-    if (!member.ok) return { viewer: memberRedirect(member.reason), marked: [] };
-    if (idsToAsk.length === 0) return { viewer: 'member', marked: [] };
+    if (!member.ok) return emptyHelpfulState(memberRedirect(member.reason));
+    if (idsToAsk.length === 0) return emptyHelpfulState('member');
 
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from('review_helpful')
-      .select('review_id')
-      .eq('user_id', member.profileId)
-      .in('review_id', idsToAsk);
-    if (error) throw error;
-    return { viewer: 'member', marked: (data ?? []).map(row => row.review_id as number) };
+    const [helpful, own] = await Promise.all([
+      supabase
+        .from('review_helpful')
+        .select('review_id')
+        .eq('user_id', member.profileId)
+        .in('review_id', idsToAsk),
+      supabase.from('reviews').select('id').eq('user_id', member.profileId).in('id', idsToAsk),
+    ]);
+    if (helpful.error) throw helpful.error;
+    if (own.error) throw own.error;
+    return {
+      viewer: 'member',
+      marked: (helpful.data ?? []).map(row => row.review_id as number),
+      own: (own.data ?? []).map(row => row.id as number),
+    };
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'getHelpfulState' } });
-    return { viewer: 'unknown', marked: [] };
+    return emptyHelpfulState('unknown');
   }
 }
 
