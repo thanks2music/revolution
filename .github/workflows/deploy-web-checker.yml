@@ -86,8 +86,14 @@ jobs:
           node-version-file: '.tool-versions'
           cache: 'pnpm'
 
+      # Only the two packages, their workspace dependencies and the root (the screens' ESLint config
+      # extends the root one)
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: >-
+          pnpm install --frozen-lockfile
+          --filter "@revolution/web-checker-functions..."
+          --filter "@revolution/web-checker-web..."
+          --filter revolution
 
       # The push to main does not wait for CI, and esbuild does not type-check,
       # so check here before anything is deployed
@@ -121,7 +127,6 @@ jobs:
       # codebase or the Artifact Registry cleanup policy is not set yet. Deletion is limited to the
       # web-checker codebase by --only
       - name: Deploy
-        id: deploy
         working-directory: apps/web-checker
         run: |
           firebase() { ./functions/node_modules/.bin/firebase "$@"; }
@@ -139,4 +144,4 @@ jobs:
           auto-test-mode: 'false'
           mention: "${{ job.status != 'success' && vars.SLACK_MENTION_USER_ID || '' }}"
           text: "${{ job.status == 'success' && '✅ WEB チェッカーを本番にデプロイしました' || '❌ WEB チェッカーの本番デプロイが失敗しました' }}"
-          body: "*Commit*: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}> · *ログ*: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|実行を開く>"
+          body: "*Commit*: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|commit> · *ログ*: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|実行を開く>"
