@@ -42,6 +42,8 @@ export interface AttemptContext {
   rssPubDate?: Date;
   /** When the URL was registered (registered URLs only) */
   registeredAt?: Date;
+  /** When the WEB checker detected the link (detected links only) */
+  detectedAt?: Date;
   now: Date;
 }
 
@@ -98,6 +100,7 @@ function publishedAtOf(
   if (context.pageDate) return { publishedAt: context.pageDate.date, publishedAtSource: context.pageDate.source };
   if (context.rssPubDate) return { publishedAt: context.rssPubDate, publishedAtSource: 'rss' };
   if (context.registeredAt) return { publishedAt: context.registeredAt, publishedAtSource: 'registration' };
+  if (context.detectedAt) return { publishedAt: context.detectedAt, publishedAtSource: 'detection' };
   return { publishedAt: context.now, publishedAtSource: 'first-attempt' };
 }
 

@@ -16,6 +16,7 @@
     "types": ["node"],
     "paths": {
       "@revolution/net/*": ["../../../shared/net/*"],
+      "@revolution/schemas/*": ["../../../shared/schemas/*"],
       "@revolution/slack/*": ["../../../shared/slack/*"]
     }
   },

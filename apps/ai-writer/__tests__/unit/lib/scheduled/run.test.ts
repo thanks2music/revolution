@@ -9,6 +9,7 @@ import type { RegisteredUrl } from '@/lib/scheduled/registered-url-store';
 import { ALREADY_GIVEN_UP_REASON, runScheduled, type ScheduledRunDeps } from '@/lib/scheduled/run';
 import { prCountOf } from '@/lib/scheduled/summary';
 import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
+import type { DetectedLink } from '@revolution/schemas/detected-link';
 import { HttpStatusError } from '@/lib/utils/http-status-error';
 
 const START = new Date('2026-11-15T01:05:00Z');
@@ -38,6 +39,7 @@ function makeDeps(options: {
   results: (url: string) => MdxGenerationResult | Error;
   stored?: AttemptRecord[];
   registered?: RegisteredUrl[];
+  detected?: DetectedLink[];
   clock?: () => Date;
 }) {
   const saved = new Map<string, AttemptRecord>();
@@ -61,6 +63,7 @@ function makeDeps(options: {
     },
     loadRegisteredUrls: async () => options.registered ?? [],
     isRegistered: async url => (options.registered ?? []).some(entry => entry.url === url),
+    loadDetectedLinks: async () => options.detected ?? [],
     loadRssItems: async () => ({ items: options.items, errors: [] }),
     fetchPage: async url => ({
       title: `title of ${url}`,
@@ -434,6 +437,60 @@ describe('runScheduled', () => {
       });
       await runScheduled(deps, { dryRun: false });
       expect(saved.get('https://reg.example/1')).toMatchObject({ status: 'waiting-details' });
+    });
+  });
+
+  describe('detected links (WEB checker)', () => {
+    const link = (url: string): DetectedLink => ({
+      url,
+      targetId: 'target-1',
+      targetTitle: 'サンプル公式サイト',
+      detectedAt: START.getTime() - 24 * 60 * 60 * 1000,
+    });
+
+    it('tries a detected link without the writing scope, as a possible official page, recorded as detected', async () => {
+      const { deps, generate, saved } = makeDeps({ items: [], detected: [link('https://det.example/1')], results: () => PR });
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(generate.mock.calls[0][0].applyWritingScope).toBe(false);
+      expect(generate.mock.calls[0][0].inputMayBeOfficialPage).toBe(true);
+      expect(saved.get('https://det.example/1')).toMatchObject({ source: 'detected', publishedAtSource: expect.any(String) });
+      expect(summary.items[0].detected).toBe(true);
+    });
+
+    it('does not try a detected link that was already tried', async () => {
+      const { deps, generate } = makeDeps({
+        items: [],
+        detected: [link('https://det.example/done')],
+        stored: [
+          {
+            url: 'https://det.example/done',
+            source: 'detected',
+            status: 'done',
+            lastOutcome: 'skip',
+            attemptCount: 1,
+            unannouncedCount: 0,
+            failureCount: 0,
+            firstAttemptAt: new Date('2026-11-01T00:00:00Z'),
+            lastAttemptAt: new Date('2026-11-01T00:00:00Z'),
+            nextAttemptAt: null,
+            publishedAt: new Date('2026-10-31T00:00:00Z'),
+            publishedAtSource: 'detection',
+          },
+        ],
+        results: () => PR,
+      });
+      await runScheduled(deps, { dryRun: false });
+      expect(generate).not.toHaveBeenCalled();
+    });
+
+    it('reports a failure to read detected links without stopping the run', async () => {
+      const { deps, generate } = makeDeps({ items: rssItems(1), results: () => PR });
+      deps.loadDetectedLinks = async () => {
+        throw new Error('permission denied');
+      };
+      const summary = await runScheduled(deps, { dryRun: false });
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(summary.feedErrors).toContainEqual(expect.stringContaining('検知リンク: permission denied'));
     });
   });
 });
