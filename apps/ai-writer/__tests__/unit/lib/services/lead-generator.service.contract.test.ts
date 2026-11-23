@@ -110,6 +110,9 @@ function makeEnriched(overrides: Partial<EnrichedData> = {}): EnrichedData {
     is_idol_or_utaite: false,
     原作者名_formatted: 'テスト先生',
     has_multiple_authors: false,
+    // 連体修飾語 (作品名の前の語句)。production では computeEnrichedData が作る
+    連体修飾語: '修飾語',
+    modifier: { form: 'anime_short', text: '修飾語' },
     ...overrides,
   };
 }
@@ -327,8 +330,9 @@ describe('LeadGeneratorService.fallback - static path (no AiProvider)', () => {
     expect(mockProvider.sendMessage).not.toHaveBeenCalled();
     expect(result.usedTemplate).toBe(LEAD_FALLBACK_TEMPLATE_ID);
     expect(result.fallbackReason).toBe('output_too_short');
-    // lead_generic テンプレの内容 (「人気作品「」」形式) を含む
-    expect(result.leadMdx).toContain('人気作品');
+    // lead_generic テンプレを、未置換を残さずに埋める (文言は同期した Templates が持つ)
+    expect(result.leadMdx).toContain('「テスト作品」');
+    expect(result.leadMdx).not.toContain('{{');
     expect(result.leadMdx).toContain('テスト作品');
     expect(result.leadMdx).toContain('テストカフェ');
   });
@@ -357,7 +361,7 @@ describe('LeadGeneratorService.fallback - LLM path throw → static degrade (R3)
     expect(failingProvider.sendMessage).toHaveBeenCalledTimes(1);
     expect(result.usedTemplate).toBe(LEAD_FALLBACK_TEMPLATE_ID);
     expect(result.fallbackReason).toBe('output_empty');
-    expect(result.leadMdx).toContain('人気作品'); // lead_generic テンプレへ degrade
+    expect(result.leadMdx).not.toContain('{{'); // lead_generic テンプレへ degrade
   });
 
   it('provider が invalid JSON を返した場合 staticFallback に degrade (JSON.parse SyntaxError catch)', async () => {
@@ -374,6 +378,6 @@ describe('LeadGeneratorService.fallback - LLM path throw → static degrade (R3)
 
     expect(result.usedTemplate).toBe(LEAD_FALLBACK_TEMPLATE_ID);
     expect(result.fallbackReason).toBe('too_many_unreplaced_placeholders');
-    expect(result.leadMdx).toContain('人気作品'); // lead_generic テンプレへ degrade
+    expect(result.leadMdx).not.toContain('{{'); // lead_generic テンプレへ degrade
   });
 });
