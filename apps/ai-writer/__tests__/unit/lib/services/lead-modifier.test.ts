@@ -12,6 +12,7 @@ import * as path from 'path';
 
 import {
   buildLeadModifier,
+  indexWorkDescriptions,
   LEAD_MODIFIER_KEYS,
   type LeadModifierDictionaries,
   type LeadModifierFacts,
@@ -64,7 +65,7 @@ const ORIGINAL_TYPE_LABELS: Record<string, string | null> = {
 const MEDIA_LABELS: Record<string, string> = { manga: '漫画', game: 'ゲーム' };
 
 const EMPTY_DICTIONARIES: LeadModifierDictionaries = {
-  workDescriptions: {},
+  workDescriptions: new Map(),
   characterOwners: [
     { owner: '持ち主A', patterns: ['OWNER-A'] },
     { owner: '持ち主B', patterns: ['OWNER-B'] },
@@ -77,10 +78,10 @@ const EMPTY_DICTIONARIES: LeadModifierDictionaries = {
 
 const DICTIONARIES: LeadModifierDictionaries = {
   ...EMPTY_DICTIONARIES,
-  workDescriptions: {
+  workDescriptions: indexWorkDescriptions({
     'キャラA': { modifier: '説明A', aliases: ['別名A'] },
     '作品B!!': { modifier: '説明B' },
-  },
+  }),
 };
 
 interface Case {
@@ -109,7 +110,7 @@ const CASES: Case[] = [
   { name: '7 リコリス・リコイル', facts: anime({ 原作タイプ: 'original_anime', スタジオ名: 'A-1 Pictures' }), plain: 'original_studio[A-1 Pictures|TV]' },
   {
     name: '8・9 キャラクター (© から持ち主)',
-    facts: { workTitles: ['キャラA'], メディアタイプ: 'character', 原作タイプ: 'character_brand', 著作権表記: '© 2026 owner-a CO., LTD.' },
+    facts: { workTitles: ['キャラA'], メディアタイプ: 'character', 原作タイプ: 'character_brand', コピーライト: '© 2026 owner-a CO., LTD.' },
     plain: 'character_owner[持ち主A]',
     described: '説明A',
   },
@@ -167,12 +168,12 @@ describe('buildLeadModifier: 推測で埋めない', () => {
   });
 
   it('© から持ち主が分からないキャラクターは、持ち主を書かない', () => {
-    const facts = { workTitles: ['X'], メディアタイプ: 'character', 原作タイプ: 'character_brand', 著作権表記: '©X Inc.' };
+    const facts = { workTitles: ['X'], メディアタイプ: 'character', 原作タイプ: 'character_brand', コピーライト: '©X Inc.' };
     expect(buildLeadModifier(facts, FORMAT, EMPTY_DICTIONARIES).text).toBe('character[]');
   });
 
   it('© が 2 つの持ち主に当たったら、どちらとも決めずに持ち主を書かない', () => {
-    const facts = { workTitles: ['X'], メディアタイプ: 'character', 原作タイプ: 'character_brand', 著作権表記: '©OWNER-A ©OWNER-B' };
+    const facts = { workTitles: ['X'], メディアタイプ: 'character', 原作タイプ: 'character_brand', コピーライト: '©OWNER-A ©OWNER-B' };
     expect(buildLeadModifier(facts, FORMAT, EMPTY_DICTIONARIES).text).toBe('character[]');
   });
 
@@ -225,7 +226,7 @@ describe('lead-modifier-config', () => {
   });
 
   it('中身が空の辞書は空として読む', () => {
-    expect(loadWorkDescriptions(writeFile('work-descriptions.yaml', 'work_descriptions:\n'))).toEqual({});
+    expect(loadWorkDescriptions(writeFile('work-descriptions.yaml', 'work_descriptions:\n')).size).toBe(0);
   });
 
   it('ファイルが無ければ同期を促して止める', () => {
@@ -235,5 +236,10 @@ describe('lead-modifier-config', () => {
   it('fallback_prompt に Revolution が埋めない {{…}} があれば止める (空で LLM に届くため)', () => {
     const dir = writeFile('01-lead.yaml', 'fallback_prompt: "作品: {{作品名}} 監督: {{監督名}}"\n');
     expect(() => loadLeadFallbackPrompt(dir)).toThrow('{{監督名}}');
+  });
+
+  it('fallback_prompt の {{#if …}} と {{…|join}} は、fillTemplate と同じに読む', () => {
+    const dir = writeFile('01-lead.yaml', "fallback_prompt: \"{{#if 原作者名}}{{原作者名}}{{/if}} {{キャラクター名|join:'、'}}\"\n");
+    expect(loadLeadFallbackPrompt(dir)).toContain('{{#if 原作者名}}');
   });
 });

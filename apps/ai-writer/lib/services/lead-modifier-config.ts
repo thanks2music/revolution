@@ -14,8 +14,8 @@ import * as path from 'path';
 import yaml from 'js-yaml';
 import { z } from 'zod';
 
-import type { CharacterOwner, LeadModifierFormat, WorkDescription } from './lead-modifier';
-import { LEAD_MODIFIER_KEYS, normalizeWorkTitle } from './lead-modifier';
+import type { CharacterOwner, LeadModifierFormat } from './lead-modifier';
+import { indexWorkDescriptions, LEAD_MODIFIER_KEYS } from './lead-modifier';
 import { loadChecked, loadSectionYaml } from './section-renderers';
 
 const NonEmpty = z.string().min(1);
@@ -63,22 +63,9 @@ function readConfig<T>(configDir: string, file: string, schema: z.ZodType<T, unk
   return result.data;
 }
 
-/**
- * 作品の説明を読む。作品名と別名は 1 つの作品だけを指す (重なると、どちらの文を使うかが辞書の並び順で決まってしまうため止める)
- */
-export function loadWorkDescriptions(configDir: string): Record<string, WorkDescription> {
-  const { work_descriptions } = readConfig(configDir, WORK_DESCRIPTIONS_FILE, WorkDescriptionsSchema);
-  const owners = new Map<string, string>();
-  for (const [name, entry] of Object.entries(work_descriptions)) {
-    for (const label of [name, ...(entry.aliases ?? [])].map(normalizeWorkTitle)) {
-      const other = owners.get(label);
-      if (other !== undefined && other !== name) {
-        throw new Error(`${WORK_DESCRIPTIONS_FILE}: 「${label}」が「${other}」と「${name}」の両方にあります`);
-      }
-      owners.set(label, name);
-    }
-  }
-  return work_descriptions;
+/** 作品の説明を読み、照合用の作品名から引ける形にする (`indexWorkDescriptions`。名前の重なりはここで止める) */
+export function loadWorkDescriptions(configDir: string): Map<string, string> {
+  return indexWorkDescriptions(readConfig(configDir, WORK_DESCRIPTIONS_FILE, WorkDescriptionsSchema).work_descriptions);
 }
 
 export function loadCharacterOwners(configDir: string): CharacterOwner[] {
@@ -98,7 +85,12 @@ export function loadLeadFallbackPrompt(sectionsDir: string): string {
     throw new Error(`${file} の fallback_prompt が空です`);
   }
   const allowed = new Set<string>(LEAD_FALLBACK_PROMPT_KEYS);
-  const unknown = [...prompt.matchAll(/\{\{([^{}]+)\}\}/g)].map((match) => match[1].trim()).filter((key) => !allowed.has(key));
+  // fillTemplate と同じ書き方を読む: {{名前}} / {{#if 名前}}…{{/if}} / {{名前|join:'…'}}
+  const unknown = [...prompt.matchAll(/\{\{([^{}]+)\}\}/g)]
+    .map((match) => match[1].trim())
+    .filter((body) => body !== '/if')
+    .map((body) => body.replace(/^#if\s+/, '').split('|')[0].trim())
+    .filter((key) => !allowed.has(key));
   if (unknown.length > 0) {
     throw new Error(`${file} の fallback_prompt に、Revolution が埋めない {{${unknown.join('}} / {{')}}} があります`);
   }

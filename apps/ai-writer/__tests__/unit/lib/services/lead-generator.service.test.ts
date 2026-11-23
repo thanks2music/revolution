@@ -937,7 +937,7 @@ describe('LeadGeneratorService - 連体修飾語', () => {
         works: [{ title: 'テストキャラ', is_primary: true }],
         メディアタイプ: 'character',
         原作タイプ: 'character_brand',
-        著作権表記: '© 2026 SANRIO CO., LTD.',
+        コピーライト: '© 2026 SANRIO CO., LTD.',
       })
     );
     expect(result.modifier?.form).toBe('character_owner');

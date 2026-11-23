@@ -53,8 +53,6 @@ function validDocs(): Record<string, unknown> {
     'slug-registry.yaml': { categories: EVENT_TYPE_SLUGS.map((slug) => ({ slug, name: `種別 ${slug}` })) },
     'title-sheet-overrides.yaml': { overrides: { id1: { slug: 'work-b' }, id2: { skip: true }, id3: { same_as: '作品A' } } },
     'taxonomy.yaml': { axes: {}, category_rules: {} },
-    'work-descriptions.yaml': { work_descriptions: { 作品A: { modifier: '説明', aliases: ['別名A'] } } },
-    'character-owners.yaml': { character_owners: [{ owner: '持ち主', patterns: ['OWNER'] }] },
   };
 }
 

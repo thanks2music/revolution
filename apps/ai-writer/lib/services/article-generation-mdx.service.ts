@@ -1387,7 +1387,7 @@ export class ArticleGenerationMdxService {
         シリーズ名: detailedExtraction.シリーズ名,
         // キャラクターの持ち主を引く © は、primary の作品の物 (抽出のコピーライト) だけ。ページ全体の © には
         // コラボ相手や広告の物も入り、別の会社のキャラクターと書いてしまうため渡さない
-        著作権表記: detailedExtraction.コピーライト,
+        コピーライト: detailedExtraction.コピーライト,
         グループ区分: detailedExtraction.グループ区分,
         性別: detailedExtraction.性別,
         ゲーム実況: detailedExtraction.ゲーム実況,

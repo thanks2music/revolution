@@ -56,7 +56,13 @@ import type {
 // Re-export helper (author-formatter) は private method 化のため internal impl で import
 import { formatAuthorName, hasMultipleAuthors } from '../utils/author-formatter';
 
-import { buildLeadModifier, type LeadModifierDictionaries, type LeadModifierFormat } from './lead-modifier';
+import {
+  buildLeadModifier,
+  type LeadModifierDictionaries,
+  type LeadModifierFacts,
+  type LeadModifierFormat,
+  type LeadModifierResult,
+} from './lead-modifier';
 import {
   loadCharacterOwners,
   loadLeadFallbackPrompt,
@@ -98,16 +104,17 @@ export interface LeadGeneratorInput {
   略称?: string | null;
   公式サイトURL?: string | null;
 
-  // 連体修飾語 (作品名の前の語句) の材料
-  /** primary の作品の著作権表記 (抽出のコピーライト)。キャラクターの持ち主を引く。ページ全体の © は渡さない */
-  著作権表記?: string | null;
-  /** アイドル・YouTuber・VTuber がグループか個人か (ページに書いてある時だけ) */
-  グループ区分?: 'group' | 'solo' | null;
-  /** アイドルの性別 (ページに書いてある時だけ) */
-  性別?: 'female' | 'male' | 'mixed' | null;
-  /** YouTuber がゲーム実況か (ページに書いてある時だけ) */
-  ゲーム実況?: boolean | null;
+  // 連体修飾語 (作品名の前の語句) の材料。意味は LeadModifierFacts のとおり
+  /** primary の作品の著作権表記 (抽出のコピーライト)。ページ全体の © は渡さない */
+  コピーライト?: LeadModifierFacts['コピーライト'];
+  グループ区分?: LeadModifierFacts['グループ区分'];
+  性別?: LeadModifierFacts['性別'];
+  ゲーム実況?: LeadModifierFacts['ゲーム実況'];
 }
+
+/** Templates を同期した場所 (apps/ai-writer/templates) */
+const DEFAULT_LEAD_YAML_PATH = path.join(process.cwd(), 'templates', 'collabo-cafe', 'sections', '01-lead.yaml');
+const DEFAULT_CONFIG_DIR = path.join(process.cwd(), 'templates', 'config');
 
 /**
  * LeadGeneratorService の依存関係 (Constructor Injection)。
@@ -165,10 +172,8 @@ export interface EnrichedData extends TextPlaceholderData {
   原作者名_formatted: string;
   has_multiple_authors: boolean;
 
-  /** 作品名の前に置く語句 (`{{連体修飾語}}`)。`buildLeadModifier` が事実から組み立てる */
-  連体修飾語: string;
-  /** 連体修飾語に使った形 (`01-lead.yaml` の `modifier` のキーか `work_description`)。ログ用 */
-  連体修飾語の形: string;
+  /** 作品名の前に置く語句と、使った形。`{{連体修飾語}}` には text を入れる */
+  modifier: LeadModifierResult;
 }
 
 // ============================================================================
@@ -199,7 +204,11 @@ export function readLeadSectionYaml(yamlPath: string): SectionTemplate {
 export class LeadGeneratorService {
   private readonly deps: LeadGeneratorDeps;
   private leadSection: SectionTemplate | null = null;
-  private modifierConfig: { format: LeadModifierFormat; dictionaries: LeadModifierDictionaries } | null = null;
+  private modifierConfig: {
+    format: LeadModifierFormat;
+    dictionaries: LeadModifierDictionaries;
+    fallbackPrompt: string;
+  } | null = null;
 
   constructor(deps: LeadGeneratorDeps) {
     this.deps = deps;
@@ -270,7 +279,7 @@ export class LeadGeneratorService {
       leadMdx: replacement.content,
       usedTemplate,
       slots,
-      modifier: { form: enriched.連体修飾語の形, text: enriched.連体修飾語 },
+      modifier: enriched.modifier,
     };
   }
 
@@ -284,28 +293,19 @@ export class LeadGeneratorService {
   private getLeadSection(): SectionTemplate {
     if (this.leadSection) return this.leadSection;
 
-    const defaultPath = path.join(
-      process.cwd(),
-      'templates',
-      'collabo-cafe',
-      'sections',
-      '01-lead.yaml'
-    );
-    const parsed = readLeadSectionYaml(this.deps.yamlPath ?? defaultPath);
+    const parsed = readLeadSectionYaml(this.deps.yamlPath ?? DEFAULT_LEAD_YAML_PATH);
     this.leadSection = parsed;
     return parsed;
   }
 
-  private sectionsDir(): string {
-    return path.dirname(this.deps.yamlPath ?? path.join(process.cwd(), 'templates', 'collabo-cafe', 'sections', '01-lead.yaml'));
-  }
-
-  /** 連体修飾語の文言と辞書を lazy load (初回のみ)。欠けていれば名前を挙げて throw する */
-  private getModifierConfig(): { format: LeadModifierFormat; dictionaries: LeadModifierDictionaries } {
+  /** 連体修飾語の文言・辞書・フォールバックのプロンプトを lazy load (初回のみ)。欠けていれば名前を挙げて throw する */
+  private getModifierConfig(): NonNullable<LeadGeneratorService['modifierConfig']> {
     if (this.modifierConfig) return this.modifierConfig;
-    const configDir = this.deps.configDir ?? path.join(process.cwd(), 'templates', 'config');
+    const sectionsDir = path.dirname(this.deps.yamlPath ?? DEFAULT_LEAD_YAML_PATH);
+    const configDir = this.deps.configDir ?? DEFAULT_CONFIG_DIR;
     this.modifierConfig = {
-      format: loadLeadModifierFormat(this.sectionsDir()),
+      format: loadLeadModifierFormat(sectionsDir),
+      fallbackPrompt: loadLeadFallbackPrompt(sectionsDir),
       dictionaries: {
         workDescriptions: loadWorkDescriptions(configDir),
         characterOwners: loadCharacterOwners(configDir),
@@ -356,17 +356,7 @@ export class LeadGeneratorService {
 
     const { format, dictionaries } = this.getModifierConfig();
     const modifier = buildLeadModifier(
-      {
-        workTitles: [primary_work.title, 作品名, input.略称 ?? ''],
-        メディアタイプ: input.メディアタイプ,
-        原作タイプ: input.原作タイプ,
-        原作者名: input.原作者名,
-        スタジオ名: input.スタジオ名,
-        著作権表記: input.著作権表記,
-        グループ区分: input.グループ区分,
-        性別: input.性別,
-        ゲーム実況: input.ゲーム実況,
-      },
+      { ...input, workTitles: [primary_work.title, 作品名, input.略称 ?? ''] },
       format,
       dictionaries
     );
@@ -398,7 +388,7 @@ export class LeadGeneratorService {
       has_multiple_authors,
       コラボ作品名,
       連体修飾語: modifier.text,
-      連体修飾語の形: modifier.form,
+      modifier,
     };
   }
 
@@ -454,7 +444,7 @@ export class LeadGeneratorService {
       usedTemplate: LEAD_FALLBACK_TEMPLATE_ID,
       fallbackReason: reason,
       slots: SLOT_DEFINITIONS.lead_generic!(enriched),
-      modifier: { form: enriched.連体修飾語の形, text: enriched.連体修飾語 },
+      modifier: enriched.modifier,
     };
   }
 
@@ -521,7 +511,7 @@ export class LeadGeneratorService {
    */
   private buildFallbackPrompt(enriched: EnrichedData, reason: LeadFallbackReason): string {
     const 作品名リスト = enriched.works.map((w) => w.title).join(' × ');
-    return fillTemplate(loadLeadFallbackPrompt(this.sectionsDir()), {
+    return fillTemplate(this.getModifierConfig().fallbackPrompt, {
       作品名: enriched.作品名,
       店舗名: enriched.店舗名,
       メディアタイプ: enriched.メディアタイプ ?? '(未指定)',

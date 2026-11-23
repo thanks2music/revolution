@@ -6,6 +6,10 @@
  * 推測で埋めずに短い形にする。作品ごとの言い回しは `work-descriptions.yaml` に書いた作品だけ使う。
  */
 
+import type { Gender, GroupKind } from '@revolution/schemas/extraction-response';
+
+import { getAuthorNamesAsArray } from '../utils/author-formatter';
+
 import { fillTemplate } from './section-renderers';
 
 /** `01-lead.yaml` の `modifier` のキー。欠けたら `loadChecked` が名前を挙げて止める */
@@ -49,8 +53,8 @@ export interface CharacterOwner {
 }
 
 export interface LeadModifierDictionaries {
-  /** 作品名 → 作品の説明 (`work-descriptions.yaml`) */
-  workDescriptions: Record<string, WorkDescription>;
+  /** 照合用の作品名 (`normalizeWorkTitle`、別名を含む) → 作品の説明。`indexWorkDescriptions` で作る */
+  workDescriptions: ReadonlyMap<string, string>;
   /** © の表記 → 持ち主 (`character-owners.yaml`、上から順に当てる) */
   characterOwners: CharacterOwner[];
   /** 原作タイプ → 媒体の表記 (`media-type-mapping.yaml` の `original_type_labels`。null は媒体なし) */
@@ -70,34 +74,48 @@ export interface LeadModifierFacts {
   原作者名?: string | string[] | null;
   スタジオ名?: string | null;
   /**
-   * primary の作品の著作権表記 (© …)。キャラクターの持ち主を引くのに使う。
+   * primary の作品の著作権表記 (抽出のコピーライト)。キャラクターの持ち主を引くのに使う。
    * ページ全体の © を渡さない (コラボ相手や広告の © で、別の会社のキャラクターと書いてしまうため)
    */
-  著作権表記?: string | null;
-  グループ区分?: 'group' | 'solo' | null;
-  性別?: 'female' | 'male' | 'mixed' | null;
+  コピーライト?: string | null;
+  グループ区分?: GroupKind | null;
+  性別?: Gender | null;
   ゲーム実況?: boolean | null;
 }
 
 const ANIME_MEDIA_TYPES = new Set(['anime', 'anime_movie']);
-
-function authorList(names: LeadModifierFacts['原作者名']): string[] {
-  if (!names) return [];
-  const list = Array.isArray(names) ? names : [names];
-  return list.map((name) => name.trim()).filter((name) => name.length > 0);
-}
 
 /** 作品名の照合用の形 (全角・半角と空白の違いを吸収する。辞書の重複の検査も同じ形で比べる) */
 export function normalizeWorkTitle(title: string): string {
   return title.normalize('NFKC').replace(/\s+/g, '');
 }
 
-function findWorkDescription(titles: string[], descriptions: LeadModifierDictionaries['workDescriptions']): string | null {
-  const wanted = new Set(titles.map(normalizeWorkTitle).filter((title) => title.length > 0));
+/**
+ * 作品の説明を、照合用の作品名 (別名を含む) から引ける形にする。
+ * 作品名と別名は 1 つの作品だけを指す (重なると、どちらの文を使うかが辞書の並び順で決まってしまうため止める)
+ *
+ * @throws 1 つの名前が 2 つの作品に当たるとき
+ */
+export function indexWorkDescriptions(descriptions: Record<string, WorkDescription>): Map<string, string> {
+  const owners = new Map<string, string>();
+  const index = new Map<string, string>();
   for (const [name, entry] of Object.entries(descriptions)) {
-    if ([name, ...(entry.aliases ?? [])].some((candidate) => wanted.has(normalizeWorkTitle(candidate)))) {
-      return entry.modifier;
+    for (const label of [name, ...(entry.aliases ?? [])].map(normalizeWorkTitle)) {
+      const other = owners.get(label);
+      if (other !== undefined && other !== name) {
+        throw new Error(`作品の説明: 「${label}」が「${other}」と「${name}」の両方にあります`);
+      }
+      owners.set(label, name);
+      index.set(label, entry.modifier);
     }
+  }
+  return index;
+}
+
+function findWorkDescription(titles: string[], index: ReadonlyMap<string, string>): string | null {
+  for (const title of titles) {
+    const hit = index.get(normalizeWorkTitle(title));
+    if (hit) return hit;
   }
   return null;
 }
@@ -126,7 +144,10 @@ export function buildLeadModifier(
 
   const mediaType = facts.メディアタイプ ?? '';
   const sourceType = facts.原作タイプ ?? '';
-  const authors = authorList(facts.原作者名).join(format.authors_separator);
+  const authors = getAuthorNamesAsArray(facts.原作者名)
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0)
+    .join(format.authors_separator);
   const medium = (sourceType && dictionaries.originalTypeLabels[sourceType]) || null;
   const studio = facts.スタジオ名?.trim() || null;
   const group = facts.グループ区分 === 'group' ? format.group_word : '';
@@ -138,7 +159,7 @@ export function buildLeadModifier(
   if (mediaType === 'movie') return fill('film');
 
   if (sourceType === 'character_brand') {
-    const owner = findCharacterOwner(facts.著作権表記, dictionaries.characterOwners);
+    const owner = findCharacterOwner(facts.コピーライト, dictionaries.characterOwners);
     return owner ? fill('character_owner', { owner }) : fill('character');
   }
 
