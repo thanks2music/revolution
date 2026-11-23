@@ -9,12 +9,21 @@ import { noticeMessage, type NoticeKind } from '@/lib/moderation/notice';
  * 操作の後の知らせ (Figma 13 の「AI にかけ直した後」と F-9)。数秒で消し、URL からも外す
  * (読み直した時にもう一度出ないように)
  */
-export function Notice({ kind, title }: { kind: NoticeKind; title: string }) {
+export function Notice({
+  kind,
+  title,
+  path = '/',
+}: {
+  kind: NoticeKind;
+  title: string;
+  /** 知らせを出している一覧のパス (消す時に URL から知らせを外して戻る先) */
+  path?: string;
+}) {
   const router = useRouter();
   useEffect(() => {
-    const timer = setTimeout(() => router.replace('/'), 5000);
+    const timer = setTimeout(() => router.replace(path), 5000);
     return () => clearTimeout(timer);
-  }, [router]);
+  }, [router, path]);
   return (
     <div
       role="status"

@@ -3,6 +3,10 @@ const MESSAGES = {
   published: (title: string) => `${title} を公開しました`,
   rejected: (title: string) => `${title} を差し戻しました`,
   requeued: (title: string) => `${title} を AI にかけ直しました。結果は数分で出ます`,
+  // 通報の処理 (#168)
+  hidden: (title: string) => `${title} の口コミを非公開にしました`,
+  kept: (title: string) => `${title} の口コミを直して、公開のままにしました`,
+  dismissed: (title: string) => `${title} の通報を問題なしで閉じました`,
 } as const;
 
 export type NoticeKind = keyof typeof MESSAGES;

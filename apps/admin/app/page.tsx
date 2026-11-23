@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { listReviewQueue } from '@revolution/reviews/moderation';
+import { listReportQueue } from '@revolution/reviews/reports';
 
 import { AdminBar } from '@/components/AdminBar';
 import { EmptyQueue } from '@/components/EmptyQueue';
@@ -20,8 +21,11 @@ export default async function QueuePage({
 }) {
   const session = await getAdminSession();
   if (!session) redirect('/forbidden');
-  const queue = await listReviewQueue(session.supabase);
-  if (queue.kind === 'forbidden') redirect('/forbidden');
+  const [queue, reports] = await Promise.all([
+    listReviewQueue(session.supabase),
+    listReportQueue(session.supabase),
+  ]);
+  if (queue.kind === 'forbidden' || reports.kind === 'forbidden') redirect('/forbidden');
   const { notice, title } = await searchParams;
 
   return (
@@ -29,7 +33,10 @@ export default async function QueuePage({
       <AdminBar email={session.email} />
       <main className="mx-auto max-w-6xl lg:grid lg:grid-cols-[minmax(320px,420px)_1fr] lg:gap-6 lg:p-6">
         <div className="bg-surface lg:self-start lg:rounded-2xl lg:border lg:border-line">
-          <QueueTabs count={queue.items.length} />
+          <QueueTabs
+            active="queue"
+            counts={{ queue: queue.items.length, reports: reports.items.length }}
+          />
           {queue.items.length === 0 ? (
             <EmptyQueue checkedAt={new Date().toISOString()} />
           ) : (

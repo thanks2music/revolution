@@ -113,7 +113,7 @@ test('確認待ちの口コミを理由を選んで差し戻す', async ({ page,
   await page.goto(`/reviews/${review.reviewId}`);
   await page.getByRole('button', { name: '差し戻す' }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('radio', { name: '宣伝・開催と関係ない内容' }).click();
+  await dialog.getByRole('radio', { name: '宣伝・スパム・開催と無関係' }).click();
   await dialog.getByLabel('投稿者へのひとこと (任意)').fill('開催の感想を書いてください');
   await expect(dialog).toContainText('差し戻しの理由: 宣伝や、この開催と関係のない内容が含まれています。開催の感想を書いてください');
   await dialog.getByRole('button', { name: '差し戻す' }).click();

@@ -1,6 +1,5 @@
 import type { ModerationPhoto, PhotoDecision } from '@revolution/reviews/moderation';
-import { toScreeningReason } from '@revolution/reviews/labels';
-import type { ReviewScreeningReason } from '@revolution/schemas/review-constants';
+import type { ReviewReportReason } from '@revolution/schemas/review-constants';
 
 /**
  * 口コミの確認の写真の印 (Figma 14・F-11・F-12)。BOSS が写真ごとに「非公開」と理由を決める。
@@ -12,7 +11,8 @@ export type PhotoMark = {
   /** 並びの番号 (1 から。画面の「写真 3」) */
   number: number;
   hide: boolean;
-  reason: ReviewScreeningReason | null;
+  /** 写真の非公開の理由 (通報の 8 つ。審査の 4 種を含む) */
+  reason: ReviewReportReason | null;
   /** AI が非公開を勧めた写真 (印「AI」を出す) */
   byAi: boolean;
 };
@@ -22,8 +22,7 @@ export function initialMarks(photos: ModerationPhoto[]): PhotoMark[] {
     id: photo.id,
     number: index + 1,
     hide: photo.hiddenReason !== null,
-    // 確認待ちの写真の理由は審査の 4 種 (通報で足した理由は通報の処理の画面で扱う)
-    reason: toScreeningReason(photo.hiddenReason),
+    reason: photo.hiddenReason,
     byAi: photo.hiddenReason !== null,
   }));
 }
@@ -50,7 +49,10 @@ export function missingReasonMessage(marks: PhotoMark[]): string | null {
  * 差し戻しの時は写真を配信しないので、理由の無い非公開は「非公開にしない」として送る
  * (差し戻した口コミの写真は、どの印でも公開されない)
  */
-export function toPhotoDecisions(marks: PhotoMark[], mode: 'publish' | 'reject'): PhotoDecision[] | null {
+export function toPhotoDecisions(
+  marks: PhotoMark[],
+  mode: 'publish' | 'reject'
+): PhotoDecision[] | null {
   if (mode === 'publish' && marksMissingReason(marks).length > 0) return null;
   return marks.map(mark =>
     mark.hide && mark.reason

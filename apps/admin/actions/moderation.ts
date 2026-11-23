@@ -25,22 +25,11 @@ import { REVIEW_SCREENING_REASONS } from '@revolution/schemas/review';
 
 import { getAdminSession } from '@/lib/auth/admin';
 import type { NoticeKind } from '@/lib/moderation/notice';
+import { PhotoDecisionsSchema } from '@/lib/moderation/photo-decision';
 import { createServiceClient } from '@/lib/supabase/service';
 
 export type ModerationActionResult =
-  | { kind: 'superseded' }
-  | { kind: 'photos_changed' }
-  | { kind: 'forbidden' }
-  | { kind: 'error' };
-
-const PhotoDecisionSchema = z.union([
-  z.object({ id: z.number().int().positive(), hide: z.literal(false) }),
-  z.object({
-    id: z.number().int().positive(),
-    hide: z.literal(true),
-    reason: z.enum(REVIEW_SCREENING_REASONS),
-  }),
-]);
+  { kind: 'superseded' } | { kind: 'photos_changed' } | { kind: 'forbidden' } | { kind: 'error' };
 
 const TargetSchema = z.object({
   reviewId: z.number().int().positive(),
@@ -49,7 +38,7 @@ const TargetSchema = z.object({
   title: z.string().transform(title => title.slice(0, 200)),
 });
 
-const DecideSchema = TargetSchema.extend({ photos: z.array(PhotoDecisionSchema).max(10) });
+const DecideSchema = TargetSchema.extend({ photos: PhotoDecisionsSchema });
 
 const RejectSchema = DecideSchema.extend({
   reasonCode: z.enum(REVIEW_SCREENING_REASONS),
@@ -75,12 +64,18 @@ export async function publishReview(input: z.input<typeof DecideSchema>) {
 export async function rejectReview(input: z.input<typeof RejectSchema>) {
   const parsed = RejectSchema.safeParse(input);
   if (!parsed.success) return { kind: 'error' } satisfies ModerationActionResult;
-  return decide(parsed.data, { reasonCode: parsed.data.reasonCode, reasonNote: parsed.data.reasonNote });
+  return decide(parsed.data, {
+    reasonCode: parsed.data.reasonCode,
+    reasonNote: parsed.data.reasonNote,
+  });
 }
 
 async function decide(
   input: z.input<typeof DecideSchema>,
-  reject: { reasonCode: (typeof REVIEW_SCREENING_REASONS)[number]; reasonNote: string | null } | null
+  reject: {
+    reasonCode: (typeof REVIEW_SCREENING_REASONS)[number];
+    reasonNote: string | null;
+  } | null
 ): Promise<ModerationActionResult> {
   const parsed = DecideSchema.safeParse(input);
   if (!parsed.success) return { kind: 'error' };
