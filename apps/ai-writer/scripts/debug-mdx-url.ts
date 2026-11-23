@@ -535,6 +535,8 @@ async function main() {
       localOnly: uploadImages,
       update: updateTarget,
       eventYear: archivePlan?.eventYear,
+      // The URL given to the CLI may be the official page itself
+      inputMayBeOfficialPage: true,
       ...(archivePlan?.mode === 'archive'
         ? { sourceOverride: archivePlan.sourceOverride, extracted: archivePlan.extracted }
         : {}),

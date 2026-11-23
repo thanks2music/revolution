@@ -217,6 +217,8 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
             pubDate: (candidate.rssPubDate ?? now).toISOString(),
           },
           dryRun: options.dryRun,
+          // A registered URL may be the official page itself (RSS items are news articles)
+          inputMayBeOfficialPage: candidate.source === 'registered' || candidate.previous?.source === 'registered',
         });
         attempt = { kind: 'pipeline', result };
       } catch (caught) {

@@ -30,6 +30,12 @@ export interface ArticleSelectionRequest {
 
   /** RSS配信元ドメイン（任意） */
   site_domain?: string;
+
+  /**
+   * 入力のページ自身の URL (任意)。ページ自身が公式の特設ページであり得る入口 (CLI・登録 URL) だけで渡す。
+   * ページが自分へのリンクを持たないと、選別が自分を公式に選べなかった (1 ページ構成のコラボカフェの公式ページ)
+   */
+  page_url?: string;
 }
 
 /**

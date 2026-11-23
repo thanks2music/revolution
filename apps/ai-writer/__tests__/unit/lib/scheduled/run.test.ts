@@ -273,6 +273,19 @@ describe('runScheduled', () => {
       expect(summary.items.map(item => item.registered)).toEqual([true, true, false]);
     });
 
+    it('lets article selection take a registered page itself as the official page, but not an RSS item', async () => {
+      const { deps, generate } = makeDeps({
+        items: rssItems(1),
+        results: () => SKIP,
+        registered: [registered('https://reg.example/official', '2026-11-10T00:00:00Z')],
+      });
+      await runScheduled(deps, { dryRun: false });
+      expect(generate.mock.calls.map(call => [call[0].rssItem.link, call[0].inputMayBeOfficialPage])).toEqual([
+        ['https://reg.example/official', true],
+        ['https://a.example/1', false],
+      ]);
+    });
+
     it('does not try a registered URL again once it has a record', async () => {
       const { deps, generate } = makeDeps({
         items: [],

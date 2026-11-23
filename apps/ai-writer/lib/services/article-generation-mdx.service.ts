@@ -269,6 +269,12 @@ export interface MdxGenerationRequest {
    * these values are used instead; the article does not link to the official site
    */
   sourceOverride?: MdxSourceOverride;
+  /**
+   * The input page itself may be the event's official page (the CLI and registered URLs). Article selection
+   * is then given the page's URL so that it can choose the page itself. Not set for RSS candidates (news
+   * articles), so that a report is never taken for the official page
+   */
+  inputMayBeOfficialPage?: boolean;
 }
 
 /** Page content that replaces the official site's (`MdxGenerationRequest.sourceOverride`) */
@@ -482,6 +488,7 @@ export class ArticleGenerationMdxService {
           rss_title: rssItem.title,
           rss_content: await extractArticleHtml(rssItem.link),
           site_domain: new URL(rssItem.link).hostname,
+          ...(request.inputMayBeOfficialPage ? { page_url: rssItem.link } : {}),
         });
       }
       // 更新のときは、既存の記事と同じ公式サイトから作り直す (選別が別の URL を選んでも使わない)
