@@ -6,8 +6,8 @@
  * ドキュメント ID は正規化した URL の SHA-256 (`@revolution/net/attempt-url` の `attemptDocId`) で、
  * AI ライターの「試した URL」・登録 URL と同じ ID になる。
  *
- * 状態は `pending` (まだ試していない) → `tried` (定期実行が試した) か `expired` (検知から 30 日、試さないまま)。
- * 同じ URL を 2 度試さないのは、AI ライターの「試した URL」の記録が受け持つ。
+ * 状態は持たない。試したかどうかは AI ライターの「試した URL」の記録 (同じ ID) が受け持ち、
+ * 検知から 30 日を過ぎた物は候補にしない (ドキュメントは消さずに残す)。登録 URL と同じ考え方。
  *
  * @module @revolution/schemas/detected-link
  */
@@ -18,9 +18,6 @@ export const DETECTED_LINKS_COLLECTION = 'web_checker_detected_links';
 /** 検知から何日で候補から外すか (公式サイトへの掲載が遅れても、掲載された時に検知するので、数えるのは検知から) */
 export const DETECTED_LINK_TTL_DAYS = 30;
 
-export const DetectedLinkStatusSchema = z.enum(['pending', 'tried', 'expired']);
-export type DetectedLinkStatus = z.infer<typeof DetectedLinkStatusSchema>;
-
 export const DetectedLinkSchema = z.object({
   /** 正規化した URL (`normalizeAttemptUrl`) */
   url: z.string().min(1),
@@ -29,6 +26,5 @@ export const DetectedLinkSchema = z.object({
   targetTitle: z.string(),
   /** 検知した日時 (ms の epoch) */
   detectedAt: z.number().int(),
-  status: DetectedLinkStatusSchema,
 });
 export type DetectedLink = z.infer<typeof DetectedLinkSchema>;

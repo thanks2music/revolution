@@ -16,7 +16,7 @@ Watches a part of a web page (a CSS selector on a URL) on a schedule and posts t
 |---|---|
 | `web_checker_targets/{id}` (`url`, `selector`, `title`, `cron`, `notifyMode`, `checkedAt`, `alertedAt`, `createdAt`, `createdBy`, `updatedAt`, `updatedBy`) | the screens (Firestore rules) and Functions (`checkedAt` and `alertedAt` only) |
 | `web_checker_targets/{id}/snapshots/{id}` (`content`, `time`) | Functions only |
-| `web_checker_detected_links/{sha256 of the normalized URL}` (`url`, `targetId`, `targetTitle`, `detectedAt`, `status`) | Functions create them as `pending`; the AI writer's scheduled run marks them `tried` or `expired` (30 days). The shape is `@revolution/schemas/detected-link`, and the ID uses `@revolution/net/attempt-url`, the same key as the AI writer's attempts and registered URLs |
+| `web_checker_detected_links/{sha256 of the normalized URL}` (`url`, `targetId`, `targetTitle`, `detectedAt`) | Functions only (read by the AI writer's scheduled run, which tries the ones detected within 30 days that have no attempt record). The shape is `@revolution/schemas/detected-link`, and the ID uses `@revolution/net/attempt-url`, the same key as the AI writer's attempts and registered URLs |
 
 The Firestore rules live in `apps/ai-writer/firestore.rules`, shared with the AI writer (a Firebase project has one set of rules). Only users with the `admin` or `allowedEditor` custom claim can read or write.
 

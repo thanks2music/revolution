@@ -2,8 +2,8 @@
  * Put the URLs a scheduled run will try in order (decided 2026-11-15).
  *
  * 1. URLs registered by hand that have not been tried yet, the oldest registration first
- * 2. links the WEB checker detected that have not been tried yet, detected within the last
- *    30 days, the oldest detection first (decided 2026-11-23). A person chose the watched page
+ * 2. links the WEB checker detected that have not been tried yet (the store reads only those
+ *    detected within the last 30 days), the oldest detection first (decided 2026-11-23). A person chose the watched page
  *    and to hand its links over, so they come before retries and RSS
  * 3. URLs whose retry is due (details not announced yet, or a failure), the longest-waiting first.
  *    A registered URL or detected link that is waiting for a retry comes back here, not in 1 or 2
@@ -16,7 +16,7 @@
  * @module lib/scheduled/candidates
  */
 import { DAY_MS } from '@/lib/utils/date';
-import { DETECTED_LINK_TTL_DAYS, type DetectedLink } from '@revolution/schemas/detected-link';
+import type { DetectedLink } from '@revolution/schemas/detected-link';
 
 import type { AttemptRecord, AttemptSource } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
@@ -54,6 +54,11 @@ export function originSource(candidate: Pick<Candidate, 'source' | 'previous'>):
   return candidate.source === 'retry' ? candidate.previous?.source : candidate.source;
 }
 
+/** The source a new candidate's attempt record starts with (a retry keeps its first source) */
+export function newAttemptSource(candidate: Pick<Candidate, 'source'>): AttemptSource {
+  return candidate.source === 'retry' || candidate.source === 'rss' ? 'rss' : candidate.source;
+}
+
 /** A candidate a person chose to try: a registered URL or a detected link (its first try or a retry) */
 export function isChosenByPerson(candidate: Pick<Candidate, 'source' | 'previous'>): boolean {
   const origin = originSource(candidate);
@@ -71,8 +76,8 @@ export function isRssCandidate(candidate: Pick<Candidate, 'source' | 'previous'>
 interface OrderCandidatesInput {
   /** URLs registered by hand (`RegisteredUrlStore.list`); tried ones are left out here */
   registered: RegisteredUrl[];
-  /** Pending detected links (`DetectedLinkStore.listPending`); tried and expired ones are left out here */
-  detected?: DetectedLink[];
+  /** Links detected within the last 30 days (`DetectedLinkStore.listRecent`); tried ones are left out here */
+  detected: DetectedLink[];
   /** Records whose retry is due (`AttemptStore.findDueRetries`) */
   dueRetries: AttemptRecord[];
   rssItems: RssCandidateInput[];
@@ -81,20 +86,9 @@ interface OrderCandidatesInput {
   now: Date;
 }
 
-/** A detected link older than this is not tried any more (`expiredDetectedLinks`) */
-function detectedLinkCutoff(now: Date): number {
-  return now.getTime() - DETECTED_LINK_TTL_DAYS * DAY_MS;
-}
-
-/** Pending detected links that passed the 30 days without being tried, to be marked `expired` */
-export function expiredDetectedLinks(detected: DetectedLink[], now: Date): DetectedLink[] {
-  const cutoff = detectedLinkCutoff(now);
-  return detected.filter(link => link.detectedAt < cutoff);
-}
-
 export function orderCandidates({
   registered,
-  detected = [],
+  detected,
   dueRetries,
   rssItems,
   attemptedUrls,
@@ -110,12 +104,8 @@ export function orderCandidates({
     ordered.push({ url: entry.url, source: 'registered', registeredAt: entry.createdAt });
   }
 
-  const cutoff = detectedLinkCutoff(now);
-  const detectedInTime = detected
-    .filter(link => link.detectedAt >= cutoff)
-    .sort((a, b) => a.detectedAt - b.detectedAt);
-  for (const link of detectedInTime) {
-    if (!link.url || seen.has(link.url) || attemptedUrls.has(link.url)) continue;
+  for (const link of [...detected].sort((a, b) => a.detectedAt - b.detectedAt)) {
+    if (seen.has(link.url) || attemptedUrls.has(link.url)) continue;
     seen.add(link.url);
     ordered.push({ url: link.url, source: 'detected', detectedAt: new Date(link.detectedAt) });
   }

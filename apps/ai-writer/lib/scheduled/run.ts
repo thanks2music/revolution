@@ -21,7 +21,7 @@
  */
 import type { MdxGenerationRequest, MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 import { HttpStatusError } from '@/lib/utils/http-status-error';
-import type { DetectedLink, DetectedLinkStatus } from '@revolution/schemas/detected-link';
+import type { DetectedLink } from '@revolution/schemas/detected-link';
 
 import {
   buildAttemptRecord,
@@ -33,8 +33,8 @@ import {
 import type { AttemptRecord, AttemptStore } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
 import {
-  expiredDetectedLinks,
   isChosenByPerson,
+  newAttemptSource,
   isRssCandidate,
   orderCandidates,
   originSource,
@@ -78,10 +78,8 @@ export interface ScheduledRunDeps {
   loadRegisteredUrls: () => Promise<RegisteredUrl[]>;
   /** Whether the URL is still registered (checked before a registered URL is queued for a retry) */
   isRegistered: (url: string) => Promise<boolean>;
-  /** Pending links handed over by the WEB checker (`DetectedLinkStore.listPending`) */
+  /** Links the WEB checker handed over within the last 30 days (`DetectedLinkStore.listRecent`) */
   loadDetectedLinks: () => Promise<DetectedLink[]>;
-  /** Mark detected links `tried` or `expired` (`DetectedLinkStore.mark`) */
-  markDetectedLinks: (urls: string[], status: Exclude<DetectedLinkStatus, 'pending'>) => Promise<void>;
   /** RSS items of the active feeds. A feed that cannot be read is reported in `errors` */
   loadRssItems: () => Promise<{ items: RssCandidateInput[]; errors: string[] }>;
   fetchPage: (url: string) => Promise<FetchedPage>;
@@ -123,16 +121,13 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
   let stopReason: StopReason | undefined;
   let error: string | undefined;
   let pendingFailures: Attempted[] = [];
-  /** Detected links to mark `tried` at the end: tried in this run, or already tried another way */
-  const triedDetected: string[] = [];
-
-  /** Mark detected links; failing to do so is reported but does not stop the run */
-  const markDetected = async (urls: string[], status: Exclude<DetectedLinkStatus, 'pending'>) => {
-    if (options.dryRun || urls.length === 0) return;
+  /** Registered URLs and detected links are sources among several; failing to read one should not stop the run */
+  const loadOrReport = async <T>(label: string, load: () => Promise<T[]>): Promise<T[]> => {
     try {
-      await deps.markDetectedLinks(urls, status);
+      return await load();
     } catch (caught) {
-      feedErrors.push(`検知リンク (${status}): ${caught instanceof Error ? caught.message : String(caught)}`);
+      feedErrors.push(`${label}: ${caught instanceof Error ? caught.message : String(caught)}`);
+      return [];
     }
   };
 
@@ -152,11 +147,7 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
     entry.item.nextAttemptAt = record.nextAttemptAt;
     entry.item.givenUpReason = record.givenUpReason;
     if (options.dryRun) return;
-    const saved = await deps.store.save(record);
-    // Either way the URL now has an attempt record, which answers whether the link was tried, so
-    // it can leave the pending set. A link whose save threw (the run stops) stays pending
-    if (entry.context.source === 'detected') triedDetected.push(record.url);
-    if (!saved) {
+    if (!(await deps.store.save(record))) {
       // The URL was given up while this run was trying it (its registration was removed), and
       // the store keeps it that way: it is not tried again, whatever the summary computed
       log(`  記録を変えませんでした (この回の途中で打ち切られた URL): ${record.url}`);
@@ -174,15 +165,8 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
 
   try {
     const [registered, detected, rss, dueRecords] = await Promise.all([
-      // Registered URLs and detected links are sources among several; failing to read one should not stop the run
-      deps.loadRegisteredUrls().catch((caught: unknown) => {
-        feedErrors.push(`登録 URL: ${caught instanceof Error ? caught.message : String(caught)}`);
-        return [];
-      }),
-      deps.loadDetectedLinks().catch((caught: unknown) => {
-        feedErrors.push(`検知リンク: ${caught instanceof Error ? caught.message : String(caught)}`);
-        return [] as DetectedLink[];
-      }),
+      loadOrReport('登録 URL', deps.loadRegisteredUrls),
+      loadOrReport('検知リンク', deps.loadDetectedLinks),
       deps.loadRssItems(),
       deps.store.findDueRetries(startedAt, DUE_RETRY_READ_LIMIT),
     ]);
@@ -192,16 +176,6 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
       ...detected.map(link => link.url),
       ...rss.items.map(item => normalizeAttemptUrl(item.link)),
     ]);
-    // A detected link past the 30 days is no longer a candidate; one already tried another way
-    // (an RSS item or a registration of the same page) leaves the pending set too
-    const alreadyTried = detected.filter(link => attemptedUrls.has(link.url)).map(link => link.url);
-    triedDetected.push(...alreadyTried);
-    await markDetected(
-      expiredDetectedLinks(detected, startedAt)
-        .map(link => link.url)
-        .filter(url => !attemptedUrls.has(url)),
-      'expired',
-    );
     const candidates = orderCandidates({
       registered,
       detected,
@@ -235,7 +209,7 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
       const context: AttemptContext = {
         url: candidate.url,
         // A retry keeps the source of its first attempt (`buildAttemptRecord`)
-        source: candidate.source === 'registered' || candidate.source === 'detected' ? candidate.source : 'rss',
+        source: newAttemptSource(candidate),
         feedId: candidate.feedId,
         title: candidate.title,
         rssPubDate: candidate.rssPubDate,
@@ -313,9 +287,6 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
     error = caught instanceof Error ? caught.message : String(caught);
     stopReason = 'error';
   }
-  // After the loop, even when the run stopped on an error: only links whose attempt record was
-  // stored are marked (`persist`), so a link the run did not get to stays pending
-  await markDetected(triedDetected, 'tried');
 
   return {
     dryRun: options.dryRun,

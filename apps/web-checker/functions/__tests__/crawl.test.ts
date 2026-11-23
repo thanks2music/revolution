@@ -214,7 +214,6 @@ describe('crawlTarget', () => {
           targetId: 'target-1',
           targetTitle: 'サンプル公式サイト',
           detectedAt: NOW,
-          status: 'pending',
         },
       ]);
       expect(JSON.stringify(sent[0].blocks)).toContain('AI ライターに渡したリンク: 1 件');
@@ -236,7 +235,6 @@ describe('crawlTarget', () => {
         targetId: 'other',
         targetTitle: '別',
         detectedAt: 1,
-        status: 'pending',
       });
       const { deps: d, sent } = deps(store, () => Promise.resolve(after));
 

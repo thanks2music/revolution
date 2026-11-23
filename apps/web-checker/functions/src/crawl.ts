@@ -174,6 +174,6 @@ async function handOff(
   const urls = newLinks(previousHtml, html, { baseUrl, pageUrl: target.url });
   if (urls.length === 0) return { links: [], failed: 0 };
   return deps.store.addDetectedLinks(
-    urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt, status: 'pending' })),
+    urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt })),
   );
 }

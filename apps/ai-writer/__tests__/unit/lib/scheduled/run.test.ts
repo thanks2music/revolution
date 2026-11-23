@@ -53,7 +53,6 @@ function makeDeps(options: {
     saved.set(record.url, record);
     return true;
   });
-  const marked: Array<{ urls: string[]; status: string }> = [];
   const deps: ScheduledRunDeps = {
     now: options.clock ?? (() => START),
     store: {
@@ -65,9 +64,6 @@ function makeDeps(options: {
     loadRegisteredUrls: async () => options.registered ?? [],
     isRegistered: async url => (options.registered ?? []).some(entry => entry.url === url),
     loadDetectedLinks: async () => options.detected ?? [],
-    markDetectedLinks: async (urls, status) => {
-      marked.push({ urls, status });
-    },
     loadRssItems: async () => ({ items: options.items, errors: [] }),
     fetchPage: async url => ({
       title: `title of ${url}`,
@@ -77,7 +73,7 @@ function makeDeps(options: {
     }),
     generate,
   };
-  return { deps, saved, save, generate, marked };
+  return { deps, saved, save, generate };
 }
 
 describe('runScheduled', () => {
@@ -445,36 +441,30 @@ describe('runScheduled', () => {
   });
 
   describe('detected links (WEB checker)', () => {
-    const link = (url: string, ageDays: number): DetectedLink => ({
+    const link = (url: string): DetectedLink => ({
       url,
       targetId: 'target-1',
       targetTitle: 'サンプル公式サイト',
-      detectedAt: START.getTime() - ageDays * 24 * 60 * 60 * 1000,
-      status: 'pending',
+      detectedAt: START.getTime() - 24 * 60 * 60 * 1000,
     });
 
-    it('tries a detected link without the writing scope, as a possible official page, and marks it tried', async () => {
-      const { deps, generate, saved, marked } = makeDeps({
-        items: [],
-        detected: [link('https://det.example/1', 1)],
-        results: () => PR,
-      });
+    it('tries a detected link without the writing scope, as a possible official page, recorded as detected', async () => {
+      const { deps, generate, saved } = makeDeps({ items: [], detected: [link('https://det.example/1')], results: () => PR });
       const summary = await runScheduled(deps, { dryRun: false });
       expect(generate.mock.calls[0][0].applyWritingScope).toBe(false);
       expect(generate.mock.calls[0][0].inputMayBeOfficialPage).toBe(true);
-      expect(saved.get('https://det.example/1')?.source).toBe('detected');
+      expect(saved.get('https://det.example/1')).toMatchObject({ source: 'detected', publishedAtSource: expect.any(String) });
       expect(summary.items[0].detected).toBe(true);
-      expect(marked).toContainEqual({ urls: ['https://det.example/1'], status: 'tried' });
     });
 
-    it('marks links past 30 days expired, and links already tried another way tried, without trying them', async () => {
-      const { deps, generate, marked } = makeDeps({
+    it('does not try a detected link that was already tried', async () => {
+      const { deps, generate } = makeDeps({
         items: [],
-        detected: [link('https://det.example/old', 31), link('https://det.example/done', 1)],
+        detected: [link('https://det.example/done')],
         stored: [
           {
             url: 'https://det.example/done',
-            source: 'rss',
+            source: 'detected',
             status: 'done',
             lastOutcome: 'skip',
             attemptCount: 1,
@@ -484,60 +474,13 @@ describe('runScheduled', () => {
             lastAttemptAt: new Date('2026-11-01T00:00:00Z'),
             nextAttemptAt: null,
             publishedAt: new Date('2026-10-31T00:00:00Z'),
-            publishedAtSource: 'rss',
+            publishedAtSource: 'detection',
           },
         ],
         results: () => PR,
       });
       await runScheduled(deps, { dryRun: false });
       expect(generate).not.toHaveBeenCalled();
-      expect(marked).toContainEqual({ urls: ['https://det.example/old'], status: 'expired' });
-      expect(marked).toContainEqual({ urls: ['https://det.example/done'], status: 'tried' });
-    });
-
-    it('marks a link past 30 days that was already tried as tried only, not expired', async () => {
-      const { deps, marked } = makeDeps({
-        items: [],
-        detected: [link('https://det.example/done', 31)],
-        stored: [
-          {
-            url: 'https://det.example/done',
-            source: 'rss',
-            status: 'done',
-            lastOutcome: 'skip',
-            attemptCount: 1,
-            unannouncedCount: 0,
-            failureCount: 0,
-            firstAttemptAt: new Date('2026-11-01T00:00:00Z'),
-            lastAttemptAt: new Date('2026-11-01T00:00:00Z'),
-            nextAttemptAt: null,
-            publishedAt: new Date('2026-10-31T00:00:00Z'),
-            publishedAtSource: 'rss',
-          },
-        ],
-        results: () => PR,
-      });
-      await runScheduled(deps, { dryRun: false });
-      expect(marked).toEqual([{ urls: ['https://det.example/done'], status: 'tried' }]);
-    });
-
-    it('writes nothing in a dry run', async () => {
-      const { deps, generate, marked } = makeDeps({
-        items: [],
-        detected: [link('https://det.example/1', 1), link('https://det.example/old', 31)],
-        results: () => PR,
-      });
-      await runScheduled(deps, { dryRun: true });
-      expect(generate).toHaveBeenCalledTimes(1);
-      expect(marked).toEqual([]);
-    });
-
-    it('leaves a link pending when its attempt record could not be stored', async () => {
-      const { deps, save, marked } = makeDeps({ items: [], detected: [link('https://det.example/1', 1)], results: () => PR });
-      save.mockRejectedValueOnce(new Error('Firestore unavailable'));
-      const summary = await runScheduled(deps, { dryRun: false });
-      expect(summary.stopReason).toBe('error');
-      expect(marked).toEqual([]);
     });
 
     it('reports a failure to read detected links without stopping the run', async () => {
