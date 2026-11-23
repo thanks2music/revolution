@@ -55,8 +55,11 @@ export interface LeadModifierDictionaries {
   characterOwners: CharacterOwner[];
   /** 原作タイプ → 媒体の表記 (`media-type-mapping.yaml` の `original_type_labels`。null は媒体なし) */
   originalTypeLabels: Record<string, string | null>;
-  /** メディアタイプ → 表記 (`media-type-mapping.yaml` の `media_type_mappings.*.label`) */
-  mediaTypeLabel: (mediaType: string) => string;
+  /**
+   * 作品の形の表記 (`MediaFormResolverService.resolve`: メディアタイプ → 原作タイプ → 「作品」の順)。
+   * 空や英語のキーのままにならない
+   */
+  mediaFormLabel: (sourceType: string | null | undefined, mediaType: string | null | undefined) => string;
 }
 
 export interface LeadModifierFacts {
@@ -66,8 +69,11 @@ export interface LeadModifierFacts {
   原作タイプ?: string | null;
   原作者名?: string | string[] | null;
   スタジオ名?: string | null;
-  /** 公式サイトの著作権表記 (© …)。キャラクターの持ち主を引くのに使う */
-  著作権表記?: string[];
+  /**
+   * primary の作品の著作権表記 (© …)。キャラクターの持ち主を引くのに使う。
+   * ページ全体の © を渡さない (コラボ相手や広告の © で、別の会社のキャラクターと書いてしまうため)
+   */
+  著作権表記?: string | null;
   グループ区分?: 'group' | 'solo' | null;
   性別?: 'female' | 'male' | 'mixed' | null;
   ゲーム実況?: boolean | null;
@@ -81,21 +87,27 @@ function authorList(names: LeadModifierFacts['原作者名']): string[] {
   return list.map((name) => name.trim()).filter((name) => name.length > 0);
 }
 
+/** 作品名の照合用の形 (全角・半角と空白の違いを吸収する。辞書の重複の検査も同じ形で比べる) */
+export function normalizeWorkTitle(title: string): string {
+  return title.normalize('NFKC').replace(/\s+/g, '');
+}
+
 function findWorkDescription(titles: string[], descriptions: LeadModifierDictionaries['workDescriptions']): string | null {
-  const wanted = new Set(titles.map((title) => title.trim()).filter((title) => title.length > 0));
+  const wanted = new Set(titles.map(normalizeWorkTitle).filter((title) => title.length > 0));
   for (const [name, entry] of Object.entries(descriptions)) {
-    if ([name, ...(entry.aliases ?? [])].some((candidate) => wanted.has(candidate.trim()))) {
+    if ([name, ...(entry.aliases ?? [])].some((candidate) => wanted.has(normalizeWorkTitle(candidate)))) {
       return entry.modifier;
     }
   }
   return null;
 }
 
-function findCharacterOwner(notices: string[], owners: CharacterOwner[]): string | null {
-  const text = notices.join('\n').toLowerCase();
+/** 著作権表記に当たる持ち主。2 つ以上の持ち主に当たったら、どちらか決められないので null (推測しない) */
+function findCharacterOwner(notice: string | null | undefined, owners: CharacterOwner[]): string | null {
+  const text = notice?.toLowerCase() ?? '';
   if (!text) return null;
-  const hit = owners.find((entry) => entry.patterns.some((pattern) => text.includes(pattern.toLowerCase())));
-  return hit?.owner ?? null;
+  const hits = owners.filter((entry) => entry.patterns.some((pattern) => text.includes(pattern.toLowerCase())));
+  return hits.length === 1 ? hits[0].owner : null;
 }
 
 /** 選んだ形のキーと、その形に埋めた文 (どの形に落ちたかをログとテストで見るため、キーも返す) */
@@ -126,7 +138,7 @@ export function buildLeadModifier(
   if (mediaType === 'movie') return fill('film');
 
   if (sourceType === 'character_brand') {
-    const owner = findCharacterOwner(facts.著作権表記 ?? [], dictionaries.characterOwners);
+    const owner = findCharacterOwner(facts.著作権表記, dictionaries.characterOwners);
     return owner ? fill('character_owner', { owner }) : fill('character');
   }
 
@@ -142,7 +154,7 @@ export function buildLeadModifier(
   }
 
   if (mediaType === 'manga') {
-    return fill('source_work', { authors, medium: medium ?? dictionaries.mediaTypeLabel(mediaType) });
+    return fill('source_work', { authors, medium: medium ?? dictionaries.mediaFormLabel(null, mediaType) });
   }
 
   if (ANIME_MEDIA_TYPES.has(mediaType)) {
@@ -156,5 +168,5 @@ export function buildLeadModifier(
     return fill('anime_generic', { anime });
   }
 
-  return fill('media_generic', { media: dictionaries.mediaTypeLabel(mediaType) });
+  return fill('media_generic', { media: dictionaries.mediaFormLabel(sourceType, mediaType) });
 }

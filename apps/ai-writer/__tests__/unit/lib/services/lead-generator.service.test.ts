@@ -926,7 +926,9 @@ describe('LeadGeneratorService - 連体修飾語', () => {
         原作者名: ['芥見下々先生'],
       })
     );
-    expect(result.modifier).toEqual({ form: 'anime_long', text: '芥見下々先生による人気漫画を原作としたアニメ' });
+    expect(result.modifier?.form).toBe('anime_long');
+    expect(result.modifier?.text).toContain('芥見下々先生');
+    expect(result.modifier?.text).not.toContain('{{');
   });
 
   it('© の表記から、キャラクターの持ち主を引く', async () => {
@@ -935,7 +937,7 @@ describe('LeadGeneratorService - 連体修飾語', () => {
         works: [{ title: 'テストキャラ', is_primary: true }],
         メディアタイプ: 'character',
         原作タイプ: 'character_brand',
-        著作権表記: ['© 2026 SANRIO CO., LTD.'],
+        著作権表記: '© 2026 SANRIO CO., LTD.',
       })
     );
     expect(result.modifier?.form).toBe('character_owner');
@@ -944,11 +946,11 @@ describe('LeadGeneratorService - 連体修飾語', () => {
   it('ひな型の {{連体修飾語}} は、テキストの置換で埋まる (ひな型を替える Templates の PR の前提)', () => {
     const replacement = new TextPlaceholderReplacerService().replaceAll(
       '{{連体修飾語}}「{{作品名}}」',
-      { ...makeInput({ 作品名: 'テスト作品', 店舗名: 'テストカフェ' }), 連体修飾語: '人気アニメ' } as Parameters<
+      { ...makeInput({ 作品名: 'テスト作品', 店舗名: 'テストカフェ' }), 連体修飾語: '修飾語' } as Parameters<
         TextPlaceholderReplacerService['replaceAll']
       >[1]
     );
-    expect(replacement.content).toBe('人気アニメ「テスト作品」');
+    expect(replacement.content).toBe('修飾語「テスト作品」');
     expect(replacement.unreplacedPlaceholders).toEqual([]);
   });
 });

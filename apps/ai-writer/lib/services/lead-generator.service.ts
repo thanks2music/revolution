@@ -99,8 +99,8 @@ export interface LeadGeneratorInput {
   公式サイトURL?: string | null;
 
   // 連体修飾語 (作品名の前の語句) の材料
-  /** 公式サイトの著作権表記 (© …)。キャラクターの持ち主を引く */
-  著作権表記?: string[];
+  /** primary の作品の著作権表記 (抽出のコピーライト)。キャラクターの持ち主を引く。ページ全体の © は渡さない */
+  著作権表記?: string | null;
   /** アイドル・YouTuber・VTuber がグループか個人か (ページに書いてある時だけ) */
   グループ区分?: 'group' | 'solo' | null;
   /** アイドルの性別 (ページに書いてある時だけ) */
@@ -310,7 +310,7 @@ export class LeadGeneratorService {
         workDescriptions: loadWorkDescriptions(configDir),
         characterOwners: loadCharacterOwners(configDir),
         originalTypeLabels: this.deps.mediaFormResolver.getOriginalTypeLabels(),
-        mediaTypeLabel: (mediaType) => this.deps.mediaTypeMapper.getLabel(mediaType),
+        mediaFormLabel: (sourceType, mediaType) => this.deps.mediaFormResolver.resolve(sourceType, mediaType),
       },
     };
     return this.modifierConfig;
@@ -512,7 +512,7 @@ export class LeadGeneratorService {
       usedTemplate: LEAD_FALLBACK_TEMPLATE_ID,
       fallbackReason: reason,
       slots: parsed,
-      modifier: { form: enriched.連体修飾語の形, text: enriched.連体修飾語 },
+      // LLM が書いた文には連体修飾語が入らないので、modifier は返さない (ログで使われた形と誤解させない)
     };
   }
 

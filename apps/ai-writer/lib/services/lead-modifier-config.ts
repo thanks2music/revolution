@@ -15,26 +15,43 @@ import yaml from 'js-yaml';
 import { z } from 'zod';
 
 import type { CharacterOwner, LeadModifierFormat, WorkDescription } from './lead-modifier';
-import { LEAD_MODIFIER_KEYS } from './lead-modifier';
+import { LEAD_MODIFIER_KEYS, normalizeWorkTitle } from './lead-modifier';
 import { loadChecked, loadSectionYaml } from './section-renderers';
 
 const NonEmpty = z.string().min(1);
 
+// 中身が空の辞書 (`work_descriptions:` だけ = YAML の null) は、空として読む
 export const WorkDescriptionsSchema = z.object({
-  work_descriptions: z.record(
-    NonEmpty,
-    z.object({ modifier: NonEmpty, aliases: z.array(NonEmpty).optional() })
-  ),
+  work_descriptions: z
+    .record(NonEmpty, z.object({ modifier: NonEmpty, aliases: z.array(NonEmpty).optional() }))
+    .nullable()
+    .transform((value) => value ?? {}),
 });
 
 export const CharacterOwnersSchema = z.object({
-  character_owners: z.array(z.object({ owner: NonEmpty, patterns: z.array(NonEmpty).min(1) })),
+  character_owners: z
+    .array(z.object({ owner: NonEmpty, patterns: z.array(NonEmpty).min(1) }))
+    .nullable()
+    .transform((value) => value ?? []),
 });
+
+/** `fallback_prompt` の {{…}} に使ってよい名前 (LeadGeneratorService が埋める物だけ。ほかは空で LLM に届くため止める) */
+export const LEAD_FALLBACK_PROMPT_KEYS = [
+  '作品名',
+  '店舗名',
+  'メディアタイプ',
+  '原作タイプ',
+  '原作者名',
+  'キャラクター名',
+  'メディア形態表記',
+  '複数作品コラボ',
+  '理由',
+] as const;
 
 export const WORK_DESCRIPTIONS_FILE = 'work-descriptions.yaml';
 export const CHARACTER_OWNERS_FILE = 'character-owners.yaml';
 
-function readConfig<T>(configDir: string, file: string, schema: z.ZodType<T>): T {
+function readConfig<T>(configDir: string, file: string, schema: z.ZodType<T, unknown>): T {
   const filePath = path.join(configDir, file);
   if (!fs.existsSync(filePath)) {
     throw new Error(`${filePath} がありません。pnpm sync:templates で Templates を同期してください`);
@@ -53,7 +70,7 @@ export function loadWorkDescriptions(configDir: string): Record<string, WorkDesc
   const { work_descriptions } = readConfig(configDir, WORK_DESCRIPTIONS_FILE, WorkDescriptionsSchema);
   const owners = new Map<string, string>();
   for (const [name, entry] of Object.entries(work_descriptions)) {
-    for (const label of [name, ...(entry.aliases ?? [])].map((value) => value.trim())) {
+    for (const label of [name, ...(entry.aliases ?? [])].map(normalizeWorkTitle)) {
       const other = owners.get(label);
       if (other !== undefined && other !== name) {
         throw new Error(`${WORK_DESCRIPTIONS_FILE}: 「${label}」が「${other}」と「${name}」の両方にあります`);
@@ -76,8 +93,14 @@ export function loadLeadModifierFormat(sectionsDir: string): LeadModifierFormat 
 /** `01-lead.yaml` の `fallback_prompt` (LLM フォールバックのプロンプト。{{…}} は呼び出し側が埋める) */
 export function loadLeadFallbackPrompt(sectionsDir: string): string {
   const prompt = loadSectionYaml<unknown>('01-lead.yaml', 'fallback_prompt', sectionsDir);
+  const file = path.join(sectionsDir, '01-lead.yaml');
   if (typeof prompt !== 'string' || prompt.trim() === '') {
-    throw new Error(`${path.join(sectionsDir, '01-lead.yaml')} の fallback_prompt が空です`);
+    throw new Error(`${file} の fallback_prompt が空です`);
+  }
+  const allowed = new Set<string>(LEAD_FALLBACK_PROMPT_KEYS);
+  const unknown = [...prompt.matchAll(/\{\{([^{}]+)\}\}/g)].map((match) => match[1].trim()).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`${file} の fallback_prompt に、Revolution が埋めない {{${unknown.join('}} / {{')}}} があります`);
   }
   return prompt;
 }
