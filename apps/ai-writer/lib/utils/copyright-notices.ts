@@ -5,12 +5,27 @@
  * ヒロアカは JavaScript の文字列 (`const newText = '©堀越耕平／集英社・…'`)、コナンはフッターの `<address>` にある。
  * それでも記事に原作者名が入った回は、LLM が自分の知識で補っていた (推測で埋めない、の方針に反する)。
  *
- * - `extractCopyrightNotices`: 圧縮前の HTML から © の表記を取り出す (抽出のプロンプトに渡す)
+ * - `extractCopyrightNotices`: 圧縮前の HTML から © の表記を取り出す (抽出のプロンプトに渡す)。
+ *   Inertia.js のサイトは `data-page` の JSON の `"copyright"` に © を付けずに持ち、画面でだけ © を付ける (BANANA FISH)。
+ *   その値も © の表記として読む
  * - `keepSupportedAuthors`: 抽出した原作者名のうち、著作権表記かページの本文に出てくる名前だけを残す
  */
 
 /** © (文字・実体参照・JS のエスケープ) の後ろ、タグ・引用符・改行の手前まで */
 const COPYRIGHT = /(?:©|&copy;|&#169;|&#xa9;|\\u00a9)\s*([^<>'"`\n\r\\]{2,120})/gi;
+/** JSON の `"copyright": "…"` (Inertia の data-page。属性の中なので引用符は &quot; のこともある) */
+const JSON_COPYRIGHT = /"copyright"\s*:\s*"((?:[^"\\]|\\.){2,200})"/gi;
+
+/** JSON の文字列の中身 (エスケープ付き) を文字に戻す。壊れていれば null */
+function parseJsonString(body: string): string | null {
+  try {
+    const value: unknown = JSON.parse(`"${body}"`);
+    return typeof value === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 表記に残りやすい実体参照を文字に戻す */
 function decodeEntities(text: string): string {
   return text
@@ -32,12 +47,17 @@ const HOLDER_SEPARATOR = /[/／]/;
  */
 export function extractCopyrightNotices(rawHtml: string): string[] {
   const notices: string[] = [];
-  for (const match of rawHtml.matchAll(COPYRIGHT)) {
-    const body = decodeEntities(match[1]).replace(/\s+/g, ' ').trim();
+  const add = (raw: string) => {
+    const body = raw.replace(/^\s*(?:©|\(c\))\s*/i, '').replace(/\s+/g, ' ').trim();
     // 数字だけ (© 2026) や記号だけの表記は名前を持たない
-    if (!/[^\d\s.,\-–—/／]/.test(body)) continue;
+    if (!/[^\d\s.,\-–—/／]/.test(body)) return;
     const notice = `©${body}`;
     if (!notices.includes(notice)) notices.push(notice);
+  };
+  for (const match of rawHtml.matchAll(COPYRIGHT)) add(decodeEntities(match[1]));
+  for (const match of decodeEntities(rawHtml).matchAll(JSON_COPYRIGHT)) {
+    const value = parseJsonString(match[1]);
+    if (value) add(value);
   }
   const rank = (notice: string) => (HOLDER_SEPARATOR.test(notice) ? 0 : 1);
   return notices
