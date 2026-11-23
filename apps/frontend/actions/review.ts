@@ -43,6 +43,7 @@ import {
   modeFor,
   resolveWriteContext,
   screenAfterSubmit,
+  unpublishReviewPhotos,
   type WriteContextFailure,
 } from '@/lib/reviews/write-context';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -302,8 +303,11 @@ export async function deleteReview(
       reviewId,
     });
     if (outcome.kind === 'not_found') return FAILURES.notFound;
-    // 公開中だった口コミは集計からも外れるので、ページを作り直す
-    if (outcome.wasPublished) for (const path of paths) revalidatePath(path);
+    // 公開中だった口コミは集計からも外れるので、ページを作り直し、配信側の写真を応答の後に消す
+    if (outcome.wasPublished) {
+      for (const path of paths) revalidatePath(path);
+      after(() => unpublishReviewPhotos(admin, reviewId));
+    }
     return { ok: true };
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'deleteReview' } });

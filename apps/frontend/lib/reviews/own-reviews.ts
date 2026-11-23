@@ -4,10 +4,16 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 
-import { REVIEW_REASON_CODES, REVIEW_STATUSES } from '@revolution/schemas/review';
+import {
+  REVIEW_REASON_CODES,
+  REVIEW_SCREENING_REASONS,
+  REVIEW_STATUSES,
+  type ReviewScreeningReason,
+} from '@revolution/schemas/review';
 
 import type { ReviewRouteParams } from '@/actions/review';
 import { todayInJst } from '@/lib/occurrence/status';
+import { storedVariantKey, type ReviewPhotoStorage } from '@/lib/reviews/photos/storage';
 import {
   REVIEW_TARGET_COLUMNS,
   ReviewTargetRowSchema,
@@ -34,6 +40,18 @@ const OwnReviewListRowSchema = z.object({
   reason_code: z.enum(REVIEW_REASON_CODES).nullable().catch(null),
   reason_note: z.string().nullable(),
   updated_at: z.string(),
+  // 写真ごとの非公開 (one-more-time #164)。本人にだけ、その写真と理由を見せる
+  review_images: z
+    .array(
+      z.object({
+        id: z.number(),
+        object_key: z.string(),
+        variant_widths: z.array(z.number()),
+        sort_order: z.number(),
+        hidden_reason_code: z.enum(REVIEW_SCREENING_REASONS).nullable().catch(null),
+      })
+    )
+    .default([]),
   // 開催は 7-0 の行と同じ列で読む (picker.ts)
   occurrence: ReviewTargetRowSchema,
 });
@@ -47,20 +65,32 @@ export type OwnReviewListItem = {
   reasonCode: z.infer<typeof OwnReviewListRowSchema>['reason_code'];
   reasonNote: string | null;
   updatedAt: string;
+  /** 審査で非公開になった写真 (公開中の口コミだけ。本人が見る短時間の URL と理由) */
+  hiddenPhotos: OwnHiddenPhoto[];
   /** 開催 (名前・会場・URL・状態)。canWrite は「この口コミを直せるか」(中止になった開催の下書きなどは false) */
   target: ReviewTarget;
   /** 削除の action に渡す開催の道筋 (URL の種別・企画 ID・開催の slug) */
   route: ReviewRouteParams;
 };
 
+export type OwnHiddenPhoto = {
+  id: number;
+  /** サムネイル (一番小さい段の WebP。保管側の短時間だけ有効な URL) */
+  src: string;
+  reasonCode: ReviewScreeningReason;
+};
+
 const SELECT =
   'id, status, rating, visited_on, helpful_count, reason_code, reason_note, updated_at, ' +
+  'review_images(id, object_key, variant_widths, sort_order, hidden_reason_code), ' +
   `occurrence:occurrence_view!occurrence_id!inner(${REVIEW_TARGET_COLUMNS}, verified)`;
 
 /** 会員の口コミを、新しく書き換えた順に返す */
 export async function listOwnReviews(
   db: SupabaseClient,
-  profileId: string
+  profileId: string,
+  /** 非公開の写真のサムネイルの URL を作る置き場所 (無ければ非公開の写真は出さない) */
+  storage: ReviewPhotoStorage | null = null
 ): Promise<OwnReviewListItem[]> {
   const { data, error } = await db
     .from('reviews')
@@ -91,6 +121,10 @@ export async function listOwnReviews(
       reasonCode: row.reason_code,
       reasonNote: row.reason_note,
       updatedAt: row.updated_at,
+      hiddenPhotos:
+        row.status === 'published' && storage
+          ? await hiddenPhotosOf(row.review_images, storage)
+          : [],
       target: toTarget(row.occurrence, today, { status: row.status, visitedOn: row.visited_on }),
       route: {
         eventType: row.occurrence.events.primaryCategory.slug,
@@ -100,4 +134,23 @@ export async function listOwnReviews(
     });
   }
   return items;
+}
+
+/** 非公開になった写真を、並びの順に本人が見る URL つきで返す */
+async function hiddenPhotosOf(
+  images: z.infer<typeof OwnReviewListRowSchema>['review_images'],
+  storage: ReviewPhotoStorage
+): Promise<OwnHiddenPhoto[]> {
+  const hidden = images
+    .filter(image => image.hidden_reason_code !== null)
+    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  return Promise.all(
+    hidden.map(async image => ({
+      id: image.id,
+      src: await storage.presignStoredRead(
+        storedVariantKey(image.object_key, Math.min(...image.variant_widths), 'webp')
+      ),
+      reasonCode: image.hidden_reason_code as ReviewScreeningReason,
+    }))
+  );
 }

@@ -62,7 +62,7 @@ async function main() {
     let failures = 0;
     const misses: string[] = [];
     for (const [index, sample] of samples.entries()) {
-      const result = await screener.screen({ body: sample.body || null });
+      const result = await screener.screen({ body: sample.body || null, photos: [] });
       const got = !result.ok
         ? `failure(${result.error})`
         : result.decision === 'reject'

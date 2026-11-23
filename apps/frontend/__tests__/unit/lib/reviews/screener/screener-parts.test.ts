@@ -86,10 +86,38 @@ describe('createFakeScreener', () => {
     ['[fail]', { ok: false }],
     ['[reject:typo] 書き間違い', { ok: false }],
   ])('%s', async (body, expected) => {
-    await expect(screener.screen({ body })).resolves.toMatchObject({
+    await expect(screener.screen({ body, photos: [] })).resolves.toMatchObject({
       ...expected,
       model: FAKE_SCREENER_MODEL,
     });
+  });
+});
+
+describe('createFakeScreener の写真の目印 (one-more-time #164)', () => {
+  const photo = { data: new Uint8Array([1]), mimeType: 'image/webp' };
+
+  it('[hide-photo:N:理由] はその写真だけを非公開、[unsure-photo:N] は迷った。ほかは ok', async () => {
+    const result = await createFakeScreener().screen({
+      body: '楽しかった [hide-photo:2:abuse] [unsure-photo:3]',
+      photos: [photo, photo, photo],
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      decision: 'publish',
+      photos: [
+        { decision: 'ok', reasonCode: null },
+        { decision: 'hide', reasonCode: 'abuse' },
+        { decision: 'unsure', reasonCode: null },
+      ],
+    });
+  });
+
+  it('知らない理由の hide は目印として扱わない (ok のまま)', async () => {
+    const result = await createFakeScreener().screen({
+      body: '[hide-photo:1:typo]',
+      photos: [photo],
+    });
+    expect(result).toMatchObject({ photos: [{ decision: 'ok', reasonCode: null }] });
   });
 });
 
@@ -128,7 +156,7 @@ describe('getReviewScreener', () => {
     async nodeEnv => {
       const screener = await getReviewScreener({ REVIEW_SCREENER: 'fake', NODE_ENV: nodeEnv });
 
-      await expect(screener.screen({ body: 'x' })).resolves.toMatchObject({
+      await expect(screener.screen({ body: 'x', photos: [] })).resolves.toMatchObject({
         model: FAKE_SCREENER_MODEL,
       });
     }
@@ -141,7 +169,10 @@ describe('getReviewScreener', () => {
       VERCEL_ENV: 'preview',
     });
 
-    await expect(screener.screen({ body: 'x' })).resolves.toMatchObject({ ok: false, model: null });
+    await expect(screener.screen({ body: 'x', photos: [] })).resolves.toMatchObject({
+      ok: false,
+      model: null,
+    });
   });
 
   it('本番では REVIEW_SCREENER=fake を無視する (鍵が無いので必ず失敗し、公開されない)', async () => {
@@ -151,7 +182,7 @@ describe('getReviewScreener', () => {
       VERCEL_ENV: 'production',
     });
 
-    await expect(screener.screen({ body: 'x' })).resolves.toEqual({
+    await expect(screener.screen({ body: 'x', photos: [] })).resolves.toEqual({
       ok: false,
       error: 'GEMINI_API_KEY is not set',
       model: null,
@@ -174,7 +205,7 @@ describe('getReviewScreener', () => {
     const env = { GEMINI_API_KEY: 'test-key' };
 
     const failing = await getReviewScreener(env, { templatesDir: dir });
-    await expect(failing.screen({ body: 'x' })).resolves.toMatchObject({ ok: false });
+    await expect(failing.screen({ body: 'x', photos: [] })).resolves.toMatchObject({ ok: false });
     await mkdir(path.join(dir, 'reviews'));
     await writeFile(path.join(dir, 'reviews', 'screening.yaml'), VALID);
     expect(await getReviewScreener(env, { templatesDir: dir })).not.toBe(failing);
@@ -188,7 +219,7 @@ describe('getReviewScreener', () => {
       { templatesDir: emptyDir }
     );
 
-    await expect(screener.screen({ body: 'x' })).resolves.toEqual({
+    await expect(screener.screen({ body: 'x', photos: [] })).resolves.toEqual({
       ok: false,
       error: 'screening prompt is missing or invalid',
       model: null,
@@ -213,6 +244,7 @@ describe('ReviewScreeningResponseSchema', () => {
         decision: 'publish',
         reason_code: null,
         reason: 'あ'.repeat(2000),
+        photos: [],
       }).success
     ).toBe(true);
   });

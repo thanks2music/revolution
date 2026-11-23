@@ -1,5 +1,8 @@
 import type { ReviewScreeningReason } from '@revolution/schemas/review';
-import type { ReviewScreeningDecision } from '@revolution/schemas/review-screening-response';
+import type {
+  ReviewPhotoScreeningDecision,
+  ReviewScreeningDecision,
+} from '@revolution/schemas/review-screening-response';
 
 /**
  * 口コミの審査器の口 (仕様: 差し替えのできる 3 つの口の 1 つ)。
@@ -17,6 +20,20 @@ export interface ReviewScreener {
 export interface ReviewScreeningInput {
   /** 本文 (無ければ null。星などだけの口コミも審査に回す) */
   body: string | null;
+  /** 付けた写真 (並びの順。変換した表示用の物)。無ければ空 */
+  photos: ReviewScreeningPhoto[];
+}
+
+export interface ReviewScreeningPhoto {
+  data: Uint8Array;
+  mimeType: string;
+}
+
+/** 写真 1 枚の判定 (入力の写真と同じ順) */
+export interface ReviewPhotoScreening {
+  decision: ReviewPhotoScreeningDecision;
+  /** hide の時の理由 (審査の 4 種) */
+  reasonCode: ReviewScreeningReason | null;
 }
 
 export type ReviewScreeningResult =
@@ -29,6 +46,8 @@ export type ReviewScreeningResult =
       reason: string;
       /** 使ったモデル (AI の記録に残す) */
       model: string;
+      /** 写真ごとの判定 (入力の写真と同じ数・同じ順) */
+      photos: ReviewPhotoScreening[];
     }
   | {
       ok: false;

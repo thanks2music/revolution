@@ -4,7 +4,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { ReviewReasonCode, ReviewStatus } from '@revolution/schemas/review';
 
-import type { ReviewScreener, ReviewScreeningResult } from './screener/types';
+import { syncPhotoDelivery } from './photos/delivery';
+import { storedVariantKey, type ReviewPhotoStorage } from './photos/storage';
+import type {
+  ReviewPhotoScreening,
+  ReviewScreener,
+  ReviewScreeningPhoto,
+  ReviewScreeningResult,
+} from './screener/types';
 
 /**
  * 口コミの操作の層 (仕様: 審査・管理・通報の 3 つの入口が同じ関数を通る)。
@@ -16,6 +23,8 @@ import type { ReviewScreener, ReviewScreeningResult } from './screener/types';
  *   内容を変えて提出し直すと `submitted_at` が変わり、古い本文の審査結果で上書きしない
  * - 審査中でない口コミには何もしない (二重の実行や、管理画面で先に判断された物)
  * - 審査器は例外を投げない。失敗は「AI 審査の失敗」として BOSS の確認待ちに回す
+ * - 写真 (one-more-time #164): 本文と一緒に写真も審査する。1 枚だけ問題なら、その写真だけを非公開にして
+ *   口コミは公開する。迷った写真があれば、口コミごと BOSS の確認待ちにする。書いた後に配信側を合わせる
  */
 
 export type ScreenReviewOutcome =
@@ -38,6 +47,21 @@ type ScreeningWrite = {
 
 /** 審査器の結果を、口コミに書く値にする */
 export function toScreeningWrite(result: ReviewScreeningResult): ScreeningWrite {
+  // 迷った写真があれば、本文が通っても公開しない (写真の判断を BOSS に回す)
+  if (result.ok && result.decision === 'publish') {
+    const unsure = result.photos.flatMap((photo, i) =>
+      photo.decision === 'unsure' ? [i + 1] : []
+    );
+    if (unsure.length > 0) {
+      return {
+        status: 'needs_review',
+        reason_code: null,
+        ai_reason: `${result.reason} (写真 ${unsure.join('・')} は判断に迷った)`,
+        ai_error: null,
+        ai_model: result.model,
+      };
+    }
+  }
   if (!result.ok) {
     return {
       status: 'needs_review',
@@ -58,9 +82,61 @@ export function toScreeningWrite(result: ReviewScreeningResult): ScreeningWrite 
   }
 }
 
+/** 審査に渡す写真の幅 (作った段のうち、これ以下で一番大きい物。無ければ一番小さい物) */
+const SCREENING_PHOTO_WIDTH = 720;
+
+type PhotoRow = { id: number; object_key: string; variant_widths: number[] };
+
+function screeningVariantKey(row: PhotoRow): string {
+  const widths = [...row.variant_widths].sort((a, b) => a - b);
+  const width = widths.filter(w => w <= SCREENING_PHOTO_WIDTH).pop() ?? widths[0];
+  return storedVariantKey(row.object_key, width, 'webp');
+}
+
+/** 審査に渡す写真を読む。置き場所が無い・読めない写真があれば null (審査を失敗として扱う) */
+async function readScreeningPhotos(
+  rows: PhotoRow[],
+  storage: ReviewPhotoStorage | null
+): Promise<ReviewScreeningPhoto[] | null> {
+  if (rows.length === 0) return [];
+  if (!storage) return null;
+  const bodies = await Promise.all(rows.map(row => storage.readStored(screeningVariantKey(row))));
+  if (bodies.some(body => body === null)) return null;
+  return bodies.map(data => ({ data: data as Uint8Array, mimeType: 'image/webp' }));
+}
+
+/** 写真ごとの非公開を書く (hide の写真に印と理由、それ以外は印を外す) */
+async function writePhotoJudgements(
+  db: SupabaseClient,
+  rows: PhotoRow[],
+  photos: ReviewPhotoScreening[],
+  at: string
+): Promise<void> {
+  const results = await Promise.all(
+    rows.map((row, i) => {
+      const hide = photos[i]?.decision === 'hide';
+      return db
+        .from('review_images')
+        .update({
+          hidden_at: hide ? at : null,
+          hidden_reason_code: hide ? photos[i].reasonCode : null,
+        })
+        .eq('id', row.id);
+    })
+  );
+  const failed = results.find(result => result.error);
+  if (failed?.error) throw failed.error;
+}
+
 export async function screenSubmittedReview(
   reviewId: number,
-  deps: { screener: ReviewScreener; db: SupabaseClient; now?: () => Date }
+  deps: {
+    screener: ReviewScreener;
+    db: SupabaseClient;
+    /** 写真の置き場所 (写真を審査に渡し、配信側を合わせる)。無ければ写真のある口コミは審査の失敗 */
+    storage?: ReviewPhotoStorage | null;
+    now?: () => Date;
+  }
 ): Promise<ScreenReviewOutcome> {
   const { data: review, error: readError } = await deps.db
     .from('reviews')
@@ -71,12 +147,30 @@ export async function screenSubmittedReview(
   if (!review || review.deleted_at) return { kind: 'skipped', reason: 'not_found' };
   if (review.status !== 'pending') return { kind: 'skipped', reason: 'not_pending' };
 
-  const result = await deps.screener.screen({ body: review.body });
+  const { data: photoRows, error: photoError } = await deps.db
+    .from('review_images')
+    .select('id, object_key, variant_widths')
+    .eq('review_id', reviewId)
+    .order('sort_order', { ascending: true })
+    .order('id', { ascending: true });
+  if (photoError) throw photoError;
+  const rows = (photoRows ?? []) as PhotoRow[];
+  const photos = await readScreeningPhotos(rows, deps.storage ?? null);
+
+  const result: ReviewScreeningResult = photos
+    ? await deps.screener.screen({ body: review.body, photos })
+    : { ok: false, error: 'review photos could not be read', model: null };
   const write = toScreeningWrite(result);
+  const screenedAt = (deps.now?.() ?? new Date()).toISOString();
+  // 写真の印は状態より先に書く (公開になった時点で、非公開の写真の印が揃っているように)。
+  // 審査中の口コミの写真は誰にも公開されないので、この後の書き込みが負けても害は無い
+  if (result.ok && write.status === 'published') {
+    await writePhotoJudgements(deps.db, rows, result.photos, screenedAt);
+  }
 
   const { data: updated, error: writeError } = await deps.db
     .from('reviews')
-    .update({ ...write, ai_screened_at: (deps.now?.() ?? new Date()).toISOString() })
+    .update({ ...write, ai_screened_at: screenedAt })
     .eq('id', reviewId)
     .eq('status', 'pending')
     .eq('submitted_at', review.submitted_at)
@@ -84,6 +178,9 @@ export async function screenSubmittedReview(
     .select('id');
   if (writeError) throw writeError;
   if (!updated || updated.length === 0) return { kind: 'skipped', reason: 'superseded' };
+
+  // 公開になった写真を配信側へ。公開にならなかった時も呼ぶ (公開中からの編集で残った物を消す)
+  if (deps.storage) await syncPhotoDelivery({ db: deps.db, storage: deps.storage }, reviewId);
 
   return { kind: 'screened', status: write.status, occurrenceId: review.occurrence_id };
 }

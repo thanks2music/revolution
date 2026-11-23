@@ -83,26 +83,35 @@ export const reviewImages = pgTable(
     height: integer('height').notNull(),
     // 作った表示用の幅。小さい写真は大きい段を作らないので、写真ごとに違う (0021)
     variantWidths: smallint('variant_widths').array().notNull(),
+    // 写真ごとの非公開 (0023、one-more-time #164)。審査で 1 枚だけ問題があった時に、口コミは公開して
+    // この写真だけを出さない。理由は本人にだけ見せる。両方とも空か、両方とも入る
+    hiddenAt: timestamp('hidden_at', { withTimezone: true }),
+    hiddenReasonCode: text('hidden_reason_code'),
     // 孤児画像回収ジョブ用。
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
+  table => [
     // ★ RLS の全 policy が依存する。
     index('review_images_review_idx').on(table.reviewId),
     // 1 つの写真に 1 行 (同じ写真の取り込みが 2 回走っても、行は 1 つ。0021)
     uniqueIndex('review_images_object_key_unique').on(table.objectKey),
     // Layer2: DB CHECK。空白のみのオブジェクトキーを拒否 (Unicode-aware)。
-    check(
-      'review_images_object_key_not_blank',
-      sql`btrim(${table.objectKey}, E' \t\n\r　') <> ''`,
-    ),
+    check('review_images_object_key_not_blank', sql`btrim(${table.objectKey}, E' \t\n\r　') <> ''`),
     check('review_images_sort_order_chk', sql`${table.sortOrder} >= 0`),
     check('review_images_size_chk', sql`${table.width} > 0 AND ${table.height} > 0`),
     check(
-      'review_images_variant_widths_chk',
-      sql`cardinality(${table.variantWidths}) > 0 AND 0 < ALL (${table.variantWidths})`,
+      'review_images_hidden_reason_chk',
+      sql`${table.hiddenReasonCode} IS NULL OR ${table.hiddenReasonCode} IN ('personal_info', 'abuse', 'spam', 'resale')`
     ),
-  ],
+    check(
+      'review_images_hidden_pair_chk',
+      sql`(${table.hiddenAt} IS NULL) = (${table.hiddenReasonCode} IS NULL)`
+    ),
+    check(
+      'review_images_variant_widths_chk',
+      sql`cardinality(${table.variantWidths}) > 0 AND 0 < ALL (${table.variantWidths})`
+    ),
+  ]
 );
 
 export type ReviewImageRow = typeof reviewImages.$inferSelect;
