@@ -17,7 +17,7 @@ import type {
   ReviewGoodsCostBand,
   ReviewReasonCode,
   ReviewScreeningReason,
-} from '@revolution/schemas/review';
+} from '@revolution/schemas/review-constants';
 
 import {
   publishReview,

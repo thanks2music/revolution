@@ -1,5 +1,5 @@
 import type { ReviewQueueItem } from '@revolution/reviews/moderation';
-import type { ReviewScreeningReason } from '@revolution/schemas/review';
+import type { ReviewScreeningReason } from '@revolution/schemas/review-constants';
 
 /**
  * 管理アプリの表示の言葉 (Figma 13〜16、135:409)。DB と操作の層 (shared/reviews/moderation.ts) の値を、

@@ -16,7 +16,7 @@ import {
   type ReviewAttendance,
   type ReviewFoodCostBand,
   type ReviewGoodsCostBand,
-} from '@revolution/schemas/review';
+} from '@revolution/schemas/review-constants';
 
 import {
   saveReviewDraft,

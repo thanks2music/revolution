@@ -1,10 +1,11 @@
-import type {
-  ReviewAttendance,
-  ReviewFoodCostBand,
-  ReviewGoodsCostBand,
-  ReviewReasonCode,
-  ReviewScreeningReason,
-} from '@revolution/schemas/review';
+import {
+  REVIEW_SCREENING_REASONS,
+  type ReviewAttendance,
+  type ReviewFoodCostBand,
+  type ReviewGoodsCostBand,
+  type ReviewReasonCode,
+  type ReviewScreeningReason,
+} from '@revolution/schemas/review-constants';
 
 /**
  * 口コミの画面に出す言葉 (Figma #7 / #3)。値の一覧は `shared/schemas/review.ts` が正本で、
@@ -65,11 +66,7 @@ export function formatVisitedMonth(visitedMonth: string): string {
  * マイページと開催のページの本人の欄の両方が使う
  */
 export function toScreeningReason(code: ReviewReasonCode | null): ReviewScreeningReason | null {
-  // 4 種の一覧は REJECTION_REASON_LABELS のキーから取る (Record で 4 種を網羅している)。
-  // @revolution/schemas/review を値で読むと、DB の表の定義までブラウザに載るため型だけを読む
-  return code !== null && Object.hasOwn(REJECTION_REASON_LABELS, code)
-    ? (code as ReviewScreeningReason)
-    : null;
+  return REVIEW_SCREENING_REASONS.find(reason => reason === code) ?? null;
 }
 
 /** 「行った人のデータ」の棒グラフに出す短い言葉 (Figma #3 `83:103`) */

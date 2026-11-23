@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 import { REJECTION_REASON_LABELS } from '@revolution/reviews/labels';
-import type { ReviewScreeningReason } from '@revolution/schemas/review';
+import type { ReviewScreeningReason } from '@revolution/schemas/review-constants';
 
 import { SCREENING_REASON_OPTIONS } from '@/lib/moderation/format';
 
