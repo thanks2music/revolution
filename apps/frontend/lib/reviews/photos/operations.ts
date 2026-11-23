@@ -18,10 +18,11 @@ import { rescreensOnPhotoAdd } from '@/lib/reviews/eligibility';
 import { convertReviewPhoto, type ConvertReviewPhotoFailure } from './convert';
 import {
   photoKey,
-  REVIEW_PHOTO_FORMATS,
   storedVariantKey,
+  toPhotoView,
   variantKeys,
   type ReviewPhotoStorage,
+  type ReviewPhotoView,
 } from './storage';
 
 /**
@@ -40,17 +41,7 @@ export type PhotoContext = {
 };
 
 /** 本人に見せる写真 1 枚。URL は短時間だけ有効 */
-export type OwnReviewPhoto = {
-  id: number;
-  width: number;
-  height: number;
-  /** `<source type="image/avif" srcset>` に入れる */
-  avifSrcSet: string;
-  /** `<img srcset>` に入れる (WebP) */
-  webpSrcSet: string;
-  /** `<img src>` に入れる (最大の段の WebP) */
-  src: string;
-};
+export type OwnReviewPhoto = ReviewPhotoView;
 
 const PhotoRowSchema = z.object({
   id: z.number(),
@@ -342,28 +333,11 @@ export async function listOwnPhotos(
 }
 
 async function toOwnPhoto(storage: ReviewPhotoStorage, row: PhotoRow): Promise<OwnReviewPhoto> {
-  // 段 × 形式の URL をまとめて作る (R2 の署名は手元の計算だけ)
-  const [webp, avif] = await Promise.all(
-    REVIEW_PHOTO_FORMATS.map(format =>
-      Promise.all(
-        row.variant_widths.map(async width => ({
-          width,
-          url: await storage.presignStoredRead(storedVariantKey(row.object_key, width, format)),
-        }))
-      )
-    )
-  );
-  const toSrcSet = (urls: { width: number; url: string }[]) =>
-    urls.map(({ width, url }) => `${url} ${width}w`).join(', ');
-  return {
-    id: row.id,
-    width: row.width,
-    height: row.height,
-    avifSrcSet: toSrcSet(avif),
-    webpSrcSet: toSrcSet(webp),
-    // 段は小さい順なので、最後が最大の WebP
-    src: webp[webp.length - 1].url,
-  };
+  // 段 × 形式の URL を先にまとめて署名する (R2 の署名は手元の計算だけ)
+  const keys = variantKeys(row.object_key, row.variant_widths);
+  const urls = await Promise.all(keys.map(key => storage.presignStoredRead(key)));
+  const urlOf = new Map(keys.map((key, i) => [key, urls[i]]));
+  return toPhotoView(row, key => urlOf.get(key)!);
 }
 
 /** 写真を外す。行を消してから、保管側の段を消す (消し損ねても行が無いので見えない) */

@@ -4,10 +4,11 @@ import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 
 import { remainingDays } from '@/lib/occurrence/status';
 import { reviewSectionMode, reviewStateKind } from '@/lib/reviews/eligibility';
-import type { PublicReview } from '@/lib/reviews/queries';
+import type { PublicReview, ReviewGallery as Gallery } from '@/lib/reviews/queries';
 import type { ReviewStats } from '@/lib/reviews/stats';
 
 import { HelpfulProvider } from './HelpfulButton';
+import { ReviewGallery } from './ReviewGallery';
 import { OwnReviewStatus } from './OwnReviewStatus';
 import { ReviewStateCard } from './ReviewStateCard';
 import { ReviewCard } from './ReviewCard';
@@ -19,7 +20,8 @@ import { ReviewStars } from './ReviewStars';
  * 開催のページの口コミの欄 (Figma #3)。評価 (星の平均・件数)・「口コミを書く」・みんなの口コミ (新着順)。
  * 状態ごとの出し方は `reviewSectionMode` (開催前は始まったら書けることだけ、中止・日程未発表は出さない)。
  *
- * 星の分布・行った人のデータ・並び替え (新着順 / 参考になった順)・参考になった は #165。写真・通報は後のチケット。
+ * 星の分布・行った人のデータ・並び替え (新着順 / 参考になった順)・参考になった は #165。写真とギャラリーは #164。
+ * 通報は後のチケット。
  */
 export function OccurrenceReviewsSection(props: {
   occurrenceId: number;
@@ -34,6 +36,7 @@ export function OccurrenceReviewsSection(props: {
   /** 参考になった順 */
   mostHelpful: PublicReview[];
   stats: ReviewStats;
+  gallery: Gallery;
 }) {
   const mode = reviewSectionMode(props.status);
   if (mode === 'none') return null;
@@ -85,17 +88,20 @@ export function OccurrenceReviewsSection(props: {
             {props.reviews.length === 0 ? (
               <p className="text-sm text-ink-muted">まだ口コミはありません。</p>
             ) : (
-              // 会員が押したかどうかは、2 つの一覧の口コミをまとめて 1 回で取る
-              <HelpfulProvider
-                reviewIds={[
-                  ...new Set([...props.reviews, ...props.mostHelpful].map(review => review.id)),
-                ]}
-              >
-                <ReviewSortTabs
-                  latest={<ReviewList reviews={props.reviews} />}
-                  helpful={<ReviewList reviews={props.mostHelpful} />}
-                />
-              </HelpfulProvider>
+              <>
+                <ReviewGallery gallery={props.gallery} />
+                {/* 会員が押したかどうかは、2 つの一覧の口コミをまとめて 1 回で取る */}
+                <HelpfulProvider
+                  reviewIds={[
+                    ...new Set([...props.reviews, ...props.mostHelpful].map(review => review.id)),
+                  ]}
+                >
+                  <ReviewSortTabs
+                    latest={<ReviewList reviews={props.reviews} />}
+                    helpful={<ReviewList reviews={props.mostHelpful} />}
+                  />
+                </HelpfulProvider>
+              </>
             )}
           </div>
         </>

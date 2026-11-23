@@ -92,6 +92,47 @@ export function variantWidthAtMost(widths: readonly number[], max: number): numb
   return sorted.filter(width => width <= max).pop() ?? sorted[0];
 }
 
+/** 写真 1 枚を `<picture>` で出す形 (本人の写真は署名付き URL、公開の写真は配信側の URL) */
+export type ReviewPhotoView = {
+  id: number;
+  width: number;
+  height: number;
+  /** `<source type="image/avif" srcset>` に入れる */
+  avifSrcSet: string;
+  /** `<img srcset>` に入れる (WebP) */
+  webpSrcSet: string;
+  /** `<img src>` と拡大表示に使う (最大の段の WebP) */
+  src: string;
+};
+
+/** 段ごと・形式ごとの URL から、`<picture>` で出す形を作る (`urlFor` は保管側のキーから URL を返す) */
+export function toPhotoView(
+  row: { id: number; width: number; height: number; object_key: string; variant_widths: number[] },
+  urlFor: (key: string) => string
+): ReviewPhotoView {
+  const widths = [...row.variant_widths].sort((a, b) => a - b);
+  const srcSet = (format: StoredPhotoFormat) =>
+    widths
+      .map(width => `${urlFor(storedVariantKey(row.object_key, width, format))} ${width}w`)
+      .join(', ');
+  return {
+    id: row.id,
+    width: row.width,
+    height: row.height,
+    avifSrcSet: srcSet('avif'),
+    webpSrcSet: srcSet('webp'),
+    src: urlFor(storedVariantKey(row.object_key, widths[widths.length - 1], 'webp')),
+  };
+}
+
+/**
+ * 配信側の基点 (末尾の / を外す)。無ければ null (写真を配信しない・出さない)。
+ * `op://` のままの値は未設定として扱う
+ */
+export function publicMediaBaseUrl(value: string | undefined): string | null {
+  return presentEnvValue(value)?.replace(/\/+$/, '') || null;
+}
+
 /** 写真 1 枚の、保管側の段ごとの物のキー全部 */
 export function variantKeys(objectKey: string, widths: readonly number[]): string[] {
   return widths.flatMap(width =>
@@ -447,7 +488,7 @@ export function getReviewPhotoStorage(
     intakeBucket: presentEnvValue(env.REVIEW_R2_INTAKE_BUCKET),
     photoBucket: presentEnvValue(env.REVIEW_R2_PHOTO_BUCKET),
     publicBucket: presentEnvValue(env.REVIEW_R2_PUBLIC_BUCKET),
-    publicBaseUrl: presentEnvValue(env.REVIEW_PUBLIC_MEDIA_BASE_URL)?.replace(/\/+$/, ''),
+    publicBaseUrl: publicMediaBaseUrl(env.REVIEW_PUBLIC_MEDIA_BASE_URL),
     zoneId: presentEnvValue(env.CLOUDFLARE_ZONE_ID),
     token: presentEnvValue(env.CLOUDFLARE_CACHE_PURGE_TOKEN),
   };

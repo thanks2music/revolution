@@ -8,12 +8,13 @@ import {
 } from '@/lib/reviews/labels';
 
 import { HelpfulButton } from './HelpfulButton';
+import { ReviewPhotoThumb } from './ReviewPhotoThumb';
 import { ReviewStars } from './ReviewStars';
 import { SpoilerBody } from './SpoilerBody';
 
 /**
- * 口コミ 1 件 (Figma #3)。写真・参考になった・通報の「…」・プロフィール画像は後のチケット
- * (#163/#164・#165・#168・#171)
+ * 口コミ 1 件 (Figma #3)。ネタバレの口コミは本文と写真をたたむ。通報の「…」・プロフィール画像は
+ * 後のチケット (#168・#171)
  */
 export function ReviewCard({ review }: { review: PublicReview }) {
   const facts = [
@@ -23,6 +24,25 @@ export function ReviewCard({ review }: { review: PublicReview }) {
   ].filter(Boolean);
   const body = review.body && (
     <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink-body">{review.body}</p>
+  );
+  const photos = review.photos.length > 0 && (
+    <ul
+      className="flex flex-wrap gap-1"
+      aria-label={`${review.authorName ?? '退会済みユーザー'}さんの口コミの写真`}
+    >
+      {review.photos.map((photo, index) => (
+        <li key={photo.id}>
+          <ReviewPhotoThumb photo={photo} size={64} alt={`写真 ${index + 1}`} />
+        </li>
+      ))}
+    </ul>
+  );
+
+  const content = (body || photos) && (
+    <>
+      {body}
+      {photos}
+    </>
   );
 
   return (
@@ -51,7 +71,14 @@ export function ReviewCard({ review }: { review: PublicReview }) {
 
       {facts.length > 0 && <p className="text-xs text-ink-body">{facts.join(' ・ ')}</p>}
 
-      {body && (review.hasSpoiler ? <SpoilerBody>{body}</SpoilerBody> : body)}
+      {content &&
+        (review.hasSpoiler ? (
+          <SpoilerBody folded={body && photos ? '本文と写真' : body ? '本文' : '写真'}>
+            {content}
+          </SpoilerBody>
+        ) : (
+          content
+        ))}
 
       {/* 足元: 参考になった ・ 最終編集 (Figma #3 `6:219`) */}
       <p className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
