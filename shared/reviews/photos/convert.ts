@@ -1,3 +1,4 @@
+/// <reference path="../heic-decode.d.ts" />
 import 'server-only';
 
 import sharp, { type Sharp } from 'sharp';

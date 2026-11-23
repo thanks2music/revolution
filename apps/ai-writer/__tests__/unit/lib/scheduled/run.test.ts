@@ -232,6 +232,49 @@ describe('runScheduled', () => {
     expect(summary.items.map(item => item.outcome)).toEqual(['failure', 'failure']);
   });
 
+  it('limits RSS candidates to the writing scope, and keeps an out-of-scope skip as done with its kind', async () => {
+    const outOfScope: MdxGenerationResult = {
+      success: false,
+      skipped: true,
+      skipKind: 'out-of-scope',
+      skipReason: '書く対象の外 (種別 pop-up-store / 運営 LTR)',
+    };
+    const { deps, generate, saved } = makeDeps({ items: rssItems(1), results: () => outOfScope });
+    const summary = await runScheduled(deps, { dryRun: false });
+    expect(generate.mock.calls[0][0].applyWritingScope).toBe(true);
+    expect(summary.items[0]).toMatchObject({ outcome: 'skipped', reason: '書く対象の外 (種別 pop-up-store / 運営 LTR)' });
+    expect(saved.get('https://a.example/1')).toMatchObject({
+      status: 'done',
+      nextAttemptAt: null,
+      lastSkipKind: 'out-of-scope',
+      lastReason: '書く対象の外 (種別 pop-up-store / 運営 LTR)',
+    });
+  });
+
+  it.each([
+    ['rss', true],
+    ['registered', false],
+    ['cli', false],
+  ] as const)('a retry whose first attempt came from %s: writing scope %s', async (source, applied) => {
+    const waiting: AttemptRecord = {
+      url: 'https://r.example/w',
+      source,
+      status: 'waiting-details',
+      lastOutcome: 'unannounced',
+      attemptCount: 1,
+      unannouncedCount: 1,
+      failureCount: 0,
+      firstAttemptAt: new Date('2026-11-01T00:00:00Z'),
+      lastAttemptAt: new Date('2026-11-01T00:00:00Z'),
+      nextAttemptAt: new Date('2026-11-08T00:00:00Z'),
+      publishedAt: new Date('2026-10-31T00:00:00Z'),
+      publishedAtSource: 'rss',
+    };
+    const { deps, generate } = makeDeps({ items: [], results: () => SKIP, stored: [waiting] });
+    await runScheduled(deps, { dryRun: false });
+    expect(generate.mock.calls[0][0].applyWritingScope).toBe(applied);
+  });
+
   it('reports what each URL ended in', async () => {
     const unannounced: MdxGenerationResult = {
       success: false,
@@ -271,6 +314,8 @@ describe('runScheduled', () => {
         'https://a.example/1',
       ]);
       expect(summary.items.map(item => item.registered)).toEqual([true, true, false]);
+      // a person chose the registered URLs, so only the RSS item is limited to the writing scope
+      expect(generate.mock.calls.map(call => call[0].applyWritingScope)).toEqual([false, false, true]);
     });
 
     it('lets article selection take a registered page itself as the official page, but not an RSS item', async () => {

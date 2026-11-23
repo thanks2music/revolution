@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import type { AttemptRecord } from '@/lib/scheduled/attempt-store';
-import { orderCandidates, type RssCandidateInput } from '@/lib/scheduled/candidates';
+import { isRssCandidate, orderCandidates, originSource, type RssCandidateInput } from '@/lib/scheduled/candidates';
 
 const NOW = new Date('2026-11-15T03:00:00Z');
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000).toUTCString();
@@ -120,5 +120,25 @@ describe('orderCandidates', () => {
       ['rss', 'https://rss.example/1'],
     ]);
     expect(result[0].registeredAt).toEqual(new Date('2026-11-12T00:00:00Z'));
+  });
+});
+
+describe('isRssCandidate', () => {
+  it('is an RSS item, or a retry whose first attempt was one', () => {
+    expect(isRssCandidate({ source: 'rss' })).toBe(true);
+    expect(isRssCandidate({ source: 'retry', previous: due('https://a.example/1', NOW) })).toBe(true);
+  });
+
+  it('is not a registered URL or a retry of one or of a CLI run', () => {
+    expect(isRssCandidate({ source: 'registered' })).toBe(false);
+    expect(isRssCandidate({ source: 'retry', previous: { ...due('https://a.example/1', NOW), source: 'registered' } })).toBe(false);
+    expect(isRssCandidate({ source: 'retry', previous: { ...due('https://a.example/1', NOW), source: 'cli' } })).toBe(false);
+  });
+});
+
+describe('originSource', () => {
+  it('is the source of a new candidate, and the first attempt\'s source for a retry', () => {
+    expect(originSource({ source: 'registered' })).toBe('registered');
+    expect(originSource({ source: 'retry', previous: { ...due('https://a.example/1', NOW), source: 'cli' } })).toBe('cli');
   });
 });

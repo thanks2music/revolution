@@ -108,7 +108,9 @@ revolution/
 │   └── frontend/        # Public web site (Vercel) + Supabase migrations
 ├── docs/                # Public documentation
 ├── shared/
-│   └── schemas/         # Zod schemas and Drizzle table definitions (workspace-wide)
+│   ├── reviews/         # Review operations: screening, photo storage and delivery (frontend + admin)
+│   ├── schemas/         # Zod schemas and Drizzle table definitions (workspace-wide)
+│   └── slack/           # Slack sending shared by every app
 ├── scripts/             # Automation scripts
 └── .github/workflows/   # CI/CD pipelines
 ```

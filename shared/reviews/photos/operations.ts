@@ -13,7 +13,7 @@ import {
 } from '@revolution/schemas/review-photo';
 import type { ReviewStatus } from '@revolution/schemas/review';
 
-import { rescreensOnPhotoAdd } from '@/lib/reviews/eligibility';
+import { rescreensOnPhotoAdd } from '../eligibility';
 
 import { convertReviewPhoto, type ConvertReviewPhotoFailure } from './convert';
 import {
@@ -171,7 +171,7 @@ export async function ingestPhoto(
   if (existing) {
     // 取り込み済み。元の写真 (位置情報が残っている唯一の物) が残っていれば消す
     await ctx.storage.deleteIntake(key).catch(() => undefined);
-    return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
+    return { kind: 'ok', photo: await toStoredPhotoView(ctx.storage, existing), requeued: false };
   }
 
   // サーバーが URL を出した写真だけを受け付ける (出した記録が無ければ、受け取り場所も見ない)
@@ -240,7 +240,7 @@ export async function ingestPhoto(
     if (inserted === 'full') {
       const winner = await findPhotoRow(ctx.db, key);
       if (winner)
-        return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, winner), requeued: false };
+        return { kind: 'ok', photo: await toStoredPhotoView(ctx.storage, winner), requeued: false };
       await cleanUp();
       keepIntake = true;
       return { kind: 'full' };
@@ -249,7 +249,7 @@ export async function ingestPhoto(
       // 同じ写真の取り込みが同時に走り、もう一方が先に行を足した。保管側の物は同じキーなので消さない
       const winner = await findPhotoRow(ctx.db, key);
       if (!winner) throw new Error('review photo row is missing after a duplicate insert');
-      return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, winner), requeued: false };
+      return { kind: 'ok', photo: await toStoredPhotoView(ctx.storage, winner), requeued: false };
     }
     row = inserted;
   } catch (error) {
@@ -266,7 +266,7 @@ export async function ingestPhoto(
   // 行を足した後の失敗 (URL の署名など) では、保管側の物を消さない (行が指している)。
   // 下書きと審査中以外は、トリガ (requeue_review_on_image_insert) が審査中に戻した
   const requeued = rescreensOnPhotoAdd(before);
-  return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, row), requeued };
+  return { kind: 'ok', photo: await toStoredPhotoView(ctx.storage, row), requeued };
 }
 
 /** 出した URL の記録を消す。失敗しても 1 日で片付くので、取り込みの結果は変えない */
@@ -328,11 +328,15 @@ export async function listOwnPhotos(
     z
       .array(PhotoRowSchema)
       .parse(data ?? [])
-      .map(row => toOwnPhoto(ctx.storage, row))
+      .map(row => toStoredPhotoView(ctx.storage, row))
   );
 }
 
-async function toOwnPhoto(storage: ReviewPhotoStorage, row: PhotoRow): Promise<OwnReviewPhoto> {
+/** 保管側の写真を、短時間だけ有効な URL で出す形にする (本人と、管理アプリの BOSS が見る) */
+export async function toStoredPhotoView(
+  storage: ReviewPhotoStorage,
+  row: Pick<PhotoRow, 'id' | 'object_key' | 'width' | 'height' | 'variant_widths'>
+): Promise<OwnReviewPhoto> {
   // 段 × 形式の URL を先にまとめて署名する (R2 の署名は手元の計算だけ)
   const keys = variantKeys(row.object_key, row.variant_widths);
   const urls = await Promise.all(keys.map(key => storage.presignStoredRead(key)));

@@ -13,7 +13,7 @@ import {
   publicMediaBaseUrl,
   toPublicPhoto,
   type PublicReviewPhoto,
-} from '@/lib/reviews/photos/public';
+} from '@revolution/reviews/photos/public';
 import { StatRowSchema, toReviewStats, type ReviewStats } from '@/lib/reviews/stats';
 import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
 

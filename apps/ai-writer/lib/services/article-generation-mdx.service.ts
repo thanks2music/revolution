@@ -38,7 +38,6 @@ import { type EventCanonicalKey } from '../firestore/types';
 import {
   resolveWorkSlug,
   resolveStoreSlug,
-  resolveEventTypeSlug,
   resolvePrefectureSlugs,
   getShortTitle,
   findDictionaryWorkSlug,
@@ -46,6 +45,17 @@ import {
   getSlugAliases,
 } from '../config/slug-resolver';
 import { alignEventDataSlugs } from '../utils/align-event-data-slugs';
+import { resolveArticleEventType } from '../utils/article-event-type';
+import { extractSourceTruth } from '../utils/source-truth-extractor';
+import {
+  describeWritingScope,
+  judgeWritingScope,
+  loadWritingScope,
+  operatorFromProfile,
+  scopeCoversCategory,
+  type CafeOperator,
+  type WritingScopeVerdict,
+} from '../scheduled/writing-scope';
 import { extractFromRss, type RssExtractionResult } from '../claude/rss-extractor';
 import { createAiProvider, getConfiguredProvider } from '../ai/factory/ai-factory';
 import { extractArticleHtml, extractContentHtml, extractOgImageUrl, extractPageLinks } from '../utils/html-extractor';
@@ -270,6 +280,12 @@ export interface MdxGenerationRequest {
    */
   sourceOverride?: MdxSourceOverride;
   /**
+   * Skip pages outside the writing scope (`lib/scheduled/writing-scope.ts`: the kinds and cafe operators
+   * scheduled runs write). Scheduled runs set this for RSS candidates only; registered URLs and the CLI
+   * write any kind. Every run still reports the verdict (`MdxGenerationResult.writingScope`)
+   */
+  applyWritingScope?: boolean;
+  /**
    * The input page itself may be the event's official page (the CLI and registered URLs). Article selection
    * is then given the page's URL so that it can choose the page itself. Not set for RSS candidates (news
    * articles), so that a report is never taken for the official page
@@ -318,9 +334,13 @@ export interface MdxGenerationResult {
    * 'step-error' は step の失敗 (公式サイトの詳細抽出・本文生成の例外) をスキップとして返したもの。
    * CLI では今までどおりスキップとして扱い、定期実行は失敗として試し直す。
    * 'no-work-title' は公式サイトから作品名を読めないもの (作品とのコラボではない、または公式 URL が
-   * 企業のトップページ)。試し直しても同じなので、定期実行でもスキップとして扱う
+   * 企業のトップページ)。試し直しても同じなので、定期実行でもスキップとして扱う。
+   * 'out-of-scope' は書く対象の外 (`applyWritingScope` の時だけ。種別と運営が `WRITING_SCOPE` に無い)。
+   * 定期実行ではスキップとして扱い、試し直さない
    */
-  skipKind?: 'existing-event' | 'unannounced-event' | 'step-error' | 'no-work-title';
+  skipKind?: 'existing-event' | 'unannounced-event' | 'step-error' | 'no-work-title' | 'out-of-scope';
+  /** 書く対象の判定 (種別と運営が分かった後の実行だけ。`applyWritingScope` が無くても入る) */
+  writingScope?: WritingScopeVerdict;
   /** 'unannounced-event' の時、開始日が分かっていれば `YYYY-MM-DD` (品目だけが未発表の時) */
   eventStartDate?: string;
   mdxArticle?: MdxArticle;
@@ -429,6 +449,17 @@ export class ArticleGenerationMdxService {
    * AI_PROVIDER環境変数でプロバイダーを切り替え可能
    */
   async generateMdxFromRSS(request: MdxGenerationRequest): Promise<MdxGenerationResult> {
+    // 書く対象の判定は途中で決まり、その後の返り値はどれも (スキップ・失敗・成功) 判定を持つ。
+    // 返り値ごとに足す代わりに、ここで付ける
+    const judged: { writingScope?: WritingScopeVerdict } = {};
+    const result = await this.generate(request, judged);
+    return judged.writingScope ? { ...result, writingScope: judged.writingScope } : result;
+  }
+
+  private async generate(
+    request: MdxGenerationRequest,
+    judged: { writingScope?: WritingScopeVerdict }
+  ): Promise<MdxGenerationResult> {
     const { rssItem, dryRun = false, localOnly = false, update, sourceOverride } = request;
     // 更新のときは既存の記事の年 (画像のフォルダ `{event_type}/{year}/{post_id}` に入る) を引き継ぐ。
     // 過去のイベントは開催年 (`eventYear`)
@@ -572,6 +603,8 @@ export class ArticleGenerationMdxService {
       let officialRawHtml: string | undefined;
       // 公式サイトのトップページの og:image (アイキャッチの第 1 候補。image-upload-r2 step で使う)
       let officialOgImage: string | null = null;
+      // カフェの運営 (書く対象の判定に使う)。圧縮前の HTML でしか分からないので、ここで決める
+      let operator: CafeOperator = 'unknown';
 
       if (selectionResult.primary_official_url) {
         try {
@@ -584,6 +617,8 @@ export class ArticleGenerationMdxService {
             : await extractContentHtml(selectionResult.primary_official_url);
           officialHtml = contentHtml.compacted;
           officialRawHtml = contentHtml.raw;
+          // アーカイブのページ (sourceOverride) からは運営を読めないので見ない
+          if (!sourceOverride) operator = operatorFromProfile(extractSourceTruth(contentHtml.raw).profileId);
           // og:image は <head> にある。compacted は本文のブロックだけのことがある (meta が無い) ので、ここで読む
           officialOgImage = sourceOverride
             ? sourceOverride.ogImage
@@ -737,6 +772,39 @@ export class ArticleGenerationMdxService {
       // 公式サイトが閉じている記事は、閉じたサイトへのリンクを書かない (後で別人のサイトになりうる)
       if (unlinkScope !== 'none') detailedExtraction = withoutOfficialUrls(detailedExtraction);
 
+      // 種別 (frontmatter の event_type) は抽出が 5 種から選んだ primary_category_slug から決める。
+      // RSS 抽出の種別名と AI の作る slug は使わない (5 種に無い値が入っていた)
+      const eventTypeResult = resolveArticleEventType(detailedExtraction.event_data, update?.fields);
+      if (!eventTypeResult.ok) {
+        console.error(`❌ ${getStepContext('detail-extraction', '種別')} ${eventTypeResult.reason}`);
+        if (costTracker.hasUsage()) costTracker.logSummary();
+        return { success: false, skipped: true, skipKind: 'step-error', skipReason: eventTypeResult.reason };
+      }
+      const eventType = eventTypeResult.eventType;
+
+      // 書く対象の判定。定期実行の RSS の候補 (applyWritingScope) だけ止め、ほかは判定を残すだけ。
+      // アーカイブのページ (sourceOverride) からは運営を読めないので判定しない (RSS の候補にはならない)
+      const scope = sourceOverride ? undefined : loadWritingScope();
+      const writingScope = scope ? judgeWritingScope(eventType, operator, scope) : undefined;
+      if (writingScope) {
+        judged.writingScope = writingScope;
+        console.log(`${getStepContext('detail-extraction', '書く対象')} 定期実行なら: ${describeWritingScope(writingScope)}`);
+      }
+      // A-1-c: 開始日が発表されていないか (止めるのは書く対象の判定の後)
+      const scheduleReason = update ? undefined : unannouncedScheduleReason(detailedExtraction);
+      // 対象外は、詳細未発表の判定より前に止める (試し直しに回さない)。ただし運営が分からないだけで
+      // 種別が書く対象なら、会場の一覧がまだ載っていない第一報かもしれない。開始日も読めない時は
+      // 詳細未発表として試し直す (続報で会場の一覧が載れば LTR と分かる)
+      if (request.applyWritingScope && scope && writingScope && !writingScope.inScope) {
+        const mayBeFirstReport =
+          writingScope.operator === 'unknown' && scopeCoversCategory(eventType, scope) && scheduleReason !== undefined;
+        if (!mayBeFirstReport) {
+          console.log(`⏭️ ${getStepContext('detail-extraction', '書く対象')} ${writingScope.reason}`);
+          if (costTracker.hasUsage()) costTracker.logSummary();
+          return { success: false, skipped: true, skipKind: 'out-of-scope', skipReason: writingScope.reason };
+        }
+      }
+
       // A-1-c (詳細未発表のイベントは書かない) で止める時の返り値。記事の更新 (続報の反映) では止めない
       // 開始日が分かっていれば返す (定期実行が、試し直しを開始日で打ち切るために使う)
       const extractionForSkip = detailedExtraction;
@@ -753,7 +821,6 @@ export class ArticleGenerationMdxService {
       };
 
       // A-1-c: 開始日が発表されていないイベントは、下層ページと Vision の費用がかかる前に止める
-      const scheduleReason = update ? undefined : unannouncedScheduleReason(detailedExtraction);
       if (scheduleReason) return skipUnannounced('detail-extraction', scheduleReason);
 
       // ========================================
@@ -912,20 +979,19 @@ export class ArticleGenerationMdxService {
       // slug-generation step: Resolve slugs (YAML config → AI API → ASCII fallback)
       console.log(`\n${getStepDisplay('slug-generation')} YAMLコンフィグでslugを解決...`);
 
-      const [workSlug, storeSlug, eventType] = await Promise.all([
+      // eventType は detail-extraction の後で決めた種別 (resolveArticleEventType)
+      const [workSlug, storeSlug] = await Promise.all([
         resolveWorkSlug(extraction.workTitle, true, costTracker),
         resolveStoreSlug(extraction.storeName, true, costTracker),
-        resolveEventTypeSlug(extraction.eventTypeName, true, costTracker),
       ]);
 
       console.log('Slug解決結果:', { workSlug, storeSlug, eventType });
 
       // Validate that all slugs were resolved successfully
-      if (!workSlug || !storeSlug || !eventType) {
+      if (!workSlug || !storeSlug) {
         const missingFields = [];
         if (!workSlug) missingFields.push(`workSlug (${extraction.workTitle})`);
         if (!storeSlug) missingFields.push(`storeSlug (${extraction.storeName})`);
-        if (!eventType) missingFields.push(`eventType (${extraction.eventTypeName})`);
 
         throw new Error(
           `Slug解決に失敗しました。以下のフィールドが解決できませんでした: ${missingFields.join(', ')}`

@@ -17,13 +17,13 @@ jest.mock('@/lib/reviews/write-context', () => ({
   screenAfterSubmit: jest.fn(),
 }));
 jest.mock('@/lib/reviews/authoring', () => ({ findOwnReview: jest.fn() }));
-jest.mock('@/lib/reviews/photos/operations', () => ({
+jest.mock('@revolution/reviews/photos/operations', () => ({
   requestPhotoUpload: jest.fn(),
   ingestPhoto: jest.fn(),
   removePhoto: jest.fn(),
   reorderPhotos: jest.fn(),
 }));
-jest.mock('@/lib/reviews/photos/storage', () => ({
+jest.mock('@revolution/reviews/photos/storage', () => ({
   getReviewPhotoStorage: jest.fn(),
   reviewPhotoKeyPrefix: () => 'preview/',
 }));
@@ -46,8 +46,8 @@ import {
   removePhoto,
   reorderPhotos,
   requestPhotoUpload,
-} from '@/lib/reviews/photos/operations';
-import { getReviewPhotoStorage } from '@/lib/reviews/photos/storage';
+} from '@revolution/reviews/photos/operations';
+import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
 import { modeFor, resolveWriteContext } from '@/lib/reviews/write-context';
 
 const route = { eventType: 'collabo-cafe', eventId: '12', occurrenceSlug: 'shibuya' };

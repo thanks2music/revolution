@@ -6,7 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 
 import { presentEnvValue } from '@revolution/slack/env';
 
-import { allowsFakeBackends } from '@/lib/reviews/fake-backends';
+import { allowsFakeBackends } from '../fake-backends';
 
 import { createFakeScreener } from './fake-screener';
 import { createGeminiScreener } from './gemini-screener';

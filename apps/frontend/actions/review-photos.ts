@@ -32,8 +32,8 @@ import {
   reorderPhotos,
   requestPhotoUpload,
   type OwnReviewPhoto,
-} from '@/lib/reviews/photos/operations';
-import { getReviewPhotoStorage, reviewPhotoKeyPrefix } from '@/lib/reviews/photos/storage';
+} from '@revolution/reviews/photos/operations';
+import { getReviewPhotoStorage, reviewPhotoKeyPrefix } from '@revolution/reviews/photos/storage';
 import {
   modeFor,
   resolveWriteContext,

@@ -4,7 +4,7 @@
  * 使い方: tsx scripts/check-review-prompt.ts <templates のディレクトリ>
  * 形が正しければ 0、崩れていれば 1 で終わる。中身 (プロンプトの文面) は表示しない。
  */
-import { loadScreeningPrompt } from '../lib/reviews/screener/prompt';
+import { loadScreeningPrompt } from '@revolution/reviews/screener/prompt';
 
 const dir = process.argv[2];
 if (!dir) {

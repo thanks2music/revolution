@@ -9,6 +9,7 @@ import * as path from 'path';
 import { IndustryLexiconConfigSchema } from '@revolution/schemas/industry-lexicon';
 import { StyleGuideConfigSchema } from '@revolution/schemas/style-guide';
 import { loadArchiveSources } from '@/lib/archive-source/config';
+import { loadWritingScope } from '@/lib/scheduled/writing-scope';
 import { loadPointsFormat } from '@/lib/services/article-points';
 import { ConfigLoaderService } from '@/lib/services/config-loader.service';
 import { loadGoodsListConfig } from '@/lib/services/goods-list';
@@ -90,6 +91,12 @@ export async function checkConsumerContract(
       name: 'archive-sources',
       file: path.join(configDir, 'archive-sources.yaml'),
       run: () => loadArchiveSources(path.join(configDir, 'archive-sources.yaml')),
+    },
+    {
+      // required: scheduled runs read it to decide what to write from RSS
+      name: 'writing-scope',
+      file: path.join(configDir, 'writing-scope.yaml'),
+      run: () => loadWritingScope(path.join(configDir, 'writing-scope.yaml')),
     },
     { name: 'vision-template', file: pipelineFile(VISION_PIPELINE_ID), run: () => loader.loadVisionApiTemplate(TEMPLATE_ID) },
     // Every pipeline a service loads, with the prompt it reads (a missing prompt would reach the model as "undefined")

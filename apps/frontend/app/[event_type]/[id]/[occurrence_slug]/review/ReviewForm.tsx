@@ -32,8 +32,8 @@ import {
 } from '@/lib/reviews/labels';
 
 import type { OwnReview } from '@/lib/reviews/authoring';
-import { rescreensOnPhotoAdd } from '@/lib/reviews/eligibility';
-import type { OwnReviewPhoto } from '@/lib/reviews/photos/operations';
+import { rescreensOnPhotoAdd } from '@revolution/reviews/eligibility';
+import type { OwnReviewPhoto } from '@revolution/reviews/photos/operations';
 import { ReviewPhotosField } from '@/components/molecules/reviews/ReviewPhotosField';
 
 import { ReviewSubmitted } from './ReviewSubmitted';

@@ -94,6 +94,9 @@ export interface SourceTruth {
 
 export type SiteProfileId = 'ltr' | 'hivelocity';
 
+/** The company that runs the sites of a profile (the profile id is the site's build lineage, not the operator) */
+export type SiteOperator = 'ltr';
+
 /**
  * 会場ブロックの構造をサイト系列ごとに宣言する。
  *
@@ -112,6 +115,8 @@ export type SiteProfileId = 'ltr' | 'hivelocity';
  */
 interface SiteProfile {
   id: SiteProfileId;
+  /** Who runs the sites with this structure (checked by hand for every site of the profile) */
+  operator: SiteOperator;
   /** 1 会場 = 1 ブロックとなる要素 */
   blockSelector: string;
   /** ブロック内の地域見出し (`TOKYO` / `SHIBUYA` 等) */
@@ -123,15 +128,22 @@ interface SiteProfile {
 /** 実測で確認済みの profile のみを並べる。先に一致したものを採用する。 */
 const SITE_PROFILES: readonly SiteProfile[] = [
   // LTR 系 8 サイト (実測 2026-08-11)
-  { id: 'ltr', blockSelector: '.place', regionSelector: 'h2', venueSelector: '.place_text_01' },
+  { id: 'ltr', operator: 'ltr', blockSelector: '.place', regionSelector: 'h2', venueSelector: '.place_text_01' },
   // hivelocity 系: conan-cafe.jp (10 会場) / jujutsukaisen-cafe.jp (3 会場) (実測 2026-08-13)
   {
     id: 'hivelocity',
+    // a site builder: every site of this lineage is run by LTR (checked 2026-08-15)
+    operator: 'ltr',
     blockSelector: '.p-top-information__bloc',
     regionSelector: 'h2',
     venueSelector: 'h3',
   },
 ];
+
+/** The operator of the sites whose structure `profileId` matched (null when none matched) */
+export function siteOperatorOf(profileId: SiteProfileId | null): SiteOperator | null {
+  return SITE_PROFILES.find((profile) => profile.id === profileId)?.operator ?? null;
+}
 
 /**
  * `\uXXXX` / `\&quot;` / `\/` 等のエスケープを解く。

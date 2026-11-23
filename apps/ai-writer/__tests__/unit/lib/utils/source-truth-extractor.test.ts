@@ -7,6 +7,7 @@ import {
   warnOnceForSourceIssues,
   extractPeriodText,
   extractSourceTruth,
+  siteOperatorOf,
   parsePeriodText,
   readPeriod,
   unescapeEmbeddedMarkup,
@@ -654,5 +655,13 @@ describe('正解データ側の会場名重複', () => {
 
     expect(result.duplicateSourceVenues).toEqual([]);
     expect(result.expectedCount).toBe(2);
+  });
+});
+
+describe('siteOperatorOf', () => {
+  it('reads the operator of every known structure as LTR (hivelocity is the builder of LTR sites)', () => {
+    expect(siteOperatorOf('ltr')).toBe('ltr');
+    expect(siteOperatorOf('hivelocity')).toBe('ltr');
+    expect(siteOperatorOf(null)).toBeNull();
   });
 });

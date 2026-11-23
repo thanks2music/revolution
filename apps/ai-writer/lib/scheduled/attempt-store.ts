@@ -7,6 +7,7 @@
  *
  * @module lib/scheduled/attempt-store
  */
+import type { MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 
 import type { PublishedDateSource } from './published-date';
@@ -30,6 +31,8 @@ export interface AttemptRecord {
   lastOutcome: OutcomeKind;
   /** The skip reason or the error of the last attempt */
   lastReason?: string;
+  /** The pipeline's skip kind of the last attempt, when it was a skip (e.g. `out-of-scope`) */
+  lastSkipKind?: MdxGenerationResult['skipKind'];
   prUrl?: string;
   postId?: string;
   attemptCount: number;

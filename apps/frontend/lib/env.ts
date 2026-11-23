@@ -47,14 +47,14 @@ export const env = createEnv({
     // 要対応で鳴らすユーザー ID。Vercel では Production にだけ設定する
     SLACK_MENTION_USER_ID: z.string().optional(),
 
-    // 口コミの AI 審査 (lib/reviews/screener)。Slack と同じく、ここは env レジストリとしての記録で、
+    // 口コミの AI 審査 (shared/reviews/screener)。Slack と同じく、ここは env レジストリとしての記録で、
     // 審査器は `process.env` を直読みする (テストで env を差し替えるため)。未設定なら審査は失敗として扱う
     GEMINI_API_KEY: z.string().optional(),
     REVIEW_SCREENING_MODEL: z.string().optional(),
     // fake の時だけ偽物を使う。ほかの値は無視する (値の誤りで起動を止めないため)
     REVIEW_SCREENER: z.string().optional(),
 
-    // 口コミの写真の置き場所 (lib/reviews/photos/storage.ts)。審査器と同じく env レジストリとしての記録で、
+    // 口コミの写真の置き場所 (shared/reviews/photos/storage.ts)。審査器と同じく env レジストリとしての記録で、
     // 置き場所は `process.env` を直読みする。配信側とキャッシュの削除 (CLOUDFLARE_*、#164) も含めて
     // 9 つそろわなければ写真を付けられない (口コミ自体は書ける)
     REVIEW_R2_ENDPOINT: z.string().optional(),

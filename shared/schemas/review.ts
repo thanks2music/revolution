@@ -59,6 +59,10 @@ export type ReviewScreeningReason = (typeof REVIEW_SCREENING_REASONS)[number];
 export const REVIEW_REASON_CODES = [...REVIEW_SCREENING_REASONS, 'ai_failure'] as const;
 export type ReviewReasonCode = (typeof REVIEW_REASON_CODES)[number];
 
+/** 審査の判断の記録 (review_moderation_events、0026) の主体と操作。DB の CHECK と揃える */
+export const REVIEW_MODERATION_ACTORS = ['ai', 'admin'] as const;
+export const REVIEW_MODERATION_ACTIONS = ['screened', 'published', 'rejected', 'requeued'] as const;
+
 /** 参加のしかた。並ばずそのまま / 事前予約 / 整理券・当日の列 / 抽選に当選 / その他 */
 export const REVIEW_ATTENDANCES = ['walk_in', 'reservation', 'queue', 'lottery', 'other'] as const;
 export type ReviewAttendance = (typeof REVIEW_ATTENDANCES)[number];

@@ -84,6 +84,7 @@ import type { MdxGenerationRequest, ArticleUpdateTarget } from '../lib/services/
 import { getAdminDb } from '../lib/firebase/admin';
 import { AttemptStore } from '../lib/scheduled/attempt-store';
 import { recordCliAttempt } from '../lib/scheduled/record-cli-attempt';
+import { describeWritingScope } from '../lib/scheduled/writing-scope';
 
 // 公開中の記事の更新 (--update)
 import { fetchArticleFromMain } from '../lib/github/update-mdx-pr';
@@ -574,6 +575,11 @@ async function main() {
       if (result.update.shrinkCheck.shrunk && !allowShrink) {
         console.log('\n⚠️  減った項目があります。本実行では PR を作らずに止まります (続けるには --allow-shrink)');
       }
+    }
+
+    // 定期実行が RSS から拾った時にどうなるか (CLI では止めない。種別と運営が分かった時だけ)
+    if (result.writingScope) {
+      console.log(`\n📋 書く対象の判定 (定期実行なら): ${describeWritingScope(result.writingScope)}`);
     }
 
     if (result.skipped) {

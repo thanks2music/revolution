@@ -8,7 +8,7 @@ import path from 'node:path';
 jest.mock('@/lib/env', () => ({ env: {} }));
 
 import { GET, PUT } from '@/app/api/dev/review-photos/[...path]/route';
-import { createFakePhotoStorage } from '@/lib/reviews/photos/storage';
+import { createFakePhotoStorage } from '@revolution/reviews/photos/storage';
 
 const ROOT = path.join(os.tmpdir(), 'revolution-review-photos');
 const KEY = `preview/reviews/1/route-test-${process.pid}`;
