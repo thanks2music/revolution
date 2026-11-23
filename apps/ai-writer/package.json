@@ -48,6 +48,7 @@
     "@octokit/plugin-retry": "^8.0.3",
     "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.1",
+    "@revolution/net": "workspace:*",
     "@revolution/schemas": "workspace:*",
     "@revolution/slack": "workspace:*",
     "@sentry/nextjs": "^10.70.0",

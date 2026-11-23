@@ -1,0 +1,10 @@
+{
+  "name": "@revolution/net",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Network helpers shared by every app: blocking internal hosts before server-side fetches (SSRF guard)",
+  "exports": {
+    "./safe-host": "./safe-host.ts"
+  }
+}
