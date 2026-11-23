@@ -91,6 +91,7 @@ import {
 } from './content-generation.service';
 import { getR2StorageService } from './r2-storage.service';
 import { getConfigLoaderService } from './config-loader.service';
+import { skipsVision } from './vision-api/vision-skip-hosts';
 import { r2ImageStore } from './article-images/upload-article-images';
 import {
   IMAGE_CATEGORIES,
@@ -869,7 +870,13 @@ export class ArticleGenerationMdxService {
       if (!detailedExtraction) {
         console.log(`${getStepContext('vision-api')} detailedExtraction がないため、Vision API をスキップ`);
       } else {
-        const visionStep = await this.runVisionStep(detailedExtraction, categoryImages, officialHtml, costTracker);
+        const visionStep = await this.runVisionStep(
+          detailedExtraction,
+          categoryImages,
+          officialHtml,
+          costTracker,
+          selectionResult.primary_official_url,
+        );
         detailedExtraction = visionStep.extraction;
         visionApiResult = visionStep.result;
       }
@@ -2345,6 +2352,7 @@ export class ArticleGenerationMdxService {
     categoryImages: CategoryImages | undefined,
     officialHtml: string | undefined,
     costTracker: CostTrackerService,
+    officialUrl?: string | null,
   ): Promise<{ extraction: ExtractionResult; result: VisionStepResult }> {
     const ctx = getStepContext('vision-api');
     const targets = determineVisionTargets(extraction);
@@ -2365,6 +2373,11 @@ export class ArticleGenerationMdxService {
     }
     if (!categoryImages || withImages.length === 0) {
       console.warn(`${ctx} ⚠️ 読むカテゴリに画像なし、Vision API をスキップ`);
+      return unchanged;
+    }
+    // Vision を呼ばないサイト (Templates の store-url-patterns.yaml の vision_skip_hosts)。品名の無い節は汎用の文章と画像で書く
+    if (skipsVision(officialUrl, (await getConfigLoaderService().loadStoreUrlPatterns()).vision_skip_hosts)) {
+      console.log(`${ctx} Vision を呼ばないサイトのため、Vision API をスキップ (${officialUrl})`);
       return unchanged;
     }
 

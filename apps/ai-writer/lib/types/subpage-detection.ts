@@ -175,6 +175,8 @@ export interface StoreUrlPatternsConfig {
   default_patterns: DefaultPatterns;
   ai_fallback: AiFallbackConfig;
   image_extraction: ImageExtractionConfig;
+  /** Vision を呼ばない公式サイトのホスト (`www.` の有無と大文字・小文字は区別しない)。無ければ空と同じ */
+  vision_skip_hosts?: string[];
 }
 
 // ===================================
