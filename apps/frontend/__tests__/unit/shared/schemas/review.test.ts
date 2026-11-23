@@ -13,6 +13,7 @@ import {
   REVIEW_MODERATION_ACTIONS,
   REVIEW_MODERATION_ACTORS,
   REVIEW_REASON_CODES,
+  REVIEW_SCREENING_REASONS,
   REVIEW_STATUSES,
   ReviewSubmitSchema,
   ReviewHelpfulInsertSchema,
@@ -388,5 +389,32 @@ describe('判断の記録の値の一覧が DB の CHECK と一致する (0026)'
     expect(start).toBeGreaterThan(-1);
     const body = migration.slice(start, migration.indexOf('\n', start));
     expect([...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1])).toEqual([...values]);
+  });
+});
+
+describe('判断の記録の状態・理由と、差し戻しの理由の一覧が定数と一致する (0027)', () => {
+  const migrationsDir = path.join(__dirname, '../../../../supabase/migrations');
+  const migration = readFileSync(
+    path.join(
+      migrationsDir,
+      readdirSync(migrationsDir).find((name) => name.endsWith('_review_moderation_tighten.sql'))!,
+    ),
+    'utf8',
+  );
+  const quoted = (text: string) => [...text.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1]);
+
+  it.each([
+    ['review_moderation_events_to_status_chk', REVIEW_STATUSES],
+    ['review_moderation_events_reason_code_chk', REVIEW_REASON_CODES],
+  ])('%s', (constraint, values) => {
+    const start = migration.indexOf(`"${constraint}"`);
+    expect(start).toBeGreaterThan(-1);
+    const body = migration.slice(start, migration.indexOf(')', migration.indexOf('IN (', start)));
+    expect(quoted(body)).toEqual([...values]);
+  });
+
+  it('admin_decide_review の v_reasons は審査の 4 種', () => {
+    const line = migration.split('\n').find((text) => text.includes('v_reasons constant text[]'))!;
+    expect(quoted(line)).toEqual([...REVIEW_SCREENING_REASONS]);
   });
 });

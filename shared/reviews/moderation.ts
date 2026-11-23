@@ -34,9 +34,6 @@ import type { ReviewScreener } from './screener/types';
  * - 結果は型付きで返す。読んだ後に投稿者が出し直した (`superseded`) / 写真が変わった (`photos_changed`)
  */
 
-/** 確認待ちの一覧に出す、審査中のまま止まっている時間 (仕様 #156) */
-export const STUCK_PENDING_MINUTES = 30;
-
 type Failure = { kind: 'forbidden' };
 
 /** admin の関数が admin でない時に投げる物 (migration 0026)。ほかの 42501 (GRANT の抜けなど) は不具合として投げ直す */
@@ -60,6 +57,9 @@ const QueueRowSchema = z.object({
   venue_name: z.string().nullable(),
   author_name: z.string().nullable(),
   photo_count: z.number().int().min(0),
+  // migration 0027 で足した列。0027 の前の DB (アプリの deploy が migration より先に終わった時) でも
+  // 一覧が壊れないよう、無ければ提出の時刻を使う
+  pending_since: z.string().optional(),
 });
 
 export type ReviewQueueItem = {
@@ -67,7 +67,11 @@ export type ReviewQueueItem = {
   /** AI が迷った / AI の審査に失敗した (BOSS の確認待ち) / 審査中のまま止まっている */
   kind: 'unsure' | 'ai_failure' | 'stuck';
   aiReason: string | null;
+  /** AI の審査に失敗した時の内容 (審査器の内部の文) */
+  aiError: string | null;
   submittedAt: string;
+  /** 審査中になった時刻 (提出か、最後の「もう一度 AI にかける」の遅い方)。止まっている時間はここから数える */
+  pendingSince: string;
   rating: number;
   eventName: string;
   venueName: string | null;
@@ -82,11 +86,14 @@ function queueKind(row: z.infer<typeof QueueRowSchema>): ReviewQueueItem['kind']
 
 export async function listReviewQueue(
   adminDb: SupabaseClient,
+  /** 「止まっている」とみなす分数。省くと DB の既定 (private.review_stuck_minutes、30 分) */
   options: { stuckMinutes?: number } = {}
 ): Promise<{ kind: 'ok'; items: ReviewQueueItem[] } | Failure> {
-  const { data, error } = await adminDb.rpc('admin_list_review_queue', {
-    p_stuck_minutes: options.stuckMinutes ?? STUCK_PENDING_MINUTES,
-  });
+  // 分数を省いた時は引数ごと送らない (DB の関数の既定を使う。0027 の前の DB でも同じ既定の 30 分になる)
+  const { data, error } = await adminDb.rpc(
+    'admin_list_review_queue',
+    options.stuckMinutes === undefined ? {} : { p_stuck_minutes: options.stuckMinutes }
+  );
   if (isForbidden(error)) return { kind: 'forbidden' };
   if (error) throw error;
   const items = z
@@ -96,7 +103,9 @@ export async function listReviewQueue(
       reviewId: row.review_id,
       kind: queueKind(row),
       aiReason: row.ai_reason,
+      aiError: row.ai_error,
       submittedAt: row.submitted_at,
+      pendingSince: row.pending_since ?? row.submitted_at,
       rating: row.rating,
       eventName: row.event_name,
       venueName: row.venue_name,
@@ -111,6 +120,9 @@ export async function listReviewQueue(
 // ───────────────────────────────────────────────
 
 const DetailSchema = z.object({
+  // migration 0027 で足した値。0027 の前の DB では無いので、審査中なら止まっている扱いにする (0026 の挙動)
+  pending_since: z.string().nullable().optional(),
+  stuck: z.boolean().optional(),
   review: z.object({
     id: z.number(),
     status: z.enum(REVIEW_STATUSES),
@@ -171,6 +183,10 @@ type Detail = z.infer<typeof DetailSchema>;
 
 export type ModerationReview = {
   review: Detail['review'];
+  /** 審査中のまま「止まっている」か (一覧・もう一度 AI にかける条件と同じ DB の判定) */
+  stuck: boolean;
+  /** 審査中になった時刻 (提出か、最後の「もう一度 AI にかける」の遅い方) */
+  pendingSince: string | null;
   event: Detail['event'];
   occurrence: Detail['occurrence'];
   authorName: string | null;
@@ -202,6 +218,8 @@ export async function getReviewForModeration(
     kind: 'ok',
     review: {
       review: detail.review,
+      stuck: detail.stuck ?? detail.review.status === 'pending',
+      pendingSince: detail.pending_since ?? detail.review.submitted_at,
       event: detail.event,
       occurrence: detail.occurrence,
       authorName: detail.author.display_name ?? detail.author.username,
@@ -272,11 +290,18 @@ export async function decideReview(
  * 30 分たつと確認待ちの一覧に「止まっている」として出る)
  */
 export async function requeueReview(
-  deps: ModerationDeps & { screener: ReviewScreener },
+  deps: ModerationDeps & {
+    screener: ReviewScreener;
+    /**
+     * 審査を応答の後に回す時に渡す (Next の `after()` など)。渡すと審査を待たずに `scheduled` を返す。
+     * 審査の結果は数分で出る (管理アプリの「もう一度 AI にかける」、Figma 13 のトースト)
+     */
+    schedule?: (task: () => Promise<unknown>) => void;
+  },
   input: { reviewId: number; submittedAt: string }
 ): Promise<
   | Exclude<ModerationWriteOutcome, { kind: 'applied' }>
-  | { kind: 'applied'; screening: ScreenReviewOutcome | { kind: 'error' } }
+  | { kind: 'applied'; screening: ScreenReviewOutcome | { kind: 'error' } | { kind: 'scheduled' } }
 > {
   const { data, error } = await deps.adminDb.rpc('admin_requeue_review', {
     p_review_id: input.reviewId,
@@ -284,17 +309,23 @@ export async function requeueReview(
   });
   const outcome = toWriteOutcome(data, error);
   if (outcome.kind !== 'applied') return outcome;
-  try {
-    const screening = await screenSubmittedReview(input.reviewId, {
-      screener: deps.screener,
-      db: deps.serviceDb,
-      storage: deps.storage,
-    });
-    return { kind: 'applied', screening };
-  } catch (error) {
-    Sentry.captureException(error, { tags: { part: 'review-moderation', step: 'requeue' } });
-    return { kind: 'applied', screening: { kind: 'error' } };
+  const run = async (): Promise<ScreenReviewOutcome | { kind: 'error' }> => {
+    try {
+      return await screenSubmittedReview(input.reviewId, {
+        screener: deps.screener,
+        db: deps.serviceDb,
+        storage: deps.storage,
+      });
+    } catch (error) {
+      Sentry.captureException(error, { tags: { part: 'review-moderation', step: 'requeue' } });
+      return { kind: 'error' };
+    }
+  };
+  if (deps.schedule) {
+    deps.schedule(run);
+    return { kind: 'applied', screening: { kind: 'scheduled' } };
   }
+  return { kind: 'applied', screening: await run() };
 }
 
 function toWriteOutcome(

@@ -524,6 +524,159 @@ describe('BOSS の操作', () => {
     expect(insert.error?.code).toBe('42501');
   });
 
+  describe('0027 で締めた所', () => {
+    async function stuckReview(minutesAgo: number) {
+      const review = await screenedReview('迷う [unsure]');
+      await data.admin
+        .from('reviews')
+        .update({
+          status: 'pending',
+          reason_code: null,
+          submitted_at: new Date(Date.now() - minutesAgo * 60 * 1000).toISOString(),
+        })
+        .eq('id', review.reviewId);
+      return review;
+    }
+
+    it('審査中の口コミは公開・差し戻しできない (止まっていても、もう一度 AI にかけるだけ)', async () => {
+      const { reviewId } = await stuckReview(40);
+      const { submitted_at } = await reviewRow(reviewId);
+      await expect(
+        decideReview(deps(), {
+          reviewId,
+          submittedAt: submitted_at,
+          decision: 'publish',
+          photos: [],
+        })
+      ).resolves.toEqual({ kind: 'superseded' });
+      expect((await reviewRow(reviewId)).status).toBe('pending');
+    });
+
+    it('もう一度 AI にかけられる審査中は、30 分以上止まった物だけ (口コミの確認の stuck も同じ判定)', async () => {
+      const fresh = await stuckReview(5);
+      const stuck = await stuckReview(40);
+      for (const [target, expected] of [
+        [fresh, false],
+        [stuck, true],
+      ] as const) {
+        const detail = await getReviewForModeration(bossDb, null, target.reviewId);
+        if (detail.kind !== 'ok') throw new Error(detail.kind);
+        expect(detail.review.stuck).toBe(expected);
+      }
+      const freshRow = await reviewRow(fresh.reviewId);
+      const stuckRow = await reviewRow(stuck.reviewId);
+      await expect(
+        requeueReview(
+          { ...deps(), screener },
+          { reviewId: fresh.reviewId, submittedAt: freshRow.submitted_at }
+        )
+      ).resolves.toEqual({ kind: 'superseded' });
+      await expect(
+        requeueReview(
+          { ...deps(), screener },
+          { reviewId: stuck.reviewId, submittedAt: stuckRow.submitted_at }
+        )
+      ).resolves.toMatchObject({ kind: 'applied' });
+    });
+
+    it('かけ直した直後の口コミは「止まっている」に出ず、続けてかけ直せない (経過はかけ直しから数える)', async () => {
+      const { reviewId } = await stuckReview(40);
+      const { submitted_at } = await reviewRow(reviewId);
+      const tasks: (() => Promise<unknown>)[] = [];
+      await expect(
+        requeueReview(
+          { ...deps(), screener, schedule: task => tasks.push(task) },
+          { reviewId, submittedAt: submitted_at }
+        )
+      ).resolves.toMatchObject({ kind: 'applied' });
+
+      // 審査がまだ終わっていない (審査中のまま) 間。口コミの確認も「止まっている」とは言わない
+      const detail = await getReviewForModeration(bossDb, null, reviewId);
+      if (detail.kind !== 'ok') throw new Error(detail.kind);
+      expect(detail.review.stuck).toBe(false);
+      expect(Date.parse(detail.review.pendingSince!)).toBeGreaterThan(Date.parse(submitted_at));
+      const queue = await listReviewQueue(bossDb);
+      if (queue.kind !== 'ok') throw new Error(queue.kind);
+      expect(queue.items.map(item => item.reviewId)).not.toContain(reviewId);
+      await expect(
+        requeueReview({ ...deps(), screener }, { reviewId, submittedAt: submitted_at })
+      ).resolves.toEqual({ kind: 'superseded' });
+
+      // 審査中のままなら、いずれまた「止まっている」に出る (記録の時刻は動かせないので、分数 0 で確かめる)。
+      // 経過の起点は提出ではなく、かけ直した時刻
+      const later = await listReviewQueue(bossDb, { stuckMinutes: 0 });
+      if (later.kind !== 'ok') throw new Error(later.kind);
+      const item = later.items.find(entry => entry.reviewId === reviewId);
+      expect(item?.kind).toBe('stuck');
+      expect(Date.parse(item!.pendingSince)).toBeGreaterThan(Date.parse(submitted_at));
+    });
+
+    it('後で審査する指定なら、審査を待たずに scheduled を返し、渡した関数で審査が走る', async () => {
+      const { reviewId } = await screenedReview('迷う [unsure]');
+      await data.admin.from('reviews').update({ body: '楽しかった' }).eq('id', reviewId);
+      const { submitted_at } = await reviewRow(reviewId);
+      const tasks: (() => Promise<unknown>)[] = [];
+      await expect(
+        requeueReview(
+          { ...deps(), screener, schedule: task => tasks.push(task) },
+          { reviewId, submittedAt: submitted_at }
+        )
+      ).resolves.toEqual({ kind: 'applied', screening: { kind: 'scheduled' } });
+      expect((await reviewRow(reviewId)).status).toBe('pending');
+      await Promise.all(tasks.map(task => task()));
+      expect((await reviewRow(reviewId)).status).toBe('published');
+    });
+
+    it('公開の空の補足は断らず、補足は 500 字まで。写真の判断は id・hide・reason だけを残す', async () => {
+      const { reviewId } = await screenedReview('迷う [unsure]', 1);
+      const [photo] = await photoRows(reviewId);
+      const { submitted_at } = await reviewRow(reviewId);
+      const call = (input: Record<string, unknown>) =>
+        bossDb.rpc('admin_decide_review', {
+          p_review_id: reviewId,
+          p_submitted_at: submitted_at,
+          p_reason_code: null,
+          p_reason_note: null,
+          ...input,
+        });
+
+      const tooLong = await call({
+        p_decision: 'reject',
+        p_reason_code: 'spam',
+        p_reason_note: 'あ'.repeat(501),
+        p_photo_marks: [{ id: photo.id, hide: false }],
+      });
+      expect(tooLong.error?.code).toBe('22023');
+
+      const published = await call({
+        p_decision: 'publish',
+        p_reason_note: '  ',
+        p_photo_marks: [{ id: photo.id, hide: false, extra: 'x'.repeat(100) }],
+      });
+      expect(published.error).toBeNull();
+      expect(published.data).toBe('applied');
+      const { data: raw } = await bossDb.rpc('admin_get_review', { p_review_id: reviewId });
+      const last = (raw as { events: { photo_marks: unknown }[] }).events.at(-1);
+      expect(last?.photo_marks).toEqual([{ id: photo.id, hide: false, reason: null }]);
+    });
+
+    it('一覧の分数が NULL なら既定の 30 分を使う', async () => {
+      const fresh = await stuckReview(5);
+      const { data: rows, error } = await bossDb.rpc('admin_list_review_queue', {
+        p_stuck_minutes: null,
+      });
+      expect(error).toBeNull();
+      expect((rows as { review_id: number }[]).map(row => row.review_id)).not.toContain(
+        fresh.reviewId
+      );
+    });
+
+    it('admin の関数は service role からも呼べない', async () => {
+      const { error } = await data.admin.rpc('admin_list_review_queue', { p_stuck_minutes: 30 });
+      expect(error?.code).toBe('42501');
+    });
+  });
+
   it('判断の記録は書き換えも消去もできない (service role でも)', async () => {
     const { reviewId } = await screenedReview('楽しかった');
     const update = await data.admin
