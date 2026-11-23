@@ -1,0 +1,74 @@
+@import 'tailwindcss' source(none);
+
+/*
+ * 管理アプリ (one-more-time #167) のトークン。値は Figma の管理画面 (13〜16、135:409) から取り、公開サイトの
+ * styles/globals.css と名前をそろえる (管理アプリに要る分だけ。2026-11-23 BOSS 確定: 部品は管理アプリに作る)
+ */
+@source '../app';
+@source '../components';
+
+@theme inline {
+  --color-bar: var(--bar);
+  --color-bar-chip: var(--bar-chip);
+  --color-bar-muted: var(--bar-muted);
+  --color-ink-strong: var(--ink-strong);
+  --color-ink-body: var(--ink-body);
+  --color-ink-tertiary: var(--ink-tertiary);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-disabled: var(--ink-disabled);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
+  --color-surface: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-page: var(--page);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-surface: var(--danger-surface);
+  --color-warning: var(--warning);
+  --color-warning-ink: var(--warning-ink);
+  --color-warning-surface: var(--warning-surface);
+  --color-info-ink: var(--info-ink);
+  --color-info-surface: var(--info-surface);
+  --color-stuck: var(--stuck);
+  --color-photo: var(--photo);
+  --font-body: 'Noto Sans JP Variable', 'Hiragino Sans', sans-serif;
+  --font-display: 'Zen Kaku Gothic New', 'Noto Sans JP Variable', sans-serif;
+}
+
+:root {
+  --bar: #12212e;
+  --bar-chip: #2b3d4c;
+  --bar-muted: #a9bcc8;
+  --ink-strong: #12212e;
+  --ink-body: #40596b;
+  --ink-tertiary: #62798a;
+  --ink-muted: #81959f;
+  --ink-disabled: #a3b3be;
+  --line: #dce9f1;
+  --line-soft: #e6eef3;
+  --line-strong: #b8c7d1;
+  --surface: #ffffff;
+  --surface-subtle: #f6fafd;
+  --page: #eef4f8;
+  --primary: #0b93d5;
+  --primary-hover: #0a83be;
+  --danger: #d93a3a;
+  --danger-ink: #b4382f;
+  --danger-surface: #fdeeee;
+  --warning: #f2c94c;
+  --warning-ink: #8a6a00;
+  --warning-surface: #fff4d6;
+  --info-ink: #1a6fa3;
+  --info-surface: #e3f4fd;
+  --stuck: #8195a3;
+  --photo: #c9d6de;
+}
+
+body {
+  background: var(--page);
+  color: var(--ink-strong);
+  font-family: var(--font-body);
+}
