@@ -50,6 +50,28 @@ export function historyUrl(siteUrl: string, targetId: string): string {
   return `${siteUrl.replace(/\/+$/, '')}/detail?targetId=${encodeURIComponent(targetId)}`;
 }
 
+/** AI ライターに渡した結果。通知の仕方が「AI ライターに渡す」の監視対象の時だけある */
+export interface LinkHandoff {
+  /** 新しく渡したリンク (正規化した URL) */
+  links: string[];
+  /** 記録に失敗した時のエラーの文言 */
+  error?: string;
+}
+
+/** 通知に載せる、渡したリンクの件数の上限 (残りは件数だけ書く) */
+const HANDOFF_LINKS_SHOWN = 5;
+
+function handoffSection(handoff: LinkHandoff): Block {
+  if (handoff.error !== undefined) {
+    return section(`*AI ライターに渡せませんでした*\n${safe(handoff.error, ERROR_MAX)}`);
+  }
+  const shown = handoff.links.slice(0, HANDOFF_LINKS_SHOWN).map((url) => `• ${link(url, safe(url, 200))}`);
+  const rest = handoff.links.length - shown.length;
+  return section(
+    [`*AI ライターに渡したリンク: ${handoff.links.length} 件*`, ...shown, ...(rest > 0 ? [`ほか ${rest} 件`] : [])].join('\n'),
+  );
+}
+
 export interface UpdateMessageInput {
   targetId: string;
   target: Pick<Target, 'title' | 'url'>;
@@ -61,6 +83,7 @@ export interface UpdateMessageInput {
   content: string;
   /** 行の差分 (`formatLineDiff` の結果) */
   diff: string;
+  handoff?: LinkHandoff;
 }
 
 /** 更新検知 (最初のクロールでは「新規追加」) の通知 */
@@ -85,6 +108,7 @@ export function buildUpdateMessage(input: UpdateMessageInput): SlackMessage {
     section(`*更新内容*\n${safe(input.content.trim(), CONTENT_MAX) || '-'}`),
   ];
   if (input.diff.trim()) blocks.push(section(`*差分*\n${safe(input.diff.trim(), DIFF_MAX)}`));
+  if (input.handoff) blocks.push(handoffSection(input.handoff));
 
   return { text: heading, blocks };
 }

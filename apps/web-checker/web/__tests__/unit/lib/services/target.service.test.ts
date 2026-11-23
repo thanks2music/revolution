@@ -35,6 +35,7 @@ const input = {
   selector: '#content',
   title: 'サンプル公式サイト',
   cron: '0 * * * *',
+  notifyMode: 'slack' as const,
 };
 
 const payloadOf = (mock: jest.Mock) => mock.mock.calls[0][1] as Record<string, unknown>;
@@ -51,7 +52,7 @@ describe('TargetService.create', () => {
     await TargetService.create(input, 'uid-1');
 
     expect(Object.keys(payloadOf(addDocMock)).sort()).toEqual(
-      ['createdAt', 'createdBy', 'cron', 'selector', 'title', 'url'].sort()
+      ['createdAt', 'createdBy', 'cron', 'notifyMode', 'selector', 'title', 'url'].sort()
     );
   });
 
@@ -94,7 +95,7 @@ describe('TargetService.update', () => {
     await TargetService.update('target-1', input, 'uid-2');
 
     expect(Object.keys(payloadOf(updateDocMock)).sort()).toEqual(
-      ['cron', 'selector', 'title', 'updatedAt', 'updatedBy', 'url'].sort()
+      ['cron', 'notifyMode', 'selector', 'title', 'updatedAt', 'updatedBy', 'url'].sort()
     );
   });
 

@@ -30,6 +30,7 @@ export function TargetRowEditor({
     url: target.url,
     selector: target.selector,
     cron: target.cron,
+    notifyMode: target.notifyMode,
   });
   const [errors, setErrors] = useState<TargetFieldErrors>({});
   const [cronValid, setCronValid] = useState(true);

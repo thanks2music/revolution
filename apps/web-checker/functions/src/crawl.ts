@@ -1,7 +1,8 @@
 import type { SlackMessage } from '@revolution/slack/post-message';
 
-import { buildErrorMessage, buildNoContentMessage, buildUpdateMessage } from './slack-message';
-import type { Snapshot, Target } from './targets';
+import { newLinks } from './detected-links';
+import { buildErrorMessage, buildNoContentMessage, buildUpdateMessage, type LinkHandoff } from './slack-message';
+import type { DetectedLink, Snapshot, Target } from './targets';
 import { formatLineDiff, toComparableText } from './text-diff';
 
 /** 見に行った結果の記録。`alertedAt: null` は消す (問題が解消した) */
@@ -17,6 +18,11 @@ export interface TargetStore {
   /** 履歴を足す。監視対象がもう無ければ足さずに `false` (削除と見回りが重なった時に、履歴だけ残さない) */
   addSnapshot(targetId: string, snapshot: Snapshot): Promise<boolean>;
   recordCheck(targetId: string, record: CheckRecord): Promise<void>;
+  /**
+   * 検知リンクを記録する (AI ライターに渡す)。すでに記録されている URL は飛ばし、新しく記録した物だけを返す
+   * (別の監視対象が先に同じリンクを検知していた時など)
+   */
+  addDetectedLinks(links: DetectedLink[]): Promise<DetectedLink[]>;
 }
 
 export interface CrawlDeps {
@@ -117,6 +123,11 @@ export async function crawlTarget(
   }
   if (!saved) return 'missing';
 
+  const handoff =
+    previous && target.notifyMode === 'ai-writer'
+      ? await handOff(deps, targetId, target, previous, fragment, startedAt)
+      : undefined;
+
   const newText = toComparableText(fragment);
   const oldText = previous ? toComparableText(previous.content) : '';
   await deps.notify(
@@ -128,8 +139,34 @@ export async function crawlTarget(
       previousAt: previous?.time,
       content: newText,
       diff: formatLineDiff(oldText, newText),
+      handoff,
     }),
   );
   await deps.store.recordCheck(targetId, resolved);
   return previous ? 'updated' : 'first';
+}
+
+/**
+ * 通知の仕方が「AI ライターに渡す」の監視対象で、新しく現れたリンクを検知リンクとして記録する。
+ * 最初のクロール (前回が無い) は呼ばない: 抜き出した部分が丸ごと新しく見え、過去のリンクまで渡してしまうため。
+ * 記録に失敗しても更新検知の通知は送る (失敗は通知に書く)。
+ */
+async function handOff(
+  deps: CrawlDeps,
+  targetId: string,
+  target: Target,
+  previous: Snapshot,
+  fragment: string,
+  detectedAt: number,
+): Promise<LinkHandoff> {
+  const urls = newLinks(previous.content, fragment, target.url);
+  if (urls.length === 0) return { links: [] };
+  try {
+    const added = await deps.store.addDetectedLinks(
+      urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt })),
+    );
+    return { links: added.map((link) => link.url) };
+  } catch (error) {
+    return { links: [], error: error instanceof Error ? error.message : String(error) };
+  }
 }

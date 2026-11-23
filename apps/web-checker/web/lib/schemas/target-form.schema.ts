@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { NOTIFY_MODES } from '@/lib/target/notify-mode';
+
 /**
  * 監視対象の入力フォームの検証。
  *
@@ -51,6 +53,8 @@ export const targetFormSchema = z.object({
 
   // cron として読めるかは cron-parser で非同期に確かめる (lib/target/cron.ts)。ここでは空でないことだけ見る
   cron: z.string().trim().min(1, '頻度を指定してください'),
+
+  notifyMode: z.enum(NOTIFY_MODES, { message: '通知の仕方を選んでください' }),
 });
 
 export type TargetFormValues = z.infer<typeof targetFormSchema>;

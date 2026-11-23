@@ -79,6 +79,15 @@ describe('監視対象の作成', () => {
     await assertFails(setDoc(doc(editor(), TARGETS, 'new'), { ...newTarget('editor-1'), checkedAt: 9e15 }));
   });
 
+  it('通知の仕方は「Slack のみ」か「AI ライターに渡す」で登録できる', async () => {
+    await assertSucceeds(setDoc(doc(editor(), TARGETS, 'a'), { ...newTarget('editor-1'), notifyMode: 'slack' }));
+    await assertSucceeds(setDoc(doc(editor(), TARGETS, 'b'), { ...newTarget('editor-1'), notifyMode: 'ai-writer' }));
+  });
+
+  it('決まっていない通知の仕方は登録できない', async () => {
+    await assertFails(setDoc(doc(editor(), TARGETS, 'new'), { ...newTarget('editor-1'), notifyMode: 'email' }));
+  });
+
   it('https 以外の URL は登録できない', async () => {
     await assertFails(
       setDoc(doc(editor(), TARGETS, 'new'), { ...newTarget('editor-1'), url: 'http://169.254.169.254/' }),
@@ -105,6 +114,16 @@ describe('監視対象の更新', () => {
         updatedBy: 'admin-1',
       }),
     );
+  });
+
+  it('通知の仕方を切り替えられる', async () => {
+    await assertSucceeds(
+      updateDoc(doc(editor(), TARGETS, 'target-1'), { notifyMode: 'ai-writer', updatedAt: 6, updatedBy: 'editor-1' }),
+    );
+  });
+
+  it('alertedAt は変えられない (Functions が通知を間引くのに使う)', async () => {
+    await assertFails(updateDoc(doc(editor(), TARGETS, 'target-1'), { alertedAt: 1, updatedAt: 6, updatedBy: 'editor-1' }));
   });
 
   it('更新者は自分にする', async () => {
@@ -152,5 +171,12 @@ describe('履歴', () => {
 
   it('クレームの無い人は読めない', async () => {
     await assertFails(getDoc(doc(stranger(), TARGETS, 'target-1', 'snapshots', 'snap-1')));
+  });
+});
+
+describe('検知リンク', () => {
+  it('権限のある人でも、画面からは読み書きできない (Functions と AI ライターの Admin SDK だけ)', async () => {
+    await assertFails(getDoc(doc(admin(), 'web_checker_detected_links', 'x')));
+    await assertFails(setDoc(doc(admin(), 'web_checker_detected_links', 'x'), { url: 'https://example.com' }));
   });
 });

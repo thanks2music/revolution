@@ -9,6 +9,7 @@ const complete = {
   selector: '#content',
   title: 'サンプル公式サイト',
   cron: '0 9 * * *',
+  notifyMode: 'ai-writer',
   checkedAt: 1_700_000_000_000,
   createdAt: 1_600_000_000_000,
   createdBy: 'uid-1',
@@ -19,6 +20,11 @@ const complete = {
 describe('toTarget', () => {
   it('passes a fully populated document through unchanged', () => {
     expect(toTarget('target-1', complete)).toEqual({ id: 'target-1', ...complete });
+  });
+
+  it('treats a missing or unknown notifyMode as Slack only', () => {
+    expect(toTarget('t', { ...complete, notifyMode: undefined }).notifyMode).toBe('slack');
+    expect(toTarget('t', { ...complete, notifyMode: 'email' }).notifyMode).toBe('slack');
   });
 
   it('falls back to the default cron when cron is missing or empty', () => {

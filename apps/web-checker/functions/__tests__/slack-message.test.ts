@@ -63,6 +63,21 @@ describe('buildUpdateMessage', () => {
     }
   });
 
+  it('AI ライターに渡したリンクは 5 件まで載せ、残りは件数だけ書く', () => {
+    const links = Array.from({ length: 7 }, (_, i) => `https://example.com/n/${i}`);
+    const message = buildUpdateMessage({ ...base, previousAt: 1, handoff: { links } });
+    expect(texts(message)).toContain('AI ライターに渡したリンク: 7 件');
+    expect(texts(message)).toContain('<https://example.com/n/4|https://example.com/n/4>');
+    expect(texts(message)).not.toContain('n/5|');
+    expect(texts(message)).toContain('ほか 2 件');
+  });
+
+  it('渡せなかった時はエラーを書く', () => {
+    const message = buildUpdateMessage({ ...base, previousAt: 1, handoff: { links: [], error: 'UNAVAILABLE <!here>' } });
+    expect(texts(message)).toContain('AI ライターに渡せませんでした');
+    expect(texts(message)).not.toContain('<!here>');
+  });
+
   it('差分が空なら差分の欄を出さない', () => {
     expect(texts(buildUpdateMessage({ ...base, diff: '' }))).not.toContain('*差分*');
   });

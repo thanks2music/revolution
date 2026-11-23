@@ -9,6 +9,7 @@ const valid = {
   url: 'https://example.com/news',
   selector: '#news',
   cron: '0 * * * *',
+  notifyMode: 'slack' as const,
 };
 
 describe('targetFormSchema', () => {
@@ -52,6 +53,16 @@ describe('targetFormSchema', () => {
     if (result.success) {
       expect(result.data.title).toBe('spaced');
     }
+  });
+});
+
+describe('notifyMode', () => {
+  it('accepts both modes', () => {
+    expect(targetFormSchema.safeParse({ ...valid, notifyMode: 'ai-writer' }).success).toBe(true);
+  });
+
+  it('rejects an unknown mode', () => {
+    expect(targetFormSchema.safeParse({ ...valid, notifyMode: 'email' }).success).toBe(false);
   });
 });
 

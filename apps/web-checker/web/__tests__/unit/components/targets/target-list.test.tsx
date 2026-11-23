@@ -38,6 +38,7 @@ const targetAt = (index: number, createdBy = CURRENT_UID): Target => ({
   selector: '#content',
   title: `監視対象 ${index}`,
   cron: '0 * * * *',
+  notifyMode: 'slack',
   checkedAt: null,
   createdAt: 1_000 - index,
   createdBy,
@@ -142,6 +143,7 @@ describe('TargetList — create', () => {
           url: 'https://example.com/news',
           selector: '#news',
           cron: '0 * * * *',
+          notifyMode: 'slack',
         },
         CURRENT_UID
       )
@@ -222,6 +224,7 @@ describe('TargetList — exclusive editing', () => {
           url: 'https://example.com/changed',
           selector: '#content',
           cron: '0 * * * *',
+          notifyMode: 'slack',
         },
         CURRENT_UID
       )
