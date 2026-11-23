@@ -8,6 +8,21 @@ import path from 'node:path';
 
 import sharp from 'sharp';
 
+// マイページの一覧 (own-reviews) が lib/env.ts を読む。ローカルの Supabase に向ける
+// (CI には .env.local が無く、手元でも本物の環境を読まないように)
+jest.mock('@/lib/env', () => {
+  const local = jest
+    .requireActual<typeof import('@/test-support/local-supabase')>('@/test-support/local-supabase')
+    .getLocalSupabaseEnv();
+  return {
+    env: {
+      NEXT_PUBLIC_SUPABASE_URL: local.url,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: local.publishableKey,
+      SUPABASE_SECRET_KEY: local.secretKey,
+    },
+  };
+});
+
 import { screenSubmittedReview } from '@/lib/reviews/operations';
 import { listOwnReviews } from '@/lib/reviews/own-reviews';
 import { syncPhotoDelivery } from '@/lib/reviews/photos/delivery';
@@ -317,6 +332,28 @@ describe('写真の審査と配信側', () => {
     };
     await syncPhotoDelivery({ db: data.admin, storage: slow }, reviewId);
     expect(await deliveredPhotos()).toEqual([]);
+  });
+
+  it('配信側の片方が失敗しても、もう片方は試し、失敗は投げる。審査の結果は変えない', async () => {
+    const { reviewId } = await pendingReviewWithPhotos(
+      '楽しかった [hide-photo:2:spam]',
+      [400, 500]
+    );
+    const failingUnpublish = {
+      ...storage,
+      async unpublish() {
+        throw new Error('purge failed');
+      },
+    };
+    // 審査は公開になり、出してよい写真は写る (消す方の失敗は Sentry に残す)
+    await expect(
+      screenSubmittedReview(reviewId, { screener, db: data.admin, storage: failingUnpublish })
+    ).resolves.toMatchObject({ status: 'published' });
+    expect(await deliveredPhotos()).toHaveLength(1);
+    // 同期だけを呼ぶと、失敗が投げられる
+    await expect(
+      syncPhotoDelivery({ db: data.admin, storage: failingUnpublish }, reviewId)
+    ).rejects.toThrow('photo delivery failed');
   });
 
   it('写真を読めない時は審査の失敗にして、公開しない', async () => {

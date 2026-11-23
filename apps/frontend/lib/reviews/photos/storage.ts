@@ -123,6 +123,21 @@ const PUBLIC_CACHE_CONTROL = 'public, max-age=3600, s-maxage=31536000';
 
 /** Cloudflare の URL ごとのキャッシュの削除は、1 回に 30 件まで */
 const PURGE_BATCH = 30;
+/** キャッシュの削除の 1 回の待ち時間と、失敗した時のやり直しの回数 (審査・削除の後に待つので、長く待たない) */
+const PURGE_TIMEOUT_MS = 10_000;
+const PURGE_ATTEMPTS = 3;
+/** 配信側へ同時に写す数 (写真 10 枚 × 段 × 形式を一度に投げない) */
+const PUBLISH_CONCURRENCY = 8;
+
+/** fn を、同時に limit 件までで items に順に当てる */
+async function eachWithLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) await fn(items[next++]);
+    })
+  );
+}
 
 const CONTENT_TYPES: Record<StoredPhotoFormat, string> = {
   webp: 'image/webp',
@@ -144,19 +159,33 @@ export async function purgeCachedUrls(
   const batches = Array.from({ length: Math.ceil(urls.length / PURGE_BATCH) }, (_, i) =>
     urls.slice(i * PURGE_BATCH, (i + 1) * PURGE_BATCH)
   );
-  await Promise.all(
-    batches.map(async files => {
+  await Promise.all(batches.map(files => purgeBatch(config, files, fetchImpl)));
+}
+
+/** 30 件ずつのキャッシュの削除。時間切れと失敗 (429・5xx を含む) は間を空けてやり直す */
+async function purgeBatch(
+  config: CachePurgeConfig,
+  files: string[],
+  fetchImpl: typeof fetch
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
       const response = await fetchImpl(
         `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(config.zoneId)}/purge_cache`,
         {
           method: 'POST',
           headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ files }),
+          signal: AbortSignal.timeout(PURGE_TIMEOUT_MS),
         }
       );
-      if (!response.ok) throw new Error(`cache purge failed (HTTP ${response.status})`);
-    })
-  );
+      if (response.ok) return;
+      throw new Error(`cache purge failed (HTTP ${response.status})`);
+    } catch (error) {
+      if (attempt >= PURGE_ATTEMPTS) throw error;
+      await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+    }
+  }
 }
 
 /** R2 の S3 API のクライアント */
@@ -264,21 +293,19 @@ export function createR2PhotoStorage(
     },
 
     async publish(keys) {
-      await Promise.all(
-        keys.map(key =>
-          client.send(
-            new CopyObjectCommand({
-              Bucket: config.publicBucket,
-              Key: key,
-              CopySource: `${config.photoBucket}/${key.split('/').map(encodeURIComponent).join('/')}`,
-              // キャッシュの指定を付け直すので、メタデータは写さずに置き換える
-              MetadataDirective: 'REPLACE',
-              ContentType: contentTypeOf(key),
-              CacheControl: PUBLIC_CACHE_CONTROL,
-            })
-          )
-        )
-      );
+      await eachWithLimit(keys, PUBLISH_CONCURRENCY, async key => {
+        await client.send(
+          new CopyObjectCommand({
+            Bucket: config.publicBucket,
+            Key: key,
+            CopySource: `${config.photoBucket}/${key.split('/').map(encodeURIComponent).join('/')}`,
+            // キャッシュの指定を付け直すので、メタデータは写さずに置き換える
+            MetadataDirective: 'REPLACE',
+            ContentType: contentTypeOf(key),
+            CacheControl: PUBLIC_CACHE_CONTROL,
+          })
+        );
+      });
     },
 
     async unpublish(keys) {

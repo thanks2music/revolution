@@ -55,8 +55,8 @@ export const env = createEnv({
     REVIEW_SCREENER: z.string().optional(),
 
     // 口コミの写真の置き場所 (lib/reviews/photos/storage.ts)。審査器と同じく env レジストリとしての記録で、
-    // 置き場所は `process.env` を直読みする。配信側の 2 つも含めて 7 つそろわなければ写真を付けられない
-    // (口コミ自体は書ける)。CLOUDFLARE_* は配信側から消す時の CDN のキャッシュの削除 (任意、#164)
+    // 置き場所は `process.env` を直読みする。配信側とキャッシュの削除 (CLOUDFLARE_*、#164) も含めて
+    // 9 つそろわなければ写真を付けられない (口コミ自体は書ける)
     REVIEW_R2_ENDPOINT: z.string().optional(),
     REVIEW_R2_ACCESS_KEY_ID: z.string().optional(),
     REVIEW_R2_SECRET_ACCESS_KEY: z.string().optional(),

@@ -44,8 +44,15 @@ AS $$
 DECLARE
   v_updated integer;
 BEGIN
-  -- 口コミの行を押さえてから、写真の集まりを比べる (比べた後に写真が足されないように)
-  PERFORM 1 FROM "public"."reviews" WHERE "id" = p_review_id FOR UPDATE;
+  -- 口コミの行を押さえ、まだ審査中で読んだ時の提出のままかを先に見る (出し直し・削除なら審査し直さない)。
+  -- その後で写真の集まりを比べる (押さえた後なので、比べた後に写真が足されない)
+  PERFORM 1 FROM "public"."reviews"
+  WHERE "id" = p_review_id AND "status" = 'pending' AND "submitted_at" = p_submitted_at
+    AND "deleted_at" IS NULL
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN 'superseded';
+  END IF;
   IF (
     SELECT coalesce(array_agg("id" ORDER BY "id"), '{}')
     FROM "public"."review_images" WHERE "review_id" = p_review_id
