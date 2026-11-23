@@ -1,8 +1,9 @@
 jest.mock('@/lib/env', () => ({ env: {} }));
 
-import { PublicReviewSchema, averageRating } from '@/lib/reviews/queries';
+import { averageRating, publicReviewSchema } from '@/lib/reviews/queries';
 
-const toPublicReview = (row: unknown) => PublicReviewSchema.parse(row);
+const toPublicReview = (row: unknown, mediaBaseUrl: string | null = null) =>
+  publicReviewSchema(mediaBaseUrl).parse(row);
 
 const ROW = {
   id: 1,
@@ -49,5 +50,37 @@ describe('toPublicReview', () => {
       }).authorName
     ).toBeNull();
     expect(toPublicReview({ ...ROW, profiles: null }).authorName).toBeNull();
+  });
+});
+
+describe('口コミの写真', () => {
+  const PHOTO = {
+    id: 7,
+    object_key: 'production/reviews/1/abc',
+    width: 1600,
+    height: 1200,
+    variant_widths: [1440, 320, 720],
+  };
+
+  it('配信側の URL にし、段は小さい順に並べる。src は最大の WebP', () => {
+    const [photo] = toPublicReview(
+      { ...ROW, review_images: [PHOTO] },
+      'https://img.example.test'
+    ).photos;
+    expect(photo).toEqual({
+      id: 7,
+      width: 1600,
+      height: 1200,
+      webpSrcSet:
+        'https://img.example.test/production/reviews/1/abc/320.webp 320w, https://img.example.test/production/reviews/1/abc/720.webp 720w, https://img.example.test/production/reviews/1/abc/1440.webp 1440w',
+      avifSrcSet:
+        'https://img.example.test/production/reviews/1/abc/320.avif 320w, https://img.example.test/production/reviews/1/abc/720.avif 720w, https://img.example.test/production/reviews/1/abc/1440.avif 1440w',
+      src: 'https://img.example.test/production/reviews/1/abc/1440.webp',
+    });
+  });
+
+  it('配信側の基点が無ければ写真を出さない。写真の列が無い行は写真なし', () => {
+    expect(toPublicReview({ ...ROW, review_images: [PHOTO] }, null).photos).toEqual([]);
+    expect(toPublicReview(ROW, 'https://img.example.test').photos).toEqual([]);
   });
 });

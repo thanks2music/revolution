@@ -323,7 +323,8 @@ describe('口コミの写真', () => {
     await expect(listOwnPhotos(ctx, { profileId: other.userId, reviewId })).resolves.toEqual([]);
   });
 
-  it('写真の行は本人だけが読める。会員は行を直接足せない', async () => {
+  // 写真を足すと口コミは審査中に戻る (トリガ)。公開中の口コミの写真の読み出しは review-photos-public.test.ts
+  it('審査中の口コミの写真の行は本人だけが読める。会員は行を直接足せない', async () => {
     const { reviewId, member } = await reviewOf('published');
     const inserted = await data.admin.from('review_images').insert({
       review_id: reviewId,
@@ -342,7 +343,8 @@ describe('口コミの写真', () => {
 
     expect(own.data).toHaveLength(1);
     expect(others.data).toEqual([]);
-    expect(anon.error?.code).toBe('42501');
+    expect(anon.error).toBeNull();
+    expect(anon.data).toEqual([]);
     const direct = await owner.from('review_images').insert({
       review_id: reviewId,
       object_key: 'someone-else/photo',

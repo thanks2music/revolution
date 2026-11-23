@@ -221,6 +221,7 @@ export default async function OccurrenceDetailPage(props: OccurrencePageProps) {
             reviews={reviews.latest}
             mostHelpful={reviews.mostHelpful}
             stats={reviews.stats}
+            gallery={reviews.gallery}
           />
         )}
 
