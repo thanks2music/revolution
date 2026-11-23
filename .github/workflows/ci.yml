@@ -83,6 +83,15 @@ jobs:
         env:
           SKIP_ENV_VALIDATION: 'true'
 
+      - name: Build WEB checker
+        # Functions (esbuild で 1 ファイルにまとめる) と画面 (静的書き出し)。画面の env は Firebase の公開の設定で、
+        # CI では値を持たないので検証を飛ばす (ビルドが通るかだけを見る)
+        run: |
+          pnpm --filter @revolution/web-checker-functions build
+          pnpm --filter @revolution/web-checker-web build
+        env:
+          SKIP_ENV_VALIDATION: 'true'
+
       - name: Build AI Writer
         run: cd apps/ai-writer && pnpm build
         env:
@@ -210,6 +219,26 @@ jobs:
         # 管理アプリの単体テスト (表示の言葉・写真の印。E2E は Job 4)
         if: ${{ !cancelled() }}
         run: cd apps/admin && pnpm test
+
+      - name: Run WEB checker tests
+        # WEB チェッカーの Functions と画面の単体テスト (Firestore の rules のテストは Emulator が要るので別)
+        if: ${{ !cancelled() }}
+        run: |
+          cd apps/web-checker/functions && pnpm test
+          cd ../web && pnpm test
+
+      - name: Setup Java (Firestore Emulator)
+        if: ${{ !cancelled() }}
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Run Firestore rules tests
+        # apps/ai-writer/firestore.rules (AI ライターと WEB チェッカーで共有) のうち、WEB チェッカーの分。
+        # demo- の project ID で Emulator だけに接続する (本番には触れない)
+        if: ${{ !cancelled() }}
+        run: cd apps/web-checker/functions && pnpm test:rules
 
       # docs.anime-events.com (apps/docs)。ビルドは Build Apps ではなくここで行う (Build Apps が最も
       # 時間のかかるジョブのため)。repo 直下の docs/ をビルド時に読むので、docs/*.md の frontmatter の
