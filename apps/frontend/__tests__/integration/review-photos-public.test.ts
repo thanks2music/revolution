@@ -4,8 +4,8 @@ import { getOccurrenceReviews } from '@/lib/reviews/queries';
 import {
   anonClient,
   createTestDataScope,
-  signInAsMember,
   jstDate,
+  signInAsMember,
   type TestDataScope,
 } from '@/test-support/test-data';
 
@@ -27,7 +27,7 @@ jest.mock('@/lib/env', () => {
 
 /**
  * #3 の口コミの写真とギャラリー (one-more-time #164)。公開で見える写真は、公開中で論理削除していない
- * 口コミの非公開でない写真だけ (migration 0024)。ギャラリーはさらにネタバレの口コミの写真を除く。
+ * 口コミの非公開でない写真だけ (migration 0024、0025 で役割ごとの policy に整理)。ギャラリーはさらにネタバレの口コミの写真を除く。
  */
 describe('口コミの写真の公開の読み出し', () => {
   let data: TestDataScope;
@@ -133,15 +133,33 @@ describe('口コミの写真の公開の読み出し', () => {
     const pendingOthers = await reviewWithPhotos(occ.id, { status: 'pending', photos: 1 });
     const viewer = await data.createMember();
     const own = await reviewWithPhotos(occ.id, { photos: 2, hidden: [1], member: viewer });
+    // 自分の審査中の口コミの写真は見え、論理削除した口コミの写真は見えない
+    // (1 人 1 開催 1 件なので、別の開催に作る)
+    const ownPending = await reviewWithPhotos((await occurrence()).id, {
+      status: 'pending',
+      photos: 1,
+      member: viewer,
+    });
+    const ownDeleted = await reviewWithPhotos((await occurrence()).id, {
+      photos: 1,
+      deleted: true,
+      member: viewer,
+    });
 
     const client = await signInAsMember(viewer);
     const { data: rows, error } = await client
       .from('review_images')
       .select('id')
-      .in('review_id', [others.reviewId, pendingOthers.reviewId, own.reviewId]);
+      .in('review_id', [
+        others.reviewId,
+        pendingOthers.reviewId,
+        own.reviewId,
+        ownPending.reviewId,
+        ownDeleted.reviewId,
+      ]);
     expect(error).toBeNull();
     expect((rows ?? []).map(row => row.id).sort((a, b) => a - b)).toEqual(
-      [others.photoIds[0], ...own.photoIds].sort((a, b) => a - b)
+      [others.photoIds[0], ...own.photoIds, ...ownPending.photoIds].sort((a, b) => a - b)
     );
   });
 

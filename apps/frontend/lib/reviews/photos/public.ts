@@ -8,7 +8,7 @@ export { publicMediaBaseUrl } from './storage';
  * 公開中の口コミの写真を、配信側の URL で出す形にする (one-more-time #164、#3 の写真とギャラリー)。
  *
  * 配信側には、公開中の口コミの非公開でない写真だけが写っている (`delivery.ts`)。読む行も同じ条件に
- * RLS で絞ってある (migration 0024)。URL は配信側の基点 + 保管側と同じキー。
+ * RLS で絞ってある (migration 0025 の `review_images_select_published` / `_or_own`)。URL は配信側の基点 + 保管側と同じキー。
  */
 
 export const PublicPhotoRowSchema = z.object({
