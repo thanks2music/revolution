@@ -133,6 +133,37 @@ function photoMarks(rows: PhotoRow[], photos: ReviewPhotoScreening[]) {
   });
 }
 
+/**
+ * 審査の失敗として BOSS の確認待ちにする (写真の印は変えない。公開しないので配信側も変わらない)。
+ * 読んだ時の submitted_at と「審査中」を条件に書き、その間に出し直された時は何もしない
+ */
+async function giveUpScreening(
+  db: SupabaseClient,
+  reviewId: number,
+  submittedAt: string,
+  screenedAt: string,
+  occurrenceId: number
+): Promise<ScreenReviewOutcome> {
+  const { data, error } = await db
+    .from('reviews')
+    .update({
+      status: 'needs_review',
+      reason_code: 'ai_failure',
+      ai_reason: null,
+      ai_error: 'review photos kept changing during screening',
+      ai_model: null,
+      ai_screened_at: screenedAt,
+    })
+    .eq('id', reviewId)
+    .eq('status', 'pending')
+    .eq('submitted_at', submittedAt)
+    .is('deleted_at', null)
+    .select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) return { kind: 'skipped', reason: 'superseded' };
+  return { kind: 'screened', status: 'needs_review', occurrenceId };
+}
+
 export async function screenSubmittedReview(
   reviewId: number,
   deps: {
@@ -177,7 +208,11 @@ export async function screenSubmittedReview(
     });
     if (writeError) throw writeError;
     // 審査の間に写真が足された・外された → 読み直して審査し直す (回数に上限を設ける)
-    if (applied === 'photos_changed' && attempt < MAX_SCREENING_ATTEMPTS) continue;
+    if (applied === 'photos_changed') {
+      if (attempt < MAX_SCREENING_ATTEMPTS) continue;
+      // 写真が変わり続けて審査できなかった。審査中のまま残すと誰も審査し直さないので、BOSS の確認待ちにする
+      return giveUpScreening(deps.db, reviewId, review.submitted_at, screenedAt, review.occurrence_id);
+    }
     if (applied !== 'applied') return { kind: 'skipped', reason: 'superseded' };
 
     // 公開になった写真を配信側へ。公開にならなかった時も合わせる (公開中からの編集で残った物を消す)

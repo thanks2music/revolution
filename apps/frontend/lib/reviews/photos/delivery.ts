@@ -15,7 +15,7 @@ import { variantKeys, type ReviewPhotoStorage } from './storage';
  * 走っても、最後の同期の状態に揃う。行の無くなった写真 (外した写真) の物は、`removePhoto` が消す。
  *
  * 消すのと写すのは片方が失敗しても両方試し、失敗はまとめて投げる。写した後に状態を読み直し、その間に
- * 公開でなくなっていたら (同時に走った削除など) 写した物を消す。
+ * 出せなくなった写真 (口コミが公開でなくなった・写真が非公開になった・外された) の物を消す。
  */
 type Ctx = { db: SupabaseClient; storage: ReviewPhotoStorage };
 
@@ -35,29 +35,37 @@ async function isLive(db: SupabaseClient, reviewId: number): Promise<boolean> {
 const keysOf = (rows: DeliveryRow[]) =>
   rows.flatMap(row => variantKeys(row.object_key, row.variant_widths));
 
-export async function syncPhotoDelivery(
-  ctx: Ctx,
-  reviewId: number
-): Promise<{ published: number; unpublished: number }> {
+/** 配信側に置いてよい写真 (口コミが公開中なら非公開でない写真、それ以外は無し) と、全部の写真 */
+async function readDelivery(db: SupabaseClient, reviewId: number) {
   const [live, photos] = await Promise.all([
-    isLive(ctx.db, reviewId),
-    ctx.db
+    isLive(db, reviewId),
+    db
       .from('review_images')
       .select('object_key, variant_widths, hidden_at')
       .eq('review_id', reviewId),
   ]);
   if (photos.error) throw photos.error;
   const rows = (photos.data ?? []) as DeliveryRow[];
-  const show = live ? rows.filter(row => !row.hidden_at) : [];
-  const hide = live ? rows.filter(row => row.hidden_at) : rows;
+  return { rows, show: live ? rows.filter(row => !row.hidden_at) : [] };
+}
+
+export async function syncPhotoDelivery(
+  ctx: Ctx,
+  reviewId: number
+): Promise<{ published: number; unpublished: number }> {
+  const { rows, show } = await readDelivery(ctx.db, reviewId);
+  const shown = new Set(show.map(row => row.object_key));
+  const hide = rows.filter(row => !shown.has(row.object_key));
 
   const results = await Promise.allSettled([
     ctx.storage.unpublish(keysOf(hide)),
     ctx.storage.publish(keysOf(show)),
   ]);
-  // 写した後に、まだ公開中か読み直す。公開でなくなっていたら、写した物を消す
-  if (show.length > 0 && !(await isLive(ctx.db, reviewId))) {
-    await ctx.storage.unpublish(keysOf(show));
+  // 写した後に読み直す。写している間に出せなくなった写真 (同時に走った削除・審査・写真を外す) の物を消す
+  if (show.length > 0) {
+    const after = new Set((await readDelivery(ctx.db, reviewId)).show.map(row => row.object_key));
+    const stale = show.filter(row => !after.has(row.object_key));
+    if (stale.length > 0) await ctx.storage.unpublish(keysOf(stale));
   }
 
   const failures = results.flatMap(result => (result.status === 'rejected' ? [result.reason] : []));

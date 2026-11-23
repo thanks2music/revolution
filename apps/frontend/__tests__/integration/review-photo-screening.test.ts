@@ -300,6 +300,42 @@ describe('写真の審査と配信側', () => {
     expect(await deliveredPhotos()).toHaveLength(2);
   });
 
+  it('審査のたびに写真が変わり続けたら、3 回で打ち切って BOSS の確認待ちにする (審査中のまま残さない)', async () => {
+    const { reviewId, member } = await pendingReviewWithPhotos('楽しかった', [400]);
+    let width = 500;
+    const racing = {
+      async screen(input: Parameters<typeof screener.screen>[0]) {
+        // 毎回の審査の間に、写真を 1 枚足す
+        const jpeg = await sharp({
+          create: { width: width++, height: 300, channels: 3, background: '#c84' },
+        })
+          .jpeg()
+          .toBuffer();
+        const ticket = await requestPhotoUpload(ctx, {
+          profileId: member.userId,
+          reviewId,
+          file: { contentType: 'image/jpeg', size: jpeg.length },
+        });
+        if (ticket.kind !== 'ok') throw new Error(ticket.kind);
+        await storage.writeIntake(`preview/reviews/${reviewId}/${ticket.photoId}`, jpeg);
+        await ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId: ticket.photoId });
+        return screener.screen(input);
+      },
+    };
+
+    await expect(
+      screenSubmittedReview(reviewId, { screener: racing, db: data.admin, storage })
+    ).resolves.toMatchObject({ kind: 'screened', status: 'needs_review' });
+    const { data: review } = await data.admin
+      .from('reviews')
+      .select('status, reason_code, ai_error')
+      .eq('id', reviewId)
+      .single();
+    expect(review).toMatchObject({ status: 'needs_review', reason_code: 'ai_failure' });
+    expect(review?.ai_error).toContain('kept changing');
+    expect(await deliveredPhotos()).toEqual([]);
+  });
+
   it('写真の判定の数が写真と合わない審査器の結果は、審査の失敗にする', async () => {
     const { reviewId } = await pendingReviewWithPhotos('楽しかった', [400, 500]);
     const short = {
@@ -332,6 +368,27 @@ describe('写真の審査と配信側', () => {
     };
     await syncPhotoDelivery({ db: data.admin, storage: slow }, reviewId);
     expect(await deliveredPhotos()).toEqual([]);
+  });
+
+  it('同期の途中で写真が非公開になったら、その写真の物を消す', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('楽しかった', [400, 500]);
+    await screen(reviewId);
+    expect(await deliveredPhotos()).toHaveLength(2);
+    const [first] = await photos(reviewId);
+
+    // 写している間に、別の審査が 1 枚目を非公開にしたことにする
+    const slow = {
+      ...storage,
+      async publish(keys: string[]) {
+        await storage.publish(keys);
+        await data.admin
+          .from('review_images')
+          .update({ hidden_at: new Date().toISOString(), hidden_reason_code: 'spam' })
+          .eq('id', first.id);
+      },
+    };
+    await syncPhotoDelivery({ db: data.admin, storage: slow }, reviewId);
+    expect(await deliveredPhotos()).toHaveLength(1);
   });
 
   it('配信側の片方が失敗しても、もう片方は試し、失敗は投げる。審査の結果は変えない', async () => {
