@@ -1,0 +1,444 @@
+/**
+ * @jest-environment node
+ */
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+import sharp from 'sharp';
+
+// マイページの一覧 (own-reviews) が lib/env.ts を読む。ローカルの Supabase に向ける
+// (CI には .env.local が無く、手元でも本物の環境を読まないように)
+jest.mock('@/lib/env', () => {
+  const local = jest
+    .requireActual<typeof import('@/test-support/local-supabase')>('@/test-support/local-supabase')
+    .getLocalSupabaseEnv();
+  return {
+    env: {
+      NEXT_PUBLIC_SUPABASE_URL: local.url,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: local.publishableKey,
+      SUPABASE_SECRET_KEY: local.secretKey,
+    },
+  };
+});
+
+import { screenSubmittedReview } from '@/lib/reviews/operations';
+import { listOwnReviews } from '@/lib/reviews/own-reviews';
+import { syncPhotoDelivery } from '@/lib/reviews/photos/delivery';
+import {
+  ingestPhoto,
+  removePhoto,
+  requestPhotoUpload,
+  type PhotoContext,
+} from '@/lib/reviews/photos/operations';
+import { createFakePhotoStorage, type FakePhotoStorage } from '@/lib/reviews/photos/storage';
+import { createFakeScreener } from '@/lib/reviews/screener/fake-screener';
+import { createTestDataScope, jstDate, type TestDataScope } from '@/test-support/test-data';
+
+/**
+ * 写真の審査と配信側 (one-more-time #164)。本物の Postgres・RLS・トリガに対して、偽の審査器
+ * (本文の目印で写真ごとの判定が決まる) と偽の置き場所 (配信側もファイル) で操作の層を叩く。
+ */
+describe('写真の審査と配信側', () => {
+  let data: TestDataScope;
+  let storage: FakePhotoStorage;
+  let ctx: PhotoContext;
+  const screener = createFakeScreener();
+
+  beforeEach(async () => {
+    data = createTestDataScope();
+    storage = createFakePhotoStorage(await mkdtemp(path.join(os.tmpdir(), 'review-delivery-it-')));
+    ctx = { db: data.admin, storage, prefix: 'preview/' };
+  });
+
+  afterEach(async () => {
+    await data.cleanup();
+    await rm(storage.root, { recursive: true, force: true });
+  });
+
+  /** 審査中の口コミに、写真を n 枚付ける (幅で見分ける) */
+  async function pendingReviewWithPhotos(body: string, widths: number[]) {
+    const event = await data.createEvent();
+    const occurrence = await data.createOccurrence({
+      eventId: event.id,
+      verified: true,
+      startsOn: jstDate(-10),
+      endsOn: jstDate(20),
+    });
+    const member = await data.createMember();
+    const { data: row, error } = await data.admin
+      .from('reviews')
+      .insert({
+        occurrence_id: occurrence.id,
+        user_id: member.userId,
+        status: 'pending',
+        rating: 4,
+        body,
+        visited_on: jstDate(-1),
+        submitted_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    const reviewId = row.id as number;
+    for (const width of widths) {
+      const jpeg = await sharp({ create: { width, height: 300, channels: 3, background: '#48c' } })
+        .jpeg()
+        .toBuffer();
+      const ticket = await requestPhotoUpload(ctx, {
+        profileId: member.userId,
+        reviewId,
+        file: { contentType: 'image/jpeg', size: jpeg.length },
+      });
+      if (ticket.kind !== 'ok') throw new Error(ticket.kind);
+      await storage.writeIntake(`preview/reviews/${reviewId}/${ticket.photoId}`, jpeg);
+      const ingested = await ingestPhoto(ctx, {
+        profileId: member.userId,
+        reviewId,
+        photoId: ticket.photoId,
+      });
+      if (ingested.kind !== 'ok') throw new Error(ingested.kind);
+    }
+    return { reviewId, member };
+  }
+
+  async function photos(reviewId: number) {
+    const { data: rows, error } = await data.admin
+      .from('review_images')
+      .select('id, object_key, width, hidden_at, hidden_reason_code')
+      .eq('review_id', reviewId)
+      .order('sort_order');
+    if (error) throw error;
+    return rows as {
+      id: number;
+      object_key: string;
+      width: number;
+      hidden_at: string | null;
+      hidden_reason_code: string | null;
+    }[];
+  }
+
+  /** 配信側にある写真の幅 (写真ごとに 1 つ。webp の一番大きい段の名前から) */
+  async function deliveredPhotos(): Promise<string[]> {
+    try {
+      const files = (await readdir(path.join(storage.root, 'public'), { recursive: true })).map(
+        String
+      );
+      return [...new Set(files.filter(f => /\.(webp|avif)$/.test(f)).map(f => path.dirname(f)))];
+    } catch {
+      return [];
+    }
+  }
+
+  /** 内容を変えて出し直す (投稿者の編集ならトリガが審査中に戻す。ここは service role なので状態も書く) */
+  async function resubmit(reviewId: number, body: string) {
+    const { error } = await data.admin
+      .from('reviews')
+      .update({ body, status: 'pending', submitted_at: new Date().toISOString() })
+      .eq('id', reviewId);
+    if (error) throw error;
+  }
+
+  async function screen(reviewId: number) {
+    return screenSubmittedReview(reviewId, { screener, db: data.admin, storage });
+  }
+
+  it('写真 1 枚だけが問題の時、その写真だけが非公開になり、口コミは公開される。配信側には残りだけ', async () => {
+    const { reviewId } = await pendingReviewWithPhotos(
+      '楽しかった [hide-photo:2:personal_info]',
+      [400, 500, 600]
+    );
+
+    await expect(screen(reviewId)).resolves.toMatchObject({
+      kind: 'screened',
+      status: 'published',
+    });
+
+    const rows = await photos(reviewId);
+    expect(rows.map(row => [row.width, row.hidden_reason_code])).toEqual([
+      [400, null],
+      [500, 'personal_info'],
+      [600, null],
+    ]);
+    expect(rows[1].hidden_at).not.toBeNull();
+    const delivered = await deliveredPhotos();
+    expect(delivered.sort()).toEqual(
+      [rows[0].object_key, rows[2].object_key].map(key => path.normalize(key)).sort()
+    );
+    // 配信側の物は保管側と同じ中身 (段ごと・形式ごと)
+    const key = `${rows[0].object_key}/400.webp`;
+    expect(await storage.readPublic(key)).toEqual(await storage.readStored(key));
+  });
+
+  it('非公開の写真と理由は、本人のマイページの一覧にだけ出る', async () => {
+    const { reviewId, member } = await pendingReviewWithPhotos(
+      '楽しかった [hide-photo:2:personal_info]',
+      [400, 500]
+    );
+    await screen(reviewId);
+
+    const [item] = await listOwnReviews(data.admin, member.userId, storage);
+    expect(item.hiddenPhotos).toEqual([
+      {
+        id: (await photos(reviewId))[1].id,
+        src: expect.stringContaining('/320.webp'),
+        reasonCode: 'personal_info',
+      },
+    ]);
+    // ほかの会員の一覧には出ない
+    const other = await data.createMember();
+    expect(await listOwnReviews(data.admin, other.userId, storage)).toEqual([]);
+  });
+
+  it('迷った写真があれば、本文が通っても公開せず BOSS の確認待ちにする。配信側には何も無い', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('普通の感想 [unsure-photo:1]', [400]);
+
+    await expect(screen(reviewId)).resolves.toMatchObject({
+      kind: 'screened',
+      status: 'needs_review',
+    });
+    expect(await deliveredPhotos()).toEqual([]);
+  });
+
+  it('公開の後に編集して差し戻し・削除・写真を外すと、配信側から消える', async () => {
+    const { reviewId, member } = await pendingReviewWithPhotos('楽しかった', [400, 500]);
+    await screen(reviewId);
+    expect(await deliveredPhotos()).toHaveLength(2);
+
+    // 写真を外す (行が消える) → その写真の物だけが消える
+    const [first, second] = await photos(reviewId);
+    await removePhoto(ctx, { profileId: member.userId, reviewId, photoId: first.id });
+    expect(await deliveredPhotos()).toEqual([path.normalize(second.object_key)]);
+
+    // 本文を変えて出し直す → 差し戻し → 配信側から消える
+    await resubmit(reviewId, '宣伝です [reject:spam]');
+    await expect(screen(reviewId)).resolves.toMatchObject({ status: 'rejected' });
+    expect(await deliveredPhotos()).toEqual([]);
+
+    // もう一度公開してから論理削除 → 消える
+    await resubmit(reviewId, '直しました');
+    await screen(reviewId);
+    expect(await deliveredPhotos()).toHaveLength(1);
+    await data.admin
+      .from('reviews')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', reviewId);
+    await syncPhotoDelivery({ db: data.admin, storage }, reviewId);
+    expect(await deliveredPhotos()).toEqual([]);
+  });
+
+  it('非公開の印は、次の審査で問題が無ければ外れる', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('楽しかった [hide-photo:1:abuse]', [400]);
+    await screen(reviewId);
+    expect((await photos(reviewId))[0].hidden_reason_code).toBe('abuse');
+
+    await resubmit(reviewId, '写真を直しました');
+    await screen(reviewId);
+    expect((await photos(reviewId))[0]).toMatchObject({
+      hidden_at: null,
+      hidden_reason_code: null,
+    });
+    expect(await deliveredPhotos()).toHaveLength(1);
+  });
+
+  it('審査の間に出し直された時は、古い審査の結果で状態も写真の印も書かない', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('楽しかった [hide-photo:1:abuse]', [400]);
+    // 審査器の呼び出しの間に、投稿者が内容を直して出し直したことにする
+    const racing = {
+      async screen(input: Parameters<typeof screener.screen>[0]) {
+        await data.admin
+          .from('reviews')
+          .update({ submitted_at: new Date(Date.now() + 1000).toISOString() })
+          .eq('id', reviewId);
+        return screener.screen(input);
+      },
+    };
+
+    await expect(
+      screenSubmittedReview(reviewId, { screener: racing, db: data.admin, storage })
+    ).resolves.toEqual({ kind: 'skipped', reason: 'superseded' });
+    expect((await photos(reviewId))[0]).toMatchObject({
+      hidden_at: null,
+      hidden_reason_code: null,
+    });
+    expect(await deliveredPhotos()).toEqual([]);
+  });
+
+  it('審査の間に写真が足された時は、読み直して足した写真も審査してから公開する', async () => {
+    const { reviewId, member } = await pendingReviewWithPhotos('楽しかった', [400]);
+    const jpeg = await sharp({
+      create: { width: 500, height: 300, channels: 3, background: '#c84' },
+    })
+      .jpeg()
+      .toBuffer();
+    const seen: number[] = [];
+    let added = false;
+    const racing = {
+      async screen(input: Parameters<typeof screener.screen>[0]) {
+        seen.push(input.photos.length);
+        // 1 回目の審査の間に、写真をもう 1 枚足す (この審査は見ていない)
+        if (!added) {
+          added = true;
+          const ticket = await requestPhotoUpload(ctx, {
+            profileId: member.userId,
+            reviewId,
+            file: { contentType: 'image/jpeg', size: jpeg.length },
+          });
+          if (ticket.kind !== 'ok') throw new Error(ticket.kind);
+          await storage.writeIntake(`preview/reviews/${reviewId}/${ticket.photoId}`, jpeg);
+          await ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId: ticket.photoId });
+        }
+        return screener.screen(input);
+      },
+    };
+
+    await expect(
+      screenSubmittedReview(reviewId, { screener: racing, db: data.admin, storage })
+    ).resolves.toMatchObject({ kind: 'screened', status: 'published' });
+    expect(seen).toEqual([1, 2]);
+    expect(await deliveredPhotos()).toHaveLength(2);
+  });
+
+  it('審査のたびに写真が変わり続けたら、3 回で打ち切って BOSS の確認待ちにする (審査中のまま残さない)', async () => {
+    const { reviewId, member } = await pendingReviewWithPhotos('楽しかった', [400]);
+    let width = 500;
+    const racing = {
+      async screen(input: Parameters<typeof screener.screen>[0]) {
+        // 毎回の審査の間に、写真を 1 枚足す
+        const jpeg = await sharp({
+          create: { width: width++, height: 300, channels: 3, background: '#c84' },
+        })
+          .jpeg()
+          .toBuffer();
+        const ticket = await requestPhotoUpload(ctx, {
+          profileId: member.userId,
+          reviewId,
+          file: { contentType: 'image/jpeg', size: jpeg.length },
+        });
+        if (ticket.kind !== 'ok') throw new Error(ticket.kind);
+        await storage.writeIntake(`preview/reviews/${reviewId}/${ticket.photoId}`, jpeg);
+        await ingestPhoto(ctx, { profileId: member.userId, reviewId, photoId: ticket.photoId });
+        return screener.screen(input);
+      },
+    };
+
+    await expect(
+      screenSubmittedReview(reviewId, { screener: racing, db: data.admin, storage })
+    ).resolves.toMatchObject({ kind: 'screened', status: 'needs_review' });
+    const { data: review } = await data.admin
+      .from('reviews')
+      .select('status, reason_code, ai_error')
+      .eq('id', reviewId)
+      .single();
+    expect(review).toMatchObject({ status: 'needs_review', reason_code: 'ai_failure' });
+    expect(review?.ai_error).toContain('kept changing');
+    expect(await deliveredPhotos()).toEqual([]);
+  });
+
+  it('写真の判定の数が写真と合わない審査器の結果は、審査の失敗にする', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('楽しかった', [400, 500]);
+    const short = {
+      async screen(input: Parameters<typeof screener.screen>[0]) {
+        const result = await screener.screen(input);
+        return result.ok ? { ...result, photos: result.photos.slice(0, 1) } : result;
+      },
+    };
+    await expect(
+      screenSubmittedReview(reviewId, { screener: short, db: data.admin, storage })
+    ).resolves.toMatchObject({ status: 'needs_review' });
+    expect(await deliveredPhotos()).toEqual([]);
+  });
+
+  it('同期の途中で公開でなくなったら、写した物を消す', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('楽しかった', [400]);
+    await screen(reviewId);
+    expect(await deliveredPhotos()).toHaveLength(1);
+
+    // 公開中のまま写し始め、写している間に論理削除されたことにする
+    const slow = {
+      ...storage,
+      async publish(keys: string[]) {
+        await storage.publish(keys);
+        await data.admin
+          .from('reviews')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('id', reviewId);
+      },
+    };
+    await syncPhotoDelivery({ db: data.admin, storage: slow }, reviewId);
+    expect(await deliveredPhotos()).toEqual([]);
+  });
+
+  it('同期の途中で写真が非公開になったら、その写真の物を消す', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('楽しかった', [400, 500]);
+    await screen(reviewId);
+    expect(await deliveredPhotos()).toHaveLength(2);
+    const [first] = await photos(reviewId);
+
+    // 写している間に、別の審査が 1 枚目を非公開にしたことにする
+    const slow = {
+      ...storage,
+      async publish(keys: string[]) {
+        await storage.publish(keys);
+        await data.admin
+          .from('review_images')
+          .update({ hidden_at: new Date().toISOString(), hidden_reason_code: 'spam' })
+          .eq('id', first.id);
+      },
+    };
+    await syncPhotoDelivery({ db: data.admin, storage: slow }, reviewId);
+    expect(await deliveredPhotos()).toHaveLength(1);
+  });
+
+  it('配信側の片方が失敗しても、もう片方は試し、失敗は投げる。審査の結果は変えない', async () => {
+    const { reviewId } = await pendingReviewWithPhotos(
+      '楽しかった [hide-photo:2:spam]',
+      [400, 500]
+    );
+    const failingUnpublish = {
+      ...storage,
+      async unpublish() {
+        throw new Error('purge failed');
+      },
+    };
+    // 審査は公開になり、出してよい写真は写る (消す方の失敗は Sentry に残す)
+    await expect(
+      screenSubmittedReview(reviewId, { screener, db: data.admin, storage: failingUnpublish })
+    ).resolves.toMatchObject({ status: 'published' });
+    expect(await deliveredPhotos()).toHaveLength(1);
+    // 同期だけを呼ぶと、失敗が投げられる
+    await expect(
+      syncPhotoDelivery({ db: data.admin, storage: failingUnpublish }, reviewId)
+    ).rejects.toThrow('photo delivery failed');
+  });
+
+  it('写真を読めない時は審査の失敗にして、公開しない', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('楽しかった', [400]);
+    await expect(
+      screenSubmittedReview(reviewId, { screener, db: data.admin, storage: null })
+    ).resolves.toMatchObject({ status: 'needs_review' });
+    const { data: review } = await data.admin
+      .from('reviews')
+      .select('reason_code')
+      .eq('id', reviewId)
+      .single();
+    expect(review).toEqual({ reason_code: 'ai_failure' });
+  });
+
+  it('会員は自分の写真の非公開の印を書き換えられない', async () => {
+    const { reviewId, member } = await pendingReviewWithPhotos(
+      '楽しかった [hide-photo:1:spam]',
+      [400]
+    );
+    await screen(reviewId);
+    const { signInAsMember } = await import('@/test-support/test-data');
+    const client = await signInAsMember(member);
+    const [photo] = await photos(reviewId);
+    const { error } = await client
+      .from('review_images')
+      .update({ hidden_at: null, hidden_reason_code: null })
+      .eq('id', photo.id);
+    expect(error?.code).toBe('42501');
+  });
+});

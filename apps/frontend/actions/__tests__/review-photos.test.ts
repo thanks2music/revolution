@@ -156,17 +156,14 @@ describe('requestReviewPhotoUpload', () => {
 });
 
 describe('attachReviewPhoto', () => {
-  it('審査中に戻った時だけ、ページを作り直し、応答の後に審査を走らせる', async () => {
-    mocked(ingestPhoto).mockResolvedValue({ kind: 'ok', photo: PHOTO, requeued: true });
+  it.each([
+    ['公開中などから審査中に戻った', { requeued: true }, 2, 1],
+    ['下書きか審査中の口コミに足した', { requeued: false }, 0, 0],
+  ])('%s時: ページの作り直し %i 回、審査 %i 回', async (_label, flags, revalidates, screens) => {
+    mocked(ingestPhoto).mockResolvedValue({ kind: 'ok', photo: PHOTO, ...flags });
     await expect(attachReviewPhoto(route, 'pid')).resolves.toEqual({ ok: true, photo: PHOTO });
-    expect(revalidatePath).toHaveBeenCalledTimes(2);
-    expect(after).toHaveBeenCalledTimes(1);
-
-    jest.clearAllMocks();
-    mocked(ingestPhoto).mockResolvedValue({ kind: 'ok', photo: PHOTO, requeued: false });
-    await attachReviewPhoto(route, 'pid');
-    expect(revalidatePath).not.toHaveBeenCalled();
-    expect(after).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledTimes(revalidates);
+    expect(after).toHaveBeenCalledTimes(screens);
   });
 
   it.each([

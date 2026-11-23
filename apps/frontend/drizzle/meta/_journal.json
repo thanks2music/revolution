@@ -162,6 +162,13 @@
       "when": 1795345268062,
       "tag": "0022_review_photo_uploads",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795409413361,
+      "tag": "0023_review_photo_hiding",
+      "breakpoints": true
     }
   ]
 }

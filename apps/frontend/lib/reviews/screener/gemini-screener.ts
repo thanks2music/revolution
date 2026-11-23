@@ -9,12 +9,19 @@ import { ReviewScreeningResponseSchema } from '@revolution/schemas/review-screen
 
 import { renderUserPrompt, type ScreeningPrompt } from './prompt';
 import { classifyError, withTransientRetry } from './retry';
-import type { ReviewScreener, ReviewScreeningResult } from './types';
+import type {
+  ReviewPhotoScreening,
+  ReviewScreener,
+  ReviewScreeningInput,
+  ReviewScreeningResult,
+} from './types';
 
 /**
  * Gemini による口コミの審査器 (ADR-0001 と同じ provider)。
  *
  * - 構造化出力 (`responseMimeType` + `responseJsonSchema`) で判定を受け取り、zod で検証する
+ * - 写真は本文の後ろに「写真 N」の見出しを付けて画像のまま渡す。応答の写真ごとの判定は、渡した数と
+ *   番号が合わなければ形の崩れとして扱う (判定の無い写真を黙って公開しないため)
  * - 429・5xx・タイムアウトは 2 回までやり直す (`retry.ts`)。形の崩れた応答・ブロック・打ち切りはやり直さない
  * - 失敗は例外にせず `{ ok: false }` で返す。失敗の内容に本文と鍵は含めない
  */
@@ -37,8 +44,8 @@ export interface GeminiScreenerOptions {
 const DEFAULT_TIMEOUT_MS = 20_000;
 /** 管理画面に残す判断の説明の上限 (字) */
 const REASON_MAX_CHARS = 500;
-/** 判定は短い JSON なので小さく取る */
-const MAX_OUTPUT_TOKENS = 1_024;
+/** 判定は短い JSON なので小さく取る (写真 10 枚の判定が入っても足りる大きさ) */
+const MAX_OUTPUT_TOKENS = 2_048;
 
 const RESPONSE_JSON_SCHEMA = z.toJSONSchema(ReviewScreeningResponseSchema, { target: 'draft-7' });
 
@@ -58,10 +65,11 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
   const thinkingLevel =
     options.prompt.thinking_level && THINKING_LEVELS[options.prompt.thinking_level];
 
-  function request(body: string | null): GenerateContentParameters {
+  // 写真の base64 はやり直しのたびに作り直さない (時間切れの signal だけ毎回作る)
+  function request(contents: GenerateContentParameters['contents']): GenerateContentParameters {
     return {
       model,
-      contents: renderUserPrompt(options.prompt, body),
+      contents,
       config: {
         systemInstruction: options.prompt.system,
         temperature: 0,
@@ -77,13 +85,15 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
   }
 
   return {
-    async screen({ body }): Promise<ReviewScreeningResult> {
+    async screen(input): Promise<ReviewScreeningResult> {
       try {
+        const contents = [{ role: 'user', parts: contentParts(options.prompt, input) }];
         const response = await withTransientRetry(
-          () => options.models.generateContent(request(body)),
+          () => options.models.generateContent(request(contents)),
           options.retry
         );
         const parsed = parseResponse(response);
+        const photos = matchPhotos(parsed.photos, input.photos.length);
         return {
           ok: true,
           decision: parsed.decision,
@@ -91,12 +101,49 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
           // 説明は管理画面で読む物。長すぎる応答も判定は生かし、ここで切る (絵文字などを途中で割らないよう文字単位で)
           reason: Array.from(parsed.reason).slice(0, REASON_MAX_CHARS).join(''),
           model,
+          photos,
         };
       } catch (error) {
         return { ok: false, error: describeError(error), model };
       }
     },
   };
+}
+
+/** 本文 (プロンプトに埋め込んだ物) の後ろに、「写真 N」の見出しと画像を並べる */
+export function contentParts(prompt: ScreeningPrompt, input: ReviewScreeningInput) {
+  return [
+    { text: renderUserPrompt(prompt, input.body) },
+    ...input.photos.flatMap((photo, i) => [
+      { text: `写真 ${i + 1}` },
+      {
+        inlineData: { mimeType: photo.mimeType, data: Buffer.from(photo.data).toString('base64') },
+      },
+    ]),
+  ];
+}
+
+/** 応答の写真ごとの判定を、渡した写真の順に並べる。数や番号が合わなければ形の崩れ */
+function matchPhotos(
+  photos: {
+    index: number;
+    decision: ReviewPhotoScreening['decision'];
+    reason_code: ReviewPhotoScreening['reasonCode'];
+  }[],
+  count: number
+): ReviewPhotoScreening[] {
+  const byIndex = new Map(photos.map(photo => [photo.index, photo]));
+  // 数が合っていれば、番号の重なりや範囲外は、どこかの番号の欠けとして下で見つかる
+  if (photos.length !== count) {
+    throw new DeterministicScreeningError(
+      `photo judgements do not match (${photos.length}/${count})`
+    );
+  }
+  return Array.from({ length: count }, (_, i) => {
+    const photo = byIndex.get(i + 1);
+    if (!photo) throw new DeterministicScreeningError(`photo ${i + 1} has no judgement`);
+    return { decision: photo.decision, reasonCode: photo.reason_code };
+  });
 }
 
 function parseResponse(response: GenerateContentResponse) {

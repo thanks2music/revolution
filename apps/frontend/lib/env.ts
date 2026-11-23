@@ -3,8 +3,8 @@
  * @t3-oss/env-nextjs を使用して、必須環境変数の検証とTypeScript型推論を提供
  */
 
-import { createEnv } from "@t3-oss/env-nextjs";
-import { z } from "zod";
+import { createEnv } from '@t3-oss/env-nextjs';
+import { z } from 'zod';
 
 export const env = createEnv({
   /*
@@ -13,9 +13,7 @@ export const env = createEnv({
    * サーバーコンポーネント、API Routes、Middlewareでのみアクセス可能
    */
   server: {
-    NODE_ENV: z
-      .enum(["development", "production", "test"])
-      .default("development"),
+    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
     // ---------------------------------------------------------------
     // Crescendolls (Supabase 会員機能) — server-only シークレット
@@ -26,8 +24,8 @@ export const env = createEnv({
     // 利用箇所側が存在チェックを行う。
     SUPABASE_SECRET_KEY: z
       .string()
-      .startsWith("sb_secret_", {
-        message: "SUPABASE_SECRET_KEY は modern secret key (sb_secret_...) を指定してください",
+      .startsWith('sb_secret_', {
+        message: 'SUPABASE_SECRET_KEY は modern secret key (sb_secret_...) を指定してください',
       })
       .optional(),
 
@@ -57,12 +55,17 @@ export const env = createEnv({
     REVIEW_SCREENER: z.string().optional(),
 
     // 口コミの写真の置き場所 (lib/reviews/photos/storage.ts)。審査器と同じく env レジストリとしての記録で、
-    // 置き場所は `process.env` を直読みする。5 つそろわなければ写真を付けられない (口コミ自体は書ける)
+    // 置き場所は `process.env` を直読みする。配信側とキャッシュの削除 (CLOUDFLARE_*、#164) も含めて
+    // 9 つそろわなければ写真を付けられない (口コミ自体は書ける)
     REVIEW_R2_ENDPOINT: z.string().optional(),
     REVIEW_R2_ACCESS_KEY_ID: z.string().optional(),
     REVIEW_R2_SECRET_ACCESS_KEY: z.string().optional(),
     REVIEW_R2_INTAKE_BUCKET: z.string().optional(),
     REVIEW_R2_PHOTO_BUCKET: z.string().optional(),
+    REVIEW_R2_PUBLIC_BUCKET: z.string().optional(),
+    REVIEW_PUBLIC_MEDIA_BASE_URL: z.string().optional(),
+    CLOUDFLARE_ZONE_ID: z.string().optional(),
+    CLOUDFLARE_CACHE_PURGE_TOKEN: z.string().optional(),
     // fake の時だけ偽物 (ファイル) を使う。手元と E2E の確認用
     REVIEW_PHOTO_STORAGE: z.string().optional(),
   },
@@ -79,32 +82,38 @@ export const env = createEnv({
     // Supabase プロジェクト URL。browser/server/middleware の Supabase
     // クライアント生成に必須。欠落時は起動エラーにして配線ミスを早期検知する。
     NEXT_PUBLIC_SUPABASE_URL: z.string().url({
-      message: "NEXT_PUBLIC_SUPABASE_URL must be a valid URL (e.g., https://<ref>.supabase.co)"
+      message: 'NEXT_PUBLIC_SUPABASE_URL must be a valid URL (e.g., https://<ref>.supabase.co)',
     }),
 
     // modern publishable key (sb_publishable_...)。anon key の後継。
     // browser/server/middleware の Supabase クライアント生成に必須。
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().startsWith("sb_publishable_", {
-      message: "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY は modern publishable key (sb_publishable_...) を指定してください"
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().startsWith('sb_publishable_', {
+      message:
+        'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY は modern publishable key (sb_publishable_...) を指定してください',
     }),
 
     // 公開用サイトURL（OGPやサイトマップで使用）
-    NEXT_PUBLIC_SITE_URL: z.string().url({
-      message: "NEXT_PUBLIC_SITE_URL must be a valid URL (e.g., https://example.com)"
-    }).optional(),
+    NEXT_PUBLIC_SITE_URL: z
+      .string()
+      .url({
+        message: 'NEXT_PUBLIC_SITE_URL must be a valid URL (e.g., https://example.com)',
+      })
+      .optional(),
 
     // サイト名（メタデータで使用）
     // 「Revolution」はリポジトリのコードネームであってサイト名ではない。
     // ユーザーに見える名称は「アニイベ」で、本キーがその単一の真実源。
     // 例外: ヘッダーとフッターのロゴの文字は画像 (public/images/logo-horizontal.svg) に
     // 描かれていて、本キーに従わない。本キーから作るのはロゴのリンクの名前 (alt) だけ。
-    NEXT_PUBLIC_SITE_NAME: z.string().min(1).default("アニイベ"),
+    NEXT_PUBLIC_SITE_NAME: z.string().min(1).default('アニイベ'),
 
     // サイト説明（メタデータで使用）
     NEXT_PUBLIC_SITE_DESCRIPTION: z
       .string()
       .min(1)
-      .default("推し活イベントに行った体験・思い出を記録・レビュー・口コミできるアニイベ。コラボカフェやポップアップなど、アニメ・漫画・映画・音楽のイベント情報も掲載！"),
+      .default(
+        '推し活イベントに行った体験・思い出を記録・レビュー・口コミできるアニイベ。コラボカフェやポップアップなど、アニメ・漫画・映画・音楽のイベント情報も掲載！'
+      ),
 
     // Sentry の DSN。
     // ⚠️ ここに書くのは **env レジストリとしての記録** が目的で、SDK 初期化側は
@@ -135,10 +144,13 @@ export const env = createEnv({
     REVIEW_R2_SECRET_ACCESS_KEY: process.env.REVIEW_R2_SECRET_ACCESS_KEY,
     REVIEW_R2_INTAKE_BUCKET: process.env.REVIEW_R2_INTAKE_BUCKET,
     REVIEW_R2_PHOTO_BUCKET: process.env.REVIEW_R2_PHOTO_BUCKET,
+    REVIEW_R2_PUBLIC_BUCKET: process.env.REVIEW_R2_PUBLIC_BUCKET,
+    REVIEW_PUBLIC_MEDIA_BASE_URL: process.env.REVIEW_PUBLIC_MEDIA_BASE_URL,
+    CLOUDFLARE_ZONE_ID: process.env.CLOUDFLARE_ZONE_ID,
+    CLOUDFLARE_CACHE_PURGE_TOKEN: process.env.CLOUDFLARE_CACHE_PURGE_TOKEN,
     REVIEW_PHOTO_STORAGE: process.env.REVIEW_PHOTO_STORAGE,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_SITE_NAME: process.env.NEXT_PUBLIC_SITE_NAME,
     NEXT_PUBLIC_SITE_DESCRIPTION: process.env.NEXT_PUBLIC_SITE_DESCRIPTION,
@@ -152,8 +164,7 @@ export const env = createEnv({
   // 明示的な真値のみで skip する。`!!process.env.SKIP_ENV_VALIDATION` は文字列
   // "false" も truthy になり、意図せず検証を無効化する事故を招くため厳密一致で判定する。
   skipValidation:
-    process.env.SKIP_ENV_VALIDATION === "true" ||
-    process.env.SKIP_ENV_VALIDATION === "1",
+    process.env.SKIP_ENV_VALIDATION === 'true' || process.env.SKIP_ENV_VALIDATION === '1',
 
   /*
    * エラーメッセージを判別しやすく設定

@@ -14,6 +14,8 @@ import { todayInJst } from '@/lib/occurrence/status';
 import type { OwnReview } from '@/lib/reviews/authoring';
 import { authoringMode } from '@/lib/reviews/eligibility';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
+import { syncPhotoDeliverySafely } from '@/lib/reviews/photos/delivery';
+import { getReviewPhotoStorage } from '@/lib/reviews/photos/storage';
 import { getReviewScreener } from '@/lib/reviews/screener';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -62,6 +64,12 @@ export function modeFor(
   });
 }
 
+/** 口コミの写真の配信側を、今の状態に合わせる (`after()` の中。失敗は Sentry へ) */
+export async function syncReviewPhotoDelivery(db: SupabaseClient, reviewId: number): Promise<void> {
+  const storage = getReviewPhotoStorage();
+  if (storage) await syncPhotoDeliverySafely({ db, storage }, reviewId);
+}
+
 /** 応答の後 (`after()`) に AI の審査を走らせる。公開になったらページを作り直す */
 export async function screenAfterSubmit(
   db: SupabaseClient,
@@ -72,6 +80,7 @@ export async function screenAfterSubmit(
     const outcome = await screenSubmittedReview(reviewId, {
       screener: await getReviewScreener(),
       db,
+      storage: getReviewPhotoStorage(),
     });
     if (outcome.kind === 'screened' && outcome.status === 'published') {
       for (const path of paths) revalidatePath(path);

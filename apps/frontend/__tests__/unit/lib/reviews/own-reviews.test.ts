@@ -8,9 +8,10 @@ import { listOwnReviews } from '@/lib/reviews/own-reviews';
 /** listOwnReviews が読んだ行だけを返す、最小の偽の DB */
 function fakeDb(rows: unknown[]): SupabaseClient {
   const query: Record<string, unknown> = {};
-  for (const name of ['select', 'eq', 'is']) query[name] = () => query;
+  for (const name of ['select', 'eq', 'is', 'not']) query[name] = () => query;
+  // 並べ替えは 4 回 (口コミの 2 つと、写真の 2 つ)。最後の後に行を返す
   let orders = 0;
-  query.order = () => (++orders === 2 ? Promise.resolve({ data: rows, error: null }) : query);
+  query.order = () => (++orders === 4 ? Promise.resolve({ data: rows, error: null }) : query);
   return { from: () => query } as unknown as SupabaseClient;
 }
 

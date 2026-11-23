@@ -7,6 +7,7 @@
 
 import Link from 'next/link';
 
+import { REJECTION_REASON_LABELS } from '@/lib/reviews/labels';
 import type { OwnReviewListItem } from '@/lib/reviews/own-reviews';
 import { ownReviewMeta, ownReviewView, type OwnReviewTone } from '@/lib/reviews/own-review-view';
 
@@ -36,6 +37,35 @@ export function OwnReviewList(props: { reviews: OwnReviewListItem[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** 審査で非公開になった写真と理由 (本人にだけ見える。one-more-time #164) */
+function HiddenPhotos({ photos }: { photos: OwnReviewListItem['hiddenPhotos'] }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-[10px] bg-status-cancelled-surface px-3 py-2.5">
+      <p className="text-[11px] font-bold text-status-cancelled">
+        公開していない写真があります（ほかの人には見えません）
+      </p>
+      <ul className="flex flex-col gap-2" aria-label="公開していない写真">
+        {photos.map(photo => (
+          <li key={photo.id} className="flex items-center gap-2.5">
+            {/* 本人だけが見る短時間の URL。Vercel の画像変換は通さない */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photo.src}
+              alt="公開していない写真"
+              width={48}
+              height={48}
+              className="size-12 shrink-0 rounded-lg object-cover"
+            />
+            <span className="text-[11px] text-status-cancelled">
+              {REJECTION_REASON_LABELS[photo.reasonCode]}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -74,6 +104,7 @@ function OwnReviewItem({ review }: { review: OwnReviewListItem }) {
           {view.reason}
         </p>
       )}
+      {review.hiddenPhotos.length > 0 && <HiddenPhotos photos={review.hiddenPhotos} />}
       <div className="flex items-center gap-4 text-xs font-bold">
         {/* 中止になった開催の下書きなど、もう続きを書けない口コミは削除だけにする */}
         {target.canWrite && (

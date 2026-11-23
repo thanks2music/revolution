@@ -383,9 +383,15 @@ export async function removePhoto(
   if (error) throw error;
   if (!data) return { kind: 'not_found' };
   const row = data as { object_key: string; variant_widths: number[] };
-  // 行は消えたので、利用者には外せたと返す。保管側の物を消せなかった時は Sentry に残す (行が無いので見えない)
-  await ctx.storage.deleteStored(variantKeys(row.object_key, row.variant_widths)).catch(error => {
+  // 行は消えたので、利用者には外せたと返す。配信側 (公開中だった時) と保管側の物を消す。
+  // 消せなかった時は Sentry に残す (配信側に残った物は、行が無いので公開の画面からは指されない)
+  // 保管側を先に消す (同時に走った同期が、この後に配信側へ写し直せないように)。その後で配信側を消す
+  const keys = variantKeys(row.object_key, row.variant_widths);
+  await ctx.storage.deleteStored(keys).catch(error => {
     Sentry.captureException(error, { tags: { part: 'review-photos', step: 'remove-stored' } });
+  });
+  await ctx.storage.unpublish(keys).catch(error => {
+    Sentry.captureException(error, { tags: { part: 'review-photos', step: 'remove-public' } });
   });
   return { kind: 'removed' };
 }

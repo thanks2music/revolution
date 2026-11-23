@@ -176,7 +176,8 @@ export async function attachReviewPhoto(
             : FAILURES.unreadable;
       case 'ok':
         if (outcome.requeued) {
-          // 公開中だった口コミは審査中に戻って見えなくなるので、ページを作り直し、審査を走らせる
+          // 公開中だった口コミは審査中に戻って見えなくなるので、ページを作り直し、審査を走らせる。
+          // 審査中の口コミに足した写真は、走っている審査が写真の集まりの変化を見て読み直す
           for (const path of context.paths) revalidatePath(path);
           const { db } = context.ctx;
           const { reviewId, paths } = context;

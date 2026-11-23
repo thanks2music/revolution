@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server';
 
 import { MAX_REVIEW_PHOTO_BYTES, REVIEW_PHOTO_TYPES } from '@revolution/schemas/review-photo';
 
-import { createFakePhotoStorage } from '@/lib/reviews/photos/storage';
+import { contentTypeOf, createFakePhotoStorage } from '@/lib/reviews/photos/storage';
 import { allowsFakeBackends } from '@/lib/reviews/fake-backends';
 
 type Params = { params: Promise<{ path: string[] }> };
@@ -47,16 +47,15 @@ export async function PUT(request: Request, { params }: Params) {
   return new NextResponse(null, { status: written ? 200 : 404 });
 }
 
-const CONTENT_TYPES: Record<string, string> = { webp: 'image/webp', avif: 'image/avif' };
-
 export async function GET(_request: Request, { params }: Params) {
   const storage = fakeStorage();
   const [area, ...rest] = (await params).path;
-  if (!storage || area !== 'stored' || rest.length === 0) return notFound();
+  if (!storage || (area !== 'stored' && area !== 'public') || rest.length === 0) return notFound();
   const key = rest.join('/');
-  const body = await storage.readStored(key).catch(() => null);
-  const type = CONTENT_TYPES[key.split('.').pop() ?? ''];
-  if (!body || !type) return notFound();
+  const read = area === 'public' ? storage.readPublic : storage.readStored;
+  const body = await read(key).catch(() => null);
+  const type = contentTypeOf(key);
+  if (!body || !type.startsWith('image/')) return notFound();
   return new NextResponse(Buffer.from(body), {
     headers: { 'Content-Type': type, 'Cache-Control': 'private, no-store' },
   });

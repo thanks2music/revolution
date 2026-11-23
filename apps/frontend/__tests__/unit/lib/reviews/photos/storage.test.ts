@@ -22,6 +22,9 @@ const CONFIG = {
   secretAccessKey: 'secret-example',
   intakeBucket: 'intake-bucket',
   photoBucket: 'photo-bucket',
+  publicBucket: 'public-bucket',
+  publicBaseUrl: 'https://img.example.test',
+  cachePurge: { zoneId: 'zone1', token: 'tok' },
 };
 
 function r2WithFakeSend() {
@@ -31,6 +34,76 @@ function r2WithFakeSend() {
   send.mockResolvedValue({});
   return { storage: createR2PhotoStorage(CONFIG, client), send };
 }
+
+describe('配信側 (one-more-time #164)', () => {
+  it('公開は保管側から同じキーで写し、形式とキャッシュの指定を付け直す', async () => {
+    const { storage, send } = r2WithFakeSend();
+    await storage.publish([
+      'production/reviews/1/abc/720.webp',
+      'production/reviews/1/abc/720.avif',
+    ]);
+
+    const inputs = send.mock.calls.map(([command]) => command.input);
+    expect(inputs).toEqual([
+      expect.objectContaining({
+        Bucket: 'public-bucket',
+        Key: 'production/reviews/1/abc/720.webp',
+        CopySource: 'photo-bucket/production/reviews/1/abc/720.webp',
+        MetadataDirective: 'REPLACE',
+        ContentType: 'image/webp',
+        CacheControl: expect.stringContaining('s-maxage='),
+      }),
+      expect.objectContaining({
+        Key: 'production/reviews/1/abc/720.avif',
+        ContentType: 'image/avif',
+      }),
+    ]);
+  });
+
+  it('公開をやめる時は、配信側から消して、その URL の CDN のキャッシュを 30 件ずつ消す', async () => {
+    const client = createR2Client(CONFIG);
+    const send = jest.spyOn(client, 'send') as unknown as jest.Mock;
+    send.mockResolvedValue({});
+    const fetchSpy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    try {
+      const storage = createR2PhotoStorage(CONFIG, client);
+      const keys = Array.from({ length: 31 }, (_, i) => `preview/reviews/1/p${i}/320.webp`);
+      await storage.unpublish(keys);
+
+      expect(send.mock.calls[0][0].input).toMatchObject({
+        Bucket: 'public-bucket',
+        Delete: { Objects: keys.map(Key => ({ Key })), Quiet: true },
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.cloudflare.com/client/v4/zones/zone1/purge_cache');
+      expect(init.headers).toMatchObject({ Authorization: 'Bearer tok' });
+      expect(JSON.parse(String(init.body)).files).toEqual(
+        keys.slice(0, 30).map(key => `https://img.example.test/${key}`)
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('キャッシュを消せなかった時は投げる (呼び出し側が知る)', async () => {
+    const { send } = r2WithFakeSend();
+    const fetchSpy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 403 }));
+    try {
+      const client = createR2Client(CONFIG);
+      jest.spyOn(client, 'send').mockResolvedValue({} as never);
+      const storage = createR2PhotoStorage(CONFIG, client);
+      await expect(storage.unpublish(['preview/a/320.webp'])).rejects.toThrow('HTTP 403');
+    } finally {
+      fetchSpy.mockRestore();
+      send.mockReset();
+    }
+  });
+});
 
 describe('R2 の置き場所', () => {
   it('受け取りの署名付き URL は、形式と長さを署名に含め、10 分で切れる', async () => {
@@ -146,6 +219,10 @@ describe('置き場所の選び方', () => {
     REVIEW_R2_SECRET_ACCESS_KEY: 'secret',
     REVIEW_R2_INTAKE_BUCKET: 'i',
     REVIEW_R2_PHOTO_BUCKET: 'p',
+    REVIEW_R2_PUBLIC_BUCKET: 'pub',
+    REVIEW_PUBLIC_MEDIA_BASE_URL: 'https://img.example.test/',
+    CLOUDFLARE_ZONE_ID: 'zone',
+    CLOUDFLARE_CACHE_PURGE_TOKEN: 'token',
   };
 
   it('偽物は手元とテストだけ。ビルドした物では R2 か、無ければ null', () => {
@@ -165,6 +242,10 @@ describe('置き場所の選び方', () => {
     expect(getReviewPhotoStorage({ ...r2Env, NODE_ENV: 'production' })).not.toBeNull();
     expect(
       getReviewPhotoStorage({ ...r2Env, REVIEW_R2_PHOTO_BUCKET: '', NODE_ENV: 'production' })
+    ).toBeNull();
+    // 配信側から消した写真が CDN に残り続けないよう、キャッシュを消す設定が無ければ置き場所ごと使わない
+    expect(
+      getReviewPhotoStorage({ ...r2Env, CLOUDFLARE_CACHE_PURGE_TOKEN: '', NODE_ENV: 'production' })
     ).toBeNull();
   });
 

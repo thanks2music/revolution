@@ -30,6 +30,7 @@ import { hasEmail, hasGoogle } from '@/lib/auth/provider';
 import type { ArticleIndexItem } from '@/lib/mdx/article-types';
 import { OwnReviewList } from '@/components/molecules/reviews/OwnReviewList';
 import { listOwnReviews, type OwnReviewListItem } from '@/lib/reviews/own-reviews';
+import { getReviewPhotoStorage } from '@/lib/reviews/photos/storage';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { AccountManager } from './AccountManager';
 import { SignOutButton } from './SignOutButton';
@@ -173,7 +174,7 @@ async function loadOwnReviews(
   try {
     const admin = createAdminClient();
     if (!admin) return 'unavailable';
-    return await listOwnReviews(admin, profileId);
+    return await listOwnReviews(admin, profileId, getReviewPhotoStorage());
   } catch (error) {
     Sentry.captureException(error, { tags: { page: 'mypage' } });
     return null;
