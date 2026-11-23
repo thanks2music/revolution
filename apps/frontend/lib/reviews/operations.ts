@@ -105,27 +105,12 @@ async function readScreeningPhotos(
   return bodies.map(data => ({ data: data as Uint8Array, mimeType: 'image/webp' }));
 }
 
-/** 写真ごとの非公開を書く (hide の写真に印と理由、それ以外は印を外す) */
-async function writePhotoJudgements(
-  db: SupabaseClient,
-  rows: PhotoRow[],
-  photos: ReviewPhotoScreening[],
-  at: string
-): Promise<void> {
-  const results = await Promise.all(
-    rows.map((row, i) => {
-      const hide = photos[i]?.decision === 'hide';
-      return db
-        .from('review_images')
-        .update({
-          hidden_at: hide ? at : null,
-          hidden_reason_code: hide ? photos[i].reasonCode : null,
-        })
-        .eq('id', row.id);
-    })
-  );
-  const failed = results.find(result => result.error);
-  if (failed?.error) throw failed.error;
+/** 写真ごとの非公開の印 (hide の写真に理由、それ以外は印を外す)。状態と一緒に 1 つのトランザクションで書く */
+function photoMarks(rows: PhotoRow[], photos: ReviewPhotoScreening[]) {
+  return rows.map((row, i) => {
+    const hide = photos[i]?.decision === 'hide';
+    return { id: row.id, hide, reason: hide ? photos[i].reasonCode : null };
+  });
 }
 
 export async function screenSubmittedReview(
@@ -162,22 +147,23 @@ export async function screenSubmittedReview(
     : { ok: false, error: 'review photos could not be read', model: null };
   const write = toScreeningWrite(result);
   const screenedAt = (deps.now?.() ?? new Date()).toISOString();
-  // 写真の印は状態より先に書く (公開になった時点で、非公開の写真の印が揃っているように)。
-  // 審査中の口コミの写真は誰にも公開されないので、この後の書き込みが負けても害は無い
-  if (result.ok && write.status === 'published') {
-    await writePhotoJudgements(deps.db, rows, result.photos, screenedAt);
-  }
-
-  const { data: updated, error: writeError } = await deps.db
-    .from('reviews')
-    .update({ ...write, ai_screened_at: screenedAt })
-    .eq('id', reviewId)
-    .eq('status', 'pending')
-    .eq('submitted_at', review.submitted_at)
-    .is('deleted_at', null)
-    .select('id');
+  // 状態と写真の印は、読んだ時の submitted_at と「審査中」を条件に、1 つのトランザクションで書く
+  // (migration 0023 の apply_review_screening)。審査の間に出し直されていれば何も書かない。
+  // 印は公開になる時だけ書く (公開にならない口コミの写真は誰にも見えないので、前の印のままでよい)
+  const { data: applied, error: writeError } = await deps.db.rpc('apply_review_screening', {
+    p_review_id: reviewId,
+    p_submitted_at: review.submitted_at,
+    p_status: write.status,
+    p_reason_code: write.reason_code,
+    p_ai_reason: write.ai_reason,
+    p_ai_error: write.ai_error,
+    p_ai_model: write.ai_model,
+    p_screened_at: screenedAt,
+    p_photo_marks:
+      result.ok && write.status === 'published' ? photoMarks(rows, result.photos) : null,
+  });
   if (writeError) throw writeError;
-  if (!updated || updated.length === 0) return { kind: 'skipped', reason: 'superseded' };
+  if (applied !== true) return { kind: 'skipped', reason: 'superseded' };
 
   // 公開になった写真を配信側へ。公開にならなかった時も呼ぶ (公開中からの編集で残った物を消す)
   if (deps.storage) await syncPhotoDelivery({ db: deps.db, storage: deps.storage }, reviewId);

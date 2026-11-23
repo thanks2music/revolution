@@ -236,6 +236,29 @@ describe('写真の審査と配信側', () => {
     expect(await deliveredPhotos()).toHaveLength(1);
   });
 
+  it('審査の間に出し直された時は、古い審査の結果で状態も写真の印も書かない', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('楽しかった [hide-photo:1:abuse]', [400]);
+    // 審査器の呼び出しの間に、投稿者が内容を直して出し直したことにする
+    const racing = {
+      async screen(input: Parameters<typeof screener.screen>[0]) {
+        await data.admin
+          .from('reviews')
+          .update({ submitted_at: new Date(Date.now() + 1000).toISOString() })
+          .eq('id', reviewId);
+        return screener.screen(input);
+      },
+    };
+
+    await expect(
+      screenSubmittedReview(reviewId, { screener: racing, db: data.admin, storage })
+    ).resolves.toEqual({ kind: 'skipped', reason: 'superseded' });
+    expect((await photos(reviewId))[0]).toMatchObject({
+      hidden_at: null,
+      hidden_reason_code: null,
+    });
+    expect(await deliveredPhotos()).toEqual([]);
+  });
+
   it('写真を読めない時は審査の失敗にして、公開しない', async () => {
     const { reviewId } = await pendingReviewWithPhotos('楽しかった', [400]);
     await expect(

@@ -16,3 +16,59 @@ ALTER TABLE "public"."review_images" ADD CONSTRAINT "review_images_hidden_reason
 --> statement-breakpoint
 ALTER TABLE "public"."review_images" ADD CONSTRAINT "review_images_hidden_pair_chk"
   CHECK (("hidden_at" IS NULL) = ("hidden_reason_code" IS NULL));
+--> statement-breakpoint
+
+-- 審査の結果を 1 つのトランザクションで書く (口コミの状態と、写真ごとの非公開の印)。
+-- 読んだ時の submitted_at と「審査中」を条件にし、合わなければ何も書かずに false を返す。印を状態と
+-- 別に書くと、古い本文の審査の印が、新しい提出の審査の後に書かれうるため (2026-11-23 のセキュリティのレビュー)。
+-- p_photo_marks は [{"id": 写真の ID, "hide": 真偽, "reason": 理由のコードか null}]。null なら印に触らない。
+-- 呼ぶのはサーバー (service role) だけ。
+CREATE OR REPLACE FUNCTION public.apply_review_screening(
+  p_review_id bigint,
+  p_submitted_at timestamptz,
+  p_status text,
+  p_reason_code text,
+  p_ai_reason text,
+  p_ai_error text,
+  p_ai_model text,
+  p_screened_at timestamptz,
+  p_photo_marks jsonb
+)
+RETURNS boolean
+SET search_path = ''
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_updated integer;
+BEGIN
+  UPDATE "public"."reviews"
+  SET "status" = p_status,
+      "reason_code" = p_reason_code,
+      "ai_reason" = p_ai_reason,
+      "ai_error" = p_ai_error,
+      "ai_model" = p_ai_model,
+      "ai_screened_at" = p_screened_at
+  WHERE "id" = p_review_id
+    AND "status" = 'pending'
+    AND "submitted_at" = p_submitted_at
+    AND "deleted_at" IS NULL;
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  IF v_updated = 0 THEN
+    RETURN false;
+  END IF;
+
+  IF p_photo_marks IS NOT NULL THEN
+    UPDATE "public"."review_images" AS i
+    SET "hidden_at" = CASE WHEN m."hide" THEN p_screened_at END,
+        "hidden_reason_code" = CASE WHEN m."hide" THEN m."reason" END
+    FROM jsonb_to_recordset(p_photo_marks) AS m("id" bigint, "hide" boolean, "reason" text)
+    WHERE i."id" = m."id" AND i."review_id" = p_review_id;
+  END IF;
+  RETURN true;
+END;
+$$;
+--> statement-breakpoint
+
+REVOKE EXECUTE ON FUNCTION public.apply_review_screening(bigint, timestamptz, text, text, text, text, text, timestamptz, jsonb) FROM public, anon, authenticated;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.apply_review_screening(bigint, timestamptz, text, text, text, text, text, timestamptz, jsonb) TO service_role;
