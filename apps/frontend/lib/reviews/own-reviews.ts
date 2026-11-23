@@ -6,9 +6,9 @@ import { z } from 'zod';
 
 import {
   REVIEW_REASON_CODES,
-  REVIEW_SCREENING_REASONS,
+  REVIEW_REPORT_REASONS,
   REVIEW_STATUSES,
-  type ReviewScreeningReason,
+  type ReviewReportReason,
 } from '@revolution/schemas/review';
 
 import type { ReviewRouteParams } from '@/actions/review';
@@ -52,7 +52,7 @@ const OwnReviewListRowSchema = z.object({
         object_key: z.string(),
         variant_widths: z.array(z.number()),
         sort_order: z.number(),
-        hidden_reason_code: z.enum(REVIEW_SCREENING_REASONS).nullable().catch(null),
+        hidden_reason_code: z.enum(REVIEW_REPORT_REASONS).nullable().catch(null),
       })
     )
     .default([]),
@@ -81,7 +81,7 @@ export type OwnHiddenPhoto = {
   id: number;
   /** サムネイル (一番小さい段の WebP。保管側の短時間だけ有効な URL) */
   src: string;
-  reasonCode: ReviewScreeningReason;
+  reasonCode: ReviewReportReason;
 };
 
 const SELECT =

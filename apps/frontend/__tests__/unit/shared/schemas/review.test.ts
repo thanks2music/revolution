@@ -13,6 +13,10 @@ import {
   REVIEW_MODERATION_ACTIONS,
   REVIEW_MODERATION_ACTORS,
   REVIEW_REASON_CODES,
+  REVIEW_REPORT_REASONS,
+  PROFILE_IMAGE_REPORT_REASONS,
+  REPORT_ACTIONS,
+  REPORT_TARGET_TYPES,
   REVIEW_SCREENING_REASONS,
   REVIEW_STATUSES,
   ReviewSubmitSchema,
@@ -42,17 +46,15 @@ describe('ReviewInsertSchema', () => {
 
   it('accepts body + visited_on', () => {
     expect(() =>
-      ReviewInsertSchema.parse({ ...base, body: 'とても良かった', visitedOn: '2026-08-15' }),
+      ReviewInsertSchema.parse({ ...base, body: 'とても良かった', visitedOn: '2026-08-15' })
     ).not.toThrow();
   });
 
   it('accepts body = null and visited_on = null', () => {
-    expect(() =>
-      ReviewInsertSchema.parse({ ...base, body: null, visitedOn: null }),
-    ).not.toThrow();
+    expect(() => ReviewInsertSchema.parse({ ...base, body: null, visitedOn: null })).not.toThrow();
   });
 
-  it.each([REVIEW_RATING_MIN, 2, 3, 4, REVIEW_RATING_MAX])('accepts rating %i', (rating) => {
+  it.each([REVIEW_RATING_MIN, 2, 3, 4, REVIEW_RATING_MAX])('accepts rating %i', rating => {
     expect(() => ReviewInsertSchema.parse({ ...base, rating })).not.toThrow();
   });
 
@@ -139,12 +141,9 @@ describe('ReviewUpdateSchema', () => {
     expect(() => ReviewUpdateSchema.parse({ rating: 9 })).toThrow();
   });
 
-  it.each(['occurrenceId', 'userId', 'helpfulCount'])(
-    'does not allow %s to be updated',
-    (field) => {
-      expect(Object.keys(ReviewUpdateSchema.shape)).not.toContain(field);
-    },
-  );
+  it.each(['occurrenceId', 'userId', 'helpfulCount'])('does not allow %s to be updated', field => {
+    expect(Object.keys(ReviewUpdateSchema.shape)).not.toContain(field);
+  });
 });
 
 describe('ReviewSoftDeleteSchema', () => {
@@ -223,9 +222,9 @@ describe('ReviewImageUpdateSchema', () => {
   // 表示させられる。RLS では防げないので DB は列単位 GRANT、Layer 1 は omit で塞ぐ。
   it.each(['objectKey', 'reviewId', 'id', 'createdAt'])(
     'does not allow %s to be updated',
-    (field) => {
+    field => {
       expect(Object.keys(ReviewImageUpdateSchema.shape)).not.toContain(field);
-    },
+    }
   );
 
   it('drops an object_key supplied by the caller instead of trusting it', () => {
@@ -239,9 +238,7 @@ describe('ReviewImageUpdateSchema', () => {
 
 describe('ReviewHelpfulInsertSchema', () => {
   it('accepts the composite key pair', () => {
-    expect(() =>
-      ReviewHelpfulInsertSchema.parse({ reviewId: 1, userId: USER_ID }),
-    ).not.toThrow();
+    expect(() => ReviewHelpfulInsertSchema.parse({ reviewId: 1, userId: USER_ID })).not.toThrow();
   });
 
   it('rejects a missing review_id', () => {
@@ -275,7 +272,7 @@ describe('ReviewInsertSchema (0018 の列)', () => {
 
   it('2000 字を超える本文を拒否する', () => {
     expect(() =>
-      ReviewInsertSchema.parse({ ...base, body: 'あ'.repeat(REVIEW_BODY_MAX_CHARS + 1) }),
+      ReviewInsertSchema.parse({ ...base, body: 'あ'.repeat(REVIEW_BODY_MAX_CHARS + 1) })
     ).toThrow();
   });
 
@@ -330,21 +327,20 @@ describe('値の一覧が DB の CHECK と一致する', () => {
   const migration = readFileSync(
     path.join(
       migrationsDir,
-      readdirSync(migrationsDir).find((name) => name.endsWith('_reviews_status_and_screening.sql'))!,
+      readdirSync(migrationsDir).find(name => name.endsWith('_reviews_status_and_screening.sql'))!
     ),
-    'utf8',
+    'utf8'
   );
 
   function checkValues(constraint: string): string[] {
     const start = migration.indexOf(`"${constraint}" CHECK`);
     if (start === -1) throw new Error(`migration に ${constraint} が見つかりません`);
     const body = migration.slice(start, migration.indexOf('),', start));
-    return [...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1]);
+    return [...body.matchAll(/'([a-z0-9_]+)'/g)].map(match => match[1]);
   }
 
   it.each([
     ['reviews_status_chk', REVIEW_STATUSES],
-    ['reviews_reason_code_chk', REVIEW_REASON_CODES],
     ['reviews_attendance_chk', REVIEW_ATTENDANCES],
     ['reviews_food_cost_band_chk', REVIEW_FOOD_COST_BANDS],
     ['reviews_goods_cost_band_chk', REVIEW_GOODS_COST_BANDS],
@@ -355,66 +351,82 @@ describe('値の一覧が DB の CHECK と一致する', () => {
   /** `GRANT <privilege> ( ... ) ON TABLE "public"."reviews" TO authenticated` の列 (snake_case) */
   function grantedColumns(privilege: 'INSERT' | 'UPDATE'): string[] {
     const match = migration.match(
-      new RegExp(`GRANT ${privilege} \\(([^)]*)\\) ON TABLE "public"\\."reviews" TO authenticated`),
+      new RegExp(`GRANT ${privilege} \\(([^)]*)\\) ON TABLE "public"\\."reviews" TO authenticated`)
     );
-    return [...(match?.[1] ?? '').matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).sort();
+    return [...(match?.[1] ?? '').matchAll(/"([a-z_]+)"/g)].map(m => m[1]).sort();
   }
 
-  const toSnake = (key: string) => key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+  const toSnake = (key: string) => key.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`);
 
   it('投稿者が INSERT できる列は ReviewInsertSchema と同じ', () => {
-    expect(grantedColumns('INSERT')).toEqual(Object.keys(ReviewInsertSchema.shape).map(toSnake).sort());
+    expect(grantedColumns('INSERT')).toEqual(
+      Object.keys(ReviewInsertSchema.shape).map(toSnake).sort()
+    );
   });
 
   it('投稿者が UPDATE できる列は ReviewUpdateSchema と同じ', () => {
-    expect(grantedColumns('UPDATE')).toEqual(Object.keys(ReviewUpdateSchema.shape).map(toSnake).sort());
+    expect(grantedColumns('UPDATE')).toEqual(
+      Object.keys(ReviewUpdateSchema.shape).map(toSnake).sort()
+    );
   });
 });
 
-describe('判断の記録の値の一覧が DB の CHECK と一致する (0026)', () => {
+const quoted = (text: string) => [...text.matchAll(/'([a-z0-9_]+)'/g)].map(match => match[1]);
+
+/**
+ * 後の migration で作り直した CHECK があるので、全 migration を順に並べ、最後に定義した物と比べる
+ * (`"<名前>" CHECK (...)` の中の値)
+ */
+describe('理由・操作・通報の値の一覧が、最後に定義した DB の CHECK と一致する', () => {
   const migrationsDir = path.join(__dirname, '../../../../supabase/migrations');
-  const migration = readFileSync(
-    path.join(
-      migrationsDir,
-      readdirSync(migrationsDir).find((name) => name.endsWith('_review_moderation.sql'))!,
-    ),
-    'utf8',
-  );
+  const all = readdirSync(migrationsDir)
+    .filter(name => name.endsWith('.sql'))
+    .sort()
+    .map(name => readFileSync(path.join(migrationsDir, name), 'utf8'))
+    .join('\n');
+
+  /** 最後に定義した `"<名前>" CHECK (...)` の中の '値' (次の制約か statement の区切りまで) */
+  function latestCheckValues(constraint: string): string[] {
+    const last = [...all.matchAll(new RegExp(`"${constraint}"\\s+CHECK`, 'g'))].at(-1);
+    if (!last) throw new Error(`migration に ${constraint} が見つかりません`);
+    const start = last.index! + last[0].length;
+    const ends = [
+      all.indexOf('CONSTRAINT "', start),
+      all.indexOf('--> statement-breakpoint', start),
+    ];
+    return quoted(all.slice(start, Math.min(...ends.filter(end => end !== -1))));
+  }
 
   it.each([
+    ['reviews_reason_code_chk', REVIEW_REASON_CODES],
+    ['review_images_hidden_reason_chk', REVIEW_REPORT_REASONS],
     ['review_moderation_events_actor_chk', REVIEW_MODERATION_ACTORS],
     ['review_moderation_events_action_chk', REVIEW_MODERATION_ACTIONS],
+    ['review_moderation_events_to_status_chk', REVIEW_STATUSES],
+    ['review_moderation_events_reason_code_chk', REVIEW_REASON_CODES],
+    ['review_reports_target_type_chk', REPORT_TARGET_TYPES],
+    ['review_reports_actions_chk', REPORT_ACTIONS],
+    // 口コミの 8 つ、画像の 5 つ (対象の種類の値も混ざる)
+    [
+      'review_reports_reason_code_chk',
+      ['review', ...REVIEW_REPORT_REASONS, 'profile_image', ...PROFILE_IMAGE_REPORT_REASONS],
+    ],
   ])('%s', (constraint, values) => {
-    const start = migration.indexOf(`"${constraint}" CHECK`);
-    expect(start).toBeGreaterThan(-1);
-    const body = migration.slice(start, migration.indexOf('\n', start));
-    expect([...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1])).toEqual([...values]);
+    expect(latestCheckValues(constraint)).toEqual([...values]);
   });
 });
 
-describe('判断の記録の状態・理由と、差し戻しの理由の一覧が定数と一致する (0027)', () => {
+describe('差し戻しの理由の一覧が定数と一致する (0027)', () => {
   const migrationsDir = path.join(__dirname, '../../../../supabase/migrations');
   const migration = readFileSync(
     path.join(
       migrationsDir,
-      readdirSync(migrationsDir).find((name) => name.endsWith('_review_moderation_tighten.sql'))!,
+      readdirSync(migrationsDir).find(name => name.endsWith('_review_moderation_tighten.sql'))!
     ),
-    'utf8',
+    'utf8'
   );
-  const quoted = (text: string) => [...text.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1]);
-
-  it.each([
-    ['review_moderation_events_to_status_chk', REVIEW_STATUSES],
-    ['review_moderation_events_reason_code_chk', REVIEW_REASON_CODES],
-  ])('%s', (constraint, values) => {
-    const start = migration.indexOf(`"${constraint}"`);
-    expect(start).toBeGreaterThan(-1);
-    const body = migration.slice(start, migration.indexOf(')', migration.indexOf('IN (', start)));
-    expect(quoted(body)).toEqual([...values]);
-  });
-
   it('admin_decide_review の v_reasons は審査の 4 種', () => {
-    const line = migration.split('\n').find((text) => text.includes('v_reasons constant text[]'))!;
+    const line = migration.split('\n').find(text => text.includes('v_reasons constant text[]'))!;
     expect(quoted(line)).toEqual([...REVIEW_SCREENING_REASONS]);
   });
 });

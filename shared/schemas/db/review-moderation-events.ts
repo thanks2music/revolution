@@ -11,7 +11,7 @@ import { sql } from 'drizzle-orm';
  * - 口コミの本文の写しは持たない (2026-11-23 BOSS 確定)。口コミが消えても記録は残すため、口コミへの外部キーは置かない
  * - 読めるのは admin だけ (関数 `admin_get_review` 経由)。RLS を有効にし、policy は置かない
  */
-// 値の一覧は ../review.ts の REVIEW_MODERATION_ACTORS / REVIEW_MODERATION_ACTIONS と揃える
+// 値の一覧は ../review-constants.ts の REVIEW_MODERATION_ACTORS / REVIEW_MODERATION_ACTIONS と揃える
 export const reviewModerationEvents = pgTable(
   'review_moderation_events',
   {
@@ -38,7 +38,7 @@ export const reviewModerationEvents = pgTable(
     check('review_moderation_events_actor_chk', sql`${table.actor} IN ('ai', 'admin')`),
     check(
       'review_moderation_events_action_chk',
-      sql`${table.action} IN ('screened', 'published', 'rejected', 'requeued')`
+      sql`${table.action} IN ('screened', 'published', 'rejected', 'requeued', 'hidden', 'kept', 'dismissed')`
     ),
     // 0027: 口コミの状態と理由の CHECK と同じ値
     check(
@@ -47,7 +47,7 @@ export const reviewModerationEvents = pgTable(
     ),
     check(
       'review_moderation_events_reason_code_chk',
-      sql`${table.reasonCode} IS NULL OR ${table.reasonCode} IN ('personal_info', 'abuse', 'spam', 'resale', 'ai_failure')`
+      sql`${table.reasonCode} IS NULL OR ${table.reasonCode} IN ('personal_info', 'abuse', 'spam', 'resale', 'spoiler_unmarked', 'photo_reposted', 'not_attended', 'other', 'ai_failure')`
     ),
     check(
       'review_moderation_events_admin_user_chk',

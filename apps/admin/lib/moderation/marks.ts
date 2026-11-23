@@ -1,4 +1,5 @@
 import type { ModerationPhoto, PhotoDecision } from '@revolution/reviews/moderation';
+import { toScreeningReason } from '@revolution/reviews/labels';
 import type { ReviewScreeningReason } from '@revolution/schemas/review-constants';
 
 /**
@@ -21,7 +22,8 @@ export function initialMarks(photos: ModerationPhoto[]): PhotoMark[] {
     id: photo.id,
     number: index + 1,
     hide: photo.hiddenReason !== null,
-    reason: photo.hiddenReason,
+    // 確認待ちの写真の理由は審査の 4 種 (通報で足した理由は通報の処理の画面で扱う)
+    reason: toScreeningReason(photo.hiddenReason),
     byAi: photo.hiddenReason !== null,
   }));
 }

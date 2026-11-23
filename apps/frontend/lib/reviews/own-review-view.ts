@@ -2,7 +2,7 @@ import type { ReviewReasonCode, ReviewStatus } from '@revolution/schemas/review'
 
 import { formatJstDotDate } from '@/lib/date';
 import { explainsReason } from '@revolution/reviews/eligibility';
-import { REJECTION_REASON_LABELS, toScreeningReason } from '@revolution/reviews/labels';
+import { REVIEW_REASON_LABELS, toExplainedReason } from '@revolution/reviews/labels';
 
 /**
  * #12 マイページの「自分の口コミ」の 1 件の見せ方 (Figma `83:191`、one-more-time #162)。
@@ -38,8 +38,8 @@ export function ownReviewView(input: {
   let reason: string | null = null;
   if (explainsReason(input.status)) {
     // 理由の言葉 (審査の 4 種) と運営の補足を並べる。どちらも無ければ理由の欄は出さない
-    const code = toScreeningReason(input.reasonCode);
-    const detail = [code && `${REJECTION_REASON_LABELS[code]}。`, input.reasonNote]
+    const code = toExplainedReason(input.reasonCode);
+    const detail = [code && `${REVIEW_REASON_LABELS[code]}。`, input.reasonNote]
       .filter(Boolean)
       .join('');
     const prefix = REASON_PREFIX[input.status];

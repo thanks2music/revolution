@@ -46,6 +46,21 @@ export type TestDataScope = {
     cancelled?: boolean;
   }): Promise<{ id: number; slug: string }>;
   createMember(input?: TestMemberInput): Promise<TestMember>;
+  /**
+   * 開催中の開催 (10 日前〜20 日後) に、口コミを 1 件作る。投稿者を渡さなければ会員も作る。
+   * 状態は既定で公開。口コミは後片付けで開催ごと消える
+   */
+  createReview(input?: {
+    status?: 'published' | 'pending';
+    author?: TestMember;
+    body?: string;
+    rating?: number;
+  }): Promise<{
+    reviewId: number;
+    author: TestMember;
+    event: { id: number; categorySlug: string };
+    occurrence: { id: number; slug: string };
+  }>;
   cleanup(): Promise<void>;
 };
 
@@ -124,6 +139,39 @@ export function createTestDataScope(): TestDataScope {
     return member;
   }
 
+  async function createReview(
+    input: {
+      status?: 'published' | 'pending';
+      author?: TestMember;
+      body?: string;
+      rating?: number;
+    } = {},
+  ) {
+    const event = await createEvent();
+    const occurrence = await createOccurrence({
+      eventId: event.id,
+      verified: true,
+      startsOn: jstDate(-10),
+      endsOn: jstDate(20),
+    });
+    const author = input.author ?? (await createMember());
+    const { data, error } = await admin
+      .from('reviews')
+      .insert({
+        occurrence_id: occurrence.id,
+        user_id: author.userId,
+        status: input.status ?? 'published',
+        rating: input.rating ?? 4,
+        body: input.body ?? '楽しかった',
+        visited_on: jstDate(-1),
+        submitted_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+    if (error) throw new Error(`口コミを作れませんでした: ${error.message}`);
+    return { reviewId: data.id as number, author, event, occurrence };
+  }
+
   async function cleanup() {
     const errors: unknown[] = [];
     // 口コミは開催と会員の profile を restrict で参照するので、どちらよりも先に消す
@@ -145,7 +193,7 @@ export function createTestDataScope(): TestDataScope {
     }
   }
 
-  return { admin, createEvent, createOccurrence, createMember, cleanup };
+  return { admin, createEvent, createOccurrence, createMember, createReview, cleanup };
 }
 
 /** ログインしていない利用者 (anon) として読むクライアント */
@@ -175,7 +223,7 @@ export async function signInAsMember(member: TestMember): Promise<SupabaseClient
  */
 export async function createTestMember(
   admin: SupabaseClient,
-  input: TestMemberInput = {}
+  input: TestMemberInput = {},
 ): Promise<TestMember> {
   const suffix = randomSuffix();
   const email = `${TEST_DATA_PREFIX}${suffix}@example.com`;
