@@ -1,9 +1,8 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
-import { getReviewForModeration, listReviewQueue } from '@revolution/reviews/moderation';
+import { getReviewForModeration } from '@revolution/reviews/moderation';
 import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
-import { listReportQueue } from '@revolution/reviews/reports';
 
 import { AdminBar } from '@/components/AdminBar';
 import { QueueList } from '@/components/QueueList';
@@ -11,6 +10,7 @@ import { QueueTabs } from '@/components/QueueTabs';
 import { ReviewDetail } from '@/components/review/ReviewDetail';
 import { getAdminSession } from '@/lib/auth/admin';
 import { detailKind, queueOrder, queuePosition } from '@/lib/moderation/format';
+import { loadQueues } from '@/lib/moderation/queues';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,19 +25,16 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
 
   const session = await getAdminSession();
   if (!session) redirect('/forbidden');
-  const [queue, reports, detail] = await Promise.all([
-    listReviewQueue(session.supabase),
-    listReportQueue(session.supabase),
+  const [{ queue, counts }, detail] = await Promise.all([
+    loadQueues(session.supabase),
     getReviewForModeration(session.supabase, getReviewPhotoStorage(), reviewId),
   ]);
-  if (queue.kind === 'forbidden' || reports.kind === 'forbidden' || detail.kind === 'forbidden') {
-    redirect('/forbidden');
-  }
+  if (detail.kind === 'forbidden') redirect('/forbidden');
   if (detail.kind === 'not_found') notFound();
 
   const { review, stuck, pendingSince, event, occurrence, authorName, photos, history } =
     detail.review;
-  const order = queueOrder(queue.items);
+  const order = queueOrder(queue);
 
   return (
     <>
@@ -55,11 +52,8 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
       </header>
       <main className="mx-auto max-w-6xl lg:grid lg:grid-cols-[minmax(320px,420px)_1fr] lg:gap-6 lg:p-6">
         <div className="hidden bg-surface lg:block lg:self-start lg:rounded-2xl lg:border lg:border-line">
-          <QueueTabs
-            active="queue"
-            counts={{ queue: queue.items.length, reports: reports.items.length }}
-          />
-          <QueueList items={queue.items} selectedId={reviewId} />
+          <QueueTabs active="queue" counts={counts} />
+          <QueueList items={queue} selectedId={reviewId} />
         </div>
         {/* 読み直した時 (写真が変わった・状態が変わった) に、写真の印と知らせを作り直す */}
         <ReviewDetail

@@ -17,7 +17,7 @@ export type ReasonDialogCopy = {
   submit: string;
 };
 
-export const REJECT_COPY: ReasonDialogCopy = {
+const REJECT_COPY: ReasonDialogCopy = {
   title: '差し戻しの理由を選ぶ',
   prefix: '差し戻しの理由',
   submit: '差し戻す',

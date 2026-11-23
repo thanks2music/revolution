@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
-import { getReviewForModeration, listReviewQueue } from '@revolution/reviews/moderation';
+import { getReviewForModeration } from '@revolution/reviews/moderation';
 import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
-import { listReportQueue, sortReasonCounts } from '@revolution/reviews/reports';
+import { sortReasonCounts } from '@revolution/reviews/reports';
 import type { ReviewReportReason } from '@revolution/schemas/review-constants';
 
 import { AdminBar } from '@/components/AdminBar';
@@ -12,6 +12,7 @@ import { ReportList } from '@/components/ReportList';
 import { ReportDetail } from '@/components/report/ReportDetail';
 import { getAdminSession } from '@/lib/auth/admin';
 import { agoLabel } from '@/lib/moderation/format';
+import { loadQueues } from '@/lib/moderation/queues';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,14 +27,11 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
 
   const session = await getAdminSession();
   if (!session) redirect('/forbidden');
-  const [queue, reports, detail] = await Promise.all([
-    listReviewQueue(session.supabase),
-    listReportQueue(session.supabase),
+  const [{ reports, counts: tabCounts }, detail] = await Promise.all([
+    loadQueues(session.supabase),
     getReviewForModeration(session.supabase, getReviewPhotoStorage(), reviewId),
   ]);
-  if (queue.kind === 'forbidden' || reports.kind === 'forbidden' || detail.kind === 'forbidden') {
-    redirect('/forbidden');
-  }
+  if (detail.kind === 'forbidden') redirect('/forbidden');
   if (detail.kind === 'not_found') notFound();
 
   const { review, event, occurrence, authorName, photos, openReports } = detail.review;
@@ -56,11 +54,8 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
       </header>
       <main className="mx-auto max-w-6xl lg:grid lg:grid-cols-[minmax(320px,420px)_1fr] lg:gap-6 lg:p-6">
         <div className="hidden bg-surface lg:block lg:self-start lg:rounded-2xl lg:border lg:border-line">
-          <QueueTabs
-            active="reports"
-            counts={{ queue: queue.items.length, reports: reports.items.length }}
-          />
-          <ReportList items={reports.items} selectedId={reviewId} />
+          <QueueTabs active="reports" counts={tabCounts} />
+          <ReportList items={reports} selectedId={reviewId} />
         </div>
         {openReports.length === 0 ? (
           <div className="bg-surface px-4 py-6 text-sm text-ink-body lg:self-start lg:rounded-2xl lg:border lg:border-line lg:px-6">

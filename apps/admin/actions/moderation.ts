@@ -23,10 +23,9 @@ import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
 import { getReviewScreener } from '@revolution/reviews/screener';
 import { REVIEW_SCREENING_REASONS } from '@revolution/schemas/review';
 
-import { getAdminSession } from '@/lib/auth/admin';
+import { moderationDeps } from '@/lib/moderation/deps';
 import type { NoticeKind } from '@/lib/moderation/notice';
 import { PhotoDecisionsSchema } from '@/lib/moderation/photo-decision';
-import { createServiceClient } from '@/lib/supabase/service';
 
 export type ModerationActionResult =
   { kind: 'superseded' } | { kind: 'photos_changed' } | { kind: 'forbidden' } | { kind: 'error' };
@@ -44,14 +43,6 @@ const RejectSchema = DecideSchema.extend({
   reasonCode: z.enum(REVIEW_SCREENING_REASONS),
   reasonNote: z.string().max(500).nullable(),
 });
-
-async function moderationDeps(): Promise<ModerationDeps | null> {
-  const session = await getAdminSession();
-  if (!session) return null;
-  const serviceDb = createServiceClient();
-  if (!serviceDb) throw new Error('SUPABASE_SECRET_KEY is not set');
-  return { adminDb: session.supabase, serviceDb, storage: getReviewPhotoStorage() };
-}
 
 function noticeUrl(notice: NoticeKind, title: string): string {
   return `/?${new URLSearchParams({ notice, title })}`;

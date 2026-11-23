@@ -17,13 +17,20 @@ export type PhotoMark = {
   byAi: boolean;
 };
 
-export function initialMarks(photos: ModerationPhoto[]): PhotoMark[] {
+/**
+ * 印の初めの値 (今の非公開)。`fromAi` は、今の非公開を AI の勧めとして扱うか (確認待ち)。通報の処理では
+ * 非公開は AI のとは限らないので、印「AI」を出さない
+ */
+export function initialMarks(
+  photos: ModerationPhoto[],
+  { fromAi = true }: { fromAi?: boolean } = {}
+): PhotoMark[] {
   return photos.map((photo, index) => ({
     id: photo.id,
     number: index + 1,
     hide: photo.hiddenReason !== null,
     reason: photo.hiddenReason,
-    byAi: photo.hiddenReason !== null,
+    byAi: fromAi && photo.hiddenReason !== null,
   }));
 }
 

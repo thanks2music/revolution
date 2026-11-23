@@ -163,19 +163,13 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
--- 通報の一覧: 未処理の通報がある口コミごと (最初の通報が古い順)。理由ごとの件数を返す。通報した人は返さない
+-- 通報の一覧: 未処理の通報がある口コミごと (最初の通報が古い順)。件数と理由ごとの件数を返す。通報した人は返さない
 CREATE FUNCTION public.admin_list_review_reports()
 RETURNS TABLE (
   "review_id" bigint,
   "status" text,
-  "submitted_at" timestamptz,
-  "rating" smallint,
-  "body" text,
-  "has_spoiler" boolean,
   "event_name" text,
   "venue_name" text,
-  "author_name" text,
-  "photo_count" integer,
   "report_count" integer,
   "first_reported_at" timestamptz,
   "reasons" jsonb
@@ -188,27 +182,24 @@ AS $$
 BEGIN
   PERFORM private.assert_admin();
   RETURN QUERY
-  WITH open_reports AS (
-    SELECT rr."review_id", count(*)::integer AS "report_count", min(rr."created_at") AS "first_reported_at"
+  WITH by_reason AS (
+    SELECT rr."review_id", rr."reason_code", count(*)::integer AS "n", min(rr."created_at") AS "first_at"
     FROM "public"."review_reports" rr
     WHERE rr."status" = 'open' AND rr."target_type" = 'review'
-    GROUP BY rr."review_id"
+    GROUP BY rr."review_id", rr."reason_code"
+  ), open_reports AS (
+    SELECT b."review_id", sum(b."n")::integer AS "report_count", min(b."first_at") AS "first_reported_at",
+           jsonb_object_agg(b."reason_code", b."n") AS "reasons"
+    FROM by_reason b
+    GROUP BY b."review_id"
   )
-  SELECT r."id", r."status", r."submitted_at", r."rating", r."body", r."has_spoiler",
-         e."name", coalesce(v."name", o."venue_label"),
-         coalesce(p."display_name", p."username"),
-         (SELECT count(*)::integer FROM "public"."review_images" i WHERE i."review_id" = r."id"),
-         op."report_count", op."first_reported_at",
-         (SELECT jsonb_object_agg(x."reason_code", x."n")
-          FROM (SELECT rr."reason_code", count(*) AS "n" FROM "public"."review_reports" rr
-                WHERE rr."review_id" = r."id" AND rr."status" = 'open'
-                GROUP BY rr."reason_code") x)
+  SELECT r."id", r."status", e."name", coalesce(v."name", o."venue_label"),
+         op."report_count", op."first_reported_at", op."reasons"
   FROM open_reports op
   JOIN "public"."reviews" r ON r."id" = op."review_id"
   JOIN "public"."occurrences" o ON o."id" = r."occurrence_id"
   JOIN "public"."events" e ON e."id" = o."event_id"
   LEFT JOIN "public"."venues" v ON v."id" = o."venue_id"
-  LEFT JOIN "public"."profiles" p ON p."id" = r."user_id"
   WHERE r."deleted_at" IS NULL
   ORDER BY op."first_reported_at" ASC, r."id" ASC;
 END;

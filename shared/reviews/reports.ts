@@ -29,14 +29,8 @@ import { syncPhotoDeliverySafely } from './photos/delivery';
 const ReportQueueRowSchema = z.object({
   review_id: z.number(),
   status: z.enum(REVIEW_STATUSES),
-  submitted_at: z.string(),
-  rating: z.number().int().min(1).max(5),
-  body: z.string().nullable(),
-  has_spoiler: z.boolean(),
   event_name: z.string(),
   venue_name: z.string().nullable(),
-  author_name: z.string().nullable(),
-  photo_count: z.number().int().min(0),
   report_count: z.number().int().min(1),
   first_reported_at: z.string(),
   reasons: z.partialRecord(z.enum(REVIEW_REPORT_REASONS), z.number().int().min(1)),
@@ -45,13 +39,8 @@ const ReportQueueRowSchema = z.object({
 export type ReportQueueItem = {
   reviewId: number;
   status: ReviewStatus;
-  rating: number;
-  body: string | null;
-  hasSpoiler: boolean;
   eventName: string;
   venueName: string | null;
-  authorName: string | null;
-  photoCount: number;
   reportCount: number;
   firstReportedAt: string;
   /** 理由ごとの件数 (多い順。同じ数なら理由の並び順) */
@@ -82,13 +71,8 @@ export async function listReportQueue(
     .map(row => ({
       reviewId: row.review_id,
       status: row.status,
-      rating: row.rating,
-      body: row.body,
-      hasSpoiler: row.has_spoiler,
       eventName: row.event_name,
       venueName: row.venue_name,
-      authorName: row.author_name,
-      photoCount: row.photo_count,
       reportCount: row.report_count,
       firstReportedAt: row.first_reported_at,
       reasons: sortReasonCounts(row.reasons),
@@ -102,8 +86,13 @@ export type ReportOutcome =
   /** 公開のまま (ネタバレの印と写真の非公開を当てる。何も変えなければ「問題なし」) */
   | { outcome: 'keep' };
 
-/** 記録した処理: 非公開にした / 直して公開のまま / 問題なし */
-export type ReportAction = 'hidden' | 'kept' | 'dismissed';
+/** 記録した処理: 非公開にした / 直して公開のまま / 問題なし (admin_handle_review_reports が返す値) */
+export const REPORT_HANDLING_ACTIONS = ['hidden', 'kept', 'dismissed'] as const;
+export type ReportAction = (typeof REPORT_HANDLING_ACTIONS)[number];
+
+function isReportAction(value: unknown): value is ReportAction {
+  return REPORT_HANDLING_ACTIONS.some(action => action === value);
+}
 
 export type ReportWriteOutcome =
   | { kind: 'applied'; action: ReportAction }
@@ -139,8 +128,9 @@ export async function handleReviewReports(
     p_has_spoiler: input.hasSpoiler,
     p_photo_marks: toPhotoMarks(input.photos),
   });
-  if (!error && (data === 'hidden' || data === 'kept' || data === 'dismissed')) {
-    if (deps.storage) {
+  if (!error && isReportAction(data)) {
+    // 写真か状態が変わった時だけ配信側を合わせる (問題なしで閉じた時は何も変わっていない)
+    if (data !== 'dismissed' && deps.storage) {
       await syncPhotoDeliverySafely({ db: deps.serviceDb, storage: deps.storage }, input.reviewId);
     }
     return { kind: 'applied', action: data };

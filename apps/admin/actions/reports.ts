@@ -11,15 +11,12 @@ import * as Sentry from '@sentry/nextjs';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
-import type { PhotoDecision } from '@revolution/reviews/moderation';
-import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
 import { handleReviewReports } from '@revolution/reviews/reports';
 import { REVIEW_REPORT_REASONS } from '@revolution/schemas/review';
 
-import { getAdminSession } from '@/lib/auth/admin';
+import { moderationDeps } from '@/lib/moderation/deps';
 import type { NoticeKind } from '@/lib/moderation/notice';
 import { PhotoDecisionsSchema } from '@/lib/moderation/photo-decision';
-import { createServiceClient } from '@/lib/supabase/service';
 
 export type ReportActionResult =
   | { kind: 'superseded' }
@@ -58,14 +55,9 @@ export async function handleReportsAction(
   const { title, ...rest } = parsed.data;
   let outcome;
   try {
-    const session = await getAdminSession();
-    if (!session) return { kind: 'forbidden' };
-    const serviceDb = createServiceClient();
-    if (!serviceDb) throw new Error('SUPABASE_SECRET_KEY is not set');
-    outcome = await handleReviewReports(
-      { adminDb: session.supabase, serviceDb, storage: getReviewPhotoStorage() },
-      { ...rest, photos: rest.photos as PhotoDecision[] }
-    );
+    const deps = await moderationDeps();
+    if (!deps) return { kind: 'forbidden' };
+    outcome = await handleReviewReports(deps, rest);
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'admin.handleReviewReports' } });
     return { kind: 'error' };

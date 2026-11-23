@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 
 import {
   ATTENDANCE_LABELS,
@@ -10,7 +10,12 @@ import {
   GOODS_COST_BAND_LABELS,
 } from '@revolution/reviews/labels';
 import type { ModerationPhoto } from '@revolution/reviews/moderation';
-import type { ReviewReportReason } from '@revolution/schemas/review-constants';
+import type {
+  ReviewAttendance,
+  ReviewFoodCostBand,
+  ReviewGoodsCostBand,
+  ReviewReportReason,
+} from '@revolution/schemas/review-constants';
 
 import { handleReportsAction, type ReportActionResult } from '@/actions/reports';
 import { PhotoMarkControls } from '@/components/review/PhotoMarkControls';
@@ -42,14 +47,15 @@ export type ReportDetailReview = {
   rating: number | null;
   body: string | null;
   visitedOn: string | null;
-  attendance: keyof typeof ATTENDANCE_LABELS | null;
-  foodCostBand: keyof typeof FOOD_COST_BAND_LABELS | null;
-  goodsCostBand: keyof typeof GOODS_COST_BAND_LABELS | null;
+  attendance: ReviewAttendance | null;
+  foodCostBand: ReviewFoodCostBand | null;
+  goodsCostBand: ReviewGoodsCostBand | null;
   hasSpoiler: boolean;
   submittedAt: string | null;
 };
 
-type Blocked = 'superseded' | 'photos_changed' | 'not_published' | null;
+/** 開いている間に起きたこと (公開でなくなった時は読み直すので、ここには入れない) */
+type Blocked = 'superseded' | 'photos_changed' | null;
 
 /**
  * 通報された口コミの処理 (Figma 16 / 16-PC `88:438`)。上に通報 (件数・理由) と操作、下に口コミ全体。
@@ -76,19 +82,17 @@ export function ReportDetail({
   firstReportedLabel: string | null;
 }) {
   const router = useRouter();
-  // 写真の印の初めの値は今の非公開 (AI の勧めかどうかはここでは出さない)
-  const [initial] = useState(() => initialMarks(photos).map(mark => ({ ...mark, byAi: false })));
+  // 写真の印の初めの値は今の非公開 (通報の処理では、非公開が AI の勧めとは限らないので印「AI」は出さない)
+  const initial = useMemo(() => initialMarks(photos, { fromAi: false }), [photos]);
   const [marks, setMarks] = useState<PhotoMark[]>(initial);
   const [spoiler, setSpoiler] = useState(review.hasSpoiler);
-  const [blocked, setBlocked] = useState<Blocked>(
-    review.status === 'published' ? null : 'not_published'
-  );
+  const [blocked, setBlocked] = useState<Blocked>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [hiding, setHiding] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const published = review.status === 'published';
-  const locked = pending || (blocked !== null && blocked !== 'not_published');
+  const locked = pending || blocked !== null;
   const changed =
     spoiler !== review.hasSpoiler ||
     marks.some(
@@ -96,7 +100,6 @@ export function ReportDetail({
         mark.hide !== initial[index].hide || (mark.hide && mark.reason !== initial[index].reason)
     );
   const missing = missingReasonMessage(marks);
-  const reportCount = reasons.reduce((sum, reason) => sum + reason.count, 0);
 
   const updateMark = (next: PhotoMark) =>
     setMarks(current => current.map(mark => (mark.id === next.id ? next : mark)));
@@ -158,7 +161,7 @@ export function ReportDetail({
           </button>
         </Banner>
       )}
-      {blocked === 'not_published' && (
+      {!published && (
         <Banner tone="warning" title="この口コミは公開中ではありません">
           通報の後に、投稿者が直して出し直したか、ほかの操作で状態が変わりました (
           {reviewStateLabel(review.status)})。
@@ -173,7 +176,7 @@ export function ReportDetail({
       >
         <p className="flex items-center gap-1.5">
           <span className="rounded bg-danger-surface px-1.5 py-0.5 text-[11px] font-bold text-danger">
-            通報 {reportCount} 件
+            通報 {reportIds.length} 件
           </span>
           <span className="text-[11px] text-ink-muted">
             {reviewStateLabel(review.status)}
