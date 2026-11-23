@@ -92,14 +92,19 @@ export function renderGoodsList(
     if (other) lines.push('', other);
   } else if (rows.length > 0) {
     lines.push(config.heading, '');
-    if (rows.length <= config.list_max_items) {
+    // 価格も販売方法も 1 件も読めなければ (画像にしか無いサイト)、件数が多くても箇条書きにする (空の列の表にしない)
+    const noPrice = rows.every((row) => !row.price);
+    const noSales = rows.every((row) => !row.sales);
+    if (rows.length <= config.list_max_items || (noPrice && noSales)) {
       lines.push(...rows.map((row) => fill(config.bullet, row)));
     } else {
+      // 1 件も値の無い列は落とす (表の書式は YAML のまま。列の並びは品名・価格・販売)
+      const drop = [...(noPrice ? [1] : []), ...(noSales ? [2] : [])];
       lines.push(
-        config.table_header,
-        config.table_divider,
+        withoutColumns(config.table_header, drop),
+        withoutColumns(config.table_divider, drop),
         ...rows.map((row) =>
-          fill(config.table_row, { name: cell(row.name), price: cell(row.price), sales: cell(row.sales) })
+          withoutColumns(fill(config.table_row, { name: cell(row.name), price: cell(row.price), sales: cell(row.sales) }), drop)
         )
       );
     }
@@ -109,6 +114,16 @@ export function renderGoodsList(
     lines.push(config.online_only_note);
   }
   return lines.join('\n');
+}
+
+/**
+ * Markdown の表の 1 行から、指定した位置 (0 始まり) の列を除く。`| a | b | c |` の形の行だけを扱う
+ * (セルの中の `|` は `tableCell` が全角に置き換え済みなので、`|` で分けてよい)
+ */
+function withoutColumns(line: string, drop: number[]): string {
+  if (drop.length === 0) return line;
+  const cells = line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+  return `|${cells.filter((_, index) => !drop.includes(index)).join('|')}|`;
 }
 
 /** グッズの節の見出し (記事の更新の減少チェック `lib/mdx/article-counts.ts` も使う) */

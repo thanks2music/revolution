@@ -219,6 +219,8 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
           dryRun: options.dryRun,
           // Only RSS candidates are limited to the writing scope; a person chose a registered URL
           applyWritingScope: isRssCandidate(candidate),
+          // A registered URL may be the official page itself (RSS items are news articles)
+          inputMayBeOfficialPage: originSource(candidate) === 'registered',
         });
         attempt = { kind: 'pipeline', result };
       } catch (caught) {

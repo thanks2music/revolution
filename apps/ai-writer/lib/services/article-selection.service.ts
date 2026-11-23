@@ -132,6 +132,7 @@ ${rulesSection}
 - rss_title: ${request.rss_title}
 - rss_content: ${request.rss_content}
 ${request.site_domain ? `- site_domain: ${request.site_domain}` : ''}
+${request.page_url ? `- page_url: ${request.page_url}` : ''}
 
 ---
 

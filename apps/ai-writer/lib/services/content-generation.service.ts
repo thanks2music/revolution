@@ -527,7 +527,9 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
   }
 
   /**
-   * カテゴリ別画像情報のMarkdownテーブルを構築
+   * カテゴリ別画像情報のMarkdownテーブルを構築 (画像の数だけ。節を書くかの判断は YAML の
+   * section_skip_conditions が品名と画像数から決める。2026-11-23: 画像 0 件を「スキップ」と書いていたため、
+   * 品名があっても節が消えていた)
    *
    * @param categoryImages カテゴリ別画像情報
    * @returns Markdownテーブル形式の文字列
@@ -536,11 +538,11 @@ ${this.buildCategoryImagesSection(template, request.categoryImages)}
     const { menu, novelty, goods } = categoryImages;
 
     const tableRows = [
-      '| カテゴリ | 画像数 | アクション |',
-      '|----------|--------|------------|',
-      `| メニュー | ${menu.length}件 | ${menu.length > 0 ? 'セクション生成' : 'スキップ'} |`,
-      `| ノベルティ | ${novelty.length}件 | ${novelty.length > 0 ? 'セクション生成' : 'スキップ'} |`,
-      `| グッズ | ${goods.length}件 | ${goods.length > 0 ? 'セクション生成' : 'スキップ'} |`,
+      '| カテゴリ | 画像数 |',
+      '|----------|--------|',
+      `| メニュー | ${menu.length}件 |`,
+      `| ノベルティ | ${novelty.length}件 |`,
+      `| グッズ | ${goods.length}件 |`,
     ];
 
     return tableRows.join('\n');
