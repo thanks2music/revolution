@@ -7,7 +7,7 @@ import {
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { canUseWebChecker } from '@/lib/auth/claims';
 import { mapAuthError, type AuthErrorView } from '@/lib/auth/auth-error';
@@ -33,7 +33,6 @@ export type AuthStatus =
 
 export interface AuthContextValue {
   status: AuthStatus;
-  user: User | null;
   uid: string | null;
   email: string | null;
   error: AuthErrorView | null;
@@ -53,6 +52,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * クレームを見て状態を決める。手元のトークンにクレームが無ければ、1 回だけ取り直す
    * (クレームを付けてもらった直後は、手元のトークンが古いことがあるため)。
    */
+  // 取り直したユーザー。取り直すと onIdTokenChanged がまた呼ばれるので、クレームが無いままだと取り直しが続いてしまう
+  const refreshedUids = useRef(new Set<string>());
+
   const evaluate = useCallback(async (nextUser: User): Promise<void> => {
     try {
       const cached = await nextUser.getIdTokenResult();
@@ -60,7 +62,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setStatus('authorized');
         return;
       }
+      if (refreshedUids.current.has(nextUser.uid)) {
+        setStatus('forbidden');
+        return;
+      }
 
+      refreshedUids.current.add(nextUser.uid);
       const fresh = await nextUser.getIdTokenResult(true);
       setStatus(canUseWebChecker(fresh.claims) ? 'authorized' : 'forbidden');
     } catch (caught) {
@@ -110,7 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
-      user,
       uid: user?.uid ?? null,
       email: user?.email ?? null,
       error,

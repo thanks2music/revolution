@@ -78,8 +78,8 @@ describe('AuthGuard', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'ログアウト' }));
 
+    // ログインの画面へ移すのは、ログアウトで状態が unauthenticated になった後の AuthGuard (上のテスト)
     expect(signOutMock).toHaveBeenCalledTimes(1);
-    expect(replaceMock).toHaveBeenCalledWith('/login');
   });
 
   it('renders children only once authorized', () => {

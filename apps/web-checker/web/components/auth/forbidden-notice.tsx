@@ -1,7 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-
 import { useAuth } from '@/lib/auth/auth-context';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -12,12 +10,6 @@ import { Button } from '@/components/ui/button';
  */
 export function ForbiddenNotice() {
   const { email, signOut } = useAuth();
-  const router = useRouter();
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.replace('/login');
-  };
 
   return (
     <main className="mx-auto grid max-w-xl gap-6 px-4 py-10">
@@ -32,7 +24,7 @@ export function ForbiddenNotice() {
       </Alert>
 
       <div>
-        <Button variant="outline" onClick={() => void handleSignOut()}>
+        <Button variant="outline" onClick={() => void signOut()}>
           ログアウト
         </Button>
       </div>

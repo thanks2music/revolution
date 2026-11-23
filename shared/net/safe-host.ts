@@ -5,9 +5,10 @@
  * 侵害された / 悪意あるサイトが `http://169.254.169.254/...` のような内部アドレスを返すと、
  * Cloud Run や Cloud Functions がそこへリクエストを送ってしまうため。
  *
- * ⚠️ **残存リスク: DNS rebinding。** 検証時と接続時で名前解決の結果が変わる TOCTOU は
- * アプリ層では塞ぎきれない。完全に塞ぐならネットワーク層 (egress の許可リスト /
- * VPC の firewall) が必要。
+ * ⚠️ **DNS rebinding。** {@link assertPublicHost} だけでは、検証時と接続時で名前解決の結果が変わる
+ * TOCTOU を塞げない。接続に使う名前解決の中でも {@link isBlockedIpv4} / {@link isBlockedIpv6} で確かめること
+ * (WEB チェッカーの `apps/web-checker/functions/src/fetch-fragment.ts` の `guardedLookup`)。
+ * AI ライターの取得はまだ取得前の確認だけで、この残存リスクがある。
  *
  * ⚠️ リダイレクトは取得する側で手動で追い (`redirect: 'manual'`)、各ホップに {@link assertPublicHost} をかけること。
  *
@@ -18,6 +19,11 @@
 
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+
+/** 内部アドレスを指すため取得しない、という失敗。試し直しても変わらないので、呼び出し側は `instanceof` で見分けられる */
+export class BlockedHostError extends Error {
+  override name = 'BlockedHostError';
+}
 
 /**
  * 名前で弾く内部ホスト
@@ -182,7 +188,7 @@ export function isBlockedHost(hostname: string): boolean {
  */
 export async function assertPublicHost(url: URL): Promise<void> {
   if (isBlockedHost(url.hostname)) {
-    throw new Error(`Blocked host (internal address): ${url.hostname}`);
+    throw new BlockedHostError(`Blocked host (internal address): ${url.hostname}`);
   }
 
   // IP リテラルなら上のチェックで確定しているので DNS 解決は不要
@@ -192,7 +198,7 @@ export async function assertPublicHost(url: URL): Promise<void> {
   for (const { address, family } of addresses) {
     const blocked = family === 4 ? isBlockedIpv4(address) : isBlockedIpv6(address);
     if (blocked) {
-      throw new Error(
+      throw new BlockedHostError(
         `Blocked host (resolves to internal address): ${url.hostname} → ${address}`
       );
     }

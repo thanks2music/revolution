@@ -5,7 +5,7 @@ import iconv from 'iconv-lite';
 import jschardet from 'jschardet';
 import { Agent } from 'undici';
 
-import { assertPublicHost, isBlockedIpv4, isBlockedIpv6 } from '@revolution/net/safe-host';
+import { BlockedHostError, assertPublicHost, isBlockedIpv4, isBlockedIpv6 } from '@revolution/net/safe-host';
 
 const TIMEOUT_MS = 30_000;
 /** ページ 1 枚の上限。お知らせ欄のページは大きくても数 MB */
@@ -34,7 +34,10 @@ export function guardedLookup(hostname: string, options: LookupOptions, callback
       family === 4 ? isBlockedIpv4(address) : isBlockedIpv6(address),
     );
     if (blocked) {
-      return callback(new Error(`Blocked host (resolves to internal address): ${hostname} → ${blocked.address}`), []);
+      return callback(
+        new BlockedHostError(`Blocked host (resolves to internal address): ${hostname} → ${blocked.address}`),
+        [],
+      );
     }
     if (options.all) return callback(null, addresses);
     const [first] = addresses;
@@ -50,7 +53,7 @@ export const guardedDispatcher = new Agent({ connect: { lookup: guardedLookup } 
  * 試し直しても直らない失敗 (内部アドレス・http(s) 以外・大きすぎる・4xx)。これは 1 回で諦める。
  * 試し直すのは、通信のエラー・時間切れ・5xx・429 だけ
  */
-export class PermanentFetchError extends Error {
+class PermanentFetchError extends Error {
   override name = 'PermanentFetchError';
 }
 
@@ -93,15 +96,8 @@ async function fetchPage(rawUrl: string): Promise<FetchedPage> {
     if (current.protocol !== 'https:' && current.protocol !== 'http:') {
       throw new PermanentFetchError(`Blocked URL scheme "${current.protocol}": ${current.href}`);
     }
-    try {
-      await assertPublicHost(current);
-    } catch (error) {
-      // 内部アドレスは何度試しても同じ。名前を解決できない (DNS の一時的な失敗かもしれない) 時は試し直す
-      if (error instanceof Error && error.message.startsWith('Blocked host')) {
-        throw new PermanentFetchError(error.message);
-      }
-      throw error;
-    }
+    // 内部アドレスなら BlockedHostError (試し直さない)。名前を解決できない時は DNS の一時的な失敗かもしれないので試し直す
+    await assertPublicHost(current);
 
     const response = await fetch(current.href, {
       redirect: 'manual',
@@ -147,9 +143,10 @@ export function declaredCharset(contentType: string | null, body: Buffer): strin
  */
 function decode(page: FetchedPage): string {
   const declared = declaredCharset(page.contentType, page.body);
+  if (declared && iconv.encodingExists(declared)) return iconv.decode(page.body, declared);
+  // 推測は本文の全体を走査するので、宣言が無い (か読めない) 時だけ行う
   const guessed = jschardet.detect(page.body).encoding;
-  const encoding = [declared, guessed].find((name): name is string => !!name && iconv.encodingExists(name)) ?? 'utf-8';
-  return iconv.decode(page.body, encoding);
+  return iconv.decode(page.body, guessed && iconv.encodingExists(guessed) ? guessed : 'utf-8');
 }
 
 /** HTML から、セレクタに一致した最初の要素の中身 (HTML) を返す。一致しなければ `null` */
@@ -157,7 +154,7 @@ export function extractFragment(html: string, selector: string): string | null {
   return cheerio.load(html)(selector || 'body').html();
 }
 
-export interface FetchFragmentOptions {
+interface FetchFragmentOptions {
   /** 試し直しの待ち時間 (テストで 0 にする) */
   retryDelayMs?: number;
 }
@@ -178,7 +175,7 @@ export async function fetchFragment(
       return extractFragment(decode(await fetchPage(url)), selector);
     } catch (error) {
       lastError = error;
-      if (error instanceof PermanentFetchError) break;
+      if (error instanceof PermanentFetchError || error instanceof BlockedHostError) break;
       if (attempt < MAX_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
     }
   }

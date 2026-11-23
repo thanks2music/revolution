@@ -71,7 +71,8 @@ export const webCheckerDispatch = onSchedule(
       const target = doc.data() as Pick<Target, 'cron' | 'checkedAt' | 'createdAt'>;
       return isDue(target, now) && !isLeftToEditCrawl(target, now);
     });
-    await Promise.all(due.map((doc) => pubsub.topic(CRAWL_TOPIC).publishMessage({ json: { targetId: doc.id } })));
+    const topic = pubsub.topic(CRAWL_TOPIC);
+    await Promise.all(due.map((doc) => topic.publishMessage({ json: { targetId: doc.id } })));
     console.log(`[web-checker] dispatched ${due.length} of ${targets.size} targets`);
   },
 );

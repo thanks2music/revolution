@@ -1,20 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
 import { useAuth } from '@/lib/auth/auth-context';
 import { Button } from '@/components/ui/button';
 
-/** 共通のヘッダー。どの幅でもログアウトできるよう、折りたたまない */
+/** 共通のヘッダー。どの幅でもログアウトできるよう、折りたたまない。ログアウトの後は AuthGuard がログインの画面へ移す */
 export function AppHeader() {
   const { email, signOut } = useAuth();
-  const router = useRouter();
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.replace('/login');
-  };
 
   return (
     <header className="border-b">
@@ -25,7 +18,7 @@ export function AppHeader() {
 
         <div className="flex items-center gap-3">
           {email ? <span className="text-sm text-muted-foreground">{email}</span> : null}
-          <Button variant="ghost" onClick={() => void handleSignOut()}>
+          <Button variant="ghost" onClick={() => void signOut()}>
             ログアウト
           </Button>
         </div>

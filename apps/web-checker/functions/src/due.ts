@@ -3,7 +3,7 @@ import { CronExpressionParser } from 'cron-parser';
 import type { Target } from './targets';
 
 /** cron が無い・読めない時の既定: 1 時間に 1 回 */
-export const DEFAULT_CRON = '0 * * * *';
+const DEFAULT_CRON = '0 * * * *';
 
 const TIME_ZONE = 'Asia/Tokyo';
 
@@ -30,7 +30,7 @@ export function isDue(target: Pick<Target, 'cron' | 'checkedAt'>, now: Date): bo
 }
 
 /** 作成の直後のクロールに任せる時間。この間に来た見回りは、まだ見ていない監視対象でも飛ばす */
-export const EDIT_CRAWL_GRACE_MS = 10 * 60 * 1000;
+const EDIT_CRAWL_GRACE_MS = 10 * 60 * 1000;
 
 /**
  * 作成の直後のクロール (`webCheckerOnTargetWrite`) がまだ動いている最中か。

@@ -1,16 +1,15 @@
 /**
  * Firebase のエラーを、画面がとる振る舞いに直す。素のエラーコードと英文は利用者に出さない。
  *
- * - `silent`: 何も出さない (自分でポップアップを閉じた時など)
  * - `retryable`: 文言と、やり直しの導線
  * - `denied`: 権限が無い。やり直しても変わらない
  * - `config`: 設定の不備。直すのは運用する側
  * - `unknown`: 想定外。問い合わせに要るのでコードも見せる
  */
-export type AuthErrorKind = 'silent' | 'retryable' | 'denied' | 'config' | 'unknown';
+export type AuthErrorKind = 'retryable' | 'denied' | 'config' | 'unknown';
 
 export interface AuthErrorView {
-  kind: Exclude<AuthErrorKind, 'silent'>;
+  kind: AuthErrorKind;
   title: string;
   message: string;
   /** やり直しのボタンを出すか */
@@ -32,7 +31,7 @@ function extractCode(error: unknown): string | null {
   return null;
 }
 
-/** エラーを画面に出す形に直す。出さなくてよい物は null */
+/** エラーを画面に出す形に直す。出さなくてよい物 (自分でポップアップを閉じた時など) は null */
 export function mapAuthError(error: unknown): AuthErrorView | null {
   const code = extractCode(error);
 

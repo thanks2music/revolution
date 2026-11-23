@@ -75,6 +75,10 @@ export async function crawlTarget(
     });
   };
 
+  // 前回の履歴は取得と関係なく読めるので、並べて読む (取得に失敗した時は使わない)
+  const previousPromise = deps.store.getLatestSnapshot(targetId);
+  previousPromise.catch(() => undefined); // 取得の失敗で使われなかった時に、未処理の reject にしない
+
   let fragment: string | null;
   try {
     fragment = await deps.fetchFragment(target.url, target.selector);
@@ -98,7 +102,7 @@ export async function crawlTarget(
   // 取得できたので、前に知らせた問題は解消した扱いにする
   const resolved: CheckRecord = { checkedAt: startedAt, ...(target.alertedAt !== undefined ? { alertedAt: null } : {}) };
 
-  const previous = await deps.store.getLatestSnapshot(targetId);
+  const previous = await previousPromise;
   if (previous && previous.content === fragment) {
     await deps.store.recordCheck(targetId, resolved);
     return 'unchanged';

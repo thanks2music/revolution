@@ -1,5 +1,5 @@
 import type { SlackMessage } from '@revolution/slack/post-message';
-import { escapeSlackText, truncate } from '@revolution/slack/text';
+import { escapeAndTruncate } from '@revolution/slack/text';
 
 import type { Target } from './targets';
 
@@ -10,18 +10,8 @@ const ERROR_MAX = 500;
 
 type Block = Record<string, unknown>;
 
-/**
- * 外部由来の文字列を mrkdwn に埋め込める形にする。エスケープした後で max 字以下になるように切る。
- *
- * `text.ts` の決まりは「切ってからエスケープ」だが、それだとエスケープで `&` が `&amp;` (5 字) に増え、
- * Block Kit の section の上限 (3000 字) を超えて、メッセージごと拒まれる (`invalid_blocks`)。
- * ここではエスケープしてから切り、末尾で割れた entity (`&am` など) を落とす。
- */
-function safe(value: string, max: number): string {
-  const escaped = escapeSlackText(value);
-  if (Array.from(escaped).length <= max) return escaped;
-  return truncate(escaped, max).replace(/&[a-z]{0,3}…$/, '…');
-}
+/** 外部由来の文字列を、エスケープした後で max 字以下にして mrkdwn に埋め込む */
+const safe = escapeAndTruncate;
 
 /**
  * `<url|表示>` のリンク記法に入れる URL。`|` と `>` は記法を壊すのでパーセントエンコードする。
@@ -43,7 +33,7 @@ function section(text: string): Block {
   return { type: 'section', text: { type: 'mrkdwn', text } };
 }
 
-export function formatJst(time: number): string {
+function formatJst(time: number): string {
   return new Date(time).toLocaleString('ja-JP', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
@@ -99,14 +89,15 @@ export function buildUpdateMessage(input: UpdateMessageInput): SlackMessage {
   return { text: heading, blocks };
 }
 
-/** 取得に失敗した時の通知 */
-export function buildErrorMessage(
-  target: Pick<Target, 'title' | 'url' | 'selector'>,
+type ProblemTarget = Pick<Target, 'title' | 'url' | 'selector'>;
+
+/** 取得の失敗・抜き出す部分が無いことの通知の共通の形 (見出し + URL・セレクタ・画面 + 追加の行) */
+function buildProblemMessage(
+  target: ProblemTarget,
   siteUrl: string,
-  error: unknown,
+  heading: string,
+  extraLines: string[] = [],
 ): SlackMessage {
-  const heading = `[${safe(target.title, 100)}] でエラーが発生しました`;
-  const message = error instanceof Error ? error.message : String(error);
   return {
     text: heading,
     blocks: [
@@ -116,30 +107,22 @@ export function buildErrorMessage(
           `*URL*\n${safe(target.url, 300)}`,
           `*セレクタ*\n\`${safe(target.selector, 200)}\``,
           `*画面*\n${link(siteUrl, 'WEB チェッカー')}`,
-          `*エラー内容*\n${safe(message, ERROR_MAX)}`,
+          ...extraLines,
         ].join('\n'),
       ),
     ],
   };
 }
 
+/** 取得に失敗した時の通知 */
+export function buildErrorMessage(target: ProblemTarget, siteUrl: string, error: unknown): SlackMessage {
+  const message = error instanceof Error ? error.message : String(error);
+  return buildProblemMessage(target, siteUrl, `[${safe(target.title, 100)}] でエラーが発生しました`, [
+    `*エラー内容*\n${safe(message, ERROR_MAX)}`,
+  ]);
+}
+
 /** 抜き出す部分がページに無かった時の通知 */
-export function buildNoContentMessage(
-  target: Pick<Target, 'title' | 'url' | 'selector'>,
-  siteUrl: string,
-): SlackMessage {
-  const heading = `[${safe(target.title, 100)}] でコンテンツが存在しませんでした`;
-  return {
-    text: heading,
-    blocks: [
-      section(`*${link(target.url, heading)}*`),
-      section(
-        [
-          `*URL*\n${safe(target.url, 300)}`,
-          `*セレクタ*\n\`${safe(target.selector, 200)}\``,
-          `*画面*\n${link(siteUrl, 'WEB チェッカー')}`,
-        ].join('\n'),
-      ),
-    ],
-  };
+export function buildNoContentMessage(target: ProblemTarget, siteUrl: string): SlackMessage {
+  return buildProblemMessage(target, siteUrl, `[${safe(target.title, 100)}] でコンテンツが存在しませんでした`);
 }

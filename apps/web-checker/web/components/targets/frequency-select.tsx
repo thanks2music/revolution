@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { validateCron } from '@/lib/target/cron';
+import { validateCron, type CronValidation } from '@/lib/target/cron';
 import { FREQUENCY_PRESETS, matchPreset } from '@/lib/target/frequency-presets';
 import { formatJst } from '@/lib/format-date';
 import { FormField } from '@/components/form-field';
@@ -35,21 +35,14 @@ export function FrequencySelect({
 }) {
   // 一度自由入力を選んだら、入力の途中でプリセットと一致しても選択を戻さない
   const [customMode, setCustomMode] = useState(() => matchPreset(value) === undefined);
-  const [cronError, setCronError] = useState<string | null>(null);
-  const [nextCheckAt, setNextCheckAt] = useState<number | null>(null);
+  const [validation, setValidation] = useState<CronValidation | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     void validateCron(value).then(result => {
       if (cancelled) return;
-      if (result.ok) {
-        setCronError(null);
-        setNextCheckAt(result.nextCheckAt.getTime());
-      } else {
-        setCronError(result.reason);
-        setNextCheckAt(null);
-      }
+      setValidation(result);
       onValidityChange(result.ok);
     });
 
@@ -94,7 +87,7 @@ export function FrequencySelect({
       {customMode ? (
         <FormField
           label="cron"
-          error={cronError ?? error}
+          error={(validation?.ok === false ? validation.reason : null) ?? error}
           hint="crontab の書き方 (分 時 日 月 曜日)。日本時間で読みます。"
         >
           {control => (
@@ -109,9 +102,9 @@ export function FrequencySelect({
         </FormField>
       ) : null}
 
-      {nextCheckAt !== null ? (
+      {validation?.ok ? (
         <p className="text-xs text-muted-foreground">
-          次に見に行く時刻: {formatJst(nextCheckAt)} ごろ
+          次に見に行く時刻: {formatJst(validation.nextCheckAt.getTime())} ごろ
         </p>
       ) : null}
     </div>

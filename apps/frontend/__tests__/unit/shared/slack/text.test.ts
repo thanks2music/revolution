@@ -3,7 +3,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import { presentEnvValue } from '@revolution/slack/env';
-import { escapeSlackText, truncate } from '@revolution/slack/text';
+import { escapeAndTruncate, escapeSlackText, truncate } from '@revolution/slack/text';
 
 describe('escapeSlackText', () => {
   it('Slack の制御文字 & < > をエスケープする (<!channel> で全員に通知が飛ぶのを防ぐ)', () => {
@@ -36,4 +36,20 @@ describe('presentEnvValue', () => {
       expect(presentEnvValue(value)).toBeUndefined();
     },
   );
+});
+
+describe('escapeAndTruncate', () => {
+  it('上限以内ならエスケープするだけ', () => {
+    expect(escapeAndTruncate('a & <b>', 100)).toBe('a &amp; &lt;b&gt;');
+  });
+
+  it('エスケープした後の長さで max 字に収める', () => {
+    const result = escapeAndTruncate('&'.repeat(100), 12);
+    expect(Array.from(result).length).toBeLessThanOrEqual(12);
+    expect(result).toBe('&amp;&amp;…');
+  });
+
+  it('末尾で entity を割らない', () => {
+    expect(escapeAndTruncate('ab&cd', 5)).toBe('ab…');
+  });
 });
