@@ -122,11 +122,28 @@ const nextConfig = {
         sentryIngestOrigin = '';
       }
     }
+    // CSP connect-src 用に、口コミの写真の受け取り場所 (R2) のオリジンを env から作る。
+    // ブラウザは署名付き URL へ直接 PUT する (lib/reviews/photos/storage.ts)。S3 の SDK は
+    // バケットをホスト名に入れる形 (https://<バケット>.<アカウント>.r2.cloudflarestorage.com) で
+    // URL を作るので、そのオリジンだけを許す。上と同じく、env が無い・不正な時は省略する
+    // (置き場所が無い時は写真の欄も出ない)。headers() は build 時に評価されるので、
+    // REVIEW_R2_ENDPOINT と REVIEW_R2_INTAKE_BUCKET は Vercel の build でも読める必要がある。
+    let reviewIntakeOrigin = '';
+    if (process.env.REVIEW_R2_ENDPOINT && process.env.REVIEW_R2_INTAKE_BUCKET) {
+      try {
+        const endpoint = new URL(process.env.REVIEW_R2_ENDPOINT);
+        endpoint.hostname = `${process.env.REVIEW_R2_INTAKE_BUCKET}.${endpoint.hostname}`;
+        reviewIntakeOrigin = endpoint.origin;
+      } catch {
+        reviewIntakeOrigin = '';
+      }
+    }
     const connectSrc = [
       "'self'",
       supabaseOrigin,
       supabaseWsOrigin,
       sentryIngestOrigin,
+      reviewIntakeOrigin,
     ]
       .filter(Boolean)
       .join(' ');
