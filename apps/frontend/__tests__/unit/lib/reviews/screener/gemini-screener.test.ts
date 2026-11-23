@@ -1,8 +1,8 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import type { GenerateContentParameters, GenerateContentResponse } from '@google/genai';
 
-import { createGeminiScreener, type GeminiModels } from '@/lib/reviews/screener/gemini-screener';
-import type { ScreeningPrompt } from '@/lib/reviews/screener/prompt';
+import { createGeminiScreener, type GeminiModels } from '@revolution/reviews/screener/gemini-screener';
+import type { ScreeningPrompt } from '@revolution/reviews/screener/prompt';
 
 /**
  * Gemini の審査器を、録った形の応答で確かめる (本物の API は呼ばない)。

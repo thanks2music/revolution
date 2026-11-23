@@ -6,7 +6,7 @@ const nextConfig = {
   reactStrictMode: true,
 
   // Next.js 公式推奨: shared/schemas/ workspace の .ts ファイルを直接 transpile する
-  transpilePackages: ['@revolution/schemas', '@revolution/slack'],
+  transpilePackages: ['@revolution/reviews', '@revolution/schemas', '@revolution/slack'],
 
   // HEIC を読む libheif (WebAssembly を JS に埋め込んだ物) をバンドルせず、node_modules から読む
   // (one-more-time #163)。sharp は Next の既定でバンドルの外にある
@@ -123,7 +123,7 @@ const nextConfig = {
       }
     }
     // CSP connect-src 用に、口コミの写真の受け取り場所 (R2) のオリジンを env から作る。
-    // ブラウザは署名付き URL へ直接 PUT する (lib/reviews/photos/storage.ts)。S3 の SDK は
+    // ブラウザは署名付き URL へ直接 PUT する (shared/reviews/photos/storage.ts)。S3 の SDK は
     // バケットをホスト名に入れる形 (https://<バケット>.<アカウント>.r2.cloudflarestorage.com) で
     // URL を作るので、そのオリジンだけを許す。上と同じく、env が無い・不正な時は省略する
     // (置き場所が無い時は写真の欄も出ない)。headers() は build 時に評価されるので、

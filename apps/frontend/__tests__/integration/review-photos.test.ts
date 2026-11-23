@@ -15,8 +15,8 @@ import {
   reorderPhotos,
   requestPhotoUpload,
   type PhotoContext,
-} from '@/lib/reviews/photos/operations';
-import { createFakePhotoStorage, type FakePhotoStorage } from '@/lib/reviews/photos/storage';
+} from '@revolution/reviews/photos/operations';
+import { createFakePhotoStorage, type FakePhotoStorage } from '@revolution/reviews/photos/storage';
 import {
   anonClient,
   createTestDataScope,

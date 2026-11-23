@@ -1,4 +1,4 @@
-import { reviewStateKind } from '@/lib/reviews/eligibility';
+import { reviewStateKind } from '@revolution/reviews/eligibility';
 
 describe('reviewStateKind', () => {
   it('開催前は「始まると書ける」、0 件は「最初の口コミ」、終了は「終わった後も書ける」', () => {

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import type { OccurrenceStatus } from '@revolution/schemas/occurrence';
 
 import { remainingDays } from '@/lib/occurrence/status';
-import { reviewSectionMode, reviewStateKind } from '@/lib/reviews/eligibility';
+import { reviewSectionMode, reviewStateKind } from '@revolution/reviews/eligibility';
 import type { PublicReview, ReviewGallery as Gallery } from '@/lib/reviews/queries';
 import type { ReviewStats } from '@/lib/reviews/stats';
 

@@ -14,7 +14,7 @@ import {
   getReviewPhotoStorage,
   reviewPhotoKeyPrefix,
   storedVariantKey,
-} from '@/lib/reviews/photos/storage';
+} from '@revolution/reviews/photos/storage';
 
 const CONFIG = {
   endpoint: 'https://account.r2.cloudflarestorage.com',

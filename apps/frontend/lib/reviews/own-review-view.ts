@@ -1,7 +1,7 @@
 import type { ReviewReasonCode, ReviewStatus } from '@revolution/schemas/review';
 
 import { formatJstDotDate } from '@/lib/date';
-import { explainsReason } from '@/lib/reviews/eligibility';
+import { explainsReason } from '@revolution/reviews/eligibility';
 import { REJECTION_REASON_LABELS, toScreeningReason } from '@/lib/reviews/labels';
 
 /**

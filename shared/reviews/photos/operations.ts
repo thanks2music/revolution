@@ -13,7 +13,7 @@ import {
 } from '@revolution/schemas/review-photo';
 import type { ReviewStatus } from '@revolution/schemas/review';
 
-import { rescreensOnPhotoAdd } from '@/lib/reviews/eligibility';
+import { rescreensOnPhotoAdd } from '../eligibility';
 
 import { convertReviewPhoto, type ConvertReviewPhotoFailure } from './convert';
 import {

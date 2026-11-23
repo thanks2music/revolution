@@ -15,8 +15,11 @@ import { existsSync } from 'node:fs';
 import { GoogleGenAI, type GenerateContentParameters } from '@google/genai';
 import sharp from 'sharp';
 
-import { createGeminiScreener, type GeminiModels } from '../lib/reviews/screener/gemini-screener';
-import { loadScreeningPrompt } from '../lib/reviews/screener/prompt';
+import {
+  createGeminiScreener,
+  type GeminiModels,
+} from '@revolution/reviews/screener/gemini-screener';
+import { loadScreeningPrompt } from '@revolution/reviews/screener/prompt';
 
 const COUNTS = [0, 1, 3, 10];
 const RUNS = 3;

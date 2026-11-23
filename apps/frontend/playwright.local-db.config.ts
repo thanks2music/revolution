@@ -95,7 +95,7 @@ export default defineConfig({
       NEXT_PUBLIC_SITE_URL: baseURL,
       // 口コミの審査は偽物 (本文の目印で結果が決まる)。本物の Gemini を呼ばない
       REVIEW_SCREENER: 'fake',
-      // 写真の置き場所は一時ディレクトリの偽物 (lib/reviews/photos/storage.ts、one-more-time #163)
+      // 写真の置き場所は一時ディレクトリの偽物 (shared/reviews/photos/storage.ts、one-more-time #163)
       REVIEW_PHOTO_STORAGE: 'fake',
       GEMINI_API_KEY: '',
     },

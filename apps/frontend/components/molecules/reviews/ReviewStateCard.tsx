@@ -3,13 +3,13 @@
  * - notYet: 開催前。始まると書けること (いつから書けるか)
  * - empty: 開催中・終了で 0 件。最初の口コミを書く
  * - ended: 終了した開催 (口コミあり)。終わった後も書ける
- * どれを出すかは `reviewStateKind` (lib/reviews/eligibility.ts) が決める。
+ * どれを出すかは `reviewStateKind` (shared/reviews/eligibility.ts) が決める。
  */
 
 import Link from 'next/link';
 
 import { toDotDate } from '@/lib/date';
-import type { ReviewStateKind } from '@/lib/reviews/eligibility';
+import type { ReviewStateKind } from '@revolution/reviews/eligibility';
 
 const CARDS = {
   notYet: { title: '開催が始まると口コミを書けます', tone: 'bg-muted/60' },

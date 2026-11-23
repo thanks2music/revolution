@@ -15,7 +15,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { presentEnvValue } from '@revolution/slack/env';
 
-import { allowsFakeBackends } from '@/lib/reviews/fake-backends';
+import { allowsFakeBackends } from '../fake-backends';
 import { MAX_REVIEW_PHOTO_BYTES } from '@revolution/schemas/review-photo';
 
 /**
