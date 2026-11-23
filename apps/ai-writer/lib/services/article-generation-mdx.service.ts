@@ -560,6 +560,8 @@ export class ArticleGenerationMdxService {
       let detailedExtraction: ExtractionResult | undefined;
       // 公式サイトのHTMLを保持（content-generation step と image-upload-r2 step で再利用）
       let officialHtml: string | undefined;
+      // 公式サイトの圧縮前の HTML (1 ページ構成のサイトで、節の画像を拾うのに使う。category-image-extraction step)
+      let officialRawHtml: string | undefined;
       // 公式サイトのトップページの og:image (アイキャッチの第 1 候補。image-upload-r2 step で使う)
       let officialOgImage: string | null = null;
 
@@ -573,6 +575,7 @@ export class ArticleGenerationMdxService {
             ? sourceOverride.contentHtml
             : await extractContentHtml(selectionResult.primary_official_url);
           officialHtml = contentHtml.compacted;
+          officialRawHtml = contentHtml.raw;
           // og:image は <head> にある。compacted は本文のブロックだけのことがある (meta が無い) ので、ここで読む
           officialOgImage = sourceOverride
             ? sourceOverride.ogImage
@@ -820,7 +823,8 @@ export class ArticleGenerationMdxService {
             sameSiteOfficialUrls(selectionResult.primary_official_url, [
               ...(selectionResult.official_urls ?? []),
               ...pageLinks,
-            ])
+            ]),
+            officialRawHtml
           );
 
           console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {

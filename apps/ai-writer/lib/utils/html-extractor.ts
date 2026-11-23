@@ -809,6 +809,9 @@ export async function extractArticleData(url: string): Promise<{
   }
 }
 
+/** 画像のファイルのパス (大文字・小文字は区別しない) */
+const IMAGE_FILE_PATH = /\.(?:jpe?g|png|gif|webp|avif|svg|bmp)$/i;
+
 /**
  * HTMLからページ内のリンクを抽出
  *
@@ -820,6 +823,7 @@ export async function extractArticleData(url: string): Promise<{
  * - a[href] 属性からリンクを抽出
  * - 相対URLは絶対URLに変換
  * - javascript:, mailto:, tel: などは除外
+ * - 画像のファイルへのリンク (拡大表示の <a href="img/a.jpg">) は除外。下層ページの候補にも会場の案内ページにもならない
  * - 重複は排除
  */
 export function extractPageLinks(html: string, baseUrl: string): string[] {
@@ -849,6 +853,7 @@ export function extractPageLinks(html: string, baseUrl: string): string[] {
         ? href
         : new URL(href, baseUrlObj).href; // 相対パスはページの URL で解決する (サイトの先頭で解決すると menu が /menu になる)
 
+      if (IMAGE_FILE_PATH.test(new URL(absoluteUrl).pathname)) return;
       links.add(absoluteUrl);
     } catch {
       // 無効なURLはスキップ

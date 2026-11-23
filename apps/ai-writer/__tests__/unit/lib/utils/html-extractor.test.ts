@@ -229,6 +229,16 @@ describe('extractPageLinks', () => {
     expect(links).toContain('https://example.com/lp/osaka');
     expect(links).toContain('https://example.com/lp/nagoya');
   });
+
+  it('画像のファイルへのリンク (拡大表示) は返さない。下層ページの候補にしないため', () => {
+    const html = `
+      <a href="img/item/goods_01.jpg?0"><img src="img/item/goods_01.jpg?0"></a>
+      <a href="img/goods.WEBP">拡大</a>
+      <a href="goods.html">グッズ</a>`;
+    const links = extractPageLinks(html, 'https://example.com/event/cafe/top.html');
+
+    expect(links).toEqual(['https://example.com/event/cafe/goods.html']);
+  });
 });
 
 // ── extractContentHtml の配線 (Layer 2) ──────────────────────────────

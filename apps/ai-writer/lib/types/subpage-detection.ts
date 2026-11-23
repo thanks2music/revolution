@@ -136,7 +136,22 @@ export interface ImageExtractionConfig {
    * 当たった画像には除外パターンを当てない (代替テキストが根拠になるため。LTR は特典の画像のファイル名に banner を含む)
    */
   novelty_alt_keywords?: string[];
+  /**
+   * 下層ページから画像を取れなかったカテゴリの画像を、公式ページの中の節から拾うための語 (1 ページ構成のサイト向け)。
+   * 無ければ節から拾わない
+   */
+  same_page_sections?: SamePageSectionsConfig;
 }
+
+/** 公式ページの中の節を、カテゴリの節とみなすための語 (store-url-patterns.yaml の image_extraction.same_page_sections) */
+export interface SamePageSectionKeywords {
+  /** id か class の 1 語と一致する語 (大文字・小文字は区別しない) */
+  attribute_keywords: string[];
+  /** data-section-name か、節の最初の見出しの文字と一致する語 */
+  heading_keywords: string[];
+}
+
+export type SamePageSectionsConfig = Record<CategoryType, SamePageSectionKeywords>;
 
 /** R2 に上げる前の画像の加工 (store-url-patterns.yaml の image_extraction.upload) */
 export interface ImageUploadConfig {

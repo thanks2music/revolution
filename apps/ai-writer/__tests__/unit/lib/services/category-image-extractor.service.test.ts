@@ -297,6 +297,66 @@ describe('CategoryImageExtractorService.extractCategoryImages', () => {
   });
 });
 
+describe('CategoryImageExtractorService.extractCategoryImages (トップページの節から拾う)', () => {
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  const TOP = 'https://example.com/event/cafe/top.html';
+  const sameLoader = {
+    loadStoreUrlPatterns: async () => ({
+      image_extraction: {
+        ...IMAGE_CONFIG,
+        same_page_sections: {
+          menu: { attribute_keywords: ['menu'], heading_keywords: ['メニュー'] },
+          novelty: { attribute_keywords: ['novelty'], heading_keywords: ['特典'] },
+          goods: { attribute_keywords: ['goods'], heading_keywords: ['グッズ'] },
+        },
+      },
+    }),
+  } as unknown as ConfigLoaderService;
+  /** 1 ページ構成の公式ページ (グッズの 2 枚目は閉じ引用符の無い壊れた src) */
+  const RAW_TOP = `<html><body><main>
+    <section id="menu"><h2>メニュー</h2><img src="img/food.webp"></section>
+    <section id="goods"><h2>グッズ</h2><img src="img/item/01.jpg?0"><a href="img/item/02.jpg?0"><img src="img/item/02.jpg?0></a><B>品名</B><span class="x"></a><img src="img/logo.png"></section>
+    <section id="novelty"><h2>特典</h2><img src="img/camp.webp"></section>
+  </main></body></html>`;
+
+  it('下層ページが無いとき、圧縮前のトップページの節から、カテゴリごとに画像を拾う (壊れた src は直す。除外パターンは当てる)', async () => {
+    const service = new CategoryImageExtractorService(sameLoader);
+
+    const result = await service.extractCategoryImages(TOP, '<main><p>圧縮後</p></main>', {}, [], RAW_TOP);
+
+    expect(result.menu).toEqual(['https://example.com/event/cafe/img/food.webp']);
+    expect(result.goods).toEqual([
+      'https://example.com/event/cafe/img/item/01.jpg?0',
+      'https://example.com/event/cafe/img/item/02.jpg?0',
+    ]);
+    expect(result.novelty).toEqual(['https://example.com/event/cafe/img/camp.webp']);
+    expect(result.sources).toEqual({ menu: TOP, goods: TOP, novelty: TOP });
+  });
+
+  it('下層ページから画像を取れたカテゴリは、トップページの節で置き換えない', async () => {
+    const MENU = 'https://example.com/event/cafe/menu.html';
+    global.fetch = jest.fn(async () => new Response('<html><body><main><img src="/img/sub-menu.jpg"></main></body></html>', { status: 200 })) as unknown as typeof global.fetch;
+    const service = new CategoryImageExtractorService(sameLoader);
+
+    const result = await service.extractCategoryImages(TOP, null, { menu: [MENU] }, [], RAW_TOP);
+
+    expect(result.menu).toEqual(['https://example.com/img/sub-menu.jpg']);
+    expect(result.sources.menu).toBe(MENU);
+    expect(result.goods).toHaveLength(2);
+  });
+
+  it('圧縮前の HTML が渡されなければ、節からは拾わない (これまでどおり)', async () => {
+    const service = new CategoryImageExtractorService(sameLoader);
+
+    const result = await service.extractCategoryImages(TOP, null, {}, []);
+
+    expect(result.all).toEqual([]);
+  });
+});
+
 describe('findImagesByAlt', () => {
   it('代替テキストが語を含む画像の絶対 URL を、重複を除いて返す (大文字・小文字は区別しない)', () => {
     const html =

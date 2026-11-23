@@ -26,7 +26,9 @@ import { compactHtmlForLlm, truncateForLlm } from '@/lib/utils/compact-html';
 import { pageRedrawnWords, type PageRedrawnWords } from '@/lib/utils/redrawn-illustration';
 import { pageUrlKey } from '@/lib/utils/url';
 import { fetchPageSafely } from '@/lib/utils/safe-image-fetch';
+import { imageSource } from '@/lib/utils/image-source';
 import { getConfigLoaderService, ConfigLoaderService } from './config-loader.service';
+import { findSamePageSections } from './same-page-sections';
 
 /** 下層ページの種類。venue は会場ごとの案内ページ */
 export type SubpageKind = 'menu' | 'novelty' | 'goods' | 'venue';
@@ -121,17 +123,6 @@ function toExcludeTarget(url: URL): string {
 }
 
 /**
- * img の画像の URL。遅延読み込みのサイトは src に 1×1 のダミー (`data:image/gif;base64,…`) を置き、
- * 本物を data-src / data-lazy-src に持つので、data: でないものを使う (conan-cafe.jp)。data: しか無ければ画像として扱わない
- */
-function imageSource(element: { attr(name: string): string | undefined }): string | undefined {
-  const candidates = [element.attr('src'), element.attr('data-src'), element.attr('data-lazy-src')]
-    .map((value) => value?.trim())
-    .filter((value): value is string => !!value);
-  return candidates.find((value) => !/^data:/i.test(value));
-}
-
-/**
  * 本文ブロックの画像のうち、代替テキストが語のどれかを含むものの絶対 URL (Layer 1)。
  * 除外パターンは当てない (代替テキストが根拠になるため)。短辺の下限は、上げる前に実際の画素数で当てる
  * (代替テキストが「特典」の小さなアイコンはそこで落ちる)。語が無ければ空。
@@ -181,13 +172,15 @@ export class CategoryImageExtractorService {
    * @param topPageHtml トップページのHTML（既に取得済みの場合）
    * @param categoryUrls カテゴリ別URLマップ（SubpageDetectorService の出力）
    * @param venueUrls 会場ごとの案内ページ (記事選別の公式 URL のうち、トップと同じサイトのもの)
+   * @param rawTopPageHtml トップページの圧縮前の HTML。下層ページから画像を取れなかったカテゴリは、この中の節から拾う
    * @returns カテゴリ別画像
    */
   async extractCategoryImages(
     topPageUrl: string,
     topPageHtml: string | null,
     categoryUrls: CategoryUrls,
-    venueUrls: string[] = []
+    venueUrls: string[] = [],
+    rawTopPageHtml?: string
   ): Promise<CategoryImages> {
     console.log('[CategoryImageExtractor] カテゴリ別画像抽出開始');
 
@@ -262,6 +255,30 @@ export class CategoryImageExtractorService {
             error
           );
         }
+      }
+    }
+
+    // 2.2 下層ページから画像を取れなかったカテゴリは、トップページの中の節から拾う (1 ページ構成のサイト。2026-11-23)。
+    //     渡されるトップページ (topPageHtml) は圧縮後で <img> が残らないため、圧縮前の HTML を使う
+    const missingCategories = categories.filter((category) => result[category].length === 0);
+    if (rawTopPageHtml && missingCategories.length > 0) {
+      if (!imageConfig.same_page_sections) {
+        // Templates の設定 (store-url-patterns.yaml) が古いと、1 ページ構成のサイトの画像を黙って拾わなくなる
+        console.warn(
+          '[CategoryImageExtractor] ⚠️ same_page_sections が未設定のため、トップページの節から画像を拾えない (pnpm sync:templates を確認)'
+        );
+      }
+      const sections = findSamePageSections(rawTopPageHtml, imageConfig.same_page_sections);
+      for (const category of missingCategories) {
+        const sectionHtml = sections[category];
+        if (!sectionHtml) continue;
+        const pageResult = this.extractImagesFromHtml(sectionHtml, topPageUrl, imageConfig);
+        if (pageResult.images.length === 0) continue;
+        result[category] = pageResult.images;
+        result.sources[category] = topPageUrl;
+        Object.assign(result.imageAlts, pageResult.alts);
+        pageResult.images.forEach((img) => allImages.add(img));
+        console.log(`[CategoryImageExtractor] ${category}: トップページの節から ${pageResult.images.length}枚の画像を抽出`);
       }
     }
 
