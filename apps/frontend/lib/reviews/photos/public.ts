@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-import { presentEnvValue } from '@revolution/slack/env';
+import { toPhotoView, type ReviewPhotoView } from './storage';
 
-import { REVIEW_PHOTO_FORMATS, storedVariantKey } from './storage';
+export { publicMediaBaseUrl } from './storage';
 
 /**
  * 公開中の口コミの写真を、配信側の URL で出す形にする (one-more-time #164、#3 の写真とギャラリー)。
@@ -19,45 +19,11 @@ export const PublicPhotoRowSchema = z.object({
   variant_widths: z.array(z.number().int().positive()).min(1),
 });
 
-export type PublicPhotoRow = z.infer<typeof PublicPhotoRowSchema>;
+export type PublicReviewPhoto = ReviewPhotoView;
 
-export type PublicReviewPhoto = {
-  id: number;
-  width: number;
-  height: number;
-  /** `<source type="image/avif" srcset>` に入れる */
-  avifSrcSet: string;
-  /** `<img srcset>` に入れる (WebP) */
-  webpSrcSet: string;
-  /** `<img src>` と拡大表示に使う (最大の段の WebP) */
-  src: string;
-};
-
-/**
- * 配信側の基点 (末尾の / を外す)。無ければ写真を出さない (壊れた画像を出さないため)。
- * `op://` のままの値は、置き場所の設定 (`getReviewPhotoStorage`) と同じく未設定として扱う
- */
-export function publicMediaBaseUrl(value: string | undefined): string | null {
-  const trimmed = presentEnvValue(value)?.replace(/\/+$/, '');
-  return trimmed ? trimmed : null;
-}
-
-export function toPublicPhoto(baseUrl: string, row: PublicPhotoRow): PublicReviewPhoto {
-  const widths = [...row.variant_widths].sort((a, b) => a - b);
-  const [webp, avif] = REVIEW_PHOTO_FORMATS.map(format =>
-    widths.map(width => ({
-      width,
-      url: `${baseUrl}/${storedVariantKey(row.object_key, width, format)}`,
-    }))
-  );
-  const toSrcSet = (urls: { width: number; url: string }[]) =>
-    urls.map(({ width, url }) => `${url} ${width}w`).join(', ');
-  return {
-    id: row.id,
-    width: row.width,
-    height: row.height,
-    avifSrcSet: toSrcSet(avif),
-    webpSrcSet: toSrcSet(webp),
-    src: webp[webp.length - 1].url,
-  };
+export function toPublicPhoto(
+  baseUrl: string,
+  row: z.infer<typeof PublicPhotoRowSchema>
+): PublicReviewPhoto {
+  return toPhotoView(row, key => `${baseUrl}/${key}`);
 }

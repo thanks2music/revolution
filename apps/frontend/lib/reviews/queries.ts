@@ -143,21 +143,6 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
       .limit(LATEST_REVIEWS_LIMIT);
   };
 
-  // ギャラリー: ネタバレでない公開中の口コミの写真 (非公開の写真は RLS で見えない)。新しい写真から
-  const listGallery = () =>
-    supabase
-      .from('review_images')
-      .select(
-        'id, object_key, width, height, variant_widths, reviews!inner(occurrence_id, has_spoiler)',
-        {
-          count: 'exact',
-        }
-      )
-      .eq('reviews.occurrence_id', occurrenceId)
-      .eq('reviews.has_spoiler', false)
-      .order('id', { ascending: false })
-      .limit(GALLERY_PHOTOS_LIMIT);
-
   const [rating, latest, mostHelpful, stats, gallery] = await Promise.all([
     supabase
       .from('occurrence_view')
@@ -170,7 +155,7 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
       .from('occurrence_review_stats')
       .select('dimension, value, count')
       .eq('occurrence_id', occurrenceId),
-    mediaBaseUrl ? listGallery() : null,
+    mediaBaseUrl ? loadGallery(supabase, occurrenceId, mediaBaseUrl) : EMPTY_GALLERY,
   ]);
   if (rating.error) throw new Error(`failed to load ratings: ${rating.error.message}`);
   for (const result of [latest, mostHelpful]) {
@@ -187,28 +172,43 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
     latest: schema.parse(latest.data ?? []),
     mostHelpful: schema.parse(mostHelpful.data ?? []),
     stats: toReviewStats(statRows),
-    gallery: mediaBaseUrl && gallery ? toGallery(mediaBaseUrl, gallery) : EMPTY_GALLERY,
+    gallery,
   };
 }
 
-/** ギャラリーが読めなくても、口コミの一覧は出す (ギャラリーだけを出さない) */
-function toGallery(
-  mediaBaseUrl: string,
-  result: { data: unknown[] | null; count: number | null; error: { message: string } | null }
-): ReviewGallery {
-  if (result.error) {
-    Sentry.captureException(new Error(`failed to load review gallery: ${result.error.message}`), {
-      tags: { query: 'review_gallery' },
-    });
-    return EMPTY_GALLERY;
-  }
-  const parsed = z.array(PublicPhotoRowSchema).safeParse(result.data ?? []);
-  if (!parsed.success) {
-    Sentry.captureException(parsed.error, { tags: { query: 'review_gallery' } });
+/**
+ * ギャラリー: ネタバレでない公開中の口コミの写真 (非公開の写真は RLS で見えない)。新しい写真から。
+ * 読めなくても口コミの一覧は出す (ギャラリーだけを出さない)
+ */
+async function loadGallery(
+  supabase: ReturnType<typeof createPublicClient>,
+  occurrenceId: number,
+  mediaBaseUrl: string
+): Promise<ReviewGallery> {
+  const result = await supabase
+    .from('review_images')
+    .select(
+      'id, object_key, width, height, variant_widths, reviews!inner(occurrence_id, has_spoiler)',
+      {
+        count: 'exact',
+      }
+    )
+    .eq('reviews.occurrence_id', occurrenceId)
+    .eq('reviews.has_spoiler', false)
+    .order('id', { ascending: false })
+    .limit(GALLERY_PHOTOS_LIMIT);
+  const parsed = result.error ? null : z.array(PublicPhotoRowSchema).safeParse(result.data ?? []);
+  if (!parsed?.success) {
+    Sentry.captureException(
+      result.error
+        ? new Error(`failed to load review gallery: ${result.error.message}`)
+        : parsed?.error,
+      { tags: { query: 'review_gallery' } }
+    );
     return EMPTY_GALLERY;
   }
   const photos = parsed.data.map(row => toPublicPhoto(mediaBaseUrl, row));
-  return { photos, total: Math.max(result.count ?? 0, photos.length) };
+  return { photos, total: result.count ?? photos.length };
 }
 
 function reportStatsFailure(error: { message: string }): [] {

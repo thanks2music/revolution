@@ -38,6 +38,13 @@ export function ReviewCard({ review }: { review: PublicReview }) {
     </ul>
   );
 
+  const content = (body || photos) && (
+    <>
+      {body}
+      {photos}
+    </>
+  );
+
   return (
     <article className="flex flex-col gap-2" data-testid="review-card">
       <header className="flex items-center gap-2">
@@ -64,17 +71,13 @@ export function ReviewCard({ review }: { review: PublicReview }) {
 
       {facts.length > 0 && <p className="text-xs text-ink-body">{facts.join(' ・ ')}</p>}
 
-      {(body || photos) &&
+      {content &&
         (review.hasSpoiler ? (
-          <SpoilerBody hasBody={Boolean(body)} hasPhotos={Boolean(photos)}>
-            {body}
-            {photos}
+          <SpoilerBody folded={body && photos ? '本文と写真' : body ? '本文' : '写真'}>
+            {content}
           </SpoilerBody>
         ) : (
-          <>
-            {body}
-            {photos}
-          </>
+          content
         ))}
 
       {/* 足元: 参考になった ・ 最終編集 (Figma #3 `6:219`) */}

@@ -32,6 +32,8 @@ import {
 } from '@/actions/review-photos';
 import type { OwnReviewPhoto } from '@/lib/reviews/photos/operations';
 
+import { ReviewPhotoPicture } from './ReviewPhotoPicture';
+
 export type ReviewPhotosFieldProps = {
   route: ReviewRouteParams;
   initialPhotos: OwnReviewPhoto[];
@@ -220,19 +222,12 @@ export function ReviewPhotosField(props: ReviewPhotosFieldProps) {
       <ul className="flex flex-wrap gap-2" aria-label="付けた写真" aria-busy={busy}>
         {photos.map((photo, index) => (
           <li key={photo.id} className="relative size-[76px]">
-            <picture>
-              <source type="image/avif" srcSet={photo.avifSrcSet} sizes="76px" />
-              {/* 自前で作った大きさを出す (Vercel の画像変換を通さない。仕様 #156) */}
-              <img
-                src={photo.src}
-                srcSet={photo.webpSrcSet}
-                sizes="76px"
-                width={photo.width}
-                height={photo.height}
-                alt={`付けた写真 ${index + 1}`}
-                className="size-[76px] rounded-xl object-cover"
-              />
-            </picture>
+            <ReviewPhotoPicture
+              photo={photo}
+              size={76}
+              alt={`付けた写真 ${index + 1}`}
+              className="size-[76px] rounded-xl object-cover"
+            />
             <button
               type="button"
               onClick={() => remove(photo)}

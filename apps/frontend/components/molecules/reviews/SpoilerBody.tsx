@@ -4,15 +4,12 @@
  */
 export function SpoilerBody({
   children,
-  hasBody = true,
-  hasPhotos = false,
+  folded,
 }: {
   children: React.ReactNode;
-  /** 案内に書く中身 (本文・写真・本文と写真) */
-  hasBody?: boolean;
-  hasPhotos?: boolean;
+  /** 案内に書く、たたんだ中身 (本文・写真・本文と写真) */
+  folded: string;
 }) {
-  const folded = hasBody && hasPhotos ? '本文と写真' : hasPhotos ? '写真' : '本文';
   return (
     <details className="group">
       <summary className="flex cursor-pointer list-none items-center justify-between rounded-xl bg-status-scheduled-surface px-3 py-3 text-xs group-open:hidden [&::-webkit-details-marker]:hidden">
