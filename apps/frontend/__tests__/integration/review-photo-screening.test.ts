@@ -259,6 +259,63 @@ describe('写真の審査と配信側', () => {
     expect(await deliveredPhotos()).toEqual([]);
   });
 
+  it('審査の間に写真が足された時は書かず、足した写真も含めた次の審査で公開する', async () => {
+    const { reviewId, member } = await pendingReviewWithPhotos('楽しかった', [400]);
+    const jpeg = await sharp({
+      create: { width: 500, height: 300, channels: 3, background: '#c84' },
+    })
+      .jpeg()
+      .toBuffer();
+    const racing = {
+      async screen(input: Parameters<typeof screener.screen>[0]) {
+        // 審査器の呼び出しの間に、写真をもう 1 枚足す (この審査は見ていない)
+        const ticket = await requestPhotoUpload(ctx, {
+          profileId: member.userId,
+          reviewId,
+          file: { contentType: 'image/jpeg', size: jpeg.length },
+        });
+        if (ticket.kind !== 'ok') throw new Error(ticket.kind);
+        await storage.writeIntake(`preview/reviews/${reviewId}/${ticket.photoId}`, jpeg);
+        const added = await ingestPhoto(ctx, {
+          profileId: member.userId,
+          reviewId,
+          photoId: ticket.photoId,
+        });
+        // 審査中の口コミに足した写真は、審査をもう一度走らせる印が付く
+        expect(added).toMatchObject({ kind: 'ok', needsScreening: true });
+        return screener.screen(input);
+      },
+    };
+
+    await expect(
+      screenSubmittedReview(reviewId, { screener: racing, db: data.admin, storage })
+    ).resolves.toEqual({ kind: 'skipped', reason: 'superseded' });
+    expect(await deliveredPhotos()).toEqual([]);
+
+    await expect(screen(reviewId)).resolves.toMatchObject({ status: 'published' });
+    expect(await deliveredPhotos()).toHaveLength(2);
+  });
+
+  it('同期の途中で公開でなくなったら、写した物を消す', async () => {
+    const { reviewId } = await pendingReviewWithPhotos('楽しかった', [400]);
+    await screen(reviewId);
+    expect(await deliveredPhotos()).toHaveLength(1);
+
+    // 公開中のまま写し始め、写している間に論理削除されたことにする
+    const slow = {
+      ...storage,
+      async publish(keys: string[]) {
+        await storage.publish(keys);
+        await data.admin
+          .from('reviews')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('id', reviewId);
+      },
+    };
+    await syncPhotoDelivery({ db: data.admin, storage: slow }, reviewId);
+    expect(await deliveredPhotos()).toEqual([]);
+  });
+
   it('写真を読めない時は審査の失敗にして、公開しない', async () => {
     const { reviewId } = await pendingReviewWithPhotos('楽しかった', [400]);
     await expect(

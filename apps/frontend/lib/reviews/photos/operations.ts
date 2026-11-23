@@ -146,7 +146,14 @@ export async function requestPhotoUpload(
 }
 
 export type IngestOutcome =
-  | { kind: 'ok'; photo: OwnReviewPhoto; requeued: boolean }
+  | {
+      kind: 'ok';
+      photo: OwnReviewPhoto;
+      /** 写真を足したことで、公開中などの口コミが審査中に戻った (ページを作り直す) */
+      requeued: boolean;
+      /** 審査を (もう一度) 走らせる。審査中の口コミに足した写真も、審査の間に足された物として見せる */
+      needsScreening: boolean;
+    }
   | { kind: 'not_found' }
   /** 受け取り場所に写真が無い (上げ損ねた・1 日経って消えた) */
   | { kind: 'missing' }
@@ -180,7 +187,12 @@ export async function ingestPhoto(
   if (existing) {
     // 取り込み済み。元の写真 (位置情報が残っている唯一の物) が残っていれば消す
     await ctx.storage.deleteIntake(key).catch(() => undefined);
-    return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, existing), requeued: false };
+    return {
+      kind: 'ok',
+      photo: await toOwnPhoto(ctx.storage, existing),
+      requeued: false,
+      needsScreening: false,
+    };
   }
 
   // サーバーが URL を出した写真だけを受け付ける (出した記録が無ければ、受け取り場所も見ない)
@@ -249,7 +261,12 @@ export async function ingestPhoto(
     if (inserted === 'full') {
       const winner = await findPhotoRow(ctx.db, key);
       if (winner)
-        return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, winner), requeued: false };
+        return {
+          kind: 'ok',
+          photo: await toOwnPhoto(ctx.storage, winner),
+          requeued: false,
+          needsScreening: false,
+        };
       await cleanUp();
       keepIntake = true;
       return { kind: 'full' };
@@ -258,7 +275,12 @@ export async function ingestPhoto(
       // 同じ写真の取り込みが同時に走り、もう一方が先に行を足した。保管側の物は同じキーなので消さない
       const winner = await findPhotoRow(ctx.db, key);
       if (!winner) throw new Error('review photo row is missing after a duplicate insert');
-      return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, winner), requeued: false };
+      return {
+        kind: 'ok',
+        photo: await toOwnPhoto(ctx.storage, winner),
+        requeued: false,
+        needsScreening: false,
+      };
     }
     row = inserted;
   } catch (error) {
@@ -275,7 +297,12 @@ export async function ingestPhoto(
   // 行を足した後の失敗 (URL の署名など) では、保管側の物を消さない (行が指している)。
   // 下書きと審査中以外は、トリガ (requeue_review_on_image_insert) が審査中に戻した
   const requeued = rescreensOnPhotoAdd(before);
-  return { kind: 'ok', photo: await toOwnPhoto(ctx.storage, row), requeued };
+  return {
+    kind: 'ok',
+    photo: await toOwnPhoto(ctx.storage, row),
+    requeued,
+    needsScreening: requeued || before === 'pending',
+  };
 }
 
 /** 出した URL の記録を消す。失敗しても 1 日で片付くので、取り込みの結果は変えない */
@@ -385,15 +412,14 @@ export async function removePhoto(
   const row = data as { object_key: string; variant_widths: number[] };
   // 行は消えたので、利用者には外せたと返す。配信側 (公開中だった時) と保管側の物を消す。
   // 消せなかった時は Sentry に残す (配信側に残った物は、行が無いので公開の画面からは指されない)
+  // 保管側を先に消す (同時に走った同期が、この後に配信側へ写し直せないように)。その後で配信側を消す
   const keys = variantKeys(row.object_key, row.variant_widths);
-  await Promise.all([
-    ctx.storage.unpublish(keys).catch(error => {
-      Sentry.captureException(error, { tags: { part: 'review-photos', step: 'remove-public' } });
-    }),
-    ctx.storage.deleteStored(keys).catch(error => {
-      Sentry.captureException(error, { tags: { part: 'review-photos', step: 'remove-stored' } });
-    }),
-  ]);
+  await ctx.storage.deleteStored(keys).catch(error => {
+    Sentry.captureException(error, { tags: { part: 'review-photos', step: 'remove-stored' } });
+  });
+  await ctx.storage.unpublish(keys).catch(error => {
+    Sentry.captureException(error, { tags: { part: 'review-photos', step: 'remove-public' } });
+  });
   return { kind: 'removed' };
 }
 

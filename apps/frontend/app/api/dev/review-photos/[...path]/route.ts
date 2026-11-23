@@ -52,9 +52,10 @@ const CONTENT_TYPES: Record<string, string> = { webp: 'image/webp', avif: 'image
 export async function GET(_request: Request, { params }: Params) {
   const storage = fakeStorage();
   const [area, ...rest] = (await params).path;
-  if (!storage || area !== 'stored' || rest.length === 0) return notFound();
+  if (!storage || (area !== 'stored' && area !== 'public') || rest.length === 0) return notFound();
   const key = rest.join('/');
-  const body = await storage.readStored(key).catch(() => null);
+  const read = area === 'public' ? storage.readPublic : storage.readStored;
+  const body = await read(key).catch(() => null);
   const type = CONTENT_TYPES[key.split('.').pop() ?? ''];
   if (!body || !type) return notFound();
   return new NextResponse(Buffer.from(body), {

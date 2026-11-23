@@ -21,6 +21,8 @@ ALTER TABLE "public"."review_images" ADD CONSTRAINT "review_images_hidden_pair_c
 -- 審査の結果を 1 つのトランザクションで書く (口コミの状態と、写真ごとの非公開の印)。
 -- 読んだ時の submitted_at と「審査中」を条件にし、合わなければ何も書かずに false を返す。印を状態と
 -- 別に書くと、古い本文の審査の印が、新しい提出の審査の後に書かれうるため (2026-11-23 のセキュリティのレビュー)。
+-- p_photo_ids は審査した写真の ID。今の写真の集まりと違えば (審査の間に写真が足された・外された)、何も書かずに
+-- false を返す (見ていない写真を公開しないため。足した側が審査をもう一度走らせる)。
 -- p_photo_marks は [{"id": 写真の ID, "hide": 真偽, "reason": 理由のコードか null}]。null なら印に触らない。
 -- 呼ぶのはサーバー (service role) だけ。
 CREATE OR REPLACE FUNCTION public.apply_review_screening(
@@ -32,6 +34,7 @@ CREATE OR REPLACE FUNCTION public.apply_review_screening(
   p_ai_error text,
   p_ai_model text,
   p_screened_at timestamptz,
+  p_photo_ids bigint[],
   p_photo_marks jsonb
 )
 RETURNS boolean
@@ -41,6 +44,17 @@ AS $$
 DECLARE
   v_updated integer;
 BEGIN
+  -- 口コミの行を押さえてから、写真の集まりを比べる (比べた後に写真が足されないように)
+  PERFORM 1 FROM "public"."reviews" WHERE "id" = p_review_id FOR UPDATE;
+  IF (
+    SELECT coalesce(array_agg("id" ORDER BY "id"), '{}')
+    FROM "public"."review_images" WHERE "review_id" = p_review_id
+  ) IS DISTINCT FROM (
+    SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM unnest(p_photo_ids) AS x
+  ) THEN
+    RETURN false;
+  END IF;
+
   UPDATE "public"."reviews"
   SET "status" = p_status,
       "reason_code" = p_reason_code,
@@ -69,6 +83,6 @@ END;
 $$;
 --> statement-breakpoint
 
-REVOKE EXECUTE ON FUNCTION public.apply_review_screening(bigint, timestamptz, text, text, text, text, text, timestamptz, jsonb) FROM public, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.apply_review_screening(bigint, timestamptz, text, text, text, text, text, timestamptz, bigint[], jsonb) FROM public, anon, authenticated;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.apply_review_screening(bigint, timestamptz, text, text, text, text, text, timestamptz, jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.apply_review_screening(bigint, timestamptz, text, text, text, text, text, timestamptz, bigint[], jsonb) TO service_role;

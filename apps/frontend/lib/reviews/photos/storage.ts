@@ -114,8 +114,12 @@ export type R2PhotoStorageConfig = {
 
 export type CachePurgeConfig = { zoneId: string; token: string };
 
-/** 配信側の写真のキャッシュ。CDN は長く持ち (消す時に消す)、ブラウザは短くする (ブラウザのキャッシュは消せない) */
+/**
+ * 配信側の写真のキャッシュ。ブラウザは短く (ブラウザのキャッシュは消せない)、CDN は消す時に消せるなら長く持つ。
+ * キャッシュを消す設定が無い時は、CDN も短くする (消した写真がキャッシュに残り続けないように)
+ */
 const PUBLIC_CACHE_CONTROL = 'public, max-age=3600, s-maxage=31536000';
+const PUBLIC_CACHE_CONTROL_WITHOUT_PURGE = 'public, max-age=300, s-maxage=300';
 
 /** Cloudflare の URL ごとのキャッシュの削除は、1 回に 30 件まで */
 const PURGE_BATCH = 30;
@@ -264,7 +268,9 @@ export function createR2PhotoStorage(
               // キャッシュの指定を付け直すので、メタデータは写さずに置き換える
               MetadataDirective: 'REPLACE',
               ContentType: contentTypeOf(key),
-              CacheControl: PUBLIC_CACHE_CONTROL,
+              CacheControl: config.cachePurge
+                ? PUBLIC_CACHE_CONTROL
+                : PUBLIC_CACHE_CONTROL_WITHOUT_PURGE,
             })
           )
         )

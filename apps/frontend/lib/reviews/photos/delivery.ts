@@ -11,7 +11,10 @@ import { variantKeys, type ReviewPhotoStorage } from './storage';
  * 写真 (審査中・差し戻し・確認待ち・非公開・削除・写真の非公開) の物は消し、CDN のキャッシュも消す。
  *
  * 状態から求めるので、何度呼んでもよい (審査の後・削除の後など、状態が変わりうる所で呼ぶ)。
- * 行の無くなった写真 (外した写真) の物は、ここでは分からないので、呼ぶ側が `unpublishPhoto` で消す。
+ * 行の無くなった写真 (外した写真) の物は、ここでは分からないので、`removePhoto` が消す。
+ *
+ * 消すのと写すのは片方が失敗しても両方試し、失敗はまとめて投げる。写した後に状態を読み直し、その間に
+ * 公開でなくなっていたら (同時に走った削除など) 写した物を消す。
  */
 export async function syncPhotoDelivery(
   ctx: { db: SupabaseClient; storage: ReviewPhotoStorage },
@@ -38,16 +41,25 @@ export async function syncPhotoDelivery(
 
   const keysOf = (list: typeof rows) =>
     list.flatMap(row => variantKeys(row.object_key, row.variant_widths));
-  // 消す方を先にする (同じ写真が両方に入ることは無いが、失敗した時に「出したまま」を残しにくくする)
-  await ctx.storage.unpublish(keysOf(hide));
-  await ctx.storage.publish(keysOf(show));
-  return { published: show.length, unpublished: hide.length };
-}
+  const results = await Promise.allSettled([
+    ctx.storage.unpublish(keysOf(hide)),
+    ctx.storage.publish(keysOf(show)),
+  ]);
 
-/** 行の無くなった写真の物を、配信側から消す (外した写真) */
-export async function unpublishPhoto(
-  storage: ReviewPhotoStorage,
-  photo: { objectKey: string; variantWidths: number[] }
-): Promise<void> {
-  await storage.unpublish(variantKeys(photo.objectKey, photo.variantWidths));
+  // 写した後に、まだ公開中か読み直す。公開でなくなっていたら、写した物を消す
+  if (show.length > 0) {
+    const again = await ctx.db
+      .from('reviews')
+      .select('status, deleted_at')
+      .eq('id', reviewId)
+      .maybeSingle();
+    if (again.error) throw again.error;
+    if (again.data?.status !== 'published' || again.data.deleted_at) {
+      await ctx.storage.unpublish(keysOf(show));
+    }
+  }
+
+  const failures = results.flatMap(result => (result.status === 'rejected' ? [result.reason] : []));
+  if (failures.length > 0) throw new AggregateError(failures, 'photo delivery failed');
+  return { published: show.length, unpublished: hide.length };
 }

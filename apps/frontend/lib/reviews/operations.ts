@@ -1,5 +1,6 @@
 import 'server-only';
 
+import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { ReviewReasonCode, ReviewStatus } from '@revolution/schemas/review';
@@ -147,9 +148,9 @@ export async function screenSubmittedReview(
     : { ok: false, error: 'review photos could not be read', model: null };
   const write = toScreeningWrite(result);
   const screenedAt = (deps.now?.() ?? new Date()).toISOString();
-  // 状態と写真の印は、読んだ時の submitted_at と「審査中」を条件に、1 つのトランザクションで書く
-  // (migration 0023 の apply_review_screening)。審査の間に出し直されていれば何も書かない。
-  // 印は公開になる時だけ書く (公開にならない口コミの写真は誰にも見えないので、前の印のままでよい)
+  // 状態と写真の印は、読んだ時の submitted_at と「審査中」と審査した写真の集まりを条件に、1 つの
+  // トランザクションで書く (migration 0023 の apply_review_screening)。審査の間に出し直された・写真が
+  // 足された時は何も書かない (足した側が審査をもう一度走らせる)。印は今回の審査の結果に揃える
   const { data: applied, error: writeError } = await deps.db.rpc('apply_review_screening', {
     p_review_id: reviewId,
     p_submitted_at: review.submitted_at,
@@ -159,14 +160,19 @@ export async function screenSubmittedReview(
     p_ai_error: write.ai_error,
     p_ai_model: write.ai_model,
     p_screened_at: screenedAt,
-    p_photo_marks:
-      result.ok && write.status === 'published' ? photoMarks(rows, result.photos) : null,
+    p_photo_ids: rows.map(row => row.id),
+    p_photo_marks: result.ok ? photoMarks(rows, result.photos) : null,
   });
   if (writeError) throw writeError;
   if (applied !== true) return { kind: 'skipped', reason: 'superseded' };
 
   // 公開になった写真を配信側へ。公開にならなかった時も呼ぶ (公開中からの編集で残った物を消す)
-  if (deps.storage) await syncPhotoDelivery({ db: deps.db, storage: deps.storage }, reviewId);
+  // 配信側の失敗は状態の結果を変えない (ページは作り直す)。Sentry に残し、次の同期 (編集・削除・審査) で直る
+  if (deps.storage) {
+    await syncPhotoDelivery({ db: deps.db, storage: deps.storage }, reviewId).catch(error => {
+      Sentry.captureException(error, { tags: { part: 'review-photos', step: 'delivery' } });
+    });
+  }
 
   return { kind: 'screened', status: write.status, occurrenceId: review.occurrence_id };
 }
