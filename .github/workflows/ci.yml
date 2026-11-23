@@ -77,6 +77,12 @@ jobs:
         env:
           SKIP_ENV_VALIDATION: 'true'
 
+      - name: Build Admin
+        # 管理アプリ (one-more-time #167)。審査のプロンプトは取り込まない (token が無いので警告だけ出して続く)
+        run: pnpm exec turbo run build --filter=@revolution/admin
+        env:
+          SKIP_ENV_VALIDATION: 'true'
+
       - name: Build AI Writer
         run: cd apps/ai-writer && pnpm build
         env:
@@ -200,6 +206,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: cd apps/frontend && pnpm test
 
+      - name: Run admin unit tests
+        # 管理アプリの単体テスト (表示の言葉・写真の印。E2E は Job 4)
+        if: ${{ !cancelled() }}
+        run: cd apps/admin && pnpm test
+
       # docs.anime-events.com (apps/docs)。ビルドは Build Apps ではなくここで行う (Build Apps が最も
       # 時間のかかるジョブのため)。repo 直下の docs/ をビルド時に読むので、docs/*.md の frontmatter の
       # 抜けもここで落ちる。AI Writer のテストが落ちても走らせる (逆も同じ)
@@ -294,6 +305,12 @@ jobs:
         working-directory: apps/frontend
         run: pnpm test:e2e:local
 
+      - name: Run admin E2E tests
+        # 管理アプリ (one-more-time #167)。会員とデータは公開サイトの test-support で作って消す
+        if: ${{ !cancelled() }}
+        working-directory: apps/admin
+        run: pnpm test:e2e:local
+
       - name: Check that tests cleaned up their data
         # テストは `test-` で始まる行と会員を作り、終わりに消す。消し漏れがあればここで落とす。
         # profiles は、会員を消すと退会のトリガが匿名化 (auth_user_id が NULL) して残すので、その行も数える
@@ -314,7 +331,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-test-results
-          path: apps/frontend/test-results/
+          path: |
+            apps/frontend/test-results/
+            apps/admin/test-results/
           retention-days: 7
 
   # Job 5: workflow のファイルの検査
