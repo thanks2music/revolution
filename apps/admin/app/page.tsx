@@ -40,7 +40,8 @@ export default async function QueuePage({
           左の一覧から口コミを選んでください
         </div>
       </main>
-      {isNoticeKind(notice) && <Notice kind={notice} title={title ?? '口コミ'} />}
+      {/* 知らせは URL から読むので、種類は決まった物だけ、名前は長さを切って出す (React が文字として出す) */}
+      {isNoticeKind(notice) && <Notice kind={notice} title={(title ?? '口コミ').slice(0, 200)} />}
     </>
   );
 }

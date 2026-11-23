@@ -50,7 +50,9 @@ export async function proxy(request: NextRequest) {
     return redirectTo(request, response, '/login', sanitizeNextPath(`${pathname}${search}`));
   }
   const admin = isAdminClaims(claims);
-  if (!admin && pathname !== FORBIDDEN_PATH) {
+  // admin でない会員もログインの画面と callback には通す (別のアカウントでログインし直せるように。
+  // callback を止めると、新しいコードが交換されず古いセッションのまま /forbidden に戻り続ける)
+  if (!admin && !isPublic && pathname !== FORBIDDEN_PATH) {
     return redirectTo(request, response, FORBIDDEN_PATH);
   }
   if (admin && (pathname === '/login' || pathname === FORBIDDEN_PATH)) {

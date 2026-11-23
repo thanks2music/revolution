@@ -131,3 +131,15 @@ test('admin でない会員は管理画面に入れない', async ({ page, conte
   await expect(page.getByRole('heading')).toHaveText('このアカウントには管理画面の権限がありません');
   await expect(page.getByRole('button', { name: 'ログアウト' })).toBeVisible();
 });
+
+test('admin でない会員のままでも、ログインの画面を開いてログインし直せる', async ({ page, context, baseURL }) => {
+  const member = await data.createMember();
+  await signIn(context, member, baseURL!);
+
+  await page.goto('/login');
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('heading', { name: '管理画面にログイン' })).toBeVisible();
+  // callback も止めない (コードの無い callback はログインの画面へ戻る)
+  await page.goto('/auth/callback');
+  await expect(page).not.toHaveURL(/\/forbidden/);
+});
