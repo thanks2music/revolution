@@ -65,17 +65,33 @@ describe('buildUpdateMessage', () => {
 
   it('AI ライターに渡したリンクは 5 件まで載せ、残りは件数だけ書く', () => {
     const links = Array.from({ length: 7 }, (_, i) => `https://example.com/n/${i}`);
-    const message = buildUpdateMessage({ ...base, previousAt: 1, handoff: { links } });
+    const message = buildUpdateMessage({ ...base, previousAt: 1, handoff: { links, failed: 0 } });
     expect(texts(message)).toContain('AI ライターに渡したリンク: 7 件');
     expect(texts(message)).toContain('<https://example.com/n/4|https://example.com/n/4>');
     expect(texts(message)).not.toContain('n/5|');
     expect(texts(message)).toContain('ほか 2 件');
   });
 
-  it('渡せなかった時はエラーを書く', () => {
-    const message = buildUpdateMessage({ ...base, previousAt: 1, handoff: { links: [], error: 'UNAVAILABLE <!here>' } });
-    expect(texts(message)).toContain('AI ライターに渡せませんでした');
+  it('渡せなかった件数とエラーを書く', () => {
+    const message = buildUpdateMessage({
+      ...base,
+      previousAt: 1,
+      handoff: { links: ['https://example.com/a'], failed: 2, error: 'UNAVAILABLE <!here>' },
+    });
+    expect(texts(message)).toContain('AI ライターに渡したリンク: 1 件');
+    expect(texts(message)).toContain('2 件は渡せませんでした');
     expect(texts(message)).not.toContain('<!here>');
+  });
+
+  it('長い URL が並んでも、欄の上限 3000 字を超えない', () => {
+    const links = Array.from({ length: 5 }, (_, i) => `https://example.com/${i}?q=${'x'.repeat(900)}`);
+    const message = buildUpdateMessage({ ...base, previousAt: 1, handoff: { links, failed: 0 } });
+    for (const block of message.blocks ?? []) {
+      const text = (block.text as { text?: string } | undefined)?.text ?? '';
+      expect(Array.from(text).length).toBeLessThanOrEqual(3000);
+    }
+    expect(texts(message)).toContain('AI ライターに渡したリンク: 5 件');
+    expect(texts(message)).toMatch(/ほか \d 件/);
   });
 
   it('差分が空なら差分の欄を出さない', () => {

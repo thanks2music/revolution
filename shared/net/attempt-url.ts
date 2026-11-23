@@ -18,12 +18,22 @@ import { createHash } from 'node:crypto';
 /** 訪問を数えるだけのクリック ID (`utm_*` は前方一致で別に落とす) */
 const CLICK_ID_PARAMS = new Set(['fbclid', 'gclid', 'yclid', 'msclkid', 'mc_cid', 'mc_eid']);
 
-/** Google のリダイレクトの URL (`https://www.google.com/url?...&url=<先>`) なら、指している先を返す */
+/** Google のリダイレクトのホスト。`notgoogle.com` などを Google と見なさないよう、完全一致で比べる */
+const GOOGLE_REDIRECT_HOSTS = new Set(['google.com', 'www.google.com']);
+
+/**
+ * Google のリダイレクトの URL (`https://www.google.com/url?...&url=<先>`) なら、指している先を返す。
+ * 外のページから拾ったリンクにも使うので、ホスト名とパス (`/url`) で判定する (文字列を含むだけでは戻さない)
+ */
 export function unwrapGoogleRedirect(url: string): string {
-  if (!url.includes('google.com/url')) return url;
-  const query = url.split('?')[1];
-  if (!query) return url;
-  return new URLSearchParams(query).get('url') ?? url;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (!GOOGLE_REDIRECT_HOSTS.has(parsed.hostname) || parsed.pathname !== '/url') return url;
+  return parsed.searchParams.get('url') ?? url;
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { SlackMessage } from '@revolution/slack/post-message';
 
 import { newLinks } from './detected-links';
+import type { FetchedFragment } from './fetch-fragment';
 import { buildErrorMessage, buildNoContentMessage, buildUpdateMessage, type LinkHandoff } from './slack-message';
 import type { DetectedLink, Snapshot, Target } from './targets';
 import { formatLineDiff, toComparableText } from './text-diff';
@@ -19,15 +20,23 @@ export interface TargetStore {
   addSnapshot(targetId: string, snapshot: Snapshot): Promise<boolean>;
   recordCheck(targetId: string, record: CheckRecord): Promise<void>;
   /**
-   * 検知リンクを記録する (AI ライターに渡す)。すでに記録されている URL は飛ばし、新しく記録した物だけを返す
-   * (別の監視対象が先に同じリンクを検知していた時など)
+   * 検知リンクを記録する (AI ライターに渡す)。1 件ずつ記録し、一部が失敗しても残りは記録する。
+   * すでに記録されている URL (別の監視対象が先に検知した時など) は飛ばし、added にも failed にも数えない
    */
-  addDetectedLinks(links: DetectedLink[]): Promise<DetectedLink[]>;
+  addDetectedLinks(links: DetectedLink[]): Promise<DetectedLinksResult>;
+}
+
+export interface DetectedLinksResult {
+  /** 新しく記録した物 */
+  added: DetectedLink[];
+  /** 記録に失敗した件数と、最初のエラーの文言 */
+  failed: number;
+  error?: string;
 }
 
 export interface CrawlDeps {
   store: TargetStore;
-  fetchFragment: (url: string, selector: string) => Promise<string | null>;
+  fetchFragment: (url: string, selector: string) => Promise<FetchedFragment>;
   /** Slack に送る。失敗しても例外を投げない (`postSlackMessage` の決まり) */
   notify: (message: SlackMessage) => Promise<void>;
   /** WEB チェッカーの画面の URL (通知のリンクに使う) */
@@ -85,14 +94,15 @@ export async function crawlTarget(
   const previousPromise = deps.store.getLatestSnapshot(targetId);
   previousPromise.catch(() => undefined); // 取得の失敗で使われなかった時に、未処理の reject にしない
 
-  let fragment: string | null;
+  let fetched: FetchedFragment;
   try {
-    fragment = await deps.fetchFragment(target.url, target.selector);
+    fetched = await deps.fetchFragment(target.url, target.selector);
   } catch (error) {
     await alert(buildErrorMessage(target, deps.siteUrl, error));
     return 'error';
   }
 
+  const fragment = fetched.html;
   if (fragment === null) {
     await alert(buildNoContentMessage(target, deps.siteUrl));
     return 'no-content';
@@ -123,9 +133,10 @@ export async function crawlTarget(
   }
   if (!saved) return 'missing';
 
+  // 登録・編集の直後は渡さない: 前回の履歴は前の URL かセレクタの物なので、今回のリンクが全部新しく見える
   const handoff =
-    previous && target.notifyMode === 'ai-writer'
-      ? await handOff(deps, targetId, target, previous, fragment, startedAt)
+    previous && target.notifyMode === 'ai-writer' && !options.afterEdit
+      ? await handOff(deps, targetId, target, previous, { html: fragment, baseUrl: fetched.baseUrl }, startedAt)
       : undefined;
 
   const newText = toComparableText(fragment);
@@ -148,25 +159,21 @@ export async function crawlTarget(
 
 /**
  * 通知の仕方が「AI ライターに渡す」の監視対象で、新しく現れたリンクを検知リンクとして記録する。
- * 最初のクロール (前回が無い) は呼ばない: 抜き出した部分が丸ごと新しく見え、過去のリンクまで渡してしまうため。
- * 記録に失敗しても更新検知の通知は送る (失敗は通知に書く)。
+ * 最初のクロール (前回が無い) と登録・編集の直後は呼ばない: 抜き出した部分が丸ごと新しく見え、
+ * 過去のリンクまで渡してしまうため。記録に失敗しても更新検知の通知は送る (失敗は通知に書く)。
  */
 async function handOff(
   deps: CrawlDeps,
   targetId: string,
   target: Target,
   previous: Snapshot,
-  fragment: string,
+  fetched: { html: string; baseUrl: string },
   detectedAt: number,
 ): Promise<LinkHandoff> {
-  const urls = newLinks(previous.content, fragment, target.url);
-  if (urls.length === 0) return { links: [] };
-  try {
-    const added = await deps.store.addDetectedLinks(
-      urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt })),
-    );
-    return { links: added.map((link) => link.url) };
-  } catch (error) {
-    return { links: [], error: error instanceof Error ? error.message : String(error) };
-  }
+  const urls = newLinks(previous.content, fetched.html, { baseUrl: fetched.baseUrl, pageUrl: target.url });
+  if (urls.length === 0) return { links: [], failed: 0 };
+  const result = await deps.store.addDetectedLinks(
+    urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt })),
+  );
+  return { links: result.added.map((link) => link.url), failed: result.failed, error: result.error };
 }

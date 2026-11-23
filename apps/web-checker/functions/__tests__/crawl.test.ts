@@ -37,10 +37,12 @@ function memoryStore(initial: { target?: Target | null; snapshots?: Snapshot[] }
       return Promise.resolve(true);
     },
     addDetectedLinks: (links) => {
-      if (state.addDetectedLinksError) return Promise.reject(state.addDetectedLinksError);
+      if (state.addDetectedLinksError) {
+        return Promise.resolve({ added: [], failed: links.length, error: state.addDetectedLinksError.message });
+      }
       const fresh = links.filter((link) => !state.detectedLinks.some((known) => known.url === link.url));
       state.detectedLinks.push(...fresh);
-      return Promise.resolve(fresh);
+      return Promise.resolve({ added: fresh, failed: 0 });
     },
     recordCheck: (_id, record) => {
       state.checkedAt = record.checkedAt;
@@ -51,7 +53,14 @@ function memoryStore(initial: { target?: Target | null; snapshots?: Snapshot[] }
   return { store, state };
 }
 
-function deps(store: TargetStore, fetchFragment: CrawlDeps['fetchFragment'], now = NOW) {
+/** 取得の偽物。抜き出した HTML だけを返し、相対リンクの基準は baseUrl (既定は監視対象の URL) */
+function deps(
+  store: TargetStore,
+  fetchHtml: () => Promise<string | null>,
+  now = NOW,
+  baseUrl = target.url,
+) {
+  const fetchFragment: CrawlDeps['fetchFragment'] = async () => ({ html: await fetchHtml(), baseUrl });
   const sent: SlackMessage[] = [];
   const value: CrawlDeps = {
     store,
@@ -221,13 +230,33 @@ describe('crawlTarget', () => {
       expect(JSON.stringify(sent[0].blocks)).toContain('AI ライターに渡したリンク: 0 件');
     });
 
+    it('登録・編集の直後のクロールでは渡さない (前回の履歴は前の URL かセレクタの物のため)', async () => {
+      const { store, state } = memoryStore({ target: aiTarget, snapshots: [{ content: before, time: 1 }] });
+      const { deps: d } = deps(store, () => Promise.resolve(after));
+
+      await crawlTarget(d, 'target-1', { afterEdit: true });
+      expect(state.detectedLinks).toHaveLength(0);
+    });
+
+    it('相対リンクは、取得が返した基準の URL (リダイレクト後) で直す', async () => {
+      const { store, state } = memoryStore({
+        target: aiTarget,
+        snapshots: [{ content: '<a href="item-1">1</a>', time: 1 }],
+      });
+      const fetched = '<a href="item-2">2</a><a href="item-1">1</a>';
+      const { deps: d } = deps(store, () => Promise.resolve(fetched), NOW, 'https://example.com/info/');
+
+      await crawlTarget(d, 'target-1');
+      expect(state.detectedLinks.map((l) => l.url)).toEqual(['https://example.com/info/item-2']);
+    });
+
     it('記録に失敗しても更新検知は通知し、失敗を書く', async () => {
       const { store, state } = memoryStore({ target: aiTarget, snapshots: [{ content: before, time: 1 }] });
       state.addDetectedLinksError = new Error('UNAVAILABLE');
       const { deps: d, sent } = deps(store, () => Promise.resolve(after));
 
       await expect(crawlTarget(d, 'target-1')).resolves.toBe('updated');
-      expect(JSON.stringify(sent[0].blocks)).toContain('AI ライターに渡せませんでした');
+      expect(JSON.stringify(sent[0].blocks)).toContain('件は渡せませんでした');
     });
 
     it('新しいリンクが無ければ、渡したリンクは 0 件', async () => {

@@ -54,22 +54,33 @@ export function historyUrl(siteUrl: string, targetId: string): string {
 export interface LinkHandoff {
   /** 新しく渡したリンク (正規化した URL) */
   links: string[];
-  /** 記録に失敗した時のエラーの文言 */
+  /** 記録に失敗した件数と、最初のエラーの文言 */
+  failed: number;
   error?: string;
 }
 
 /** 通知に載せる、渡したリンクの件数の上限 (残りは件数だけ書く) */
 const HANDOFF_LINKS_SHOWN = 5;
+/** リンクの一覧の欄の上限。URL はリンクの記法の中で切れないので、収まらない URL は件数に回す */
+const HANDOFF_SECTION_MAX = 2800;
 
 function handoffSection(handoff: LinkHandoff): Block {
-  if (handoff.error !== undefined) {
-    return section(`*AI ライターに渡せませんでした*\n${safe(handoff.error, ERROR_MAX)}`);
+  const lines = [`*AI ライターに渡したリンク: ${handoff.links.length} 件*`];
+  let length = lines[0].length;
+  let shown = 0;
+  for (const url of handoff.links.slice(0, HANDOFF_LINKS_SHOWN)) {
+    const line = `• ${link(url, safe(url, 200))}`;
+    if (length + line.length + 1 > HANDOFF_SECTION_MAX - 200) break;
+    lines.push(line);
+    length += line.length + 1;
+    shown += 1;
   }
-  const shown = handoff.links.slice(0, HANDOFF_LINKS_SHOWN).map((url) => `• ${link(url, safe(url, 200))}`);
-  const rest = handoff.links.length - shown.length;
-  return section(
-    [`*AI ライターに渡したリンク: ${handoff.links.length} 件*`, ...shown, ...(rest > 0 ? [`ほか ${rest} 件`] : [])].join('\n'),
-  );
+  const rest = handoff.links.length - shown;
+  if (rest > 0) lines.push(`ほか ${rest} 件`);
+  if (handoff.failed > 0) {
+    lines.push(`*${handoff.failed} 件は渡せませんでした*: ${safe(handoff.error ?? '', ERROR_MAX)}`);
+  }
+  return section(lines.join('\n'));
 }
 
 export interface UpdateMessageInput {

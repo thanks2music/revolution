@@ -21,8 +21,16 @@ function linksIn(html: string, baseUrl: string): string[] {
     } catch {
       return;
     }
-    if (absolute.protocol !== 'https:' && absolute.protocol !== 'http:') return;
-    links.push(normalizeAttemptUrl(absolute.href));
+    // 正規化は Google のリダイレクトを指している先に戻すので、戻した後の URL で http(s) かを確かめる
+    const normalized = normalizeAttemptUrl(absolute.href);
+    let target: URL;
+    try {
+      target = new URL(normalized);
+    } catch {
+      return;
+    }
+    if (target.protocol !== 'https:' && target.protocol !== 'http:') return;
+    links.push(normalized);
   });
   return links;
 }
@@ -32,13 +40,18 @@ function linksIn(html: string, baseUrl: string): string[] {
  * 監視対象のページそのものを除き、{@link MAX_LINKS_PER_DETECTION} 件まで。
  *
  * 行の差分 (テキスト) からはリンクを取れないので、前回と今回の HTML のリンクを比べる。
+ * 相対リンクは baseUrl (`fetchFragment` が返す、リダイレクト後の URL か `<base href>`) を基準に直す。
  */
-export function newLinks(previousHtml: string, currentHtml: string, pageUrl: string): string[] {
-  const before = new Set(linksIn(previousHtml, pageUrl));
-  const page = normalizeAttemptUrl(pageUrl);
+export function newLinks(
+  previousHtml: string,
+  currentHtml: string,
+  urls: { baseUrl: string; pageUrl: string },
+): string[] {
+  const before = new Set(linksIn(previousHtml, urls.baseUrl));
+  const pages = new Set([normalizeAttemptUrl(urls.pageUrl), normalizeAttemptUrl(urls.baseUrl)]);
   const result: string[] = [];
-  for (const link of linksIn(currentHtml, pageUrl)) {
-    if (before.has(link) || link === page || result.includes(link)) continue;
+  for (const link of linksIn(currentHtml, urls.baseUrl)) {
+    if (before.has(link) || pages.has(link) || result.includes(link)) continue;
     result.push(link);
     if (result.length === MAX_LINKS_PER_DETECTION) break;
   }
