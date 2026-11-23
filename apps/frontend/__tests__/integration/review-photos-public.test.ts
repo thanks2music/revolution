@@ -5,7 +5,9 @@ import {
   anonClient,
   createTestDataScope,
   jstDate,
+  signInAsMember,
   type TestDataScope,
+  type TestMember,
 } from '@/test-support/test-data';
 
 // 公開のクライアントは lib/env.ts から接続先を読む。ローカルの Supabase に向ける
@@ -26,7 +28,7 @@ jest.mock('@/lib/env', () => {
 
 /**
  * #3 の口コミの写真とギャラリー (one-more-time #164)。公開で見える写真は、公開中で論理削除していない
- * 口コミの非公開でない写真だけ (migration 0024)。ギャラリーはさらにネタバレの口コミの写真を除く。
+ * 口コミの非公開でない写真だけ (migration 0024、0025 で役割ごとの policy に整理)。ギャラリーはさらにネタバレの口コミの写真を除く。
  */
 describe('口コミの写真の公開の読み出し', () => {
   let data: TestDataScope;
@@ -58,9 +60,10 @@ describe('口コミの写真の公開の読み出し', () => {
       deleted?: boolean;
       photos: number;
       hidden?: number[];
+      member?: TestMember;
     }
   ) {
-    const member = await data.createMember();
+    const member = input.member ?? (await data.createMember());
     const { data: review, error } = await data.admin
       .from('reviews')
       .insert({
@@ -122,6 +125,42 @@ describe('口コミの写真の公開の読み出し', () => {
     expect(error).toBeNull();
     expect((rows ?? []).map(row => row.id).sort((a, b) => a - b)).toEqual(
       [shown.photoIds[0], spoiler.photoIds[0]].sort((a, b) => a - b)
+    );
+  });
+
+  it('会員には、他人の写真は anon と同じだけ見え、自分の写真は非公開の物も見える', async () => {
+    const occ = await occurrence();
+    const others = await reviewWithPhotos(occ.id, { photos: 2, hidden: [2] });
+    const pendingOthers = await reviewWithPhotos(occ.id, { status: 'pending', photos: 1 });
+    const viewer = await data.createMember();
+    const own = await reviewWithPhotos(occ.id, { photos: 2, hidden: [1], member: viewer });
+    // 自分の審査中の口コミの写真は見え、論理削除した口コミの写真は見えない
+    // (1 人 1 開催 1 件なので、別の開催に作る)
+    const ownPending = await reviewWithPhotos((await occurrence()).id, {
+      status: 'pending',
+      photos: 1,
+      member: viewer,
+    });
+    const ownDeleted = await reviewWithPhotos((await occurrence()).id, {
+      photos: 1,
+      deleted: true,
+      member: viewer,
+    });
+
+    const client = await signInAsMember(viewer);
+    const { data: rows, error } = await client
+      .from('review_images')
+      .select('id')
+      .in('review_id', [
+        others.reviewId,
+        pendingOthers.reviewId,
+        own.reviewId,
+        ownPending.reviewId,
+        ownDeleted.reviewId,
+      ]);
+    expect(error).toBeNull();
+    expect((rows ?? []).map(row => row.id).sort((a, b) => a - b)).toEqual(
+      [others.photoIds[0], ...own.photoIds, ...ownPending.photoIds].sort((a, b) => a - b)
     );
   });
 
