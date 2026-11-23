@@ -29,6 +29,7 @@ jest.mock('@/lib/services/section-renderers', () => ({
 jest.mock('@/lib/services/summary-table', () => ({ SUMMARY_ROWS_KEYS: ['row-key'] }));
 jest.mock('@/lib/services/lead-generator.service', () => ({ readLeadSectionYaml: fake('lead') }));
 jest.mock('@/lib/archive-source/config', () => ({ loadArchiveSources: fake('archive-sources') }));
+jest.mock('@/lib/scheduled/writing-scope', () => ({ loadWritingScope: fake('writing-scope') }));
 jest.mock('@/lib/services/media-type-mapper.service', () => ({
   MediaTypeMapperService: jest.fn((configPath: string) => fake('media-type-mapper')(configPath)),
 }));
@@ -112,6 +113,7 @@ describe('checkConsumerContract', () => {
       'media-form-resolver',
       'store-url-patterns',
       'archive-sources',
+      'writing-scope',
       'vision',
       // every pipeline a service loads (from PIPELINE_PROMPTS), whatever _meta.yaml lists
       'pipeline 1-selection',
@@ -128,6 +130,7 @@ describe('checkConsumerContract', () => {
     expect(args['lead']).toEqual(['/t/ai-writer/posts/yaml/collabo-cafe/sections/01-lead.yaml']);
     expect(args['store-url-patterns']).toEqual([layout.configDir]);
     expect(args['archive-sources']).toEqual(['/t/ai-writer/config/archive-sources.yaml']);
+    expect(args['writing-scope']).toEqual(['/t/ai-writer/config/writing-scope.yaml']);
     expect(args['pipeline 3-title']).toEqual([layout.templatesDir, 'collabo-cafe']);
   });
 
@@ -143,7 +146,7 @@ describe('checkConsumerContract', () => {
       },
       { rule: 'contract/pipeline', file: 'ai-writer/posts/yaml/collabo-cafe/pipeline/3-title.yaml', message: 'pipeline 3-title failed' },
     ]);
-    expect(calls).toHaveLength(18);
+    expect(calls).toHaveLength(19);
   });
 
   it('still loads every service pipeline when _meta.yaml is missing (production fails on it too)', async () => {
