@@ -1,5 +1,5 @@
 /**
- * 偽の写真の置き場所 (lib/reviews/photos/storage.ts の createFakePhotoStorage) の出入り口。
+ * 偽の写真の置き場所 (shared/reviews/photos/storage.ts の createFakePhotoStorage) の出入り口。
  * 手元の開発と E2E だけで使う (one-more-time #163)。
  *
  * - PUT /api/dev/review-photos/intake/<キー>?size=<バイト数>: ブラウザが署名付き URL の代わりに上げる
@@ -12,8 +12,8 @@ import { NextResponse } from 'next/server';
 
 import { MAX_REVIEW_PHOTO_BYTES, REVIEW_PHOTO_TYPES } from '@revolution/schemas/review-photo';
 
-import { contentTypeOf, createFakePhotoStorage } from '@/lib/reviews/photos/storage';
-import { allowsFakeBackends } from '@/lib/reviews/fake-backends';
+import { contentTypeOf, createFakePhotoStorage } from '@revolution/reviews/photos/storage';
+import { allowsFakeBackends } from '@revolution/reviews/fake-backends';
 
 type Params = { params: Promise<{ path: string[] }> };
 

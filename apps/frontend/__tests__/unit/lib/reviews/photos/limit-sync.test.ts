@@ -6,7 +6,7 @@ import path from 'node:path';
 
 import { MAX_REVIEW_PHOTOS } from '@revolution/schemas/review-photo';
 
-import { MAX_PHOTOS_MESSAGE } from '@/lib/reviews/photos/operations';
+import { MAX_PHOTOS_MESSAGE } from '@revolution/reviews/photos/operations';
 
 jest.mock('@/lib/env', () => ({ env: {} }));
 

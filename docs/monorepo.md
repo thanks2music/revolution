@@ -13,8 +13,9 @@ revolution/
 │   ├── ai-writer/         (AI 記事生成パイプライン、Cloud Run デプロイ対象)
 │   └── docs/              (Next.js 16 + Fumadocs、本ディレクトリを docs.anime-events.com で配信)
 ├── shared/
+│   ├── reviews/           (口コミの操作の層: 審査・写真の置き場所と配信。公開サイトと管理アプリが使う)
 │   ├── schemas/           (Zod スキーマ集約、Schema-SDD の真実源)
-│   └── types/             (共通 TypeScript 型)
+│   └── slack/             (全アプリで共有する Slack の送信)
 ├── tools/
 │   └── docs-index.ts      (ドキュメント TOC ビルド)
 ├── scripts/

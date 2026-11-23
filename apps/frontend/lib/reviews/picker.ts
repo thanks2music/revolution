@@ -8,7 +8,7 @@ import type { ReviewStatus } from '@revolution/schemas/review';
 import { PRIMARY_CATEGORY_EMBED } from '@/lib/event/contracts';
 import { getOccurrenceUrl } from '@/lib/event/event-url';
 import { todayInJst } from '@/lib/occurrence/status';
-import { authoringMode } from '@/lib/reviews/eligibility';
+import { authoringMode } from '@revolution/reviews/eligibility';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
 

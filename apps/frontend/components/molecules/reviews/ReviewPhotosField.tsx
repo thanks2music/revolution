@@ -30,7 +30,7 @@ import {
   reorderReviewPhotos,
   requestReviewPhotoUpload,
 } from '@/actions/review-photos';
-import type { OwnReviewPhoto } from '@/lib/reviews/photos/operations';
+import type { OwnReviewPhoto } from '@revolution/reviews/photos/operations';
 
 import { ReviewPhotoPicture } from './ReviewPhotoPicture';
 

@@ -12,11 +12,11 @@ import { getEventUrl, getOccurrenceUrl } from '@/lib/event/event-url';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { todayInJst } from '@/lib/occurrence/status';
 import type { OwnReview } from '@/lib/reviews/authoring';
-import { authoringMode } from '@/lib/reviews/eligibility';
-import { screenSubmittedReview } from '@/lib/reviews/operations';
-import { syncPhotoDeliverySafely } from '@/lib/reviews/photos/delivery';
-import { getReviewPhotoStorage } from '@/lib/reviews/photos/storage';
-import { getReviewScreener } from '@/lib/reviews/screener';
+import { authoringMode } from '@revolution/reviews/eligibility';
+import { screenSubmittedReview } from '@revolution/reviews/operations';
+import { syncPhotoDeliverySafely } from '@revolution/reviews/photos/delivery';
+import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
+import { getReviewScreener } from '@revolution/reviews/screener';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 /**

@@ -1,4 +1,4 @@
-import type { ReviewPhotoView } from '@/lib/reviews/photos/storage';
+import type { ReviewPhotoView } from '@revolution/reviews/photos/storage';
 
 /**
  * 口コミの写真 1 枚 (AVIF と WebP の段を srcset で出す)。本人の写真 (投稿画面) と公開の写真 (#3) で共有する。

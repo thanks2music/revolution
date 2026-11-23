@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 
-import { createFakeScreener } from '@/lib/reviews/screener/fake-screener';
-import type { ReviewScreener } from '@/lib/reviews/screener/types';
-import { screenSubmittedReview } from '@/lib/reviews/operations';
+import { createFakeScreener } from '@revolution/reviews/screener/fake-screener';
+import type { ReviewScreener } from '@revolution/reviews/screener/types';
+import { screenSubmittedReview } from '@revolution/reviews/operations';
 import {
   anonClient,
   createTestDataScope,

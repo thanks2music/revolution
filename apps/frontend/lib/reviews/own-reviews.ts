@@ -17,7 +17,7 @@ import {
   storedVariantKey,
   variantWidthAtMost,
   type ReviewPhotoStorage,
-} from '@/lib/reviews/photos/storage';
+} from '@revolution/reviews/photos/storage';
 import {
   REVIEW_TARGET_COLUMNS,
   ReviewTargetRowSchema,

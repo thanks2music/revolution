@@ -28,10 +28,10 @@ jest.mock('@/lib/supabase/admin', () => {
     createAdminClient: jest.fn(() => ({ admin: true, from: jest.fn(() => ownBuilder) })),
   };
 });
-jest.mock('@/lib/reviews/screener', () => ({
+jest.mock('@revolution/reviews/screener', () => ({
   getReviewScreener: jest.fn(async () => ({ screen: jest.fn() })),
 }));
-jest.mock('@/lib/reviews/operations', () => ({ screenSubmittedReview: jest.fn() }));
+jest.mock('@revolution/reviews/operations', () => ({ screenSubmittedReview: jest.fn() }));
 jest.mock('@/lib/reviews/authoring', () => {
   const actual = jest.requireActual('@/lib/reviews/authoring') as Record<string, unknown>;
   return {
@@ -65,7 +65,7 @@ import { after } from 'next/server';
 import { deleteReview, getOwnReviewState, saveReviewDraft, submitReview } from '@/actions/review';
 import { getCurrentMember } from '@/lib/auth/member';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
-import { screenSubmittedReview } from '@/lib/reviews/operations';
+import { screenSubmittedReview } from '@revolution/reviews/operations';
 import { deleteOwnReview, findOwnReview, saveDraft, submitDraft } from '@/lib/reviews/authoring';
 
 const builder = (jest.requireMock('@/lib/supabase/server') as { __builder: any }).__builder;

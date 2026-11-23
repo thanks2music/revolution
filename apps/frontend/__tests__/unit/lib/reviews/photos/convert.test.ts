@@ -13,7 +13,7 @@ import {
   detectReviewPhotoFormat,
   variantWidthsFor,
   type ConvertedReviewPhoto,
-} from '@/lib/reviews/photos/convert';
+} from '@revolution/reviews/photos/convert';
 
 /**
  * 口コミの写真の変換 (one-more-time #163)。本物の sharp と libheif (WebAssembly) を使う。

@@ -37,7 +37,11 @@ import {
   type OwnReview,
   type ReviewContent,
 } from '@/lib/reviews/authoring';
-import { explainsReason, ownReviewStatus, type OwnReviewStatus } from '@/lib/reviews/eligibility';
+import {
+  explainsReason,
+  ownReviewStatus,
+  type OwnReviewStatus,
+} from '@revolution/reviews/eligibility';
 import { toScreeningReason } from '@/lib/reviews/labels';
 import {
   modeFor,
