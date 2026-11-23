@@ -49,3 +49,7 @@ Functions read these parameters (`firebase-functions/params`):
 | `WEB_CHECKER_SITE_URL` | string (the screens' URL, used for the history link in notifications) |
 
 The screens need the six `NEXT_PUBLIC_FIREBASE_*` values at build time (see `web/lib/env.ts`).
+
+## Deploy
+
+`.github/workflows/deploy-web-checker.yml` deploys the Functions codebase `web-checker` and the Hosting target `web-checker` on a push to `main` that changes this app or the shared packages it uses, or by hand. It runs only while the repository variable `WEB_CHECKER_DEPLOY_ENABLED` is `true`. What it checks, which values it needs and what it does not deploy (Firestore rules) are described at the top of the workflow.
