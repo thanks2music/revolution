@@ -102,6 +102,32 @@ describe('findSamePageSections', () => {
     expect(sections.novelty).toBeUndefined();
   });
 
+  it('属性で当たった節が別のカテゴリの小節を含むときは、小節を除いて使う (グッズの節の中の購入特典)', () => {
+    const html = `<section id="goods"><h2>グッズ</h2><img src="img/g1.jpg"><div class="bonus"><h3>特典</h3><img src="img/b.jpg"></div></section>`;
+    const sections = findSamePageSections(html, CONFIG);
+
+    expect(sections.goods).toContain('img/g1.jpg');
+    expect(sections.goods).not.toContain('img/b.jpg');
+    expect(sections.novelty).toContain('img/b.jpg');
+  });
+
+  it('ページを包む要素は、中の節の見出しでは当てない (メインビジュアルや注意事項の画像を入れない)', () => {
+    const html = `<div class="container"><section class="kv"><img src="img/kv.jpg"></section>
+      <section id="goods"><h2>グッズ</h2><img src="img/g.jpg"></section>
+      <section class="notice"><h3>注意事項</h3><img src="img/banner.jpg"></section></div>`;
+    const goods = findSamePageSections(html, CONFIG).goods ?? '';
+
+    expect(goods).toContain('img/g.jpg');
+    expect(goods).not.toContain('img/kv.jpg');
+    expect(goods).not.toContain('img/banner.jpg');
+  });
+
+  it('英語と日本語を並べた見出しも、文字の塊ごとに比べて当てる', () => {
+    const html = `<section class="sec03"><h2>GOODS<span>グッズ</span></h2><img src="img/g.jpg"></section>`;
+
+    expect(findSamePageSections(html, CONFIG).goods).toContain('img/g.jpg');
+  });
+
   it('設定が無ければ何も返さない (Templates が古い)', () => {
     expect(findSamePageSections(ONE_PAGE, undefined)).toEqual({});
   });

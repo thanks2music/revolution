@@ -258,30 +258,6 @@ export class CategoryImageExtractorService {
       }
     }
 
-    // 2.2 下層ページから画像を取れなかったカテゴリは、トップページの中の節から拾う (1 ページ構成のサイト。2026-11-23)。
-    //     渡されるトップページ (topPageHtml) は圧縮後で <img> が残らないため、圧縮前の HTML を使う
-    const missingCategories = categories.filter((category) => result[category].length === 0);
-    if (rawTopPageHtml && missingCategories.length > 0) {
-      if (!imageConfig.same_page_sections) {
-        // Templates の設定 (store-url-patterns.yaml) が古いと、1 ページ構成のサイトの画像を黙って拾わなくなる
-        console.warn(
-          '[CategoryImageExtractor] ⚠️ same_page_sections が未設定のため、トップページの節から画像を拾えない (pnpm sync:templates を確認)'
-        );
-      }
-      const sections = findSamePageSections(rawTopPageHtml, imageConfig.same_page_sections);
-      for (const category of missingCategories) {
-        const sectionHtml = sections[category];
-        if (!sectionHtml) continue;
-        const pageResult = this.extractImagesFromHtml(sectionHtml, topPageUrl, imageConfig);
-        if (pageResult.images.length === 0) continue;
-        result[category] = pageResult.images;
-        result.sources[category] = topPageUrl;
-        Object.assign(result.imageAlts, pageResult.alts);
-        pageResult.images.forEach((img) => allImages.add(img));
-        console.log(`[CategoryImageExtractor] ${category}: トップページの節から ${pageResult.images.length}枚の画像を抽出`);
-      }
-    }
-
     // 2.5 会場ごとの案内ページ。本文と、ノベルティの画像の候補 (代替テキストで選ぶ) を残す
     const fetchedKeys = new Set([topPageUrl, ...Object.values(result.sources)].map(pageUrlKey));
     const venues = Array.from(new Set(venueUrls))
@@ -317,6 +293,34 @@ export class CategoryImageExtractorService {
       console.log(
         `[CategoryImageExtractor] venue: 案内ページ ${venueHtmls.filter(Boolean).length}/${venues.length} 件の本文を取得`
       );
+    }
+
+    // 2.7 下層ページから画像を取れなかったカテゴリは、トップページの中の節から拾う (1 ページ構成のサイト。2026-11-23)。
+    //     渡されるトップページ (topPageHtml) は圧縮後で <img> が残らないため、圧縮前の HTML を使う。
+    //     ノベルティは、会場のページに候補があれば拾わない (ノベルティ名が読めた会場のページの画像を後で選ぶ。pickNoveltyImages)
+    const missingCategories = categories.filter(
+      (category) =>
+        result[category].length === 0 && !(category === 'novelty' && result.venueNoveltyImages.length > 0)
+    );
+    if (rawTopPageHtml && missingCategories.length > 0) {
+      if (!imageConfig.same_page_sections) {
+        // Templates の設定 (store-url-patterns.yaml) が古いと、1 ページ構成のサイトの画像を黙って拾わなくなる
+        console.warn(
+          '[CategoryImageExtractor] ⚠️ same_page_sections が未設定のため、トップページの節から画像を拾えない (pnpm sync:templates を確認)'
+        );
+      }
+      const sections = findSamePageSections(rawTopPageHtml, imageConfig.same_page_sections);
+      for (const category of missingCategories) {
+        const sectionHtml = sections[category];
+        if (!sectionHtml) continue;
+        const pageResult = this.extractImagesFromHtml(sectionHtml, topPageUrl, imageConfig);
+        if (pageResult.images.length === 0) continue;
+        result[category] = pageResult.images;
+        result.sources[category] = topPageUrl;
+        Object.assign(result.imageAlts, pageResult.alts);
+        pageResult.images.forEach((img) => allImages.add(img));
+        console.log(`[CategoryImageExtractor] ${category}: トップページの節から ${pageResult.images.length}枚の画像を抽出`);
+      }
     }
 
     // 3. 下層ページがない場合はトップページから推測（フォールバック）

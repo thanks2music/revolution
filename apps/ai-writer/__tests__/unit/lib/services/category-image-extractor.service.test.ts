@@ -348,6 +348,20 @@ describe('CategoryImageExtractorService.extractCategoryImages (トップペー�
     expect(result.goods).toHaveLength(2);
   });
 
+  it('ノベルティは、会場のページに候補があればトップページの節から拾わない (ノベルティ名が読めた会場の画像を後で選ぶ)', async () => {
+    const VENUE = 'https://example.com/event/cafe/tokyo.html';
+    global.fetch = jest.fn(async () =>
+      new Response('<html><body><main><h2>ノベルティ</h2><img src="/img/tokuten.jpg" alt="来店特典"></main></body></html>', { status: 200 })
+    ) as unknown as typeof global.fetch;
+    const service = new CategoryImageExtractorService(sameLoader);
+
+    const result = await service.extractCategoryImages(TOP, null, {}, [VENUE], RAW_TOP);
+
+    expect(result.novelty).toEqual([]);
+    expect(result.venueNoveltyImages).toEqual([{ url: VENUE, images: ['https://example.com/img/tokuten.jpg'] }]);
+    expect(result.goods).toHaveLength(2);
+  });
+
   it('圧縮前の HTML が渡されなければ、節からは拾わない (これまでどおり)', async () => {
     const service = new CategoryImageExtractorService(sameLoader);
 

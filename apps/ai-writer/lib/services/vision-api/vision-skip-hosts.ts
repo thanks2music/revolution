@@ -12,8 +12,9 @@ function normalizeHost(host: string): string {
 }
 
 /** 公式サイトの URL のホストが一覧にあるか。URL として読めなければ false */
-export function skipsVision(officialUrl: string | null | undefined, hosts: readonly string[] | undefined): boolean {
-  if (!officialUrl || !hosts || hosts.length === 0) return false;
+export function skipsVision(officialUrl: string | null | undefined, hosts: unknown): boolean {
+  // YAML の書き損じ (配列でない) で記事の生成を止めない。その時は一覧が無いのと同じ (Vision を呼ぶ)
+  if (!officialUrl || !Array.isArray(hosts) || hosts.length === 0) return false;
   let host: string;
   try {
     host = normalizeHost(new URL(officialUrl).hostname);

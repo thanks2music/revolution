@@ -19,5 +19,7 @@ describe('skipsVision', () => {
     expect(skipsVision(null, HOSTS)).toBe(false);
     expect(skipsVision('not a url', HOSTS)).toBe(false);
     expect(skipsVision('https://www.example-cafe.com/', undefined)).toBe(false);
+    // YAML の書き損じ (配列でない) でも記事の生成を止めない
+    expect(skipsVision('https://www.example-cafe.com/', 'www.example-cafe.com')).toBe(false);
   });
 });
