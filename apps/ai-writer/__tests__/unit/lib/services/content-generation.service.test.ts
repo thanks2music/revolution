@@ -137,38 +137,29 @@ describe('ContentGenerationService', () => {
     });
 
     describe('buildCategoryImagesTable', () => {
-      it('すべてのカテゴリに画像がある場合、正しいテーブルを生成する', () => {
+      it('カテゴリごとの画像数だけを書く', () => {
         const buildTable = getBuildCategoryImagesTable(service);
         const categoryImages = createMockCategoryImages(3, 2, 5);
 
         const result = buildTable(categoryImages);
 
-        expect(result).toContain('| カテゴリ | 画像数 | アクション |');
-        expect(result).toContain('| メニュー | 3件 | セクション生成 |');
-        expect(result).toContain('| ノベルティ | 2件 | セクション生成 |');
-        expect(result).toContain('| グッズ | 5件 | セクション生成 |');
+        expect(result).toContain('| カテゴリ | 画像数 |');
+        expect(result).toContain('| メニュー | 3件 |');
+        expect(result).toContain('| ノベルティ | 2件 |');
+        expect(result).toContain('| グッズ | 5件 |');
       });
 
-      it('一部のカテゴリに画像がない場合、スキップを表示する', () => {
-        const buildTable = getBuildCategoryImagesTable(service);
-        const categoryImages = createMockCategoryImages(2, 0, 0);
-
-        const result = buildTable(categoryImages);
-
-        expect(result).toContain('| メニュー | 2件 | セクション生成 |');
-        expect(result).toContain('| ノベルティ | 0件 | スキップ |');
-        expect(result).toContain('| グッズ | 0件 | スキップ |');
-      });
-
-      it('すべてのカテゴリに画像がない場合、全スキップを表示する', () => {
+      it('画像が 0 件のカテゴリにも「スキップ」と書かない (節を書くかは YAML の条件が品名と画像数から決める)', () => {
         const buildTable = getBuildCategoryImagesTable(service);
         const categoryImages = createMockCategoryImages(0, 0, 0);
 
         const result = buildTable(categoryImages);
 
-        expect(result).toContain('| メニュー | 0件 | スキップ |');
-        expect(result).toContain('| ノベルティ | 0件 | スキップ |');
-        expect(result).toContain('| グッズ | 0件 | スキップ |');
+        expect(result).toContain('| メニュー | 0件 |');
+        expect(result).toContain('| ノベルティ | 0件 |');
+        expect(result).toContain('| グッズ | 0件 |');
+        expect(result).not.toContain('スキップ');
+        expect(result).not.toContain('アクション');
       });
     });
 
@@ -217,9 +208,9 @@ describe('ContentGenerationService', () => {
 
         // テーブルがプレースホルダーから置換されていること
         expect(result).not.toContain('{{category_images_table}}');
-        expect(result).toContain('| メニュー | 3件 | セクション生成 |');
-        expect(result).toContain('| ノベルティ | 0件 | スキップ |');
-        expect(result).toContain('| グッズ | 2件 | セクション生成 |');
+        expect(result).toContain('| メニュー | 3件 |');
+        expect(result).toContain('| ノベルティ | 0件 |');
+        expect(result).toContain('| グッズ | 2件 |');
       });
 
       it('実際の 4-content.yaml v2.3.0 形式の instruction を正しく処理する', () => {
@@ -250,9 +241,9 @@ describe('ContentGenerationService', () => {
         expect(result).toContain('- 画像が0件の場合 → セクションをスキップ');
 
         // テーブル置換の確認
-        expect(result).toContain('| メニュー | 5件 | セクション生成 |');
-        expect(result).toContain('| ノベルティ | 3件 | セクション生成 |');
-        expect(result).toContain('| グッズ | 0件 | スキップ |');
+        expect(result).toContain('| メニュー | 5件 |');
+        expect(result).toContain('| ノベルティ | 3件 |');
+        expect(result).toContain('| グッズ | 0件 |');
 
         // プレースホルダールールの確認
         expect(result).toContain('`{ここにメニューの画像を入れる}`');
