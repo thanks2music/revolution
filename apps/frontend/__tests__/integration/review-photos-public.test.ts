@@ -7,6 +7,7 @@ import {
   jstDate,
   signInAsMember,
   type TestDataScope,
+  type TestMember,
 } from '@/test-support/test-data';
 
 // 公開のクライアントは lib/env.ts から接続先を読む。ローカルの Supabase に向ける
@@ -59,7 +60,7 @@ describe('口コミの写真の公開の読み出し', () => {
       deleted?: boolean;
       photos: number;
       hidden?: number[];
-      member?: Awaited<ReturnType<TestDataScope['createMember']>>;
+      member?: TestMember;
     }
   ) {
     const member = input.member ?? (await data.createMember());
