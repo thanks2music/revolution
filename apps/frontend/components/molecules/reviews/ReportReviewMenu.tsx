@@ -118,10 +118,10 @@ export function ReportReviewMenu({
                     role="radio"
                     aria-checked={reason === value}
                     onClick={() => setReason(value)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-bold ${
+                    className={`rounded-full border px-3.5 py-2 text-[13px] transition-colors ${
                       reason === value
-                        ? 'border-primary-600 bg-primary-50 text-primary-700'
-                        : 'border-(--line-soft) text-ink-body hover:bg-muted'
+                        ? 'border-primary-strong bg-primary-50 font-bold text-primary-strong'
+                        : 'border-(--line-strong) bg-white text-ink-body'
                     }`}
                   >
                     {REPORT_REASON_LABELS[value]}

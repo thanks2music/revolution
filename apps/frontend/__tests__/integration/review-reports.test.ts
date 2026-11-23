@@ -4,16 +4,15 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
 import { randomUUID } from 'node:crypto';
 
-import postgres from 'postgres';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type postgres from 'postgres';
 
-import { getLocalSupabaseEnv } from '@/test-support/local-supabase';
+import { localSql } from '@/test-support/local-supabase';
 import {
   anonClient,
   createTestDataScope,
-  jstDate,
   signInAsMember,
   type TestDataScope,
-  type TestMember,
 } from '@/test-support/test-data';
 
 /**
@@ -21,14 +20,14 @@ import {
  * service role で submit_review_report を呼ぶ。
  *
  * 通報の表は関数からしか読み書きできない (service role にも渡していない) ので、中身はローカルの DB に
- * 直接つないで確かめる (getLocalSupabaseEnv はローカルの DB でなければ断る)
+ * 直接つないで確かめる (localSql はローカルの DB でなければ断る)
  */
 describe('口コミの通報', () => {
   let data: TestDataScope;
   let sql: postgres.Sql;
 
   beforeAll(() => {
-    sql = postgres(getLocalSupabaseEnv().dbUrl, { max: 1, onnotice: () => {} });
+    sql = localSql();
   });
   afterAll(async () => {
     await sql.end();
@@ -40,46 +39,15 @@ describe('口コミの通報', () => {
     await data.cleanup();
   });
 
-  async function review(status: 'published' | 'pending' = 'published', author?: TestMember) {
-    const event = await data.createEvent();
-    const occurrence = await data.createOccurrence({
-      eventId: event.id,
-      verified: true,
-      startsOn: jstDate(-10),
-      endsOn: jstDate(20),
-    });
-    const member = author ?? (await data.createMember());
-    const { data: row, error } = await data.admin
-      .from('reviews')
-      .insert({
-        occurrence_id: occurrence.id,
-        user_id: member.userId,
-        status: 'pending',
-        rating: 4,
-        body: '楽しかった',
-        visited_on: jstDate(-1),
-        submitted_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single();
-    if (error) throw error;
-    const reviewId = row.id as number;
-    if (status === 'published') {
-      const { error: publishError } = await data.admin
-        .from('reviews')
-        .update({ status: 'published' })
-        .eq('id', reviewId);
-      if (publishError) throw publishError;
-    }
-    return { reviewId, author: member };
-  }
+  const review = (status: 'published' | 'pending' = 'published') => data.createReview({ status });
 
   function submit(
     reviewId: number,
     reporter: { profileId?: string; deviceId?: string },
-    reason = 'spam'
+    reason = 'spam',
+    db: SupabaseClient = data.admin
   ) {
-    return data.admin.rpc('submit_review_report', {
+    return db.rpc('submit_review_report', {
       p_review_id: reviewId,
       p_reason_code: reason,
       p_reporter_profile_id: reporter.profileId ?? null,
@@ -197,12 +165,7 @@ describe('口コミの通報', () => {
     const { reviewId } = await review();
     const member = await data.createMember();
     for (const db of [anonClient(), await signInAsMember(member)]) {
-      const rpc = await db.rpc('submit_review_report', {
-        p_review_id: reviewId,
-        p_reason_code: 'spam',
-        p_reporter_profile_id: null,
-        p_reporter_device_id: randomUUID(),
-      });
+      const rpc = await submit(reviewId, { deviceId: randomUUID() }, 'spam', db);
       expect(rpc.error?.code).toBe('42501');
       const insert = await db
         .from('review_reports')
