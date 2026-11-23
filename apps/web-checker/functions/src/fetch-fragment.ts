@@ -1,8 +1,11 @@
+import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from 'node:dns';
+
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
 import jschardet from 'jschardet';
+import { Agent } from 'undici';
 
-import { assertPublicHost } from '@revolution/net/safe-host';
+import { assertPublicHost, isBlockedIpv4, isBlockedIpv6 } from '@revolution/net/safe-host';
 
 const TIMEOUT_MS = 30_000;
 /** ページ 1 枚の上限。お知らせ欄のページは大きくても数 MB */
@@ -14,6 +17,34 @@ const RETRY_DELAY_MS = 1_000;
 // サイトによってはブラウザ以外の UA を拒むため、ブラウザを名乗る (旧 WEB チェッカーと同じ)
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+type LookupCallback = (error: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void;
+
+/**
+ * 接続する時の名前解決。解決したアドレスが 1 つでも内部を指していたら、接続しない。
+ *
+ * `assertPublicHost` は取得の前に名前を解決して確かめるが、接続する時にもう一度解決されるので、
+ * その間に DNS の答えを内部のアドレスへ変えられると (DNS rebinding) すり抜ける。接続に使う解決の中で
+ * 確かめれば、確かめたアドレスと接続するアドレスが同じになる。
+ */
+export function guardedLookup(hostname: string, options: LookupOptions, callback: LookupCallback): void {
+  dnsLookup(hostname, { ...options, all: true }, (error, addresses) => {
+    if (error) return callback(error, []);
+    const blocked = addresses.find(({ address, family }) =>
+      family === 4 ? isBlockedIpv4(address) : isBlockedIpv6(address),
+    );
+    if (blocked) {
+      return callback(new Error(`Blocked host (resolves to internal address): ${hostname} → ${blocked.address}`), []);
+    }
+    if (options.all) return callback(null, addresses);
+    const [first] = addresses;
+    if (!first) return callback(new Error(`No address for ${hostname}`), []);
+    return callback(null, first.address, first.family);
+  });
+}
+
+// Node の fetch は undici で動くので、接続の名前解決を差し替えた dispatcher を渡す (版は Node の同梱にそろえる)
+export const guardedDispatcher = new Agent({ connect: { lookup: guardedLookup } });
 
 async function readBody(response: Response, url: string): Promise<Buffer> {
   if (!response.body) return Buffer.from(await response.arrayBuffer());
@@ -54,6 +85,8 @@ async function fetchPage(rawUrl: string): Promise<Buffer> {
       redirect: 'manual',
       signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: { 'User-Agent': USER_AGENT },
+      // @ts-expect-error -- Node の fetch は undici の dispatcher を受け付けるが、DOM の RequestInit の型には無い
+      dispatcher: guardedDispatcher,
     });
 
     if (response.status >= 300 && response.status < 400) {
