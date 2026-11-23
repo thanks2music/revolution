@@ -250,13 +250,20 @@ describe('crawlTarget', () => {
       expect(state.detectedLinks.map((l) => l.url)).toEqual(['https://example.com/info/item-2']);
     });
 
-    it('記録に失敗しても更新検知は通知し、失敗を書く', async () => {
+    it('記録に失敗したら、この回の履歴を保存せず、次の見回りで渡し直す', async () => {
       const { store, state } = memoryStore({ target: aiTarget, snapshots: [{ content: before, time: 1 }] });
       state.addDetectedLinksError = new Error('UNAVAILABLE');
       const { deps: d, sent } = deps(store, () => Promise.resolve(after));
 
       await expect(crawlTarget(d, 'target-1')).resolves.toBe('updated');
-      expect(JSON.stringify(sent[0].blocks)).toContain('件は渡せませんでした');
+      expect(state.snapshots).toHaveLength(1);
+      expect(JSON.stringify(sent[0].blocks)).toContain('件は渡せませんでした (次の見回りで渡し直します)');
+
+      // 次の見回りでは記録できる → 渡し直され、履歴も保存される
+      state.addDetectedLinksError = null;
+      await expect(crawlTarget(d, 'target-1')).resolves.toBe('updated');
+      expect(state.detectedLinks.map((l) => l.url)).toEqual(['https://example.com/news/2']);
+      expect(state.snapshots).toHaveLength(2);
     });
 
     it('新しいリンクが無ければ、渡したリンクは 0 件', async () => {

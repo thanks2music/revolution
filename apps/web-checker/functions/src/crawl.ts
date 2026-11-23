@@ -116,20 +116,26 @@ export async function crawlTarget(
     return 'unchanged';
   }
 
-  let saved: boolean;
-  try {
-    saved = await deps.store.addSnapshot(targetId, { content: fragment, time: startedAt });
-  } catch (error) {
-    await alert(buildErrorMessage(target, deps.siteUrl, error));
-    return 'error';
-  }
-  if (!saved) return 'missing';
-
+  // AI ライターへの受け渡しは、履歴を保存する前に行う。記録に失敗したリンクがあれば、この回は履歴を保存しない:
+  // 保存すると、次の見回りでそのリンクが「前回にあった」扱いになり、二度と渡されないため。保存しなければ、
+  // 次の見回りで同じリンクがまた新しく見え、渡し直される (記録できた分は「すでにある」として数えない)。
   // 登録・編集の直後は渡さない: 前回の履歴は前の URL かセレクタの物なので、今回のリンクが全部新しく見える
   const handoff =
     previous && target.notifyMode === 'ai-writer' && !options.afterEdit
       ? await handOff(deps, targetId, target, previous.content, fragment, fetched.baseUrl, startedAt)
       : undefined;
+  const retryHandoff = (handoff?.failed ?? 0) > 0;
+
+  if (!retryHandoff) {
+    let saved: boolean;
+    try {
+      saved = await deps.store.addSnapshot(targetId, { content: fragment, time: startedAt });
+    } catch (error) {
+      await alert(buildErrorMessage(target, deps.siteUrl, error));
+      return 'error';
+    }
+    if (!saved) return 'missing';
+  }
 
   const newText = toComparableText(fragment);
   const oldText = previous ? toComparableText(previous.content) : '';
@@ -142,7 +148,7 @@ export async function crawlTarget(
       previousAt: previous?.time,
       content: newText,
       diff: formatLineDiff(oldText, newText),
-      handoff,
+      handoff: handoff && { ...handoff, willRetry: retryHandoff },
     }),
   );
   await deps.store.recordCheck(targetId, resolved);

@@ -72,4 +72,6 @@ export interface LinkHandoff {
   /** 記録に失敗した件数と、最初のエラーの文言 */
   failed: number;
   error?: string;
+  /** 失敗した分を、次の見回りで渡し直すか (この回の履歴を保存しなかった時) */
+  willRetry?: boolean;
 }

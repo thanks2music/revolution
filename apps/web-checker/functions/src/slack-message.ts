@@ -71,7 +71,8 @@ function handoffSection(handoff: LinkHandoff): Block {
   const rest = handoff.links.length - (lines.length - 1);
   if (rest > 0) lines.push(`ほか ${rest} 件`);
   if (handoff.failed > 0) {
-    lines.push(`*${handoff.failed} 件は渡せませんでした*: ${safe(handoff.error ?? '', ERROR_MAX)}`);
+    const retry = handoff.willRetry ? ' (次の見回りで渡し直します)' : '';
+    lines.push(`*${handoff.failed} 件は渡せませんでした${retry}*: ${safe(handoff.error ?? '', ERROR_MAX)}`);
   }
   return section(lines.join('\n'));
 }
