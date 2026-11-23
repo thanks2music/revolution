@@ -65,7 +65,11 @@ export function toAttemptOutcome(attempt: AttemptResult, countFailure: boolean):
 }
 
 /** The skip reason or the error of an attempt, and its PR (what the record and Slack show) */
-export function describeAttempt(attempt: AttemptResult): { reason?: string; prUrl?: string } {
+export function describeAttempt(attempt: AttemptResult): {
+  reason?: string;
+  prUrl?: string;
+  skipKind?: MdxGenerationResult['skipKind'];
+} {
   if (attempt.kind === 'error') {
     return {
       reason: isRefusedStatus(attempt.httpStatus)
@@ -74,7 +78,12 @@ export function describeAttempt(attempt: AttemptResult): { reason?: string; prUr
     };
   }
   const { result } = attempt;
-  return { reason: result.skipped ? result.skipReason : result.error, prUrl: result.prResult?.prUrl };
+  return {
+    reason: result.skipped ? result.skipReason : result.error,
+    prUrl: result.prResult?.prUrl,
+    // Keeps skips apart that share the outcome (e.g. out-of-scope pages, so they can be found again later)
+    skipKind: result.skipped ? result.skipKind : undefined,
+  };
 }
 
 /**
@@ -105,7 +114,7 @@ export function buildAttemptRecord(
   const outcome = toAttemptOutcome(attempt, countFailure);
   const { publishedAt, publishedAtSource } = publishedAtOf(previous, context);
   const state = nextAttemptState(previous, outcome, context.now, publishedAt);
-  const { reason, prUrl } = describeAttempt(attempt);
+  const { reason, prUrl, skipKind } = describeAttempt(attempt);
   const postId = attempt.kind === 'pipeline' ? attempt.result.details?.postId : undefined;
 
   return {
@@ -116,6 +125,7 @@ export function buildAttemptRecord(
     status: state.status,
     lastOutcome: outcome.kind,
     lastReason: reason,
+    lastSkipKind: skipKind,
     prUrl: prUrl ?? previous?.prUrl,
     postId: postId ?? previous?.postId,
     attemptCount: (previous?.attemptCount ?? 0) + 1,
