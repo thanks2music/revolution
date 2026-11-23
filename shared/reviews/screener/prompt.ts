@@ -38,7 +38,11 @@ const ScreeningPromptSchema = z.object({
 
 export type ScreeningPrompt = z.infer<typeof ScreeningPromptSchema>;
 
-/** 取り込み先 (`apps/frontend/templates/`)。サーバーの関数では cwd が apps/frontend になる */
+/**
+ * 取り込み先 (`<アプリ>/templates/`)。サーバーの関数では cwd がそのアプリ (apps/frontend・apps/admin) になる。
+ * 審査器を使うアプリは、それぞれビルドの最初にテンプレートを取り込み、関数に含める (outputFileTracingIncludes)。
+ * 見つからなければ審査器は「AI の審査の失敗」を返す (`getReviewScreener`)
+ */
 export const DEFAULT_TEMPLATES_DIR = path.join(process.cwd(), 'templates');
 
 export async function loadScreeningPrompt(
