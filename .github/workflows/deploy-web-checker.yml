@@ -87,12 +87,14 @@ jobs:
           cache: 'pnpm'
 
       # Only the two packages, their workspace dependencies and the root (the screens' ESLint config
-      # extends the root one)
+      # extends the root one). The Functions reach shared/schemas through a tsconfig path, not a
+      # workspace dependency, so it is listed on its own to install the zod it imports
       - name: Install dependencies
         run: >-
           pnpm install --frozen-lockfile
           --filter "@revolution/web-checker-functions..."
           --filter "@revolution/web-checker-web..."
+          --filter @revolution/schemas
           --filter revolution
 
       # The push to main does not wait for CI, and esbuild does not type-check,
