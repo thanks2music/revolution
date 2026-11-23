@@ -1,10 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "lib": [
-      "ES2023",
-      "DOM"
-    ],
+    "lib": ["ES2023", "DOM"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -16,28 +13,13 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
     "noEmit": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "paths": {
-      "@revolution/net/*": [
-        "../../../shared/net/*"
-      ],
-      "@revolution/slack/*": [
-        "../../../shared/slack/*"
-      ],
-      "@revolution/schemas/*": [
-        "../../../shared/schemas/*"
-      ]
+      "@revolution/net/*": ["../../../shared/net/*"],
+      "@revolution/schemas/*": ["../../../shared/schemas/*"],
+      "@revolution/slack/*": ["../../../shared/slack/*"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "__tests__/**/*.ts",
-    "build.mjs"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src/**/*.ts", "__tests__/**/*.ts", "build.mjs"],
+  "exclude": ["node_modules", "dist"]
 }

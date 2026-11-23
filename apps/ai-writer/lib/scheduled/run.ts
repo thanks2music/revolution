@@ -194,11 +194,14 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
     ]);
     // A detected link past the 30 days is no longer a candidate; one already tried another way
     // (an RSS item or a registration of the same page) leaves the pending set too
+    const alreadyTried = detected.filter(link => attemptedUrls.has(link.url)).map(link => link.url);
+    triedDetected.push(...alreadyTried);
     await markDetected(
-      expiredDetectedLinks(detected, startedAt).map(link => link.url),
+      expiredDetectedLinks(detected, startedAt)
+        .map(link => link.url)
+        .filter(url => !attemptedUrls.has(url)),
       'expired',
     );
-    triedDetected.push(...detected.filter(link => attemptedUrls.has(link.url)).map(link => link.url));
     const candidates = orderCandidates({
       registered,
       detected,

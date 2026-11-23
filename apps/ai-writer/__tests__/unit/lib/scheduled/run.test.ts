@@ -495,6 +495,32 @@ describe('runScheduled', () => {
       expect(marked).toContainEqual({ urls: ['https://det.example/done'], status: 'tried' });
     });
 
+    it('marks a link past 30 days that was already tried as tried only, not expired', async () => {
+      const { deps, marked } = makeDeps({
+        items: [],
+        detected: [link('https://det.example/done', 31)],
+        stored: [
+          {
+            url: 'https://det.example/done',
+            source: 'rss',
+            status: 'done',
+            lastOutcome: 'skip',
+            attemptCount: 1,
+            unannouncedCount: 0,
+            failureCount: 0,
+            firstAttemptAt: new Date('2026-11-01T00:00:00Z'),
+            lastAttemptAt: new Date('2026-11-01T00:00:00Z'),
+            nextAttemptAt: null,
+            publishedAt: new Date('2026-10-31T00:00:00Z'),
+            publishedAtSource: 'rss',
+          },
+        ],
+        results: () => PR,
+      });
+      await runScheduled(deps, { dryRun: false });
+      expect(marked).toEqual([{ urls: ['https://det.example/done'], status: 'tried' }]);
+    });
+
     it('writes nothing in a dry run', async () => {
       const { deps, generate, marked } = makeDeps({
         items: [],
