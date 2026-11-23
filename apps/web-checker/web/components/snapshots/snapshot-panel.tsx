@@ -36,7 +36,8 @@ export function SnapshotPanel() {
   const [loading, setLoading] = useState(valid);
   const [error, setError] = useState<string | null>(null);
 
-  const initialized = useRef(false);
+  // 読み込んだ監視対象。別の監視対象の URL へ (画面を作り直さずに) 移った時に、読み直すため
+  const loadedTargetId = useRef<string | null>(null);
 
   const loadPage = useCallback(async (id: string, cursorTime?: number) => {
     setLoading(true);
@@ -55,9 +56,13 @@ export function SnapshotPanel() {
   }, []);
 
   useEffect(() => {
-    if (!valid || initialized.current) return;
-    initialized.current = true;
+    if (!valid || loadedTargetId.current === targetId) return;
+    loadedTargetId.current = targetId;
 
+    setTarget(null);
+    setItems([]);
+    setCursor(undefined);
+    setHasMore(false);
     void loadPage(targetId);
 
     // 見出しの監視対象。読めなくても履歴は出したいので、エラーにせず見出しを省く

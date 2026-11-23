@@ -4,7 +4,13 @@ import iconv from 'iconv-lite';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-import { extractFragment, fetchFragment, guardedDispatcher, guardedLookup } from '../src/fetch-fragment';
+import {
+  declaredCharset,
+  extractFragment,
+  fetchFragment,
+  guardedDispatcher,
+  guardedLookup,
+} from '../src/fetch-fragment';
 
 // DNS を引かないよう、IP リテラルの公開アドレス (TEST-NET ではなく実在の公開帯) を使う
 const PUBLIC = 'https://93.184.215.14';
@@ -34,6 +40,25 @@ describe('extractFragment', () => {
 
   it('一致しなければ null', () => {
     expect(extractFragment('<p>x</p>', '#none')).toBeNull();
+  });
+});
+
+describe('declaredCharset', () => {
+  it('Content-Type の charset を読む', () => {
+    expect(declaredCharset('text/html; charset="Shift_JIS"', Buffer.from(''))).toBe('Shift_JIS');
+  });
+
+  it('無ければ <meta charset> を読む', () => {
+    expect(declaredCharset('text/html', Buffer.from('<html><head><meta charset="euc-jp">'))).toBe('euc-jp');
+  });
+
+  it('<meta http-equiv> の content の charset も読む', () => {
+    const head = '<meta http-equiv="Content-Type" content="text/html; charset=Shift_JIS">';
+    expect(declaredCharset(null, Buffer.from(head))).toBe('Shift_JIS');
+  });
+
+  it('どこにも無ければ null', () => {
+    expect(declaredCharset(null, Buffer.from('<p>x</p>'))).toBeNull();
   });
 });
 
@@ -76,14 +101,38 @@ describe('fetchFragment', () => {
   });
 
   it('3 回とも失敗したら最後のエラーを投げる', async () => {
-    fetchMock.mockImplementation(() => Promise.resolve(new Response('', { status: 404 })));
-    await expect(fetchFragment(`${PUBLIC}/`, '#a', { retryDelayMs: 0 })).rejects.toThrow('HTTP 404');
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('', { status: 503 })));
+    await expect(fetchFragment(`${PUBLIC}/`, '#a', { retryDelayMs: 0 })).rejects.toThrow('HTTP 503');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it('大きすぎる本文は途中で読むのをやめる', async () => {
+  it('試し直しても直らない失敗 (404) は 1 回で諦める', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('', { status: 404 })));
+    await expect(fetchFragment(`${PUBLIC}/`, '#a', { retryDelayMs: 0 })).rejects.toThrow('HTTP 404');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('429 は試し直す', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('', { status: 429 }))
+      .mockResolvedValueOnce(html('<p id="a">ok</p>'));
+    await expect(fetchFragment(`${PUBLIC}/`, '#a', { retryDelayMs: 0 })).resolves.toBe('ok');
+  });
+
+  it('大きすぎる本文は途中で読むのをやめ、試し直さない', async () => {
     const big = new Uint8Array(6 * 1024 * 1024);
     fetchMock.mockImplementation(() => Promise.resolve(new Response(big, { status: 200 })));
     await expect(fetchFragment(`${PUBLIC}/`, 'body', { retryDelayMs: 0 })).rejects.toThrow(/too large/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('文字コードは Content-Type に書かれた物を推測より優先する', async () => {
+    // 短い UTF-8 は推測を誤りやすい。ヘッダの charset に従えば化けない
+    const body = new TextEncoder().encode('<p id="a">Café ニュース</p>');
+    fetchMock.mockResolvedValue(
+      new Response(body, { status: 200, headers: { 'content-type': 'text/html; charset=UTF-8' } }),
+    );
+    await expect(fetchFragment(`${PUBLIC}/`, '#a')).resolves.toBe('Café ニュース');
   });
 });
 

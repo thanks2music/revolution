@@ -18,8 +18,8 @@ import { PubSub } from '@google-cloud/pubsub';
 import { presentEnvValue } from '@revolution/slack/env';
 import { postSlackMessage, type SlackMessage } from '@revolution/slack/post-message';
 
-import { crawlTarget } from './crawl';
-import { isDue } from './due';
+import { crawlTarget, type CrawlOptions } from './crawl';
+import { isDue, isLeftToEditCrawl } from './due';
 import { fetchFragment } from './fetch-fragment';
 import { createFirestoreStore } from './firestore-store';
 import { SNAPSHOTS_SUBCOLLECTION, TARGETS_COLLECTION, type Target } from './targets';
@@ -50,10 +50,11 @@ async function notify(message: SlackMessage): Promise<void> {
   if (!result.ok) console.error(`[web-checker] Slack notification failed: ${result.code}`);
 }
 
-async function crawl(targetId: string): Promise<void> {
+async function crawl(targetId: string, options: CrawlOptions = {}): Promise<void> {
   const outcome = await crawlTarget(
     { store, fetchFragment, notify, siteUrl: siteUrl.value(), now: () => Date.now() },
     targetId,
+    options,
   );
   console.log(`[web-checker] crawled ${targetId}: ${outcome}`);
 }
@@ -65,8 +66,11 @@ export const webCheckerDispatch = onSchedule(
   { ...common, schedule: '5 * * * *', timeZone: 'Asia/Tokyo' },
   async () => {
     const now = new Date();
-    const targets = await db.collection(TARGETS_COLLECTION).select('cron', 'checkedAt').get();
-    const due = targets.docs.filter((doc) => isDue(doc.data() as Pick<Target, 'cron' | 'checkedAt'>, now));
+    const targets = await db.collection(TARGETS_COLLECTION).select('cron', 'checkedAt', 'createdAt').get();
+    const due = targets.docs.filter((doc) => {
+      const target = doc.data() as Pick<Target, 'cron' | 'checkedAt' | 'createdAt'>;
+      return isDue(target, now) && !isLeftToEditCrawl(target, now);
+    });
     await Promise.all(due.map((doc) => pubsub.topic(CRAWL_TOPIC).publishMessage({ json: { targetId: doc.id } })));
     console.log(`[web-checker] dispatched ${due.length} of ${targets.size} targets`);
   },
@@ -97,7 +101,7 @@ export const webCheckerOnTargetWrite = onDocumentWritten(
       return;
     }
     if (!before || before.url !== after.url || before.selector !== after.selector) {
-      await crawl(targetId);
+      await crawl(targetId, { afterEdit: true });
     }
   },
 );

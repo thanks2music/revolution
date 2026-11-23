@@ -26,13 +26,15 @@ const DISPATCH_MINUTE = 5;
  * そのため実際に見に行くのは、cron の発火時刻の後で最初に来る :05 になる (9:00 なら 9:05、9:30 なら 10:05)。
  */
 function toNextDispatch(cronFireAt: Date): Date {
+  // 分と時の計算は UTC で行う。Asia/Tokyo は UTC との差が整数時間なので、分は UTC と同じになる。
+  // ブラウザの時刻 (getMinutes など) を使うと、差が 30 分の地域で 30 分ずれるため
   const tick = new Date(cronFireAt);
-  tick.setSeconds(0, 0);
+  tick.setUTCSeconds(0, 0);
 
-  if (tick.getMinutes() <= DISPATCH_MINUTE) {
-    tick.setMinutes(DISPATCH_MINUTE);
+  if (tick.getUTCMinutes() <= DISPATCH_MINUTE) {
+    tick.setUTCMinutes(DISPATCH_MINUTE);
   } else {
-    tick.setHours(tick.getHours() + 1, DISPATCH_MINUTE);
+    tick.setUTCHours(tick.getUTCHours() + 1, DISPATCH_MINUTE);
   }
 
   return tick;

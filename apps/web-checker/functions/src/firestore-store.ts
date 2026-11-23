@@ -1,4 +1,4 @@
-import type { Firestore } from 'firebase-admin/firestore';
+import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 
 import type { TargetStore } from './crawl';
 import { SNAPSHOTS_SUBCOLLECTION, TARGETS_COLLECTION, type Snapshot, type Target } from './targets';
@@ -18,14 +18,23 @@ export function createFirestoreStore(db: Firestore): TargetStore {
       return result.empty ? null : (result.docs[0].data() as Snapshot);
     },
     async addSnapshot(targetId, snapshot) {
-      await snapshots(targetId).add(snapshot);
+      // 監視対象があることを確かめてから足す。見回りの途中で消された時に、履歴だけ残らないように
+      return db.runTransaction(async (transaction) => {
+        const target = await transaction.get(targetRef(targetId));
+        if (!target.exists) return false;
+        transaction.create(snapshots(targetId).doc(), snapshot);
+        return true;
+      });
     },
-    async markChecked(targetId, checkedAt) {
-      // 監視対象が見回りの途中で消されていたら、書き戻して復活させない
+    async recordCheck(targetId, record) {
+      const update: Record<string, unknown> = { checkedAt: record.checkedAt };
+      if (record.alertedAt === null) update.alertedAt = FieldValue.delete();
+      else if (record.alertedAt !== undefined) update.alertedAt = record.alertedAt;
       try {
-        await targetRef(targetId).update({ checkedAt });
+        await targetRef(targetId).update(update);
       } catch (error) {
-        if ((error as { code?: number }).code === 5) return; // NOT_FOUND
+        // 監視対象が見回りの途中で消されていたら、書き戻して復活させない (NOT_FOUND)
+        if ((error as { code?: number }).code === 5) return;
         throw error;
       }
     },

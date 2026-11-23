@@ -10,9 +10,17 @@ const ERROR_MAX = 500;
 
 type Block = Record<string, unknown>;
 
-/** 外部由来の文字列を mrkdwn に埋め込める形にする (切ってからエスケープ。`text.ts` の決まり) */
+/**
+ * 外部由来の文字列を mrkdwn に埋め込める形にする。エスケープした後で max 字以下になるように切る。
+ *
+ * `text.ts` の決まりは「切ってからエスケープ」だが、それだとエスケープで `&` が `&amp;` (5 字) に増え、
+ * Block Kit の section の上限 (3000 字) を超えて、メッセージごと拒まれる (`invalid_blocks`)。
+ * ここではエスケープしてから切り、末尾で割れた entity (`&am` など) を落とす。
+ */
 function safe(value: string, max: number): string {
-  return escapeSlackText(truncate(value, max));
+  const escaped = escapeSlackText(value);
+  if (Array.from(escaped).length <= max) return escaped;
+  return truncate(escaped, max).replace(/&[a-z]{0,3}…$/, '…');
 }
 
 /**

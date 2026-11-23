@@ -28,3 +28,14 @@ export function isDue(target: Pick<Target, 'cron' | 'checkedAt'>, now: Date): bo
   }
   return target.checkedAt <= previous.getTime();
 }
+
+/** 作成の直後のクロールに任せる時間。この間に来た見回りは、まだ見ていない監視対象でも飛ばす */
+export const EDIT_CRAWL_GRACE_MS = 10 * 60 * 1000;
+
+/**
+ * 作成の直後のクロール (`webCheckerOnTargetWrite`) がまだ動いている最中か。
+ * 作成が見回り (毎時 5 分) の直前だと、両方が「前回の履歴が無い」と見て、「新規追加」が 2 通届くため。
+ */
+export function isLeftToEditCrawl(target: Pick<Target, 'checkedAt' | 'createdAt'>, now: Date): boolean {
+  return target.checkedAt === undefined && now.getTime() - target.createdAt < EDIT_CRAWL_GRACE_MS;
+}

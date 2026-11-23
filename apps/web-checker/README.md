@@ -6,13 +6,14 @@ Watches a part of a web page (a CSS selector on a URL) on a schedule and posts t
   - `webCheckerDispatch`: every hour, finds the targets that are due (each target has its own cron, Asia/Tokyo) and publishes them to Pub/Sub
   - `webCheckerCrawl`: fetches one target, compares the selected HTML with the latest snapshot, saves a new snapshot and notifies Slack when it changed
   - `webCheckerOnTargetWrite`: crawls right after a target is created or its URL / selector changes, and deletes the snapshots when a target is deleted
+- A failed fetch or a missing selector is posted to Slack once, then at most once a day until it is fixed (`alertedAt`); right after a target is created or edited it is always posted
 - `web/` — the screens to add, edit and delete targets and to read their history (Next.js static export on Firebase Hosting)
 
 ## Data
 
 | Path | Written by |
 |---|---|
-| `web_checker_targets/{id}` (`url`, `selector`, `title`, `cron`, `checkedAt`, `createdAt`, `createdBy`, `updatedAt`, `updatedBy`) | the screens (Firestore rules) and Functions (`checkedAt` only) |
+| `web_checker_targets/{id}` (`url`, `selector`, `title`, `cron`, `checkedAt`, `alertedAt`, `createdAt`, `createdBy`, `updatedAt`, `updatedBy`) | the screens (Firestore rules) and Functions (`checkedAt` and `alertedAt` only) |
 | `web_checker_targets/{id}/snapshots/{id}` (`content`, `time`) | Functions only |
 
 The Firestore rules live in `apps/ai-writer/firestore.rules`, shared with the AI writer (a Firebase project has one set of rules). Only users with the `admin` or `allowedEditor` custom claim can read or write.

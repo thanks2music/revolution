@@ -46,6 +46,14 @@ export function guardedLookup(hostname: string, options: LookupOptions, callback
 // Node の fetch は undici で動くので、接続の名前解決を差し替えた dispatcher を渡す (版は Node の同梱にそろえる)
 export const guardedDispatcher = new Agent({ connect: { lookup: guardedLookup } });
 
+/**
+ * 試し直しても直らない失敗 (内部アドレス・http(s) 以外・大きすぎる・4xx)。これは 1 回で諦める。
+ * 試し直すのは、通信のエラー・時間切れ・5xx・429 だけ
+ */
+export class PermanentFetchError extends Error {
+  override name = 'PermanentFetchError';
+}
+
 async function readBody(response: Response, url: string): Promise<Buffer> {
   if (!response.body) return Buffer.from(await response.arrayBuffer());
 
@@ -59,7 +67,7 @@ async function readBody(response: Response, url: string): Promise<Buffer> {
       received += value.byteLength;
       if (received > MAX_BYTES) {
         await reader.cancel();
-        throw new Error(`Response too large (> ${MAX_BYTES} bytes): ${url}`);
+        throw new PermanentFetchError(`Response too large (> ${MAX_BYTES} bytes): ${url}`);
       }
       chunks.push(value);
     }
@@ -73,13 +81,27 @@ async function readBody(response: Response, url: string): Promise<Buffer> {
  * ページを取得する。リダイレクトは自前で追い、各ホップで内部アドレスでないことを確かめる
  * (`redirect: 'follow'` だと、外部から内部への転送を確かめられない)。
  */
-async function fetchPage(rawUrl: string): Promise<Buffer> {
+interface FetchedPage {
+  body: Buffer;
+  /** レスポンスの Content-Type (文字コードの判定に使う) */
+  contentType: string | null;
+}
+
+async function fetchPage(rawUrl: string): Promise<FetchedPage> {
   let current = new URL(rawUrl);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (current.protocol !== 'https:' && current.protocol !== 'http:') {
-      throw new Error(`Blocked URL scheme "${current.protocol}": ${current.href}`);
+      throw new PermanentFetchError(`Blocked URL scheme "${current.protocol}": ${current.href}`);
     }
-    await assertPublicHost(current);
+    try {
+      await assertPublicHost(current);
+    } catch (error) {
+      // 内部アドレスは何度試しても同じ。名前を解決できない (DNS の一時的な失敗かもしれない) 時は試し直す
+      if (error instanceof Error && error.message.startsWith('Blocked host')) {
+        throw new PermanentFetchError(error.message);
+      }
+      throw error;
+    }
 
     const response = await fetch(current.href, {
       redirect: 'manual',
@@ -92,20 +114,42 @@ async function fetchPage(rawUrl: string): Promise<Buffer> {
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
       if (!location) throw new Error(`Redirect without Location (HTTP ${response.status}): ${current.href}`);
-      current = new URL(location, current);
+      try {
+        current = new URL(location, current);
+      } catch {
+        throw new PermanentFetchError(`Invalid redirect Location: ${current.href}`);
+      }
       continue;
     }
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${current.href}`);
-    return readBody(response, current.href);
+    if (!response.ok) {
+      const message = `HTTP ${response.status}: ${current.href}`;
+      const retryable = response.status >= 500 || response.status === 429;
+      throw retryable ? new Error(message) : new PermanentFetchError(message);
+    }
+    return { body: await readBody(response, current.href), contentType: response.headers.get('content-type') };
   }
-  throw new Error(`Too many redirects (> ${MAX_REDIRECTS}): ${rawUrl}`);
+  throw new PermanentFetchError(`Too many redirects (> ${MAX_REDIRECTS}): ${rawUrl}`);
 }
 
-/** 文字コードを判定して文字列にする (Shift_JIS のサイトがまだある) */
-function decode(body: Buffer): string {
-  const detected = jschardet.detect(body);
-  const encoding = detected.encoding && iconv.encodingExists(detected.encoding) ? detected.encoding : 'utf-8';
-  return iconv.decode(body, encoding);
+/** Content-Type か `<meta>` に書かれた文字コード (書かれていなければ null) */
+export function declaredCharset(contentType: string | null, body: Buffer): string | null {
+  const fromHeader = contentType?.match(/charset\s*=\s*["']?([\w.:-]+)/i)?.[1];
+  if (fromHeader) return fromHeader;
+  // <meta charset="..."> と <meta http-equiv="Content-Type" content="...; charset=..."> は、先頭の方にある
+  const head = body.subarray(0, 4096).toString('latin1');
+  return head.match(/<meta[^>]+charset\s*=\s*["']?([\w.:-]+)/i)?.[1] ?? null;
+}
+
+/**
+ * 文字列にする。文字コードは Content-Type → `<meta>` → 推測 (jschardet) の順に決める。
+ * 推測だけに頼ると、ほとんど ASCII の UTF-8 のページを別の文字コードと見誤り、取得のたびに中身が
+ * 変わって見える (更新の誤検知) ことがあるため。Shift_JIS のサイトはまだある
+ */
+function decode(page: FetchedPage): string {
+  const declared = declaredCharset(page.contentType, page.body);
+  const guessed = jschardet.detect(page.body).encoding;
+  const encoding = [declared, guessed].find((name): name is string => !!name && iconv.encodingExists(name)) ?? 'utf-8';
+  return iconv.decode(page.body, encoding);
 }
 
 /** HTML から、セレクタに一致した最初の要素の中身 (HTML) を返す。一致しなければ `null` */
@@ -120,7 +164,7 @@ export interface FetchFragmentOptions {
 
 /**
  * 監視対象のページを取得し、抜き出す部分の HTML を返す。要素が無ければ `null`。
- * 取得に失敗したら、間を空けて 3 回まで試す。
+ * 通信のエラー・時間切れ・5xx・429 なら、間を空けて 3 回まで試す。
  */
 export async function fetchFragment(
   url: string,
@@ -134,6 +178,7 @@ export async function fetchFragment(
       return extractFragment(decode(await fetchPage(url)), selector);
     } catch (error) {
       lastError = error;
+      if (error instanceof PermanentFetchError) break;
       if (attempt < MAX_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
     }
   }

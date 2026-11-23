@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { isDue } from '../src/due';
+import { isDue, isLeftToEditCrawl } from '../src/due';
 
 // 2026-11-23 12:05 JST (= 03:05 UTC)
 const now = new Date('2026-11-23T03:05:00Z');
@@ -32,5 +32,19 @@ describe('isDue', () => {
 
   it('cron が空なら 1 時間に 1 回として扱う', () => {
     expect(isDue({ cron: '', checkedAt: at('2026-11-23T03:01:00Z') }, now)).toBe(false);
+  });
+});
+
+describe('isLeftToEditCrawl', () => {
+  it('作成から 10 分以内で、まだ見ていなければ、作成の直後のクロールに任せる', () => {
+    expect(isLeftToEditCrawl({ createdAt: now.getTime() - 60_000 }, now)).toBe(true);
+  });
+
+  it('10 分を過ぎても見ていなければ、見回りで見に行く', () => {
+    expect(isLeftToEditCrawl({ createdAt: now.getTime() - 10 * 60_000 }, now)).toBe(false);
+  });
+
+  it('一度見ていれば任せない', () => {
+    expect(isLeftToEditCrawl({ createdAt: now.getTime() - 60_000, checkedAt: now.getTime() - 30_000 }, now)).toBe(false);
   });
 });

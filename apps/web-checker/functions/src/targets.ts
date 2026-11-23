@@ -23,6 +23,11 @@ export interface Target {
   cron: string;
   /** 最後に見に行った日時。書くのは Functions だけ */
   checkedAt?: number;
+  /**
+   * 取得の失敗・抜き出す部分が無いことを最後に Slack へ知らせた日時。書くのは Functions だけ。
+   * 同じ問題を毎時知らせないために使い、取得がうまくいったら消す
+   */
+  alertedAt?: number;
   createdAt: number;
   createdBy: string;
   updatedAt?: number;

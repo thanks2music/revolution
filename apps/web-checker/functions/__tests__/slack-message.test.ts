@@ -54,6 +54,15 @@ describe('buildUpdateMessage', () => {
     }
   });
 
+  it('エスケープで字数が増えても、section の上限 3000 字を超えない', async () => {
+    const message = buildUpdateMessage({ ...base, diff: `+ ${'&'.repeat(5000)}` });
+    for (const block of message.blocks ?? []) {
+      const text = (block.text as { text?: string } | undefined)?.text ?? '';
+      expect(Array.from(text).length).toBeLessThanOrEqual(3000);
+      expect(text).not.toMatch(/&a?m?…/);
+    }
+  });
+
   it('差分が空なら差分の欄を出さない', () => {
     expect(texts(buildUpdateMessage({ ...base, diff: '' }))).not.toContain('*差分*');
   });
