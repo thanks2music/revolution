@@ -19,7 +19,7 @@ jest.mock('@/lib/env', () => ({ env: {} }));
 jest.mock('next/server', () => ({ after: jest.fn() }));
 jest.mock('@/lib/reviews/notifier', () => {
   const notify = jest.fn(async () => undefined);
-  return { __notify: notify, getReviewNotifier: () => ({ notify }) };
+  return { __notify: notify, getReviewNotifier: () => ({ enabled: true, notify }) };
 });
 
 jest.mock('@/lib/supabase/server', () => {
@@ -101,8 +101,7 @@ describe('completeOnboarding — username uniqueness (23505)', () => {
       data: null,
       error: {
         code: '23505',
-        message:
-          'duplicate key value violates unique constraint "profiles_username_lower_idx"',
+        message: 'duplicate key value violates unique constraint "profiles_username_lower_idx"',
       },
     } as never);
 
@@ -209,7 +208,9 @@ describe('completeOnboarding — 0-row update guard (#2)', () => {
 
 describe('completeOnboarding — Slack のお知らせ (#169)', () => {
   const { after } = jest.requireMock('next/server') as { after: jest.Mock };
-  const { __notify: notify } = jest.requireMock('@/lib/reviews/notifier') as { __notify: jest.Mock };
+  const { __notify: notify } = jest.requireMock('@/lib/reviews/notifier') as {
+    __notify: jest.Mock;
+  };
 
   it('初めての登録は、応答の後に表示名だけを知らせる', async () => {
     await expect(

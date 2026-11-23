@@ -45,7 +45,9 @@ jest.mock('@/lib/reviews/authoring', () => {
 jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }));
 jest.mock('next/server', () => ({ after: jest.fn() }));
 jest.mock('@revolution/reviews/notifications', () => ({ notifyAboutReview: jest.fn() }));
-jest.mock('@/lib/reviews/notifier', () => ({ getReviewNotifier: () => ({ notify: jest.fn() }) }));
+jest.mock('@/lib/reviews/notifier', () => ({
+  getReviewNotifier: () => ({ enabled: true, notify: jest.fn() }),
+}));
 jest.mock('@revolution/reviews/photos/storage', () => ({ getReviewPhotoStorage: () => null }));
 jest.mock('@/lib/supabase/server', () => {
   const builder: any = {};
@@ -529,7 +531,7 @@ describe('Slack の通知 (#169)', () => {
   const builtTypes = () =>
     (notifyAboutReview as jest.Mock).mock.calls.map(([, , build]) => build({ reviewId: 1 }).type);
 
-  it('新しい口コミは、審査の後に、投稿と審査の結果を 1 通で知らせる', async () => {
+  it('新しい口コミは、審査の関数に通知の口ときっかけ (投稿) を渡し、1 通にまとめる', async () => {
     (screenSubmittedReview as jest.Mock).mockResolvedValue({
       kind: 'screened',
       status: 'needs_review',
@@ -539,14 +541,14 @@ describe('Slack の通知 (#169)', () => {
     await submitReview(ROUTE, INPUT);
     await runAfter();
 
-    expect(notifyAboutReview).toHaveBeenCalledTimes(1);
-    const built = (notifyAboutReview as jest.Mock).mock.calls[0][2]({ reviewId: 56 });
-    expect(built).toMatchObject({
-      type: 'review_screened',
-      status: 'needs_review',
-      aiFailure: true,
-      trigger: 'submitted',
-    });
+    // 審査の結果の通知は審査の関数が送る (きっかけを渡す)。ここから別には送らない
+    expect(screenSubmittedReview).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({
+        notify: { notifier: expect.anything(), trigger: 'submitted' },
+      })
+    );
+    expect(notifyAboutReview).not.toHaveBeenCalled();
   });
 
   it('提出した口コミを直して出し直すと、きっかけは編集になる', async () => {
@@ -564,14 +566,17 @@ describe('Slack の通知 (#169)', () => {
 
     await submitReview(ROUTE, { ...INPUT, ...EXISTING, body: '直した' });
     await runAfter();
-    expect((notifyAboutReview as jest.Mock).mock.calls[0][2]({ reviewId: 73 })).toMatchObject({
-      type: 'review_screened',
-      trigger: 'edited',
-    });
+    expect(screenSubmittedReview).toHaveBeenCalledWith(
+      73,
+      expect.objectContaining({ notify: expect.objectContaining({ trigger: 'edited' }) })
+    );
   });
 
   it('審査が何も書かなかった (出し直された) 時は知らせない。審査が例外の時は投稿だけ知らせる', async () => {
-    (screenSubmittedReview as jest.Mock).mockResolvedValueOnce({ kind: 'skipped', reason: 'superseded' });
+    (screenSubmittedReview as jest.Mock).mockResolvedValueOnce({
+      kind: 'skipped',
+      reason: 'superseded',
+    });
     await submitReview(ROUTE, INPUT);
     await runAfter();
     expect(notifyAboutReview).not.toHaveBeenCalled();

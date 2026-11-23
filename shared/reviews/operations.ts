@@ -1,3 +1,4 @@
+import { notifyAboutReview, type ReviewNotifier } from './notifications';
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -166,7 +167,30 @@ export async function screenSubmittedReview(
     /** 写真の置き場所 (写真を審査に渡し、配信側を合わせる)。無ければ写真のある口コミは審査の失敗 */
     storage?: ReviewPhotoStorage | null;
     now?: () => Date;
+    /**
+     * 審査の結果を Slack で知らせる口 (#169)。入口 (公開サイトの提出・管理アプリのかけ直し) が渡す。
+     * 渡さなければ知らせない。`trigger` は会員の提出・出し直しの後か (結果と 1 通にまとめる)
+     */
+    notify?: { notifier: ReviewNotifier; trigger?: 'submitted' | 'edited' };
   }
+): Promise<ScreenReviewOutcome> {
+  const outcome = await screenOnce(reviewId, deps);
+  if (outcome.kind === 'screened' && deps.notify) {
+    const { notifier, trigger } = deps.notify;
+    await notifyAboutReview({ notifier, db: deps.db }, reviewId, review => ({
+      type: 'review_screened',
+      review,
+      status: outcome.status,
+      aiFailure: outcome.aiFailure,
+      trigger,
+    }));
+  }
+  return outcome;
+}
+
+async function screenOnce(
+  reviewId: number,
+  deps: Parameters<typeof screenSubmittedReview>[1]
 ): Promise<ScreenReviewOutcome> {
   for (let attempt = 1; ; attempt++) {
     const { data: review, error: readError } = await deps.db

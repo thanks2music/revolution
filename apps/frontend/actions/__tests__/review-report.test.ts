@@ -10,7 +10,9 @@ jest.mock('@/lib/env', () => ({ env: {} }));
 jest.mock('@/lib/auth/member', () => ({ getCurrentMember: jest.fn() }));
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
 jest.mock('next/server', () => ({ after: jest.fn() }));
-jest.mock('@/lib/reviews/notifier', () => ({ getReviewNotifier: () => ({ notify: jest.fn() }) }));
+jest.mock('@/lib/reviews/notifier', () => ({
+  getReviewNotifier: () => ({ enabled: true, notify: jest.fn() }),
+}));
 jest.mock('@revolution/reviews/notifications', () => ({ notifyAboutReview: jest.fn() }));
 
 const cookieStore = { get: jest.fn(), set: jest.fn() };

@@ -13,7 +13,7 @@ import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { todayInJst } from '@/lib/occurrence/status';
 import type { OwnReview } from '@/lib/reviews/authoring';
 import { authoringMode } from '@revolution/reviews/eligibility';
-import { notifyAboutReview, type ReviewNotifier } from '@revolution/reviews/notifications';
+import { notifyAboutReview } from '@revolution/reviews/notifications';
 import { screenSubmittedReview } from '@revolution/reviews/operations';
 import { syncPhotoDeliverySafely } from '@revolution/reviews/photos/delivery';
 import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
@@ -82,31 +82,23 @@ export async function screenAfterSubmit(
   db: SupabaseClient,
   reviewId: number,
   paths: string[],
-  options: { trigger: 'submitted' | 'edited'; notifier?: ReviewNotifier }
+  trigger: 'submitted' | 'edited'
 ): Promise<void> {
-  const notifier = options.notifier ?? getReviewNotifier();
+  const notifier = getReviewNotifier();
   try {
     const outcome = await screenSubmittedReview(reviewId, {
       screener: await getReviewScreener(),
       db,
       storage: getReviewPhotoStorage(),
+      notify: { notifier, trigger },
     });
-    // 審査中でない・出し直された時は何も知らせない (出し直しの方が自分で知らせる)
-    if (outcome.kind !== 'screened') return;
-    if (outcome.status === 'published') {
+    if (outcome.kind === 'screened' && outcome.status === 'published') {
       for (const path of paths) revalidatePath(path);
     }
-    await notifyAboutReview({ notifier, db }, reviewId, review => ({
-      type: 'review_screened',
-      review,
-      status: outcome.status,
-      aiFailure: outcome.aiFailure,
-      trigger: options.trigger,
-    }));
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'screenAfterSubmit' } });
     await notifyAboutReview({ notifier, db }, reviewId, review => ({
-      type: options.trigger === 'edited' ? 'review_edited' : 'review_submitted',
+      type: trigger === 'edited' ? 'review_edited' : 'review_submitted',
       review,
     }));
   }

@@ -22,10 +22,12 @@ jest.mock('@/lib/env', () => ({ env: {} }));
 jest.mock('next/server', () => ({ after: jest.fn() }));
 jest.mock('@/lib/reviews/notifier', () => {
   const notify = jest.fn(async () => undefined);
-  return { __notify: notify, getReviewNotifier: () => ({ notify }) };
+  return { __notify: notify, getReviewNotifier: () => ({ enabled: true, notify }) };
 });
 jest.mock('@/lib/mdx/articles', () => ({
-  getAllArticles: () => [{ slug: 'article-1', title: '記事のタイトル', eventType: 'collabo-cafe', workSlug: 'work-a' }],
+  getAllArticles: () => [
+    { slug: 'article-1', title: '記事のタイトル', eventType: 'collabo-cafe', workSlug: 'work-a' },
+  ],
 }));
 jest.mock('@/lib/mdx/article-url', () => ({
   resolveArticleByKey: (key: string, articles: { title: string }[]) =>
@@ -147,7 +149,7 @@ describe('toggleFavorite — remove (already liked)', () => {
   it('deletes the existing row and returns liked:false', async () => {
     // select.maybeSingle → 既存行あり
     m.builder.maybeSingle.mockImplementation(() =>
-      Promise.resolve({ data: { target_key: KEY }, error: null }),
+      Promise.resolve({ data: { target_key: KEY }, error: null })
     );
     // delete のチェーン終端は __result (error: null)
     setResult({ data: null, error: null });
@@ -162,16 +164,14 @@ describe('toggleFavorite — remove (already liked)', () => {
 describe('getFavoriteState — error handling (#4)', () => {
   it('returns liked:true for an authenticated user with an existing favorite', async () => {
     m.builder.maybeSingle.mockImplementation(() =>
-      Promise.resolve({ data: { target_key: KEY }, error: null }),
+      Promise.resolve({ data: { target_key: KEY }, error: null })
     );
     const state = await getFavoriteState(KEY);
     expect(state).toEqual({ isAuthed: true, liked: true });
   });
 
   it('returns liked:false (not liked) when authenticated and no row, no error', async () => {
-    m.builder.maybeSingle.mockImplementation(() =>
-      Promise.resolve({ data: null, error: null }),
-    );
+    m.builder.maybeSingle.mockImplementation(() => Promise.resolve({ data: null, error: null }));
     const state = await getFavoriteState(KEY);
     expect(state).toEqual({ isAuthed: true, liked: false });
   });
@@ -186,7 +186,7 @@ describe('getFavoriteState — error handling (#4)', () => {
     // 旧実装は error を握り潰し liked:false を返していた。修正後は throw して
     // LikeButton の .catch (「いいね状態を取得できませんでした」) を発火させる。
     m.builder.maybeSingle.mockImplementation(() =>
-      Promise.resolve({ data: null, error: { code: '08006', message: 'transient' } }),
+      Promise.resolve({ data: null, error: { code: '08006', message: 'transient' } })
     );
     await expect(getFavoriteState(KEY)).rejects.toThrow();
   });
@@ -227,7 +227,9 @@ describe('getFavorites', () => {
 
 describe('toggleFavorite — Slack のお知らせ (#169)', () => {
   const { after } = jest.requireMock('next/server') as { after: jest.Mock };
-  const { __notify: notify } = jest.requireMock('@/lib/reviews/notifier') as { __notify: jest.Mock };
+  const { __notify: notify } = jest.requireMock('@/lib/reviews/notifier') as {
+    __notify: jest.Mock;
+  };
 
   it('新しく付けたいいねは、記事のタイトルと表示名を知らせる', async () => {
     setResult({ data: null, error: null });

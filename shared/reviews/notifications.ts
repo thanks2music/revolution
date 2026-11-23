@@ -3,6 +3,7 @@ import 'server-only';
 import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { presentEnvValue } from '@revolution/slack/env';
 import type { SlackMessage } from '@revolution/slack/post-message';
 import { escapeAndTruncate } from '@revolution/slack/text';
 import type { ReviewReportReason } from '@revolution/schemas/review-constants';
@@ -94,7 +95,7 @@ function describe(
       );
     case 'review_deleted':
       // 消した口コミは管理アプリで開けないので、リンクを付けない
-      return { ...reviewMessage('notice', '口コミが削除されました', notification.review, null) };
+      return reviewMessage('notice', '口コミが削除されました', notification.review, null);
     case 'review_screened': {
       const lead =
         notification.trigger === 'submitted'
@@ -221,6 +222,8 @@ export async function loadReviewSummary(
 
 /** 通知を送る口。送信の手段 (Slack / テストの偽物) を差し替えられる */
 export type ReviewNotifier = {
+  /** 送り先が設定されているか。false なら、通知の文のための読み取りもしない */
+  enabled: boolean;
   /** 送る。例外を外へ出さない */
   notify(notification: ReviewNotification): Promise<void>;
 };
@@ -229,11 +232,13 @@ export type ReviewNotifier = {
 export function createSlackNotifier(
   options: { adminUrl?: string | null; env?: SlackEnv } = {}
 ): ReviewNotifier {
+  const env = options.env ?? process.env;
   return {
+    enabled: Boolean(presentEnvValue(env.SLACK_BOT_TOKEN)),
     async notify(notification) {
       try {
         const { destination, message } = buildSlackMessage(notification, options);
-        await notifySlack(destination, message, options.env);
+        await notifySlack(destination, message, env);
       } catch (error) {
         reportNotifyError(error, notification.type);
       }
@@ -250,6 +255,7 @@ export async function notifyAboutReview(
   reviewId: number,
   build: (review: ReviewSummary) => ReviewNotification
 ): Promise<void> {
+  if (!deps.notifier.enabled) return;
   try {
     const review = await loadReviewSummary(deps.db, reviewId);
     if (!review) return;

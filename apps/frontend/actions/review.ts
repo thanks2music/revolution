@@ -246,9 +246,7 @@ async function submit(
 
   // 審査の後に、提出・出し直しと審査の結果を Slack に 1 通で知らせる (#169)
   after(() =>
-    screenAfterSubmit(admin, result, paths, {
-      trigger: mode.kind === 'edit' ? 'edited' : 'submitted',
-    })
+    screenAfterSubmit(admin, result, paths, mode.kind === 'edit' ? 'edited' : 'submitted')
   );
   return { ok: true, reviewId: result };
 }

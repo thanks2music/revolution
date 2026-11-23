@@ -33,6 +33,7 @@ describe('Slack の通知', () => {
   function throwingNotifier(): ReviewNotifier & { calls: ReviewNotification[] } {
     const calls: ReviewNotification[] = [];
     return {
+      enabled: true,
       calls,
       async notify(notification) {
         calls.push(notification);

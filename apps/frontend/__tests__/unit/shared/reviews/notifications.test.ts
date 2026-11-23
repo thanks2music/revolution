@@ -172,7 +172,10 @@ describe('notifyAboutReview', () => {
         return builder;
       },
     };
-    const notifier = { notify: jest.fn(async () => Promise.reject(new Error('slack down'))) };
+    const notifier = {
+      enabled: true,
+      notify: jest.fn(async () => Promise.reject(new Error('slack down'))),
+    };
     await expect(
       notifyAboutReview({ notifier: notifier as never, db: db as never }, 1, review => ({
         type: 'review_submitted',
@@ -191,7 +194,7 @@ describe('notifyAboutReview', () => {
         throw new Error('db down');
       },
     };
-    const notifier = { notify: jest.fn(async () => undefined) };
+    const notifier = { enabled: true, notify: jest.fn(async () => undefined) };
     await expect(
       notifyAboutReview({ notifier, db: failingDb as never }, 1, review => ({
         type: 'review_submitted',

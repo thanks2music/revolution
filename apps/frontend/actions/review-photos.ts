@@ -182,7 +182,7 @@ export async function attachReviewPhoto(
           const { db } = context.ctx;
           const { reviewId, paths } = context;
           // 写真を足した・外した公開中の口コミは、編集として審査の結果と一緒に知らせる (#169)
-          after(() => screenAfterSubmit(db, reviewId, paths, { trigger: 'edited' }));
+          after(() => screenAfterSubmit(db, reviewId, paths, 'edited'));
         }
         return { ok: true as const, photo: outcome.photo };
     }
