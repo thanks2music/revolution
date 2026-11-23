@@ -153,6 +153,12 @@ describe('findSamePageSections', () => {
     expect(findSamePageSections(html, CONFIG).novelty).toContain('img/n.png');
   });
 
+  it('タブではない aria-controls (開閉ボタンの「MENU」) は使わない', () => {
+    const html = `<button aria-controls="drawer">MENU</button><div id="drawer"><img src="img/banner.png"></div>`;
+
+    expect(findSamePageSections(html, CONFIG)).toEqual({});
+  });
+
   it('ナビの中のタブは使わない', () => {
     const html = `<nav><label for="t1">グッズ</label></nav><div id="t1_content"><img src="img/x.png"></div>`;
 

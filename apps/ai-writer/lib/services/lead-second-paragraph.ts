@@ -23,6 +23,8 @@ export interface NoNoveltySecondParagraphConfig {
   menu_work: string;
   menu_game: string;
   menu_plain: string;
+  /** plain で、本文にグッズの節が無いとき */
+  menu_plain_no_goods: string;
   goods_and_novelty: string;
   goods_only: string;
   novelty_only: string;
@@ -38,6 +40,7 @@ const CONFIG_KEYS = [
   'menu_work',
   'menu_game',
   'menu_plain',
+  'menu_plain_no_goods',
   'goods_and_novelty',
   'goods_only',
   'novelty_only',
@@ -95,7 +98,9 @@ export function buildNoNoveltySecondParagraph(
     メディア形態: config.media_form_omit.includes(input.mediaForm) ? '' : escapeMdxText(input.mediaForm),
     ノベルティ名: noveltyNames.map(escapeMdxText),
   };
-  if (kind === 'plain') return fillTemplate(`${config.menu_plain}${config.end}`, values);
+  if (kind === 'plain') {
+    return fillTemplate(`${input.hasGoods ? config.menu_plain : config.menu_plain_no_goods}${config.end}`, values);
+  }
   const extra = noveltyNames.length > 0
     ? config.novelty_named
     : hasGoods
@@ -108,11 +113,17 @@ export function buildNoNoveltySecondParagraph(
   return fillTemplate(`${kind === 'game' ? config.menu_game : config.menu_work}${extra}${config.end}`, values);
 }
 
-/** リード文 (段落を空行で区切った MDX) の 2 段落目を置き換える。2 段落目が無ければそのまま */
-export function replaceSecondParagraph(lead: string, paragraph: string): string {
-  const paragraphs = lead.split(/\n{2,}/);
-  if (paragraphs.length < 2) return lead;
-  // 2 段落目が最後の段落なら、末尾の改行を残す
-  paragraphs[1] = paragraph + (/\s*$/.exec(paragraphs[1])?.[0] ?? '');
-  return paragraphs.join('\n\n');
+/**
+ * 段落を空行で区切った MDX の 2 段落目を置き換える。2 段落目が無ければそのまま。
+ * 2 段落目の範囲だけを差し替え、ほかの空白・改行はそのまま残す (記事全体に当てるときに、本文の空行を変えないため)
+ */
+export function replaceSecondParagraph(text: string, paragraph: string): string {
+  const first = /\n{2,}/g.exec(text);
+  if (!first) return text;
+  const start = first.index + first[0].length;
+  const rest = text.slice(start);
+  const next = /\n{2,}/.exec(rest);
+  const end = next ? start + next.index : start + rest.replace(/\s+$/, '').length;
+  if (end <= start) return text;
+  return text.slice(0, start) + paragraph + text.slice(end);
 }

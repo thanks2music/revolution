@@ -19,6 +19,7 @@ const CONFIG: NoNoveltySecondParagraphConfig = {
   menu_work: '「{{作品名}}」コラボカフェでは、作品の世界観やキャラクターをイメージしたコラボメニューがお楽しみいただける',
   menu_game: '「{{作品名}}」コラボカフェでは、ゲームの世界観やキャラクターをイメージしたコラボメニューがお楽しみいただける',
   menu_plain: '「{{作品名}}」コラボカフェでは、コラボメニューやグッズがお楽しみいただける',
+  menu_plain_no_goods: '「{{作品名}}」コラボカフェでは、コラボメニューがお楽しみいただける',
   goods_and_novelty: '他、{{メディア形態}}「{{作品名}}」のコラボグッズや、ノベルティーも展開される',
   goods_only: '他、{{メディア形態}}「{{作品名}}」のコラボグッズも展開される',
   novelty_only: '他、ノベルティーも展開される',
@@ -67,6 +68,9 @@ describe('buildNoNoveltySecondParagraph', () => {
     expect(
       buildNoNoveltySecondParagraph(CONFIG, { ...base, templateId: 'lead_character_with_characters', noveltyNames: ['カード'] }),
     ).toBe('「作品A」コラボカフェでは、コラボメニューやグッズがお楽しみいただける。');
+    expect(
+      buildNoNoveltySecondParagraph(CONFIG, { ...base, templateId: 'lead_character_with_characters', hasGoods: false }),
+    ).toBe('「作品A」コラボカフェでは、コラボメニューがお楽しみいただける。');
   });
 
   it('設定に無いひな型 (VTuber・複数作品など) は null', () => {
@@ -78,6 +82,11 @@ describe('replaceSecondParagraph', () => {
   it('2 段落目だけを置き換え、末尾の改行を残す', () => {
     expect(replaceSecondParagraph('1 段落目。\n\n2 段落目。\n', '新しい文。')).toBe('1 段落目。\n\n新しい文。\n');
     expect(replaceSecondParagraph('1。\n\n2。\n\n3。', '新。')).toBe('1。\n\n新。\n\n3。');
+  });
+
+  it('2 段落目の外の空白・改行は変えない (記事全体に当てるとき)', () => {
+    const article = '1。\n\n2。\n\n\n<ArticleImage />\n\n\n## 節\n';
+    expect(replaceSecondParagraph(article, '新。')).toBe('1。\n\n新。\n\n\n<ArticleImage />\n\n\n## 節\n');
   });
 
   it('段落が 1 つなら、そのまま', () => {

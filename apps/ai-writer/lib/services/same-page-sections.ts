@@ -19,7 +19,7 @@
  * 別のカテゴリの節を含むときは、その節を除いた中身を使う (グッズの節の中の購入特典の小節)。
  * 同じカテゴリの入れ子は外側にまとめる。
  *
- * タブで分けたページ (2026-11-24): タブ (`<label for="tab1">` か `aria-controls` を持つ要素) の文字が `heading_keywords` と
+ * タブで分けたページ (2026-11-24): タブ (`<label for="tab1">` か、`aria-controls` を持つ role="tab" の要素) の文字が `heading_keywords` と
  * 一致すれば、そのタブの中身 (`aria-controls` の id、または `tab1_content` のように for の値に `_content` などを付けた id の要素) を
  * 属性の当たりと同じ強さの節とみなす。CSS だけで切り替えるタブ (`#tab1:checked ~ #tab1_content`) は、ラベルと中身が id の
  * 名前でしかつながらないため
@@ -97,7 +97,8 @@ export function findSamePageSections(
     const id = $(element).attr('id');
     if (id && !byId.has(id)) byId.set(id, element);
   }
-  for (const tab of $('label[for], [aria-controls]').toArray()) {
+  // aria-controls は開閉ボタン (ハンバーガーの「MENU」など) にも付くので、タブ (role="tab" か、role="tablist" の中) だけを見る
+  for (const tab of $('label[for], [role="tab"][aria-controls], [role="tablist"] [aria-controls]').toArray()) {
     if ($(tab).closest('header, nav, footer').length > 0) continue;
     const texts = textCandidates($(tab));
     const hit = keywords.find((k) => texts.some((text) => k.heading.includes(text)));

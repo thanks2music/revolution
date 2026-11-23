@@ -1525,9 +1525,10 @@ export class ArticleGenerationMdxService {
           noveltyNames: detailedExtraction.ノベルティ名,
         };
         const paragraph = buildNoNoveltySecondParagraph(leadSecondParagraph, input);
-        if (paragraph) {
+        const replaced = paragraph ? replaceSecondParagraph(leadMdx, paragraph) : leadMdx;
+        if (paragraph && replaced !== leadMdx) {
           leadSecondInput = input;
-          leadMdx = replaceSecondParagraph(leadMdx, paragraph);
+          leadMdx = replaced;
           console.log(`${getStepContext('lead-generation', '2 段落目')} メニューの品名が無いため、2 段落目を置き換えた: ${paragraph}`);
         }
       }
@@ -1543,7 +1544,7 @@ export class ArticleGenerationMdxService {
         {
           title: titleResult.title,
           作品名: detailedExtraction?.作品名 ?? canonicalWorkTitle ?? null,
-          leadMdx: leadResult.leadMdx,
+          leadMdx,
           pointsBlock,
         },
         costTracker
@@ -1703,7 +1704,10 @@ export class ArticleGenerationMdxService {
         uploadedCategoryR2Images.novelty.length > 0 ||
         uploadedCategoryR2Images.goods.length > 0 ||
         !!uploadedCategoryR2Images.eyecatch ||
-        keepSections.size > 0;
+        keepSections.size > 0 ||
+        // 画像の欄が残っていれば、画像が 0 枚でも置換に回す (画像の無い節を消すため。アップロードの失敗で、品名の無い節が
+        // 見出しだけで残らないように)
+        (['menu', 'novelty', 'goods'] as const).some((category) => contentGeneration.content.includes(PLACEHOLDERS[category]));
 
       if (hasR2Images) {
         const placeholderReplacer = getImagePlaceholderReplacerService();
@@ -1856,7 +1860,8 @@ export class ArticleGenerationMdxService {
           {
             label: 'グッズ',
             heading: GOODS_SECTION,
-            noNames: isEmptyList(detailedExtraction.グッズ名) && isEmptyList(detailedExtraction.グッズ詳細リスト),
+            // 本文の LLM と keepSections と同じ基準 (グッズ名)
+            noNames: isEmptyList(detailedExtraction.グッズ名),
             config: goodsImageOnly,
           },
         ];
