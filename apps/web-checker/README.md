@@ -54,7 +54,10 @@ The screens need the six `NEXT_PUBLIC_FIREBASE_*` values at build time (see `web
 
 `.github/workflows/deploy-web-checker.yml` deploys the Functions codebase `web-checker` and the Hosting target `web-checker` on a push to `main` that changes this app or the shared packages it uses, or by hand (`workflow_dispatch`). It runs only while the repository variable `WEB_CHECKER_DEPLOY_ENABLED` is `true`.
 
-- The project and the deploy identity come from the same secrets as the AI writer's deploy.
-- The Hosting site, the two string parameters above and the `NEXT_PUBLIC_FIREBASE_*` values come from repository variables; the workflow stops if any is empty.
+- Before deploying it runs the type check, lint and tests, because the push does not wait for CI.
+- The project and the deploy identity come from the same secrets as the AI writer's deploy. The Hosting site, the screens' URL and the Slack channel are secrets too, so they are masked in the public log; the workflow stops if any value is empty.
 - `SLACK_BOT_TOKEN` is read from Secret Manager at deploy time.
-- Firestore rules are not deployed by this workflow: they live in `apps/ai-writer/firestore.rules`, since a project has one set of rules.
+- `--force` lets a non-interactive deploy delete a function removed from this codebase (only this codebase).
+- Each run sends one message to the production Slack channel (with a mention on failure).
+- `pnpm-lock.yaml` does not trigger it. After a lockfile-only update that affects this app, run it by hand.
+- Firestore rules are not deployed by this workflow: they live in `apps/ai-writer/firestore.rules`, since a project has one set of rules, and are deployed by hand.

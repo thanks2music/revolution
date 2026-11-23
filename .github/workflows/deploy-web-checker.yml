@@ -6,7 +6,12 @@ name: Deploy Web Checker
 #
 # The job runs only when the repository variable WEB_CHECKER_DEPLOY_ENABLED is 'true', so merging this
 # workflow (or a change under apps/web-checker) before the production setup is finished does nothing.
-# Project, site and Slack values come from secrets and variables, not from this file.
+# The project, the Hosting site, the screens' URL and the Slack channel are secrets, so they are masked
+# in the public Actions log. The NEXT_PUBLIC_FIREBASE_* values are variables: they ship in the screens'
+# bundle anyway.
+#
+# pnpm-lock.yaml is not in `paths` (it changes with every app's dependencies). After a lockfile-only
+# update that affects this app, run the workflow by hand.
 
 on:
   push:
@@ -39,9 +44,9 @@ jobs:
 
     env:
       PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-      HOSTING_SITE: ${{ vars.WEB_CHECKER_HOSTING_SITE }}
-      SLACK_WEB_CHECKER_CHANNEL_ID: ${{ vars.SLACK_WEB_CHECKER_CHANNEL_ID }}
-      WEB_CHECKER_SITE_URL: ${{ vars.WEB_CHECKER_SITE_URL }}
+      HOSTING_SITE: ${{ secrets.WEB_CHECKER_HOSTING_SITE }}
+      SLACK_WEB_CHECKER_CHANNEL_ID: ${{ secrets.SLACK_WEB_CHECKER_CHANNEL_ID }}
+      WEB_CHECKER_SITE_URL: ${{ secrets.WEB_CHECKER_SITE_URL }}
       # The screens are a static export, so the Firebase web config is baked in at build time
       # (the same project and web app as the AI writer)
       NEXT_PUBLIC_FIREBASE_API_KEY: ${{ vars.NEXT_PUBLIC_FIREBASE_API_KEY }}
@@ -73,7 +78,7 @@ jobs:
           exit "$missing"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -84,12 +89,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Fail here rather than in the middle of a deploy
-      - name: Test the Functions
-        run: pnpm --filter @revolution/web-checker-functions test
+      # The push to main does not wait for CI, and esbuild does not type-check,
+      # so check here before anything is deployed
+      - name: Check the Functions and the screens
+        run: |
+          pnpm --filter @revolution/web-checker-functions type-check
+          pnpm --filter @revolution/web-checker-functions lint
+          pnpm --filter @revolution/web-checker-functions test
+          pnpm --filter @revolution/web-checker-web type-check
+          pnpm --filter @revolution/web-checker-web lint
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
@@ -105,10 +116,27 @@ jobs:
           } > .env
 
       # firebase-tools is a devDependency of the Functions package. The predeploy hooks in
-      # firebase.json build the Functions bundle and the static screens
+      # firebase.json build the Functions bundle and the static screens.
+      # --force: in non-interactive mode the CLI otherwise aborts when a function was removed from the
+      # codebase or the Artifact Registry cleanup policy is not set yet. Deletion is limited to the
+      # web-checker codebase by --only
       - name: Deploy
+        id: deploy
         working-directory: apps/web-checker
         run: |
           firebase() { ./functions/node_modules/.bin/firebase "$@"; }
           firebase target:apply hosting web-checker "$HOSTING_SITE" --project "$PROJECT_ID"
-          firebase deploy --only functions:web-checker,hosting:web-checker --project "$PROJECT_ID" --non-interactive
+          firebase deploy --only functions:web-checker,hosting:web-checker --project "$PROJECT_ID" --non-interactive --force
+
+      # One message per run to the production channel, with a mention on failure (as for the AI writer)
+      - name: Notify Slack of the deployment result
+        if: always()
+        uses: ./.github/actions/slack-notify
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CHANNEL_PROD }}
+          # A real production deploy, even when dispatched from a branch
+          auto-test-mode: 'false'
+          mention: "${{ job.status != 'success' && vars.SLACK_MENTION_USER_ID || '' }}"
+          text: "${{ job.status == 'success' && '✅ WEB チェッカーを本番にデプロイしました' || '❌ WEB チェッカーの本番デプロイが失敗しました' }}"
+          body: "*Commit*: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}> · *ログ*: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|実行を開く>"

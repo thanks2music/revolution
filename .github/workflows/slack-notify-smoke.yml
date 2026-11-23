@@ -27,7 +27,6 @@ on:
       - '.github/workflows/notify-main-failures.yml'
       - '.github/workflows/ci.yml'
       - '.github/workflows/sentry-digest.yml'
-      - '.github/workflows/deploy-web-checker.yml'
       - '.github/workflows/slack-notify-smoke.yml'
 
 permissions:

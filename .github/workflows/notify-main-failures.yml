@@ -16,7 +16,6 @@ on:
     workflows:
       - CI
       - Sentry Digest
-      - Deploy Web Checker
     types:
       - completed
     # PR の run では workflow の実行自体を作らない (Actions の一覧が埋まらないように)
