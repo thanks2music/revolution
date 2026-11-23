@@ -1001,6 +1001,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "ai_reason": {
+          "name": "ai_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ai_error": {
+          "name": "ai_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "photo_marks": {
           "name": "photo_marks",
           "type": "jsonb",

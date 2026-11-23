@@ -248,7 +248,7 @@ describe('BOSS の操作', () => {
         ai_reason: expect.any(String),
       });
       expect(detail.review.photos.map(photo => photo.hiddenReason)).toEqual([null, 'spam']);
-      expect(detail.review.photos[0].src).toContain('/api/dev/review-photos/stored/');
+      expect(detail.review.photos[0].view?.src).toContain('/api/dev/review-photos/stored/');
       expect(detail.review.history).toMatchObject([
         { actor: 'ai', action: 'screened', from_status: 'pending', to_status: 'needs_review' },
       ]);
@@ -278,7 +278,7 @@ describe('BOSS の操作', () => {
           submittedAt: submitted_at,
           decision: 'publish',
           photos: [
-            { id: first.id, hide: false, reason: null },
+            { id: first.id, hide: false },
             { id: second.id, hide: true, reason: 'personal_info' },
           ],
         })
@@ -315,7 +315,7 @@ describe('BOSS の操作', () => {
           decision: 'reject',
           reasonCode: 'resale',
           reasonNote: '  譲渡の呼びかけを外して出し直してください  ',
-          photos: [{ id: photo.id, hide: false, reason: null }],
+          photos: [{ id: photo.id, hide: false }],
         })
       ).resolves.toEqual({ kind: 'applied' });
 
@@ -342,7 +342,7 @@ describe('BOSS の操作', () => {
           reviewId,
           submittedAt: new Date(Date.parse(submitted_at) - 1000).toISOString(),
           decision: 'publish',
-          photos: [{ id: photo.id, hide: false, reason: null }],
+          photos: [{ id: photo.id, hide: false }],
         })
       ).resolves.toEqual({ kind: 'superseded' });
       await expect(
@@ -367,6 +367,7 @@ describe('BOSS の操作', () => {
           reviewId,
           submittedAt: submitted_at,
           decision: 'publish',
+          // @ts-expect-error 非公開にする写真には理由が要る (型でも DB でも止める)
           photos: [{ id: photo.id, hide: true, reason: null }],
         })
       ).rejects.toMatchObject({ code: '22023' });
@@ -378,7 +379,7 @@ describe('BOSS の操作', () => {
           reasonCode: 'ai_failure',
           decision: 'reject',
           reasonNote: null,
-          photos: [{ id: photo.id, hide: false, reason: null }],
+          photos: [{ id: photo.id, hide: false }],
         })
       ).rejects.toMatchObject({ code: '22023' });
       expect((await reviewRow(reviewId)).status).toBe('needs_review');
@@ -414,6 +415,113 @@ describe('BOSS の操作', () => {
         requeueReview({ ...deps(), screener }, { reviewId, submittedAt: submitted_at })
       ).resolves.toEqual({ kind: 'superseded' });
     });
+  });
+
+  it('写真の判断に抜けや重複があれば DB が断る (抜けた写真に前の印が残らないように)', async () => {
+    const { reviewId } = await screenedReview('迷う [unsure]', 2);
+    const [first, second] = await photoRows(reviewId);
+    const { submitted_at } = await reviewRow(reviewId);
+    const ids = [first.id, second.id];
+    const call = (marks: unknown) =>
+      bossDb.rpc('admin_decide_review', {
+        p_review_id: reviewId,
+        p_submitted_at: submitted_at,
+        p_decision: 'publish',
+        p_reason_code: null,
+        p_reason_note: null,
+        p_photo_ids: ids,
+        p_photo_marks: marks,
+      });
+
+    expect((await call([{ id: first.id, hide: false }])).error?.code).toBe('22023');
+    expect(
+      (
+        await call([
+          { id: first.id, hide: false },
+          { id: first.id, hide: true, reason: 'spam' },
+        ])
+      ).error?.code
+    ).toBe('22023');
+    expect((await call(null)).error?.code).toBe('22023');
+    expect((await reviewRow(reviewId)).status).toBe('needs_review');
+  });
+
+  it('admin の印を外すと、ログインしたままでもすぐに断る (トークンの期限を待たない)', async () => {
+    const { reviewId } = await screenedReview('迷う [unsure]');
+    await expect(listReviewQueue(bossDb)).resolves.toMatchObject({ kind: 'ok' });
+    const { error } = await data.admin.auth.admin.updateUserById(boss.userId, {
+      app_metadata: { role: null },
+    });
+    if (error) throw error;
+    await expect(listReviewQueue(bossDb)).resolves.toEqual({ kind: 'forbidden' });
+    await expect(getReviewForModeration(bossDb, storage, reviewId)).resolves.toEqual({
+      kind: 'forbidden',
+    });
+  });
+
+  it('写真の置き場所が無くても、写真の ID と印は返り、判断できる', async () => {
+    const { reviewId } = await screenedReview('迷う [unsure]', 1);
+    const detail = await getReviewForModeration(bossDb, null, reviewId);
+    if (detail.kind !== 'ok') throw new Error(detail.kind);
+    expect(detail.review.photos).toMatchObject([{ view: null, hiddenReason: null }]);
+    const { submitted_at } = await reviewRow(reviewId);
+    await expect(
+      decideReview(
+        { adminDb: bossDb, serviceDb: data.admin, storage: null },
+        {
+          reviewId,
+          submittedAt: submitted_at,
+          decision: 'publish',
+          photos: detail.review.photos.map(photo => ({ id: photo.id, hide: false })),
+        }
+      )
+    ).resolves.toEqual({ kind: 'applied' });
+  });
+
+  it('もう一度 AI にかけても、前の AI の理由は記録に残る', async () => {
+    const { reviewId } = await screenedReview('迷う [unsure]');
+    const before = await reviewRow(reviewId);
+    expect(before.ai_reason).toBeTruthy();
+    await requeueReview({ ...deps(), screener }, { reviewId, submittedAt: before.submitted_at });
+    expect((await moderationEvents(reviewId))[0]).toMatchObject({
+      action: 'screened',
+      ai_reason: before.ai_reason,
+    });
+  });
+
+  it('写真が変わり続けて AI が審査を打ち切った時も、記録が残る', async () => {
+    const { reviewId } = await screenedReview('迷う [unsure]');
+    await data.admin
+      .from('reviews')
+      .update({ status: 'pending', reason_code: null })
+      .eq('id', reviewId);
+    const { submitted_at } = await reviewRow(reviewId);
+    const { data: result, error } = await data.admin.rpc('give_up_review_screening', {
+      p_review_id: reviewId,
+      p_submitted_at: submitted_at,
+      p_ai_error: 'review photos kept changing during screening',
+      p_screened_at: new Date().toISOString(),
+    });
+    expect(error).toBeNull();
+    expect(result).toBe('applied');
+    expect((await moderationEvents(reviewId)).at(-1)).toMatchObject({
+      actor: 'ai',
+      to_status: 'needs_review',
+      reason_code: 'ai_failure',
+      ai_error: 'review photos kept changing during screening',
+    });
+  });
+
+  it('service role でも判断の記録の表に直接は足せない (偽の記録を作れない)', async () => {
+    const { reviewId } = await screenedReview('楽しかった');
+    const insert = await data.admin.from('review_moderation_events').insert({
+      review_id: reviewId,
+      actor: 'admin',
+      actor_user_id: boss.userId,
+      action: 'published',
+      to_status: 'published',
+    });
+    expect(insert.error?.code).toBe('42501');
   });
 
   it('判断の記録は書き換えも消去もできない (service role でも)', async () => {

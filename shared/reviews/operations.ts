@@ -144,23 +144,15 @@ async function giveUpScreening(
   screenedAt: string,
   occurrenceId: number
 ): Promise<ScreenReviewOutcome> {
-  const { data, error } = await db
-    .from('reviews')
-    .update({
-      status: 'needs_review',
-      reason_code: 'ai_failure',
-      ai_reason: null,
-      ai_error: 'review photos kept changing during screening',
-      ai_model: null,
-      ai_screened_at: screenedAt,
-    })
-    .eq('id', reviewId)
-    .eq('status', 'pending')
-    .eq('submitted_at', submittedAt)
-    .is('deleted_at', null)
-    .select('id');
+  // 状態と判断の記録を 1 つのトランザクションで書く (migration 0026 の give_up_review_screening)
+  const { data, error } = await db.rpc('give_up_review_screening', {
+    p_review_id: reviewId,
+    p_submitted_at: submittedAt,
+    p_ai_error: 'review photos kept changing during screening',
+    p_screened_at: screenedAt,
+  });
   if (error) throw error;
-  if (!data || data.length === 0) return { kind: 'skipped', reason: 'superseded' };
+  if (data !== 'applied') return { kind: 'skipped', reason: 'superseded' };
   return { kind: 'screened', status: 'needs_review', occurrenceId };
 }
 
@@ -211,7 +203,13 @@ export async function screenSubmittedReview(
     if (applied === 'photos_changed') {
       if (attempt < MAX_SCREENING_ATTEMPTS) continue;
       // 写真が変わり続けて審査できなかった。審査中のまま残すと誰も審査し直さないので、BOSS の確認待ちにする
-      return giveUpScreening(deps.db, reviewId, review.submitted_at, screenedAt, review.occurrence_id);
+      return giveUpScreening(
+        deps.db,
+        reviewId,
+        review.submitted_at,
+        screenedAt,
+        review.occurrence_id
+      );
     }
     if (applied !== 'applied') return { kind: 'skipped', reason: 'superseded' };
 

@@ -1,5 +1,6 @@
 import 'server-only';
 
+import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
@@ -37,10 +38,9 @@ export const STUCK_PENDING_MINUTES = 30;
 
 type Failure = { kind: 'forbidden' };
 
-const PG_INSUFFICIENT_PRIVILEGE = '42501';
-
-function isForbidden(error: { code?: string } | null): boolean {
-  return error?.code === PG_INSUFFICIENT_PRIVILEGE;
+/** admin の関数が admin でない時に投げる物 (migration 0026)。ほかの 42501 (GRANT の抜けなど) は不具合として投げ直す */
+function isForbidden(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === '42501' && error.message === 'admin only';
 }
 
 // ───────────────────────────────────────────────
@@ -156,14 +156,19 @@ const DetailSchema = z.object({
       reason_code: z.string().nullable(),
       reason_note: z.string().nullable(),
       ai_model: z.string().nullable(),
+      ai_reason: z.string().nullable(),
+      ai_error: z.string().nullable(),
       created_at: z.string(),
     })
   ),
 });
 
-export type ModerationPhoto = ReviewPhotoView & {
+export type ModerationPhoto = {
+  id: number;
   /** 非公開の理由 (非公開でなければ null) */
   hiddenReason: ReviewScreeningReason | null;
+  /** 保管側の短時間だけ有効な URL。置き場所の無い環境では null (それでも判断はできる) */
+  view: ReviewPhotoView | null;
 };
 
 export type ModerationReview = {
@@ -187,15 +192,14 @@ export async function getReviewForModeration(
   if (error) throw error;
   if (data === null) return { kind: 'not_found' };
   const detail = DetailSchema.parse(data);
-  // 置き場所が無い環境 (写真の機能を使わない設定) では写真を出さない
-  const photos = storage
-    ? await Promise.all(
-        detail.photos.map(async photo => ({
-          ...(await toStoredPhotoView(storage, photo)),
-          hiddenReason: photo.hidden_reason_code,
-        }))
-      )
-    : [];
+  // 置き場所が無い環境でも写真の ID と印は返す (判断の時に写真の集まりを DB と合わせるため)
+  const photos = await Promise.all(
+    detail.photos.map(async photo => ({
+      id: photo.id,
+      hiddenReason: photo.hidden_reason_code,
+      view: storage ? await toStoredPhotoView(storage, photo) : null,
+    }))
+  );
   return {
     kind: 'ok',
     review: {
@@ -229,7 +233,9 @@ export type ModerationWriteOutcome =
   | { kind: 'photos_changed' }
   | Failure;
 
-export type PhotoDecision = { id: number; hide: boolean; reason: ReviewScreeningReason | null };
+/** 写真ごとの判断。非公開にする写真には理由が要る */
+export type PhotoDecision =
+  { id: number; hide: false } | { id: number; hide: true; reason: ReviewScreeningReason };
 
 export type ReviewDecision =
   | { decision: 'publish' }
@@ -265,27 +271,39 @@ export async function decideReview(
 
 /**
  * もう一度 AI にかける。審査中に戻してから、同じ審査の流れ (`screenSubmittedReview`) を走らせる。
- * 戻せた時は、審査の結果 (`screening`) も返す
+ * 戻せた時は、審査の結果 (`screening`) も返す。審査が例外で止まった時は `error` (口コミは審査中のまま。
+ * 30 分たつと確認待ちの一覧に「止まっている」として出る)
  */
 export async function requeueReview(
   deps: ModerationDeps & { screener: ReviewScreener },
   input: { reviewId: number; submittedAt: string }
-): Promise<ModerationWriteOutcome | { kind: 'applied'; screening: ScreenReviewOutcome }> {
+): Promise<
+  | Exclude<ModerationWriteOutcome, { kind: 'applied' }>
+  | { kind: 'applied'; screening: ScreenReviewOutcome | { kind: 'error' } }
+> {
   const { data, error } = await deps.adminDb.rpc('admin_requeue_review', {
     p_review_id: input.reviewId,
     p_submitted_at: input.submittedAt,
   });
   const outcome = toWriteOutcome(data, error);
   if (outcome.kind !== 'applied') return outcome;
-  const screening = await screenSubmittedReview(input.reviewId, {
-    screener: deps.screener,
-    db: deps.serviceDb,
-    storage: deps.storage,
-  });
-  return { kind: 'applied', screening };
+  try {
+    const screening = await screenSubmittedReview(input.reviewId, {
+      screener: deps.screener,
+      db: deps.serviceDb,
+      storage: deps.storage,
+    });
+    return { kind: 'applied', screening };
+  } catch (error) {
+    Sentry.captureException(error, { tags: { part: 'review-moderation', step: 'requeue' } });
+    return { kind: 'applied', screening: { kind: 'error' } };
+  }
 }
 
-function toWriteOutcome(data: unknown, error: { code?: string } | null): ModerationWriteOutcome {
+function toWriteOutcome(
+  data: unknown,
+  error: { code?: string; message?: string } | null
+): ModerationWriteOutcome {
   if (isForbidden(error)) return { kind: 'forbidden' };
   if (error) throw error;
   if (data === 'applied' || data === 'superseded' || data === 'photos_changed')

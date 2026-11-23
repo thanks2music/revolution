@@ -28,6 +28,8 @@ CREATE TABLE "public"."review_moderation_events" (
 	"reason_code" text,
 	"reason_note" text,
 	"ai_model" text,
+	"ai_reason" text,
+	"ai_error" text,
 	"photo_marks" jsonb,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "review_moderation_events_actor_chk" CHECK ("review_moderation_events"."actor" IN ('ai', 'admin')),
@@ -40,11 +42,9 @@ ALTER TABLE "public"."review_moderation_events" ENABLE ROW LEVEL SECURITY;
 CREATE INDEX "review_moderation_events_review_idx" ON "public"."review_moderation_events" USING btree ("review_id","created_at");
 --> statement-breakpoint
 
--- 読むのは admin の関数だけ。会員には何も GRANT しない。service role には足すことだけを許す (AI の審査の書き込み
--- `apply_review_screening` は service role の権限で動くため)。書き換え・消去は下のトリガが誰であっても止める
+-- 読み書きは DB の関数 (SECURITY DEFINER) だけ。会員にも service role にも GRANT しない (service role の鍵で
+-- 偽の記録を足せないように)。書き換え・消去は下のトリガが誰であっても止める
 REVOKE ALL ON TABLE "public"."review_moderation_events" FROM anon, authenticated, service_role;
---> statement-breakpoint
-GRANT INSERT ON TABLE "public"."review_moderation_events" TO service_role;
 --> statement-breakpoint
 
 -- 書き換え・消去を止める (表の所有者が関数から誤って書き換えるのも止める)
@@ -73,21 +73,28 @@ REVOKE EXECUTE ON FUNCTION private.forbid_review_moderation_event_change() FROM 
 -- B. admin の判定
 -- ───────────────────────────────────────────────
 
--- ログイン中の会員の app_metadata.role が 'admin' か。user_metadata は本人が書き換えられるので見ない
+-- ログイン中の会員の app_metadata.role が 'admin' か。user_metadata は本人が書き換えられるので見ない。
+-- JWT の値ではなく auth.users の今の値を見る (admin の印を外したら、トークンの期限を待たずに止めるため)。
+-- 呼ぶのは admin の関数 (SECURITY DEFINER、所有者が auth.users を読める) の中だけ
 CREATE OR REPLACE FUNCTION private.is_admin()
 RETURNS boolean
 STABLE
 SET search_path = ''
 LANGUAGE sql
 AS $$
-  SELECT coalesce(((SELECT auth.jwt()) -> 'app_metadata' ->> 'role') = 'admin', false)
+  SELECT coalesce((
+    SELECT u."raw_app_meta_data" ->> 'role' = 'admin'
+    FROM auth.users u
+    WHERE u."id" = (SELECT auth.uid())
+  ), false)
 $$;
 --> statement-breakpoint
 REVOKE EXECUTE ON FUNCTION private.is_admin() FROM public;
 --> statement-breakpoint
 
 -- ───────────────────────────────────────────────
--- C. AI の審査の書き込みでも記録を残す (0023 の関数に記録を足す。引数と戻り値は変えない)
+-- C. AI の審査の書き込みでも記録を残す (0023 の関数に記録を足す。引数と戻り値は変えない)。記録の表に書けるよう
+-- SECURITY DEFINER にする (呼べるのは service role だけのまま)
 -- ───────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION public.apply_review_screening(
@@ -103,6 +110,7 @@ CREATE OR REPLACE FUNCTION public.apply_review_screening(
   p_photo_marks jsonb
 )
 RETURNS text
+SECURITY DEFINER
 SET search_path = ''
 LANGUAGE plpgsql
 AS $$
@@ -152,12 +160,58 @@ BEGIN
   END IF;
 
   INSERT INTO "public"."review_moderation_events"
-    ("review_id", "actor", "action", "from_status", "to_status", "reason_code", "ai_model", "photo_marks")
+    ("review_id", "actor", "action", "from_status", "to_status", "reason_code", "ai_model", "ai_reason",
+     "ai_error", "photo_marks")
   VALUES
-    (p_review_id, 'ai', 'screened', 'pending', p_status, p_reason_code, p_ai_model, p_photo_marks);
+    (p_review_id, 'ai', 'screened', 'pending', p_status, p_reason_code, p_ai_model, p_ai_reason, p_ai_error,
+     p_photo_marks);
   RETURN 'applied';
 END;
 $$;
+--> statement-breakpoint
+
+-- 写真が変わり続けて審査できなかった時に、AI の審査の失敗として BOSS の確認待ちにする (写真の印は変えない)。
+-- 読んだ時の submitted_at と「審査中」を条件にし、合わなければ 'superseded'。呼べるのは service role だけ
+CREATE OR REPLACE FUNCTION public.give_up_review_screening(
+  p_review_id bigint,
+  p_submitted_at timestamptz,
+  p_ai_error text,
+  p_screened_at timestamptz
+)
+RETURNS text
+SECURITY DEFINER
+SET search_path = ''
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_updated integer;
+BEGIN
+  UPDATE "public"."reviews"
+  SET "status" = 'needs_review',
+      "reason_code" = 'ai_failure',
+      "ai_reason" = NULL,
+      "ai_error" = p_ai_error,
+      "ai_model" = NULL,
+      "ai_screened_at" = p_screened_at
+  WHERE "id" = p_review_id
+    AND "status" = 'pending'
+    AND "submitted_at" = p_submitted_at
+    AND "deleted_at" IS NULL;
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  IF v_updated = 0 THEN
+    RETURN 'superseded';
+  END IF;
+  INSERT INTO "public"."review_moderation_events"
+    ("review_id", "actor", "action", "from_status", "to_status", "reason_code", "ai_error")
+  VALUES
+    (p_review_id, 'ai', 'screened', 'pending', 'needs_review', 'ai_failure', p_ai_error);
+  RETURN 'applied';
+END;
+$$;
+--> statement-breakpoint
+REVOKE EXECUTE ON FUNCTION public.give_up_review_screening(bigint, timestamptz, text, timestamptz) FROM public, anon, authenticated;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.give_up_review_screening(bigint, timestamptz, text, timestamptz) TO service_role;
 --> statement-breakpoint
 
 -- ───────────────────────────────────────────────
@@ -256,7 +310,7 @@ $$;
 
 -- D-3. 公開か差し戻し。読んだ時の submitted_at と、確認待ちか審査中であることを条件に書く (その間に投稿者が
 -- 出し直していたら 'superseded')。写真の集まりが読んだ時と違えば 'photos_changed' (見ていない写真を公開しない)。
--- p_photo_marks は [{"id", "hide", "reason"}] で、全部の写真の印を書き直す。差し戻しの理由は審査の 4 種だけ
+-- p_photo_marks は [{"id", "hide", "reason"}] で、読んだ写真の全部の印を書き直す (抜けと重複は断る)。差し戻しの理由は審査の 4 種だけ
 CREATE OR REPLACE FUNCTION public.admin_decide_review(
   p_review_id bigint,
   p_submitted_at timestamptz,
@@ -292,7 +346,16 @@ BEGIN
   ELSE
     RAISE EXCEPTION 'unknown decision' USING ERRCODE = '22023';
   END IF;
-  IF p_photo_marks IS NOT NULL AND EXISTS (
+  -- 写真の判断は、読んだ写真の全部にちょうど 1 つずつ (抜けた写真に前の印が残らない・重複で結果が揺れないように)
+  IF p_photo_marks IS NULL OR jsonb_typeof(p_photo_marks) <> 'array' OR (
+    SELECT coalesce(array_agg(m."id" ORDER BY m."id"), '{}')
+    FROM jsonb_to_recordset(p_photo_marks) AS m("id" bigint)
+  ) IS DISTINCT FROM (
+    SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM unnest(p_photo_ids) AS x
+  ) OR (SELECT count(DISTINCT x) FROM unnest(p_photo_ids) AS x) <> coalesce(cardinality(p_photo_ids), 0) THEN
+    RAISE EXCEPTION 'photo decisions must cover each photo once' USING ERRCODE = '22023';
+  END IF;
+  IF EXISTS (
     SELECT 1 FROM jsonb_to_recordset(p_photo_marks) AS m("id" bigint, "hide" boolean, "reason" text)
     WHERE m."hide" IS NULL OR (m."hide" AND NOT (coalesce(m."reason", '') = ANY (v_reasons)))
   ) THEN
@@ -321,13 +384,11 @@ BEGIN
       "reason_note" = nullif(btrim(p_reason_note), '')
   WHERE "id" = p_review_id;
 
-  IF p_photo_marks IS NOT NULL THEN
-    UPDATE "public"."review_images" AS i
-    SET "hidden_at" = CASE WHEN m."hide" THEN coalesce(i."hidden_at", now()) END,
-        "hidden_reason_code" = CASE WHEN m."hide" THEN m."reason" END
-    FROM jsonb_to_recordset(p_photo_marks) AS m("id" bigint, "hide" boolean, "reason" text)
-    WHERE i."id" = m."id" AND i."review_id" = p_review_id;
-  END IF;
+  UPDATE "public"."review_images" AS i
+  SET "hidden_at" = CASE WHEN m."hide" THEN coalesce(i."hidden_at", now()) END,
+      "hidden_reason_code" = CASE WHEN m."hide" THEN m."reason" END
+  FROM jsonb_to_recordset(p_photo_marks) AS m("id" bigint, "hide" boolean, "reason" text)
+  WHERE i."id" = m."id" AND i."review_id" = p_review_id;
 
   INSERT INTO "public"."review_moderation_events"
     ("review_id", "actor", "actor_user_id", "action", "from_status", "to_status", "reason_code",
