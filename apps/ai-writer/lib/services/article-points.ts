@@ -78,6 +78,12 @@ function dateParts(iso: string): { year: string; month: string; day: string } | 
   return { year: match[1], month: String(Number(match[2])), day: String(Number(match[3])) };
 }
 
+/** 日付 1 つ (`date` の書式)。日付として読めなければ null */
+export function formatDate(iso: string | undefined, format: PointsFormat): string | null {
+  const parts = iso ? dateParts(iso) : null;
+  return parts ? fillTemplate(format.date, parts) : null;
+}
+
 /** 全体の開催期間。開始日が無ければ null。終了日が無ければ終わりは書かない (`period_open`) */
 export function formatPeriod(period: PointsFactsInput['period'], format: PointsFormat): string | null {
   const startParts = period.start ? dateParts(period.start) : null;

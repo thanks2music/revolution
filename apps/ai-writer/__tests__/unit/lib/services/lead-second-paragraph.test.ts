@@ -8,11 +8,17 @@ import {
 
 /** 01-lead.yaml の rendered.no_novelty_name_second_paragraph の一部 */
 const CONFIG: NoNoveltySecondParagraphConfig = {
-  templates: { lead_author_with_characters: 'work', lead_game_generic: 'game', lead_author_with_theme_and_characters: 'work' },
+  templates: {
+    lead_author_with_characters: 'work',
+    lead_game_generic: 'game',
+    lead_author_with_theme_and_characters: 'work',
+    lead_character_with_characters: 'plain',
+  },
   goods_in_third_paragraph: ['lead_author_with_theme_and_characters'],
   media_form_omit: ['作品'],
   menu_work: '「{{作品名}}」コラボカフェでは、作品の世界観やキャラクターをイメージしたコラボメニューがお楽しみいただける',
   menu_game: '「{{作品名}}」コラボカフェでは、ゲームの世界観やキャラクターをイメージしたコラボメニューがお楽しみいただける',
+  menu_plain: '「{{作品名}}」コラボカフェでは、コラボメニューやグッズがお楽しみいただける',
   goods_and_novelty: '他、{{メディア形態}}「{{作品名}}」のコラボグッズや、ノベルティーも展開される',
   goods_only: '他、{{メディア形態}}「{{作品名}}」のコラボグッズも展開される',
   novelty_only: '他、ノベルティーも展開される',
@@ -55,6 +61,12 @@ describe('buildNoNoveltySecondParagraph', () => {
     expect(buildNoNoveltySecondParagraph(CONFIG, { ...base, noveltyNames: ['カードA', 'カードB'] })).toBe(
       '「作品A」コラボカフェでは、作品の世界観やキャラクターをイメージしたコラボメニューがお楽しみいただける他、ノベルティー「カードA」「カードB」も用意されている。',
     );
+  });
+
+  it('plain のひな型は、グッズ・ノベルティーの文を足さない', () => {
+    expect(
+      buildNoNoveltySecondParagraph(CONFIG, { ...base, templateId: 'lead_character_with_characters', noveltyNames: ['カード'] }),
+    ).toBe('「作品A」コラボカフェでは、コラボメニューやグッズがお楽しみいただける。');
   });
 
   it('設定に無いひな型 (VTuber・複数作品など) は null', () => {

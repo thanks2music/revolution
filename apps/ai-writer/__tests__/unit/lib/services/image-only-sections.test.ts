@@ -30,6 +30,12 @@ describe('renderImageOnlySentence', () => {
     );
   });
 
+  it('終了日が日付として読めなければ、開始日だけの文にする (「〜まで」にしない)', () => {
+    expect(renderImageOnlySentence(CONFIG, '作品A', { start: '2026-12-02', end: '未定' }, POINTS)).toBe(
+      '「作品A」では、2026年12月2日より期間限定のコラボイベントが開催される。',
+    );
+  });
+
   it('開始日か見出し主語が無ければ null (LLM の文を残す)', () => {
     expect(renderImageOnlySentence(CONFIG, '作品A', {}, POINTS)).toBeNull();
     expect(renderImageOnlySentence(CONFIG, ' ', { start: '2026-12-02' }, POINTS)).toBeNull();

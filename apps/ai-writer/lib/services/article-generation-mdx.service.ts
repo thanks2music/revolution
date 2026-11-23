@@ -107,6 +107,7 @@ import {
   buildNoNoveltySecondParagraph,
   loadNoNoveltySecondParagraphConfig,
   replaceSecondParagraph,
+  type NoNoveltySecondParagraphInput,
 } from './lead-second-paragraph';
 import { r2ImageStore } from './article-images/upload-article-images';
 import {
@@ -1509,21 +1510,25 @@ export class ArticleGenerationMdxService {
         pointsFormat,
         costTracker,
       });
-      // ノベルティ名かメニューの品名が取れないときは、リード文の 2 段落目をキャラクター名を挙げない文にする
+      // メニューの品名が取れないときは、リード文の 2 段落目をキャラクター名を挙げない文にする
       // (キャラクター名がグッズの絵柄から抽出され、メニューに結びつけると推測になるため。2026-11-24 BOSS 決定)
       let leadMdx = leadResult.leadMdx;
-      if ((isEmptyList(detailedExtraction.ノベルティ名) || noMenuNames) && !leadResult.fallbackReason) {
-        const paragraph = buildNoNoveltySecondParagraph(leadSecondParagraph, {
+      // 置き換えたときの入力。画像を差し込んだ後に、節が消えていたら組み直す (下の image-placeholder-replacement)
+      let leadSecondInput: NoNoveltySecondParagraphInput | null = null;
+      if (noMenuNames && !leadResult.fallbackReason) {
+        const input: NoNoveltySecondParagraphInput = {
           templateId: leadResult.usedTemplate,
           作品名: leadResult.slots.workTitle,
           mediaForm: leadResult.slots.mediaForm,
           hasGoods: hasGoodsSection(contentGeneration.content),
           hasNovelty: hasNoveltySection(contentGeneration.content),
           noveltyNames: detailedExtraction.ノベルティ名,
-        });
+        };
+        const paragraph = buildNoNoveltySecondParagraph(leadSecondParagraph, input);
         if (paragraph) {
+          leadSecondInput = input;
           leadMdx = replaceSecondParagraph(leadMdx, paragraph);
-          console.log(`${getStepContext('lead-generation', '2 段落目')} ノベルティ名かメニューの品名が無いため、2 段落目を置き換えた: ${paragraph}`);
+          console.log(`${getStepContext('lead-generation', '2 段落目')} メニューの品名が無いため、2 段落目を置き換えた: ${paragraph}`);
         }
       }
       // リード文 → この記事のポイント → 本文 (Sprint C-β P11 以降、リード文は LeadGeneratorService が書く)
@@ -1711,6 +1716,20 @@ export class ArticleGenerationMdxService {
           deferredPlaceholders
         );
         finalContent = placeholderReplacement.content;
+
+        // 品名の無い節は、画像が 0 枚 (アップロードの失敗など) なら節ごと消える。リード文の 2 段落目が、消えた節の
+        // グッズ・ノベルティーに触れないように組み直す (記事はリード文から始まるので、記事全体の 2 段落目がリード文の 2 段落目)
+        if (leadSecondInput) {
+          const rebuilt = buildNoNoveltySecondParagraph(leadSecondParagraph, {
+            ...leadSecondInput,
+            hasGoods: hasGoodsSection(finalContent),
+            hasNovelty: hasNoveltySection(finalContent),
+          });
+          if (rebuilt && (leadSecondInput.hasGoods !== hasGoodsSection(finalContent) || leadSecondInput.hasNovelty !== hasNoveltySection(finalContent))) {
+            finalContent = replaceSecondParagraph(finalContent, rebuilt);
+            console.log(`${getStepContext('image-placeholder-replacement', 'リード文')} 画像の無い節が消えたため、2 段落目を組み直した: ${rebuilt}`);
+          }
+        }
 
         console.log(`${getStepContext('image-placeholder-replacement')} プレースホルダー置換結果:`, {
           replacedCount: placeholderReplacement.replacedCount.total,

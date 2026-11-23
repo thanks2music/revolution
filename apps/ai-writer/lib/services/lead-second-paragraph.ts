@@ -1,11 +1,11 @@
 /**
- * ノベルティ名かメニューの品名が取れないときの、リード文の 2 段落目 (2026-11-24)
+ * メニューの品名が取れないときの、リード文の 2 段落目 (2026-11-24)
  *
  * リード文のひな型の 2 段落目は、ノベルティ名があれば「ノベルティー「…」も用意されている」と書き、キャラクター名が
  * あれば「{キャラクター名}ら人気キャラクターをイメージしたコラボメニュー」と書く。品目が画像の中にしか無いサイトでは、
- * キャラクター名がグッズの絵柄から抽出され、メニューに結びつけると推測になる。そこで、ノベルティ名かメニューの品名が
- * 取れないときは、2 段落目をキャラクター名を挙げない文にする。ノベルティ名があればひな型と同じくノベルティ名を書き、
- * 無ければ本文に節があるグッズ・ノベルティーだけを書く。
+ * キャラクター名がグッズの絵柄から抽出され、メニューに結びつけると推測になる。そこで、メニューの品名が取れないときは、
+ * 2 段落目をキャラクター名を挙げない文にする。ノベルティ名があればひな型と同じくノベルティ名を書き、無ければ本文に節が
+ * あるグッズ・ノベルティーだけを書く (plain のひな型は menu_plain だけ)。
  *
  * 置き換えるひな型・文面・メディア形態の扱いは `sections/01-lead.yaml` の `rendered.no_novelty_name_second_paragraph`
  * (YAML が SoT)。ここは組み立てだけを行う。
@@ -14,14 +14,15 @@ import { escapeMdxText } from '@/lib/utils/mdx-safety';
 import { fillTemplate, loadChecked } from './section-renderers';
 
 export interface NoNoveltySecondParagraphConfig {
-  /** 置き換えるひな型の id と、メニューの文の種類 */
-  templates: Record<string, 'work' | 'game'>;
+  /** 置き換えるひな型の id と、メニューの文の種類 (plain はグッズ・ノベルティーの文を足さない) */
+  templates: Record<string, 'work' | 'game' | 'plain'>;
   /** 3 段落目でグッズを書くひな型 (2 段落目ではグッズに触れない) */
   goods_in_third_paragraph: string[];
   /** この値のメディア形態は書かない (「作品」) */
   media_form_omit: string[];
   menu_work: string;
   menu_game: string;
+  menu_plain: string;
   goods_and_novelty: string;
   goods_only: string;
   novelty_only: string;
@@ -36,6 +37,7 @@ const CONFIG_KEYS = [
   'media_form_omit',
   'menu_work',
   'menu_game',
+  'menu_plain',
   'goods_and_novelty',
   'goods_only',
   'novelty_only',
@@ -79,7 +81,7 @@ export interface NoNoveltySecondParagraphInput {
   noveltyNames?: readonly string[] | null;
 }
 
-/** ノベルティ名かメニューの品名が取れないときの 2 段落目。置き換えないひな型なら null */
+/** メニューの品名が取れないときの 2 段落目。置き換えないひな型なら null */
 export function buildNoNoveltySecondParagraph(
   config: NoNoveltySecondParagraphConfig,
   input: NoNoveltySecondParagraphInput,
@@ -93,6 +95,7 @@ export function buildNoNoveltySecondParagraph(
     メディア形態: config.media_form_omit.includes(input.mediaForm) ? '' : escapeMdxText(input.mediaForm),
     ノベルティ名: noveltyNames.map(escapeMdxText),
   };
+  if (kind === 'plain') return fillTemplate(`${config.menu_plain}${config.end}`, values);
   const extra = noveltyNames.length > 0
     ? config.novelty_named
     : hasGoods

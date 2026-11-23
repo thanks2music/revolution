@@ -7,7 +7,7 @@
  * 文面は `sections/03-novelty.yaml` と `04-goods.yaml` の `rendered` (YAML が SoT)。
  */
 import { escapeMdxText } from '@/lib/utils/mdx-safety';
-import { formatPeriod, type PointsFormat } from './article-points';
+import { formatDate, formatPeriod, type PointsFormat } from './article-points';
 import { fillTemplate } from './section-renderers';
 
 /** 品名の無い節の導入の文のキー (`03-novelty.yaml` と `04-goods.yaml` の `rendered`) */
@@ -25,8 +25,9 @@ export function renderImageOnlySentence(
   period: { start?: string; end?: string },
   pointsFormat: PointsFormat,
 ): string | null {
-  const open = !period.end;
-  const text = formatPeriod(period, open ? { ...pointsFormat, period_open: '{{start}}' } : pointsFormat);
+  // 終わりが分からないときは開始日だけ (「〜より」は image_only_sentence_open の側にある)
+  const open = formatDate(period.end, pointsFormat) === null;
+  const text = open ? formatDate(period.start, pointsFormat) : formatPeriod(period, pointsFormat);
   if (!text || !subject.trim()) return null;
   return fillTemplate(open ? config.image_only_sentence_open : config.image_only_sentence, {
     subject: escapeMdxText(subject),
