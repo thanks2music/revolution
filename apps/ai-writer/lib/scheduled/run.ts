@@ -31,7 +31,7 @@ import {
 } from './attempt-record';
 import type { AttemptRecord, AttemptStore } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
-import { orderCandidates, type Candidate, type RssCandidateInput } from './candidates';
+import { isRssCandidate, orderCandidates, originSource, type Candidate, type RssCandidateInput } from './candidates';
 import { extractPublishedDate } from './published-date';
 import type { RegisteredUrl } from './registered-url-store';
 import { UNREGISTERED_REASON } from './registered-urls';
@@ -217,6 +217,8 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
             pubDate: (candidate.rssPubDate ?? now).toISOString(),
           },
           dryRun: options.dryRun,
+          // Only RSS candidates are limited to the writing scope; a person chose a registered URL
+          applyWritingScope: isRssCandidate(candidate),
         });
         attempt = { kind: 'pipeline', result };
       } catch (caught) {
@@ -229,7 +231,7 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
 
       const item: RunItem = {
         url: candidate.url,
-        registered: candidate.source === 'registered' || candidate.previous?.source === 'registered',
+        registered: originSource(candidate) === 'registered',
         title: context.title,
         outcome: toAttemptOutcome(attempt, true).kind,
         ...describeAttempt(attempt),

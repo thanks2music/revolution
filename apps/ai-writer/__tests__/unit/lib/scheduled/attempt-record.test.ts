@@ -49,6 +49,9 @@ describe('toAttemptOutcome', () => {
       counted: true,
     });
   });
+  it('a page outside the writing scope is a skip, not tried again', () => {
+    expect(toAttemptOutcome(pipeline({ skipped: true, skipKind: 'out-of-scope' }), true)).toEqual({ kind: 'skipped' });
+  });
   it('no work title on the official page is a skip (trying again gives the same page)', () => {
     expect(toAttemptOutcome(pipeline({ skipped: true, skipKind: 'no-work-title' }), true)).toEqual({ kind: 'skipped' });
   });
@@ -153,5 +156,18 @@ describe('buildAttemptRecord', () => {
   it('keeps the error of a thrown attempt as the reason', () => {
     const record = buildAttemptRecord(undefined, { url: URL, source: 'rss', now: NOW }, { kind: 'error', error: 'HTTP 404' }, true);
     expect(record).toMatchObject({ status: 'retrying-failure', lastOutcome: 'failure', lastReason: 'HTTP 404', failureCount: 1 });
+  });
+});
+
+describe('skip kind', () => {
+  it('is kept on the record, so out-of-scope skips can be told apart from other skips', () => {
+    const attempt = pipeline({ skipped: true, skipKind: 'out-of-scope', skipReason: '書く対象の外' });
+    expect(describeAttempt(attempt)).toEqual({ reason: '書く対象の外', prUrl: undefined, skipKind: 'out-of-scope' });
+    const record = buildAttemptRecord(undefined, { url: URL, source: 'rss', now: NOW }, attempt, true);
+    expect(record).toMatchObject({ lastOutcome: 'skipped', lastSkipKind: 'out-of-scope', status: 'done' });
+  });
+
+  it('is left out when the attempt was not a skip', () => {
+    expect(describeAttempt(pipeline({ error: 'x', skipKind: 'step-error' })).skipKind).toBeUndefined();
   });
 });

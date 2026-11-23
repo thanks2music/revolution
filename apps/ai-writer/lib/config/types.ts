@@ -322,6 +322,9 @@ export const CONFIG_PATHS = {
  */
 export const TITLE_ROMAJI_GENERATED_PATH = resolve(CONFIG_DIR, 'title-romaji-mapping.generated.yaml');
 
+/** Writing scope of scheduled runs (required). Read by `loadWritingScope` (`lib/scheduled/writing-scope.ts`) */
+export const WRITING_SCOPE_PATH = resolve(CONFIG_DIR, 'writing-scope.yaml');
+
 /** Archive sources (optional). Read by `loadArchiveSources` (`lib/archive-source/config.ts`) */
 export const ARCHIVE_SOURCES_PATH = resolve(CONFIG_DIR, 'archive-sources.yaml');
 

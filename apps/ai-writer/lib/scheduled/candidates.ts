@@ -14,7 +14,7 @@
  */
 import { DAY_MS } from '@/lib/utils/date';
 
-import type { AttemptRecord } from './attempt-store';
+import type { AttemptRecord, AttemptSource } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
 import type { RegisteredUrl } from './registered-url-store';
 
@@ -41,6 +41,19 @@ export interface Candidate {
   registeredAt?: Date;
   /** The stored record (retries only; a new item has none) */
   previous?: AttemptRecord;
+}
+
+/** Where a candidate first came from (a retry keeps the source of its first attempt) */
+export function originSource(candidate: Pick<Candidate, 'source' | 'previous'>): AttemptSource | undefined {
+  return candidate.source === 'retry' ? candidate.previous?.source : candidate.source;
+}
+
+/**
+ * A candidate that came from an RSS feed: a new RSS item, or a retry whose first attempt was one.
+ * Only these are limited to the writing scope (a registered URL or a CLI run was chosen by a person)
+ */
+export function isRssCandidate(candidate: Pick<Candidate, 'source' | 'previous'>): boolean {
+  return originSource(candidate) === 'rss';
 }
 
 interface OrderCandidatesInput {

@@ -100,6 +100,27 @@ describe('buildScheduledRunMessage', () => {
     expect(message.blocks).toHaveLength(1 + 4 + 1);
   });
 
+  it('shows why a page outside the writing scope was skipped, with no next try and no mention', () => {
+    const { message, attention } = buildScheduledRunMessage(
+      summary({
+        items: [
+          {
+            url: 'https://a.example/1',
+            registered: false,
+            outcome: 'skipped',
+            reason: '書く対象の外 (種別 pop-up-store / 運営 LTR)',
+            nextAttemptAt: null,
+          },
+        ],
+      }),
+      CLOUD,
+    );
+    const body = text(message);
+    expect(body).toContain('書く対象の外 (種別 pop-up-store / 運営 LTR)');
+    expect(body).not.toContain('次に試す日');
+    expect(attention).toBe(false);
+  });
+
   it('marks URLs registered from the admin UI', () => {
     const { message } = buildScheduledRunMessage(
       summary({
