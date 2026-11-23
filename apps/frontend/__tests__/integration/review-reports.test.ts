@@ -96,9 +96,13 @@ describe('口コミの通報', () => {
     const deviceId = randomUUID();
     const member = await data.createMember();
 
-    for (const reason of ['spam', 'abuse']) {
-      expect((await submit(reviewId, { deviceId }, reason)).data).toBe('accepted');
-      expect((await submit(reviewId, { profileId: member.userId }, reason)).data).toBe('accepted');
+    // 1 回目は新しく入った (accepted)、2 回目は重なった (duplicate。0030、#169 の Slack はこれを知らせない)
+    for (const [reason, result] of [
+      ['spam', 'accepted'],
+      ['abuse', 'duplicate'],
+    ]) {
+      expect((await submit(reviewId, { deviceId }, reason)).data).toBe(result);
+      expect((await submit(reviewId, { profileId: member.userId }, reason)).data).toBe(result);
     }
 
     const rows = await reports(reviewId);
