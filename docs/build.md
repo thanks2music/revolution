@@ -42,7 +42,7 @@ pnpm --filter @revolution/ai-writer debug:vision
 
 ### Vercel の Preview と、ビルドする条件
 
-Vercel Hobby の deploy は 1 日 100 回まで。ビルドを止めた deploy (Ignored Build Step で CANCELED) も数えられるため、deploy そのものを要る時だけ作る。
+この仕組みは、Vercel Hobby の deploy の上限 (1 日 100 回。ビルドを止めた deploy も数えられる) に合わせて入れた。今のプランは Pro で上限は大きい ([Limits](https://vercel.com/docs/limits)) が、要らないビルドを作らないために、deploy は要る時だけ作る。
 
 | | Preview | Production (main へのマージ) |
 |---|---|---|
