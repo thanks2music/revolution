@@ -2,7 +2,7 @@ import type { ReviewReasonCode, ReviewStatus } from '@revolution/schemas/review'
 
 import { formatJstDotDate } from '@/lib/date';
 import { explainsReason } from '@revolution/reviews/eligibility';
-import { REJECTION_REASON_LABELS, toScreeningReason } from '@/lib/reviews/labels';
+import { REJECTION_REASON_LABELS, toScreeningReason } from '@revolution/reviews/labels';
 
 /**
  * #12 マイページの「自分の口コミ」の 1 件の見せ方 (Figma `83:191`、one-more-time #162)。

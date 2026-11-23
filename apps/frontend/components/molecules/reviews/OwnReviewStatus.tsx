@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { getOwnReviewState, type OwnReviewState } from '@/actions/review';
 import { useAuthNav } from '@/components/molecules/AuthNavProvider';
 import { toDotDate } from '@/lib/date';
-import { REJECTION_REASON_LABELS } from '@/lib/reviews/labels';
+import { REJECTION_REASON_LABELS } from '@revolution/reviews/labels';
 
 /**
  * 本人の口コミの状態 (開催のページの島)。マウント後に Server Action で取る (LikeButton と同じく、

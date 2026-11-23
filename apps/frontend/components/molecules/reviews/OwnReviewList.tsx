@@ -7,7 +7,7 @@
 
 import Link from 'next/link';
 
-import { REJECTION_REASON_LABELS } from '@/lib/reviews/labels';
+import { REJECTION_REASON_LABELS } from '@revolution/reviews/labels';
 import type { OwnReviewListItem } from '@/lib/reviews/own-reviews';
 import { ownReviewMeta, ownReviewView, type OwnReviewTone } from '@/lib/reviews/own-review-view';
 
