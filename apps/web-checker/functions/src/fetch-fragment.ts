@@ -7,6 +7,8 @@ import { Agent } from 'undici';
 
 import { BlockedHostError, assertPublicHost, isBlockedIpv4, isBlockedIpv6 } from '@revolution/net/safe-host';
 
+import { isHttpUrl } from './http-url';
+
 const TIMEOUT_MS = 30_000;
 /** ページ 1 枚の上限。お知らせ欄のページは大きくても数 MB */
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -95,7 +97,7 @@ interface FetchedPage {
 async function fetchPage(rawUrl: string): Promise<FetchedPage> {
   let current = new URL(rawUrl);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    if (current.protocol !== 'https:' && current.protocol !== 'http:') {
+    if (!isHttpUrl(current)) {
       throw new PermanentFetchError(`Blocked URL scheme "${current.protocol}": ${current.href}`);
     }
     // 内部アドレスなら BlockedHostError (試し直さない)。名前を解決できない時は DNS の一時的な失敗かもしれないので試し直す
@@ -173,7 +175,7 @@ export function extractFragment(html: string, selector: string, pageUrl: string)
   if (baseHref) {
     try {
       const resolved = new URL(baseHref, pageUrl);
-      if (resolved.protocol === 'https:' || resolved.protocol === 'http:') baseUrl = resolved.href;
+      if (isHttpUrl(resolved)) baseUrl = resolved.href;
     } catch {
       // 読めない <base> は無視する
     }

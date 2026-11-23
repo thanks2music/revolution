@@ -2,6 +2,8 @@ import * as cheerio from 'cheerio';
 
 import { normalizeAttemptUrl } from '@revolution/net/attempt-url';
 
+import { isHttpUrl } from './http-url';
+
 /**
  * 1 回の更新検知で AI ライターに渡すリンクの上限。サイトの作り変えなどで、お知らせ欄のリンクが一度に
  * 入れ替わった時に、定期実行の候補が埋まらないようにする
@@ -29,7 +31,7 @@ function linksIn(html: string, baseUrl: string): string[] {
     } catch {
       return;
     }
-    if (target.protocol !== 'https:' && target.protocol !== 'http:') return;
+    if (!isHttpUrl(target)) return;
     links.push(normalized);
   });
   return links;
@@ -47,13 +49,27 @@ export function newLinks(
   currentHtml: string,
   urls: { baseUrl: string; pageUrl: string },
 ): string[] {
-  const before = new Set(linksIn(previousHtml, urls.baseUrl));
-  const pages = new Set([normalizeAttemptUrl(urls.pageUrl), normalizeAttemptUrl(urls.baseUrl)]);
+  // 前回のリンク・ページ自身・もう選んだリンクは、同じ集合で除く
+  const seen = new Set([
+    ...linksIn(previousHtml, urls.baseUrl),
+    normalizeAttemptUrl(urls.pageUrl),
+    normalizeAttemptUrl(urls.baseUrl),
+  ]);
   const result: string[] = [];
   for (const link of linksIn(currentHtml, urls.baseUrl)) {
-    if (before.has(link) || pages.has(link) || result.includes(link)) continue;
+    if (seen.has(link)) continue;
+    seen.add(link);
     result.push(link);
     if (result.length === MAX_LINKS_PER_DETECTION) break;
   }
   return result;
+}
+
+/** AI ライターに渡した結果 (記録した検知リンクと、記録に失敗した件数) */
+export interface LinkHandoff {
+  /** 新しく渡したリンク (正規化した URL)。すでに記録されていた URL は含めない */
+  links: string[];
+  /** 記録に失敗した件数と、最初のエラーの文言 */
+  failed: number;
+  error?: string;
 }

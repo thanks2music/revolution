@@ -23,8 +23,7 @@ export const DETECTED_LINKS_COLLECTION = 'web_checker_detected_links';
  * 通知の仕方。`slack` = Slack に通知するだけ (既定)、`ai-writer` = AI ライターに渡して Slack にも通知する。
  * 値が無い監視対象 (この欄より前に作った物) は `slack` として扱う
  */
-export const NOTIFY_MODES = ['slack', 'ai-writer'] as const;
-export type NotifyMode = (typeof NOTIFY_MODES)[number];
+export type NotifyMode = 'slack' | 'ai-writer';
 
 export interface Target {
   /** 見に行く URL (https のみ) */

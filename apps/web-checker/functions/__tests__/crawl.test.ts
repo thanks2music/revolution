@@ -38,11 +38,11 @@ function memoryStore(initial: { target?: Target | null; snapshots?: Snapshot[] }
     },
     addDetectedLinks: (links) => {
       if (state.addDetectedLinksError) {
-        return Promise.resolve({ added: [], failed: links.length, error: state.addDetectedLinksError.message });
+        return Promise.resolve({ links: [], failed: links.length, error: state.addDetectedLinksError.message });
       }
       const fresh = links.filter((link) => !state.detectedLinks.some((known) => known.url === link.url));
       state.detectedLinks.push(...fresh);
-      return Promise.resolve({ added: fresh, failed: 0 });
+      return Promise.resolve({ links: fresh.map((link) => link.url), failed: 0 });
     },
     recordCheck: (_id, record) => {
       state.checkedAt = record.checkedAt;

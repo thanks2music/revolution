@@ -1,8 +1,8 @@
 import type { SlackMessage } from '@revolution/slack/post-message';
 
-import { newLinks } from './detected-links';
+import { newLinks, type LinkHandoff } from './detected-links';
 import type { FetchedFragment } from './fetch-fragment';
-import { buildErrorMessage, buildNoContentMessage, buildUpdateMessage, type LinkHandoff } from './slack-message';
+import { buildErrorMessage, buildNoContentMessage, buildUpdateMessage } from './slack-message';
 import type { DetectedLink, Snapshot, Target } from './targets';
 import { formatLineDiff, toComparableText } from './text-diff';
 
@@ -23,15 +23,7 @@ export interface TargetStore {
    * 検知リンクを記録する (AI ライターに渡す)。1 件ずつ記録し、一部が失敗しても残りは記録する。
    * すでに記録されている URL (別の監視対象が先に検知した時など) は飛ばし、added にも failed にも数えない
    */
-  addDetectedLinks(links: DetectedLink[]): Promise<DetectedLinksResult>;
-}
-
-export interface DetectedLinksResult {
-  /** 新しく記録した物 */
-  added: DetectedLink[];
-  /** 記録に失敗した件数と、最初のエラーの文言 */
-  failed: number;
-  error?: string;
+  addDetectedLinks(links: DetectedLink[]): Promise<LinkHandoff>;
 }
 
 export interface CrawlDeps {
@@ -136,7 +128,7 @@ export async function crawlTarget(
   // 登録・編集の直後は渡さない: 前回の履歴は前の URL かセレクタの物なので、今回のリンクが全部新しく見える
   const handoff =
     previous && target.notifyMode === 'ai-writer' && !options.afterEdit
-      ? await handOff(deps, targetId, target, previous, { html: fragment, baseUrl: fetched.baseUrl }, startedAt)
+      ? await handOff(deps, targetId, target, previous.content, fragment, fetched.baseUrl, startedAt)
       : undefined;
 
   const newText = toComparableText(fragment);
@@ -166,14 +158,12 @@ async function handOff(
   deps: CrawlDeps,
   targetId: string,
   target: Target,
-  previous: Snapshot,
-  fetched: { html: string; baseUrl: string },
+  previousHtml: string,
+  html: string,
+  baseUrl: string,
   detectedAt: number,
 ): Promise<LinkHandoff> {
-  const urls = newLinks(previous.content, fetched.html, { baseUrl: fetched.baseUrl, pageUrl: target.url });
+  const urls = newLinks(previousHtml, html, { baseUrl, pageUrl: target.url });
   if (urls.length === 0) return { links: [], failed: 0 };
-  const result = await deps.store.addDetectedLinks(
-    urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt })),
-  );
-  return { links: result.added.map((link) => link.url), failed: result.failed, error: result.error };
+  return deps.store.addDetectedLinks(urls.map((url) => ({ url, targetId, targetTitle: target.title, detectedAt })));
 }

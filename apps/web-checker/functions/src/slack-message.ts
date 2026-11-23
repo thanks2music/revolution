@@ -1,6 +1,7 @@
 import type { SlackMessage } from '@revolution/slack/post-message';
 import { escapeAndTruncate } from '@revolution/slack/text';
 
+import type { LinkHandoff } from './detected-links';
 import type { Target } from './targets';
 
 /** Block Kit の section の text の上限は 3000 字。見出しの分を残して切る */
@@ -50,32 +51,24 @@ export function historyUrl(siteUrl: string, targetId: string): string {
   return `${siteUrl.replace(/\/+$/, '')}/detail?targetId=${encodeURIComponent(targetId)}`;
 }
 
-/** AI ライターに渡した結果。通知の仕方が「AI ライターに渡す」の監視対象の時だけある */
-export interface LinkHandoff {
-  /** 新しく渡したリンク (正規化した URL) */
-  links: string[];
-  /** 記録に失敗した件数と、最初のエラーの文言 */
-  failed: number;
-  error?: string;
-}
-
 /** 通知に載せる、渡したリンクの件数の上限 (残りは件数だけ書く) */
 const HANDOFF_LINKS_SHOWN = 5;
-/** リンクの一覧の欄の上限。URL はリンクの記法の中で切れないので、収まらない URL は件数に回す */
-const HANDOFF_SECTION_MAX = 2800;
+/**
+ * リンクの一覧に使ってよい字数。section の上限 (3000 字) から、「ほか N 件」と失敗の行の分を残す。
+ * URL はリンクの記法の中で切れないので、収まらない URL は件数に回す
+ */
+const HANDOFF_LINKS_BUDGET = 2400;
 
 function handoffSection(handoff: LinkHandoff): Block {
   const lines = [`*AI ライターに渡したリンク: ${handoff.links.length} 件*`];
   let length = lines[0].length;
-  let shown = 0;
   for (const url of handoff.links.slice(0, HANDOFF_LINKS_SHOWN)) {
     const line = `• ${link(url, safe(url, 200))}`;
-    if (length + line.length + 1 > HANDOFF_SECTION_MAX - 200) break;
+    if (length + line.length + 1 > HANDOFF_LINKS_BUDGET) break;
     lines.push(line);
     length += line.length + 1;
-    shown += 1;
   }
-  const rest = handoff.links.length - shown;
+  const rest = handoff.links.length - (lines.length - 1);
   if (rest > 0) lines.push(`ほか ${rest} 件`);
   if (handoff.failed > 0) {
     lines.push(`*${handoff.failed} 件は渡せませんでした*: ${safe(handoff.error ?? '', ERROR_MAX)}`);
