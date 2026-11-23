@@ -244,15 +244,12 @@ async function submit(
   });
   if (isFailure(result)) return result;
 
-  const notifier = getReviewNotifier();
-  after(async () => {
-    // 提出・出し直しのお知らせ → 審査 → 審査の結果の知らせ (#169)。どれも例外を外へ出さない
-    await notifyAboutReview({ notifier, db: admin }, result, review => ({
-      type: mode.kind === 'edit' ? 'review_edited' : 'review_submitted',
-      review,
-    }));
-    await screenAfterSubmit(admin, result, paths, notifier);
-  });
+  // 審査の後に、提出・出し直しと審査の結果を Slack に 1 通で知らせる (#169)
+  after(() =>
+    screenAfterSubmit(admin, result, paths, {
+      trigger: mode.kind === 'edit' ? 'edited' : 'submitted',
+    })
+  );
   return { ok: true, reviewId: result };
 }
 
@@ -321,15 +318,16 @@ export async function deleteReview(
     if (outcome.wasPublished) for (const path of paths) revalidatePath(path);
     // 配信側の写真は応答の後に消す。公開中からの編集で審査中になった口コミにも、写真が残っていることがある。
     // 下書きでなければ、削除を Slack で知らせる (#169)
-    after(async () => {
-      await syncReviewPhotoDelivery(admin, reviewId);
-      if (!outcome.wasDraft) {
-        await notifyAboutReview({ notifier: getReviewNotifier(), db: admin }, reviewId, review => ({
+    // (写真の後片付けの失敗で知らせが止まらないよう、別々に走らせる)
+    after(() => syncReviewPhotoDelivery(admin, reviewId));
+    if (!outcome.wasDraft) {
+      after(() =>
+        notifyAboutReview({ notifier: getReviewNotifier(), db: admin }, reviewId, review => ({
           type: 'review_deleted',
           review,
-        }));
-      }
-    });
+        }))
+      );
+    }
     return { ok: true };
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'deleteReview' } });

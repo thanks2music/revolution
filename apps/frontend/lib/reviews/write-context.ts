@@ -74,20 +74,24 @@ export async function syncReviewPhotoDelivery(db: SupabaseClient, reviewId: numb
 
 /**
  * 応答の後 (`after()`) に AI の審査を走らせる。公開になったらページを作り直す。
- * 審査の結果を Slack で知らせる (公開・差し戻しはお知らせ、BOSS の確認待ちは要対応。#169)
+ * 会員の提出・出し直しと審査の結果を、Slack に 1 通で知らせる (公開・差し戻しはお知らせ、BOSS の確認待ちは
+ * 要対応。#169)。審査の後に送るので、Slack が遅くても審査は待たない。審査が例外で止まった時は、提出・
+ * 出し直しだけを知らせる (口コミは審査中のまま。30 分たつと管理アプリの「止まっている」に出る)
  */
 export async function screenAfterSubmit(
   db: SupabaseClient,
   reviewId: number,
   paths: string[],
-  notifier: ReviewNotifier = getReviewNotifier()
+  options: { trigger: 'submitted' | 'edited'; notifier?: ReviewNotifier }
 ): Promise<void> {
+  const notifier = options.notifier ?? getReviewNotifier();
   try {
     const outcome = await screenSubmittedReview(reviewId, {
       screener: await getReviewScreener(),
       db,
       storage: getReviewPhotoStorage(),
     });
+    // 審査中でない・出し直された時は何も知らせない (出し直しの方が自分で知らせる)
     if (outcome.kind !== 'screened') return;
     if (outcome.status === 'published') {
       for (const path of paths) revalidatePath(path);
@@ -97,8 +101,13 @@ export async function screenAfterSubmit(
       review,
       status: outcome.status,
       aiFailure: outcome.aiFailure,
+      trigger: options.trigger,
     }));
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'screenAfterSubmit' } });
+    await notifyAboutReview({ notifier, db }, reviewId, review => ({
+      type: options.trigger === 'edited' ? 'review_edited' : 'review_submitted',
+      review,
+    }));
   }
 }

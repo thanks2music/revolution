@@ -43,6 +43,11 @@ export type ReviewNotification =
       status: 'published' | 'rejected' | 'needs_review';
       /** BOSS の確認待ちになった理由が AI の審査の失敗か (迷ったのではなく) */
       aiFailure: boolean;
+      /**
+       * 審査のきっかけ。会員の提出・出し直しの後なら、それと結果を 1 通にまとめる (1 実行 1 通)。
+       * 管理アプリの「もう一度 AI にかける」の後は無し
+       */
+      trigger?: 'submitted' | 'edited';
     }
   | { type: 'review_reported'; review: ReviewSummary; reasonCode: ReviewReportReason }
   | { type: 'member_joined'; displayName: string }
@@ -90,26 +95,28 @@ function describe(
     case 'review_deleted':
       // 消した口コミは管理アプリで開けないので、リンクを付けない
       return { ...reviewMessage('notice', '口コミが削除されました', notification.review, null) };
-    case 'review_screened':
+    case 'review_screened': {
+      const lead =
+        notification.trigger === 'submitted'
+          ? '口コミが投稿され、'
+          : notification.trigger === 'edited'
+            ? '口コミが直して出し直され、'
+            : '';
       if (notification.status === 'published') {
-        return reviewMessage('notice', 'AI が口コミを公開しました', notification.review, adminUrl);
+        return reviewMessage('notice', `${lead}AI が公開しました`, notification.review, adminUrl);
       }
       if (notification.status === 'rejected') {
-        return reviewMessage(
-          'notice',
-          'AI が口コミを差し戻しました',
-          notification.review,
-          adminUrl
-        );
+        return reviewMessage('notice', `${lead}AI が差し戻しました`, notification.review, adminUrl);
       }
       return reviewMessage(
         'attention',
         notification.aiFailure
-          ? 'AI の審査に失敗した口コミがあります (確認待ち)'
-          : 'AI が判断に迷った口コミがあります (確認待ち)',
+          ? `${lead}AI の審査に失敗しました (確認待ち)`
+          : `${lead}AI が判断に迷いました (確認待ち)`,
         notification.review,
         adminUrl
       );
+    }
     case 'review_reported':
       return reviewMessage(
         'attention',

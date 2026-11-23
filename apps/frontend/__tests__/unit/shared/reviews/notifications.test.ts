@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as Sentry from '@sentry/nextjs';
 
 import {
@@ -79,7 +79,7 @@ describe('buildSlackMessage の中身', () => {
         status: 'needs_review',
         aiFailure: true,
       })
-    ).toContain('AI の審査に失敗');
+    ).toContain('AI の審査に失敗しました (確認待ち)');
     expect(
       sectionText({
         type: 'review_screened',
@@ -87,7 +87,17 @@ describe('buildSlackMessage の中身', () => {
         status: 'needs_review',
         aiFailure: false,
       })
-    ).toContain('AI が判断に迷った');
+    ).toContain('AI が判断に迷いました (確認待ち)');
+    // 会員の提出の後は、提出と結果を 1 通にまとめる
+    expect(
+      sectionText({
+        type: 'review_screened',
+        review: REVIEW,
+        status: 'published',
+        aiFailure: false,
+        trigger: 'submitted',
+      })
+    ).toContain('*口コミが投稿され、AI が公開しました*');
   });
 
   it('本文は冒頭だけ、外から来た値は Slack の記号を無効にする', () => {
@@ -145,7 +155,37 @@ describe('createSlackNotifier', () => {
 });
 
 describe('notifyAboutReview', () => {
-  it('口コミを読めない時も、送る口が失敗した時も、例外を外へ出さず Sentry に残す', async () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('送る口が失敗しても、例外を外へ出さず Sentry に残す', async () => {
+    const db = {
+      from: () => {
+        const builder: Record<string, unknown> = {};
+        builder.select = () => builder;
+        builder.eq = () => builder;
+        builder.maybeSingle = async () => ({
+          data: { id: 1, rating: 4, body: 'a', profiles: null, occurrences: null },
+          error: null,
+        });
+        return builder;
+      },
+    };
+    const notifier = { notify: jest.fn(async () => Promise.reject(new Error('slack down'))) };
+    await expect(
+      notifyAboutReview({ notifier: notifier as never, db: db as never }, 1, review => ({
+        type: 'review_submitted',
+        review,
+      }))
+    ).resolves.toBeUndefined();
+    expect(notifier.notify).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { part: 'slack-notification', kind: 'review' },
+    });
+  });
+
+  it('口コミを読めない時も、例外を外へ出さず Sentry に残す', async () => {
     const failingDb = {
       from: () => {
         throw new Error('db down');

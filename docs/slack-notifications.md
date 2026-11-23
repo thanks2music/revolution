@@ -48,8 +48,8 @@ title: Slack 通知
 | 記事生成のローカル実行 (`pnpm debug:mdx`) | 開発系 | なし | `apps/ai-writer/scripts/debug-mdx-url.ts` |
 | 公開中の口コミへの新しい通報 (同じ人の重なった通報は送らない) | 本番系 | あり | `apps/frontend/actions/review-report.ts` |
 | AI の審査で BOSS の確認待ちになった口コミ (迷った / AI の審査の失敗) | 本番系 | あり | 公開サイトの提出 (`apps/frontend/lib/reviews/write-context.ts`) と、管理アプリの「もう一度 AI にかける」(`apps/admin/actions/moderation.ts`) |
-| 口コミの投稿・直して出し直し・削除、AI の審査の結果 (公開・差し戻し) | 開発系 | なし | `apps/frontend/actions/review.ts` (下書きの保存・下書きの削除は送らない) |
-| 会員登録 (プロフィールの登録の完了)・記事へのいいね | 開発系 | なし | `apps/frontend/actions/profile.ts`・`favorite.ts` (いいねを外した時は送らない)。「参考になった」は送らない |
+| 口コミの投稿・直して出し直し (写真の追加・削除を含む) と、その AI の審査の結果 (公開・差し戻し)、口コミの削除 | 開発系 | なし | `apps/frontend/actions/review.ts`・`review-photos.ts`。投稿・出し直しは審査の後に結果と 1 通にまとめる (確認待ちになったら本番系へ)。下書きの保存・下書きの削除は送らない |
+| 会員登録 (プロフィールの登録の完了)・記事へのいいね | 開発系 | なし | `apps/frontend/actions/profile.ts`・`favorite.ts`。いいねを外した時は送らない (付け直すと、そのたびに送る。いいねの履歴を持たないため)。「参考になった」は送らない |
 | 記事生成の cron (Cloud Run) の失敗 | 本番系 | あり | `apps/ai-writer/app/api/cron/rss/route.ts`。**Cloud Run に token を入れるまで休眠** (Cloud Scheduler の稼働時に入れる) |
 
 ## 設定

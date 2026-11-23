@@ -529,7 +529,7 @@ describe('Slack の通知 (#169)', () => {
   const builtTypes = () =>
     (notifyAboutReview as jest.Mock).mock.calls.map(([, , build]) => build({ reviewId: 1 }).type);
 
-  it('新しい口コミは、投稿の知らせ → 審査 → 審査の結果の知らせの順に送る', async () => {
+  it('新しい口コミは、審査の後に、投稿と審査の結果を 1 通で知らせる', async () => {
     (screenSubmittedReview as jest.Mock).mockResolvedValue({
       kind: 'screened',
       status: 'needs_review',
@@ -539,20 +539,50 @@ describe('Slack の通知 (#169)', () => {
     await submitReview(ROUTE, INPUT);
     await runAfter();
 
-    expect(builtTypes()).toEqual(['review_submitted', 'review_screened']);
-    const screened = (notifyAboutReview as jest.Mock).mock.calls[1][2]({ reviewId: 56 });
-    expect(screened).toMatchObject({ status: 'needs_review', aiFailure: true });
+    expect(notifyAboutReview).toHaveBeenCalledTimes(1);
+    const built = (notifyAboutReview as jest.Mock).mock.calls[0][2]({ reviewId: 56 });
+    expect(built).toMatchObject({
+      type: 'review_screened',
+      status: 'needs_review',
+      aiFailure: true,
+      trigger: 'submitted',
+    });
   });
 
-  it('提出した口コミを直して出し直すと、編集の知らせになる', async () => {
-    (screenSubmittedReview as jest.Mock).mockResolvedValue({ kind: 'skipped', reason: 'superseded' });
+  it('提出した口コミを直して出し直すと、きっかけは編集になる', async () => {
+    (screenSubmittedReview as jest.Mock).mockResolvedValue({
+      kind: 'screened',
+      status: 'published',
+      occurrenceId: 34,
+      aiFailure: false,
+    });
     (findOwnReview as jest.Mock).mockResolvedValue({ id: 73, status: 'published', ...EXISTING });
-    builder.select.mockResolvedValueOnce({ data: [{ submitted_at: '2026-11-22T00:00:00Z' }], error: null });
+    builder.select.mockResolvedValueOnce({
+      data: [{ submitted_at: '2026-11-22T00:00:00Z' }],
+      error: null,
+    });
 
     await submitReview(ROUTE, { ...INPUT, ...EXISTING, body: '直した' });
     await runAfter();
-    // 審査が何も書かなかった時は、結果の知らせは送らない
-    expect(builtTypes()).toEqual(['review_edited']);
+    expect((notifyAboutReview as jest.Mock).mock.calls[0][2]({ reviewId: 73 })).toMatchObject({
+      type: 'review_screened',
+      trigger: 'edited',
+    });
+  });
+
+  it('審査が何も書かなかった (出し直された) 時は知らせない。審査が例外の時は投稿だけ知らせる', async () => {
+    (screenSubmittedReview as jest.Mock).mockResolvedValueOnce({ kind: 'skipped', reason: 'superseded' });
+    await submitReview(ROUTE, INPUT);
+    await runAfter();
+    expect(notifyAboutReview).not.toHaveBeenCalled();
+
+    jest.clearAllMocks();
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: true, profileId: 'profile-1' });
+    (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail());
+    (screenSubmittedReview as jest.Mock).mockRejectedValueOnce(new Error('screener down'));
+    await submitReview(ROUTE, INPUT);
+    await runAfter();
+    expect(builtTypes()).toEqual(['review_submitted']);
   });
 
   it('下書きの保存は知らせない', async () => {
@@ -562,14 +592,15 @@ describe('Slack の通知 (#169)', () => {
     expect(notifyAboutReview).not.toHaveBeenCalled();
   });
 
-  it('削除は知らせ、下書きの削除は知らせない', async () => {
+  it('削除は知らせ (写真の後片付けとは別に走らせる)、下書きの削除は知らせない', async () => {
     (deleteOwnReview as jest.Mock).mockResolvedValueOnce({
       kind: 'deleted',
       wasPublished: true,
       wasDraft: false,
     });
     await deleteReview(ROUTE, 71);
-    await runAfter();
+    expect(after).toHaveBeenCalledTimes(2);
+    await ((after as jest.Mock).mock.calls[1][0] as () => Promise<void>)();
     expect(builtTypes()).toEqual(['review_deleted']);
 
     jest.clearAllMocks();
@@ -581,7 +612,6 @@ describe('Slack の通知 (#169)', () => {
       wasDraft: true,
     });
     await deleteReview(ROUTE, 72);
-    await runAfter();
-    expect(notifyAboutReview).not.toHaveBeenCalled();
+    expect(after).toHaveBeenCalledTimes(1);
   });
 });
