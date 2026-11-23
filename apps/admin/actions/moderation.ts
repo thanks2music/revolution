@@ -23,24 +23,12 @@ import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
 import { getReviewScreener } from '@revolution/reviews/screener';
 import { REVIEW_SCREENING_REASONS } from '@revolution/schemas/review';
 
-import { getAdminSession } from '@/lib/auth/admin';
+import { moderationDeps } from '@/lib/moderation/deps';
 import type { NoticeKind } from '@/lib/moderation/notice';
-import { createServiceClient } from '@/lib/supabase/service';
+import { PhotoDecisionsSchema } from '@/lib/moderation/photo-decision';
 
 export type ModerationActionResult =
-  | { kind: 'superseded' }
-  | { kind: 'photos_changed' }
-  | { kind: 'forbidden' }
-  | { kind: 'error' };
-
-const PhotoDecisionSchema = z.union([
-  z.object({ id: z.number().int().positive(), hide: z.literal(false) }),
-  z.object({
-    id: z.number().int().positive(),
-    hide: z.literal(true),
-    reason: z.enum(REVIEW_SCREENING_REASONS),
-  }),
-]);
+  { kind: 'superseded' } | { kind: 'photos_changed' } | { kind: 'forbidden' } | { kind: 'error' };
 
 const TargetSchema = z.object({
   reviewId: z.number().int().positive(),
@@ -49,20 +37,12 @@ const TargetSchema = z.object({
   title: z.string().transform(title => title.slice(0, 200)),
 });
 
-const DecideSchema = TargetSchema.extend({ photos: z.array(PhotoDecisionSchema).max(10) });
+const DecideSchema = TargetSchema.extend({ photos: PhotoDecisionsSchema });
 
 const RejectSchema = DecideSchema.extend({
   reasonCode: z.enum(REVIEW_SCREENING_REASONS),
   reasonNote: z.string().max(500).nullable(),
 });
-
-async function moderationDeps(): Promise<ModerationDeps | null> {
-  const session = await getAdminSession();
-  if (!session) return null;
-  const serviceDb = createServiceClient();
-  if (!serviceDb) throw new Error('SUPABASE_SECRET_KEY is not set');
-  return { adminDb: session.supabase, serviceDb, storage: getReviewPhotoStorage() };
-}
 
 function noticeUrl(notice: NoticeKind, title: string): string {
   return `/?${new URLSearchParams({ notice, title })}`;
@@ -75,12 +55,18 @@ export async function publishReview(input: z.input<typeof DecideSchema>) {
 export async function rejectReview(input: z.input<typeof RejectSchema>) {
   const parsed = RejectSchema.safeParse(input);
   if (!parsed.success) return { kind: 'error' } satisfies ModerationActionResult;
-  return decide(parsed.data, { reasonCode: parsed.data.reasonCode, reasonNote: parsed.data.reasonNote });
+  return decide(parsed.data, {
+    reasonCode: parsed.data.reasonCode,
+    reasonNote: parsed.data.reasonNote,
+  });
 }
 
 async function decide(
   input: z.input<typeof DecideSchema>,
-  reject: { reasonCode: (typeof REVIEW_SCREENING_REASONS)[number]; reasonNote: string | null } | null
+  reject: {
+    reasonCode: (typeof REVIEW_SCREENING_REASONS)[number];
+    reasonNote: string | null;
+  } | null
 ): Promise<ModerationActionResult> {
   const parsed = DecideSchema.safeParse(input);
   if (!parsed.success) return { kind: 'error' };

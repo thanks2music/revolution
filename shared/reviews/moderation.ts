@@ -39,7 +39,7 @@ import type { ReviewScreener } from './screener/types';
 type Failure = { kind: 'forbidden' };
 
 /** admin の関数が admin でない時に投げる物 (migration 0026)。ほかの 42501 (GRANT の抜けなど) は不具合として投げ直す */
-function isForbidden(error: { code?: string; message?: string } | null): boolean {
+export function isForbidden(error: { code?: string; message?: string } | null): boolean {
   return error?.code === '42501' && error.message === 'admin only';
 }
 
@@ -156,6 +156,17 @@ const DetailSchema = z.object({
       hidden_reason_code: z.enum(REVIEW_REPORT_REASONS).nullable(),
     })
   ),
+  // migration 0029 で足した値 (未処理の通報)。0029 の前の DB では無いので空にする
+  open_reports: z
+    .array(
+      z.object({
+        id: z.number(),
+        reason_code: z.enum(REVIEW_REPORT_REASONS),
+        created_at: z.string(),
+      })
+    )
+    .optional()
+    .default([]),
   events: z.array(
     z.object({
       id: z.number(),
@@ -196,6 +207,8 @@ export type ModerationReview = {
   photos: ModerationPhoto[];
   /** 判断の記録 (古い順) */
   history: Detail['events'];
+  /** 未処理の通報 (古い順。通報した人は持たない) */
+  openReports: { id: number; reasonCode: ReviewReportReason; createdAt: string }[];
 };
 
 export async function getReviewForModeration(
@@ -227,6 +240,11 @@ export async function getReviewForModeration(
       authorName: detail.author.display_name ?? detail.author.username,
       photos,
       history: detail.events,
+      openReports: detail.open_reports.map(report => ({
+        id: report.id,
+        reasonCode: report.reason_code,
+        createdAt: report.created_at,
+      })),
     },
   };
 }
@@ -251,9 +269,9 @@ export type ModerationWriteOutcome =
   | { kind: 'photos_changed' }
   | Failure;
 
-/** 写真ごとの判断。非公開にする写真には理由が要る */
+/** 写真ごとの判断。非公開にする写真には理由 (通報の 8 つのどれか。0029 で広げた) が要る */
 export type PhotoDecision =
-  { id: number; hide: false } | { id: number; hide: true; reason: ReviewScreeningReason };
+  { id: number; hide: false } | { id: number; hide: true; reason: ReviewReportReason };
 
 export type ReviewDecision =
   | { decision: 'publish' }
@@ -273,11 +291,7 @@ export async function decideReview(
     p_decision: input.decision,
     p_reason_code: input.decision === 'reject' ? input.reasonCode : null,
     p_reason_note: input.decision === 'reject' ? input.reasonNote : null,
-    p_photo_marks: input.photos.map(photo => ({
-      id: photo.id,
-      hide: photo.hide,
-      reason: photo.hide ? photo.reason : null,
-    })),
+    p_photo_marks: toPhotoMarks(input.photos),
   });
   const outcome = toWriteOutcome(data, error);
   if (outcome.kind === 'applied' && deps.storage) {
@@ -330,7 +344,16 @@ export async function requeueReview(
   return { kind: 'applied', screening: await run() };
 }
 
-function toWriteOutcome(
+/** 写真の判断を DB の関数に渡す形にする (非公開でない写真は理由を持たない) */
+export function toPhotoMarks(photos: PhotoDecision[]) {
+  return photos.map(photo => ({
+    id: photo.id,
+    hide: photo.hide,
+    reason: photo.hide ? photo.reason : null,
+  }));
+}
+
+export function toWriteOutcome(
   data: unknown,
   error: { code?: string; message?: string } | null
 ): ModerationWriteOutcome {

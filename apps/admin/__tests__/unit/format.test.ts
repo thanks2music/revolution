@@ -11,6 +11,7 @@ import {
   headlineOf,
   detailKind,
   historyLine,
+  reportReasonsLabel,
   queuePosition,
   queueOrder,
   queueSections,
@@ -105,6 +106,10 @@ describe('historyLine', () => {
     [entry('ai', 'screened', 'published', null), 'AI: 公開'],
     [entry('admin', 'requeued', 'pending', null), 'BOSS: もう一度 AI にかけた'],
     [entry('admin', 'rejected', 'rejected', 'spam'), 'BOSS: 差し戻し'],
+    // 通報の処理 (0029)
+    [entry('admin', 'hidden', 'hidden', 'resale'), 'BOSS: 通報: 非公開にした (グッズの譲渡・転売の呼びかけ)'],
+    [entry('admin', 'kept', 'published', null), 'BOSS: 通報: 直して公開のまま'],
+    [entry('admin', 'dismissed', 'published', null), 'BOSS: 通報: 問題なし'],
   ])('%o → %s', (event, line) => {
     const { who, what } = historyLine(event);
     expect(`${who}: ${what}`).toBe(line);
@@ -133,5 +138,16 @@ describe('queuePosition', () => {
   });
   it('一覧に無ければ null', () => {
     expect(queuePosition(order, 1)).toBeNull();
+  });
+});
+
+describe('reportReasonsLabel', () => {
+  it('理由ごとの件数を Figma 16 の形で並べる', () => {
+    expect(
+      reportReasonsLabel([
+        { code: 'resale', count: 2 },
+        { code: 'spam', count: 1 },
+      ])
+    ).toBe('グッズの譲渡・転売の呼びかけ（2）、宣伝・スパム・開催と無関係（1）');
   });
 });

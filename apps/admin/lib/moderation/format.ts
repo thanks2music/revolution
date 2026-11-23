@@ -1,5 +1,10 @@
+import { REPORT_REASON_LABELS } from '@revolution/reviews/labels';
 import type { ReviewQueueItem } from '@revolution/reviews/moderation';
-import type { ReviewScreeningReason } from '@revolution/schemas/review-constants';
+import {
+  REVIEW_REPORT_REASONS,
+  REVIEW_SCREENING_REASONS,
+  type ReviewReportReason,
+} from '@revolution/schemas/review-constants';
 
 /**
  * 管理アプリの表示の言葉 (Figma 13〜16、135:409)。DB と操作の層 (shared/reviews/moderation.ts) の値を、
@@ -19,7 +24,11 @@ const SECTIONS: Omit<QueueSection, 'items'>[] = [
     title: '止まっている口コミ',
     note: '審査中のまま 30 分以上。処理が途中で落ちた可能性があります',
   },
-  { kind: 'ai_failure', title: 'AI の審査に失敗', note: 'やり直しても AI が答えなかった口コミです' },
+  {
+    kind: 'ai_failure',
+    title: 'AI の審査に失敗',
+    note: 'やり直しても AI が答えなかった口コミです',
+  },
   { kind: 'unsure', title: 'AI が迷った', note: 'AI が公開と差し戻しを決めきれなかった口コミです' },
 ];
 
@@ -87,7 +96,10 @@ export function aiFailureSummary(aiError: string | null): { label: string; detai
     return { label: '時間切れ', detail: 'AI が時間内に答えませんでした。' };
   }
   if (/photos kept changing/.test(error)) {
-    return { label: '写真の変化', detail: '審査の間に写真が何度も足し外しされ、審査できませんでした。' };
+    return {
+      label: '写真の変化',
+      detail: '審査の間に写真が何度も足し外しされ、審査できませんでした。',
+    };
   }
   if (/photos could not be read/.test(error)) {
     return { label: '写真の読み込み', detail: '写真を読み込めず、審査できませんでした。' };
@@ -109,26 +121,30 @@ export function headlineOf(aiReason: string | null, max = 28): string {
 }
 
 /**
- * 差し戻し・写真の非公開の理由の短い言葉 (Figma 14・15 の選択肢)。投稿者のマイページに出る長い言葉は
- * shared/reviews/labels.ts の REVIEW_REASON_LABELS
+ * 差し戻し・非公開・写真の非公開の理由の選択肢 (Figma 14・15・16)。短い言葉は通報の理由と同じ
+ * (shared/reviews/labels.ts の REPORT_REASON_LABELS)。投稿者のマイページに出る長い言葉は REVIEW_REASON_LABELS。
+ * 差し戻しは審査の 4 種、通報を受けた非公開と写真の非公開は通報の 8 つから選ぶ
  */
-export const SCREENING_REASON_SHORT_LABELS: Record<ReviewScreeningReason, string> = {
-  personal_info: '個人情報・他人の顔',
-  abuse: '誹謗中傷・差別・性的な表現',
-  spam: '宣伝・開催と関係ない内容',
-  resale: 'グッズの譲渡・転売の呼びかけ',
-};
-
-export const SCREENING_REASON_OPTIONS = Object.entries(SCREENING_REASON_SHORT_LABELS) as [
-  ReviewScreeningReason,
-  string,
-][];
+export const SCREENING_REASON_OPTIONS = REVIEW_SCREENING_REASONS.map(
+  reason => [reason, REPORT_REASON_LABELS[reason]] as const
+);
+export const REPORT_REASON_OPTIONS = REVIEW_REPORT_REASONS.map(
+  reason => [reason, REPORT_REASON_LABELS[reason]] as const
+);
 
 const STATUS_WORDS: Record<string, string> = {
   published: '公開',
   rejected: '差し戻し',
   needs_review: '迷った',
   pending: '審査中',
+  hidden: '非公開',
+};
+
+/** BOSS の通報の処理 (0029) の言葉 */
+const REPORT_ACTION_WORDS: Record<string, string> = {
+  hidden: '非公開にした',
+  kept: '直して公開のまま',
+  dismissed: '問題なし',
 };
 
 /** 判断の記録の 1 行 (Figma F-10。例: 「AI: 迷った」「BOSS: 公開」「BOSS: もう一度 AI にかけた」) */
@@ -141,17 +157,24 @@ export type HistoryEntry = {
   createdAt: string;
 };
 
-export function historyLine(event: Pick<HistoryEntry, 'actor' | 'action' | 'toStatus' | 'reasonCode'>): {
+export function historyLine(
+  event: Pick<HistoryEntry, 'actor' | 'action' | 'toStatus' | 'reasonCode'>
+): {
   who: string;
   what: string;
 } {
   if (event.actor === 'ai') {
     if (event.reasonCode === 'ai_failure') return { who: 'AI', what: '審査に失敗' };
-    const reason = SCREENING_REASON_SHORT_LABELS[event.reasonCode as ReviewScreeningReason];
+    const reason = REPORT_REASON_LABELS[event.reasonCode as ReviewReportReason];
     const status = STATUS_WORDS[event.toStatus] ?? event.toStatus;
     return { who: 'AI', what: reason ? `${status} (${reason})` : status };
   }
   if (event.action === 'requeued') return { who: 'BOSS', what: 'もう一度 AI にかけた' };
+  const reportAction = REPORT_ACTION_WORDS[event.action];
+  if (reportAction) {
+    const reason = REPORT_REASON_LABELS[event.reasonCode as ReviewReportReason];
+    return { who: 'BOSS', what: `通報: ${reportAction}${reason ? ` (${reason})` : ''}` };
+  }
   return { who: 'BOSS', what: STATUS_WORDS[event.toStatus] ?? event.toStatus };
 }
 
@@ -175,4 +198,23 @@ export function detailKind(
 export function queuePosition(order: { reviewId: number }[], reviewId: number): string | null {
   const index = order.findIndex(item => item.reviewId === reviewId);
   return index < 0 ? null : `${index + 1} / ${order.length}`;
+}
+
+/** 通報された口コミの状態の言葉 (Figma 16 の「公開中」) */
+const REVIEW_STATE_WORDS: Record<string, string> = {
+  published: '公開中',
+  pending: '審査中 (直された)',
+  needs_review: '確認待ち',
+  rejected: '差し戻し中',
+  hidden: '非公開',
+  draft: '下書き',
+};
+
+export function reviewStateLabel(status: string): string {
+  return REVIEW_STATE_WORDS[status] ?? status;
+}
+
+/** 通報の理由ごとの件数 (例: 「グッズの譲渡・転売の呼びかけ（2）、宣伝・スパム・開催と無関係（1）」、Figma 16) */
+export function reportReasonsLabel(reasons: { code: ReviewReportReason; count: number }[]): string {
+  return reasons.map(({ code, count }) => `${REPORT_REASON_LABELS[code]}（${count}）`).join('、');
 }

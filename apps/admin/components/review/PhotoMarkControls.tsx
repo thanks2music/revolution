@@ -1,9 +1,9 @@
 'use client';
 
-import type { ReviewScreeningReason } from '@revolution/schemas/review-constants';
+import type { ReviewReportReason } from '@revolution/schemas/review-constants';
 
 import type { PhotoMark } from '@/lib/moderation/marks';
-import { SCREENING_REASON_OPTIONS } from '@/lib/moderation/format';
+import { REPORT_REASON_OPTIONS } from '@/lib/moderation/format';
 
 /**
  * 写真 1 枚の「非公開」の印と理由 (Figma 14・F-11・F-12)。一覧の写真の欄と拡大の上で同じ物を使う
@@ -51,7 +51,7 @@ export function PhotoMarkControls({
           onChange={event =>
             onChange({
               ...mark,
-              reason: (event.target.value || null) as ReviewScreeningReason | null,
+              reason: (event.target.value || null) as ReviewReportReason | null,
             })
           }
           className={`w-full rounded-md border bg-surface ${large ? 'px-3 py-3 text-sm' : 'px-1.5 py-1 text-[10px]'} font-bold ${
@@ -59,7 +59,7 @@ export function PhotoMarkControls({
           }`}
         >
           <option value="">理由を選ぶ</option>
-          {SCREENING_REASON_OPTIONS.map(([value, label]) => (
+          {REPORT_REASON_OPTIONS.map(([value, label]) => (
             <option key={value} value={value}>
               {label}
             </option>

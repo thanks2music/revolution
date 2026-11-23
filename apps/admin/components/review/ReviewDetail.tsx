@@ -31,6 +31,7 @@ import {
   formatDate,
   formatDateTime,
   historyLine,
+  SCREENING_REASON_OPTIONS,
   starsLabel,
   type DetailKind,
   type HistoryEntry,
@@ -308,6 +309,7 @@ export function ReviewDetail({
       )}
       {rejecting && (
         <RejectDialog
+          options={SCREENING_REASON_OPTIONS}
           initialReason={toScreeningReason(review.reasonCode)}
           pending={pending}
           onSubmit={reject}

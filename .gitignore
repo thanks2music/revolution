@@ -267,6 +267,8 @@ temp/
 # 分析データ
 .analytics/
 reports/
+# 管理アプリの通報の一覧のページ (one-more-time #168) は分析データではない
+!apps/admin/app/reports/
 coverage/
 
 # パフォーマンス測定
