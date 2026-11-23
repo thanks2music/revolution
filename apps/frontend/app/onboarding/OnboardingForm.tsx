@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import {
   USERNAME_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
-} from '@revolution/schemas/profile';
+} from '@revolution/schemas/username';
 
 import { DEFAULT_SAFE_PATH, sanitizeNextPath } from '@/lib/auth/safe-redirect';
 

@@ -1,5 +1,5 @@
 import type { ModerationPhoto, PhotoDecision } from '@revolution/reviews/moderation';
-import type { ReviewScreeningReason } from '@revolution/schemas/review';
+import type { ReviewScreeningReason } from '@revolution/schemas/review-constants';
 
 /**
  * 口コミの確認の写真の印 (Figma 14・F-11・F-12)。BOSS が写真ごとに「非公開」と理由を決める。

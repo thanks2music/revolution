@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReviewScreeningReason } from '@revolution/schemas/review';
+import type { ReviewScreeningReason } from '@revolution/schemas/review-constants';
 
 import type { PhotoMark } from '@/lib/moderation/marks';
 import { SCREENING_REASON_OPTIONS } from '@/lib/moderation/format';

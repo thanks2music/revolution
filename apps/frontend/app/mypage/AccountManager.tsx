@@ -29,7 +29,7 @@ import {
 import {
   USERNAME_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
-} from '@revolution/schemas/profile';
+} from '@revolution/schemas/username';
 
 const inputClass =
   'min-h-11 rounded-xs border border-(--line-strong) bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-hidden focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500 disabled:bg-bg-tinted disabled:text-ink-muted';
