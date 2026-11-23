@@ -101,6 +101,7 @@ import {
 } from './content-generation.service';
 import { getR2StorageService } from './r2-storage.service';
 import { getConfigLoaderService } from './config-loader.service';
+import { skipsVision } from './vision-api/vision-skip-hosts';
 import { r2ImageStore } from './article-images/upload-article-images';
 import {
   IMAGE_CATEGORIES,
@@ -284,6 +285,12 @@ export interface MdxGenerationRequest {
    * write any kind. Every run still reports the verdict (`MdxGenerationResult.writingScope`)
    */
   applyWritingScope?: boolean;
+  /**
+   * The input page itself may be the event's official page (the CLI and registered URLs). Article selection
+   * is then given the page's URL so that it can choose the page itself. Not set for RSS candidates (news
+   * articles), so that a report is never taken for the official page
+   */
+  inputMayBeOfficialPage?: boolean;
 }
 
 /** Page content that replaces the official site's (`MdxGenerationRequest.sourceOverride`) */
@@ -512,6 +519,7 @@ export class ArticleGenerationMdxService {
           rss_title: rssItem.title,
           rss_content: await extractArticleHtml(rssItem.link),
           site_domain: new URL(rssItem.link).hostname,
+          ...(request.inputMayBeOfficialPage ? { page_url: rssItem.link } : {}),
         });
       }
       // 更新のときは、既存の記事と同じ公式サイトから作り直す (選別が別の URL を選んでも使わない)
@@ -591,6 +599,8 @@ export class ArticleGenerationMdxService {
       let detailedExtraction: ExtractionResult | undefined;
       // 公式サイトのHTMLを保持（content-generation step と image-upload-r2 step で再利用）
       let officialHtml: string | undefined;
+      // 公式サイトの圧縮前の HTML (1 ページ構成のサイトで、節の画像を拾うのに使う。category-image-extraction step)
+      let officialRawHtml: string | undefined;
       // 公式サイトのトップページの og:image (アイキャッチの第 1 候補。image-upload-r2 step で使う)
       let officialOgImage: string | null = null;
       // カフェの運営 (書く対象の判定に使う)。圧縮前の HTML でしか分からないので、ここで決める
@@ -606,6 +616,7 @@ export class ArticleGenerationMdxService {
             ? sourceOverride.contentHtml
             : await extractContentHtml(selectionResult.primary_official_url);
           officialHtml = contentHtml.compacted;
+          officialRawHtml = contentHtml.raw;
           // アーカイブのページ (sourceOverride) からは運営を読めないので見ない
           if (!sourceOverride) operator = operatorFromProfile(extractSourceTruth(contentHtml.raw).profileId);
           // og:image は <head> にある。compacted は本文のブロックだけのことがある (meta が無い) ので、ここで読む
@@ -887,7 +898,8 @@ export class ArticleGenerationMdxService {
             sameSiteOfficialUrls(selectionResult.primary_official_url, [
               ...(selectionResult.official_urls ?? []),
               ...pageLinks,
-            ])
+            ]),
+            officialRawHtml
           );
 
           console.log(`${getStepContext('category-image-extraction')} カテゴリ別画像抽出結果:`, {
@@ -932,7 +944,13 @@ export class ArticleGenerationMdxService {
       if (!detailedExtraction) {
         console.log(`${getStepContext('vision-api')} detailedExtraction がないため、Vision API をスキップ`);
       } else {
-        const visionStep = await this.runVisionStep(detailedExtraction, categoryImages, officialHtml, costTracker);
+        const visionStep = await this.runVisionStep(
+          detailedExtraction,
+          categoryImages,
+          officialHtml,
+          costTracker,
+          selectionResult.primary_official_url,
+        );
         detailedExtraction = visionStep.extraction;
         visionApiResult = visionStep.result;
       }
@@ -2407,6 +2425,7 @@ export class ArticleGenerationMdxService {
     categoryImages: CategoryImages | undefined,
     officialHtml: string | undefined,
     costTracker: CostTrackerService,
+    officialUrl?: string | null,
   ): Promise<{ extraction: ExtractionResult; result: VisionStepResult }> {
     const ctx = getStepContext('vision-api');
     const targets = determineVisionTargets(extraction);
@@ -2427,6 +2446,11 @@ export class ArticleGenerationMdxService {
     }
     if (!categoryImages || withImages.length === 0) {
       console.warn(`${ctx} ⚠️ 読むカテゴリに画像なし、Vision API をスキップ`);
+      return unchanged;
+    }
+    // Vision を呼ばないサイト (Templates の store-url-patterns.yaml の vision_skip_hosts)。品名の無い節は汎用の文章と画像で書く
+    if (skipsVision(officialUrl, (await getConfigLoaderService().loadStoreUrlPatterns()).vision_skip_hosts)) {
+      console.log(`${ctx} Vision を呼ばないサイトのため、Vision API をスキップ (${officialUrl})`);
       return unchanged;
     }
 

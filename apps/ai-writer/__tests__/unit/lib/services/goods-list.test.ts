@@ -70,6 +70,27 @@ describe('renderGoodsList', () => {
     ]);
   });
 
+  it('価格も販売方法も 1 件も読めなければ、件数が多くても箇条書きにする (画像にしか無いサイト。空の列の表にしない)', () => {
+    const text = renderGoodsList(['A', 'B', 'C', 'D'], null, CONFIG);
+
+    expect(text.split('\n')).toEqual(['### グッズ一覧', '', '- A', '- B', '- C', '- D']);
+  });
+
+  it('1 件も値の無い列は表から落とす', () => {
+    const text = renderGoodsList(['A', 'B', 'C', 'D'], [goods('A', '100円', null), goods('C', '200円', null)], CONFIG);
+
+    expect(text.split('\n')).toEqual([
+      '### グッズ一覧',
+      '',
+      '| 品名 | 価格 |',
+      '|------|------|',
+      '| A | 100円 |',
+      '| B |  |',
+      '| C | 200円 |',
+      '| D |  |',
+    ]);
+  });
+
   it('オンライン限定のグッズがあれば、品名は並べずに 1 文だけ書く', () => {
     const text = renderGoodsList(
       ['缶バッジ'],

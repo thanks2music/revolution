@@ -56,6 +56,18 @@ function buildService() {
   return { service, aiProvider };
 }
 
+describe('入力のページ自身の URL (page_url)', () => {
+  it('渡された時だけ、プロンプトの入力に page_url を書く', () => {
+    const { service } = buildService();
+    const build = (request: object) => (service as any).buildPrompt(buildStubTemplate(), request) as string;
+
+    expect(build({ rss_title: 't', rss_content: 'c', page_url: 'https://cafe.example/event/a.html' })).toContain(
+      '- page_url: https://cafe.example/event/a.html'
+    );
+    expect(build({ rss_title: 't', rss_content: 'c' })).not.toContain('page_url');
+  });
+});
+
 let logSpy: jest.SpyInstance;
 const savedFlag = process.env.DEBUG_SELECTION_PROMPT;
 
