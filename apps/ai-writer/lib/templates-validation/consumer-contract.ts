@@ -13,6 +13,8 @@ import { loadWritingScope } from '@/lib/scheduled/writing-scope';
 import { loadPointsFormat } from '@/lib/services/article-points';
 import { ConfigLoaderService } from '@/lib/services/config-loader.service';
 import { loadGoodsListConfig } from '@/lib/services/goods-list';
+import { IMAGE_ONLY_RENDERED_KEYS } from '@/lib/services/image-only-sections';
+import { loadNoNoveltySecondParagraphConfig } from '@/lib/services/lead-second-paragraph';
 import { readLeadSectionYaml } from '@/lib/services/lead-generator.service';
 import { MediaFormResolverService } from '@/lib/services/media-form-resolver.service';
 import { MediaTypeMapperService } from '@/lib/services/media-type-mapper.service';
@@ -64,7 +66,22 @@ export async function checkConsumerContract(
       file: path.join(sectionsDir, '03-novelty.yaml'),
       run: () => loadRendered<Record<string, unknown>>('03-novelty.yaml', NOVELTY_RENDERED_KEYS, sectionsDir),
     },
+    {
+      name: 'novelty-image-only',
+      file: path.join(sectionsDir, '03-novelty.yaml'),
+      run: () => loadRendered<Record<string, unknown>>('03-novelty.yaml', IMAGE_ONLY_RENDERED_KEYS, sectionsDir),
+    },
     { name: 'goods', file: path.join(sectionsDir, '04-goods.yaml'), run: () => loadGoodsListConfig(sectionsDir) },
+    {
+      name: 'goods-image-only',
+      file: path.join(sectionsDir, '04-goods.yaml'),
+      run: () => loadRendered<Record<string, unknown>>('04-goods.yaml', IMAGE_ONLY_RENDERED_KEYS, sectionsDir),
+    },
+    {
+      name: 'lead-second-paragraph',
+      file: path.join(sectionsDir, '01-lead.yaml'),
+      run: () => loadNoNoveltySecondParagraphConfig(sectionsDir),
+    },
     {
       name: 'summary',
       file: path.join(sectionsDir, '05-summary.yaml'),

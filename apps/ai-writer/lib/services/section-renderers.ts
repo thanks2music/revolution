@@ -375,7 +375,15 @@ function summaryRowMatches(content: string, label: string): RegExpMatchArray[] {
  * 地の文が無ければ見出しの直後に入れる。
  */
 export function replaceNoveltySentence(content: string, sentence: string): string {
-  const range = findSection(content, NOVELTY_SECTION);
+  return replaceSectionSentence(content, NOVELTY_SECTION, sentence);
+}
+
+/**
+ * 節 (`heading` に当たる `## …`) の、見出しの直後の段落 (最初の地の文) を差し替える。節が無ければそのまま。
+ * 地の文が無ければ見出しの直後に入れる。
+ */
+export function replaceSectionSentence(content: string, heading: RegExp, sentence: string): string {
+  const range = findSection(content, heading);
   if (!range || !sentence) return content;
 
   const body = content.slice(range.start, range.end);
