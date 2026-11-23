@@ -21,6 +21,7 @@ const config = {
   collectCoverageFrom: [
     'lib/**/*.{ts,tsx}',
     'actions/**/*.{ts,tsx}',
+    '<rootDir>/../../shared/reviews/**/*.ts',
     '!**/*.d.ts',
     '!**/node_modules/**',
     '!**/__tests__/**',

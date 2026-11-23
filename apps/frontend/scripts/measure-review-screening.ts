@@ -17,7 +17,10 @@ import { GoogleGenAI, type GenerateContentParameters } from '@google/genai';
 import yaml from 'js-yaml';
 import { z } from 'zod';
 
-import { createGeminiScreener, type GeminiModels } from '@revolution/reviews/screener/gemini-screener';
+import {
+  createGeminiScreener,
+  type GeminiModels,
+} from '@revolution/reviews/screener/gemini-screener';
 import { loadScreeningPrompt } from '@revolution/reviews/screener/prompt';
 
 const SamplesSchema = z.object({

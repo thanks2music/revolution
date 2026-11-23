@@ -14,7 +14,7 @@
     "templates:fetch": "bash scripts/fetch-templates.sh",
     "generate:article-index": "pnpm --filter @revolution/ai-writer generate:article-index",
     "start": "next start",
-    "lint": "eslint .",
+    "lint": "eslint . ../../shared/reviews",
     "type-check": "pnpm generate:article-index && next typegen && tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
