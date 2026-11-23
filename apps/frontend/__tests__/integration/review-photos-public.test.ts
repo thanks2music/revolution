@@ -4,6 +4,7 @@ import { getOccurrenceReviews } from '@/lib/reviews/queries';
 import {
   anonClient,
   createTestDataScope,
+  signInAsMember,
   jstDate,
   type TestDataScope,
 } from '@/test-support/test-data';
@@ -58,9 +59,10 @@ describe('口コミの写真の公開の読み出し', () => {
       deleted?: boolean;
       photos: number;
       hidden?: number[];
+      member?: Awaited<ReturnType<TestDataScope['createMember']>>;
     }
   ) {
-    const member = await data.createMember();
+    const member = input.member ?? (await data.createMember());
     const { data: review, error } = await data.admin
       .from('reviews')
       .insert({
@@ -122,6 +124,24 @@ describe('口コミの写真の公開の読み出し', () => {
     expect(error).toBeNull();
     expect((rows ?? []).map(row => row.id).sort((a, b) => a - b)).toEqual(
       [shown.photoIds[0], spoiler.photoIds[0]].sort((a, b) => a - b)
+    );
+  });
+
+  it('会員には、他人の写真は anon と同じだけ見え、自分の写真は非公開の物も見える', async () => {
+    const occ = await occurrence();
+    const others = await reviewWithPhotos(occ.id, { photos: 2, hidden: [2] });
+    const pendingOthers = await reviewWithPhotos(occ.id, { status: 'pending', photos: 1 });
+    const viewer = await data.createMember();
+    const own = await reviewWithPhotos(occ.id, { photos: 2, hidden: [1], member: viewer });
+
+    const client = await signInAsMember(viewer);
+    const { data: rows, error } = await client
+      .from('review_images')
+      .select('id')
+      .in('review_id', [others.reviewId, pendingOthers.reviewId, own.reviewId]);
+    expect(error).toBeNull();
+    expect((rows ?? []).map(row => row.id).sort((a, b) => a - b)).toEqual(
+      [others.photoIds[0], ...own.photoIds].sort((a, b) => a - b)
     );
   });
 
