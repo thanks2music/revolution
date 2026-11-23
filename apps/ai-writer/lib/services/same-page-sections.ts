@@ -18,6 +18,11 @@
  * 見出しだけで当たった要素が別のカテゴリの節を含むときは、その要素を使わない (包む要素)。属性で当たった要素が
  * 別のカテゴリの節を含むときは、その節を除いた中身を使う (グッズの節の中の購入特典の小節)。
  * 同じカテゴリの入れ子は外側にまとめる。
+ *
+ * タブで分けたページ (2026-11-24): タブ (`<label for="tab1">` か `aria-controls` を持つ要素) の文字が `heading_keywords` と
+ * 一致すれば、そのタブの中身 (`aria-controls` の id、または `tab1_content` のように for の値に `_content` などを付けた id の要素) を
+ * 属性の当たりと同じ強さの節とみなす。CSS だけで切り替えるタブ (`#tab1:checked ~ #tab1_content`) は、ラベルと中身が id の
+ * 名前でしかつながらないため
  */
 
 import * as cheerio from 'cheerio';
@@ -27,6 +32,9 @@ const CATEGORIES: readonly CategoryType[] = ['menu', 'novelty', 'goods'];
 
 /** 節から除く小節に一時的に付ける印 */
 const OMIT_ATTRIBUTE = 'data-same-page-omit';
+
+/** `<label for="X">` のタブの中身とみなす id の付け方 (X の後ろに付く語) */
+const TAB_PANEL_SUFFIXES = ['_content', '-content', 'content', '_panel', '-panel', 'panel'];
 
 /** 大文字・小文字と前後・連続する空白を揃える */
 function normalize(text: string): string {
@@ -74,25 +82,30 @@ export function findSamePageSections(
 
     const headingTag = firstHeading.prop('tagName')?.toLowerCase() ?? 'h2';
     const singleHeading = ownHeading && $element.find(headingTag).length === 1;
-    // 見出し全体と、見出しの中の文字の塊 (テキストノード) ごとに比べる
-    const headingTexts = singleHeading
-      ? [
-          normalize(firstHeading.text()),
-          ...firstHeading
-            .find('*')
-            .addBack()
-            .contents()
-            .toArray()
-            .filter((node) => node.type === 'text')
-            .map((node) => normalize($(node).text())),
-        ].filter(Boolean)
-      : [];
+    const headingTexts = singleHeading ? textCandidates(firstHeading) : [];
     const byHeading = keywords.find(
       (k) => (sectionName !== '' && k.heading.includes(sectionName)) || headingTexts.some((text) => k.heading.includes(text))
     );
 
     const category = (byAttribute ?? byHeading)?.category;
     if (category) matches.push({ category, element, byAttribute: byAttribute !== undefined });
+  }
+
+  // タブ: タブの文字が見出しの語に当たれば、その中身を節にする (属性の当たりと同じ扱い)
+  const byId = new Map<string, Element>();
+  for (const element of $('[id]').toArray()) {
+    const id = $(element).attr('id');
+    if (id && !byId.has(id)) byId.set(id, element);
+  }
+  for (const tab of $('label[for], [aria-controls]').toArray()) {
+    if ($(tab).closest('header, nav, footer').length > 0) continue;
+    const texts = textCandidates($(tab));
+    const hit = keywords.find((k) => texts.some((text) => k.heading.includes(text)));
+    if (!hit) continue;
+    const panel = tabPanel($(tab).attr('aria-controls'), $(tab).attr('for'), byId);
+    if (!panel || $(panel).closest('header, nav, footer').length > 0) continue;
+    if (matches.some((match) => match.element === panel)) continue;
+    matches.push({ category: hit.category, element: panel, byAttribute: true });
   }
 
   // 中にある別のカテゴリの節 (1 回だけ数える)
@@ -118,4 +131,25 @@ export function findSamePageSections(
     result[match.category] = (result[match.category] ?? '') + $.html(section);
   }
   return result;
+
+  /** 要素の文字全体と、中の文字の塊 (テキストノード) ごとの文字 (`<h2>GOODS<span>グッズ</span></h2>`・`メニュー<br>▼`) */
+  function textCandidates(node: cheerio.Cheerio<Element>): string[] {
+    return [
+      normalize(node.text()),
+      ...node
+        .find('*')
+        .addBack()
+        .contents()
+        .toArray()
+        .filter((child) => child.type === 'text')
+        .map((child) => normalize($(child).text())),
+    ].filter(Boolean);
+  }
+}
+
+/** タブの中身の要素。aria-controls の id、無ければ label の for の値に TAB_PANEL_SUFFIXES を付けた id */
+function tabPanel<T>(controls: string | undefined, forId: string | undefined, byId: Map<string, T>): T | undefined {
+  if (controls) return controls.split(/\s+/).map((id) => byId.get(id)).find(Boolean);
+  if (!forId) return undefined;
+  return TAB_PANEL_SUFFIXES.map((suffix) => byId.get(`${forId}${suffix}`)).find(Boolean);
 }
