@@ -99,7 +99,6 @@ export function ReportReviewMenu({
               </DialogTitle>
               <DialogDescription className="text-[13px] leading-relaxed text-ink-body">
                 ご協力ありがとうございます。運営が内容を確かめ、投稿ガイドラインに沿っていなければ非公開にします。
-                確かめた結果はお知らせしません。
               </DialogDescription>
             </div>
           ) : (
