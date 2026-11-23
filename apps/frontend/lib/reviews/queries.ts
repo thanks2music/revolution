@@ -202,10 +202,12 @@ function toGallery(
     });
     return EMPTY_GALLERY;
   }
-  const photos = z
-    .array(PublicPhotoRowSchema)
-    .parse(result.data ?? [])
-    .map(row => toPublicPhoto(mediaBaseUrl, row));
+  const parsed = z.array(PublicPhotoRowSchema).safeParse(result.data ?? []);
+  if (!parsed.success) {
+    Sentry.captureException(parsed.error, { tags: { query: 'review_gallery' } });
+    return EMPTY_GALLERY;
+  }
+  const photos = parsed.data.map(row => toPublicPhoto(mediaBaseUrl, row));
   return { photos, total: Math.max(result.count ?? 0, photos.length) };
 }
 

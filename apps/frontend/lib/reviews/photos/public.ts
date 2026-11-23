@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { presentEnvValue } from '@revolution/slack/env';
+
 import { REVIEW_PHOTO_FORMATS, storedVariantKey } from './storage';
 
 /**
@@ -31,9 +33,12 @@ export type PublicReviewPhoto = {
   src: string;
 };
 
-/** 配信側の基点 (末尾の / を外す)。無ければ写真を出さない (壊れた画像を出さないため) */
+/**
+ * 配信側の基点 (末尾の / を外す)。無ければ写真を出さない (壊れた画像を出さないため)。
+ * `op://` のままの値は、置き場所の設定 (`getReviewPhotoStorage`) と同じく未設定として扱う
+ */
 export function publicMediaBaseUrl(value: string | undefined): string | null {
-  const trimmed = value?.trim().replace(/\/+$/, '');
+  const trimmed = presentEnvValue(value)?.replace(/\/+$/, '');
   return trimmed ? trimmed : null;
 }
 

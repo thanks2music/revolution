@@ -26,7 +26,10 @@ export function ReviewCard({ review }: { review: PublicReview }) {
     <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink-body">{review.body}</p>
   );
   const photos = review.photos.length > 0 && (
-    <ul className="flex flex-wrap gap-1" aria-label="口コミの写真">
+    <ul
+      className="flex flex-wrap gap-1"
+      aria-label={`${review.authorName ?? '退会済みユーザー'}さんの口コミの写真`}
+    >
       {review.photos.map((photo, index) => (
         <li key={photo.id}>
           <ReviewPhotoThumb photo={photo} size={64} alt={`写真 ${index + 1}`} />
@@ -63,7 +66,7 @@ export function ReviewCard({ review }: { review: PublicReview }) {
 
       {(body || photos) &&
         (review.hasSpoiler ? (
-          <SpoilerBody hasPhotos={Boolean(photos)}>
+          <SpoilerBody hasBody={Boolean(body)} hasPhotos={Boolean(photos)}>
             {body}
             {photos}
           </SpoilerBody>

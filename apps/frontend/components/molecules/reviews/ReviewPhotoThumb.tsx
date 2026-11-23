@@ -17,6 +17,7 @@ export function ReviewPhotoThumb(props: {
       href={photo.src}
       target="_blank"
       rel="noopener"
+      aria-label={`${alt}（大きいサイズを新しいタブで開く）`}
       className="block shrink-0 overflow-hidden rounded-lg bg-muted"
       style={{ width: size, height: size }}
     >

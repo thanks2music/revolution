@@ -15,7 +15,7 @@ export function ReviewGallery({ gallery }: { gallery: Gallery }) {
   const rest = gallery.total - shown.length;
 
   return (
-    <ul className="flex gap-1" aria-label="口コミの写真" data-testid="review-gallery">
+    <ul className="flex gap-1" aria-label="みんなの口コミの写真" data-testid="review-gallery">
       {shown.map((photo, index) => (
         <li key={photo.id}>
           <ReviewPhotoThumb photo={photo} size={72} alt={`口コミの写真 ${index + 1}`} />

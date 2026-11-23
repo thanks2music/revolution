@@ -14,9 +14,11 @@ CREATE POLICY "review_images_select_public" ON "public"."review_images"
   AS PERMISSIVE FOR SELECT TO "anon", "authenticated"
   USING (
     "hidden_at" IS NULL
-    AND "review_id" IN (
-      SELECT r."id" FROM "public"."reviews" r
-      WHERE r."status" = 'published' AND r."deleted_at" IS NULL
+    -- 行ごとに主キーで口コミを 1 件だけ見る (公開中の口コミ全体を集めない)
+    AND EXISTS (
+      SELECT 1 FROM "public"."reviews" r
+      WHERE r."id" = "review_images"."review_id"
+        AND r."status" = 'published' AND r."deleted_at" IS NULL
     )
   );
 --> statement-breakpoint

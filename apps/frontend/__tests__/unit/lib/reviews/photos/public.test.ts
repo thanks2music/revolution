@@ -5,6 +5,7 @@ describe('publicMediaBaseUrl', () => {
     [undefined, null],
     ['', null],
     ['  ', null],
+    ['op://vault/item/field', null],
     ['https://img.example.test', 'https://img.example.test'],
     ['https://img.example.test/', 'https://img.example.test'],
   ])('%p → %p', (value, expected) => {
