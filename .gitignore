@@ -180,6 +180,12 @@ gcp-service-account.json
 **/firestore.rules
 **/firestore.indexes.json
 **/storage.rules
+# 例外: Firestore の rules と indexes はプロジェクト ID も個人の情報も持たないので、CI のテストとレビューのために管理する。
+# 本番への反映は今も手で行う。WEB チェッカーの firebase.json も ID とサイト名を持たない (デプロイの workflow が使う)
+!apps/ai-writer/firestore.rules
+!apps/ai-writer/firestore.indexes.json
+!apps/web-checker/firebase.json
+!apps/web-checker/firebase.rules-test.json
 
 # Firebase CLI cache and debug logs
 .firebase/

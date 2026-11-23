@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="WEB チェッカー">
+  <!--
+    App Router は app/icon.svg を favicon として自動的に <link rel="icon"> に載せる。
+    public/favicon.ico を置く方法もあるが、こちらは metadata として扱われるため
+    ファイル名の綴りやパスを間違えても気付ける。
+
+    図案は「ページを監視して変化を見つける」= 文書 + チェックマーク。
+    単色なので小サイズでも潰れず、ライト/ダーク双方の背景で成立する。
+  -->
+  <rect width="32" height="32" rx="7" fill="#0f172a" />
+  <path
+    d="M11 8h7.2L23 12.6V24a1.6 1.6 0 0 1-1.6 1.6H11A1.6 1.6 0 0 1 9.4 24V9.6A1.6 1.6 0 0 1 11 8Z"
+    fill="none"
+    stroke="#f8fafc"
+    stroke-width="1.8"
+    stroke-linejoin="round"
+  />
+  <path d="M18 8v5h5" fill="none" stroke="#f8fafc" stroke-width="1.8" stroke-linejoin="round" />
+  <path
+    d="m12.8 18.4 2.4 2.4 4.6-4.8"
+    fill="none"
+    stroke="#4ade80"
+    stroke-width="2.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
