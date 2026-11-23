@@ -971,17 +971,14 @@ export class ArticleGenerationMdxService {
       // (2026-10-12、ヒロアカで AI が利用ガイドのページをノベルティのページと判定したとき)。
       // ただし Vision を呼ばないサイトは、品目が画像の中にしか無いので、名前の無いまま画像だけの節を書く
       // (品名も特典の内容も書かない書き方。2026-11-24 BOSS 決定)
-      const noveltyImagesWithoutName =
-        categoryImages !== undefined &&
-        skipsVision(
-          selectionResult.primary_official_url,
-          (await getConfigLoaderService().loadStoreUrlPatterns()).vision_skip_hosts,
-        );
       if (
         categoryImages &&
         categoryImages.novelty.length > 0 &&
         isEmptyList(detailedExtraction?.ノベルティ名) &&
-        !noveltyImagesWithoutName
+        !skipsVision(
+          selectionResult.primary_official_url,
+          (await getConfigLoaderService().loadStoreUrlPatterns()).vision_skip_hosts,
+        )
       ) {
         console.log(
           `${getStepContext('vision-api')} ノベルティ名が無いため、ノベルティの画像 ${categoryImages.novelty.length} 枚を使わない (節を書かない)`,
@@ -1525,8 +1522,8 @@ export class ArticleGenerationMdxService {
           noveltyNames: detailedExtraction.ノベルティ名,
         };
         const paragraph = buildNoNoveltySecondParagraph(leadSecondParagraph, input);
-        const replaced = paragraph ? replaceSecondParagraph(leadMdx, paragraph) : leadMdx;
-        if (paragraph && replaced !== leadMdx) {
+        const replaced = paragraph === null ? leadMdx : replaceSecondParagraph(leadMdx, paragraph);
+        if (replaced !== leadMdx) {
           leadSecondInput = input;
           leadMdx = replaced;
           console.log(`${getStepContext('lead-generation', '2 段落目')} メニューの品名が無いため、2 段落目を置き換えた: ${paragraph}`);
@@ -1699,15 +1696,18 @@ export class ArticleGenerationMdxService {
 
       // カテゴリ別R2画像またはアイキャッチ画像がある場合のみ置換を実行
       // uploadedCategoryR2Images は image-upload-r2 step でアップロードされた画像のR2 URL
+      // 画像の欄が残っていれば、画像が 0 枚でも置換に回す (画像の無い節を消すため。アップロードの失敗で、品名の無い節が
+      // 見出しだけで残らないように)
+      const hasImagePlaceholders = (['menu', 'novelty', 'goods'] as const).some((category) =>
+        contentGeneration.content.includes(PLACEHOLDERS[category]),
+      );
       const hasR2Images =
         uploadedCategoryR2Images.menu.length > 0 ||
         uploadedCategoryR2Images.novelty.length > 0 ||
         uploadedCategoryR2Images.goods.length > 0 ||
         !!uploadedCategoryR2Images.eyecatch ||
         keepSections.size > 0 ||
-        // 画像の欄が残っていれば、画像が 0 枚でも置換に回す (画像の無い節を消すため。アップロードの失敗で、品名の無い節が
-        // 見出しだけで残らないように)
-        (['menu', 'novelty', 'goods'] as const).some((category) => contentGeneration.content.includes(PLACEHOLDERS[category]));
+        hasImagePlaceholders;
 
       if (hasR2Images) {
         const placeholderReplacer = getImagePlaceholderReplacerService();
@@ -1723,13 +1723,11 @@ export class ArticleGenerationMdxService {
 
         // 品名の無い節は、画像が 0 枚 (アップロードの失敗など) なら節ごと消える。リード文の 2 段落目が、消えた節の
         // グッズ・ノベルティーに触れないように組み直す (記事はリード文から始まるので、記事全体の 2 段落目がリード文の 2 段落目)
-        if (leadSecondInput) {
-          const rebuilt = buildNoNoveltySecondParagraph(leadSecondParagraph, {
-            ...leadSecondInput,
-            hasGoods: hasGoodsSection(finalContent),
-            hasNovelty: hasNoveltySection(finalContent),
-          });
-          if (rebuilt && (leadSecondInput.hasGoods !== hasGoodsSection(finalContent) || leadSecondInput.hasNovelty !== hasNoveltySection(finalContent))) {
+        const hasGoods = hasGoodsSection(finalContent);
+        const hasNovelty = hasNoveltySection(finalContent);
+        if (leadSecondInput && (leadSecondInput.hasGoods !== hasGoods || leadSecondInput.hasNovelty !== hasNovelty)) {
+          const rebuilt = buildNoNoveltySecondParagraph(leadSecondParagraph, { ...leadSecondInput, hasGoods, hasNovelty });
+          if (rebuilt) {
             finalContent = replaceSecondParagraph(finalContent, rebuilt);
             console.log(`${getStepContext('image-placeholder-replacement', 'リード文')} 画像の無い節が消えたため、2 段落目を組み直した: ${rebuilt}`);
           }

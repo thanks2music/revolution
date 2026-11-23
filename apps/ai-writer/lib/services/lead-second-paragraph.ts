@@ -33,20 +33,21 @@ export interface NoNoveltySecondParagraphConfig {
   end: string;
 }
 
-const CONFIG_KEYS = [
-  'templates',
-  'goods_in_third_paragraph',
-  'media_form_omit',
-  'menu_work',
-  'menu_game',
-  'menu_plain',
-  'menu_plain_no_goods',
-  'goods_and_novelty',
-  'goods_only',
-  'novelty_only',
-  'novelty_named',
-  'end',
-] as const satisfies readonly (keyof NoNoveltySecondParagraphConfig)[];
+/** 設定のキー (interface のキーと過不足なく一致することを型で確かめる) */
+const CONFIG_KEYS = Object.keys({
+  templates: true,
+  goods_in_third_paragraph: true,
+  media_form_omit: true,
+  menu_work: true,
+  menu_game: true,
+  menu_plain: true,
+  menu_plain_no_goods: true,
+  goods_and_novelty: true,
+  goods_only: true,
+  novelty_only: true,
+  novelty_named: true,
+  end: true,
+} satisfies Record<keyof NoNoveltySecondParagraphConfig, true>) as (keyof NoNoveltySecondParagraphConfig)[];
 
 /**
  * `01-lead.yaml` の `rendered.no_novelty_name_second_paragraph` を読む
@@ -91,7 +92,6 @@ export function buildNoNoveltySecondParagraph(
 ): string | null {
   const kind = config.templates[input.templateId];
   if (!kind || !input.作品名.trim()) return null;
-  const hasGoods = input.hasGoods && !config.goods_in_third_paragraph.includes(input.templateId);
   const noveltyNames = (input.noveltyNames ?? []).filter((name) => name.trim());
   const values = {
     作品名: escapeMdxText(input.作品名),
@@ -101,15 +101,13 @@ export function buildNoNoveltySecondParagraph(
   if (kind === 'plain') {
     return fillTemplate(`${input.hasGoods ? config.menu_plain : config.menu_plain_no_goods}${config.end}`, values);
   }
-  const extra = noveltyNames.length > 0
-    ? config.novelty_named
-    : hasGoods
-    ? input.hasNovelty
-      ? config.goods_and_novelty
-      : config.goods_only
-    : input.hasNovelty
-      ? config.novelty_only
-      : '';
+  // 3 段落目でグッズを書くひな型は、2 段落目でグッズに触れない
+  const goodsInSecond = input.hasGoods && !config.goods_in_third_paragraph.includes(input.templateId);
+  let extra = '';
+  if (noveltyNames.length > 0) extra = config.novelty_named;
+  else if (goodsInSecond && input.hasNovelty) extra = config.goods_and_novelty;
+  else if (goodsInSecond) extra = config.goods_only;
+  else if (input.hasNovelty) extra = config.novelty_only;
   return fillTemplate(`${kind === 'game' ? config.menu_game : config.menu_work}${extra}${config.end}`, values);
 }
 

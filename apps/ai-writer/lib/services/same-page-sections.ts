@@ -34,7 +34,7 @@ const CATEGORIES: readonly CategoryType[] = ['menu', 'novelty', 'goods'];
 const OMIT_ATTRIBUTE = 'data-same-page-omit';
 
 /** `<label for="X">` のタブの中身とみなす id の付け方 (X の後ろに付く語) */
-const TAB_PANEL_SUFFIXES = ['_content', '-content', 'content', '_panel', '-panel', 'panel'];
+const TAB_PANEL_SUFFIXES = ['_content', '-content', '_panel', '-panel'];
 
 /** 大文字・小文字と前後・連続する空白を揃える */
 function normalize(text: string): string {
@@ -92,18 +92,25 @@ export function findSamePageSections(
   }
 
   // タブ: タブの文字が見出しの語に当たれば、その中身を節にする (属性の当たりと同じ扱い)
-  const byId = new Map<string, Element>();
-  for (const element of $('[id]').toArray()) {
-    const id = $(element).attr('id');
-    if (id && !byId.has(id)) byId.set(id, element);
-  }
+  // id の一覧は、タブが見出しの語に当たったときだけ作る (当たらないページが大半)
+  let byId: Map<string, Element> | undefined;
+  const idMap = () => {
+    if (!byId) {
+      byId = new Map();
+      for (const element of $('[id]').toArray()) {
+        const id = $(element).attr('id');
+        if (id && !byId.has(id)) byId.set(id, element);
+      }
+    }
+    return byId;
+  };
   // aria-controls は開閉ボタン (ハンバーガーの「MENU」など) にも付くので、タブ (role="tab" か、role="tablist" の中) だけを見る
   for (const tab of $('label[for], [role="tab"][aria-controls], [role="tablist"] [aria-controls]').toArray()) {
     if ($(tab).closest('header, nav, footer').length > 0) continue;
     const texts = textCandidates($(tab));
     const hit = keywords.find((k) => texts.some((text) => k.heading.includes(text)));
     if (!hit) continue;
-    const panel = tabPanel($(tab).attr('aria-controls'), $(tab).attr('for'), byId);
+    const panel = tabPanel($(tab).attr('aria-controls'), $(tab).attr('for'), idMap());
     if (!panel || $(panel).closest('header, nav, footer').length > 0) continue;
     if (matches.some((match) => match.element === panel)) continue;
     matches.push({ category: hit.category, element: panel, byAttribute: true });
