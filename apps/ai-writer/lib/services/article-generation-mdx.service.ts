@@ -1385,10 +1385,19 @@ export class ArticleGenerationMdxService {
         スタジオ名: detailedExtraction.スタジオ名,
         監督名: detailedExtraction.監督名,
         シリーズ名: detailedExtraction.シリーズ名,
+        // キャラクターの持ち主を引く © の表記 (圧縮前の HTML から読んだ物と、抽出のコピーライト)
+        著作権表記: [
+          ...(officialRawHtml ? extractCopyrightNotices(officialRawHtml) : []),
+          ...(detailedExtraction.コピーライト ? [detailedExtraction.コピーライト] : []),
+        ],
+        グループ区分: detailedExtraction.グループ区分,
+        性別: detailedExtraction.性別,
+        ゲーム実況: detailedExtraction.ゲーム実況,
       });
 
       console.log('✅ リード文生成完了:', {
         usedTemplate: leadResult.usedTemplate,
+        modifier: leadResult.modifier ? `${leadResult.modifier.text} (${leadResult.modifier.form})` : '(none)',
         leadLength: leadResult.leadMdx.length,
         slotMediaForm: leadResult.slots.mediaForm,
         slotWorkTitle: leadResult.slots.workTitle,

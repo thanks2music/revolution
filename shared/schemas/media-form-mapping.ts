@@ -100,7 +100,7 @@ export type OriginalTypeLabel = z.infer<typeof OriginalTypeLabelSchema>;
  */
 export const EXPECTED_ORIGINAL_TYPE_LABELS: Record<z.infer<typeof SourceTypeEnum>, string | null> = {
   manga_based: '漫画',
-  novel_based: 'ライトノベル',
+  novel_based: '小説', // 2026-11-24 に「ライトノベル」から変更 (一般の小説の原作でも誤りにならない表記)
   original_with_creator: null, // メディアタイプにフォールバック
   game_creator_based: 'ゲーム',
   illustrator_based: 'イラスト',

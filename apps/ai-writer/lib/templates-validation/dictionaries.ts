@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { CATEGORY_SLUG_REGEX } from '@revolution/schemas/category';
 import { TITLE_KIND_VALUES, TITLE_SLUG_REGEX } from '@revolution/schemas/title';
 import { VENUE_SLUG_REGEX } from '@revolution/schemas/venue';
+import { CharacterOwnersSchema, WorkDescriptionsSchema } from '@/lib/services/lead-modifier-config';
 import type { TemplateIssue } from './issues';
 import type { TemplatesLayout } from './layout';
 import type { ParsedDocs } from './syntax';
@@ -93,6 +94,9 @@ export const DICTIONARY_SCHEMAS: Record<string, { schema: z.ZodType; required: b
     }),
     required: false,
   },
+  // the lead modifier (the words before the work title) reads both on every article
+  'work-descriptions.yaml': { schema: WorkDescriptionsSchema, required: true },
+  'character-owners.yaml': { schema: CharacterOwnersSchema, required: true },
   'taxonomy.yaml': {
     schema: z.object({ axes: z.record(z.string(), z.unknown()), category_rules: z.record(z.string(), z.unknown()) }),
     required: true,

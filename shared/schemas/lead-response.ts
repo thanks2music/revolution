@@ -57,6 +57,11 @@ export const LeadGeneratorResultSchema = z.object({
    * 4 スロット構造 (regression assertion 用)。
    */
   slots: LeadSlotsSchema,
+  /**
+   * 作品名の前に置く語句 (連体修飾語) と、使った形 (`01-lead.yaml` の `modifier` のキーか `work_description`)。
+   * どの形に落ちたかをログで見るため
+   */
+  modifier: z.object({ form: z.string(), text: z.string() }).optional(),
 });
 
 export type LeadSlots = z.infer<typeof LeadSlotsSchema>;

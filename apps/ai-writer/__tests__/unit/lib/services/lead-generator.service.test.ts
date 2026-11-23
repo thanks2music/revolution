@@ -5,7 +5,7 @@
  * - Condition predicate table: 20+ 条件分岐 (単一 15 + 複数コラボ 3 + fallback 2 + オリジナルアニメ 5)
  * - 4 スロット構造 (agent/verb/adjective/mediaForm/workTitle) の regression assertion
  * - N9-A regression: character/vocaloid 単一作品で「らをイメージした」テンプレ維持
- * - P5 regression: 原作タイプ novel_based → 「ライトノベル」表現 (「漫画」誤生成しない)
+ * - P5 regression: 原作タイプ novel_based → 「小説」表現 (「漫画」誤生成しない。2026-11-24 にライトノベルから変更)
  * - Fallback 経路 (LLM 未 DI 時に lead_generic 強制採用、fallbackReason 記録)
  */
 
@@ -667,7 +667,7 @@ describe('LeadGeneratorService - Phase 2-a 反転仕様 (novel_based + anime →
     expect(result.leadMdx).not.toContain('人気漫画');
   });
 
-  it('原作タイプ novel_based + メディアタイプ未指定 → 「ライトノベル」で表現される (原作 label fallback)', async () => {
+  it('原作タイプ novel_based + メディアタイプ未指定 → 「小説」で表現される (原作 label fallback)', async () => {
     const result = await service.generate(
       makeInput({
         メディアタイプ: undefined, // メディアタイプ未指定 → 原作タイプにフォールバック
@@ -679,8 +679,8 @@ describe('LeadGeneratorService - Phase 2-a 反転仕様 (novel_based + anime →
       })
     );
 
-    // Phase 2-a refined reversal: メディア未指定なら原作 label に fallback して「ライトノベル」
-    expect(result.slots.mediaForm).toBe('ライトノベル');
+    // Phase 2-a refined reversal: メディア未指定なら原作 label に fallback して「小説」(2026-11-24 に「ライトノベル」から変更)
+    expect(result.slots.mediaForm).toBe('小説');
   });
 });
 
@@ -908,5 +908,47 @@ describe('LeadGeneratorService - 未置換プレースホルダー', () => {
     expect(result.fallbackReason).toBe('too_many_unreplaced_placeholders');
     expect(result.usedTemplate).toBe(LEAD_FALLBACK_TEMPLATE_ID);
     expect(result.leadMdx).not.toContain('{{グッズ名');
+  });
+});
+
+// ============================================================================
+// 連体修飾語 (作品名の前の語句、2026-11-24)
+// ============================================================================
+
+describe('LeadGeneratorService - 連体修飾語', () => {
+  it('同期した Templates の文言と辞書で、事実から連体修飾語を組み立てて返す', async () => {
+    const result = await service.generate(
+      makeInput({
+        works: [{ title: '呪術廻戦', is_primary: true }],
+        メディアタイプ: 'anime',
+        原作タイプ: 'manga_based',
+        原作者有無: true,
+        原作者名: ['芥見下々先生'],
+      })
+    );
+    expect(result.modifier).toEqual({ form: 'anime_long', text: '芥見下々先生による人気漫画を原作としたアニメ' });
+  });
+
+  it('© の表記から、キャラクターの持ち主を引く', async () => {
+    const result = await service.generate(
+      makeInput({
+        works: [{ title: 'テストキャラ', is_primary: true }],
+        メディアタイプ: 'character',
+        原作タイプ: 'character_brand',
+        著作権表記: ['© 2026 SANRIO CO., LTD.'],
+      })
+    );
+    expect(result.modifier?.form).toBe('character_owner');
+  });
+
+  it('ひな型の {{連体修飾語}} は、テキストの置換で埋まる (ひな型を替える Templates の PR の前提)', () => {
+    const replacement = new TextPlaceholderReplacerService().replaceAll(
+      '{{連体修飾語}}「{{作品名}}」',
+      { ...makeInput({ 作品名: 'テスト作品', 店舗名: 'テストカフェ' }), 連体修飾語: '人気アニメ' } as Parameters<
+        TextPlaceholderReplacerService['replaceAll']
+      >[1]
+    );
+    expect(replacement.content).toBe('人気アニメ「テスト作品」');
+    expect(replacement.unreplacedPlaceholders).toEqual([]);
   });
 });

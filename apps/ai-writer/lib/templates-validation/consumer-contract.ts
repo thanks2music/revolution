@@ -14,6 +14,12 @@ import { loadPointsFormat } from '@/lib/services/article-points';
 import { ConfigLoaderService } from '@/lib/services/config-loader.service';
 import { loadGoodsListConfig } from '@/lib/services/goods-list';
 import { readLeadSectionYaml } from '@/lib/services/lead-generator.service';
+import {
+  loadCharacterOwners,
+  loadLeadFallbackPrompt,
+  loadLeadModifierFormat,
+  loadWorkDescriptions,
+} from '@/lib/services/lead-modifier-config';
 import { MediaFormResolverService } from '@/lib/services/media-form-resolver.service';
 import { MediaTypeMapperService } from '@/lib/services/media-type-mapper.service';
 import { PIPELINE_PROMPTS } from '@/lib/services/pipeline-prompts';
@@ -71,6 +77,11 @@ export async function checkConsumerContract(
       run: () => loadRendered<Record<string, unknown>>('05-summary.yaml', [...SUMMARY_VENUE_KEYS, ...SUMMARY_ROWS_KEYS], sectionsDir),
     },
     { name: 'lead', file: path.join(sectionsDir, '01-lead.yaml'), run: () => readLeadSectionYaml(path.join(sectionsDir, '01-lead.yaml')) },
+    { name: 'lead-modifier', file: path.join(sectionsDir, '01-lead.yaml'), run: () => loadLeadModifierFormat(sectionsDir) },
+    { name: 'lead-fallback-prompt', file: path.join(sectionsDir, '01-lead.yaml'), run: () => loadLeadFallbackPrompt(sectionsDir) },
+    // the alias check (a name or alias pointing at two works) lives in the loader
+    { name: 'work-descriptions', file: path.join(configDir, 'work-descriptions.yaml'), run: () => loadWorkDescriptions(configDir) },
+    { name: 'character-owners', file: path.join(configDir, 'character-owners.yaml'), run: () => loadCharacterOwners(configDir) },
     {
       name: 'media-type-mapper',
       file: path.join(configDir, 'media-type-mapping.yaml'),
