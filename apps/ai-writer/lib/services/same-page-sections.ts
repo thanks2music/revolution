@@ -25,6 +25,9 @@ import type { CategoryType, SamePageSectionsConfig } from '@/lib/types/subpage-d
 
 const CATEGORIES: readonly CategoryType[] = ['menu', 'novelty', 'goods'];
 
+/** 節から除く小節に一時的に付ける印 */
+const OMIT_ATTRIBUTE = 'data-same-page-omit';
+
 /** 大文字・小文字と前後・連続する空白を揃える */
 function normalize(text: string): string {
   return text.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -92,10 +95,13 @@ export function findSamePageSections(
     if (category) matches.push({ category, element, byAttribute: byAttribute !== undefined });
   }
 
-  const containsOtherCategory = (outer: (typeof matches)[number]) =>
-    matches.filter((other) => other.category !== outer.category && cheerio.contains(outer.element, other.element));
+  // 中にある別のカテゴリの節 (1 回だけ数える)
+  const withInner = matches.map((match) => ({
+    ...match,
+    inner: matches.filter((other) => other.category !== match.category && cheerio.contains(match.element, other.element)),
+  }));
   // 見出しだけで当たり、別のカテゴリの節を含む要素 (包む要素) は使わない
-  const notWrappers = matches.filter((match) => match.byAttribute || containsOtherCategory(match).length === 0);
+  const notWrappers = withInner.filter((match) => match.byAttribute || match.inner.length === 0);
   // 同じカテゴリの入れ子は、外側にまとめる
   const outermost = notWrappers.filter(
     ({ category, element }) =>
@@ -104,22 +110,12 @@ export function findSamePageSections(
 
   const result: Partial<Record<CategoryType, string>> = {};
   for (const match of outermost) {
-    // 中にある別のカテゴリの節は除く (それぞれのカテゴリで拾う)
-    const inner = containsOtherCategory(match).map((other) => other.element);
-    const sectionHtml =
-      inner.length === 0
-        ? $.html(match.element)
-        : (() => {
-            const clone = $(match.element).clone();
-            const originals = $(match.element).find('*').toArray();
-            const copies = clone.find('*').toArray();
-            inner.forEach((element) => {
-              const index = originals.indexOf(element);
-              if (index !== -1) $(copies[index]).remove();
-            });
-            return $.html(clone);
-          })();
-    result[match.category] = (result[match.category] ?? '') + sectionHtml;
+    // 中にある別のカテゴリの節は除く (それぞれのカテゴリで拾う)。印を付けて複製し、複製から消す
+    const omitted = $(match.inner.map((other) => other.element)).attr(OMIT_ATTRIBUTE, '');
+    const section = $(match.element).clone();
+    omitted.removeAttr(OMIT_ATTRIBUTE);
+    section.find(`[${OMIT_ATTRIBUTE}]`).remove();
+    result[match.category] = (result[match.category] ?? '') + $.html(section);
   }
   return result;
 }
