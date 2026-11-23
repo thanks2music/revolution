@@ -65,10 +65,11 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
   const thinkingLevel =
     options.prompt.thinking_level && THINKING_LEVELS[options.prompt.thinking_level];
 
-  function request(input: ReviewScreeningInput): GenerateContentParameters {
+  // 写真の base64 はやり直しのたびに作り直さない (時間切れの signal だけ毎回作る)
+  function request(contents: GenerateContentParameters['contents']): GenerateContentParameters {
     return {
       model,
-      contents: [{ role: 'user', parts: contentParts(options.prompt, input) }],
+      contents,
       config: {
         systemInstruction: options.prompt.system,
         temperature: 0,
@@ -86,8 +87,9 @@ export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScre
   return {
     async screen(input): Promise<ReviewScreeningResult> {
       try {
+        const contents = [{ role: 'user', parts: contentParts(options.prompt, input) }];
         const response = await withTransientRetry(
-          () => options.models.generateContent(request(input)),
+          () => options.models.generateContent(request(contents)),
           options.retry
         );
         const parsed = parseResponse(response);
@@ -131,7 +133,8 @@ function matchPhotos(
   count: number
 ): ReviewPhotoScreening[] {
   const byIndex = new Map(photos.map(photo => [photo.index, photo]));
-  if (photos.length !== count || byIndex.size !== count) {
+  // 数が合っていれば、番号の重なりや範囲外は、どこかの番号の欠けとして下で見つかる
+  if (photos.length !== count) {
     throw new DeterministicScreeningError(
       `photo judgements do not match (${photos.length}/${count})`
     );

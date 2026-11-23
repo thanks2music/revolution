@@ -4,7 +4,7 @@
  *   - 口コミは URL の開催と会員から引く。会員のこの開催の口コミが無い・書けない・置き場所が無い時は、
  *     理由の文を返す (操作の層を呼ばない)
  *   - 操作の層の結果を、利用者向けの文にする
- *   - 写真を足して口コミが審査中に戻った時はページを作り直し、審査中の口コミに足した時も審査を走らせる
+ *   - 写真を足して口コミが審査中に戻った時だけ、ページを作り直して審査を走らせる
  *   - 想定外の例外は Sentry に送り、型付きの結果で返す
  *
  * 写真の操作そのもの (変換・保管・DB) は __tests__/integration/review-photos.test.ts で確かめる。
@@ -157,9 +157,8 @@ describe('requestReviewPhotoUpload', () => {
 
 describe('attachReviewPhoto', () => {
   it.each([
-    ['公開中などから審査中に戻った', { requeued: true, needsScreening: true }, 2, 1],
-    ['審査中の口コミに足した', { requeued: false, needsScreening: true }, 0, 1],
-    ['下書きに足した', { requeued: false, needsScreening: false }, 0, 0],
+    ['公開中などから審査中に戻った', { requeued: true }, 2, 1],
+    ['下書きか審査中の口コミに足した', { requeued: false }, 0, 0],
   ])('%s時: ページの作り直し %i 回、審査 %i 回', async (_label, flags, revalidates, screens) => {
     mocked(ingestPhoto).mockResolvedValue({ kind: 'ok', photo: PHOTO, ...flags });
     await expect(attachReviewPhoto(route, 'pid')).resolves.toEqual({ ok: true, photo: PHOTO });

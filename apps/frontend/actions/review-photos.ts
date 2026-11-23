@@ -175,10 +175,10 @@ export async function attachReviewPhoto(
             ? FAILURES.unsupported
             : FAILURES.unreadable;
       case 'ok':
-        // 公開中だった口コミは審査中に戻って見えなくなるので、ページを作り直す
-        if (outcome.requeued) for (const path of context.paths) revalidatePath(path);
-        // 審査中の口コミに足した写真も、審査に通す (審査の途中なら、その審査は写真の集まりが変わったので書かない)
-        if (outcome.needsScreening) {
+        if (outcome.requeued) {
+          // 公開中だった口コミは審査中に戻って見えなくなるので、ページを作り直し、審査を走らせる。
+          // 審査中の口コミに足した写真は、走っている審査が写真の集まりの変化を見て読み直す
+          for (const path of context.paths) revalidatePath(path);
           const { db } = context.ctx;
           const { reviewId, paths } = context;
           after(() => screenAfterSubmit(db, reviewId, paths));

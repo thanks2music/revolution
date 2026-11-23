@@ -14,7 +14,7 @@ import { todayInJst } from '@/lib/occurrence/status';
 import type { OwnReview } from '@/lib/reviews/authoring';
 import { authoringMode } from '@/lib/reviews/eligibility';
 import { screenSubmittedReview } from '@/lib/reviews/operations';
-import { syncPhotoDelivery } from '@/lib/reviews/photos/delivery';
+import { syncPhotoDeliverySafely } from '@/lib/reviews/photos/delivery';
 import { getReviewPhotoStorage } from '@/lib/reviews/photos/storage';
 import { getReviewScreener } from '@/lib/reviews/screener';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -64,15 +64,10 @@ export function modeFor(
   });
 }
 
-/** 公開でなくなった口コミの写真を、配信側から消す (`after()` の中。失敗は Sentry へ) */
-export async function unpublishReviewPhotos(db: SupabaseClient, reviewId: number): Promise<void> {
+/** 口コミの写真の配信側を、今の状態に合わせる (`after()` の中。失敗は Sentry へ) */
+export async function syncReviewPhotoDelivery(db: SupabaseClient, reviewId: number): Promise<void> {
   const storage = getReviewPhotoStorage();
-  if (!storage) return;
-  try {
-    await syncPhotoDelivery({ db, storage }, reviewId);
-  } catch (error) {
-    Sentry.captureException(error, { tags: { action: 'unpublishReviewPhotos' } });
-  }
+  if (storage) await syncPhotoDeliverySafely({ db, storage }, reviewId);
 }
 
 /** 応答の後 (`after()`) に AI の審査を走らせる。公開になったらページを作り直す */

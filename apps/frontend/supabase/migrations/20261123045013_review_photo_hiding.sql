@@ -19,10 +19,10 @@ ALTER TABLE "public"."review_images" ADD CONSTRAINT "review_images_hidden_pair_c
 --> statement-breakpoint
 
 -- 審査の結果を 1 つのトランザクションで書く (口コミの状態と、写真ごとの非公開の印)。
--- 読んだ時の submitted_at と「審査中」を条件にし、合わなければ何も書かずに false を返す。印を状態と
+-- 読んだ時の submitted_at と「審査中」を条件にし、合わなければ何も書かずに 'superseded' を返す。印を状態と
 -- 別に書くと、古い本文の審査の印が、新しい提出の審査の後に書かれうるため (2026-11-23 のセキュリティのレビュー)。
 -- p_photo_ids は審査した写真の ID。今の写真の集まりと違えば (審査の間に写真が足された・外された)、何も書かずに
--- false を返す (見ていない写真を公開しないため。足した側が審査をもう一度走らせる)。
+-- 'photos_changed' を返す (見ていない写真を公開しないため。呼んだ側が読み直して審査し直す)。書けたら 'applied'。
 -- p_photo_marks は [{"id": 写真の ID, "hide": 真偽, "reason": 理由のコードか null}]。null なら印に触らない。
 -- 呼ぶのはサーバー (service role) だけ。
 CREATE OR REPLACE FUNCTION public.apply_review_screening(
@@ -37,7 +37,7 @@ CREATE OR REPLACE FUNCTION public.apply_review_screening(
   p_photo_ids bigint[],
   p_photo_marks jsonb
 )
-RETURNS boolean
+RETURNS text
 SET search_path = ''
 LANGUAGE plpgsql
 AS $$
@@ -52,7 +52,7 @@ BEGIN
   ) IS DISTINCT FROM (
     SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM unnest(p_photo_ids) AS x
   ) THEN
-    RETURN false;
+    RETURN 'photos_changed';
   END IF;
 
   UPDATE "public"."reviews"
@@ -68,7 +68,7 @@ BEGIN
     AND "deleted_at" IS NULL;
   GET DIAGNOSTICS v_updated = ROW_COUNT;
   IF v_updated = 0 THEN
-    RETURN false;
+    RETURN 'superseded';
   END IF;
 
   IF p_photo_marks IS NOT NULL THEN
@@ -78,7 +78,7 @@ BEGIN
     FROM jsonb_to_recordset(p_photo_marks) AS m("id" bigint, "hide" boolean, "reason" text)
     WHERE i."id" = m."id" AND i."review_id" = p_review_id;
   END IF;
-  RETURN true;
+  RETURN 'applied';
 END;
 $$;
 --> statement-breakpoint

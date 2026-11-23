@@ -24,6 +24,7 @@ const CONFIG = {
   photoBucket: 'photo-bucket',
   publicBucket: 'public-bucket',
   publicBaseUrl: 'https://img.example.test',
+  cachePurge: { zoneId: 'zone1', token: 'tok' },
 };
 
 function r2WithFakeSend() {
@@ -67,10 +68,7 @@ describe('配信側 (one-more-time #164)', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }));
     try {
-      const storage = createR2PhotoStorage(
-        { ...CONFIG, cachePurge: { zoneId: 'zone1', token: 'tok' } },
-        client
-      );
+      const storage = createR2PhotoStorage(CONFIG, client);
       const keys = Array.from({ length: 31 }, (_, i) => `preview/reviews/1/p${i}/320.webp`);
       await storage.unpublish(keys);
 
@@ -98,10 +96,7 @@ describe('配信側 (one-more-time #164)', () => {
     try {
       const client = createR2Client(CONFIG);
       jest.spyOn(client, 'send').mockResolvedValue({} as never);
-      const storage = createR2PhotoStorage(
-        { ...CONFIG, cachePurge: { zoneId: 'z', token: 't' } },
-        client
-      );
+      const storage = createR2PhotoStorage(CONFIG, client);
       await expect(storage.unpublish(['preview/a/320.webp'])).rejects.toThrow('HTTP 403');
     } finally {
       fetchSpy.mockRestore();
@@ -226,6 +221,8 @@ describe('置き場所の選び方', () => {
     REVIEW_R2_PHOTO_BUCKET: 'p',
     REVIEW_R2_PUBLIC_BUCKET: 'pub',
     REVIEW_PUBLIC_MEDIA_BASE_URL: 'https://img.example.test/',
+    CLOUDFLARE_ZONE_ID: 'zone',
+    CLOUDFLARE_CACHE_PURGE_TOKEN: 'token',
   };
 
   it('偽物は手元とテストだけ。ビルドした物では R2 か、無ければ null', () => {
@@ -245,6 +242,10 @@ describe('置き場所の選び方', () => {
     expect(getReviewPhotoStorage({ ...r2Env, NODE_ENV: 'production' })).not.toBeNull();
     expect(
       getReviewPhotoStorage({ ...r2Env, REVIEW_R2_PHOTO_BUCKET: '', NODE_ENV: 'production' })
+    ).toBeNull();
+    // 配信側から消した写真が CDN に残り続けないよう、キャッシュを消す設定が無ければ置き場所ごと使わない
+    expect(
+      getReviewPhotoStorage({ ...r2Env, CLOUDFLARE_CACHE_PURGE_TOKEN: '', NODE_ENV: 'production' })
     ).toBeNull();
   });
 

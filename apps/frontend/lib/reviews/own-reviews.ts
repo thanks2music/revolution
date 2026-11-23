@@ -13,7 +13,11 @@ import {
 
 import type { ReviewRouteParams } from '@/actions/review';
 import { todayInJst } from '@/lib/occurrence/status';
-import { storedVariantKey, type ReviewPhotoStorage } from '@/lib/reviews/photos/storage';
+import {
+  storedVariantKey,
+  variantWidthAtMost,
+  type ReviewPhotoStorage,
+} from '@/lib/reviews/photos/storage';
 import {
   REVIEW_TARGET_COLUMNS,
   ReviewTargetRowSchema,
@@ -99,7 +103,11 @@ export async function listOwnReviews(
     .is('deleted_at', null)
     .eq('occurrence.verified', true)
     .order('updated_at', { ascending: false })
-    .order('id', { ascending: false });
+    .order('id', { ascending: false })
+    // 写真は非公開になった物だけを、並びの順に読む
+    .not('review_images.hidden_reason_code', 'is', null)
+    .order('sort_order', { referencedTable: 'review_images', ascending: true })
+    .order('id', { referencedTable: 'review_images', ascending: true });
   if (error) throw error;
   // 直せるかは今日 (JST) に依るので、行の読み取りとは分けて 1 回だけ日付を取る
   const today = todayInJst();
@@ -136,21 +144,21 @@ export async function listOwnReviews(
   return items;
 }
 
-/** 非公開になった写真を、並びの順に本人が見る URL つきで返す */
+/** 非公開になった写真を、並びの順 (読み出しで並べた順) に本人が見る URL つきで返す */
 async function hiddenPhotosOf(
   images: z.infer<typeof OwnReviewListRowSchema>['review_images'],
   storage: ReviewPhotoStorage
 ): Promise<OwnHiddenPhoto[]> {
-  const hidden = images
-    .filter(image => image.hidden_reason_code !== null)
-    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
   return Promise.all(
-    hidden.map(async image => ({
-      id: image.id,
-      src: await storage.presignStoredRead(
-        storedVariantKey(image.object_key, Math.min(...image.variant_widths), 'webp')
-      ),
-      reasonCode: image.hidden_reason_code as ReviewScreeningReason,
-    }))
+    images.flatMap(image => {
+      const reasonCode = image.hidden_reason_code;
+      if (!reasonCode) return [];
+      const key = storedVariantKey(
+        image.object_key,
+        variantWidthAtMost(image.variant_widths, 0),
+        'webp'
+      );
+      return [storage.presignStoredRead(key).then(src => ({ id: image.id, src, reasonCode }))];
+    })
   );
 }

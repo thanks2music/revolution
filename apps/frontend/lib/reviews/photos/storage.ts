@@ -49,8 +49,6 @@ export type ReviewPhotoStorage = {
   publish(keys: string[]): Promise<void>;
   /** 配信側から消し、CDN のキャッシュも消す。無いキーを渡してもよい */
   unpublish(keys: string[]): Promise<void>;
-  /** 配信側の URL */
-  publicUrl(key: string): string;
 };
 
 export type IntakeRead =
@@ -88,6 +86,12 @@ export function storedVariantKey(
   return `${objectKey}/${width}.${format}`;
 }
 
+/** 作った段のうち、max 以下で一番大きい幅 (無ければ一番小さい幅) */
+export function variantWidthAtMost(widths: readonly number[], max: number): number {
+  const sorted = [...widths].sort((a, b) => a - b);
+  return sorted.filter(width => width <= max).pop() ?? sorted[0];
+}
+
 /** 写真 1 枚の、保管側の段ごとの物のキー全部 */
 export function variantKeys(objectKey: string, widths: readonly number[]): string[] {
   return widths.flatMap(width =>
@@ -108,18 +112,14 @@ export type R2PhotoStorageConfig = {
   publicBucket: string;
   /** 配信側のカスタムドメイン (末尾の / なし) */
   publicBaseUrl: string;
-  /** CDN のキャッシュを消す (無ければ消さない。キャッシュが切れるまで見える) */
-  cachePurge?: CachePurgeConfig;
+  /** 配信側から消す時に CDN のキャッシュを消す (無ければ置き場所ごと使わない: getReviewPhotoStorage) */
+  cachePurge: CachePurgeConfig;
 };
 
 export type CachePurgeConfig = { zoneId: string; token: string };
 
-/**
- * 配信側の写真のキャッシュ。ブラウザは短く (ブラウザのキャッシュは消せない)、CDN は消す時に消せるなら長く持つ。
- * キャッシュを消す設定が無い時は、CDN も短くする (消した写真がキャッシュに残り続けないように)
- */
+/** 配信側の写真のキャッシュ。CDN は長く持ち (消す時に消す)、ブラウザは短くする (ブラウザのキャッシュは消せない) */
 const PUBLIC_CACHE_CONTROL = 'public, max-age=3600, s-maxage=31536000';
-const PUBLIC_CACHE_CONTROL_WITHOUT_PURGE = 'public, max-age=300, s-maxage=300';
 
 /** Cloudflare の URL ごとのキャッシュの削除は、1 回に 30 件まで */
 const PURGE_BATCH = 30;
@@ -129,7 +129,8 @@ const CONTENT_TYPES: Record<StoredPhotoFormat, string> = {
   avif: 'image/avif',
 };
 
-function contentTypeOf(key: string): string {
+/** 保管・配信する写真の形式 (キーの拡張子から) */
+export function contentTypeOf(key: string): string {
   const format = key.split('.').pop() as StoredPhotoFormat;
   return CONTENT_TYPES[format] ?? 'application/octet-stream';
 }
@@ -140,17 +141,22 @@ export async function purgeCachedUrls(
   urls: string[],
   fetchImpl: typeof fetch = fetch
 ): Promise<void> {
-  for (let i = 0; i < urls.length; i += PURGE_BATCH) {
-    const response = await fetchImpl(
-      `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(config.zoneId)}/purge_cache`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: urls.slice(i, i + PURGE_BATCH) }),
-      }
-    );
-    if (!response.ok) throw new Error(`cache purge failed (HTTP ${response.status})`);
-  }
+  const batches = Array.from({ length: Math.ceil(urls.length / PURGE_BATCH) }, (_, i) =>
+    urls.slice(i * PURGE_BATCH, (i + 1) * PURGE_BATCH)
+  );
+  await Promise.all(
+    batches.map(async files => {
+      const response = await fetchImpl(
+        `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(config.zoneId)}/purge_cache`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files }),
+        }
+      );
+      if (!response.ok) throw new Error(`cache purge failed (HTTP ${response.status})`);
+    })
+  );
 }
 
 /** R2 の S3 API のクライアント */
@@ -268,9 +274,7 @@ export function createR2PhotoStorage(
               // キャッシュの指定を付け直すので、メタデータは写さずに置き換える
               MetadataDirective: 'REPLACE',
               ContentType: contentTypeOf(key),
-              CacheControl: config.cachePurge
-                ? PUBLIC_CACHE_CONTROL
-                : PUBLIC_CACHE_CONTROL_WITHOUT_PURGE,
+              CacheControl: PUBLIC_CACHE_CONTROL,
             })
           )
         )
@@ -285,10 +289,8 @@ export function createR2PhotoStorage(
           Delete: { Objects: keys.map(Key => ({ Key })), Quiet: true },
         })
       );
-      if (config.cachePurge) await purgeCachedUrls(config.cachePurge, keys.map(publicUrl));
+      await purgeCachedUrls(config.cachePurge, keys.map(publicUrl));
     },
-
-    publicUrl,
   };
 }
 
@@ -376,9 +378,6 @@ export function createFakePhotoStorage(
     async unpublish(keys) {
       await Promise.all(keys.map(key => rm(file('public', key), { force: true })));
     },
-    publicUrl(key) {
-      return `${FAKE_PHOTO_STORAGE_ROUTE}/public/${key}`;
-    },
     async readPublic(key) {
       return readOrNull(file('public', key));
     },
@@ -404,7 +403,7 @@ async function readOrNull(target: string): Promise<Uint8Array | null> {
  * | env | 置き場所 |
  * |---|---|
  * | `REVIEW_PHOTO_STORAGE=fake` (`NODE_ENV` が development か test の時だけ) | 偽物 (ファイル) |
- * | `REVIEW_R2_*` と `REVIEW_PUBLIC_MEDIA_BASE_URL` がすべてある | R2 (`CLOUDFLARE_*` があれば、配信側から消す時にキャッシュも消す) |
+ * | `REVIEW_R2_*`・`REVIEW_PUBLIC_MEDIA_BASE_URL`・`CLOUDFLARE_*` (配信側から消す時の CDN のキャッシュの削除) がすべてある | R2 |
  * | どちらも無い | null (写真の操作は「今は写真を付けられません」を返す) |
  *
  * 審査器と同じく、ビルドした物 (本番と Preview) では偽物を選ばない。
@@ -422,12 +421,11 @@ export function getReviewPhotoStorage(
     photoBucket: presentEnvValue(env.REVIEW_R2_PHOTO_BUCKET),
     publicBucket: presentEnvValue(env.REVIEW_R2_PUBLIC_BUCKET),
     publicBaseUrl: presentEnvValue(env.REVIEW_PUBLIC_MEDIA_BASE_URL)?.replace(/\/+$/, ''),
+    zoneId: presentEnvValue(env.CLOUDFLARE_ZONE_ID),
+    token: presentEnvValue(env.CLOUDFLARE_CACHE_PURGE_TOKEN),
   };
+  // 配信側から消した写真が CDN のキャッシュに残り続けないよう、キャッシュを消せない時は写真ごと使わない
   if (Object.values(config).some(value => !value)) return null;
-  const zoneId = presentEnvValue(env.CLOUDFLARE_ZONE_ID);
-  const token = presentEnvValue(env.CLOUDFLARE_CACHE_PURGE_TOKEN);
-  return createR2PhotoStorage({
-    ...(config as Omit<R2PhotoStorageConfig, 'cachePurge'>),
-    cachePurge: zoneId && token ? { zoneId, token } : undefined,
-  });
+  const { zoneId, token, ...r2 } = config as Record<keyof typeof config, string>;
+  return createR2PhotoStorage({ ...r2, cachePurge: { zoneId, token } });
 }
