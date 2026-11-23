@@ -1,0 +1,114 @@
+name: Deploy Web Checker
+
+# Deploys the WEB checker (apps/web-checker) to Firebase: the Functions codebase `web-checker` and the
+# Hosting target `web-checker`. Firestore rules are not deployed here; they live with the AI writer's
+# rules (apps/ai-writer/firestore.rules) because a project has one set of rules.
+#
+# The job runs only when the repository variable WEB_CHECKER_DEPLOY_ENABLED is 'true', so merging this
+# workflow (or a change under apps/web-checker) before the production setup is finished does nothing.
+# Project, site and Slack values come from secrets and variables, not from this file.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/web-checker/**'
+      # Shared packages bundled into the Functions (build.mjs) and used by the screens
+      - 'shared/net/**'
+      - 'shared/schemas/**'
+      - 'shared/slack/**'
+      - '.github/workflows/deploy-web-checker.yml'
+  workflow_dispatch:
+
+# Do not cancel a deploy in progress; queue the next one instead
+concurrency:
+  group: deploy-web-checker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Firebase
+    if: vars.WEB_CHECKER_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      HOSTING_SITE: ${{ vars.WEB_CHECKER_HOSTING_SITE }}
+      SLACK_WEB_CHECKER_CHANNEL_ID: ${{ vars.SLACK_WEB_CHECKER_CHANNEL_ID }}
+      WEB_CHECKER_SITE_URL: ${{ vars.WEB_CHECKER_SITE_URL }}
+      # The screens are a static export, so the Firebase web config is baked in at build time
+      # (the same project and web app as the AI writer)
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${{ vars.NEXT_PUBLIC_FIREBASE_API_KEY }}
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ vars.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ vars.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ vars.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${{ vars.NEXT_PUBLIC_FIREBASE_APP_ID }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Stop before deploying when a value is missing: the Functions would deploy with an empty
+      # Slack channel or site URL, and the screens would build without the Firebase config
+      - name: Check required values
+        run: |
+          missing=0
+          for key in PROJECT_ID HOSTING_SITE SLACK_WEB_CHECKER_CHANNEL_ID WEB_CHECKER_SITE_URL \
+            NEXT_PUBLIC_FIREBASE_API_KEY NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN NEXT_PUBLIC_FIREBASE_PROJECT_ID \
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID NEXT_PUBLIC_FIREBASE_APP_ID; do
+            if [ -z "${!key}" ]; then
+              echo "::error title=Missing value::$key is empty or unset."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.tool-versions'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Fail here rather than in the middle of a deploy
+      - name: Test the Functions
+        run: pnpm --filter @revolution/web-checker-functions test
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      # Parameterized configuration of the Functions (defineString). The Slack bot token is a
+      # defineSecret and is read from Secret Manager, not from this file
+      - name: Write the Functions parameters
+        working-directory: apps/web-checker/functions
+        run: |
+          {
+            printf 'SLACK_WEB_CHECKER_CHANNEL_ID=%s\n' "$SLACK_WEB_CHECKER_CHANNEL_ID"
+            printf 'WEB_CHECKER_SITE_URL=%s\n' "$WEB_CHECKER_SITE_URL"
+          } > .env
+
+      # firebase-tools is a devDependency of the Functions package. The predeploy hooks in
+      # firebase.json build the Functions bundle and the static screens
+      - name: Deploy
+        working-directory: apps/web-checker
+        run: |
+          firebase() { ./functions/node_modules/.bin/firebase "$@"; }
+          firebase target:apply hosting web-checker "$HOSTING_SITE" --project "$PROJECT_ID"
+          firebase deploy --only functions:web-checker,hosting:web-checker --project "$PROJECT_ID" --non-interactive

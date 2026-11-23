@@ -49,3 +49,12 @@ Functions read these parameters (`firebase-functions/params`):
 | `WEB_CHECKER_SITE_URL` | string (the screens' URL, used for the history link in notifications) |
 
 The screens need the six `NEXT_PUBLIC_FIREBASE_*` values at build time (see `web/lib/env.ts`).
+
+## Deploy
+
+`.github/workflows/deploy-web-checker.yml` deploys the Functions codebase `web-checker` and the Hosting target `web-checker` on a push to `main` that changes this app or the shared packages it uses, or by hand (`workflow_dispatch`). It runs only while the repository variable `WEB_CHECKER_DEPLOY_ENABLED` is `true`.
+
+- The project and the deploy identity come from the same secrets as the AI writer's deploy.
+- The Hosting site, the two string parameters above and the `NEXT_PUBLIC_FIREBASE_*` values come from repository variables; the workflow stops if any is empty.
+- `SLACK_BOT_TOKEN` is read from Secret Manager at deploy time.
+- Firestore rules are not deployed by this workflow: they live in `apps/ai-writer/firestore.rules`, since a project has one set of rules.
