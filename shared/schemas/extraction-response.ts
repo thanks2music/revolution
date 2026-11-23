@@ -145,6 +145,9 @@ export const ReasoningSchema = z.object({
   スタジオ名: z.string().nullable(),
   監督名: z.string().nullable(),
   シリーズ名: z.string().nullable(),
+  グループ区分: z.string().nullable(),
+  性別: z.string().nullable(),
+  ゲーム実況: z.string().nullable(),
   開催都道府県: z.string().nullable(),
   メニュー詳細リスト: z.string().nullable(),
   メニューテーマ説明: z.string().nullable(),
@@ -162,6 +165,12 @@ export const ExtractionResponseSchema = z.object({
   スタジオ名: z.string().nullable(),
   監督名: z.string().nullable(),
   シリーズ名: z.string().nullable(),
+  /** グループか個人か (idol / youtuber / vtuber で、ページに書いてある時だけ。リード文の連体修飾語用) */
+  グループ区分: z.enum(['group', 'solo']).nullable(),
+  /** アイドルの性別 (ページに書いてある時だけ) */
+  性別: z.enum(['female', 'male', 'mixed']).nullable(),
+  /** YouTuber がゲーム実況を主にしているか (ページに書いてある時だけ) */
+  ゲーム実況: z.boolean().nullable(),
   開催期間: EventPeriodSchema,
   公式サイトURL: z.string(),
   略称: z.string().nullable(),
