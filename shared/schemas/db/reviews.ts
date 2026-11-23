@@ -143,6 +143,10 @@ export const reviews = pgTable(
     index('reviews_occurrence_published_idx')
       .on(table.occurrenceId, table.submittedAt.desc())
       .where(sql`${table.status} = 'published' and ${table.deletedAt} is null`),
+    // 管理アプリの確認待ちの一覧 (BOSS の確認待ちと止まった審査中を古い順、0026)
+    index('reviews_moderation_queue_idx')
+      .on(table.submittedAt, table.id)
+      .where(sql`${table.deletedAt} is null and ${table.status} in ('needs_review', 'pending')`),
     // ★ RLS 述語 + ON DELETE RESTRICT + マイページの 3 経路が依存する。
     index('reviews_user_idx').on(table.userId),
     check('reviews_rating_chk', sql`${table.rating} between 1 and 5`),

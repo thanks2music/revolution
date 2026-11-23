@@ -10,6 +10,8 @@ import {
   REVIEW_GOODS_COST_BANDS,
   REVIEW_RATING_MAX,
   REVIEW_RATING_MIN,
+  REVIEW_MODERATION_ACTIONS,
+  REVIEW_MODERATION_ACTORS,
   REVIEW_REASON_CODES,
   REVIEW_STATUSES,
   ReviewSubmitSchema,
@@ -365,5 +367,26 @@ describe('値の一覧が DB の CHECK と一致する', () => {
 
   it('投稿者が UPDATE できる列は ReviewUpdateSchema と同じ', () => {
     expect(grantedColumns('UPDATE')).toEqual(Object.keys(ReviewUpdateSchema.shape).map(toSnake).sort());
+  });
+});
+
+describe('判断の記録の値の一覧が DB の CHECK と一致する (0026)', () => {
+  const migrationsDir = path.join(__dirname, '../../../../supabase/migrations');
+  const migration = readFileSync(
+    path.join(
+      migrationsDir,
+      readdirSync(migrationsDir).find((name) => name.endsWith('_review_moderation.sql'))!,
+    ),
+    'utf8',
+  );
+
+  it.each([
+    ['review_moderation_events_actor_chk', REVIEW_MODERATION_ACTORS],
+    ['review_moderation_events_action_chk', REVIEW_MODERATION_ACTIONS],
+  ])('%s', (constraint, values) => {
+    const start = migration.indexOf(`"${constraint}" CHECK`);
+    expect(start).toBeGreaterThan(-1);
+    const body = migration.slice(start, migration.indexOf('\n', start));
+    expect([...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1])).toEqual([...values]);
   });
 });

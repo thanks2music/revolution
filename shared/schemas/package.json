@@ -30,6 +30,7 @@
     "./db/reviews": "./db/reviews.ts",
     "./db/review-images": "./db/review-images.ts",
     "./db/review-helpful": "./db/review-helpful.ts",
+    "./db/review-moderation-events": "./db/review-moderation-events.ts",
     "./db/title-aliases": "./db/title-aliases.ts",
     "./db/venue-aliases": "./db/venue-aliases.ts",
     "./profile": "./profile.ts",

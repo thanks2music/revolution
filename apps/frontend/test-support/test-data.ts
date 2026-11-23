@@ -45,8 +45,15 @@ export type TestDataScope = {
     endsOn?: string;
     cancelled?: boolean;
   }): Promise<{ id: number; slug: string }>;
-  createMember(input?: { username?: string; onboarded?: boolean }): Promise<TestMember>;
+  createMember(input?: TestMemberInput): Promise<TestMember>;
   cleanup(): Promise<void>;
+};
+
+export type TestMemberInput = {
+  username?: string;
+  onboarded?: boolean;
+  /** 管理アプリに入れる会員にする (app_metadata.role = 'admin'。one-more-time #167) */
+  admin?: boolean;
 };
 
 export type TestMember = {
@@ -111,7 +118,7 @@ export function createTestDataScope(): TestDataScope {
     return data as { id: number; slug: string };
   }
 
-  async function createMember(input: { username?: string; onboarded?: boolean } = {}) {
+  async function createMember(input: TestMemberInput = {}) {
     const member = await createTestMember(admin, input);
     undo.push(() => deleteTestMember(admin, member.userId));
     return member;
@@ -168,7 +175,7 @@ export async function signInAsMember(member: TestMember): Promise<SupabaseClient
  */
 export async function createTestMember(
   admin: SupabaseClient,
-  input: { username?: string; onboarded?: boolean } = {}
+  input: TestMemberInput = {}
 ): Promise<TestMember> {
   const suffix = randomSuffix();
   const email = `${TEST_DATA_PREFIX}${suffix}@example.com`;
@@ -182,6 +189,7 @@ export async function createTestMember(
     password,
     email_confirm: true,
     user_metadata: { onboarded },
+    ...(input.admin ? { app_metadata: { role: 'admin' } } : {}),
   });
   if (error || !data.user) throw new Error(`会員を作れませんでした: ${error?.message}`);
   const userId = data.user.id;
