@@ -28,6 +28,7 @@ import { RssArticleCollectionService } from '../lib/services/rss-article-collect
 import { AttemptStore } from '../lib/scheduled/attempt-store';
 import type { RssCandidateInput } from '../lib/scheduled/candidates';
 import { attemptDocId } from '../lib/scheduled/attempt-url';
+import { DetectedLinkStore } from '../lib/scheduled/detected-link-store';
 import { RegisteredUrlStore } from '../lib/scheduled/registered-url-store';
 import { runScheduled } from '../lib/scheduled/run';
 import { prCountOf, type ScheduledRunSummary, type StopReason } from '../lib/scheduled/summary';
@@ -120,6 +121,8 @@ async function main(): Promise<void> {
         store: new AttemptStore(getAdminDb()),
         loadRegisteredUrls: () => new RegisteredUrlStore(getAdminDb()).list(),
         isRegistered: async url => (await new RegisteredUrlStore(getAdminDb()).get(attemptDocId(url))) !== undefined,
+        loadDetectedLinks: () => new DetectedLinkStore(getAdminDb()).listPending(console.log),
+        markDetectedLinks: (urls, status) => new DetectedLinkStore(getAdminDb()).mark(urls, status),
         loadRssItems,
         fetchPage: extractArticleData,
         generate: request => service.generateMdxFromRSS(request),

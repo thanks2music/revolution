@@ -4,7 +4,15 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import type { AttemptRecord } from '@/lib/scheduled/attempt-store';
-import { isRssCandidate, orderCandidates, originSource, type RssCandidateInput } from '@/lib/scheduled/candidates';
+import {
+  expiredDetectedLinks,
+  isChosenByPerson,
+  isRssCandidate,
+  orderCandidates,
+  originSource,
+  type RssCandidateInput,
+} from '@/lib/scheduled/candidates';
+import type { DetectedLink } from '@revolution/schemas/detected-link';
 
 const NOW = new Date('2026-11-15T03:00:00Z');
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000).toUTCString();
@@ -120,6 +128,67 @@ describe('orderCandidates', () => {
       ['rss', 'https://rss.example/1'],
     ]);
     expect(result[0].registeredAt).toEqual(new Date('2026-11-12T00:00:00Z'));
+  });
+});
+
+const detected = (url: string, ageDays: number): DetectedLink => ({
+  url,
+  targetId: 'target-1',
+  targetTitle: 'サンプル公式サイト',
+  detectedAt: NOW.getTime() - ageDays * 24 * 60 * 60 * 1000,
+  status: 'pending',
+});
+
+describe('detected links', () => {
+  it('come after registered URLs and before retries and RSS, the oldest detection first', () => {
+    const result = orderCandidates({
+      registered: [{ id: 'r', url: 'https://reg.example/r', createdBy: 'boss@example.com', createdAt: NOW }],
+      detected: [detected('https://det.example/new', 1), detected('https://det.example/old', 5)],
+      dueRetries: [due('https://retry.example/1', new Date('2026-11-14T00:00:00Z'))],
+      rssItems: [rss('https://rss.example/1', 1)],
+      attemptedUrls: new Set(),
+      now: NOW,
+    });
+    expect(result.map(c => [c.source, c.url])).toEqual([
+      ['registered', 'https://reg.example/r'],
+      ['detected', 'https://det.example/old'],
+      ['detected', 'https://det.example/new'],
+      ['retry', 'https://retry.example/1'],
+      ['rss', 'https://rss.example/1'],
+    ]);
+    expect(result[1].detectedAt?.getTime()).toBe(detected('x', 5).detectedAt);
+  });
+
+  it('leave out links detected more than 30 days ago, links already tried and a page already listed', () => {
+    const result = orderCandidates({
+      registered: [{ id: 'r', url: 'https://same.example/', createdBy: 'boss@example.com', createdAt: NOW }],
+      detected: [
+        detected('https://det.example/expired', 31),
+        detected('https://det.example/tried', 1),
+        detected('https://same.example/', 1),
+        detected('https://det.example/edge', 30),
+      ],
+      dueRetries: [],
+      rssItems: [],
+      attemptedUrls: new Set(['https://det.example/tried']),
+      now: NOW,
+    });
+    expect(result.map(c => [c.source, c.url])).toEqual([
+      ['registered', 'https://same.example/'],
+      ['detected', 'https://det.example/edge'],
+    ]);
+  });
+
+  it('expiredDetectedLinks picks the ones past 30 days', () => {
+    const links = [detected('https://a.example/', 31), detected('https://b.example/', 29)];
+    expect(expiredDetectedLinks(links, NOW).map(link => link.url)).toEqual(['https://a.example/']);
+  });
+
+  it('are chosen by a person (writing scope not applied), like registered URLs', () => {
+    expect(isChosenByPerson({ source: 'detected' })).toBe(true);
+    expect(isChosenByPerson({ source: 'retry', previous: { ...due('https://a.example/1', NOW), source: 'detected' } })).toBe(true);
+    expect(isChosenByPerson({ source: 'rss' })).toBe(false);
+    expect(isRssCandidate({ source: 'detected' })).toBe(false);
   });
 });
 

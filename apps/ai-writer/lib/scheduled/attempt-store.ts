@@ -17,10 +17,11 @@ import { attemptDocId } from './attempt-url';
 export const ATTEMPTS_COLLECTION = 'scheduled_url_attempts';
 
 /** Where the URL came from when it was first tried */
-export type AttemptSource = 'rss' | 'registered' | 'cli';
+/** `detected` = a link the WEB checker handed over (`detected-link-store.ts`) */
+export type AttemptSource = 'rss' | 'registered' | 'detected' | 'cli';
 
 /** Where `publishedAt` came from */
-export type PublishedAtSource = PublishedDateSource | 'rss' | 'registration' | 'first-attempt';
+export type PublishedAtSource = PublishedDateSource | 'rss' | 'registration' | 'detection' | 'first-attempt';
 
 export interface AttemptRecord {
   url: string;
