@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@revolution/net/*": ["../../../shared/net/*"],
+      "@revolution/slack/*": ["../../../shared/slack/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "__tests__/**/*.ts", "build.mjs"],
+  "exclude": ["node_modules", "dist"]
+}

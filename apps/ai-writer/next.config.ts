@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, '../../'),
 
   // Next.js 公式推奨: shared/schemas/ workspace の .ts ファイルを直接 transpile する
-  transpilePackages: ['@revolution/schemas', '@revolution/slack'],
+  transpilePackages: ['@revolution/net', '@revolution/schemas', '@revolution/slack'],
 
   experimental: {
     serverActions: {
