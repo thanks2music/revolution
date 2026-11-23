@@ -39,13 +39,69 @@ export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 export const REVIEW_SCREENING_REASONS = ['personal_info', 'abuse', 'spam', 'resale'] as const;
 export type ReviewScreeningReason = (typeof REVIEW_SCREENING_REASONS)[number];
 
-/** 状態の理由 (DB CHECK `reviews_reason_code_chk`)。通報の理由は通報のチケットで足す */
-export const REVIEW_REASON_CODES = [...REVIEW_SCREENING_REASONS, 'ai_failure'] as const;
+/**
+ * 口コミの通報の 8 つの理由 (仕様 #156、one-more-time #168)。最初の 4 つは審査の 4 種と同じ意味なので同じコード。
+ * 個人情報・他人の顔 / 誹謗中傷・差別・性的表現 / 宣伝・スパム・開催と無関係 / グッズの譲渡・転売の呼びかけ /
+ * ネタバレなのに印が無い / 写真の無断転載 / 行っていない人の口コミ / その他。
+ * BOSS が通報を受けて非公開にする時の理由もこの 8 つから選ぶ
+ */
+export const REVIEW_REPORT_REASONS = [
+  ...REVIEW_SCREENING_REASONS,
+  'spoiler_unmarked',
+  'photo_reposted',
+  'not_attended',
+  'other',
+] as const;
+export type ReviewReportReason = (typeof REVIEW_REPORT_REASONS)[number];
+
+/** プロフィール画像の通報の 5 つの理由 (仕様 #156)。画面と処理は #171 */
+export const PROFILE_IMAGE_REPORT_REASONS = [
+  'personal_info',
+  'abuse',
+  'spam',
+  'photo_reposted',
+  'other',
+] as const;
+export type ProfileImageReportReason = (typeof PROFILE_IMAGE_REPORT_REASONS)[number];
+
+/** 通報の対象の種類 (DB CHECK `review_reports_target_type_chk`) */
+export const REPORT_TARGET_TYPES = ['review', 'profile_image'] as const;
+export type ReportTargetType = (typeof REPORT_TARGET_TYPES)[number];
+
+/**
+ * 通報の処理の内容 (DB CHECK `review_reports_actions_chk`)。1 回の処理で複数が重なることがある
+ * (ネタバレの印と写真の非公開を一緒に当てるなど)。非公開・ネタバレの印・写真の非公開・画像を外した・問題なし
+ */
+export const REPORT_ACTIONS = [
+  'hidden',
+  'spoiler_marked',
+  'photo_hidden',
+  'image_removed',
+  'dismissed',
+] as const;
+export type ReportAction = (typeof REPORT_ACTIONS)[number];
+
+/**
+ * 状態の理由 (DB CHECK `reviews_reason_code_chk`)。審査の 4 種・通報で足した 4 種・AI の審査の失敗。
+ * 写真の非公開の理由 (`review_images_hidden_reason_chk`) は ai_failure を除いた通報の 8 つ
+ */
+export const REVIEW_REASON_CODES = [...REVIEW_REPORT_REASONS, 'ai_failure'] as const;
 export type ReviewReasonCode = (typeof REVIEW_REASON_CODES)[number];
 
-/** 審査の判断の記録 (review_moderation_events、0026) の主体と操作。DB の CHECK と揃える */
+/**
+ * 審査の判断の記録 (review_moderation_events、0026) の主体と操作。DB の CHECK と揃える。
+ * hidden / kept / dismissed は通報の処理 (0029): 非公開にした / 直して公開のままにした / 問題なしで閉じた
+ */
 export const REVIEW_MODERATION_ACTORS = ['ai', 'admin'] as const;
-export const REVIEW_MODERATION_ACTIONS = ['screened', 'published', 'rejected', 'requeued'] as const;
+export const REVIEW_MODERATION_ACTIONS = [
+  'screened',
+  'published',
+  'rejected',
+  'requeued',
+  'hidden',
+  'kept',
+  'dismissed',
+] as const;
 
 /** 参加のしかた。並ばずそのまま / 事前予約 / 整理券・当日の列 / 抽選に当選 / その他 */
 export const REVIEW_ATTENDANCES = ['walk_in', 'reservation', 'queue', 'lottery', 'other'] as const;

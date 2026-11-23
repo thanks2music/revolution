@@ -11,8 +11,10 @@ import {
   REVIEW_MODERATION_ACTIONS,
   REVIEW_MODERATION_ACTORS,
   REVIEW_REASON_CODES,
+  REVIEW_REPORT_REASONS,
   REVIEW_SCREENING_REASONS,
   REVIEW_STATUSES,
+  type ReviewReportReason,
   type ReviewScreeningReason,
 } from '@revolution/schemas/review';
 
@@ -151,7 +153,7 @@ const DetailSchema = z.object({
   photos: z.array(
     PublicPhotoRowSchema.extend({
       sort_order: z.number(),
-      hidden_reason_code: z.enum(REVIEW_SCREENING_REASONS).nullable(),
+      hidden_reason_code: z.enum(REVIEW_REPORT_REASONS).nullable(),
     })
   ),
   events: z.array(
@@ -174,7 +176,7 @@ const DetailSchema = z.object({
 export type ModerationPhoto = {
   id: number;
   /** 非公開の理由 (非公開でなければ null) */
-  hiddenReason: ReviewScreeningReason | null;
+  hiddenReason: ReviewReportReason | null;
   /** 保管側の短時間だけ有効な URL。置き場所の無い環境では null (それでも判断はできる) */
   view: ReviewPhotoView | null;
 };
