@@ -45,7 +45,8 @@
     "./review-constants": "./review-constants.ts",
     "./alias": "./alias.ts",
     "./review-screening-response": "./review-screening-response.ts",
-    "./review-photo": "./review-photo.ts"
+    "./review-photo": "./review-photo.ts",
+    "./detected-link": "./detected-link.ts"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.36.0",

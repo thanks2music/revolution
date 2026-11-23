@@ -16,7 +16,7 @@ Watches a part of a web page (a CSS selector on a URL) on a schedule and posts t
 |---|---|
 | `web_checker_targets/{id}` (`url`, `selector`, `title`, `cron`, `notifyMode`, `checkedAt`, `alertedAt`, `createdAt`, `createdBy`, `updatedAt`, `updatedBy`) | the screens (Firestore rules) and Functions (`checkedAt` and `alertedAt` only) |
 | `web_checker_targets/{id}/snapshots/{id}` (`content`, `time`) | Functions only |
-| `web_checker_detected_links/{sha256 of the normalized URL}` (`url`, `targetId`, `targetTitle`, `detectedAt`) | Functions only (read by the AI writer). The ID uses `@revolution/net/attempt-url`, the same key as the AI writer's attempts and registered URLs |
+| `web_checker_detected_links/{sha256 of the normalized URL}` (`url`, `targetId`, `targetTitle`, `detectedAt`) | Functions only (read by the AI writer's scheduled run, which tries the ones detected within 30 days that have no attempt record). The shape is `@revolution/schemas/detected-link`, and the ID uses `@revolution/net/attempt-url`, the same key as the AI writer's attempts and registered URLs |
 
 The Firestore rules live in `apps/ai-writer/firestore.rules`, shared with the AI writer (a Firebase project has one set of rules). Only users with the `admin` or `allowedEditor` custom claim can read or write.
 
@@ -49,3 +49,7 @@ Functions read these parameters (`firebase-functions/params`):
 | `WEB_CHECKER_SITE_URL` | string (the screens' URL, used for the history link in notifications) |
 
 The screens need the six `NEXT_PUBLIC_FIREBASE_*` values at build time (see `web/lib/env.ts`).
+
+## Deploy
+
+`.github/workflows/deploy-web-checker.yml` deploys the Functions codebase `web-checker` and the Hosting target `web-checker` on a push to `main` that changes this app or the shared packages it uses, or by hand. It runs only while the repository variable `WEB_CHECKER_DEPLOY_ENABLED` is `true`. What it checks, which values it needs and what it does not deploy (Firestore rules) are described at the top of the workflow.

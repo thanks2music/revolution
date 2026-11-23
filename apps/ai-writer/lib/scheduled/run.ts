@@ -21,6 +21,7 @@
  */
 import type { MdxGenerationRequest, MdxGenerationResult } from '@/lib/services/article-generation-mdx.service';
 import { HttpStatusError } from '@/lib/utils/http-status-error';
+import type { DetectedLink } from '@revolution/schemas/detected-link';
 
 import {
   buildAttemptRecord,
@@ -31,7 +32,15 @@ import {
 } from './attempt-record';
 import type { AttemptRecord, AttemptStore } from './attempt-store';
 import { normalizeAttemptUrl } from './attempt-url';
-import { isRssCandidate, orderCandidates, originSource, type Candidate, type RssCandidateInput } from './candidates';
+import {
+  isChosenByPerson,
+  newAttemptSource,
+  isRssCandidate,
+  orderCandidates,
+  originSource,
+  type Candidate,
+  type RssCandidateInput,
+} from './candidates';
 import { extractPublishedDate } from './published-date';
 import type { RegisteredUrl } from './registered-url-store';
 import { UNREGISTERED_REASON } from './registered-urls';
@@ -69,6 +78,8 @@ export interface ScheduledRunDeps {
   loadRegisteredUrls: () => Promise<RegisteredUrl[]>;
   /** Whether the URL is still registered (checked before a registered URL is queued for a retry) */
   isRegistered: (url: string) => Promise<boolean>;
+  /** Links the WEB checker handed over within the last 30 days (`DetectedLinkStore.listRecent`) */
+  loadDetectedLinks: () => Promise<DetectedLink[]>;
   /** RSS items of the active feeds. A feed that cannot be read is reported in `errors` */
   loadRssItems: () => Promise<{ items: RssCandidateInput[]; errors: string[] }>;
   fetchPage: (url: string) => Promise<FetchedPage>;
@@ -86,6 +97,7 @@ export interface RunOptions {
 function fallbackDateLabel(candidate: Candidate): string {
   if (candidate.rssPubDate) return `RSS の配信日 ${candidate.rssPubDate.toISOString()}`;
   if (candidate.registeredAt) return `登録日 ${candidate.registeredAt.toISOString()}`;
+  if (candidate.detectedAt) return `検知した日 ${candidate.detectedAt.toISOString()}`;
   return '初めて試した日';
 }
 
@@ -109,6 +121,15 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
   let stopReason: StopReason | undefined;
   let error: string | undefined;
   let pendingFailures: Attempted[] = [];
+  /** Registered URLs and detected links are sources among several; failing to read one should not stop the run */
+  const loadOrReport = async <T>(label: string, load: () => Promise<T[]>): Promise<T[]> => {
+    try {
+      return await load();
+    } catch (caught) {
+      feedErrors.push(`${label}: ${caught instanceof Error ? caught.message : String(caught)}`);
+      return [];
+    }
+  };
 
   /** Store what happened to one URL and show the next try (or the give-up) in the summary */
   const persist = async (entry: Attempted, countFailure: boolean) => {
@@ -143,22 +164,21 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
   };
 
   try {
-    const [registered, rss, dueRecords] = await Promise.all([
-      // Registered URLs are one source among three; failing to read them should not stop the run
-      deps.loadRegisteredUrls().catch((caught: unknown) => {
-        feedErrors.push(`登録 URL: ${caught instanceof Error ? caught.message : String(caught)}`);
-        return [];
-      }),
+    const [registered, detected, rss, dueRecords] = await Promise.all([
+      loadOrReport('登録 URL', deps.loadRegisteredUrls),
+      loadOrReport('検知リンク', deps.loadDetectedLinks),
       deps.loadRssItems(),
       deps.store.findDueRetries(startedAt, DUE_RETRY_READ_LIMIT),
     ]);
     feedErrors.push(...rss.errors);
     const attemptedUrls = await deps.store.findAttempted([
       ...registered.map(entry => entry.url),
+      ...detected.map(link => link.url),
       ...rss.items.map(item => normalizeAttemptUrl(item.link)),
     ]);
     const candidates = orderCandidates({
       registered,
+      detected,
       dueRetries: dueRecords,
       rssItems: rss.items,
       attemptedUrls,
@@ -167,7 +187,7 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
     candidateCount = candidates.length;
     const count = (source: string) => candidates.filter(candidate => candidate.source === source).length;
     log(
-      `候補 ${candidates.length} 件 (登録 URL ${count('registered')} 件、試し直し ${count('retry')} 件、RSS ${count('rss')} 件、読めなかったフィード ${feedErrors.length} 件)`,
+      `候補 ${candidates.length} 件 (登録 URL ${count('registered')} 件、検知リンク ${count('detected')} 件、試し直し ${count('retry')} 件、RSS ${count('rss')} 件、読めなかったフィード ${feedErrors.length} 件)`,
     );
 
     for (const candidate of candidates) {
@@ -189,11 +209,12 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
       const context: AttemptContext = {
         url: candidate.url,
         // A retry keeps the source of its first attempt (`buildAttemptRecord`)
-        source: candidate.source === 'registered' ? 'registered' : 'rss',
+        source: newAttemptSource(candidate),
         feedId: candidate.feedId,
         title: candidate.title,
         rssPubDate: candidate.rssPubDate,
         registeredAt: candidate.registeredAt,
+        detectedAt: candidate.detectedAt,
         now,
       };
 
@@ -219,8 +240,8 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
           dryRun: options.dryRun,
           // Only RSS candidates are limited to the writing scope; a person chose a registered URL
           applyWritingScope: isRssCandidate(candidate),
-          // A registered URL may be the official page itself (RSS items are news articles)
-          inputMayBeOfficialPage: originSource(candidate) === 'registered',
+          // A registered URL or a detected link may be the official page itself (RSS items are news articles)
+          inputMayBeOfficialPage: isChosenByPerson(candidate),
         });
         attempt = { kind: 'pipeline', result };
       } catch (caught) {
@@ -234,6 +255,7 @@ export async function runScheduled(deps: ScheduledRunDeps, options: RunOptions):
       const item: RunItem = {
         url: candidate.url,
         registered: originSource(candidate) === 'registered',
+        detected: originSource(candidate) === 'detected',
         title: context.title,
         outcome: toAttemptOutcome(attempt, true).kind,
         ...describeAttempt(attempt),
