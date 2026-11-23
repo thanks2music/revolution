@@ -4,12 +4,12 @@
  * `SUPABASE_SECRET_KEY` (modern secret key) を使い RLS をバイパスする **server-only**
  * クライアント。secret key を参照するため、必ず `'use server'` の Server Action か
  * Server Component からのみ import すること (Client Component から import すると
- * secret key がバンドルに混入する)。本リポジトリでは `actions/profile.ts`
- * (`'use server'`) からのみ呼ばれる。
+ * secret key がバンドルに混入する)。
  *
- * 用途は限定的: username 可用性チェック (他人行の存在確認) のように、本人セッションでは
- * RLS で他人行が見えず判定できない軽量 read 系のみ。書き込みや本人限定操作には使わない
- * (それらは RLS が効く @/lib/supabase/server の createClient を使う)。
+ * 用途は、本人のセッションでは RLS で読めない・書けない物に限る: username の可用性チェック
+ * (他人の行の存在確認)、口コミの審査の結果の書き込み、本人に理由や日付を見せる読み取り、
+ * 通報の受け付け (`submit_review_report` は service role にだけ渡してある) など。
+ * 本人の操作で済む物は、RLS が効く @/lib/supabase/server の createClient を使う。
  *
  * cookie/session を持たない (auth state を永続しない) ため、自動 token refresh も無効化。
  */

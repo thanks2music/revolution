@@ -64,21 +64,28 @@ describe('setHelpful', () => {
 });
 
 describe('getHelpfulState', () => {
-  it('渡した口コミのうち、会員が押した物を返す', async () => {
-    builder.in.mockResolvedValue({ data: [{ review_id: 2 }], error: null });
-    await expect(getHelpfulState([1, 2])).resolves.toEqual({ viewer: 'member', marked: [2] });
+  it('渡した口コミのうち、会員が押した物と本人の口コミを返す', async () => {
+    builder.in
+      .mockResolvedValueOnce({ data: [{ review_id: 2 }], error: null })
+      .mockResolvedValueOnce({ data: [{ id: 1 }], error: null });
+    await expect(getHelpfulState([1, 2])).resolves.toEqual({
+      viewer: 'member',
+      marked: [2],
+      own: [1],
+    });
     expect(builder.in).toHaveBeenCalledWith('review_id', [1, 2]);
+    expect(builder.in).toHaveBeenCalledWith('id', [1, 2]);
   });
 
   it('onboarding の途中の会員は、プロフィールの登録へ案内する', async () => {
     (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'not_onboarded' });
     await expect(setHelpful(7, true)).resolves.toMatchObject({ ok: false, needs: 'onboarding' });
-    await expect(getHelpfulState([1])).resolves.toEqual({ viewer: 'onboarding', marked: [] });
+    await expect(getHelpfulState([1])).resolves.toEqual({ viewer: 'onboarding', marked: [], own: [] });
   });
 
   it('読めなかった時は「分からない」にする (ログイン済みの会員をログインへ送らない)', async () => {
     (getCurrentMember as jest.Mock).mockRejectedValue(new Error('db down'));
-    await expect(getHelpfulState([1])).resolves.toEqual({ viewer: 'unknown', marked: [] });
+    await expect(getHelpfulState([1])).resolves.toEqual({ viewer: 'unknown', marked: [], own: [] });
   });
 
   it('上限を超えた ID は切り詰めて尋ねる', async () => {
@@ -89,9 +96,9 @@ describe('getHelpfulState', () => {
 
   it('ログインしていなければ viewer: login。不正な ID の一覧には問い合わせない', async () => {
     (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'unauthenticated' });
-    await expect(getHelpfulState([1])).resolves.toEqual({ viewer: 'login', marked: [] });
+    await expect(getHelpfulState([1])).resolves.toEqual({ viewer: 'login', marked: [], own: [] });
     (getCurrentMember as jest.Mock).mockResolvedValue({ ok: true, profileId: 'profile-1' });
-    await expect(getHelpfulState([-1])).resolves.toEqual({ viewer: 'member', marked: [] });
+    await expect(getHelpfulState([-1])).resolves.toEqual({ viewer: 'member', marked: [], own: [] });
     expect(builder.in).not.toHaveBeenCalled();
   });
 });

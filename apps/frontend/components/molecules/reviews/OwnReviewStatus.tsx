@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { getOwnReviewState, type OwnReviewState } from '@/actions/review';
 import { useAuthNav } from '@/components/molecules/AuthNavProvider';
 import { toDotDate } from '@/lib/date';
-import { REJECTION_REASON_LABELS } from '@revolution/reviews/labels';
+import { REVIEW_REASON_LABELS } from '@revolution/reviews/labels';
 
 /**
  * 本人の口コミの状態 (開催のページの島)。マウント後に Server Action で取る (LikeButton と同じく、
@@ -47,7 +47,7 @@ export function OwnReviewStatus({ occurrenceId }: { occurrenceId: number }) {
       {state.status === 'rejected' && <p>審査に通らなかったため、公開されていません。</p>}
       {state.status === 'hidden' && <p>非公開になっています。</p>}
       {/* 差し戻しと非公開の理由 (getOwnReviewState が、見せてよい時だけ返す) */}
-      {state.reasonCode && <p>理由: {REJECTION_REASON_LABELS[state.reasonCode]}</p>}
+      {state.reasonCode && <p>理由: {REVIEW_REASON_LABELS[state.reasonCode]}</p>}
       {state.note && <p>運営より: {state.note}</p>}
     </div>
   );

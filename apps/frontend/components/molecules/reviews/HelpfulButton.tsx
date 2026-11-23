@@ -32,6 +32,8 @@ type HelpfulContextValue = {
   /** 押した状態と件数 (押した後の値)。無ければページに描いた値と、マウント後に取った状態を使う */
   entries: Map<number, Entry>;
   isMarked: (reviewId: number) => boolean;
+  /** 閲覧者本人の口コミ (通報の「…」を出さない、one-more-time #168) */
+  isOwn: (reviewId: number) => boolean;
   toggle: (reviewId: number, current: Entry) => Promise<string | null>;
 };
 
@@ -53,13 +55,14 @@ export function HelpfulProvider(props: { reviewIds: number[]; children: ReactNod
     getHelpfulState(ids)
       .then(result => active && setState(result))
       // 取れなくても押せるようにする (案内は押した時の結果で分かる)
-      .catch(() => active && setState({ viewer: 'unknown', marked: [] }));
+      .catch(() => active && setState({ viewer: 'unknown', marked: [], own: [] }));
     return () => {
       active = false;
     };
   }, [key]);
 
   const marked = useMemo(() => new Set(state?.marked), [state]);
+  const own = useMemo(() => new Set(state?.own), [state]);
   const viewer = state?.viewer;
 
   const setEntry = useCallback((reviewId: number, entry: Entry) => {
@@ -98,10 +101,25 @@ export function HelpfulProvider(props: { reviewIds: number[]; children: ReactNod
   );
 
   const value = useMemo<HelpfulContextValue>(
-    () => ({ ready: state !== null, entries, isMarked: reviewId => marked.has(reviewId), toggle }),
-    [state, entries, marked, toggle]
+    () => ({
+      ready: state !== null,
+      entries,
+      isMarked: reviewId => marked.has(reviewId),
+      isOwn: reviewId => own.has(reviewId),
+      toggle,
+    }),
+    [state, entries, marked, own, toggle]
   );
   return <HelpfulContext.Provider value={value}>{props.children}</HelpfulContext.Provider>;
+}
+
+/**
+ * 閲覧者の状態を読み終え、本人の口コミでないか (通報の「…」を出してよいか)。
+ * 読み終える前は出さない (本人の口コミに一瞬出さないため)
+ */
+export function useCanReport(reviewId: number): boolean {
+  const context = useContext(HelpfulContext);
+  return Boolean(context?.ready && !context.isOwn(reviewId));
 }
 
 export function HelpfulButton(props: { reviewId: number; count: number }) {

@@ -8,13 +8,14 @@ import {
 } from '@revolution/reviews/labels';
 
 import { HelpfulButton } from './HelpfulButton';
+import { ReportReviewMenu } from './ReportReviewMenu';
 import { ReviewPhotoThumb } from './ReviewPhotoThumb';
 import { ReviewStars } from './ReviewStars';
 import { SpoilerBody } from './SpoilerBody';
 
 /**
- * 口コミ 1 件 (Figma #3)。ネタバレの口コミは本文と写真をたたむ。通報の「…」・プロフィール画像は
- * 後のチケット (#168・#171)
+ * 口コミ 1 件 (Figma #3)。ネタバレの口コミは本文と写真をたたむ。右上の「…」から通報できる (#168)。
+ * プロフィール画像は後のチケット (#171)
  */
 export function ReviewCard({ review }: { review: PublicReview }) {
   const facts = [
@@ -67,6 +68,10 @@ export function ReviewCard({ review }: { review: PublicReview }) {
           )}
         </div>
         <ReviewStars rating={review.rating} className="text-[15px]" />
+        <ReportReviewMenu
+          reviewId={review.id}
+          authorName={review.authorName ?? '退会済みユーザー'}
+        />
       </header>
 
       {facts.length > 0 && <p className="text-xs text-ink-body">{facts.join(' ・ ')}</p>}

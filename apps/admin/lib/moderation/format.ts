@@ -110,7 +110,7 @@ export function headlineOf(aiReason: string | null, max = 28): string {
 
 /**
  * 差し戻し・写真の非公開の理由の短い言葉 (Figma 14・15 の選択肢)。投稿者のマイページに出る長い言葉は
- * shared/reviews/labels.ts の REJECTION_REASON_LABELS
+ * shared/reviews/labels.ts の REVIEW_REASON_LABELS
  */
 export const SCREENING_REASON_SHORT_LABELS: Record<ReviewScreeningReason, string> = {
   personal_info: '個人情報・他人の顔',

@@ -13,6 +13,10 @@ import {
   REVIEW_MODERATION_ACTIONS,
   REVIEW_MODERATION_ACTORS,
   REVIEW_REASON_CODES,
+  REVIEW_REPORT_REASONS,
+  PROFILE_IMAGE_REPORT_REASONS,
+  REPORT_ACTIONS,
+  REPORT_TARGET_TYPES,
   REVIEW_SCREENING_REASONS,
   REVIEW_STATUSES,
   ReviewSubmitSchema,
@@ -344,7 +348,6 @@ describe('値の一覧が DB の CHECK と一致する', () => {
 
   it.each([
     ['reviews_status_chk', REVIEW_STATUSES],
-    ['reviews_reason_code_chk', REVIEW_REASON_CODES],
     ['reviews_attendance_chk', REVIEW_ATTENDANCES],
     ['reviews_food_cost_band_chk', REVIEW_FOOD_COST_BANDS],
     ['reviews_goods_cost_band_chk', REVIEW_GOODS_COST_BANDS],
@@ -371,28 +374,53 @@ describe('値の一覧が DB の CHECK と一致する', () => {
   });
 });
 
-describe('判断の記録の値の一覧が DB の CHECK と一致する (0026)', () => {
+/**
+ * 後の migration で作り直した CHECK があるので、全 migration を順に並べ、最後に定義した物と比べる
+ * (`"<名前>" CHECK (... IN (...))` の IN の中)
+ */
+describe('理由・操作・通報の値の一覧が、最後に定義した DB の CHECK と一致する', () => {
   const migrationsDir = path.join(__dirname, '../../../../supabase/migrations');
-  const migration = readFileSync(
-    path.join(
-      migrationsDir,
-      readdirSync(migrationsDir).find((name) => name.endsWith('_review_moderation.sql'))!,
-    ),
-    'utf8',
-  );
+  const all = readdirSync(migrationsDir)
+    .filter((name) => name.endsWith('.sql'))
+    .sort()
+    .map((name) => readFileSync(path.join(migrationsDir, name), 'utf8'))
+    .join('\n');
+
+  function latestCheckValues(constraint: string, nth = 0): string[] {
+    const definitions = [...all.matchAll(new RegExp(`"${constraint}"\\s+CHECK`, 'g'))];
+    const last = definitions.at(-1);
+    if (!last) throw new Error(`migration に ${constraint} が見つかりません`);
+    let from = last.index!;
+    for (let i = 0; i <= nth; i++) from = all.indexOf('IN (', from) + 'IN ('.length;
+    const body = all.slice(from, all.indexOf(')', from));
+    return [...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1]);
+  }
 
   it.each([
+    ['reviews_reason_code_chk', REVIEW_REASON_CODES],
+    ['review_images_hidden_reason_chk', REVIEW_REPORT_REASONS],
     ['review_moderation_events_actor_chk', REVIEW_MODERATION_ACTORS],
     ['review_moderation_events_action_chk', REVIEW_MODERATION_ACTIONS],
+    ['review_moderation_events_to_status_chk', REVIEW_STATUSES],
+    ['review_moderation_events_reason_code_chk', REVIEW_REASON_CODES],
+    ['review_reports_target_type_chk', REPORT_TARGET_TYPES],
   ])('%s', (constraint, values) => {
-    const start = migration.indexOf(`"${constraint}" CHECK`);
-    expect(start).toBeGreaterThan(-1);
-    const body = migration.slice(start, migration.indexOf('\n', start));
-    expect([...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1])).toEqual([...values]);
+    expect(latestCheckValues(constraint)).toEqual([...values]);
+  });
+
+  it('review_reports_reason_code_chk は口コミの 8 つと画像の 5 つ', () => {
+    expect(latestCheckValues('review_reports_reason_code_chk', 0)).toEqual([...REVIEW_REPORT_REASONS]);
+    expect(latestCheckValues('review_reports_reason_code_chk', 1)).toEqual([...PROFILE_IMAGE_REPORT_REASONS]);
+  });
+
+  it('review_reports_actions_chk は処理の内容の一覧', () => {
+    const start = all.lastIndexOf('"review_reports_actions_chk" CHECK');
+    const body = all.slice(all.indexOf('ARRAY[', start), all.indexOf(']', start));
+    expect([...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1])).toEqual([...REPORT_ACTIONS]);
   });
 });
 
-describe('判断の記録の状態・理由と、差し戻しの理由の一覧が定数と一致する (0027)', () => {
+describe('差し戻しの理由の一覧が定数と一致する (0027)', () => {
   const migrationsDir = path.join(__dirname, '../../../../supabase/migrations');
   const migration = readFileSync(
     path.join(
@@ -402,16 +430,6 @@ describe('判断の記録の状態・理由と、差し戻しの理由の一覧�
     'utf8',
   );
   const quoted = (text: string) => [...text.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1]);
-
-  it.each([
-    ['review_moderation_events_to_status_chk', REVIEW_STATUSES],
-    ['review_moderation_events_reason_code_chk', REVIEW_REASON_CODES],
-  ])('%s', (constraint, values) => {
-    const start = migration.indexOf(`"${constraint}"`);
-    expect(start).toBeGreaterThan(-1);
-    const body = migration.slice(start, migration.indexOf(')', migration.indexOf('IN (', start)));
-    expect(quoted(body)).toEqual([...values]);
-  });
 
   it('admin_decide_review の v_reasons は審査の 4 種', () => {
     const line = migration.split('\n').find((text) => text.includes('v_reasons constant text[]'))!;

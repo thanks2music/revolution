@@ -30,27 +30,36 @@ const MAX_STATE_IDS = 50;
  */
 type Viewer = 'member' | 'login' | 'onboarding' | 'unknown';
 
-type HelpfulState = { viewer: Viewer; marked: number[] };
+/** marked = 押した口コミ、own = 本人の口コミ (通報の「…」を出さない。one-more-time #168)。どちらも渡した中から */
+type HelpfulState = { viewer: Viewer; marked: number[]; own: number[] };
 
-/** 会員が「参考になった」を押した口コミ (渡した中から) */
+/** 会員が「参考になった」を押した口コミと、本人の口コミ (渡した中から) */
 export async function getHelpfulState(reviewIds: number[]): Promise<HelpfulState> {
   try {
     const idsToAsk = parseIdList(reviewIds, MAX_STATE_IDS);
     const member = await getCurrentMember();
-    if (!member.ok) return { viewer: memberRedirect(member.reason), marked: [] };
-    if (idsToAsk.length === 0) return { viewer: 'member', marked: [] };
+    if (!member.ok) return { viewer: memberRedirect(member.reason), marked: [], own: [] };
+    if (idsToAsk.length === 0) return { viewer: 'member', marked: [], own: [] };
 
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from('review_helpful')
-      .select('review_id')
-      .eq('user_id', member.profileId)
-      .in('review_id', idsToAsk);
-    if (error) throw error;
-    return { viewer: 'member', marked: (data ?? []).map(row => row.review_id as number) };
+    const [helpful, own] = await Promise.all([
+      supabase
+        .from('review_helpful')
+        .select('review_id')
+        .eq('user_id', member.profileId)
+        .in('review_id', idsToAsk),
+      supabase.from('reviews').select('id').eq('user_id', member.profileId).in('id', idsToAsk),
+    ]);
+    if (helpful.error) throw helpful.error;
+    if (own.error) throw own.error;
+    return {
+      viewer: 'member',
+      marked: (helpful.data ?? []).map(row => row.review_id as number),
+      own: (own.data ?? []).map(row => row.id as number),
+    };
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'getHelpfulState' } });
-    return { viewer: 'unknown', marked: [] };
+    return { viewer: 'unknown', marked: [], own: [] };
   }
 }
 

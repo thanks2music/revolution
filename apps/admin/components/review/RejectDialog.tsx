@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { REJECTION_REASON_LABELS } from '@revolution/reviews/labels';
+import { REVIEW_REASON_LABELS } from '@revolution/reviews/labels';
 import type { ReviewScreeningReason } from '@revolution/schemas/review-constants';
 
 import { SCREENING_REASON_OPTIONS } from '@/lib/moderation/format';
@@ -91,7 +91,7 @@ export function RejectDialog({
           <div className="mt-2 rounded-lg bg-danger-surface px-3 py-2.5 text-[11px]">
             <p className="text-ink-muted">投稿者のマイページでの表示</p>
             <p className="mt-1 text-danger-ink">
-              差し戻しの理由: {REJECTION_REASON_LABELS[reason]}
+              差し戻しの理由: {REVIEW_REASON_LABELS[reason]}
               {trimmed && `。${trimmed}`}
             </p>
           </div>

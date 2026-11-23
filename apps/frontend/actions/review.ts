@@ -23,7 +23,7 @@ import {
   ReviewDraftSchema,
   ReviewSubmitSchema,
   type ReviewDraftInput,
-  type ReviewScreeningReason,
+  type ReviewReportReason,
   type ReviewSubmitInput,
 } from '@revolution/schemas/review';
 
@@ -42,7 +42,7 @@ import {
   ownReviewStatus,
   type OwnReviewStatus,
 } from '@revolution/reviews/eligibility';
-import { toScreeningReason } from '@revolution/reviews/labels';
+import { toExplainedReason } from '@revolution/reviews/labels';
 import {
   modeFor,
   resolveWriteContext,
@@ -327,8 +327,8 @@ export async function deleteReview(
  */
 export type OwnReviewState = {
   status: OwnReviewStatus;
-  /** 差し戻し・非公開の理由のコード (審査の 4 種だけ。ほかは null) */
-  reasonCode: ReviewScreeningReason | null;
+  /** 差し戻し・非公開の理由のコード (審査の 4 種と通報で足した 4 種。AI の失敗は null) */
+  reasonCode: ReviewReportReason | null;
   /** 訪問日 (YYYY-MM-DD)。本人にだけ日付まで見せる */
   visitedOn: string;
   /** 運営 (BOSS) が書いた、投稿者に見せる補足 (差し戻し・非公開の時) */
@@ -350,7 +350,7 @@ export async function getOwnReviewState(occurrenceId: number): Promise<OwnReview
     return {
       status,
       // 差し戻しと非公開は、どちらも理由を見て直せる (仕様 #156)。マイページの出し方と揃える
-      reasonCode: explained ? toScreeningReason(own.reasonCode) : null,
+      reasonCode: explained ? toExplainedReason(own.reasonCode) : null,
       visitedOn: own.visitedOn,
       note: explained ? own.reasonNote : null,
     };
