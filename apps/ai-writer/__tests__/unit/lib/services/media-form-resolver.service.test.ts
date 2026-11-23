@@ -44,7 +44,7 @@ describe('MediaFormResolverService - config YAML parsing', () => {
   it('provides original_type_labels for all 16 source types', () => {
     const labels = resolver.getOriginalTypeLabels();
     expect(labels).toHaveProperty('manga_based', '漫画');
-    expect(labels).toHaveProperty('novel_based', 'ライトノベル');
+    expect(labels).toHaveProperty('novel_based', '小説');
     expect(labels).toHaveProperty('character_brand', 'キャラクター');
     expect(labels).toHaveProperty('vocaloid_character', 'バーチャル・シンガー');
     expect(labels).toHaveProperty('idol', 'アイドル');
@@ -163,8 +163,8 @@ describe('MediaFormResolverService.resolve - refined reversal: メディアタ�
     expect(resolver.resolve('manga_based', undefined)).toBe('漫画');
   });
 
-  it('novel_based + undefined → ライトノベル (メディアタイプ未指定、原作 label 採用)', () => {
-    expect(resolver.resolve('novel_based', undefined)).toBe('ライトノベル');
+  it('novel_based + undefined → 小説 (メディアタイプ未指定、原作 label 採用)', () => {
+    expect(resolver.resolve('novel_based', undefined)).toBe('小説');
   });
 });
 

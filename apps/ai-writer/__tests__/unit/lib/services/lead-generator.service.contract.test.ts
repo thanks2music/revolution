@@ -163,9 +163,9 @@ describe('LeadGeneratorService.fallback - LLM path (mock AiProvider DI)', () => 
     expect(mockProvider.sendMessage).toHaveBeenCalledTimes(1);
     const [prompt, options] = mockProvider.sendMessage.mock.calls[0]!;
 
-    // prompt 検証: 4 スロット構造 + §6.2 対訳マップの指示を含む
+    // prompt 検証: 01-lead.yaml の fallback_prompt を読み、{{…}} を埋め切っている (文面は Templates が持つ)
     expect(prompt).toContain('4 スロット構造');
-    expect(prompt).toContain('§6.2');
+    expect(prompt).not.toContain('{{');
     expect(prompt).toContain('mediaForm');
     expect(prompt).toContain('workTitle');
     expect(prompt).toContain('テスト作品'); // 作品名が prompt に含まれる

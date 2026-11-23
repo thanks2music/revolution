@@ -56,6 +56,21 @@ import type {
 // Re-export helper (author-formatter) は private method 化のため internal impl で import
 import { formatAuthorName, hasMultipleAuthors } from '../utils/author-formatter';
 
+import {
+  buildLeadModifier,
+  type LeadModifierDictionaries,
+  type LeadModifierFacts,
+  type LeadModifierFormat,
+  type LeadModifierResult,
+} from './lead-modifier';
+import {
+  loadCharacterOwners,
+  loadLeadFallbackPrompt,
+  loadLeadModifierFormat,
+  loadWorkDescriptions,
+} from './lead-modifier-config';
+import { fillTemplate } from './section-renderers';
+
 /**
  * LeadGeneratorService の入力データ。
  * `TextPlaceholderData` と互換 (extraction.service の output と結合可能)。
@@ -88,7 +103,18 @@ export interface LeadGeneratorInput {
   店舗名?: string;
   略称?: string | null;
   公式サイトURL?: string | null;
+
+  // 連体修飾語 (作品名の前の語句) の材料。意味は LeadModifierFacts のとおり
+  /** primary の作品の著作権表記 (抽出のコピーライト)。ページ全体の © は渡さない */
+  コピーライト?: LeadModifierFacts['コピーライト'];
+  グループ区分?: LeadModifierFacts['グループ区分'];
+  性別?: LeadModifierFacts['性別'];
+  ゲーム実況?: LeadModifierFacts['ゲーム実況'];
 }
+
+/** Templates を同期した場所 (apps/ai-writer/templates) */
+const DEFAULT_LEAD_YAML_PATH = path.join(process.cwd(), 'templates', 'collabo-cafe', 'sections', '01-lead.yaml');
+const DEFAULT_CONFIG_DIR = path.join(process.cwd(), 'templates', 'config');
 
 /**
  * LeadGeneratorService の依存関係 (Constructor Injection)。
@@ -113,6 +139,8 @@ export interface LeadGeneratorDeps {
   aiProviderFactory?: () => AiProvider;
   /** test 用、default = apps/ai-writer/templates/collabo-cafe/sections/01-lead.yaml */
   yamlPath?: string;
+  /** test 用、default = apps/ai-writer/templates/config (作品の説明・キャラクターの持ち主の辞書) */
+  configDir?: string;
 }
 
 /**
@@ -143,6 +171,9 @@ export interface EnrichedData extends TextPlaceholderData {
   is_idol_or_utaite: boolean;
   原作者名_formatted: string;
   has_multiple_authors: boolean;
+
+  /** 作品名の前に置く語句と、使った形。`{{連体修飾語}}` には text を入れる */
+  modifier: LeadModifierResult;
 }
 
 // ============================================================================
@@ -173,6 +204,11 @@ export function readLeadSectionYaml(yamlPath: string): SectionTemplate {
 export class LeadGeneratorService {
   private readonly deps: LeadGeneratorDeps;
   private leadSection: SectionTemplate | null = null;
+  private modifierConfig: {
+    format: LeadModifierFormat;
+    dictionaries: LeadModifierDictionaries;
+    fallbackPrompt: string;
+  } | null = null;
 
   constructor(deps: LeadGeneratorDeps) {
     this.deps = deps;
@@ -243,6 +279,7 @@ export class LeadGeneratorService {
       leadMdx: replacement.content,
       usedTemplate,
       slots,
+      modifier: enriched.modifier,
     };
   }
 
@@ -256,16 +293,27 @@ export class LeadGeneratorService {
   private getLeadSection(): SectionTemplate {
     if (this.leadSection) return this.leadSection;
 
-    const defaultPath = path.join(
-      process.cwd(),
-      'templates',
-      'collabo-cafe',
-      'sections',
-      '01-lead.yaml'
-    );
-    const parsed = readLeadSectionYaml(this.deps.yamlPath ?? defaultPath);
+    const parsed = readLeadSectionYaml(this.deps.yamlPath ?? DEFAULT_LEAD_YAML_PATH);
     this.leadSection = parsed;
     return parsed;
+  }
+
+  /** 連体修飾語の文言・辞書・フォールバックのプロンプトを lazy load (初回のみ)。欠けていれば名前を挙げて throw する */
+  private getModifierConfig(): NonNullable<LeadGeneratorService['modifierConfig']> {
+    if (this.modifierConfig) return this.modifierConfig;
+    const sectionsDir = path.dirname(this.deps.yamlPath ?? DEFAULT_LEAD_YAML_PATH);
+    const configDir = this.deps.configDir ?? DEFAULT_CONFIG_DIR;
+    this.modifierConfig = {
+      format: loadLeadModifierFormat(sectionsDir),
+      fallbackPrompt: loadLeadFallbackPrompt(sectionsDir),
+      dictionaries: {
+        workDescriptions: loadWorkDescriptions(configDir),
+        characterOwners: loadCharacterOwners(configDir),
+        originalTypeLabels: this.deps.mediaFormResolver.getOriginalTypeLabels(),
+        mediaFormLabel: (sourceType, mediaType) => this.deps.mediaFormResolver.resolve(sourceType, mediaType),
+      },
+    };
+    return this.modifierConfig;
   }
 
   /**
@@ -306,6 +354,13 @@ export class LeadGeneratorService {
     const 原作者名_formatted = formatAuthorName(input.原作者名 ?? null);
     const has_multiple_authors = hasMultipleAuthors(input.原作者名 ?? null);
 
+    const { format, dictionaries } = this.getModifierConfig();
+    const modifier = buildLeadModifier(
+      { ...input, workTitles: [primary_work.title, 作品名, input.略称 ?? ''] },
+      format,
+      dictionaries
+    );
+
     // コラボ作品名 (テーブル表示用)
     const コラボ作品名 =
       works.length === 1
@@ -332,6 +387,8 @@ export class LeadGeneratorService {
       原作者名_formatted,
       has_multiple_authors,
       コラボ作品名,
+      連体修飾語: modifier.text,
+      modifier,
     };
   }
 
@@ -387,6 +444,7 @@ export class LeadGeneratorService {
       usedTemplate: LEAD_FALLBACK_TEMPLATE_ID,
       fallbackReason: reason,
       slots: SLOT_DEFINITIONS.lead_generic!(enriched),
+      modifier: enriched.modifier,
     };
   }
 
@@ -444,40 +502,26 @@ export class LeadGeneratorService {
       usedTemplate: LEAD_FALLBACK_TEMPLATE_ID,
       fallbackReason: reason,
       slots: parsed,
+      // LLM が書いた文には連体修飾語が入らないので、modifier は返さない (ログで使われた形と誤解させない)
     };
   }
 
   /**
-   * LLM Fallback 用の prompt を組み立てる。4 スロット構造を JSON で強制生成させる指示。
+   * LLM Fallback 用の prompt を組み立てる。文面は `01-lead.yaml` の `fallback_prompt` (プロンプトは Templates に置く)。
    */
   private buildFallbackPrompt(enriched: EnrichedData, reason: LeadFallbackReason): string {
     const 作品名リスト = enriched.works.map((w) => w.title).join(' × ');
-    return [
-      'あなたは日本語のコラボカフェ記事のリード文を生成する専門 AI です。',
-      '',
-      '# 出力仕様 (Sprint C-β P11、4 スロット構造)',
-      '- agent (主体): 原作者名 / スタジオ名 / 監督名など、null 可',
-      '- verb (接続動詞): 「による」「が手掛ける」など、null 可',
-      '- adjective (形容詞): 「人気」「大人気」「世界中で愛される」など、null 可 (デフォルト「人気」)',
-      '- mediaForm (メディア形態、必須): §6.2 対訳マップ準拠の日本語表記 (「漫画」「ライトノベル」「アニメ映画」「キャラクター」「バーチャル・シンガー」等)',
-      '- workTitle (作品名、必須): primary 作品名',
-      '',
-      '# 入力情報',
-      `- 作品名: ${enriched.作品名}`,
-      `- 店舗名: ${enriched.店舗名}`,
-      `- メディアタイプ: ${enriched.メディアタイプ ?? '(未指定)'}`,
-      `- 原作タイプ: ${enriched.原作タイプ ?? '(未指定)'}`,
-      `- 原作者名: ${enriched.原作者名_formatted || '(なし)'}`,
-      `- キャラクター名: ${enriched.キャラクター名?.join('、') ?? '(なし)'}`,
-      `- §6.2 対訳マップ解決済のメディア形態表記: ${enriched.メディア形態表記}`,
-      `- 複数作品コラボ: ${enriched.is_multi_work ? `はい (${作品名リスト})` : 'いいえ'}`,
-      '',
-      `# Fallback 発火理由 (デバッグ)\n${reason}`,
-      '',
-      '# 出力形式',
-      'JSON schema LeadSlotsResponse に厳密に準拠して返してください。',
-      '{ "agent": string|null, "verb": string|null, "adjective": string|null, "mediaForm": string (非空), "workTitle": string (非空) }',
-    ].join('\n');
+    return fillTemplate(this.getModifierConfig().fallbackPrompt, {
+      作品名: enriched.作品名,
+      店舗名: enriched.店舗名,
+      メディアタイプ: enriched.メディアタイプ ?? '(未指定)',
+      原作タイプ: enriched.原作タイプ ?? '(未指定)',
+      原作者名: enriched.原作者名_formatted || '(なし)',
+      キャラクター名: enriched.キャラクター名?.join('、') ?? '(なし)',
+      メディア形態表記: enriched.メディア形態表記,
+      複数作品コラボ: enriched.is_multi_work ? `はい (${作品名リスト})` : 'いいえ',
+      理由: reason,
+    });
   }
 
   /**

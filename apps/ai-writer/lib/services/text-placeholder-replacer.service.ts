@@ -111,6 +111,12 @@ export interface TextPlaceholderData {
   is_multi_work?: boolean;
   コラボ作品名?: string;
 
+  /**
+   * 作品名の前に置く語句 (リード文の連体修飾語、2026-11-24)。`LeadGeneratorService` が抽出の事実から組み立てる。
+   * @example '芥見下々先生による人気漫画を原作としたアニメ'
+   */
+  連体修飾語?: string;
+
   // ===================================
   // S1-d Phase 3 (2026-08-09): 会場系派生変数
   // ===================================
@@ -388,6 +394,7 @@ export class TextPlaceholderReplacerService {
       描き下ろし表記: data.描き下ろし表記 ?? undefined,
       ノベルティ名: data.ノベルティ名?.length ? data.ノベルティ名.join('、') : undefined,
       コラボ作品名: data.コラボ作品名,
+      連体修飾語: data.連体修飾語,
 
       // Sprint C-β P11 追加 (2026-07-19、LeadGeneratorService から派生):
       // オリジナルアニメ・スタジオ制作向け field (01-lead.yaml v3.3.0 の
