@@ -7,6 +7,8 @@
 -- - 閉じるのは、BOSS が画面で見た通報 (p_report_ids) だけ。見た後に来た通報は未処理のまま残る
 -- - 読んだ後に投稿者が出し直した (submitted_at が違う) なら superseded、写真の組が変わったら photos_changed
 -- - 公開でなくなった口コミ (編集されて審査中など) は、変えずに「問題なし」で閉じることだけを受ける
+-- - 見た通報がもう閉じていれば (別のタブで処理した・二度押した) 何も書かない (superseded)
+-- - 書けたら、記録した処理 (hidden / kept / dismissed) を返す (管理アプリの知らせの言葉に使う)
 --
 -- あわせて、確認待ちの判断 (admin_decide_review) の写真の理由を通報の 8 つに広げ、口コミの確認
 -- (admin_get_review) が未処理の通報を返すようにする。
@@ -238,6 +240,7 @@ DECLARE
   v_photos_changed boolean;
   v_actions text[] := '{}';
   v_action text;
+  v_open integer;
   -- 通報の 8 つ (REVIEW_REPORT_REASONS)。非公開の理由と、写真の非公開の理由に使う
   v_reasons constant text[] := ARRAY['personal_info', 'abuse', 'spam', 'resale', 'spoiler_unmarked', 'photo_reposted', 'not_attended', 'other'];
 BEGIN
@@ -286,6 +289,15 @@ BEGIN
   END IF;
   IF NOT private.review_photo_ids_match(p_review_id, v_photo_ids) THEN
     RETURN 'photos_changed';
+  END IF;
+  -- 見た通報のうち、まだ閉じていない物 (同じ通報を二度処理しない)
+  SELECT count(*) INTO v_open FROM (
+    SELECT 1 FROM "public"."review_reports"
+    WHERE "id" = ANY (p_report_ids) AND "review_id" = p_review_id AND "status" = 'open'
+    FOR UPDATE
+  ) open_reports;
+  IF v_open = 0 THEN
+    RETURN 'superseded';
   END IF;
 
   v_spoiler_changed := p_has_spoiler IS DISTINCT FROM v_spoiler;
@@ -340,7 +352,7 @@ BEGIN
   VALUES
     (p_review_id, 'admin', (SELECT auth.uid()), v_action, v_from, v_to, p_reason_code, v_note,
      CASE WHEN v_photos_changed THEN v_marks END);
-  RETURN 'applied';
+  RETURN v_action;
 END;
 $$;
 --> statement-breakpoint

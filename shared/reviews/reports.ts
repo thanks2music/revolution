@@ -15,7 +15,6 @@ import {
   toPhotoMarks,
   toWriteOutcome,
   type ModerationDeps,
-  type ModerationWriteOutcome,
   type PhotoDecision,
 } from './moderation';
 import { syncPhotoDeliverySafely } from './photos/delivery';
@@ -63,8 +62,9 @@ export type ReportQueueItem = {
 export function sortReasonCounts(
   counts: Partial<Record<ReviewReportReason, number>>
 ): { code: ReviewReportReason; count: number }[] {
-  return REVIEW_REPORT_REASONS.flatMap(code => (counts[code] ? [{ code, count: counts[code] }] : []))
-    .sort((a, b) => b.count - a.count);
+  return REVIEW_REPORT_REASONS.flatMap(code =>
+    counts[code] ? [{ code, count: counts[code] }] : []
+  ).sort((a, b) => b.count - a.count);
 }
 
 export async function listReportQueue(
@@ -72,6 +72,9 @@ export async function listReportQueue(
 ): Promise<{ kind: 'ok'; items: ReportQueueItem[] } | { kind: 'forbidden' }> {
   const { data, error } = await adminDb.rpc('admin_list_review_reports');
   if (isForbidden(error)) return { kind: 'forbidden' };
+  // 0029 の前の DB (アプリの deploy が migration より先に終わった時) では関数が無い。確認待ちの一覧まで
+  // 止めないよう、通報は無いものとして扱う
+  if (error?.code === 'PGRST202') return { kind: 'ok', items: [] };
   if (error) throw error;
   const items = z
     .array(ReportQueueRowSchema)
@@ -99,10 +102,17 @@ export type ReportOutcome =
   /** 公開のまま (ネタバレの印と写真の非公開を当てる。何も変えなければ「問題なし」) */
   | { outcome: 'keep' };
 
+/** 記録した処理: 非公開にした / 直して公開のまま / 問題なし */
+export type ReportAction = 'hidden' | 'kept' | 'dismissed';
+
 export type ReportWriteOutcome =
-  | ModerationWriteOutcome
+  | { kind: 'applied'; action: ReportAction }
+  /** 読んだ後に投稿者が出し直した・削除した、または見た通報がもう閉じていた (別のタブで処理した) */
+  | { kind: 'superseded' }
+  | { kind: 'photos_changed' }
   /** 口コミが公開でなくなっていた (編集されて審査中など)。変えずに閉じることだけができる */
-  | { kind: 'not_published' };
+  | { kind: 'not_published' }
+  | { kind: 'forbidden' };
 
 /**
  * 通報された口コミを処理し、画面で見た通報 (`reportIds`) を閉じる。`photos` は読んだ写真の全部の判断、
@@ -129,10 +139,14 @@ export async function handleReviewReports(
     p_has_spoiler: input.hasSpoiler,
     p_photo_marks: toPhotoMarks(input.photos),
   });
+  if (!error && (data === 'hidden' || data === 'kept' || data === 'dismissed')) {
+    if (deps.storage) {
+      await syncPhotoDeliverySafely({ db: deps.serviceDb, storage: deps.storage }, input.reviewId);
+    }
+    return { kind: 'applied', action: data };
+  }
   if (!error && data === 'not_published') return { kind: 'not_published' };
   const outcome = toWriteOutcome(data, error);
-  if (outcome.kind === 'applied' && deps.storage) {
-    await syncPhotoDeliverySafely({ db: deps.serviceDb, storage: deps.storage }, input.reviewId);
-  }
+  if (outcome.kind === 'applied') throw new Error(`unexpected report result: ${String(data)}`);
   return outcome;
 }

@@ -11,6 +11,7 @@ import { QueueTabs } from '@/components/QueueTabs';
 import { ReportList } from '@/components/ReportList';
 import { ReportDetail } from '@/components/report/ReportDetail';
 import { getAdminSession } from '@/lib/auth/admin';
+import { agoLabel } from '@/lib/moderation/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,7 +90,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
             photos={photos}
             reportIds={openReports.map(report => report.id)}
             reasons={sortReasonCounts(counts)}
-            firstReportedAt={openReports[0]?.createdAt ?? null}
+            firstReportedLabel={openReports[0] ? agoLabel(openReports[0].createdAt) : null}
           />
         )}
       </main>

@@ -18,7 +18,6 @@ import { PhotoPicture } from '@/components/review/PhotoPicture';
 import { RejectDialog, type ReasonDialogCopy } from '@/components/review/RejectDialog';
 import {
   REPORT_REASON_OPTIONS,
-  agoLabel,
   formatDate,
   reportReasonsLabel,
   reviewStateLabel,
@@ -64,7 +63,7 @@ export function ReportDetail({
   photos,
   reportIds,
   reasons,
-  firstReportedAt,
+  firstReportedLabel,
 }: {
   review: ReportDetailReview;
   title: string;
@@ -73,7 +72,8 @@ export function ReportDetail({
   reportIds: number[];
   /** 未処理の通報の理由ごとの件数 (多い順) */
   reasons: { code: ReviewReportReason; count: number }[];
-  firstReportedAt: string | null;
+  /** 「最初の通報 2時間前」の「2時間前」(サーバーで作る。ブラウザで数え直すと描画の食い違いになる) */
+  firstReportedLabel: string | null;
 }) {
   const router = useRouter();
   // 写真の印の初めの値は今の非公開 (AI の勧めかどうかはここでは出さない)
@@ -104,6 +104,8 @@ export function ReportDetail({
   const handle = (result: ReportActionResult) => {
     if (result.kind === 'forbidden') router.replace('/forbidden');
     else if (result.kind === 'error') setSaveFailed(true);
+    // 公開でなくなっていたら読み直す (今の状態と写真で作り直し、閉じるだけにする。page の key に状態が入っている)
+    else if (result.kind === 'not_published') router.refresh();
     else setBlocked(result.kind);
   };
 
@@ -122,7 +124,6 @@ export function ReportDetail({
           reviewId: review.id,
           submittedAt: review.submittedAt ?? '',
           title,
-          changed,
           reportIds,
           hasSpoiler: spoiler,
           photos: decisions,
@@ -136,7 +137,7 @@ export function ReportDetail({
     <article className="relative bg-surface lg:self-start lg:overflow-hidden lg:rounded-2xl lg:border lg:border-line">
       {blocked === 'superseded' && (
         <Banner tone="danger" title="この口コミは状態が変わりました">
-          開いている間に、投稿者が直して出し直したか、削除しました。一覧に戻って読み直してください。
+          開いている間に、投稿者が直して出し直したか削除したか、ほかの画面でこの通報が処理されました。一覧に戻って読み直してください。
           <Link
             href="/reports"
             className="mt-3 block w-fit rounded-xl border border-danger-ink bg-surface px-3 py-2 text-xs font-bold text-danger-ink"
@@ -176,7 +177,7 @@ export function ReportDetail({
           </span>
           <span className="text-[11px] text-ink-muted">
             {reviewStateLabel(review.status)}
-            {firstReportedAt && ` ・ 最初の通報 ${agoLabel(firstReportedAt)}`}
+            {firstReportedLabel && ` ・ 最初の通報 ${firstReportedLabel}`}
           </span>
         </p>
         <h1 className="text-[13px] font-bold text-ink-strong">{title}</h1>

@@ -148,7 +148,7 @@ describe('BOSS の通報の処理', () => {
         reasonCode: 'resale',
         reasonNote: '譲渡の呼びかけを消してください',
       })
-    ).toEqual({ kind: 'applied' });
+    ).toEqual({ kind: 'applied', action: 'hidden' });
 
     expect(await reviewRow(reviewId)).toMatchObject({
       status: 'hidden',
@@ -179,7 +179,7 @@ describe('BOSS の通報の処理', () => {
     const before = await reviewRow(reviewId);
     expect(
       await handle(reviewId, { outcome: 'keep' }, { hasSpoiler: true, hidePhoto: photoIds[1] })
-    ).toEqual({ kind: 'applied' });
+    ).toEqual({ kind: 'applied', action: 'kept' });
 
     expect(await reviewRow(reviewId)).toMatchObject({
       status: 'published',
@@ -203,7 +203,10 @@ describe('BOSS の通報の処理', () => {
 
   it('何も変えなければ「問題なし」で閉じる', async () => {
     const { reviewId } = await reportedReview(['other']);
-    expect(await handle(reviewId, { outcome: 'keep' })).toEqual({ kind: 'applied' });
+    expect(await handle(reviewId, { outcome: 'keep' })).toEqual({
+      kind: 'applied',
+      action: 'dismissed',
+    });
     expect((await reviewRow(reviewId)).status).toBe('published');
     expect((await seen(reviewId)).history.at(-1)).toMatchObject({ action: 'dismissed' });
   });
@@ -266,8 +269,35 @@ describe('BOSS の通報の処理', () => {
     expect(await handle(reviewId, { outcome: 'keep' }, { hasSpoiler: true })).toEqual({
       kind: 'not_published',
     });
-    expect(await handle(reviewId, { outcome: 'keep' })).toEqual({ kind: 'applied' });
+    expect(await handle(reviewId, { outcome: 'keep' })).toEqual({
+      kind: 'applied',
+      action: 'dismissed',
+    });
     expect(await reviewRow(reviewId)).toMatchObject({ status: 'pending', has_spoiler: false });
+  });
+
+  it('見た通報がもう閉じていれば (別のタブで処理した)、何も書かない', async () => {
+    const { reviewId } = await reportedReview(['spam']);
+    const review = await seen(reviewId);
+    const input = {
+      reviewId,
+      submittedAt: review.review.submitted_at!,
+      reportIds: review.openReports.map(report => report.id),
+      hasSpoiler: false,
+      photos: [],
+      outcome: 'keep' as const,
+    };
+    expect(await handleReviewReports(deps(), input)).toEqual({
+      kind: 'applied',
+      action: 'dismissed',
+    });
+    expect(await handleReviewReports(deps(), input)).toEqual({ kind: 'superseded' });
+    expect(await handleReviewReports(deps(), { ...input, reportIds: [] })).toEqual({
+      kind: 'superseded',
+    });
+    expect(
+      (await seen(reviewId)).history.filter(entry => entry.action === 'dismissed')
+    ).toHaveLength(1);
   });
 
   it('admin でない会員と anon は、通報の一覧も処理も使えない', async () => {

@@ -34,8 +34,6 @@ const HandleSchema = z
     submittedAt: z.string().min(1),
     /** 知らせに出す名前 (企画と会場) */
     title: z.string().transform(title => title.slice(0, 200)),
-    /** 公開のまま閉じる時に、ネタバレの印か写真を変えたか (知らせの言葉を分けるだけ。DB は自分で比べる) */
-    changed: z.boolean(),
     /** 画面で見た未処理の通報 (これだけを閉じる) */
     reportIds: z.array(z.number().int().positive()).max(500),
     hasSpoiler: z.boolean(),
@@ -57,7 +55,7 @@ export async function handleReportsAction(
 ): Promise<ReportActionResult> {
   const parsed = HandleSchema.safeParse(input);
   if (!parsed.success) return { kind: 'error' };
-  const { title, changed, ...rest } = parsed.data;
+  const { title, ...rest } = parsed.data;
   let outcome;
   try {
     const session = await getAdminSession();
@@ -73,7 +71,7 @@ export async function handleReportsAction(
     return { kind: 'error' };
   }
   if (outcome.kind !== 'applied') return outcome;
-  const notice: NoticeKind = rest.outcome === 'hide' ? 'hidden' : changed ? 'kept' : 'dismissed';
-  // redirect は例外で戻るので、try の外で呼ぶ
+  // 知らせは DB が記録した処理から決める。redirect は例外で戻るので、try の外で呼ぶ
+  const notice: NoticeKind = outcome.action;
   redirect(`/reports?${new URLSearchParams({ notice, title })}`);
 }
