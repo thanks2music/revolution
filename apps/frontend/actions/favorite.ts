@@ -19,10 +19,14 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
+import { after } from 'next/server';
 import { z } from 'zod';
 
 import { createClient } from '@/lib/supabase/server';
 import { getCachedUser } from '@/lib/auth/current-user';
+import { getAllArticles } from '@/lib/mdx/articles';
+import { resolveArticleByKey } from '@/lib/mdx/article-url';
+import { getReviewNotifier } from '@/lib/reviews/notifier';
 
 const TARGET_TYPE = 'article' as const;
 const PG_UNIQUE_VIOLATION = '23505';
@@ -169,7 +173,30 @@ export async function toggleFavorite(
     return { ok: false, error: 'いいねの追加に失敗しました' };
   }
 
+  // 新しく付いたいいねだけ、Slack のお知らせに流す (外した時・重なった時は知らせない。#169)
+  after(() => notifyLiked(user.id, key));
   return { ok: true, liked: true };
+}
+
+/** 記事のタイトルと会員の表示名を引いて、いいねを Slack で知らせる。例外を外へ出さない */
+async function notifyLiked(authUserId: string, targetKey: string): Promise<void> {
+  try {
+    const article = resolveArticleByKey(targetKey, getAllArticles());
+    if (!article) return;
+    const supabase = await createClient();
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name, username')
+      .eq('auth_user_id', authUserId)
+      .maybeSingle();
+    await getReviewNotifier().notify({
+      type: 'article_liked',
+      displayName: profile?.display_name ?? profile?.username ?? null,
+      articleTitle: article.title,
+    });
+  } catch (error) {
+    Sentry.captureException(error, { tags: { action: 'toggleFavorite.notify' } });
+  }
 }
 
 /**

@@ -70,7 +70,7 @@ describe('提出された口コミの審査', () => {
       db: data!.admin,
     });
 
-    expect(outcome).toEqual({ kind: 'screened', status: 'published', occurrenceId });
+    expect(outcome).toEqual({ kind: 'screened', status: 'published', occurrenceId, aiFailure: false });
     expect(await row(reviewId)).toMatchObject({
       status: 'published',
       reason_code: null,

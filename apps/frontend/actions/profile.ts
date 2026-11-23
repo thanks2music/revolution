@@ -21,8 +21,10 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
+import { after } from 'next/server';
 import { ProfileUpdateSchema, UsernameSchema } from '@revolution/schemas/profile';
 
+import { getReviewNotifier } from '@/lib/reviews/notifier';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -131,6 +133,13 @@ export async function completeOnboarding(
         'プロフィールは保存されましたが、設定の反映に失敗しました。再度お試しください。',
       field: 'general',
     };
+  }
+
+  // 会員登録を Slack のお知らせに流す (#169)。onboarded の印を書けた時に 1 回だけ。印が既にあった
+  // (セッションの更新の失敗などで出し直された) 時は知らせない
+  if (!user.user_metadata?.onboarded) {
+    const displayName = parsed.data.displayName;
+    after(() => getReviewNotifier().notify({ type: 'member_joined', displayName }));
   }
 
   // updateUser 後のセッション refresh で新 JWT (onboarded:true) を cookie へ反映。

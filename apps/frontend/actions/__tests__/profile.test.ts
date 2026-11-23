@@ -15,6 +15,13 @@ const TEST_UID = '550e8400-e29b-41d4-a716-446655440000';
 // lib/env は @t3-oss/env-nextjs (ESM-only) を読むため mock 化する。
 jest.mock('@/lib/env', () => ({ env: {} }));
 
+// Slack の通知 (#169)。応答の後の処理 (after) は呼ばれたことだけを見て、中身はテストの中で走らせる
+jest.mock('next/server', () => ({ after: jest.fn() }));
+jest.mock('@/lib/reviews/notifier', () => {
+  const notify = jest.fn(async () => undefined);
+  return { __notify: notify, getReviewNotifier: () => ({ notify }) };
+});
+
 jest.mock('@/lib/supabase/server', () => {
   // profiles.update(...).eq('auth_user_id', uid).select('id') のチェーン。終端 select が
   // { data, error } を解決する (0 行ガードのため data に影響行を入れる)。
@@ -197,5 +204,35 @@ describe('completeOnboarding — 0-row update guard (#2)', () => {
     });
     expect(result.ok).toBe(false);
     expect(m.auth.updateUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('completeOnboarding — Slack のお知らせ (#169)', () => {
+  const { after } = jest.requireMock('next/server') as { after: jest.Mock };
+  const { __notify: notify } = jest.requireMock('@/lib/reviews/notifier') as { __notify: jest.Mock };
+
+  it('初めての登録は、応答の後に表示名だけを知らせる', async () => {
+    await expect(
+      completeOnboarding({ username: 'anime_taro', displayName: 'あにめ太郎' })
+    ).resolves.toEqual({ ok: true });
+
+    expect(after).toHaveBeenCalledTimes(1);
+    await (after.mock.calls[0][0] as () => Promise<void>)();
+    expect(notify).toHaveBeenCalledWith({ type: 'member_joined', displayName: 'あにめ太郎' });
+  });
+
+  it('onboarded の印が既にある (出し直し) なら知らせない', async () => {
+    m.auth.getUser.mockResolvedValue({
+      data: { user: { id: TEST_UID, user_metadata: { onboarded: true } } },
+      error: null,
+    } as never);
+    await completeOnboarding({ username: 'anime_taro', displayName: 'あにめ太郎' });
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it('設定の反映 (updateUser) に失敗した時は知らせない', async () => {
+    m.auth.updateUser.mockResolvedValue({ data: {}, error: { message: 'failed' } } as never);
+    await completeOnboarding({ username: 'anime_taro', displayName: 'あにめ太郎' });
+    expect(after).not.toHaveBeenCalled();
   });
 });

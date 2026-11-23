@@ -272,7 +272,7 @@ describe('下書き・提出・編集・削除', () => {
       reviewId: inserted.id,
     });
 
-    expect(outcome).toEqual({ kind: 'deleted', wasPublished: true });
+    expect(outcome).toEqual({ kind: 'deleted', wasPublished: true, wasDraft: false });
     expect(await counts(occ.id)).toMatchObject({ rating_count: 0, rating_sum: 0 });
     const { data: deleted } = await data.admin
       .from('reviews')

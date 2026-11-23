@@ -3,7 +3,8 @@
  * one-more-time の docs (管理アプリの手順書)。
  *
  * 写真の置き場所 (REVIEW_R2_* と配信・CDN)・審査 (GEMINI_API_KEY など)・偽物 (REVIEW_SCREENER /
- * REVIEW_PHOTO_STORAGE) は、公開サイトと同じく shared/reviews が process.env を直に読む。ここには書かない
+ * REVIEW_PHOTO_STORAGE)・Slack の通知 (SLACK_*、#169) は、公開サイトと同じく shared/reviews が process.env を
+ * 直に読む。ここには書かない (値の一覧は .env.sample)
  */
 import { createEnv } from '@t3-oss/env-nextjs';
 import { z } from 'zod';

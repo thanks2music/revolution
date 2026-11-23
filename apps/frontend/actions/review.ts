@@ -43,6 +43,8 @@ import {
   type OwnReviewStatus,
 } from '@revolution/reviews/eligibility';
 import { toExplainedReason } from '@revolution/reviews/labels';
+import { notifyAboutReview } from '@revolution/reviews/notifications';
+import { getReviewNotifier } from '@/lib/reviews/notifier';
 import {
   modeFor,
   resolveWriteContext,
@@ -242,7 +244,15 @@ async function submit(
   });
   if (isFailure(result)) return result;
 
-  after(() => screenAfterSubmit(admin, result, paths));
+  const notifier = getReviewNotifier();
+  after(async () => {
+    // 提出・出し直しのお知らせ → 審査 → 審査の結果の知らせ (#169)。どれも例外を外へ出さない
+    await notifyAboutReview({ notifier, db: admin }, result, review => ({
+      type: mode.kind === 'edit' ? 'review_edited' : 'review_submitted',
+      review,
+    }));
+    await screenAfterSubmit(admin, result, paths, notifier);
+  });
   return { ok: true, reviewId: result };
 }
 
@@ -309,8 +319,17 @@ export async function deleteReview(
     if (outcome.kind === 'not_found') return FAILURES.notFound;
     // 公開中だった口コミは集計からも外れるので、ページを作り直す
     if (outcome.wasPublished) for (const path of paths) revalidatePath(path);
-    // 配信側の写真は応答の後に消す。公開中からの編集で審査中になった口コミにも、写真が残っていることがある
-    after(() => syncReviewPhotoDelivery(admin, reviewId));
+    // 配信側の写真は応答の後に消す。公開中からの編集で審査中になった口コミにも、写真が残っていることがある。
+    // 下書きでなければ、削除を Slack で知らせる (#169)
+    after(async () => {
+      await syncReviewPhotoDelivery(admin, reviewId);
+      if (!outcome.wasDraft) {
+        await notifyAboutReview({ notifier: getReviewNotifier(), db: admin }, reviewId, review => ({
+          type: 'review_deleted',
+          review,
+        }));
+      }
+    });
     return { ok: true };
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'deleteReview' } });

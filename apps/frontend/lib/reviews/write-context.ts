@@ -13,10 +13,12 @@ import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { todayInJst } from '@/lib/occurrence/status';
 import type { OwnReview } from '@/lib/reviews/authoring';
 import { authoringMode } from '@revolution/reviews/eligibility';
+import { notifyAboutReview, type ReviewNotifier } from '@revolution/reviews/notifications';
 import { screenSubmittedReview } from '@revolution/reviews/operations';
 import { syncPhotoDeliverySafely } from '@revolution/reviews/photos/delivery';
 import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
 import { getReviewScreener } from '@revolution/reviews/screener';
+import { getReviewNotifier } from '@/lib/reviews/notifier';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 /**
@@ -70,11 +72,15 @@ export async function syncReviewPhotoDelivery(db: SupabaseClient, reviewId: numb
   if (storage) await syncPhotoDeliverySafely({ db, storage }, reviewId);
 }
 
-/** 応答の後 (`after()`) に AI の審査を走らせる。公開になったらページを作り直す */
+/**
+ * 応答の後 (`after()`) に AI の審査を走らせる。公開になったらページを作り直す。
+ * 審査の結果を Slack で知らせる (公開・差し戻しはお知らせ、BOSS の確認待ちは要対応。#169)
+ */
 export async function screenAfterSubmit(
   db: SupabaseClient,
   reviewId: number,
-  paths: string[]
+  paths: string[],
+  notifier: ReviewNotifier = getReviewNotifier()
 ): Promise<void> {
   try {
     const outcome = await screenSubmittedReview(reviewId, {
@@ -82,9 +88,16 @@ export async function screenAfterSubmit(
       db,
       storage: getReviewPhotoStorage(),
     });
-    if (outcome.kind === 'screened' && outcome.status === 'published') {
+    if (outcome.kind !== 'screened') return;
+    if (outcome.status === 'published') {
       for (const path of paths) revalidatePath(path);
     }
+    await notifyAboutReview({ notifier, db }, reviewId, review => ({
+      type: 'review_screened',
+      review,
+      status: outcome.status,
+      aiFailure: outcome.aiFailure,
+    }));
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'screenAfterSubmit' } });
   }

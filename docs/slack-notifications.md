@@ -2,13 +2,13 @@
 title: Slack 通知
 ---
 
-デプロイ・migration・main の失敗・occurrence の取り込み・Sentry の issue・記事生成の結果を Slack へ知らせる。
+デプロイ・migration・main の失敗・occurrence の取り込み・Sentry の issue・記事生成の結果・会員の動作 (口コミ・通報・会員登録・いいね) を Slack へ知らせる。
 本ドキュメントは**構成の正本**であり、通知を足す・変える人が最初に読むもの。
 
 ## しくみ
 
 - Slack App の **bot token + `chat.postMessage`** で送る (Incoming Webhook は使わない)
-- **中継サービスは作らない**。イベントが起きる場所 (GitHub Actions の各 workflow / AI Writer のプロセス) から直接送り、
+- **中継サービスは作らない**。イベントが起きる場所 (GitHub Actions の各 workflow / AI Writer のプロセス / 公開サイトと管理アプリの Server Action) から直接送り、
   **送り方の規約だけを共通化**する (中継サービスは新しい障害点になるため)
 - 送り先は 2 つ。振り分けの原則は**「運用で人の対応が要るか」**:
 
@@ -28,6 +28,7 @@ title: Slack 通知
 | Sentry の取得 | `.github/scripts/sentry/fetch-issues.sh` | Sentry の issue 一覧 API を読む |
 | state の読み込み | `.github/scripts/state/fetch-latest-artifact.sh` | 前回の実行の状態 (artifact) を、main の実行が置いたものだけから読む |
 | AI Writer | `apps/ai-writer/lib/slack/` | 記事生成の結果を送る (`config` / `messages` / `client`) |
+| 公開サイト・管理アプリ | `shared/reviews/notifications.ts` (文面と送る口) / `shared/reviews/notify-slack.ts` (送信) | 会員の動作を送る。Server Action の `after()` (応答の後) から呼び、失敗しても会員の操作は成功させる (失敗は Sentry に warning) |
 | smoke | `.github/workflows/slack-notify-smoke.yml` | 上の部品を偽の curl / gh で検証し、開発系へ `[TEST]` を 1 通送る |
 
 ## 何が届くか
@@ -45,6 +46,10 @@ title: Slack 通知
 | occurrence 取り込みの失敗、対応が要る人手キュー | 本番系 | あり | `ingest-occurrences.yml` |
 | Sentry の新規・回帰 issue | 本番系 (本番の priority High) / 開発系 | 本番の High | `sentry-digest.yml` (30 分ごと)。詳細は [sentry.md](./sentry.md) |
 | 記事生成のローカル実行 (`pnpm debug:mdx`) | 開発系 | なし | `apps/ai-writer/scripts/debug-mdx-url.ts` |
+| 公開中の口コミへの新しい通報 (同じ人の重なった通報は送らない) | 本番系 | あり | `apps/frontend/actions/review-report.ts` |
+| AI の審査で BOSS の確認待ちになった口コミ (迷った / AI の審査の失敗) | 本番系 | あり | 公開サイトの提出 (`apps/frontend/lib/reviews/write-context.ts`) と、管理アプリの「もう一度 AI にかける」(`apps/admin/actions/moderation.ts`) |
+| 口コミの投稿・直して出し直し・削除、AI の審査の結果 (公開・差し戻し) | 開発系 | なし | `apps/frontend/actions/review.ts` (下書きの保存・下書きの削除は送らない) |
+| 会員登録 (プロフィールの登録の完了)・記事へのいいね | 開発系 | なし | `apps/frontend/actions/profile.ts`・`favorite.ts` (いいねを外した時は送らない)。「参考になった」は送らない |
 | 記事生成の cron (Cloud Run) の失敗 | 本番系 | あり | `apps/ai-writer/app/api/cron/rss/route.ts`。**Cloud Run に token を入れるまで休眠** (Cloud Scheduler の稼働時に入れる) |
 
 ## 設定
@@ -54,8 +59,11 @@ title: Slack 通知
 | GitHub secret | `SLACK_BOT_TOKEN` (bot token) / `SENTRY_API_TOKEN` (Sentry の Internal Integration、Issue & Event: Read のみ) |
 | GitHub variable | `SLACK_CHANNEL_PROD` / `SLACK_CHANNEL_DEV` / `SLACK_MENTION_USER_ID` |
 | AI Writer の env | `SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` / `SLACK_MENTION_USER_ID` (キー名は環境で変えない。`apps/ai-writer/.env.sample`) |
+| 公開サイト・管理アプリの env (Vercel) | `SLACK_BOT_TOKEN` / `SLACK_ATTENTION_CHANNEL_ID` (本番系) / `SLACK_NOTICE_CHANNEL_ID` (開発系) / `SLACK_MENTION_USER_ID` (Production だけ) / 公開サイトの `ADMIN_APP_URL` (管理アプリのリンク) |
 
 - AI Writer のメンションは Cloud Run の上 (`K_SERVICE` がある時) だけ付く。`op://` のままの値は未設定として扱う
+- 公開サイト・管理アプリは、env が無い環境 (ローカル・CI) では送らない。Preview は `SLACK_ATTENTION_CHANNEL_ID` にも開発系を入れ、メンションを付けない
+- 会員の動作の通知に載せるのは、表示名・開催名・星・本文の冒頭 (80 字)・管理アプリのリンクだけ。メールアドレス・写真・通報した人は載せない
 - Slack App のスコープは `chat:write`。bot は 2 つのチャンネルに招待しておく (招待していないと `not_in_channel`)
 
 ## composite action の使い方

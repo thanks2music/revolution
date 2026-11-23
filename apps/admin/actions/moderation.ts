@@ -20,9 +20,11 @@ import {
   type PhotoDecision,
 } from '@revolution/reviews/moderation';
 import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
+import { createSlackNotifier } from '@revolution/reviews/notifications';
 import { getReviewScreener } from '@revolution/reviews/screener';
 import { REVIEW_SCREENING_REASONS } from '@revolution/schemas/review';
 
+import { env } from '@/lib/env';
 import { moderationDeps } from '@/lib/moderation/deps';
 import type { NoticeKind } from '@/lib/moderation/notice';
 import { PhotoDecisionsSchema } from '@/lib/moderation/photo-decision';
@@ -102,7 +104,13 @@ export async function requeueReviewAction(
     const deps = await moderationDeps();
     if (!deps) return { kind: 'forbidden' };
     outcome = await requeueReview(
-      { ...deps, screener: await getReviewScreener(), schedule: task => after(task) },
+      {
+        ...deps,
+        screener: await getReviewScreener(),
+        schedule: task => after(task),
+        // もう一度 AI にかけた結果は Slack で知らせる (公開・差し戻しはお知らせ、確認待ちは要対応。#169)
+        notifier: createSlackNotifier({ adminUrl: env.NEXT_PUBLIC_ADMIN_URL }),
+      },
       { reviewId: parsed.data.reviewId, submittedAt: parsed.data.submittedAt }
     );
   } catch (error) {

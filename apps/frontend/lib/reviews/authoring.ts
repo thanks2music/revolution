@@ -172,7 +172,9 @@ export async function submitDraft(
   return (data ?? []).length > 0;
 }
 
-export type DeleteOutcome = { kind: 'deleted'; wasPublished: boolean } | { kind: 'not_found' };
+export type DeleteOutcome =
+  | { kind: 'deleted'; wasPublished: boolean; wasDraft: boolean }
+  | { kind: 'not_found' };
 
 /** 自分の口コミを論理削除する。集計からはトリガが外す。削除の後は同じ開催にもう一度書ける */
 export async function deleteOwnReview(
@@ -190,5 +192,9 @@ export async function deleteOwnReview(
   if (error) throw error;
   const row = data?.[0];
   if (!row) return { kind: 'not_found' };
-  return { kind: 'deleted', wasPublished: row.status === 'published' };
+  return {
+    kind: 'deleted',
+    wasPublished: row.status === 'published',
+    wasDraft: row.status === 'draft',
+  };
 }

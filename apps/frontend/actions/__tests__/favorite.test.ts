@@ -18,6 +18,20 @@ const KEY = 'collabo-cafe/work-a/article-1';
 
 jest.mock('@/lib/env', () => ({ env: {} }));
 
+// Slack の通知 (#169)。応答の後の処理 (after) は呼ばれたことだけを見て、中身はテストの中で走らせる
+jest.mock('next/server', () => ({ after: jest.fn() }));
+jest.mock('@/lib/reviews/notifier', () => {
+  const notify = jest.fn(async () => undefined);
+  return { __notify: notify, getReviewNotifier: () => ({ notify }) };
+});
+jest.mock('@/lib/mdx/articles', () => ({
+  getAllArticles: () => [{ slug: 'article-1', title: '記事のタイトル', eventType: 'collabo-cafe', workSlug: 'work-a' }],
+}));
+jest.mock('@/lib/mdx/article-url', () => ({
+  resolveArticleByKey: (key: string, articles: { title: string }[]) =>
+    key === 'collabo-cafe/work-a/article-1' ? articles[0] : null,
+}));
+
 jest.mock('@/lib/supabase/server', () => {
   // チェーン可能な query ビルダー。select/eq/order 等は自身を返し、終端解決値は
   // builder.__result (Promise) として await される。maybeSingle も同値を返す。
@@ -208,5 +222,37 @@ describe('getFavorites', () => {
       ]);
     }
     expect(m.builder.order).toHaveBeenCalledWith('created_at', { ascending: false });
+  });
+});
+
+describe('toggleFavorite — Slack のお知らせ (#169)', () => {
+  const { after } = jest.requireMock('next/server') as { after: jest.Mock };
+  const { __notify: notify } = jest.requireMock('@/lib/reviews/notifier') as { __notify: jest.Mock };
+
+  it('新しく付けたいいねは、記事のタイトルと表示名を知らせる', async () => {
+    setResult({ data: null, error: null });
+    await expect(toggleFavorite(KEY)).resolves.toEqual({ ok: true, liked: true });
+    expect(after).toHaveBeenCalledTimes(1);
+
+    setResult({ data: { display_name: 'あにめ太郎', username: 'anime_taro' }, error: null });
+    await (after.mock.calls[0][0] as () => Promise<void>)();
+    expect(notify).toHaveBeenCalledWith({
+      type: 'article_liked',
+      displayName: 'あにめ太郎',
+      articleTitle: '記事のタイトル',
+    });
+  });
+
+  it('外した時は知らせない', async () => {
+    setResult({ data: { target_key: KEY }, error: null });
+    await expect(toggleFavorite(KEY)).resolves.toEqual({ ok: true, liked: false });
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it('通知が失敗しても、いいねは成功のまま (応答の後の処理は例外を外へ出さない)', async () => {
+    setResult({ data: null, error: null });
+    await expect(toggleFavorite(KEY)).resolves.toEqual({ ok: true, liked: true });
+    notify.mockRejectedValueOnce(new Error('slack down'));
+    await expect((after.mock.calls[0][0] as () => Promise<void>)()).resolves.toBeUndefined();
   });
 });

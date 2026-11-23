@@ -37,7 +37,7 @@ export const env = createEnv({
     // Supabase Dashboard → Connect → Session pooler (5432)。M1 以降で使用。
     MIGRATION_DATABASE_URL: z.string().url().optional(),
 
-    // Slack 通知 (lib/slack/notify.ts)。未設定なら通知しないだけなので、すべて optional。
+    // Slack 通知 (shared/reviews/notify-slack.ts、#169 で送り始めた)。未設定なら通知しないだけなので、すべて optional。
     // ⚠️ ここに書くのは env レジストリとしての記録が目的で、送信側は `process.env` を直読みする
     // (NEXT_PUBLIC_SENTRY_DSN と同じ扱い。テストで env を差し替えられるようにするため)。
     SLACK_BOT_TOKEN: z.string().optional(),
@@ -46,6 +46,8 @@ export const env = createEnv({
     SLACK_NOTICE_CHANNEL_ID: z.string().optional(),
     // 要対応で鳴らすユーザー ID。Vercel では Production にだけ設定する
     SLACK_MENTION_USER_ID: z.string().optional(),
+    // 管理アプリの URL (Slack の通知に「管理アプリで開く」のリンクを付ける。未設定ならリンクを付けない)
+    ADMIN_APP_URL: z.string().url().optional(),
 
     // 口コミの AI 審査 (shared/reviews/screener)。Slack と同じく、ここは env レジストリとしての記録で、
     // 審査器は `process.env` を直読みする (テストで env を差し替えるため)。未設定なら審査は失敗として扱う
@@ -136,6 +138,7 @@ export const env = createEnv({
     SLACK_ATTENTION_CHANNEL_ID: process.env.SLACK_ATTENTION_CHANNEL_ID,
     SLACK_NOTICE_CHANNEL_ID: process.env.SLACK_NOTICE_CHANNEL_ID,
     SLACK_MENTION_USER_ID: process.env.SLACK_MENTION_USER_ID,
+    ADMIN_APP_URL: process.env.ADMIN_APP_URL,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     REVIEW_SCREENING_MODEL: process.env.REVIEW_SCREENING_MODEL,
     REVIEW_SCREENER: process.env.REVIEW_SCREENER,

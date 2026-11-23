@@ -18,6 +18,7 @@ import {
   type ReviewScreeningReason,
 } from '@revolution/schemas/review';
 
+import { notifyAboutReview, type ReviewNotifier } from './notifications';
 import { screenSubmittedReview, type ScreenReviewOutcome } from './operations';
 import { syncPhotoDeliverySafely } from './photos/delivery';
 import { toStoredPhotoView } from './photos/operations';
@@ -313,6 +314,8 @@ export async function requeueReview(
      * 審査の結果は数分で出る (管理アプリの「もう一度 AI にかける」、Figma 13 のトースト)
      */
     schedule?: (task: () => Promise<unknown>) => void;
+    /** 審査の結果を Slack で知らせる口 (#169)。渡さなければ知らせない */
+    notifier?: ReviewNotifier;
   },
   input: { reviewId: number; submittedAt: string }
 ): Promise<
@@ -327,11 +330,21 @@ export async function requeueReview(
   if (outcome.kind !== 'applied') return outcome;
   const run = async (): Promise<ScreenReviewOutcome | { kind: 'error' }> => {
     try {
-      return await screenSubmittedReview(input.reviewId, {
+      const outcome = await screenSubmittedReview(input.reviewId, {
         screener: deps.screener,
         db: deps.serviceDb,
         storage: deps.storage,
       });
+      // AI の審査の結果は知らせる (BOSS が自分でした操作は知らせない。2026-11-24 BOSS 確定)
+      if (outcome.kind === 'screened' && deps.notifier) {
+        await notifyAboutReview({ notifier: deps.notifier, db: deps.serviceDb }, input.reviewId, review => ({
+          type: 'review_screened',
+          review,
+          status: outcome.status,
+          aiFailure: outcome.aiFailure,
+        }));
+      }
+      return outcome;
     } catch (error) {
       Sentry.captureException(error, { tags: { part: 'review-moderation', step: 'requeue' } });
       return { kind: 'error' };
