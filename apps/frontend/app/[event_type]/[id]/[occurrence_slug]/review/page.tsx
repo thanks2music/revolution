@@ -24,11 +24,11 @@ import { getOccurrenceUrl } from '@/lib/event/event-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { todayInJst } from '@/lib/occurrence/status';
-import { authoringMode } from '@/lib/reviews/eligibility';
+import { authoringMode } from '@revolution/reviews/eligibility';
 import { buildXShareUrl } from '@/lib/reviews/share';
 import { findOwnReview, type OwnReview } from '@/lib/reviews/authoring';
-import { listOwnPhotos, type OwnReviewPhoto } from '@/lib/reviews/photos/operations';
-import { getReviewPhotoStorage, type ReviewPhotoStorage } from '@/lib/reviews/photos/storage';
+import { listOwnPhotos, type OwnReviewPhoto } from '@revolution/reviews/photos/operations';
+import { getReviewPhotoStorage, type ReviewPhotoStorage } from '@revolution/reviews/photos/storage';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { OccurrencePageProps } from '@/types/page-props';
 
@@ -36,7 +36,7 @@ import { ReviewForm } from './ReviewForm';
 
 /**
  * 提出の Server Action は、応答の後に審査 (`after()`) を走らせる。審査は最悪で約 64 秒
- * (20 秒 × 3 回 + 待ち 1 秒・3 秒、`lib/reviews/screener`)。関数が途中で止まらないよう余裕を持たせる
+ * (20 秒 × 3 回 + 待ち 1 秒・3 秒、`shared/reviews/screener`)。関数が途中で止まらないよう余裕を持たせる
  */
 export const maxDuration = 90;
 

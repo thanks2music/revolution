@@ -1,4 +1,4 @@
-import type { PublicReviewPhoto } from '@/lib/reviews/photos/public';
+import type { PublicReviewPhoto } from '@revolution/reviews/photos/public';
 
 import { ReviewPhotoPicture } from './ReviewPhotoPicture';
 

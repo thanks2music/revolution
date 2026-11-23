@@ -5,11 +5,14 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, it, jest } from '@jest/globals';
 
-import { createFakeScreener, FAKE_SCREENER_MODEL } from '@/lib/reviews/screener/fake-screener';
-import { getReviewScreener } from '@/lib/reviews/screener';
-import { loadScreeningPrompt } from '@/lib/reviews/screener/prompt';
+import {
+  createFakeScreener,
+  FAKE_SCREENER_MODEL,
+} from '@revolution/reviews/screener/fake-screener';
+import { getReviewScreener } from '@revolution/reviews/screener';
+import { loadScreeningPrompt } from '@revolution/reviews/screener/prompt';
 import { ReviewScreeningResponseSchema } from '@revolution/schemas/review-screening-response';
-import { isTransientError, withTransientRetry } from '@/lib/reviews/screener/retry';
+import { isTransientError, withTransientRetry } from '@revolution/reviews/screener/retry';
 
 const VALID = 'version: 1\nmodel: m\nsystem: s\nuser: "<review>{{body}}</review>"\n';
 const NO_BODY = 'version: 1\nmodel: m\nsystem: s\nuser: "本文なし"\n';

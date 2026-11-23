@@ -4,7 +4,7 @@ import {
   reviewBlockReason,
   reviewSectionMode,
   visitDateRange,
-} from '@/lib/reviews/eligibility';
+} from '@revolution/reviews/eligibility';
 
 describe('reviewBlockReason', () => {
   it.each(['ongoing', 'ended'] as const)('%s の開催には書ける', status => {

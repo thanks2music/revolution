@@ -48,7 +48,7 @@ import { generateContentMetadata } from '@/lib/metadata';
 import { getTitleUrl } from '@/lib/title/title-url';
 import { formatPeriod } from '@/lib/occurrence/format';
 import { getOccurrenceDetail, listOccurrenceParams } from '@/lib/occurrence/queries';
-import { reviewSectionMode } from '@/lib/reviews/eligibility';
+import { reviewSectionMode } from '@revolution/reviews/eligibility';
 import { getOccurrenceReviews } from '@/lib/reviews/queries';
 import { toBadgeStatus } from '@/lib/occurrence/status';
 import { isSafeHttpUrl } from '@/lib/url-safety';

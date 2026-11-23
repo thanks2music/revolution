@@ -30,7 +30,7 @@ import { hasEmail, hasGoogle } from '@/lib/auth/provider';
 import type { ArticleIndexItem } from '@/lib/mdx/article-types';
 import { OwnReviewList } from '@/components/molecules/reviews/OwnReviewList';
 import { listOwnReviews, type OwnReviewListItem } from '@/lib/reviews/own-reviews';
-import { getReviewPhotoStorage } from '@/lib/reviews/photos/storage';
+import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { AccountManager } from './AccountManager';
 import { SignOutButton } from './SignOutButton';

@@ -9,7 +9,7 @@
 #   1. TEMPLATES_SOURCE_PATH: 手元の templates repo の作業ツリー (手元のビルド)
 #   2. TEMPLATES_READ_TOKEN: GitHub の API で取る (Vercel。contents を読むだけの fine-grained token)
 #
-# 取り込んだ後に、プロンプトの形を読み込みの関数 (lib/reviews/screener/prompt.ts) で確かめる。
+# 取り込んだ後に、プロンプトの形を読み込みの関数 (shared/reviews/screener/prompt.ts) で確かめる。
 # 取り込みに成功して形も正しい時だけ、前の物と入れ替える (失敗した時に、手元の取り込み済みの物を消さない)。
 #
 # 取り込み元が無い・取れない・形が崩れている時:

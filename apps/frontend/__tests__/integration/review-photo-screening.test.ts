@@ -23,17 +23,17 @@ jest.mock('@/lib/env', () => {
   };
 });
 
-import { screenSubmittedReview } from '@/lib/reviews/operations';
+import { screenSubmittedReview } from '@revolution/reviews/operations';
 import { listOwnReviews } from '@/lib/reviews/own-reviews';
-import { syncPhotoDelivery } from '@/lib/reviews/photos/delivery';
+import { syncPhotoDelivery } from '@revolution/reviews/photos/delivery';
 import {
   ingestPhoto,
   removePhoto,
   requestPhotoUpload,
   type PhotoContext,
-} from '@/lib/reviews/photos/operations';
-import { createFakePhotoStorage, type FakePhotoStorage } from '@/lib/reviews/photos/storage';
-import { createFakeScreener } from '@/lib/reviews/screener/fake-screener';
+} from '@revolution/reviews/photos/operations';
+import { createFakePhotoStorage, type FakePhotoStorage } from '@revolution/reviews/photos/storage';
+import { createFakeScreener } from '@revolution/reviews/screener/fake-screener';
 import { createTestDataScope, jstDate, type TestDataScope } from '@/test-support/test-data';
 
 /**

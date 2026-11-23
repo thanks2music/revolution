@@ -1,4 +1,4 @@
-import { publicMediaBaseUrl } from '@/lib/reviews/photos/public';
+import { publicMediaBaseUrl } from '@revolution/reviews/photos/public';
 
 describe('publicMediaBaseUrl', () => {
   it.each([
