@@ -23,7 +23,7 @@ describe('eyecatchCandidates', () => {
   it('og:image → 最初の横長の画像 → 最初の画像の順 (重複は除く)', () => {
     const images = [uploaded('https://a.test/tall', 600, 900), uploaded('https://a.test/wide', 1300, 1000)];
 
-    expect(eyecatchCandidates('https://a.test/og', images, 1.3)).toEqual([
+    expect(eyecatchCandidates('https://a.test/og', [], images, 1.3)).toEqual([
       { sourceUrl: 'https://a.test/og', origin: 'og' },
       { sourceUrl: 'https://a.test/wide', origin: 'landscape' },
       { sourceUrl: 'https://a.test/tall', origin: 'first' },
@@ -31,14 +31,25 @@ describe('eyecatchCandidates', () => {
   });
 
   it('横長が最初の画像なら 1 つにまとめる。何も無ければ空', () => {
-    expect(eyecatchCandidates(null, [uploaded('https://a.test/wide', 1600, 900)], 1.3)).toEqual([
+    expect(eyecatchCandidates(null, [], [uploaded('https://a.test/wide', 1600, 900)], 1.3)).toEqual([
       { sourceUrl: 'https://a.test/wide', origin: 'landscape' },
     ]);
-    expect(eyecatchCandidates(null, [], 1.3)).toEqual([]);
+    expect(eyecatchCandidates(null, [], [], 1.3)).toEqual([]);
+  });
+
+  it('公式ページの画像を、og:image の次・本文の画像より前に、ページの順で並べる', () => {
+    expect(
+      eyecatchCandidates('https://a.test/og', ['https://a.test/main.jpg', 'https://a.test/logo.png'], [uploaded('https://a.test/wide', 1600, 900)], 1.3),
+    ).toEqual([
+      { sourceUrl: 'https://a.test/og', origin: 'og' },
+      { sourceUrl: 'https://a.test/main.jpg', origin: 'page' },
+      { sourceUrl: 'https://a.test/logo.png', origin: 'page' },
+      { sourceUrl: 'https://a.test/wide', origin: 'landscape' },
+    ]);
   });
 
   it('比が閾値ちょうどの画像は横長に数える', () => {
-    expect(eyecatchCandidates(null, [uploaded('https://a.test/a', 1300, 1000)], 1.3)[0].origin).toBe('landscape');
+    expect(eyecatchCandidates(null, [], [uploaded('https://a.test/a', 1300, 1000)], 1.3)[0].origin).toBe('landscape');
   });
 });
 
@@ -122,6 +133,38 @@ describe('uploadImagesForArticle', () => {
       { sourceUrl: 'https://a.test/og-missing.jpg', kind: 'failed', reason: expect.stringContaining('アイキャッチ (og)') },
     ]);
     expect(result.newObjects).toBe(3);
+  });
+
+  it('og:image が取れなければ、公式ページの画像のうち横長で十分な大きさの最初の画像を使う (ロゴ・縦長は飛ばす)', async () => {
+    const images: Record<string, Buffer> = {
+      'https://a.test/logo.png': await png(600, 120, 40),
+      'https://a.test/tall.png': await png(600, 900, 50),
+      'https://a.test/main.png': await png(1600, 700, 60),
+      'https://a.test/menu.png': await png(800, 1200, 70),
+    };
+    const fetcher: ImageFetcher = async (url) => {
+      if (!images[url]) throw new Error(`403: ${url}`);
+      return { buffer: images[url], contentType: 'image/png' };
+    };
+
+    const result = await uploadImagesForArticle(
+      {
+        ogImage: 'https://a.test/img/',
+        pageImages: ['https://a.test/logo.png', 'https://a.test/tall.png', 'https://a.test/main.png'],
+        menu: ['https://a.test/menu.png'],
+        novelty: [],
+        goods: [],
+        imageAlts: {},
+      },
+      { folder: 'f', config, store: null, fetcher }
+    );
+
+    expect(result.eyecatch).toMatchObject({ sourceUrl: 'https://a.test/main.png', origin: 'page' });
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      expect.stringContaining('アイキャッチ (og)'),
+      expect.stringContaining('アイキャッチ (page): 横長で十分な大きさの画像ではない (600×120)'),
+      expect.stringContaining('アイキャッチ (page): 横長で十分な大きさの画像ではない (600×900)'),
+    ]);
   });
 
   it('同じ画像が複数のカテゴリ・同じカテゴリに何度あっても、最初の 1 回だけ載せる (取得も 1 回)', async () => {
