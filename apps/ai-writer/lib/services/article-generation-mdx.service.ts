@@ -102,6 +102,13 @@ import {
 import { getR2StorageService } from './r2-storage.service';
 import { getConfigLoaderService } from './config-loader.service';
 import { skipsVision } from './vision-api/vision-skip-hosts';
+import { IMAGE_ONLY_RENDERED_KEYS, renderImageOnlySentence, type ImageOnlySentenceConfig } from './image-only-sections';
+import {
+  buildNoNoveltySecondParagraph,
+  loadNoNoveltySecondParagraphConfig,
+  replaceSecondParagraph,
+  type NoNoveltySecondParagraphInput,
+} from './lead-second-paragraph';
 import { r2ImageStore } from './article-images/upload-article-images';
 import {
   IMAGE_CATEGORIES,
@@ -173,6 +180,7 @@ import { venueUrlsWithNovelties, withNoveltyImagesFromVenues } from './pick-nove
 import { withNamesFromPageText } from './article-images/names-from-page-text';
 import { mergeSubpagesIntoExtraction } from './merge-subpage-into-extraction';
 import {
+  GOODS_SECTION,
   goodsNamesForProse,
   hasGoodsSection,
   insertIntoGoodsSection,
@@ -183,11 +191,13 @@ import {
   appendToMenuSection,
   appendToNoveltySection,
   fillTemplate,
+  findSection,
   hasMenuSection,
   hasNoveltySection,
   loadRendered,
   MENU_RENDERED_KEYS,
   NOVELTY_RENDERED_KEYS,
+  NOVELTY_SECTION,
   otherImagesBlock,
   renderItemHeadings,
   renderMenuItems,
@@ -197,6 +207,7 @@ import {
   replaceMenuItemsWithTable,
   replaceNoveltySentence,
   replacePlaceholderLine,
+  replaceSectionSentence,
   replaceSummaryRowValue,
   SUMMARY_VENUE_KEYS,
   type MenuTableConfig,
@@ -957,8 +968,18 @@ export class ArticleGenerationMdxService {
 
       // ノベルティ名が書けないときは、画像があってもノベルティの節を書かせない。本文の LLM は画像の数で
       // 節を書くかを決めるため、名前の無いまま「来店特典のノベルティー」のような根拠の無い文を書いた
-      // (2026-10-12、ヒロアカで AI が利用ガイドのページをノベルティのページと判定したとき)
-      if (categoryImages && categoryImages.novelty.length > 0 && isEmptyList(detailedExtraction?.ノベルティ名)) {
+      // (2026-10-12、ヒロアカで AI が利用ガイドのページをノベルティのページと判定したとき)。
+      // ただし Vision を呼ばないサイトは、品目が画像の中にしか無いので、名前の無いまま画像だけの節を書く
+      // (品名も特典の内容も書かない書き方。2026-11-24 BOSS 決定)
+      if (
+        categoryImages &&
+        categoryImages.novelty.length > 0 &&
+        isEmptyList(detailedExtraction?.ノベルティ名) &&
+        !skipsVision(
+          selectionResult.primary_official_url,
+          (await getConfigLoaderService().loadStoreUrlPatterns()).vision_skip_hosts,
+        )
+      ) {
         console.log(
           `${getStepContext('vision-api')} ノベルティ名が無いため、ノベルティの画像 ${categoryImages.novelty.length} 枚を使わない (節を書かない)`,
         );
@@ -1320,6 +1341,13 @@ export class ArticleGenerationMdxService {
       const goodsListConfig = loadGoodsListConfig();
       // この記事のポイントの書式 (Templates の sections/01b-points.yaml)。本文の生成 (有料の LLM) より前に読み、Templates が古ければ先に止める
       const pointsFormat = loadPointsFormat();
+      // 品名の無い節の導入の文と、ノベルティ名が無いときのリード文の 2 段落目 (2026-11-24。同じく本文の生成より前に読む)
+      const noveltyImageOnly = loadRendered<ImageOnlySentenceConfig>('03-novelty.yaml', IMAGE_ONLY_RENDERED_KEYS);
+      const goodsImageOnly = loadRendered<ImageOnlySentenceConfig>('04-goods.yaml', IMAGE_ONLY_RENDERED_KEYS);
+      const leadSecondParagraph = loadNoNoveltySecondParagraphConfig();
+      // メニューの品名 (テキストか Vision) が無い。このときキャラクター名をメニューに結びつけない (リード文・本文)
+      const noMenuNames =
+        isEmptyList(detailedExtraction.メニュー詳細リスト) && isEmptyList(detailedExtraction.具体的なメニュー名リスト);
       const proseGoodsNames = goodsNamesForProse(detailedExtraction.グッズ名, goodsListConfig);
 
       // ========================================================================
@@ -1426,6 +1454,9 @@ export class ArticleGenerationMdxService {
             店舗名: 会場表現,
             グッズ名: proseGoodsNames,
             グッズ詳細リスト: null,
+            // メニューの品名が無いときは、キャラクター名を渡さない。このときのキャラクター名はグッズの絵柄から抽出されたもので、
+            // 本文の LLM が「{キャラクター名}らをイメージしたコラボメニュー」と推測で書いた (02-menu.yaml の条件だけでは選んだ。2026-11-24 BOSS 決定)
+            キャラクター名: noMenuNames ? null : detailedExtraction.キャラクター名,
           },
           generatedTitle: titleResult.title,
           officialHtml: officialHtml, // detail-extraction step で取得済みのHTMLを再利用
@@ -1483,10 +1514,32 @@ export class ArticleGenerationMdxService {
         pointsFormat,
         costTracker,
       });
+      // メニューの品名が取れないときは、リード文の 2 段落目をキャラクター名を挙げない文にする
+      // (キャラクター名がグッズの絵柄から抽出され、メニューに結びつけると推測になるため。2026-11-24 BOSS 決定)
+      let leadMdx = leadResult.leadMdx;
+      // 置き換えたときの入力。画像を差し込んだ後に、節が消えていたら組み直す (下の image-placeholder-replacement)
+      let leadSecondInput: NoNoveltySecondParagraphInput | null = null;
+      if (noMenuNames && !leadResult.fallbackReason) {
+        const input: NoNoveltySecondParagraphInput = {
+          templateId: leadResult.usedTemplate,
+          作品名: leadResult.slots.workTitle,
+          mediaForm: leadResult.slots.mediaForm,
+          hasGoods: hasGoodsSection(contentGeneration.content),
+          hasNovelty: hasNoveltySection(contentGeneration.content),
+          noveltyNames: detailedExtraction.ノベルティ名,
+        };
+        const paragraph = buildNoNoveltySecondParagraph(leadSecondParagraph, input);
+        const replaced = paragraph === null ? leadMdx : replaceSecondParagraph(leadMdx, paragraph);
+        if (replaced !== leadMdx) {
+          leadSecondInput = input;
+          leadMdx = replaced;
+          console.log(`${getStepContext('lead-generation', '2 段落目')} メニューの品名が無いため、2 段落目を置き換えた: ${paragraph}`);
+        }
+      }
       // リード文 → この記事のポイント → 本文 (Sprint C-β P11 以降、リード文は LeadGeneratorService が書く)
       contentGeneration = {
         ...contentGeneration,
-        content: joinArticleParts(leadResult.leadMdx, pointsBlock, contentGeneration.content),
+        content: joinArticleParts(leadMdx, pointsBlock, contentGeneration.content),
       };
 
       // excerpt-generation step: 抜粋を完成した記事の冒頭 (リード文とこの記事のポイント) から書く (2026-10-16 BOSS 決定)
@@ -1495,7 +1548,7 @@ export class ArticleGenerationMdxService {
         {
           title: titleResult.title,
           作品名: detailedExtraction?.作品名 ?? canonicalWorkTitle ?? null,
-          leadMdx: leadResult.leadMdx,
+          leadMdx,
           pointsBlock,
         },
         costTracker
@@ -1650,12 +1703,18 @@ export class ArticleGenerationMdxService {
 
       // カテゴリ別R2画像またはアイキャッチ画像がある場合のみ置換を実行
       // uploadedCategoryR2Images は image-upload-r2 step でアップロードされた画像のR2 URL
+      // 画像の欄が残っていれば、画像が 0 枚でも置換に回す (画像の無い節を消すため。アップロードの失敗で、品名の無い節が
+      // 見出しだけで残らないように)
+      const hasImagePlaceholders = (['menu', 'novelty', 'goods'] as const).some((category) =>
+        contentGeneration.content.includes(PLACEHOLDERS[category]),
+      );
       const hasR2Images =
         uploadedCategoryR2Images.menu.length > 0 ||
         uploadedCategoryR2Images.novelty.length > 0 ||
         uploadedCategoryR2Images.goods.length > 0 ||
         !!uploadedCategoryR2Images.eyecatch ||
-        keepSections.size > 0;
+        keepSections.size > 0 ||
+        hasImagePlaceholders;
 
       if (hasR2Images) {
         const placeholderReplacer = getImagePlaceholderReplacerService();
@@ -1668,6 +1727,18 @@ export class ArticleGenerationMdxService {
           deferredPlaceholders
         );
         finalContent = placeholderReplacement.content;
+
+        // 品名の無い節は、画像が 0 枚 (アップロードの失敗など) なら節ごと消える。リード文の 2 段落目が、消えた節の
+        // グッズ・ノベルティーに触れないように組み直す (記事はリード文から始まるので、記事全体の 2 段落目がリード文の 2 段落目)
+        const hasGoods = hasGoodsSection(finalContent);
+        const hasNovelty = hasNoveltySection(finalContent);
+        if (leadSecondInput && (leadSecondInput.hasGoods !== hasGoods || leadSecondInput.hasNovelty !== hasNovelty)) {
+          const rebuilt = buildNoNoveltySecondParagraph(leadSecondParagraph, { ...leadSecondInput, hasGoods, hasNovelty });
+          if (rebuilt) {
+            finalContent = replaceSecondParagraph(finalContent, rebuilt);
+            console.log(`${getStepContext('image-placeholder-replacement', 'リード文')} 画像の無い節が消えたため、2 段落目を組み直した: ${rebuilt}`);
+          }
+        }
 
         console.log(`${getStepContext('image-placeholder-replacement')} プレースホルダー置換結果:`, {
           replacedCount: placeholderReplacement.replacedCount.total,
@@ -1781,6 +1852,31 @@ export class ArticleGenerationMdxService {
           );
         }
         finalContent = summaryRows.content;
+
+        // 品名が無く画像だけの節 (ノベルティ・グッズ) は、導入の文を期間だけの文にする (LLM に品名や特典の内容を推測で書かせない。2026-11-24 BOSS 決定)
+        const imageOnlyPeriod = { start: periodStart, end: periodEnd };
+        const imageOnlyTargets = [
+          {
+            label: 'ノベルティ',
+            heading: NOVELTY_SECTION,
+            noNames: isEmptyList(detailedExtraction.ノベルティ名),
+            config: noveltyImageOnly,
+          },
+          {
+            label: 'グッズ',
+            heading: GOODS_SECTION,
+            // 本文の LLM と keepSections と同じ基準 (グッズ名)
+            noNames: isEmptyList(detailedExtraction.グッズ名),
+            config: goodsImageOnly,
+          },
+        ];
+        for (const target of imageOnlyTargets) {
+          if (!target.noNames || !findSection(finalContent, target.heading)) continue;
+          const sentence = renderImageOnlySentence(target.config, storeContext.見出し主語, imageOnlyPeriod, pointsFormat);
+          if (!sentence) continue;
+          finalContent = replaceSectionSentence(finalContent, target.heading, sentence);
+          console.log(`${getStepContext('text-placeholder-replacement', target.label)} 品名が無いため、導入の文を期間だけの文にした`);
+        }
 
         console.log(`${getStepContext('text-placeholder-replacement')} テキストプレースホルダー置換結果:`, {
           replacedCount: textPlaceholderReplacement.replacedCount,
