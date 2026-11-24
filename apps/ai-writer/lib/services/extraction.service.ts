@@ -18,6 +18,10 @@ import {
   type SourceType as SourceTypeFromSchema,
   type ExtractionReasoning,
   type ExtractionMenuItem,
+  GenderEnum,
+  GroupKindEnum,
+  type Gender,
+  type GroupKind,
 } from '@revolution/schemas/extraction-response';
 
 import { YamlTemplateLoaderService } from './yaml-template-loader.service';
@@ -355,6 +359,12 @@ export interface ExtractionResult {
   監督名: string | null;
   /** シリーズ名 */
   シリーズ名: string | null;
+  /** グループか個人か (idol / youtuber / vtuber で、ページに書いてある時だけ。リード文の連体修飾語用) */
+  グループ区分: GroupKind | null;
+  /** アイドルの性別 (ページに書いてある時だけ) */
+  性別: Gender | null;
+  /** YouTuber がゲーム実況を主にしているか (ページに書いてある時だけ) */
+  ゲーム実況: boolean | null;
   /** 店舗の住所（1店舗の場合のみ） */
   店舗の住所: string | null;
   /**
@@ -831,6 +841,10 @@ ${schemaStr}
         スタジオ名: toOptionalString(jsonData.スタジオ名) ?? null,
         監督名: toOptionalString(jsonData.監督名) ?? null,
         シリーズ名: toOptionalString(jsonData.シリーズ名) ?? null,
+        // 決まった値以外 (緩い解析の経路で LLM が書いた語など) は null にする (推測で埋めない)
+        グループ区分: GroupKindEnum.safeParse(jsonData.グループ区分).data ?? null,
+        性別: GenderEnum.safeParse(jsonData.性別).data ?? null,
+        ゲーム実況: typeof jsonData.ゲーム実況 === 'boolean' ? jsonData.ゲーム実況 : null,
         店舗の住所: jsonData.店舗の住所 || null,
         開催都道府県: jsonData.開催都道府県 || null,
         コピーライト: jsonData.コピーライト || null,

@@ -30,6 +30,14 @@ jest.mock('@/lib/services/summary-table', () => ({ SUMMARY_ROWS_KEYS: ['row-key'
 jest.mock('@/lib/services/lead-generator.service', () => ({ readLeadSectionYaml: fake('lead') }));
 jest.mock('@/lib/services/image-only-sections', () => ({ IMAGE_ONLY_RENDERED_KEYS: ['image-only-key'] }));
 jest.mock('@/lib/services/lead-second-paragraph', () => ({ loadNoNoveltySecondParagraphConfig: fake('lead-second-paragraph') }));
+jest.mock('@/lib/services/lead-modifier-config', () => ({
+  // the dictionary schemas stay real (layer B reads them)
+  ...jest.requireActual('@/lib/services/lead-modifier-config'),
+  loadLeadModifierFormat: fake('lead-modifier'),
+  loadLeadFallbackPrompt: fake('lead-fallback-prompt'),
+  loadWorkDescriptions: fake('work-descriptions'),
+  loadCharacterOwners: fake('character-owners'),
+}));
 jest.mock('@/lib/archive-source/config', () => ({ loadArchiveSources: fake('archive-sources') }));
 jest.mock('@/lib/scheduled/writing-scope', () => ({ loadWritingScope: fake('writing-scope') }));
 jest.mock('@/lib/services/media-type-mapper.service', () => ({
@@ -114,6 +122,10 @@ describe('checkConsumerContract', () => {
       'lead-second-paragraph',
       'rendered 05-summary.yaml',
       'lead',
+      'lead-modifier',
+      'lead-fallback-prompt',
+      'work-descriptions',
+      'character-owners',
       'media-type-mapper',
       'media-form-resolver',
       'store-url-patterns',
@@ -135,6 +147,10 @@ describe('checkConsumerContract', () => {
     expect(args['rendered 04-goods.yaml']).toEqual([['image-only-key'], layout.sectionsDir]);
     expect(args['lead-second-paragraph']).toEqual([layout.sectionsDir]);
     expect(args['lead']).toEqual(['/t/ai-writer/posts/yaml/collabo-cafe/sections/01-lead.yaml']);
+    expect(args['lead-modifier']).toEqual([layout.sectionsDir]);
+    expect(args['lead-fallback-prompt']).toEqual([layout.sectionsDir]);
+    expect(args['work-descriptions']).toEqual([layout.configDir]);
+    expect(args['character-owners']).toEqual([layout.configDir]);
     expect(args['store-url-patterns']).toEqual([layout.configDir]);
     expect(args['archive-sources']).toEqual(['/t/ai-writer/config/archive-sources.yaml']);
     expect(args['writing-scope']).toEqual(['/t/ai-writer/config/writing-scope.yaml']);
@@ -153,7 +169,7 @@ describe('checkConsumerContract', () => {
       },
       { rule: 'contract/pipeline', file: 'ai-writer/posts/yaml/collabo-cafe/pipeline/3-title.yaml', message: 'pipeline 3-title failed' },
     ]);
-    expect(calls).toHaveLength(22);
+    expect(calls).toHaveLength(26);
   });
 
   it('still loads every service pipeline when _meta.yaml is missing (production fails on it too)', async () => {
