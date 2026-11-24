@@ -1,5 +1,6 @@
 /**
- * 公開サイト (と、今後の管理アプリ) から Slack へ通知を送る口。
+ * 公開サイトと管理アプリから Slack へ通知を送る口 (#160 で apps/frontend/lib/slack に作り、管理アプリからも
+ * 使うため #169 で shared/reviews へ移した。shared/slack は Sentry に依存せず WEB チェッカーにも同梱されるので置かない)。
  *
  * ## 2 つのチャンネル
  *
@@ -22,7 +23,7 @@
  * - section の文は Slack の上限 (3,000 字) より 50 字以上短くする。要対応では、メンション
  *   (`<@ユーザーID> `) をその前に足すことがあるため
  *
- * @module lib/slack/notify
+ * @module @revolution/reviews/notify-slack
  */
 
 import 'server-only';
@@ -39,7 +40,7 @@ const CHANNEL_KEY: Record<SlackDestination, string> = {
   notice: 'SLACK_NOTICE_CHANNEL_ID',
 };
 
-type SlackEnv = Record<string, string | undefined>;
+export type SlackEnv = Record<string, string | undefined>;
 
 export async function notifySlack(
   destination: SlackDestination,

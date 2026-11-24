@@ -13,10 +13,12 @@ import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { todayInJst } from '@/lib/occurrence/status';
 import type { OwnReview } from '@/lib/reviews/authoring';
 import { authoringMode } from '@revolution/reviews/eligibility';
+import { notifyAboutReview } from '@revolution/reviews/notifications';
 import { screenSubmittedReview } from '@revolution/reviews/operations';
 import { syncPhotoDeliverySafely } from '@revolution/reviews/photos/delivery';
 import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
 import { getReviewScreener } from '@revolution/reviews/screener';
+import { getReviewNotifier } from '@/lib/reviews/notifier';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 /**
@@ -70,22 +72,34 @@ export async function syncReviewPhotoDelivery(db: SupabaseClient, reviewId: numb
   if (storage) await syncPhotoDeliverySafely({ db, storage }, reviewId);
 }
 
-/** 応答の後 (`after()`) に AI の審査を走らせる。公開になったらページを作り直す */
+/**
+ * 応答の後 (`after()`) に AI の審査を走らせる。公開になったらページを作り直す。
+ * 会員の提出・出し直しと審査の結果を、Slack に 1 通で知らせる (公開・差し戻しはお知らせ、BOSS の確認待ちは
+ * 要対応。#169)。審査の後に送るので、Slack が遅くても審査は待たない。審査が例外で止まった時は、提出・
+ * 出し直しだけを知らせる (口コミは審査中のまま。30 分たつと管理アプリの「止まっている」に出る)
+ */
 export async function screenAfterSubmit(
   db: SupabaseClient,
   reviewId: number,
-  paths: string[]
+  paths: string[],
+  trigger: 'submitted' | 'edited'
 ): Promise<void> {
+  const notifier = getReviewNotifier();
   try {
     const outcome = await screenSubmittedReview(reviewId, {
       screener: await getReviewScreener(),
       db,
       storage: getReviewPhotoStorage(),
+      notify: { notifier, trigger },
     });
     if (outcome.kind === 'screened' && outcome.status === 'published') {
       for (const path of paths) revalidatePath(path);
     }
   } catch (error) {
     Sentry.captureException(error, { tags: { action: 'screenAfterSubmit' } });
+    await notifyAboutReview({ notifier, db }, reviewId, review => ({
+      type: trigger === 'edited' ? 'review_edited' : 'review_submitted',
+      review,
+    }));
   }
 }

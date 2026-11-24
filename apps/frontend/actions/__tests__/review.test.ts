@@ -44,6 +44,11 @@ jest.mock('@/lib/reviews/authoring', () => {
 });
 jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }));
 jest.mock('next/server', () => ({ after: jest.fn() }));
+jest.mock('@revolution/reviews/notifications', () => ({ notifyAboutReview: jest.fn() }));
+jest.mock('@/lib/reviews/notifier', () => ({
+  getReviewNotifier: () => ({ enabled: true, notify: jest.fn() }),
+}));
+jest.mock('@revolution/reviews/photos/storage', () => ({ getReviewPhotoStorage: () => null }));
 jest.mock('@/lib/supabase/server', () => {
   const builder: any = {};
   builder.insert = jest.fn(() => builder);
@@ -66,6 +71,7 @@ import { deleteReview, getOwnReviewState, saveReviewDraft, submitReview } from '
 import { getCurrentMember } from '@/lib/auth/member';
 import { getOccurrenceDetail } from '@/lib/occurrence/queries';
 import { screenSubmittedReview } from '@revolution/reviews/operations';
+import { notifyAboutReview } from '@revolution/reviews/notifications';
 import { deleteOwnReview, findOwnReview, saveDraft, submitDraft } from '@/lib/reviews/authoring';
 
 const builder = (jest.requireMock('@/lib/supabase/server') as { __builder: any }).__builder;
@@ -507,5 +513,110 @@ describe('deleteReview', () => {
 
     await expect(deleteReview(ROUTE, 71)).resolves.toMatchObject({ ok: false, needsAuth: true });
     expect(deleteOwnReview).not.toHaveBeenCalled();
+  });
+});
+
+describe('Slack の通知 (#169)', () => {
+  const EXISTING = {
+    submittedAt: '2026-11-20T00:00:00Z',
+    rating: 4,
+    visitedOn: '2026-11-19',
+    attendance: null,
+    foodCostBand: null,
+    goodsCostBand: null,
+    body: '楽しかった',
+    hasSpoiler: false,
+  };
+  const runAfter = () => ((after as jest.Mock).mock.calls[0][0] as () => Promise<void>)();
+  const builtTypes = () =>
+    (notifyAboutReview as jest.Mock).mock.calls.map(([, , build]) => build({ reviewId: 1 }).type);
+
+  it('新しい口コミは、審査の関数に通知の口ときっかけ (投稿) を渡し、1 通にまとめる', async () => {
+    (screenSubmittedReview as jest.Mock).mockResolvedValue({
+      kind: 'screened',
+      status: 'needs_review',
+      occurrenceId: 34,
+      aiFailure: true,
+    });
+    await submitReview(ROUTE, INPUT);
+    await runAfter();
+
+    // 審査の結果の通知は審査の関数が送る (きっかけを渡す)。ここから別には送らない
+    expect(screenSubmittedReview).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({
+        notify: { notifier: expect.anything(), trigger: 'submitted' },
+      })
+    );
+    expect(notifyAboutReview).not.toHaveBeenCalled();
+  });
+
+  it('提出した口コミを直して出し直すと、きっかけは編集になる', async () => {
+    (screenSubmittedReview as jest.Mock).mockResolvedValue({
+      kind: 'screened',
+      status: 'published',
+      occurrenceId: 34,
+      aiFailure: false,
+    });
+    (findOwnReview as jest.Mock).mockResolvedValue({ id: 73, status: 'published', ...EXISTING });
+    builder.select.mockResolvedValueOnce({
+      data: [{ submitted_at: '2026-11-22T00:00:00Z' }],
+      error: null,
+    });
+
+    await submitReview(ROUTE, { ...INPUT, ...EXISTING, body: '直した' });
+    await runAfter();
+    expect(screenSubmittedReview).toHaveBeenCalledWith(
+      73,
+      expect.objectContaining({ notify: expect.objectContaining({ trigger: 'edited' }) })
+    );
+  });
+
+  it('審査が何も書かなかった (出し直された) 時は知らせない。審査が例外の時は投稿だけ知らせる', async () => {
+    (screenSubmittedReview as jest.Mock).mockResolvedValueOnce({
+      kind: 'skipped',
+      reason: 'superseded',
+    });
+    await submitReview(ROUTE, INPUT);
+    await runAfter();
+    expect(notifyAboutReview).not.toHaveBeenCalled();
+
+    jest.clearAllMocks();
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: true, profileId: 'profile-1' });
+    (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail());
+    (screenSubmittedReview as jest.Mock).mockRejectedValueOnce(new Error('screener down'));
+    await submitReview(ROUTE, INPUT);
+    await runAfter();
+    expect(builtTypes()).toEqual(['review_submitted']);
+  });
+
+  it('下書きの保存は知らせない', async () => {
+    (findOwnReview as jest.Mock).mockResolvedValue(null);
+    (saveDraft as jest.Mock).mockResolvedValue({ kind: 'saved', reviewId: 80 });
+    await saveReviewDraft(ROUTE, { rating: 4 } as never);
+    expect(notifyAboutReview).not.toHaveBeenCalled();
+  });
+
+  it('削除は知らせ (写真の後片付けとは別に走らせる)、下書きの削除は知らせない', async () => {
+    (deleteOwnReview as jest.Mock).mockResolvedValueOnce({
+      kind: 'deleted',
+      wasPublished: true,
+      wasDraft: false,
+    });
+    await deleteReview(ROUTE, 71);
+    expect(after).toHaveBeenCalledTimes(2);
+    await ((after as jest.Mock).mock.calls[1][0] as () => Promise<void>)();
+    expect(builtTypes()).toEqual(['review_deleted']);
+
+    jest.clearAllMocks();
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: true, profileId: 'profile-1' });
+    (getOccurrenceDetail as jest.Mock).mockResolvedValue(detail());
+    (deleteOwnReview as jest.Mock).mockResolvedValueOnce({
+      kind: 'deleted',
+      wasPublished: false,
+      wasDraft: true,
+    });
+    await deleteReview(ROUTE, 72);
+    expect(after).toHaveBeenCalledTimes(1);
   });
 });

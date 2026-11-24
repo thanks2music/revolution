@@ -6,7 +6,7 @@
  * - ログインしていなくても通報できる。通報した人は、会員なら profiles.id、未ログインなら端末の cookie の乱数
  *   (無ければここで作る)。同じ人から同じ口コミへの未処理の通報は DB が 1 件にまとめる。IP は持たない
  * - 書き込みはこのサーバーだけ。service role で `submit_review_report` を呼ぶ (anon には表も関数も渡さない)
- * - 通報は AI を通さない。BOSS が管理アプリで処理する
+ * - 通報は AI を通さない。BOSS が管理アプリで処理する。新しく入った通報は Slack の要対応で知らせる (#169)
  * - 開催のページは ISR のまま。cookie はこの Server Action の中でだけ読み書きする
  *
  * throw せず型付きの結果を返す。公開中でない口コミ・不正な理由は利用者の操作なので Sentry に送らない。
@@ -16,10 +16,13 @@ import { randomUUID } from 'node:crypto';
 
 import * as Sentry from '@sentry/nextjs';
 import { cookies } from 'next/headers';
+import { after } from 'next/server';
 import { z } from 'zod';
 
 import { getCurrentMember } from '@/lib/auth/member';
+import { getReviewNotifier } from '@/lib/reviews/notifier';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { notifyAboutReview } from '@revolution/reviews/notifications';
 import { REVIEW_REPORT_REASONS } from '@revolution/schemas/review-constants';
 
 /** 未ログインの通報の端末の印。乱数だけで、ほかの情報は持たない */
@@ -64,6 +67,17 @@ export async function reportReview(
         ok: false,
         error: 'この口コミは通報できません (公開をやめたか、消された可能性があります)',
       };
+    }
+    // 新しく入った通報だけ、Slack の要対応で BOSS に知らせる (重なった通報は知らせない。#169)
+    if (data === 'accepted') {
+      const reason = input.data.reasonCode;
+      after(() =>
+        notifyAboutReview({ notifier: getReviewNotifier(), db }, input.data.reviewId, review => ({
+          type: 'review_reported',
+          review,
+          reasonCode: reason,
+        }))
+      );
     }
     return { ok: true };
   } catch (error) {

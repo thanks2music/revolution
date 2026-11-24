@@ -19,10 +19,14 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
+import { after } from 'next/server';
 import { z } from 'zod';
 
 import { createClient } from '@/lib/supabase/server';
 import { getCachedUser } from '@/lib/auth/current-user';
+import { getAllArticles } from '@/lib/mdx/articles';
+import { resolveArticleByKey } from '@/lib/mdx/article-url';
+import { getReviewNotifier } from '@/lib/reviews/notifier';
 
 const TARGET_TYPE = 'article' as const;
 const PG_UNIQUE_VIOLATION = '23505';
@@ -37,8 +41,7 @@ const FAVORITES_FETCH_LIMIT = 200;
 const TargetKeySchema = z.string().min(1, { message: 'いいね対象が不正です' });
 
 export type ToggleFavoriteResult =
-  | { ok: true; liked: boolean }
-  | { ok: false; error: string; needsAuth?: boolean };
+  { ok: true; liked: boolean } | { ok: false; error: string; needsAuth?: boolean };
 
 export interface FavoriteItem {
   targetKey: string;
@@ -46,8 +49,7 @@ export interface FavoriteItem {
 }
 
 export type GetFavoritesResult =
-  | { ok: true; favorites: FavoriteItem[] }
-  | { ok: false; error: string; needsAuth?: boolean };
+  { ok: true; favorites: FavoriteItem[] } | { ok: false; error: string; needsAuth?: boolean };
 
 export interface FavoriteState {
   isAuthed: boolean;
@@ -99,9 +101,7 @@ export async function getFavoriteState(targetKey: string): Promise<FavoriteState
  * 記事いいねをトグルする。既にいいね済みなら解除、未いいねなら追加。
  * 戻り値 `liked` はトグル後の状態 (true=いいね中 / false=解除済み)。
  */
-export async function toggleFavorite(
-  targetKey: string,
-): Promise<ToggleFavoriteResult> {
+export async function toggleFavorite(targetKey: string): Promise<ToggleFavoriteResult> {
   const parsed = TargetKeySchema.safeParse(targetKey);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? '対象が不正です' };
@@ -169,7 +169,35 @@ export async function toggleFavorite(
     return { ok: false, error: 'いいねの追加に失敗しました' };
   }
 
+  // 新しく付いたいいねだけ、Slack のお知らせに流す (外した時・重なった時は知らせない。#169)
+  after(() => notifyLiked(supabase, user.id, key));
   return { ok: true, liked: true };
+}
+
+/** 記事のタイトルと会員の表示名を引いて、いいねを Slack で知らせる。例外を外へ出さない */
+async function notifyLiked(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  authUserId: string,
+  targetKey: string
+): Promise<void> {
+  const notifier = getReviewNotifier();
+  if (!notifier.enabled) return;
+  try {
+    const article = resolveArticleByKey(targetKey, getAllArticles());
+    if (!article) return;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name, username')
+      .eq('auth_user_id', authUserId)
+      .maybeSingle();
+    await notifier.notify({
+      type: 'article_liked',
+      displayName: profile?.display_name ?? profile?.username ?? null,
+      articleTitle: article.title,
+    });
+  } catch (error) {
+    Sentry.captureException(error, { tags: { action: 'toggleFavorite.notify' } });
+  }
 }
 
 /**
@@ -205,7 +233,7 @@ export async function getFavorites(): Promise<GetFavoritesResult> {
     return { ok: false, error: 'いいね一覧を取得できませんでした' };
   }
 
-  const favorites: FavoriteItem[] = (data ?? []).map((row) => ({
+  const favorites: FavoriteItem[] = (data ?? []).map(row => ({
     targetKey: row.target_key as string,
     createdAt: row.created_at as string,
   }));

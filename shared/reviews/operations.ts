@@ -1,3 +1,4 @@
+import { notifyAboutReview, type ReviewNotifier } from './notifications';
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -34,6 +35,8 @@ export type ScreenReviewOutcome =
       kind: 'screened';
       status: Extract<ReviewStatus, 'published' | 'rejected' | 'needs_review'>;
       occurrenceId: number;
+      /** BOSS の確認待ちになった理由が AI の審査の失敗か (Slack の要対応の文を分ける、#169) */
+      aiFailure: boolean;
     }
   /** 審査中でない・見つからない・審査の間に提出し直された (何も書いていない) */
   | { kind: 'skipped'; reason: 'not_found' | 'not_pending' | 'superseded' };
@@ -153,7 +156,7 @@ async function giveUpScreening(
   });
   if (error) throw error;
   if (data !== 'applied') return { kind: 'skipped', reason: 'superseded' };
-  return { kind: 'screened', status: 'needs_review', occurrenceId };
+  return { kind: 'screened', status: 'needs_review', occurrenceId, aiFailure: true };
 }
 
 export async function screenSubmittedReview(
@@ -164,7 +167,30 @@ export async function screenSubmittedReview(
     /** 写真の置き場所 (写真を審査に渡し、配信側を合わせる)。無ければ写真のある口コミは審査の失敗 */
     storage?: ReviewPhotoStorage | null;
     now?: () => Date;
+    /**
+     * 審査の結果を Slack で知らせる口 (#169)。入口 (公開サイトの提出・管理アプリのかけ直し) が渡す。
+     * 渡さなければ知らせない。`trigger` は会員の提出・出し直しの後か (結果と 1 通にまとめる)
+     */
+    notify?: { notifier: ReviewNotifier; trigger?: 'submitted' | 'edited' };
   }
+): Promise<ScreenReviewOutcome> {
+  const outcome = await screenOnce(reviewId, deps);
+  if (outcome.kind === 'screened' && deps.notify) {
+    const { notifier, trigger } = deps.notify;
+    await notifyAboutReview({ notifier, db: deps.db }, reviewId, review => ({
+      type: 'review_screened',
+      review,
+      status: outcome.status,
+      aiFailure: outcome.aiFailure,
+      trigger,
+    }));
+  }
+  return outcome;
+}
+
+async function screenOnce(
+  reviewId: number,
+  deps: Parameters<typeof screenSubmittedReview>[1]
 ): Promise<ScreenReviewOutcome> {
   for (let attempt = 1; ; attempt++) {
     const { data: review, error: readError } = await deps.db
@@ -216,6 +242,11 @@ export async function screenSubmittedReview(
     // 公開になった写真を配信側へ。公開にならなかった時も合わせる (公開中からの編集で残った物を消す)
     if (deps.storage)
       await syncPhotoDeliverySafely({ db: deps.db, storage: deps.storage }, reviewId);
-    return { kind: 'screened', status: write.status, occurrenceId: review.occurrence_id };
+    return {
+      kind: 'screened',
+      status: write.status,
+      occurrenceId: review.occurrence_id,
+      aiFailure: write.reason_code === 'ai_failure',
+    };
   }
 }

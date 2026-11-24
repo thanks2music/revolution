@@ -21,23 +21,26 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
+import { after } from 'next/server';
 import { ProfileUpdateSchema, UsernameSchema } from '@revolution/schemas/profile';
 
+import { isOnboardedFromMetadata } from '@/lib/auth/onboarding-status';
+import { getReviewNotifier } from '@/lib/reviews/notifier';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 export type OnboardingResult =
-  | { ok: true }
-  | { ok: false; error: string; field?: 'username' | 'displayName' | 'general' };
+  { ok: true } | { ok: false; error: string; field?: 'username' | 'displayName' | 'general' };
 
 const PG_UNIQUE_VIOLATION = '23505';
 
 /**
  * onboarding 完了 (表示名 + username 設定)。
  */
-export async function completeOnboarding(
-  input: { username: string; displayName: string },
-): Promise<OnboardingResult> {
+export async function completeOnboarding(input: {
+  username: string;
+  displayName: string;
+}): Promise<OnboardingResult> {
   // Layer1: zod で username / displayName を検証 (真実源)
   const parsed = ProfileUpdateSchema.safeParse({
     username: input.username,
@@ -50,11 +53,7 @@ export async function completeOnboarding(
       ok: false,
       error: issue?.message ?? '入力内容を確認してください',
       field:
-        field === 'username'
-          ? 'username'
-          : field === 'displayName'
-            ? 'displayName'
-            : 'general',
+        field === 'username' ? 'username' : field === 'displayName' ? 'displayName' : 'general',
     };
   }
 
@@ -127,10 +126,16 @@ export async function completeOnboarding(
     Sentry.captureException(metaError, { tags: { action: 'completeOnboarding.updateUser' } });
     return {
       ok: false,
-      error:
-        'プロフィールは保存されましたが、設定の反映に失敗しました。再度お試しください。',
+      error: 'プロフィールは保存されましたが、設定の反映に失敗しました。再度お試しください。',
       field: 'general',
     };
+  }
+
+  // 会員登録を Slack のお知らせに流す (#169)。onboarded の印を書けた時に 1 回だけ。印が既にあった
+  // (セッションの更新の失敗などで出し直された) 時は知らせない
+  if (!isOnboardedFromMetadata(user.user_metadata)) {
+    const displayName = parsed.data.displayName;
+    after(() => getReviewNotifier().notify({ type: 'member_joined', displayName }));
   }
 
   // updateUser 後のセッション refresh で新 JWT (onboarded:true) を cookie へ反映。
@@ -185,9 +190,7 @@ export type UsernameAvailability =
  * 最終判定は completeOnboarding の 23505 ハンドルで担保する (本 Action は摩擦低減の補助)。
  * secret key 未設定や DB エラー時は 'unknown' を返し、UI は形式 OK 表示に留める。
  */
-export async function checkUsernameAvailability(
-  username: string,
-): Promise<UsernameAvailability> {
+export async function checkUsernameAvailability(username: string): Promise<UsernameAvailability> {
   // Layer1: zod 形式チェック (真実源)。不正なら DB を叩かない。
   const parsed = UsernameSchema.safeParse(username);
   if (!parsed.success) {
@@ -223,7 +226,7 @@ export async function checkUsernameAvailability(
   }
 
   const taken = (data ?? []).some(
-    (row) => typeof row.username === 'string' && row.username.toLowerCase() === target,
+    row => typeof row.username === 'string' && row.username.toLowerCase() === target
   );
 
   return taken ? { status: 'taken' } : { status: 'available' };

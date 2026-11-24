@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as Sentry from '@sentry/nextjs';
 
-import { notifySlack } from '@/lib/slack/notify';
+import { notifySlack } from '@revolution/reviews/notify-slack';
 
 /**
  * 公開サイトから Slack の 2 つのチャンネル (要対応・お知らせ) へ送る口。
@@ -140,7 +140,7 @@ describe('notifySlack', () => {
 
   it('お知らせのチャンネルが未設定なら、お知らせは送らない', async () => {
     await expect(
-      notifySlack('notice', message, { ...env, SLACK_NOTICE_CHANNEL_ID: undefined }),
+      notifySlack('notice', message, { ...env, SLACK_NOTICE_CHANNEL_ID: undefined })
     ).resolves.toBe(false);
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -157,12 +157,14 @@ describe('notifySlack', () => {
 
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
       'Slack notification failed',
-      expect.objectContaining({ fingerprint: ['slack-notification-failed', 'unexpected_error'] }),
+      expect.objectContaining({ fingerprint: ['slack-notification-failed', 'unexpected_error'] })
     );
   });
 
   it('送信に失敗しても例外を投げず、エラーコードを Sentry に残す', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: false, error: 'not_in_channel' })));
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ ok: false, error: 'not_in_channel' }))
+    );
 
     await expect(notifySlack('notice', message, env)).resolves.toBe(false);
 
@@ -172,12 +174,14 @@ describe('notifySlack', () => {
         level: 'warning',
         fingerprint: ['slack-notification-failed', 'not_in_channel'],
         tags: { destination: 'notice' },
-      }),
+      })
     );
   });
 
   it('失敗の記録そのもの (Sentry) が例外を投げても、例外を投げない', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: false, error: 'not_in_channel' })));
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ ok: false, error: 'not_in_channel' }))
+    );
     (Sentry.captureMessage as jest.Mock).mockImplementationOnce(() => {
       throw new Error('sentry is down');
     });

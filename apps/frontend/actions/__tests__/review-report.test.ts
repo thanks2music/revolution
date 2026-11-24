@@ -3,10 +3,17 @@ import * as Sentry from '@sentry/nextjs';
 import { reportReview } from '@/actions/review-report';
 import { getCurrentMember } from '@/lib/auth/member';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { after } from 'next/server';
+import { notifyAboutReview } from '@revolution/reviews/notifications';
 
 jest.mock('@/lib/env', () => ({ env: {} }));
 jest.mock('@/lib/auth/member', () => ({ getCurrentMember: jest.fn() }));
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
+jest.mock('next/server', () => ({ after: jest.fn() }));
+jest.mock('@/lib/reviews/notifier', () => ({
+  getReviewNotifier: () => ({ enabled: true, notify: jest.fn() }),
+}));
+jest.mock('@revolution/reviews/notifications', () => ({ notifyAboutReview: jest.fn() }));
 
 const cookieStore = { get: jest.fn(), set: jest.fn() };
 jest.mock('next/headers', () => ({ cookies: jest.fn(async () => cookieStore) }));
@@ -99,5 +106,29 @@ describe('reportReview', () => {
       error: '送れませんでした。時間をおいて、もう一度お試しください',
     });
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('reportReview — Slack の要対応 (#169)', () => {
+  it('新しく入った通報だけ、応答の後に知らせる', async () => {
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: false, reason: 'unauthenticated' });
+    await expect(reportReview(7, 'resale')).resolves.toEqual({ ok: true });
+
+    expect(after).toHaveBeenCalledTimes(1);
+    await ((after as jest.Mock).mock.calls[0][0] as () => Promise<void>)();
+    const [, reviewId, build] = (notifyAboutReview as jest.Mock).mock.calls[0];
+    expect(reviewId).toBe(7);
+    expect(build({ reviewId: 7 })).toEqual({
+      type: 'review_reported',
+      review: { reviewId: 7 },
+      reasonCode: 'resale',
+    });
+  });
+
+  it('同じ人の重なった通報 (duplicate) は、受け付けたと返し、知らせない', async () => {
+    (getCurrentMember as jest.Mock).mockResolvedValue({ ok: true, profileId: 'profile-1' });
+    rpc.mockResolvedValue({ data: 'duplicate', error: null });
+    await expect(reportReview(7, 'spam')).resolves.toEqual({ ok: true });
+    expect(after).not.toHaveBeenCalled();
   });
 });

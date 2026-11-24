@@ -41,6 +41,11 @@ jest.mock('@/lib/auth/current-user', () => ({
   getCachedUser: jest.fn(async () => ({ data: { user }, error: null })),
 }));
 
+// Slack の通知の口は env を読み込むので差し替える (CI には env が無い。#169)
+jest.mock('@/lib/reviews/notifier', () => ({
+  getReviewNotifier: () => ({ enabled: false, notify: jest.fn() }),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getFavorites, getFavoriteState } = require('@/actions/favorite');
 
