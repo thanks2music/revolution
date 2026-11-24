@@ -190,10 +190,23 @@ const FORMATS: Record<string, [ext: string, contentType: string]> = {
  */
 export async function uploadEyecatchImage(
   sourceUrl: string,
-  options: { writer: FolderWriter; config: ImageUploadConfig; fromBody?: boolean; fetcher?: ImageFetcher }
+  options: {
+    writer: FolderWriter;
+    config: ImageUploadConfig;
+    fromBody?: boolean;
+    fetcher?: ImageFetcher;
+    /** 元の画像の寸法の条件。満たさなければ例外 (呼び出し側が次の候補へ進む) */
+    require?: { landscapeRatio: number; minShortSide: number };
+  }
 ): Promise<ArticleImageRef & { uploaded: boolean }> {
   const { buffer } = await (options.fetcher ?? defaultFetcher)(sourceUrl);
   const info = await readImageInfo(buffer);
+  if (options.require) {
+    const { landscapeRatio, minShortSide } = options.require;
+    if (info.width / info.height < landscapeRatio || Math.min(info.width, info.height) < minShortSide) {
+      throw new Error(`横長で十分な大きさの画像ではない (${info.width}×${info.height})`);
+    }
+  }
   const format = FORMATS[info.format];
   if (!options.fromBody && format && buffer.length <= options.config.max_bytes) {
     const result = await options.writer.put(buffer, format[0], format[1]);

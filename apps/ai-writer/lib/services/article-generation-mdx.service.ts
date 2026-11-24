@@ -102,6 +102,10 @@ import {
 import { getR2StorageService } from './r2-storage.service';
 import { getConfigLoaderService } from './config-loader.service';
 import { skipsVision } from './vision-api/vision-skip-hosts';
+import { pageImageUrls } from '@/lib/utils/page-images';
+
+/** アイキャッチの候補にする公式ページの画像の数 (ページの先頭から。メインビジュアルは先頭近くにある) */
+const EYECATCH_PAGE_IMAGE_LIMIT = 5;
 import { IMAGE_ONLY_RENDERED_KEYS, renderImageOnlySentence, type ImageOnlySentenceConfig } from './image-only-sections';
 import {
   buildNoNoveltySecondParagraph,
@@ -1568,6 +1572,11 @@ export class ArticleGenerationMdxService {
           imagesUpload = await uploadImagesForArticle(
             {
               ogImage: officialOgImage,
+              // og:image が使えないときのアイキャッチの候補 (公式ページの先頭のメインビジュアル)
+              pageImages:
+                officialRawHtml && selectionResult.primary_official_url
+                  ? pageImageUrls(officialRawHtml, selectionResult.primary_official_url, EYECATCH_PAGE_IMAGE_LIMIT)
+                  : [],
               menu: categoryImages?.menu ?? [],
               novelty: categoryImages?.novelty ?? [],
               goods: categoryImages?.goods ?? [],
