@@ -128,6 +128,43 @@ describe('findSamePageSections', () => {
     expect(findSamePageSections(html, CONFIG).goods).toContain('img/g.jpg');
   });
 
+  it('タブのラベルの文字が見出しの語に当たれば、for の値に _content を付けた id の中身を節にする', () => {
+    const html = `<div class="tab_wrap">
+      <input id="tab1" type="radio"><label class="tab_item" for="tab1">メニュー<br>▼</label>
+      <input id="tab2" type="radio"><label class="tab_item" for="tab2">グッズ</label>
+      <input id="tab3" type="radio"><label class="tab_item" for="tab3">開催店舗</label>
+      <div class="tab_content" id="tab1_content"><img src="img/drink.jpg"><img src="img/food.jpg"></div>
+      <div class="tab_content" id="tab2_content"><img src="img/goods.jpg">
+        <section class="accordion"><input id="block-01"><label for="block-01">缶バッジ</label><img src="img/item/01.jpg"></section></div>
+      <div class="tab_content" id="tab3_content"><img src="img/map.jpg"></div></div>`;
+    const sections = findSamePageSections(html, CONFIG);
+
+    expect(sections.menu).toContain('img/drink.jpg');
+    expect(sections.menu).toContain('img/food.jpg');
+    expect(sections.goods).toContain('img/goods.jpg');
+    expect(sections.goods).toContain('img/item/01.jpg');
+    expect(Object.values(sections).join('')).not.toContain('img/map.jpg');
+  });
+
+  it('aria-controls のタブは、その id の中身を節にする', () => {
+    const html = `<ul role="tablist"><li role="tab" aria-controls="p-nov">特典</li></ul>
+      <div id="p-nov" role="tabpanel"><img src="img/n.png"></div>`;
+
+    expect(findSamePageSections(html, CONFIG).novelty).toContain('img/n.png');
+  });
+
+  it('タブではない aria-controls (開閉ボタンの「MENU」) は使わない', () => {
+    const html = `<button aria-controls="drawer">MENU</button><div id="drawer"><img src="img/banner.png"></div>`;
+
+    expect(findSamePageSections(html, CONFIG)).toEqual({});
+  });
+
+  it('ナビの中のタブは使わない', () => {
+    const html = `<nav><label for="t1">グッズ</label></nav><div id="t1_content"><img src="img/x.png"></div>`;
+
+    expect(findSamePageSections(html, CONFIG)).toEqual({});
+  });
+
   it('設定が無ければ何も返さない (Templates が古い)', () => {
     expect(findSamePageSections(ONE_PAGE, undefined)).toEqual({});
   });

@@ -3,8 +3,9 @@
  *
  * - カテゴリ (メニュー・ノベルティ・グッズ) ごとに全件を上げる (枚数の上限なし。短辺の下限・縮小・WebP・分割は
  *   `processArticleImage`)
- * - アイキャッチは og:image → 本文の最初の横長の画像 (幅 / 高さ ≥ `eyecatch_landscape_ratio`) → 本文の最初の画像。
- *   候補を上げられなければ次の候補へ進む。og:image は元のまま、本文の画像から作るときは縮めた JPEG にする
+ * - アイキャッチは og:image → 公式ページの上から順の画像のうち、横長 (幅 / 高さ ≥ `eyecatch_landscape_ratio`) で
+ *   短辺が `min_short_side` 以上の最初の画像 (メインビジュアル。2026-11-24) → 本文の最初の横長の画像 → 本文の最初の画像。
+ *   候補を上げられなければ次の候補へ進む。og:image は元のまま、それ以外から作るときは縮めた JPEG にする
  *   (`uploadEyecatchImage`)
  * - 複数のカテゴリに同じ画像があれば、先のカテゴリ (メニュー → ノベルティ → グッズ) にだけ載せる。重なりは URL で
  *   判定する (クエリだけ違う同じ画像は 2 回載りうるが、R2 には中身のハッシュで 1 つしか置かれない)
@@ -30,6 +31,8 @@ export type ImageCategory = (typeof IMAGE_CATEGORIES)[number];
 
 export interface ArticleImageSources {
   ogImage: string | null;
+  /** 公式ページの画像 (ページの上から順。`pageImageUrls`)。アイキャッチの候補にだけ使う */
+  pageImages?: string[];
   menu: string[];
   novelty: string[];
   goods: string[];
@@ -37,7 +40,7 @@ export interface ArticleImageSources {
   imageAlts: Record<string, string>;
 }
 
-export type EyecatchOrigin = 'og' | 'landscape' | 'first';
+export type EyecatchOrigin = 'og' | 'page' | 'landscape' | 'first';
 
 export interface EyecatchCandidate {
   sourceUrl: string;
@@ -53,16 +56,19 @@ export interface ArticleImagesUpload {
 }
 
 /**
- * アイキャッチの候補を、使う順に並べる (重複は除く)。本文の画像は上げた順 (メニュー → ノベルティ → グッズ)
- * で見て、寸法は元の画像のもの (分割の前) を使う
+ * アイキャッチの候補を、使う順に並べる (重複は除く)。公式ページの画像は寸法がまだ分からないので、取得したときに
+ * 横長で十分な大きさかを確かめる (`page`)。本文の画像は上げた順 (メニュー → ノベルティ → グッズ) で見て、
+ * 寸法は元の画像のもの (分割の前) を使う
  */
 export function eyecatchCandidates(
   ogImage: string | null,
+  pageImages: readonly string[],
   uploaded: readonly UploadedArticleImage[],
   landscapeRatio: number
 ): EyecatchCandidate[] {
   const candidates: EyecatchCandidate[] = [];
   if (ogImage) candidates.push({ sourceUrl: ogImage, origin: 'og' });
+  for (const url of pageImages) candidates.push({ sourceUrl: url, origin: 'page' });
   const landscape = uploaded.find((image) => image.width / image.height >= landscapeRatio);
   if (landscape) candidates.push({ sourceUrl: landscape.sourceUrl, origin: 'landscape' });
   if (uploaded.length > 0) candidates.push({ sourceUrl: uploaded[0].sourceUrl, origin: 'first' });
@@ -155,13 +161,24 @@ export async function uploadImagesForArticle(
   }
 
   const bodyImages = IMAGE_CATEGORIES.flatMap((category) => result.categories[category]);
-  for (const candidate of eyecatchCandidates(sources.ogImage, bodyImages, options.config.eyecatch_landscape_ratio)) {
+  const candidates = eyecatchCandidates(
+    sources.ogImage,
+    sources.pageImages ?? [],
+    bodyImages,
+    options.config.eyecatch_landscape_ratio,
+  );
+  for (const candidate of candidates) {
     try {
       const eyecatch = await uploadEyecatchImage(candidate.sourceUrl, {
         writer,
         fetcher: options.fetcher,
         config: options.config.upload,
         fromBody: candidate.origin !== 'og',
+        // 公式ページの画像は、横長で十分な大きさのときだけ使う (ロゴやアイコンを選ばない)
+        require:
+          candidate.origin === 'page'
+            ? { landscapeRatio: options.config.eyecatch_landscape_ratio, minShortSide: options.config.min_short_side }
+            : undefined,
       });
       if (eyecatch.uploaded) result.newObjects++;
       result.eyecatch = { url: eyecatch.url, width: eyecatch.width, height: eyecatch.height, ...candidate };
