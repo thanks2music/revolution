@@ -145,12 +145,22 @@ export const ReasoningSchema = z.object({
   スタジオ名: z.string().nullable(),
   監督名: z.string().nullable(),
   シリーズ名: z.string().nullable(),
+  グループ区分: z.string().nullable(),
+  性別: z.string().nullable(),
+  ゲーム実況: z.string().nullable(),
   開催都道府県: z.string().nullable(),
   メニュー詳細リスト: z.string().nullable(),
   メニューテーマ説明: z.string().nullable(),
   具体的なメニュー名リスト: z.string().nullable(),
   event_data_reason: z.string().nullable(),
 });
+
+/** グループか個人か (idol / youtuber / vtuber で、ページに書いてある時だけ。リード文の連体修飾語用) */
+export const GroupKindEnum = z.enum(['group', 'solo']);
+/** アイドルの性別 (ページに書いてある時だけ) */
+export const GenderEnum = z.enum(['female', 'male', 'mixed']);
+export type GroupKind = z.infer<typeof GroupKindEnum>;
+export type Gender = z.infer<typeof GenderEnum>;
 
 export const ExtractionResponseSchema = z.object({
   works: z.array(WorkEntrySchema).min(1).max(4),
@@ -162,6 +172,10 @@ export const ExtractionResponseSchema = z.object({
   スタジオ名: z.string().nullable(),
   監督名: z.string().nullable(),
   シリーズ名: z.string().nullable(),
+  グループ区分: GroupKindEnum.nullable(),
+  性別: GenderEnum.nullable(),
+  /** YouTuber がゲーム実況を主にしているか (ページに書いてある時だけ) */
+  ゲーム実況: z.boolean().nullable(),
   開催期間: EventPeriodSchema,
   公式サイトURL: z.string(),
   略称: z.string().nullable(),

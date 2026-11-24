@@ -35,7 +35,7 @@ describe('EXPECTED_ORIGINAL_TYPE_LABELS (§6.2 原作タイプ 16 種)', () => {
 
   it('provides direct Japanese labels for non-ambiguous types', () => {
     expect(EXPECTED_ORIGINAL_TYPE_LABELS.manga_based).toBe('漫画');
-    expect(EXPECTED_ORIGINAL_TYPE_LABELS.novel_based).toBe('ライトノベル');
+    expect(EXPECTED_ORIGINAL_TYPE_LABELS.novel_based).toBe('小説');
     expect(EXPECTED_ORIGINAL_TYPE_LABELS.game_creator_based).toBe('ゲーム');
     expect(EXPECTED_ORIGINAL_TYPE_LABELS.illustrator_based).toBe('イラスト');
     expect(EXPECTED_ORIGINAL_TYPE_LABELS.music_creator_based).toBe('楽曲');

@@ -25,6 +25,16 @@ describe('extractCopyrightNotices', () => {
     expect(extractCopyrightNotices('<p>©A &amp; B／出版社</p>')).toEqual(['©A & B／出版社']);
   });
 
+  it('Inertia の data-page の JSON にある copyright を、© が無くても表記として読む (BANANA FISH)', () => {
+    const json = JSON.stringify({ props: { copyright: '吉田秋生・小学館／Project BANANA FISH' } }).replace(/[\u3000-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+    const html = `<div id="app" data-page="${json.replace(/"/g, '&quot;')}"></div>`;
+    expect(extractCopyrightNotices(html)).toEqual(['©吉田秋生・小学館／Project BANANA FISH']);
+  });
+
+  it('JSON の copyright に © が付いていても二重にしない', () => {
+    expect(extractCopyrightNotices('<script>{"copyright":"© 作者／出版社"}</script>')).toEqual(['©作者／出版社']);
+  });
+
   it('年だけの表記は名前を持たないので読まない', () => {
     expect(extractCopyrightNotices('<small>© 2026</small><small>©2020-2026.</small>')).toEqual([]);
   });
