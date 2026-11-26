@@ -34,6 +34,7 @@ import {
 } from '../firestore/event-deduplication';
 import { existingEventSkipReason } from '../firestore/existing-event-skip';
 import { articleStartDate, unannouncedItemsReason, unannouncedScheduleReason } from '@/lib/utils/unannounced-event';
+import { articlePublishedDate, articleYear } from '@/lib/utils/article-date';
 import { type EventCanonicalKey } from '../firestore/types';
 import {
   resolveWorkSlug,
@@ -477,8 +478,9 @@ export class ArticleGenerationMdxService {
   ): Promise<MdxGenerationResult> {
     const { rssItem, dryRun = false, localOnly = false, update, sourceOverride } = request;
     // 更新のときは既存の記事の年 (画像のフォルダ `{event_type}/{year}/{post_id}` に入る) を引き継ぐ。
-    // 過去のイベントは開催年 (`eventYear`)
-    const year = update?.fields.year ?? request.eventYear ?? new Date().getFullYear();
+    // それ以外は、詳細抽出の後に開催の開始日の年に決め直す (下の duplication-check の前。`articleYear`)。
+    // ここでは、開始日が分からないときの年 (アーカイブの開催年 `eventYear`、無ければ実行した年)
+    let year = update?.fields.year ?? request.eventYear ?? new Date().getFullYear();
     // 公式サイトが閉じている記事は、閉じたサイトへのリンクを書かない
     const unlinkScope = sourceOverride?.unlinkScope ?? 'none';
 
@@ -1040,6 +1042,14 @@ export class ArticleGenerationMdxService {
       // 抽出・下層ページ・Vision の 3 つがそろった後で判定する。止めるのは duplication-check の中で、
       // 既に記事があるイベントの判定の後、Firestore に記録を残す前 (既存のイベントは 'existing-event' を優先して返す)
       const itemsReason = update ? undefined : unannouncedItemsReason(eventType, detailedExtraction);
+      // 記事の年 (重複を見分けるキー・画像の置き場・frontmatter) は、開催の開始日の年 (2026-11-25 BOSS 決定)
+      if (!update) {
+        const startYear = articleYear(articleStartDate(detailedExtraction), year);
+        if (startYear !== year) {
+          console.log(`${getStepContext('duplication-check', '年')} 開催の開始日の年 ${startYear} を記事の年にする (実行した年・アーカイブの年: ${year})`);
+          year = startYear;
+        }
+      }
 
       // duplication-check step: Firestore duplication check + event registration
       let eventRecord: EventCanonicalKey;
@@ -2076,7 +2086,13 @@ export class ArticleGenerationMdxService {
           categories: categories, // buildCategories() で決定論的に構築
           excerpt,
           // 記事の更新では公開日 (date) を変えず、更新日時を updated に書く
-          date: update ? update.fields.date : toIsoMsDate(rssItem.pubDate),
+          // 終わったイベント (終了日が実行した日より前) は、開催の開始日を公開日にする (新着の上に出さない。2026-11-25 BOSS 決定)
+          date: update
+            ? update.fields.date
+            : articlePublishedDate(
+                { start: eventFactCardFields.event_start_date, end: eventFactCardFields.event_end_date },
+                toIsoMsDate(rssItem.pubDate),
+              ),
           updated: update ? new Date().toISOString() : undefined,
           author: 'thanks2music',
           ogImage: ogImageUrl, // R2にアップロードしたOG画像URL
