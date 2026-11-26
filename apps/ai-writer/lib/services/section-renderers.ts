@@ -318,6 +318,26 @@ export function replaceSummaryRowValue(content: string, label: string, value: st
 }
 
 /**
+ * まとめの節の見出し (`## …` の行) を `heading` にする。まとめの節は、`labels` のどれかの名前の行を含む記事の最後の表の、
+ * 直前の `## ` の見出し (`upsertSummaryRow` と同じ表の見つけ方)。表か見出しが見つからなければ content をそのまま返す。
+ * 記事を作った時点で終わっていたイベントの見出しに使う (2026-11-27 BOSS 決定。文言は `05-summary.yaml` の `ended_heading`)
+ */
+export function replaceSummaryHeading(
+  content: string,
+  heading: string,
+  labels: readonly string[],
+): { content: string; replaced: boolean } {
+  const lines = content.split('\n');
+  const names = labels.filter(Boolean);
+  const row = lines.findLastIndex((line) => names.some((name) => isSummaryRow(line, name)));
+  if (!heading || row === -1) return { content, replaced: false };
+  const top = lines.slice(0, row).findLastIndex((line) => line.startsWith('## '));
+  if (top === -1) return { content, replaced: false };
+  lines[top] = heading;
+  return { content: lines.join('\n'), replaced: true };
+}
+
+/**
  * まとめの表の `label` の行を `value` にする。行が無ければ、`after` に並べた行のうち最初に見つかった行の直後に足す
  * (本文の LLM が行ごと書かないことがあるため。2026-10-17、ヒロアカ・コナンで「お問い合わせ」が無かった)。
  * まとめの表は「`label` か `after` の名前の行を含む、記事の最後の表」(行頭が `|` の行の連なり) とし、その表の中だけを書き換える

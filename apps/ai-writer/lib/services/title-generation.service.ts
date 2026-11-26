@@ -18,6 +18,7 @@ import type { MergedModularTemplate } from '@/lib/types/modular-template';
 import { shouldSuppressInlinePromptDump } from '@/lib/ai/observability/ai-call-recorder';
 import { enforceTitleCityLabel } from '@/lib/utils/enforce-title-city-label';
 import { PIPELINE_PROMPTS } from './pipeline-prompts';
+import { fillTemplate } from './section-renderers';
 import { TitleResponseSchema } from '@revolution/schemas/title-response';
 import type { TokenUsage } from '@revolution/schemas/ai-provider-response';
 import { zodToOpenAiSchema } from '@/lib/utils/zod-to-openai-schema';
@@ -215,7 +216,7 @@ export class TitleGenerationService {
     const rulesSection = this.buildRulesSection(template, !!request.extractedCityLabel);
 
     // 抽出済みデータセクション（detail-extraction step で抽出済みの情報がある場合）
-    const extractedDataSection = this.buildExtractedDataSection(request);
+    const extractedDataSection = this.buildExtractedDataSection(request, this.buildEndedEventNote(template, request));
 
     // 最終プロンプトを構築
     return `${template.prompts[PIPELINE_PROMPTS.title.promptKey]}
@@ -246,6 +247,20 @@ ${extractedDataSection}
   }
 
   /**
+   * 終わったイベントの指示 (`prompts.ended_event_note` に期間を入れた文)。終わったイベントでなければ null
+   *
+   * @throws 終わったイベントなのに `prompts.ended_event_note` が無いとき (`pnpm sync:templates` が要る)
+   */
+  private buildEndedEventNote(template: MergedModularTemplate, request: TitleGenerationRequest): string | null {
+    if (!request.endedPeriod) return null;
+    const note = template.prompts?.ended_event_note;
+    if (typeof note !== 'string' || note.trim() === '') {
+      throw new Error('3-title.yaml の prompts.ended_event_note がありません (pnpm sync:templates が要る)');
+    }
+    return fillTemplate(note, { period: request.endedPeriod });
+  }
+
+  /**
    * 抽出済みデータセクションを構築
    * detail-extraction step で抽出済みの情報がある場合、AIに優先的に使用させる
    *
@@ -254,11 +269,12 @@ ${extractedDataSection}
    *   呼び出し側が作品名の取得時点で行い、ここには確定値だけが渡る)
    * @since S1-d Phase 3 extractedCityLabel 追加
    */
-  private buildExtractedDataSection(request: TitleGenerationRequest): string {
+  private buildExtractedDataSection(request: TitleGenerationRequest, endedEventNote: string | null): string {
     const parts: string[] = [];
 
     // 抽出済みデータがあるかチェック
     const hasExtractedData =
+      endedEventNote ||
       request.extractedPeriod ||
       request.extractedStoreName ||
       request.extractedWorkName ||
@@ -317,10 +333,14 @@ ${extractedDataSection}
         // タイトルには開始日（月日形式）を使用するよう明示
         // 例: "12月18日" → タイトルに「12月18日よりコラボ開催」と記載
         const startDateForTitle = period.開始.日付; // "12月18日" 形式
-        if (startDateForTitle) {
+        // 終わったイベントは開始日ではなく期間を書くので、この指示を入れない (下の endedEventNote が代わりに指示する)
+        if (startDateForTitle && !endedEventNote) {
           parts.push(`- ⚠️ 重要: タイトルの開始日は「${startDateForTitle}」を使用してください。月のみ（例: 12月）ではなく、日付まで含めてください。`);
         }
       }
+
+      // 記事を作った時点で終わっていたイベント (2026-11-27 BOSS 決定)。文言は 3-title.yaml の prompts.ended_event_note
+      if (endedEventNote) parts.push(endedEventNote.trimEnd());
 
       // 開催回数 - v2.3.0 追加
       if (request.extractedEventNumber) {

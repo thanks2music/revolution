@@ -21,6 +21,14 @@ export function articleYear(startDate: string | undefined, fallback: number): nu
 }
 
 /**
+ * 記事を作った時点で終わっていたイベントか: 終了日 (`YYYY-MM-DD`) が実行した日 (日本時間) より前。終了日が分からなければ false。
+ * 公開日・タイトル・この記事のポイント・まとめの見出しが、この判定で終わったイベントの書き方に切り替わる (2026-11-25 / 2026-11-27 BOSS 決定)
+ */
+export function isEventEnded(endDate: string | undefined, now: Date = new Date()): boolean {
+  return !!endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) && endDate < toJstDateString(now);
+}
+
+/**
  * @param period 開始日と終了日 (`YYYY-MM-DD`、この記事のポイントと同じ値)
  * @param publishedAt 実行した日時 (ISO)。終わったイベントでなければ、これをそのまま返す
  * @param now 実行した日時
@@ -30,7 +38,6 @@ export function articlePublishedDate(
   publishedAt: string,
   now: Date = new Date(),
 ): string {
-  const ended = !!period.end && /^\d{4}-\d{2}-\d{2}$/.test(period.end) && period.end < toJstDateString(now);
-  const start = ended && period.start ? startOfJstDay(period.start) : undefined;
+  const start = isEventEnded(period.end, now) && period.start ? startOfJstDay(period.start) : undefined;
   return start ? start.toISOString() : publishedAt;
 }

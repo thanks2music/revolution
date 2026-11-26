@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { articlePublishedDate, articleYear } from '@/lib/utils/article-date';
+import { articlePublishedDate, articleYear, isEventEnded } from '@/lib/utils/article-date';
 
 describe('articleYear', () => {
   it('開始日が分かれば、開始日の年 (過去もこれからも)', () => {
@@ -30,5 +30,25 @@ describe('articlePublishedDate', () => {
   it('終了日が分からない・開始日が無いときは、実行した日時のまま', () => {
     expect(articlePublishedDate({ start: '2023-08-04' }, ran, now)).toBe(ran);
     expect(articlePublishedDate({ end: '2023-08-30' }, ran, now)).toBe(ran);
+  });
+});
+
+describe('isEventEnded', () => {
+  // 日本時間では 11 月 25 日 (UTC ではまだ 24 日)
+  const now = new Date('2026-11-25T03:00:00+09:00');
+
+  it('終了日が実行した日 (日本時間) より前なら終わっている', () => {
+    expect(isEventEnded('2023-08-30', now)).toBe(true);
+    expect(isEventEnded('2026-11-24', now)).toBe(true);
+  });
+
+  it('終了日が今日 (日本時間) かそれより後なら終わっていない', () => {
+    expect(isEventEnded('2026-11-25', now)).toBe(false);
+    expect(isEventEnded('2026-12-17', now)).toBe(false);
+  });
+
+  it('終了日が無い・読めなければ終わっていない', () => {
+    expect(isEventEnded(undefined, now)).toBe(false);
+    expect(isEventEnded('8月30日', now)).toBe(false);
   });
 });

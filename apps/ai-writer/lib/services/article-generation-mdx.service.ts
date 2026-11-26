@@ -34,7 +34,7 @@ import {
 } from '../firestore/event-deduplication';
 import { existingEventSkipReason } from '../firestore/existing-event-skip';
 import { articleStartDate, unannouncedItemsReason, unannouncedScheduleReason } from '@/lib/utils/unannounced-event';
-import { articlePublishedDate, articleYear } from '@/lib/utils/article-date';
+import { articlePublishedDate, articleYear, isEventEnded } from '@/lib/utils/article-date';
 import { type EventCanonicalKey } from '../firestore/types';
 import {
   resolveWorkSlug,
@@ -163,6 +163,7 @@ import { deriveRedrawnWords, mentionsRedrawnIllustration, type RedrawnWord } fro
 import {
   buildFactLines,
   cleanFeatures,
+  formatPeriod,
   loadPointsFormat,
   noveltyContextMentionsRedrawn,
   joinArticleParts,
@@ -214,6 +215,7 @@ import {
   replacePlaceholderLine,
   replaceSectionSentence,
   replaceSummaryRowValue,
+  replaceSummaryHeading,
   SUMMARY_VENUE_KEYS,
   type MenuTableConfig,
   type VenueListConfig,
@@ -436,6 +438,10 @@ interface ArticlePointsInput {
   /** グッズの文脈の語 (グッズの行を出すかを決める。リード文・本文に渡す `描き下ろし表記` と同じ値) */
   グッズの描き下ろし表記: RedrawnWord | null;
   pointsFormat: PointsFormat;
+  /** 作品名 (複数作品のコラボは全作品) */
+  works: string[];
+  /** 記事を作った時点で終わっていたイベントか */
+  ended: boolean;
   costTracker: CostTrackerService;
 }
 
@@ -1275,6 +1281,23 @@ export class ArticleGenerationMdxService {
         都市表記タイトル用: storeContext.都市表記タイトル用 || '(なし)',
       });
 
+      // この記事のポイントの書式 (Templates の sections/01b-points.yaml)。タイトル (有料の LLM) より前に読み、Templates が古ければ先に止める
+      const pointsFormat = loadPointsFormat();
+      // 記事を作った時点で終わっていたイベントか (2026-11-27 BOSS 決定)。公開日・タイトル・この記事のポイント・まとめの見出しが同じ判定を使う。
+      // 期間はまとめの表・frontmatter と同じ値 (全会場の和集合)。記事の更新ではタイトルと公開日を変えないので、書き方も変えない
+      const runAt = new Date();
+      const eventPeriod = extractEventFactCardFields({
+        eventDataOccurrences: parsedEventDataResult?.occurrences ?? [],
+        extractionPeriod: detailedExtraction?.開催期間,
+      });
+      const eventEnded = !update && isEventEnded(eventPeriod.event_end_date, runAt);
+      const endedPeriod = eventEnded
+        ? formatPeriod({ start: eventPeriod.event_start_date, end: eventPeriod.event_end_date }, pointsFormat)
+        : null;
+      if (eventEnded) {
+        console.log(`${getStepContext('title-generation', '終わったイベント')} 終了日が実行した日より前のため、終わった形で書く: ${endedPeriod ?? '(期間なし)'}`);
+      }
+
       // title-generation step: Generate title using YAML template
       console.log(
         update
@@ -1309,6 +1332,8 @@ export class ArticleGenerationMdxService {
             rss_link: rssItem.link,
             // detail-extraction step で抽出済みのデータを渡す（日付エラー防止）
             extractedPeriod: detailedExtraction?.開催期間,
+            // 記事を作った時点で終わっていたイベントは、開始日と「より開催」の代わりに期間を書く (2026-11-27 BOSS 決定)
+            endedPeriod: endedPeriod ?? undefined,
             // ★ S1-d Phase 3: 店舗名も**決定表の結果**を渡す (claude[bot] 指摘 2026-08-09)。
             //   都市だけ決定表の値にして店舗名を生値のまま残していたため、実測で
             //   「H2 は BOX cafe&space なのにタイトルには OH MY CAFE が『確定』として渡る」
@@ -1353,8 +1378,6 @@ export class ArticleGenerationMdxService {
 
       // グッズの一覧の書式と、文に並べるグッズ名 (先頭の数件。Templates の sections/04-goods.yaml)
       const goodsListConfig = loadGoodsListConfig();
-      // この記事のポイントの書式 (Templates の sections/01b-points.yaml)。本文の生成 (有料の LLM) より前に読み、Templates が古ければ先に止める
-      const pointsFormat = loadPointsFormat();
       // 品名の無い節の導入の文と、ノベルティ名が無いときのリード文の 2 段落目 (2026-11-24。同じく本文の生成より前に読む)
       const noveltyImageOnly = loadRendered<ImageOnlySentenceConfig>('03-novelty.yaml', IMAGE_ONLY_RENDERED_KEYS);
       const goodsImageOnly = loadRendered<ImageOnlySentenceConfig>('04-goods.yaml', IMAGE_ONLY_RENDERED_KEYS);
@@ -1526,6 +1549,12 @@ export class ArticleGenerationMdxService {
         ページの描き下ろし表記: 描き下ろし.page,
         グッズの描き下ろし表記: 描き下ろし表記,
         pointsFormat,
+        // 作品名: 複数作品のコラボは全作品、それ以外は見出しと同じ作品名
+        works:
+          (detailedExtraction?.works?.length ?? 0) > 1
+            ? detailedExtraction.works!.map((work) => work.title)
+            : [canonicalWorkTitle].filter(Boolean),
+        ended: eventEnded,
         costTracker,
       });
       // メニューの品名が取れないときは、リード文の 2 段落目をキャラクター名を挙げない文にする
@@ -1837,10 +1866,10 @@ export class ArticleGenerationMdxService {
         );
 
         // まとめの表の「開催場所」は、LLM が書いた文ではなく会場の一覧にする (会場のデータがあるときだけ。2026-10-15 BOSS 決定)
-        const summary = loadRendered<{ venue_row_label: string } & VenueListConfig & SummaryRowsConfig>('05-summary.yaml', [
-          ...SUMMARY_VENUE_KEYS,
-          ...SUMMARY_ROWS_KEYS,
-        ]);
+        const summary = loadRendered<{ venue_row_label: string; ended_heading: string } & VenueListConfig & SummaryRowsConfig>(
+          '05-summary.yaml',
+          [...SUMMARY_VENUE_KEYS, ...SUMMARY_ROWS_KEYS, 'ended_heading'],
+        );
         const venueList = renderVenueList(storeContext.会場一覧, summary);
         const withVenues = replaceSummaryRowValue(finalContent, summary.venue_row_label, venueList);
         if (venueList && withVenues === finalContent) {
@@ -1871,6 +1900,19 @@ export class ArticleGenerationMdxService {
           );
         }
         finalContent = summaryRows.content;
+
+        // 記事を作った時点で終わっていたイベントは、まとめの見出しを終わった形にする (「{見出し主語} {期間}までコラボカフェ開催」。2026-11-27 BOSS 決定)
+        if (endedPeriod && storeContext.見出し主語) {
+          const endedHeading = replaceSummaryHeading(
+            finalContent,
+            fillTemplate(summary.ended_heading, { subject: storeContext.見出し主語, period: endedPeriod }),
+            [summary.venue_row_label, summary.period_row_label, summary.map_row_label, summary.contact_row_label],
+          );
+          if (!endedHeading.replaced) {
+            console.warn(`${getStepContext('text-placeholder-replacement', 'まとめの見出し')} ⚠️ まとめの表か見出しが無いため、終わったイベントの見出しにできなかった`);
+          }
+          finalContent = endedHeading.content;
+        }
 
         // 品名が無く画像だけの節 (ノベルティ・グッズ) は、導入の文を期間だけの文にする (LLM に品名や特典の内容を推測で書かせない。2026-11-24 BOSS 決定)
         const imageOnlyPeriod = { start: periodStart, end: periodEnd };
@@ -2092,6 +2134,7 @@ export class ArticleGenerationMdxService {
             : articlePublishedDate(
                 { start: eventFactCardFields.event_start_date, end: eventFactCardFields.event_end_date },
                 toIsoMsDate(rssItem.pubDate),
+                runAt,
               ),
           updated: update ? new Date().toISOString() : undefined,
           author: 'thanks2music',
@@ -2446,6 +2489,8 @@ export class ArticleGenerationMdxService {
         // 会場の一覧が無ければ (event_data が無い記事)、本文と同じ会場の表記を 1 つだけ使う
         venues: storeContext.会場一覧.length > 0 ? storeContext.会場一覧 : [input.会場表現].filter(Boolean),
         cities: storeContext.都市一覧,
+        works: input.works,
+        ended: input.ended,
         redrawnWord: input.ページの描き下ろし表記,
         goodsRedrawnWord: input.グッズの描き下ろし表記,
         goodsNames: extraction.グッズ名,
