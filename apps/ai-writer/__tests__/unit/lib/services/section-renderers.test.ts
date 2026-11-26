@@ -18,6 +18,7 @@ import {
   replaceMenuItems,
   replaceMenuItemsWithTable,
   replaceSummaryRowValue,
+  replaceSummaryHeading,
   upsertSummaryRow,
   replacePlaceholderLine,
   renderVenueList,
@@ -287,6 +288,40 @@ describe('replaceSummaryRowValue', () => {
   it('値が空、または行が無ければそのまま (会場のデータが無いときは LLM の文を残す)', () => {
     expect(replaceSummaryRowValue(TABLE, '開催場所', '')).toBe(TABLE);
     expect(replaceSummaryRowValue(TABLE, '会場', 'x')).toBe(TABLE);
+  });
+});
+
+describe('replaceSummaryHeading', () => {
+  const article = [
+    '## 主語のメニュー',
+    '',
+    '| 品名 | 価格 |',
+    '|------|------|',
+    '| ドリンク | 600円 |',
+    '',
+    '## 主語 8月4日よりコラボカフェ開催',
+    '',
+    '{ここに記事アイキャッチの画像を入れる}',
+    '',
+    '| 項目 | 内容 |',
+    '|------|------|',
+    '| 開催場所 | 会場A |',
+    '| 開催期間 | 2023年8月4日〜8月30日 |',
+  ].join('\n');
+
+  it('まとめの表の直前の見出しだけを置き換える (前の節の見出しには触らない)', () => {
+    const result = replaceSummaryHeading(article, '## NEW', ['開催場所', '開催期間']);
+    expect(result.replaced).toBe(true);
+    expect(result.content.split('\n')[6]).toBe('## NEW');
+    expect(result.content.split('\n')[0]).toBe('## 主語のメニュー');
+  });
+
+  it('まとめの表か見出しが無ければ、そのまま返す', () => {
+    expect(replaceSummaryHeading('本文だけ', '## NEW', ['開催場所'])).toEqual({ content: '本文だけ', replaced: false });
+    expect(replaceSummaryHeading('| 開催場所 | 会場A |', '## NEW', ['開催場所'])).toEqual({
+      content: '| 開催場所 | 会場A |',
+      replaced: false,
+    });
   });
 });
 

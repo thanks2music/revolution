@@ -14,7 +14,7 @@ import type { YamlTemplateLoaderService } from '@/lib/services/yaml-template-loa
 const MULTI_LOCATION_SECTION = '複数店舗開催時のロケーション抽出ルール';
 
 const TEMPLATE = {
-  prompts: { generate_title: 'タイトルを生成する' },
+  prompts: { generate_title: 'タイトルを生成する', ended_event_note: 'ENDED_NOTE:{{period}}\n' },
   logic: { multi_location_extraction: MULTI_LOCATION_SECTION },
   rules: [],
   constraints: {},
@@ -53,6 +53,44 @@ describe('TitleGenerationService の開催都市', () => {
     const result = await service.generateTitle({ ...REQUEST, extractedCityLabel: '4都市' });
 
     expect(result.title).toBe('ヒロアカ カフェ in 4都市 10月16日よりコラボ開催');
+  });
+});
+
+/**
+ * 記事を作った時点で終わっていたイベント (2026-11-27)。期間を入れた ended_event_note を足し、開始日を使う指示は入れない
+ */
+describe('TitleGenerationService の終わったイベント', () => {
+  const PERIOD = {
+    開始: { 年: '2023年', 日付: '8月4日' },
+    終了: { 年: '2023年', 日付: '8月30日', 未定: false },
+  } as unknown as NonNullable<Parameters<TitleGenerationService['generateTitle']>[0]['extractedPeriod']>;
+  const TITLE = '作品A × 会場Aのコラボカフェ 2023年8月4日〜8月30日コラボ開催';
+
+  it('期間を渡すと ended_event_note を入れ、開始日の指示を入れない', async () => {
+    const { service, sentPrompt } = setup(TITLE);
+    await service.generateTitle({ ...REQUEST, extractedPeriod: PERIOD, endedPeriod: '2023年8月4日〜8月30日' });
+
+    expect(sentPrompt()).toContain('ENDED_NOTE:2023年8月4日〜8月30日');
+    expect(sentPrompt()).not.toContain('タイトルの開始日は');
+  });
+
+  it('期間を渡さなければ ended_event_note を入れず、開始日の指示を入れる', async () => {
+    const { service, sentPrompt } = setup(TITLE);
+    await service.generateTitle({ ...REQUEST, extractedPeriod: PERIOD });
+
+    expect(sentPrompt()).not.toContain('ENDED_NOTE');
+    expect(sentPrompt()).toContain('タイトルの開始日は');
+  });
+
+  it('ended_event_note が templates に無ければ止める', async () => {
+    const sendMessage = jest.fn();
+    const loader = {
+      loadModularTemplate: async () => ({ ...TEMPLATE, prompts: { generate_title: 'タイトルを生成する' } }),
+    } as unknown as YamlTemplateLoaderService;
+    const service = new TitleGenerationService(loader, { sendMessage } as unknown as AiProvider);
+
+    await expect(service.generateTitle({ ...REQUEST, endedPeriod: '2023年8月4日〜8月30日' })).rejects.toThrow(/ended_event_note/);
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 });
 

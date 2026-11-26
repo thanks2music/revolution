@@ -30,6 +30,8 @@ const POINTS_FORMAT_KEYS = [
   'place_multi',
   'place_multi_count_only',
   'schedule_line',
+  'schedule_line_work',
+  'schedule_line_ended',
   'redrawn_line',
   'goods_line_many',
   'goods_line_few',
@@ -59,6 +61,10 @@ export interface PointsFactsInput {
   venues: readonly string[];
   /** 開催地 (都道府県を短くしたもの。`storeContext.都市一覧`) */
   cities: readonly string[];
+  /** 作品名 (複数作品のコラボは 2 つ以上)。期間・会場とそろえば、期間と会場の行に入れる (2026-11-27 BOSS 決定) */
+  works: readonly string[];
+  /** 記事を作った時点で終わっていたイベントか (`isEventEnded`)。期間と会場の行を終わった形の文にする */
+  ended: boolean;
   /** 公式のページにあった語 (無ければ null) */
   redrawnWord: RedrawnWord | null;
   /** グッズの文脈の語 (`deriveRedrawnWords` の goods。無ければグッズの行を出さない) */
@@ -145,7 +151,10 @@ export function buildFactLines(input: PointsFactsInput, format: PointsFormat): s
 
   const period = formatPeriod(input.period, format);
   const place = formatPlace(input.venues, input.cities, format);
-  if (period || place) {
+  const works = input.works.map((work) => work.trim()).filter(Boolean).map(escapeMdxText);
+  if (period && place && works.length > 0) {
+    lines.push(fillTemplate(input.ended ? format.schedule_line_ended : format.schedule_line_work, { period, place, works }));
+  } else if (period || place) {
     lines.push(fillTemplate(format.schedule_line, { period, place, both: period && place ? 'yes' : null }));
   }
 

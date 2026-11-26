@@ -27,6 +27,9 @@ const FORMAT: PointsFormat = {
   place_multi: "{{cities|join:'・'}}の{{count}}会場",
   place_multi_count_only: '全{{count}}会場',
   schedule_line: '{{#if period}}{{period}}{{/if}}{{#if both}}、{{/if}}{{#if place}}{{place}}{{/if}}',
+  // 作品名を入れる行の文面は Templates が持つ。ここでは差し込む値と、どちらの書式を選ぶかだけを確かめる
+  schedule_line_work: "WORK:{{period}}|{{works|join:'+'}}|{{place}}",
+  schedule_line_ended: "ENDED:{{period}}|{{works|join:'+'}}|{{place}}",
   redrawn_line: '{{word}}イラストを使用',
   // グッズの行の文面は Templates が持つ (public な revolution には書かない)。ここでは差し込む値だけを確かめる
   goods_line_many: "GOODS_MANY:{{count}}{{#if channels}}({{channels|join:'/'}}){{/if}}",
@@ -41,6 +44,8 @@ const BASE: PointsFactsInput = {
   period: {},
   venues: [],
   cities: [],
+  works: [],
+  ended: false,
   redrawnWord: null,
   goodsRedrawnWord: null,
   goodsNames: null,
@@ -114,6 +119,28 @@ describe('buildFactLines', () => {
       'コラボメニュー全19品',
       'ノベルティ：コースター、ステッカー',
     ]);
+  });
+
+  it('作品名・期間・会場がそろえば、作品名を入れた行にする (複数作品はすべて渡す)', () => {
+    const input = { ...BASE, period: { start: '2023-08-04', end: '2023-08-30' }, venues: ['会場A'], works: ['作品A', ' 作品B '] };
+    expect(buildFactLines(input, FORMAT)).toEqual(['WORK:2023年8月4日〜8月30日|作品A+作品B|会場A']);
+  });
+
+  it('記事を作った時点で終わっていたイベントは、終わった形の書式にする', () => {
+    const input = { ...BASE, period: { start: '2023-08-04', end: '2023-08-30' }, venues: ['会場A'], works: ['作品A'], ended: true };
+    expect(buildFactLines(input, FORMAT)).toEqual(['ENDED:2023年8月4日〜8月30日|作品A|会場A']);
+  });
+
+  it('作品名・期間・会場のどれかが無ければ、従来の期間と会場の行にする', () => {
+    expect(buildFactLines({ ...BASE, venues: ['会場A'], works: ['作品A'], ended: true }, FORMAT)).toEqual(['会場A']);
+    expect(buildFactLines({ ...BASE, period: { start: '2023-08-04', end: '2023-08-30' }, venues: ['会場A'], works: [' '] }, FORMAT)).toEqual([
+      '2023年8月4日〜8月30日、会場A',
+    ]);
+  });
+
+  it('作品名は MDX として安全な形にしてから入れる', () => {
+    const input = { ...BASE, period: { start: '2026-10-16' }, venues: ['会場A'], works: ['{x}'] };
+    expect(buildFactLines(input, FORMAT)[0]).not.toContain('{x}');
   });
 
   it('値の無い行は出さない (「なし」とは書かない)', () => {

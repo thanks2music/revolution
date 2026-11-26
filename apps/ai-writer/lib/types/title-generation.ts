@@ -87,6 +87,11 @@ export interface TitleGenerationRequest {
    * @example "第2弾", "第3弾"
    */
   extractedEventNumber?: string;
+  /**
+   * 記事を作った時点で終わっていたイベントの、年付きの期間 (例: 2023年8月4日〜8月30日)。あれば、開始日と「より開催」の代わりに
+   * この期間をタイトルに入れるよう、3-title.yaml の prompts.ended_event_note をプロンプトに足す (2026-11-27 BOSS 決定)
+   */
+  endedPeriod?: string;
 }
 
 /**
