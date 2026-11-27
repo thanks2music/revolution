@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { articlePublishedDate, articleYear, isEventEnded } from '@/lib/utils/article-date';
+import { articlePublishedDate, articleYear, isEndedWhenPublished, isEventEnded } from '@/lib/utils/article-date';
 
 describe('articleYear', () => {
   it('開始日が分かれば、開始日の年 (過去もこれからも)', () => {
@@ -50,5 +50,26 @@ describe('isEventEnded', () => {
   it('終了日が無い・読めなければ終わっていない', () => {
     expect(isEventEnded(undefined, now)).toBe(false);
     expect(isEventEnded('8月30日', now)).toBe(false);
+  });
+});
+
+describe('isEndedWhenPublished', () => {
+  it('公開日が日本時間のちょうど 0 時で、終了日があれば true', () => {
+    expect(isEndedWhenPublished({ date: '2023-08-03T15:00:00.000Z', event_end_date: '2023-08-30' })).toBe(true);
+  });
+
+  it('記事の更新で開始日が作り直されて動いても、公開日で見分ける', () => {
+    expect(isEndedWhenPublished({ date: '2023-08-03T15:00:00.000Z', event_end_date: '2023-09-10' })).toBe(true);
+  });
+
+  it('公開日が実行した日時 (0 時ちょうどでない) なら false。1 ミリ秒ずれても false', () => {
+    expect(isEndedWhenPublished({ date: '2026-11-24T18:00:00.000Z', event_end_date: '2026-12-17' })).toBe(false);
+    expect(isEndedWhenPublished({ date: '2023-08-03T15:00:00.001Z', event_end_date: '2023-08-30' })).toBe(false);
+  });
+
+  it('終了日・公開日が無い、公開日が読めなければ false', () => {
+    expect(isEndedWhenPublished({ date: '2023-08-03T15:00:00.000Z' })).toBe(false);
+    expect(isEndedWhenPublished({ event_end_date: '2023-08-30' })).toBe(false);
+    expect(isEndedWhenPublished({ date: 'not-a-date', event_end_date: '2023-08-30' })).toBe(false);
   });
 });

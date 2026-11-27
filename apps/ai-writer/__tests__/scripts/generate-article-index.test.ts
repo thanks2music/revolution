@@ -16,7 +16,7 @@
  *    - Articles sorted by date in descending order (newest first)
  *
  * 4. Title Validation (2 tests)
- *    - Title length within 40 characters for SEO optimization
+ *    - Title length within 40 characters for SEO optimization (except events that had ended when the article was made)
  *    - Non-empty titles
  *
  * 5. Multi-location Support (3 tests)
@@ -54,6 +54,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { ArticleIndexSchema } from '@revolution/schemas/article-index';
 import { findMdxFiles } from '../../lib/utils/mdx-files';
+import { isEndedWhenPublished } from '../../lib/utils/article-date';
 
 const SCRIPT_PATH = join(__dirname, '../../scripts/generate-article-index.ts');
 
@@ -276,7 +277,8 @@ describe('generate-article-index.ts', () => {
       const violations: Array<{ slug: string; title: string; length: number }> = [];
 
       indexData.articles.forEach((article: any) => {
-        if (article.title.length > 40) {
+        // 作った時点で終わっていたイベントは、上限を設けない (年付きの期間を書くため。2026-11-27)
+        if (article.title.length > 40 && !isEndedWhenPublished(article)) {
           violations.push({
             slug: article.slug,
             title: article.title,

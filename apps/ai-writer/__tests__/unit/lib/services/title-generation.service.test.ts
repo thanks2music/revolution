@@ -165,6 +165,35 @@ describe('TitleGenerationService の応答の検証と作り直し', () => {
     expect(sendMessage).toHaveBeenCalledTimes(2);
   });
 
+  it('終わったイベントは 40 字を超えてもそのまま使う (上限を設けない。2026-11-27)', async () => {
+    const longEnded = 'くまのプーさん カフェ in 2都市 2026年8月20日〜10月25日コラボ開催'; // 41 字
+    const { service, sendMessage } = setupSequence([json(longEnded)]);
+    const result = await service.generateTitle({ ...REQUEST, endedPeriod: '2026年8月20日〜10月25日' });
+
+    expect(result.title).toBe(longEnded);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('終わったイベントは、都市を確定値へ置き換えて 40 字を超えても N都市に丸めない', async () => {
+    const { service } = setupSequence([json('くまのプーさん カフェ in 東京/名古屋 2026年8月20日〜10月25日コラボ開催')]);
+    const result = await service.generateTitle({
+      ...REQUEST,
+      endedPeriod: '2026年8月20日〜10月25日',
+      extractedCityLabel: '東京/大阪',
+    });
+
+    expect(result.title).toBe('くまのプーさん カフェ in 東京/大阪 2026年8月20日〜10月25日コラボ開催');
+  });
+
+  it('終わったイベントでも 28 字に足りなければ作り直し、だめなら下限だけを挙げて投げる', async () => {
+    const { service, sendMessage } = setupSequence([json('BANANA FISH カフェ')]);
+
+    await expect(
+      service.generateTitle({ ...REQUEST, endedPeriod: '2026年8月20日〜10月25日' }),
+    ).rejects.toThrow(/28文字以上/);
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+  });
+
   it('作り直しの呼び出しで provider が失敗しても、1 回目の費用を TitleGenerationError で返す', async () => {
     const sendMessage = jest
       .fn(async (_prompt: string, _options?: unknown) => ({
