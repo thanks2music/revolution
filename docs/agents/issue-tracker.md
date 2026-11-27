@@ -4,7 +4,7 @@ Issues for Revolution live in **`thanks2music/one-more-time`**, including follow
 
 A Revolution PR closes an issue here with `Fixes thanks2music/one-more-time#<n>` in its body.
 
-Pull requests stay in the code repository (this one); only issues go to the parent.
+Pull requests stay in the code repository (`thanks2music/revolution`); only issues go to the parent (`thanks2music/one-more-time`).
 
 ## Conventions
 
