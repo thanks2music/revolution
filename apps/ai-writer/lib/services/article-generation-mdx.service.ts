@@ -1593,6 +1593,8 @@ export class ArticleGenerationMdxService {
           作品名: detailedExtraction?.作品名 ?? canonicalWorkTitle ?? null,
           leadMdx,
           pointsBlock,
+          // 作った時点で終わっていたイベントは、抜粋も過去形にする (2026-11-28 BOSS 決定。タイトルと同じ判定)
+          endedPeriod: endedPeriod ?? undefined,
         },
         costTracker
       );

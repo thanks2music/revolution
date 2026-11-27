@@ -114,6 +114,11 @@ export class TitleGenerationService {
         console.log('[TitleGeneration] ========== プロンプト終了 ==========\n');
       }
 
+      // 記事を作った時点で終わっていたイベントは、上限を設けない (2026-11-27 BOSS 決定)。
+      // 開始日の代わりに年付きの期間を書くので長くなり、40 字に収まらず記事を作れなかった。下限はそのまま
+      const maxLength = request.endedPeriod ? Number.POSITIVE_INFINITY : TITLE_MAX_LENGTH;
+      const lengthLabel = request.endedPeriod ? `${TITLE_MIN_LENGTH}文字以上` : `${TITLE_MIN_LENGTH}〜${TITLE_MAX_LENGTH}文字`;
+
       let lastFailure = '';
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         // AI Provider経由でAPI呼び出し（マルチプロバイダー対応）
@@ -138,7 +143,7 @@ export class TitleGenerationService {
         const { title: rawTitle, _reasoning } = parsed;
 
         // 開催地は確定値を強制する (プロンプトは確率的にしか守られないための安全網)
-        const title = enforceTitleCityLabel(rawTitle, request.extractedCityLabel, TITLE_MAX_LENGTH);
+        const title = enforceTitleCityLabel(rawTitle, request.extractedCityLabel, maxLength);
         if (title !== rawTitle) {
           console.warn(`[TitleGeneration] 開催地を確定値へ置き換えました: ${rawTitle} → ${title}`);
         }
@@ -151,7 +156,8 @@ export class TitleGenerationService {
         //   - CI (generate-article-index.test.ts): 40 超で **fail**
         //   41-42 文字は service では valid なのに CI で落ちる状態だった。
         //   実害の出る CI 側 (SEO 由来の 40) に合わせる。
-        const is_valid = length >= TITLE_MIN_LENGTH && length <= TITLE_MAX_LENGTH;
+        //   作った時点で終わっていたイベントは上限を設けない (上の maxLength。CI も isEndedWhenPublished で除く。2026-11-27)
+        const is_valid = length >= TITLE_MIN_LENGTH && length <= maxLength;
 
         console.log('[TitleGeneration] タイトル生成完了:', {
           title,
@@ -183,8 +189,8 @@ export class TitleGenerationService {
         }
 
         // ★ 文字数を外れたタイトルは使わない (2026-11-18 BOSS 決定)。以前は警告だけで記事に使っており、
-        //   応答の形が崩れた時に「[」がタイトルと画像の alt に入った。41 字以上は記事一覧の生成 (CI) でも落ちる
-        lastFailure = `タイトルが文字数制約（${TITLE_MIN_LENGTH}〜${TITLE_MAX_LENGTH}文字）を満たしていません: ${length}文字「${title}」`;
+        //   応答の形が崩れた時に「[」がタイトルと画像の alt に入った。41 字以上は記事一覧の生成 (CI) でも落ちる (終わったイベントを除く)
+        lastFailure = `タイトルが文字数制約（${lengthLabel}）を満たしていません: ${length}文字「${title}」`;
         console.warn(`[TitleGeneration] ${lastFailure} (${attempt}/${MAX_ATTEMPTS} 回目)`);
       }
 

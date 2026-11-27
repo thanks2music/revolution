@@ -41,3 +41,16 @@ export function articlePublishedDate(
   const start = isEventEnded(period.end, now) && period.start ? startOfJstDay(period.start) : undefined;
   return start ? start.toISOString() : publishedAt;
 }
+
+/**
+ * 公開済みの記事が、作った時点で終わっていたイベントの記事か。{@link articlePublishedDate} は終わったイベントだけ
+ * 公開日を開始日の日本時間 0 時にするので、公開日が日本時間のちょうど 0 時で、終了日がある記事を終わったイベントとみなす。
+ * 開始日とは比べない (記事の更新では公開日を変えずに開始日を作り直すため、開始日が動くと見分けが外れる)。
+ * 記事一覧の検査 (タイトルの 40 字の上限) で使う。終わったイベントはタイトルの上限を設けない (2026-11-27 BOSS 決定)
+ */
+export function isEndedWhenPublished(article: { date?: string; event_end_date?: string }): boolean {
+  if (!article.date || !article.event_end_date) return false;
+  const published = new Date(article.date);
+  if (Number.isNaN(published.getTime())) return false;
+  return startOfJstDay(toJstDateString(published))?.getTime() === published.getTime();
+}

@@ -187,6 +187,36 @@ describe('ExcerptGenerationService', () => {
     expect(prompt).toBe('{{constructor}} t');
   });
 
+  it('終わったイベントは、期間を入れた ended_event_note をプロンプトの後ろに足す', async () => {
+    const template = { prompts: { write_excerpt: 'T={{title}}\n', ended_event_note: '\nENDED={{period}}\n' } };
+    const { service, sendMessage } = build('{"excerpt": "抜粋"}', template);
+
+    await service.generate({ title: 't', 作品名: null, leadMdx: LEAD, pointsBlock: '', endedPeriod: '2023年8月4日〜8月30日' });
+
+    const [prompt] = sendMessage.mock.calls[0] as unknown as [string];
+    expect(prompt).toBe('T=t\n\nENDED=2023年8月4日〜8月30日\n');
+  });
+
+  it('終わっていなければ ended_event_note を足さない ({{period}} も置き換えない)', async () => {
+    const template = { prompts: { write_excerpt: 'T={{title}} {{period}}', ended_event_note: 'ENDED' } };
+    const { service, sendMessage } = build('{"excerpt": "抜粋"}', template);
+
+    await service.generate({ title: 't', 作品名: null, leadMdx: LEAD, pointsBlock: '' });
+
+    const [prompt] = sendMessage.mock.calls[0] as unknown as [string];
+    expect(prompt).toBe('T=t {{period}}');
+  });
+
+  it('終わったイベントなのに ended_event_note が無ければ、キー名を挙げて ExcerptPromptMissingError', async () => {
+    const { service, sendMessage } = build('{"excerpt": "x"}');
+    const error = await service
+      .generate({ title: 't', 作品名: null, leadMdx: LEAD, pointsBlock: '', endedPeriod: '2023年8月4日〜8月30日' })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ExcerptPromptMissingError);
+    expect((error as Error).message).toContain('prompts.ended_event_note がありません');
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it('プロンプトが無ければ、キー名を挙げて ExcerptPromptMissingError (呼び出し側が通知する)', async () => {
     const { service } = build('{"excerpt": "x"}', { prompts: {} });
     const error = await service.generate({ title: 't', 作品名: null, leadMdx: LEAD, pointsBlock: '' }).catch((e: unknown) => e);

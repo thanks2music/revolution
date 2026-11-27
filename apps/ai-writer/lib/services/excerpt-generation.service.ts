@@ -44,6 +44,11 @@ export interface ExcerptRequest {
   leadMdx: string;
   /** 「この記事のポイント」の枠 (MDX、`renderArticlePoints` の出力)。空なら枠なし */
   pointsBlock: string;
+  /**
+   * 記事を作った時点で終わっていたイベントの、年付きの期間 (タイトルと同じ値)。あれば `prompts.ended_event_note` に
+   * 期間を入れてプロンプトの後ろに足し、抜粋を過去形で書かせる (2026-11-28 BOSS 決定)。終わっていなければ渡さない
+   */
+  endedPeriod?: string;
 }
 
 export interface ExcerptResult {
@@ -107,8 +112,8 @@ export function normalizeExcerpt(text: string, maxLength: number): string {
 
 /** プロンプトが無い (Templates の同期漏れ)。LLM の一時的な失敗と違い、直すまで全記事が代替の抜粋になるので通知する */
 export class ExcerptPromptMissingError extends Error {
-  constructor(pipelineId: string) {
-    super(`${pipelineId}.yaml に prompts.write_excerpt がありません。pnpm sync:templates で Templates を同期してください`);
+  constructor(pipelineId: string, promptKey: string = PIPELINE_PROMPTS.excerpt.promptKey) {
+    super(`${pipelineId}.yaml に prompts.${promptKey} がありません。pnpm sync:templates で Templates を同期してください`);
     this.name = 'ExcerptPromptMissingError';
   }
 }
@@ -171,6 +176,9 @@ export class ExcerptGenerationService {
     });
     const instruction = template.prompts[PIPELINE_PROMPTS.excerpt.promptKey];
     if (!instruction) throw new ExcerptPromptMissingError(this.pipelineId);
+    // 終わったイベントは、期間を入れた指示を後ろに足す。指示が無ければ未来形のまま書かせず、呼び出し側のリード文からの抜粋に任せる
+    const endedNote = request.endedPeriod ? template.prompts.ended_event_note : undefined;
+    if (request.endedPeriod && !endedNote) throw new ExcerptPromptMissingError(this.pipelineId, 'ended_event_note');
     const points = pointsLinesOf(request.pointsBlock);
     // 1 回で置き換える (リード文などに `{{points}}` の文字列が含まれていても、そこへ展開しない)
     const values: Record<string, string> = {
@@ -179,8 +187,9 @@ export class ExcerptGenerationService {
       lead: mdxToPlainText(request.leadMdx) || '(なし)',
       points: points.length > 0 ? points.map((line) => `- ${line}`).join('\n') : '(なし)',
       max_length: String(EXCERPT_MAX_LENGTH - PROMPT_LENGTH_MARGIN),
+      ...(request.endedPeriod ? { period: request.endedPeriod } : {}),
     };
-    const prompt = instruction.replace(/\{\{([^{}]+)\}\}/g, (match, key: string) =>
+    const prompt = (endedNote ? `${instruction.trimEnd()}\n${endedNote}` : instruction).replace(/\{\{([^{}]+)\}\}/g, (match, key: string) =>
       Object.hasOwn(values, key) ? values[key] : match
     );
     const response = await this.aiProvider.sendMessage(prompt, {
