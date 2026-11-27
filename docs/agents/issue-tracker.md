@@ -19,7 +19,7 @@ Pull requests stay in the code repository (this one); only issues go to the pare
 
 ## Pull requests as a triage surface
 
-**PRs as a request surface: no.**
+**PRs as a request surface: no.** The rest of this section is inactive and kept for reference.
 
 When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
 

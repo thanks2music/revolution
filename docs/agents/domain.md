@@ -9,7 +9,7 @@ This repository has no glossary or ADRs of its own. Revolution keeps one set for
 - **`../GLOSSARY.md`**: the product vocabulary
 - **`../docs/adr/`**: decisions that span Revolution, including how tasks are tracked (ADR-0008, ADR-0009)
 
-If the parent checkout is missing, read them on GitHub: `gh api repos/thanks2music/one-more-time/contents/GLOSSARY.md --jq .content | base64 -d` for the glossary, and `gh api repos/thanks2music/one-more-time/contents/docs/adr --jq '.[].name'` to list the ADRs.
+If these relative paths do not resolve (a worktree, CI, or a standalone clone), read them on GitHub: `gh api repos/thanks2music/one-more-time/contents/GLOSSARY.md --jq .content | base64 -d` for the glossary, and `gh api repos/thanks2music/one-more-time/contents/docs/adr --jq '.[].name'` to list the ADRs.
 
 Create new terms and ADRs in the parent repository, not here.
 
