@@ -6,10 +6,10 @@ How the engineering skills should consume Revolution's domain documentation when
 
 This repository has no glossary or ADRs of its own. Revolution keeps one set for all its repositories in the parent repository, `thanks2music/one-more-time`, which is checked out one directory up:
 
-- **`../GLOSSARY.md`**: the product vocabulary (アニイベ, 企画, 開催, 種別, …)
+- **`../GLOSSARY.md`**: the product vocabulary
 - **`../docs/adr/`**: decisions that span Revolution, including how tasks are tracked (ADR-0008, ADR-0009)
 
-If the parent checkout is missing, read them on GitHub with `gh api repos/thanks2music/one-more-time/contents/GLOSSARY.md --jq .content | base64 -d`.
+If the parent checkout is missing, read them on GitHub: `gh api repos/thanks2music/one-more-time/contents/GLOSSARY.md --jq .content | base64 -d` for the glossary, and `gh api repos/thanks2music/one-more-time/contents/docs/adr --jq '.[].name'` to list the ADRs.
 
 Create new terms and ADRs in the parent repository, not here.
 

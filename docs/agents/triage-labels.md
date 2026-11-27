@@ -12,7 +12,6 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
-Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
 
 ## Other labels in this tracker
 
@@ -26,4 +25,4 @@ These are not triage roles. Apply them alongside one.
 | `area:infra` | Hosting, CI, cloud resources |
 | `area:templates` | `revolution-templates` (YAML prompt templates) |
 | `area:product` | Product decisions, specs, requirements |
-| `someday` | Nobody plans to start it yet. Formerly p4 in Todoist |
+| `someday` | Nobody plans to start it yet. |
