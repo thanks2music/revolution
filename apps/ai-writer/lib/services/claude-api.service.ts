@@ -36,7 +36,7 @@ export class ClaudeAPIService {
 
   /**
    * 認証は `createAnthropicClient` が決める (Cloud Run は ID フェデレーション、ローカルは
-   * `ant auth login` のプロファイル)。資格情報の解決は最初のリクエストの時なので、
+   * `ant auth login` のプロファイルか `AI_WRITER_ANTHROPIC_API_KEY`)。資格情報の解決は最初のリクエストの時なので、
    * 環境変数の無いビルドの最中に作っても失敗しない。
    *
    * @param client - 既定は `createAnthropicClient()`。AnthropicProvider は自分のクライアントを渡す

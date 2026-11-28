@@ -115,7 +115,8 @@ export async function GET() {
       openai: 'OPENAI_API_KEY',
     };
 
-    // Anthropic は API キーを使わない。Cloud Run では ID フェデレーションの変数が揃っているかを見る
+    // Anthropic は createAnthropicClient が認証を決める。Cloud Run では ID フェデレーションの変数が揃っているか
+    // (と、ローカル用の API キーが入っていないか) を見る
     if (aiProvider === 'anthropic') {
       try {
         const auth = resolveAnthropicAuth(process.env);

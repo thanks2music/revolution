@@ -40,6 +40,12 @@ declare namespace NodeJS {
     /** Anthropic のプロファイル名 (ローカル)。未設定なら `revolution` */
     ANTHROPIC_PROFILE?: string;
 
+    /**
+     * ローカルで Claude を API キーで動かす時のキー (逃げ道。主な使い方はプロファイル)。
+     * 空でなければプロファイルより優先する。Cloud Run で設定するとエラーになる
+     */
+    AI_WRITER_ANTHROPIC_API_KEY?: string;
+
     /** Cloud Run の Workload Identity Federation のルール (`fdrl_...`) */
     ANTHROPIC_FEDERATION_RULE_ID?: string;
 

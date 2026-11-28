@@ -9,7 +9,7 @@ import { ClaudeAPIService } from '../services/claude-api.service';
  * The service is wrapped with React's cache() to provide request-scoped memoization.
  *
  * 認証は `createAnthropicClient` が決める (Cloud Run は ID フェデレーション、ローカルは
- * `ant auth login` のプロファイル)。資格情報の解決は最初のリクエストの時なので、
+ * `ant auth login` のプロファイルか `AI_WRITER_ANTHROPIC_API_KEY`)。資格情報の解決は最初のリクエストの時なので、
  * 秘密の無いビルドの最中に作っても失敗しない。
  *
  * @returns ClaudeAPIService instance
