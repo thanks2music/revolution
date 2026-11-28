@@ -121,6 +121,9 @@ export async function attachAvatar(imageId: string): Promise<{ ok: true } | Avat
       imageId,
     });
     switch (outcome.kind) {
+      case 'already':
+        // 同じ画像を 2 回送った。審査はもう走っている
+        return { ok: true };
       case 'removed':
         return FAILURES.removed;
       case 'missing':

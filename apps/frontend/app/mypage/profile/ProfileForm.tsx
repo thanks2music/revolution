@@ -46,7 +46,12 @@ export function ProfileForm({
             const result = await updateUsername({ username });
             if (!result.ok) next.username = result.error;
           }
-          if (next.displayName || next.username) return setErrors(next);
+          if (next.displayName || next.username) {
+            setErrors(next);
+            // 片方だけ保存できた時も、画面の元の値を読み直す (次の保存で同じ欄を送り直さないように)
+            router.refresh();
+            return;
+          }
           router.push('/mypage');
           router.refresh();
         });

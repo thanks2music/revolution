@@ -129,6 +129,8 @@ export async function requestAvatarUpload(
 export type AttachAvatarOutcome =
   /** 審査中になった。`key` は審査に渡す */
   | { kind: 'ok'; key: string }
+  /** 同じ画像を 2 回送った (取り込み済み)。審査はもう走っているので、もう一度は走らせない */
+  | { kind: 'already'; key: string }
   /** 受け取り場所に画像が無い (上げ損ねた・1 日経って消えた)、またはサーバーが出した URL の画像でない */
   | { kind: 'missing' }
   | { kind: 'removed' }
@@ -155,7 +157,7 @@ export async function attachAvatar(
   ]);
   if (before.removed) return { kind: 'removed' };
   // 取り込み済み (同じ画像を 2 回送った)。審査中のまま返す
-  if (before.key === key) return { kind: 'ok', key };
+  if (before.key === key) return { kind: 'already', key };
   if (ticket.error) throw ticket.error;
   if (!ticket.data) return { kind: 'missing' };
 
@@ -188,22 +190,18 @@ export async function attachAvatar(
       await ctx.storage.deleteStored(keys).catch(() => undefined);
       throw failedPut.reason;
     }
-    // 外されていない時だけ書く (外した会員は CHECK でも断られる)
-    const { data: updated, error } = await ctx.db
-      .from('profiles')
-      .update({ avatar_key: key, avatar_status: 'pending', avatar_reason_code: null })
-      .eq('id', input.profileId)
-      .is('avatar_removed_at', null)
-      .select('id');
-    if (error) {
+    let swapped: Awaited<ReturnType<typeof swapAvatarKey>>;
+    try {
+      swapped = await swapAvatarKey(ctx.db, input.profileId, before.key, key);
+    } catch (error) {
       await ctx.storage.deleteStored(keys).catch(() => undefined);
       throw error;
     }
-    if (!updated?.length) {
+    if (swapped.kind === 'removed') {
       await ctx.storage.deleteStored(keys).catch(() => undefined);
       return { kind: 'removed' };
     }
-    if (before.key) await deleteAvatarObjects(ctx.storage, before.key);
+    if (swapped.previous) await deleteAvatarObjects(ctx.storage, swapped.previous);
     return { kind: 'ok', key };
   } catch (error) {
     keepIntake = true;
@@ -227,14 +225,43 @@ export async function removeAvatar(
 ): Promise<{ kind: 'ok' } | { kind: 'removed' }> {
   const before = await readOwnAvatar(ctx.db, profileId);
   if (before.removed) return { kind: 'removed' };
-  const { error } = await ctx.db
-    .from('profiles')
-    .update({ avatar_key: null, avatar_status: null, avatar_reason_code: null })
-    .eq('id', profileId)
-    .is('avatar_removed_at', null);
-  if (error) throw error;
-  if (before.key) await deleteAvatarObjects(ctx.storage, before.key);
+  const swapped = await swapAvatarKey(ctx.db, profileId, before.key, null);
+  if (swapped.kind === 'removed') return { kind: 'removed' };
+  if (swapped.previous) await deleteAvatarObjects(ctx.storage, swapped.previous);
   return { kind: 'ok' };
+}
+
+/**
+ * 画像のキーを `next` に替える (null は外す)。別の操作 (2 つのタブなど) と重なっても、替えた前のキーを
+ * 確実に返すよう、読んだキーのままの時だけ書き、替わっていたら読み直す。替えた前のキーの物は呼ぶ側が消す
+ */
+async function swapAvatarKey(
+  db: SupabaseClient,
+  profileId: string,
+  expected: string | null,
+  next: string | null
+): Promise<{ kind: 'ok'; previous: string | null } | { kind: 'removed' }> {
+  let current = expected;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let query = db
+      .from('profiles')
+      .update({
+        avatar_key: next,
+        avatar_status: next ? 'pending' : null,
+        avatar_reason_code: null,
+      })
+      .eq('id', profileId)
+      // 外されていない時だけ書く (外した会員は CHECK でも断られる)
+      .is('avatar_removed_at', null);
+    query = current === null ? query.is('avatar_key', null) : query.eq('avatar_key', current);
+    const { data: updated, error } = await query.select('id');
+    if (error) throw error;
+    if (updated?.length) return { kind: 'ok', previous: current === next ? null : current };
+    const now = await readOwnAvatar(db, profileId);
+    if (now.removed) return { kind: 'removed' };
+    current = now.key;
+  }
+  throw new Error('profile avatar kept changing while it was being replaced');
 }
 
 export type ScreenAvatarOutcome =
@@ -254,33 +281,42 @@ export async function screenAvatar(
   const before = await readOwnAvatar(ctx.db, input.profileId);
   if (before.key !== input.key || before.status !== 'pending') return { kind: 'skipped' };
 
-  const image = await ctx.storage.readStored(
-    storedVariantKey(input.key, AVATAR_SCREENING_WIDTH, 'webp')
-  );
+  // 読めない・審査器が失敗した時は「確認できなかった」で落とす (審査中のまま残さない)
+  const image = await ctx.storage
+    .readStored(storedVariantKey(input.key, AVATAR_SCREENING_WIDTH, 'webp'))
+    .catch(() => null);
   const result = image
     ? await ctx.screener.screen({ data: image, mimeType: 'image/webp' })
-    : ({ ok: false, error: 'stored image is missing', model: null } as const);
+    : ({ ok: false, error: 'stored image is unreadable', model: null } as const);
 
+  // 公開の途中で投げたら、写した物を引き上げて「確認できなかった」で落とし、投げ直す (Sentry に送るため)
+  let publishFailure: unknown = null;
   if (result.ok && result.decision === 'ok') {
     const keys = avatarVariantKeys(input.key);
-    await ctx.storage.publish(keys);
-    const { data: updated, error } = await ctx.db
-      .from('profiles')
-      .update({ avatar_status: 'published' })
-      .eq('id', input.profileId)
-      .eq('avatar_key', input.key)
-      .eq('avatar_status', 'pending')
-      .select('id');
-    if (error) throw error;
-    if (!updated?.length) {
-      // 写している間に替わった・外された。写した物を引き上げる
-      await ctx.storage.unpublish(keys);
-      return { kind: 'skipped' };
+    try {
+      await ctx.storage.publish(keys);
+      const { data: updated, error } = await ctx.db
+        .from('profiles')
+        .update({ avatar_status: 'published' })
+        .eq('id', input.profileId)
+        .eq('avatar_key', input.key)
+        .eq('avatar_status', 'pending')
+        .select('id');
+      if (error) throw error;
+      if (!updated?.length) {
+        // 写している間に替わった・外された。写した物を引き上げる
+        await ctx.storage.unpublish(keys);
+        return { kind: 'skipped' };
+      }
+      return { kind: 'published' };
+    } catch (error) {
+      publishFailure = error;
+      await ctx.storage.unpublish(keys).catch(() => undefined);
     }
-    return { kind: 'published' };
   }
 
-  const reasonCode: AvatarRejectReason = result.ok ? 'sexual_or_violent' : 'unverifiable';
+  const reasonCode: AvatarRejectReason =
+    result.ok && publishFailure === null ? 'sexual_or_violent' : 'unverifiable';
   const { data: updated, error } = await ctx.db
     .from('profiles')
     .update({ avatar_key: null, avatar_status: 'rejected', avatar_reason_code: reasonCode })
@@ -289,8 +325,9 @@ export async function screenAvatar(
     .eq('avatar_status', 'pending')
     .select('id');
   if (error) throw error;
+  if (updated?.length) await deleteAvatarObjects(ctx.storage, input.key);
+  if (publishFailure !== null) throw publishFailure;
   if (!updated?.length) return { kind: 'skipped' };
-  await deleteAvatarObjects(ctx.storage, input.key);
   return { kind: 'rejected', reasonCode };
 }
 

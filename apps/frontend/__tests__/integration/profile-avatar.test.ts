@@ -158,6 +158,37 @@ describe('プロフィール画像', () => {
     });
   });
 
+  it('同じ画像を 2 回送ると already (審査をもう一度走らせない)', async () => {
+    const profileId = await newProfile();
+    const attached = await upload(profileId, await jpeg({ r: 20, g: 200, b: 20 }));
+    const key = (attached as { key: string }).key;
+    expect(await attachAvatar(ctx, { profileId, imageId: key.split('/').pop()! })).toEqual({
+      kind: 'already',
+      key,
+    });
+  });
+
+  it('公開の途中で失敗したら、写した物を引き上げて「確認できなかった」にし、投げ直す', async () => {
+    const profileId = await newProfile();
+    const attached = await upload(profileId, await jpeg({ r: 20, g: 200, b: 20 }));
+    const key = (attached as { key: string }).key;
+    const failing = {
+      ...storage,
+      publish: async () => {
+        throw new Error('r2 down');
+      },
+    };
+    await expect(
+      screenAvatar({ db: data.admin, storage: failing, screener }, { profileId, key })
+    ).rejects.toThrow('r2 down');
+    expect(await readOwnAvatar(data.admin, profileId)).toMatchObject({
+      status: 'rejected',
+      key: null,
+      reasonCode: 'unverifiable',
+    });
+    expect(await storage.readStored(`${key}/256.webp`)).toBeNull();
+  });
+
   it('BOSS が外した会員は、URL も取り込みも断る', async () => {
     const profileId = await newProfile();
     await data.admin
