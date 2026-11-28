@@ -8,12 +8,13 @@ import path from 'node:path';
 
 import sharp from 'sharp';
 
-import { avatarVariantKeys, toAvatarView } from '@revolution/reviews/avatar/operations';
+import { avatarVariantKeys } from '@revolution/reviews/avatar/operations';
 import { loadAvatarScreeningPrompt } from '@revolution/reviews/avatar/prompt';
 import {
   createFakeAvatarScreener,
   createGeminiAvatarScreener,
 } from '@revolution/reviews/avatar/screener';
+import { toAvatarView } from '@revolution/reviews/avatar/view';
 import { convertSquareImage } from '@revolution/reviews/photos/convert';
 
 /** プロフィール画像 (one-more-time #171) の Layer 1 (変換・形) と Layer 2 (審査器の口) */

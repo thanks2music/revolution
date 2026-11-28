@@ -5,7 +5,8 @@
  * 発展させ、以下を提供する:
  *   - 自分の口コミ (状態・理由・編集と削除の入口。S4 #162、`lib/reviews/own-reviews.ts`)
  *   - いいねした記事一覧 (getFavorites + resolveArticleByKey で記事カード表示)
- *   - アカウント管理 (ID / 表示名 / メール / パスワード / ログアウト)
+ *   - プロフィール (画像・表示名・@ID。編集は /mypage/profile、#171)
+ *   - アカウント管理 (メール / パスワード / ログアウト)
  *   - パスワード未設定時の設定推奨導線
  *
  * 設計:
@@ -32,6 +33,10 @@ import { OwnReviewList } from '@/components/molecules/reviews/OwnReviewList';
 import { listOwnReviews, type OwnReviewListItem } from '@/lib/reviews/own-reviews';
 import { getReviewPhotoStorage } from '@revolution/reviews/photos/storage';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { Avatar } from '@/components/molecules/profile/Avatar';
+import { loadOwnAvatarState } from '@/lib/profile/own-avatar';
+import { AVATAR_REJECT_REASON_LABELS } from '@revolution/schemas/profile-avatar';
+import Link from 'next/link';
 import { AccountManager } from './AccountManager';
 import { SignOutButton } from './SignOutButton';
 
@@ -59,11 +64,13 @@ export default async function MyPage() {
         .maybeSingle()
     : { data: null };
 
-  // 自分の口コミといいね一覧は互いに依存しないので、並べて引く
-  const [ownReviews, favoritesResult] = await Promise.all([
+  // 自分の口コミ・いいね一覧・プロフィール画像は互いに依存しないので、並べて引く
+  const [ownReviews, favoritesResult, avatar] = await Promise.all([
     profile ? loadOwnReviews(profile.id as string) : Promise.resolve([]),
     getFavorites(),
+    profile ? loadOwnAvatarState(profile.id as string) : Promise.resolve(null),
   ]);
+  const displayName = (profile?.display_name as string | null) ?? '';
 
   // いいね一覧 → 記事へ逆引き (resolveArticleByKey は Layer1 純粋関数)。
   const allArticles = getAllArticles();
@@ -87,6 +94,39 @@ export default async function MyPage() {
           title="マイページ"
           subtitle="自分の口コミ・いいねした記事・プロフィールを確認できます。"
         />
+
+        {/* プロフィール (Figma #12 の上。画像は公開の時だけ、それ以外は頭文字。#171) */}
+        <div className="mt-10 flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <Avatar
+              name={displayName || ' '}
+              view={avatar?.status === 'published' ? avatar.view : null}
+              size={50}
+            />
+            <div className="min-w-0">
+              <p className="truncate font-display text-base text-ink-strong">{displayName}</p>
+              {profile?.username && (
+                <p className="font-numeric text-xs text-ink-muted">@{profile.username as string}</p>
+              )}
+              <Link
+                href="/mypage/profile"
+                className="font-display text-xs text-primary-700 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500"
+              >
+                プロフィールを編集 ›
+              </Link>
+            </div>
+          </div>
+          {avatar?.status === 'rejected' && avatar.reasonCode && (
+            <p
+              role="status"
+              className="rounded-[10px] bg-status-cancelled-surface px-3 py-2.5 text-[11px] text-status-cancelled"
+            >
+              プロフィール画像を表示できませんでした (
+              {AVATAR_REJECT_REASON_LABELS[avatar.reasonCode]})。
+              「プロフィールを編集」から別の画像を選べます。
+            </p>
+          )}
+        </div>
 
         {/* 自分の口コミ (Figma #12 `83:191`) */}
         {/* 鍵の無い環境 (Preview など) では、欄そのものを出さない */}
@@ -147,8 +187,6 @@ export default async function MyPage() {
             で、それらは S4 スコープ。現時点で該当画面は存在しないため実装しない (YAGNI)。
           */}
           <AccountManager
-            currentUsername={profile?.username ?? ''}
-            currentDisplayName={profile?.display_name ?? ''}
             currentEmail={user?.email ?? ''}
             canChangeEmail={userHasEmail}
             hasGoogle={userHasGoogle}

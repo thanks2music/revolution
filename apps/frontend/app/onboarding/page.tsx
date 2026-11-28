@@ -11,12 +11,17 @@
  * 取得できる。
  */
 
+import type { OwnAvatarState } from '@/components/molecules/profile/AvatarField';
+import { loadOwnAvatarState } from '@/lib/profile/own-avatar';
 import type { Metadata } from 'next';
 
 import Layout from '@/components/templates/Layout';
 import { sanitizeNextPath } from '@/lib/auth/safe-redirect';
 import { createClient } from '@/lib/supabase/server';
 import { OnboardingForm } from './OnboardingForm';
+
+// 任意のプロフィール画像の取り込みと審査 (after) を走らせる長さ (#171、口コミの写真と同じ)
+export const maxDuration = 90;
 
 export const metadata: Metadata = {
   title: 'プロフィール設定',
@@ -40,19 +45,21 @@ export default async function OnboardingPage({
   } = await supabase.auth.getUser();
 
   let defaultDisplayName = '';
+  let avatar: OwnAvatarState | null = null;
   if (user) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('display_name')
+      .select('id, display_name')
       .eq('auth_user_id', user.id)
       .maybeSingle();
     defaultDisplayName = profile?.display_name ?? '';
+    if (profile) avatar = await loadOwnAvatarState(profile.id as string);
   }
 
   return (
     <Layout>
       <section className="w-main mx-auto flex min-h-[60vh] items-center justify-center py-12 md:py-20">
-        <OnboardingForm defaultDisplayName={defaultDisplayName} next={safeNext} />
+        <OnboardingForm defaultDisplayName={defaultDisplayName} next={safeNext} avatar={avatar} />
       </section>
     </Layout>
   );

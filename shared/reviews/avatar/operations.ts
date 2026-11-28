@@ -17,12 +17,7 @@ import {
 } from '@revolution/schemas/review-photo';
 
 import { convertSquareImage, type ConvertReviewPhotoFailure } from '../photos/convert';
-import {
-  REVIEW_PHOTO_FORMATS,
-  storedVariantKey,
-  variantKeys,
-  type ReviewPhotoStorage,
-} from '../photos/storage';
+import { storedVariantKey, variantKeys, type ReviewPhotoStorage } from '../photos/storage';
 
 import type { AvatarScreener } from './screener';
 
@@ -306,21 +301,6 @@ export async function screenAvatar(
 export async function deleteAvatarObjects(storage: ReviewPhotoStorage, key: string): Promise<void> {
   const keys = avatarVariantKeys(key);
   await Promise.all([storage.deleteStored(keys), storage.unpublish(keys)]);
-}
-
-/** 公開の画像を `<picture>` で出す形。キーは `avatar_public_key` (公開の時だけ値がある) */
-export type AvatarView = { avifSrcSet: string; webpSrcSet: string; src: string };
-
-export function toAvatarView(baseUrl: string, key: string): AvatarView {
-  const url = (width: number, format: (typeof REVIEW_PHOTO_FORMATS)[number]) =>
-    `${baseUrl}/${storedVariantKey(key, width, format)}`;
-  const srcSet = (format: (typeof REVIEW_PHOTO_FORMATS)[number]) =>
-    AVATAR_WIDTHS.map(width => `${url(width, format)} ${width}w`).join(', ');
-  return {
-    avifSrcSet: srcSet('avif'),
-    webpSrcSet: srcSet('webp'),
-    src: url(AVATAR_WIDTHS[AVATAR_WIDTHS.length - 1], 'webp'),
-  };
 }
 
 async function deleteTicket(db: SupabaseClient, imageId: string): Promise<void> {

@@ -15,6 +15,7 @@ import {
   type PublicReviewPhoto,
 } from '@revolution/reviews/photos/public';
 import { StatRowSchema, toReviewStats, type ReviewStats } from '@/lib/reviews/stats';
+import { toAvatarView } from '@revolution/reviews/avatar/view';
 import { createPublicClient, hasPublicSupabaseCredentials } from '@/lib/supabase/public';
 
 /**
@@ -51,6 +52,8 @@ const ReviewRowSchema = z.object({
       display_name: z.string().nullable(),
       username: z.string().nullable(),
       withdrawn_at: z.string().nullable(),
+      // 公開の時だけ値がある (0031、#171)
+      avatar_public_key: z.string().nullable().default(null),
     })
     .nullable(),
   review_images: z.array(PublicPhotoRowSchema).default([]),
@@ -76,6 +79,10 @@ export const publicReviewSchema = (mediaBaseUrl: string | null) =>
       helpfulCount: row.helpful_count,
       authorName:
         author && !author.withdrawn_at ? (author.display_name ?? author.username ?? null) : null,
+      authorAvatar:
+        mediaBaseUrl && author?.avatar_public_key && !author.withdrawn_at
+          ? toAvatarView(mediaBaseUrl, author.avatar_public_key)
+          : null,
       photos: mediaBaseUrl
         ? row.review_images.map(photo => toPublicPhoto(mediaBaseUrl, photo))
         : [],
@@ -129,7 +136,7 @@ export async function getOccurrenceReviews(occurrenceId: number): Promise<Occurr
       // 投稿者は列の名前で結び付ける (reviews と profiles には review_helpful 経由の結び付きもあり、
       // 指定しないと PostgREST が選べない)
       .select(
-        'id, rating, body, visited_month, attendance, food_cost_band, goods_cost_band, has_spoiler, edited_at, helpful_count, profiles!user_id(display_name, username, withdrawn_at), review_images(id, object_key, width, height, variant_widths)'
+        'id, rating, body, visited_month, attendance, food_cost_band, goods_cost_band, has_spoiler, edited_at, helpful_count, profiles!user_id(display_name, username, withdrawn_at, avatar_public_key), review_images(id, object_key, width, height, variant_widths)'
       )
       .eq('occurrence_id', occurrenceId)
       .eq('status', 'published')

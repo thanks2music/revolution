@@ -104,7 +104,14 @@ setup('口コミまわりのページを先に組み立てる', async ({ page, c
         sameSite: 'Lax' as const,
       }))
     );
-    for (const url of [path, `${path}/review`, '/review', `/review?q=warmup`, '/mypage']) {
+    for (const url of [
+      path,
+      `${path}/review`,
+      '/review',
+      `/review?q=warmup`,
+      '/mypage',
+      '/mypage/profile',
+    ]) {
       // 組み立ての途中の 500 は開き直す (ここで済ませておけば、並列のテストでは起きない)
       await expect(async () => {
         const response = await page.goto(url);

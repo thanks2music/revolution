@@ -1,3 +1,4 @@
+import { Avatar } from '@/components/molecules/profile/Avatar';
 import { formatJstDotDate } from '@/lib/date';
 import type { PublicReview } from '@/lib/reviews/queries';
 import {
@@ -15,7 +16,7 @@ import { SpoilerBody } from './SpoilerBody';
 
 /**
  * 口コミ 1 件 (Figma #3)。ネタバレの口コミは本文と写真をたたむ。右上の「…」から通報できる (#168)。
- * プロフィール画像は後のチケット (#171)
+ * 投稿者のプロフィール画像は、公開の時だけ出し、それ以外は頭文字 (#171)
  */
 export function ReviewCard({ review }: { review: PublicReview }) {
   const facts = [
@@ -49,14 +50,7 @@ export function ReviewCard({ review }: { review: PublicReview }) {
   return (
     <article className="flex flex-col gap-2" data-testid="review-card">
       <header className="flex items-center gap-2">
-        <span
-          aria-hidden="true"
-          className={`size-8 shrink-0 rounded-full ${
-            review.authorName
-              ? 'bg-primary-50'
-              : 'border border-dashed border-(--line-strong) bg-status-scheduled-surface'
-          }`}
-        />
+        <Avatar name={review.authorName} view={review.authorAvatar} size={32} />
         <div className="min-w-0 flex-1">
           <p
             className={`truncate text-[13px] font-bold ${review.authorName ? 'text-ink-strong' : 'text-ink-muted'}`}

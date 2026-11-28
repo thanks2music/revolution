@@ -83,7 +83,7 @@ export function screenSelectedPhotos(
 /** 署名付き URL へ上げる (進み具合を知るため XMLHttpRequest を使う) */
 const UPLOAD_TIMEOUT_MS = 3 * 60 * 1000;
 
-function putFile(
+export function putFile(
   url: string,
   headers: Record<string, string>,
   file: File,
