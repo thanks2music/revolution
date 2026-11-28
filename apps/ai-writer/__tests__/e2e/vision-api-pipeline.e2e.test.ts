@@ -59,7 +59,8 @@ function credentialSource(provider: VisionProvider): string | null {
   if (provider === 'openai') return process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY' : null;
   if (!process.env.ANTHROPIC_PROFILE) return null;
   const auth = resolveAnthropicAuth(process.env);
-  if (auth.mode !== 'profile') return 'federation';
+  if (auth.mode === 'federation') return 'federation';
+  if (auth.mode === 'api-key') return 'AI_WRITER_ANTHROPIC_API_KEY';
   const configFile = path.join(auth.configDir, 'configs', `${auth.profile}.json`);
   return fs.existsSync(configFile) ? `profile ${auth.profile}` : null;
 }

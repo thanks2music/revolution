@@ -17,6 +17,7 @@ import {
  *
  * - Cloud Run: Workload Identity Federation (Google の ID トークン → Anthropic のトークン)
  * - ローカル: `ant auth login` のプロファイル (~/.config/anthropic-revolution の revolution)
+ * - ローカルの逃げ道: AI_WRITER_ANTHROPIC_API_KEY が空でなければ、その API キー
  */
 
 jest.mock('@anthropic-ai/sdk', () => ({ __esModule: true, default: jest.fn() }));
@@ -58,6 +59,23 @@ describe('resolveAnthropicAuth', () => {
 
   it('ローカルでは ANTHROPIC_API_KEY があってもプロファイルを使う (キーは使わない)', () => {
     expect(resolveAnthropicAuth({ ANTHROPIC_API_KEY: 'sk-ant-legacy' }).mode).toBe('profile');
+  });
+
+  it('ローカルで AI_WRITER_ANTHROPIC_API_KEY があれば、プロファイルより API キーを使う', () => {
+    expect(resolveAnthropicAuth({ AI_WRITER_ANTHROPIC_API_KEY: ' sk-ant-local ', ANTHROPIC_PROFILE: 'other' })).toEqual({
+      mode: 'api-key',
+      apiKey: 'sk-ant-local',
+    });
+  });
+
+  it('ローカルで AI_WRITER_ANTHROPIC_API_KEY が空白だけなら、プロファイルを使う', () => {
+    expect(resolveAnthropicAuth({ AI_WRITER_ANTHROPIC_API_KEY: '  ' }).mode).toBe('profile');
+  });
+
+  it('Cloud Run で AI_WRITER_ANTHROPIC_API_KEY が設定されていたら、フェデレーションの変数が揃っていても失敗にする', () => {
+    expect(() => resolveAnthropicAuth({ ...FEDERATION_ENV, AI_WRITER_ANTHROPIC_API_KEY: 'sk-ant-local' })).toThrow(
+      'AI_WRITER_ANTHROPIC_API_KEY is for local debugging only'
+    );
   });
 
   it('Cloud Run ではフェデレーションの ID を返す', () => {
@@ -151,6 +169,16 @@ describe('createAnthropicClient', () => {
     // profile を明示すると、空の ANTHROPIC_API_KEY より優先される (SDK の仕様)
     expect(MockedAnthropic).toHaveBeenCalledWith({ profile: 'revolution' });
     expect(env.ANTHROPIC_CONFIG_DIR).toBe(defaultLocalConfigDir());
+    expect(mockedOidcFederationProvider).not.toHaveBeenCalled();
+  });
+
+  it('ローカルで AI_WRITER_ANTHROPIC_API_KEY があれば、キーを明示してクライアントを作る (環境変数のトークンを混ぜない)', () => {
+    const env: Record<string, string | undefined> = { AI_WRITER_ANTHROPIC_API_KEY: 'sk-ant-local' };
+
+    createAnthropicClient(env);
+
+    expect(MockedAnthropic).toHaveBeenCalledWith({ apiKey: 'sk-ant-local', authToken: null });
+    expect(env.ANTHROPIC_CONFIG_DIR).toBeUndefined();
     expect(mockedOidcFederationProvider).not.toHaveBeenCalled();
   });
 

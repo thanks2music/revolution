@@ -1,13 +1,16 @@
 /**
  * @fileoverview Anthropic のクライアントを作る唯一の場所 (Layer 2 の境界)
  *
- * 静的な API キーは使わない (2026-10-11 決定)。
+ * Cloud Run では静的な API キーを使わない (2026-10-11 決定)。
  *
  * - **Cloud Run**: Workload Identity Federation。メタデータサーバーが発行する Google の ID トークンを
  *   Anthropic の短命のトークンに交換する。サービスアカウント・ルールなどの ID は環境変数で受け取る
  *   (deploy の workflow が GitHub の Variables から渡す)
- * - **ローカル**: `ant auth login` のプロファイル (`~/.config/anthropic-revolution` の `revolution`)。
+ * - **ローカル (主な使い方)**: `ant auth login` のプロファイル (`~/.config/anthropic-revolution` の `revolution`)。
  *   Claude Code が既定の `~/.config/anthropic` を読むため、専用のディレクトリに分けている
+ * - **ローカル (逃げ道)**: `AI_WRITER_ANTHROPIC_API_KEY` が空でなければ、その API キーを使う。
+ *   Gemini / ChatGPT と同じく、キーだけで手早くデバッグするため。`ANTHROPIC_API_KEY` を読まないのは、
+ *   Claude Code やシェルが空の値や別の組織のキーを入れていることがあり、それを拾わないため
  *
  * @see https://platform.claude.com/docs/en/manage-claude/workload-identity-federation
  * @see https://platform.claude.com/docs/en/manage-claude/wif-providers/gcp
@@ -42,6 +45,9 @@ export function defaultLocalConfigDir(): string {
 
 type Env = Record<string, string | undefined>;
 
+/** ローカルの逃げ道で使う API キーの環境変数 (Cloud Run では設定してはいけない) */
+export const LOCAL_API_KEY_ENV = 'AI_WRITER_ANTHROPIC_API_KEY';
+
 /** Cloud Run でフェデレーションに要る環境変数 (`ANTHROPIC_WORKSPACE_ID` はルールが 1 つのワークスペースに限られるため任意) */
 const FEDERATION_ENV_KEYS = [
   'ANTHROPIC_FEDERATION_RULE_ID',
@@ -57,19 +63,28 @@ export type AnthropicAuth =
       serviceAccountId: string;
       workspaceId?: string;
     }
-  | { mode: 'profile'; profile: string; configDir: string };
+  | { mode: 'profile'; profile: string; configDir: string }
+  | { mode: 'api-key'; apiKey: string };
 
 /**
  * どの方法で認証するかを決める (Layer 1)。
  *
  * Cloud Run ではフェデレーションの変数が揃っていなければ失敗にする。
  * API キーへ黙って戻ると、キーを外した切り替えの漏れに気づけないため。
+ * 同じ理由で、Cloud Run に `AI_WRITER_ANTHROPIC_API_KEY` があれば無視せずに失敗にする。
  * Cloud Run の判定は、Service が持つ `K_SERVICE` と、Jobs が持つ `CLOUD_RUN_JOB` のどちらか。
  *
- * @throws {Error} Cloud Run でフェデレーションの環境変数が欠けているとき
+ * ローカルでは `AI_WRITER_ANTHROPIC_API_KEY` が空でなければ API キー、それ以外はプロファイル。
+ *
+ * @throws {Error} Cloud Run でフェデレーションの環境変数が欠けているとき、または API キーが設定されているとき
  */
 export function resolveAnthropicAuth(env: Env): AnthropicAuth {
   if (isCloudRun(env)) {
+    if (env[LOCAL_API_KEY_ENV]) {
+      throw new Error(
+        `[anthropic-client] ${LOCAL_API_KEY_ENV} is for local debugging only and must not be set on Cloud Run`
+      );
+    }
     const missing = FEDERATION_ENV_KEYS.filter((key) => !env[key]);
     if (missing.length > 0) {
       throw new Error(
@@ -83,6 +98,11 @@ export function resolveAnthropicAuth(env: Env): AnthropicAuth {
       serviceAccountId: env.ANTHROPIC_SERVICE_ACCOUNT_ID!,
       workspaceId: env.ANTHROPIC_WORKSPACE_ID || undefined,
     };
+  }
+
+  const apiKey = env[LOCAL_API_KEY_ENV]?.trim();
+  if (apiKey) {
+    return { mode: 'api-key', apiKey };
   }
 
   return {
@@ -127,7 +147,7 @@ let cachedClient: { key: string; client: Anthropic } | undefined;
  *
  * ローカルでは `profile` を明示する。SDK の仕様で、明示した `profile` は環境変数の
  * `ANTHROPIC_API_KEY` より優先される (Claude Code の中では空の `ANTHROPIC_API_KEY` が
- * 入っていることがあり、それに負けないため)。設定ディレクトリは SDK が
+ * 入っていることがあり、それに負けないため)。API キーの逃げ道でも、キーを明示して渡す。設定ディレクトリは SDK が
  * `ANTHROPIC_CONFIG_DIR` から読むので、未設定のときだけ既定値を入れる。
  *
  * @param env - 既定は `process.env` (ローカルでは `ANTHROPIC_CONFIG_DIR` を補うため書き込む)
@@ -142,23 +162,31 @@ export function createAnthropicClient(env: Env = process.env): Anthropic {
 
   const key = JSON.stringify(auth);
   if (cachedClient?.key !== key) {
-    cachedClient = {
-      key,
-      client:
-        auth.mode === 'federation'
-          ? new Anthropic({
-              credentials: oidcFederationProvider({
-                identityTokenProvider: () => fetchGoogleIdentityToken(),
-                federationRuleId: auth.federationRuleId,
-                organizationId: auth.organizationId,
-                serviceAccountId: auth.serviceAccountId,
-                workspaceId: auth.workspaceId,
-                baseURL: ANTHROPIC_AUDIENCE,
-                fetch,
-              }),
-            })
-          : new Anthropic({ profile: auth.profile }),
-    };
+    // どの方法で動いたかを残す (キーの値は出さない)
+    console.info(`[anthropic-client] auth: ${auth.mode === 'api-key' ? 'api-key (local)' : auth.mode}`);
+    cachedClient = { key, client: buildClient(auth) };
   }
   return cachedClient.client;
+}
+
+function buildClient(auth: AnthropicAuth): Anthropic {
+  switch (auth.mode) {
+    case 'federation':
+      return new Anthropic({
+        credentials: oidcFederationProvider({
+          identityTokenProvider: () => fetchGoogleIdentityToken(),
+          federationRuleId: auth.federationRuleId,
+          organizationId: auth.organizationId,
+          serviceAccountId: auth.serviceAccountId,
+          workspaceId: auth.workspaceId,
+          baseURL: ANTHROPIC_AUDIENCE,
+          fetch,
+        }),
+      });
+    case 'api-key':
+      // authToken も明示する。未指定だと SDK が環境変数の ANTHROPIC_AUTH_TOKEN を読み、別の資格情報が混ざる
+      return new Anthropic({ apiKey: auth.apiKey, authToken: null });
+    case 'profile':
+      return new Anthropic({ profile: auth.profile });
+  }
 }

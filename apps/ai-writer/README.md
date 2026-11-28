@@ -199,13 +199,14 @@ AI_PROVIDER=openai pnpm debug:mdx <URL>     # ChatGPT
 
 | 値 | 説明 | 必要な API キー |
 |----|------|---------------|
-| `anthropic` | Anthropic Claude（デフォルト） | 不要（下の「Claude の認証」） |
+| `anthropic` | Anthropic Claude（デフォルト） | 普段は不要（下の「Claude の認証」） |
 | `google` | Google Gemini | `GEMINI_API_KEY` |
 | `openai` | OpenAI ChatGPT | `OPENAI_API_KEY` |
 
 #### Claude の認証
 
-Claude は静的な API キーを使いません（2026-10-11 に移行。実装は `lib/ai/anthropic-client.ts`）。
+Cloud Run の Claude は静的な API キーを使いません（2026-10-11 に移行。実装は `lib/ai/anthropic-client.ts`）。
+ローカルはプロファイルが主な使い方で、API キーは手早くデバッグするための逃げ道です。
 
 - **ローカル**: `ant` CLI でログインしたプロファイル `revolution` を使います。Claude Code が既定の
   `~/.config/anthropic` を使うため、専用のディレクトリ `~/.config/anthropic-revolution` に分けています
@@ -218,8 +219,13 @@ Claude は静的な API キーを使いません（2026-10-11 に移行。実装
 
   `ANTHROPIC_PROFILE` / `ANTHROPIC_CONFIG_DIR` を設定すれば別のプロファイルやディレクトリも使えます。
   `.env.local` に `ANTHROPIC_API_KEY` は書かないでください
+- **ローカル（逃げ道）**: `.env.local` に `AI_WRITER_ANTHROPIC_API_KEY` を書くと、プロファイルより優先して
+  その API キーで動きます。`ANTHROPIC_API_KEY` を読まないのは、Claude Code やシェルが別の値を入れていることがあるためです。
+  どちらで動いたかは、起動時のログ `[anthropic-client] auth: api-key (local)` / `profile` で確かめられます。
+  使い終わったら行を消すかコメントに戻し、キーも Console で無効にしてください
 - **Cloud Run**: Workload Identity Federation。Google の ID トークンを Anthropic の短命のトークンに交換します。
-  ルールなどの ID は `deploy-ai-writer.yml` が GitHub の Variables から渡します
+  ルールなどの ID は `deploy-ai-writer.yml` が GitHub の Variables から渡します。
+  `AI_WRITER_ANTHROPIC_API_KEY` が設定されていると、起動時にエラーになります
 
 #### AI ステップの観測ログ（推奨。まずこれを使う）
 
