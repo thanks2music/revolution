@@ -221,7 +221,7 @@ Cloud Run の Claude は静的な API キーを使いません（2026-10-11 に�
   `.env.local` に `ANTHROPIC_API_KEY` は書かないでください
 - **ローカル（逃げ道）**: `.env.local` に `AI_WRITER_ANTHROPIC_API_KEY` を書くと、プロファイルより優先して
   その API キーで動きます。`ANTHROPIC_API_KEY` を読まないのは、Claude Code やシェルが別の値を入れていることがあるためです。
-  どちらで動いたかは、起動時のログ `[anthropic-client] auth: api-key (local)` / `profile` で確かめられます。
+  どちらで動いたかは、起動時のログ `[anthropic-client] auth: api-key` / `profile` で確かめられます。
   使い終わったら行を消すかコメントに戻し、キーも Console で無効にしてください
 - **Cloud Run**: Workload Identity Federation。Google の ID トークンを Anthropic の短命のトークンに交換します。
   ルールなどの ID は `deploy-ai-writer.yml` が GitHub の Variables から渡します。

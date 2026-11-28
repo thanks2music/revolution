@@ -177,7 +177,11 @@ describe('createAnthropicClient', () => {
 
     createAnthropicClient(env);
 
-    expect(MockedAnthropic).toHaveBeenCalledWith({ apiKey: 'sk-ant-local', authToken: null });
+    expect(MockedAnthropic).toHaveBeenCalledWith({
+      apiKey: 'sk-ant-local',
+      authToken: null,
+      baseURL: 'https://api.anthropic.com',
+    });
     expect(env.ANTHROPIC_CONFIG_DIR).toBeUndefined();
     expect(mockedOidcFederationProvider).not.toHaveBeenCalled();
   });

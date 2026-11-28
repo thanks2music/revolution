@@ -41,7 +41,7 @@ export class ClaudeVisionService implements IVisionApiService {
 
   /**
    * 認証は `createAnthropicClient` が決める (Cloud Run は ID フェデレーション、ローカルは
-   * `ant auth login` のプロファイル)。2026-10-11 に Vision 専用のキー (`ANTHROPIC_API_KEY_VISION`)
+   * `ant auth login` のプロファイルか `AI_WRITER_ANTHROPIC_API_KEY`)。2026-10-11 に Vision 専用のキー (`ANTHROPIC_API_KEY_VISION`)
    * を廃止し、本文の生成と同じ ID で呼ぶ。費用は step ごとのコストの記録で分けて追える。
    *
    * @param config.client - テスト用の差し替え。既定は `createAnthropicClient()`

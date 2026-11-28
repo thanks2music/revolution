@@ -101,7 +101,7 @@ export function createAiProvider(): AiProvider {
   switch (providerType) {
     case 'anthropic':
       console.log('🤖 Using Anthropic Claude provider');
-      // 認証は API キーではなく createAnthropicClient (ID フェデレーション / プロファイル)
+      // 認証は createAnthropicClient が決める (ID フェデレーション / プロファイル / ローカルの API キー)
       return new AnthropicProvider(modelName);
 
     case 'google':

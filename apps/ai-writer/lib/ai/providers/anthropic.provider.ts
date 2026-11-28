@@ -51,7 +51,7 @@ export class AnthropicProvider implements AiProvider {
    * Initialize Anthropic Provider
    *
    * 認証は `createAnthropicClient` が決める (Cloud Run は ID フェデレーション、ローカルは
-   * `ant auth login` のプロファイル)。静的な API キーは受け取らない。
+   * `ant auth login` のプロファイルか `AI_WRITER_ANTHROPIC_API_KEY`)。引数で API キーは受け取らない。
    *
    * @param modelName - Optional model override (defaults to DEFAULT_CLAUDE_MODEL)
    * @param client - テスト用の差し替え。既定は `createAnthropicClient()`

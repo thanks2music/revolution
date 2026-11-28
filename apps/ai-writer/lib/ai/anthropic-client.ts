@@ -45,8 +45,8 @@ export function defaultLocalConfigDir(): string {
 
 type Env = Record<string, string | undefined>;
 
-/** ローカルの逃げ道で使う API キーの環境変数 (Cloud Run では設定してはいけない) */
-export const LOCAL_API_KEY_ENV = 'AI_WRITER_ANTHROPIC_API_KEY';
+/** ローカルの逃げ道で使う API キーの環境変数 */
+const LOCAL_API_KEY_ENV = 'AI_WRITER_ANTHROPIC_API_KEY';
 
 /** Cloud Run でフェデレーションに要る環境変数 (`ANTHROPIC_WORKSPACE_ID` はルールが 1 つのワークスペースに限られるため任意) */
 const FEDERATION_ENV_KEYS = [
@@ -79,8 +79,10 @@ export type AnthropicAuth =
  * @throws {Error} Cloud Run でフェデレーションの環境変数が欠けているとき、または API キーが設定されているとき
  */
 export function resolveAnthropicAuth(env: Env): AnthropicAuth {
+  const apiKey = env[LOCAL_API_KEY_ENV]?.trim();
+
   if (isCloudRun(env)) {
-    if (env[LOCAL_API_KEY_ENV]) {
+    if (apiKey) {
       throw new Error(
         `[anthropic-client] ${LOCAL_API_KEY_ENV} is for local debugging only and must not be set on Cloud Run`
       );
@@ -100,7 +102,6 @@ export function resolveAnthropicAuth(env: Env): AnthropicAuth {
     };
   }
 
-  const apiKey = env[LOCAL_API_KEY_ENV]?.trim();
   if (apiKey) {
     return { mode: 'api-key', apiKey };
   }
@@ -147,8 +148,10 @@ let cachedClient: { key: string; client: Anthropic } | undefined;
  *
  * ローカルでは `profile` を明示する。SDK の仕様で、明示した `profile` は環境変数の
  * `ANTHROPIC_API_KEY` より優先される (Claude Code の中では空の `ANTHROPIC_API_KEY` が
- * 入っていることがあり、それに負けないため)。API キーの逃げ道でも、キーを明示して渡す。設定ディレクトリは SDK が
+ * 入っていることがあり、それに負けないため)。設定ディレクトリは SDK が
  * `ANTHROPIC_CONFIG_DIR` から読むので、未設定のときだけ既定値を入れる。
+ *
+ * クライアントを作るたびに、どの認証で動くかを 1 行ログに出す (`[anthropic-client] auth: <mode>`)。
  *
  * @param env - 既定は `process.env` (ローカルでは `ANTHROPIC_CONFIG_DIR` を補うため書き込む)
  */
@@ -163,7 +166,7 @@ export function createAnthropicClient(env: Env = process.env): Anthropic {
   const key = JSON.stringify(auth);
   if (cachedClient?.key !== key) {
     // どの方法で動いたかを残す (キーの値は出さない)
-    console.info(`[anthropic-client] auth: ${auth.mode === 'api-key' ? 'api-key (local)' : auth.mode}`);
+    console.info(`[anthropic-client] auth: ${auth.mode}`);
     cachedClient = { key, client: buildClient(auth) };
   }
   return cachedClient.client;
@@ -184,8 +187,9 @@ function buildClient(auth: AnthropicAuth): Anthropic {
         }),
       });
     case 'api-key':
-      // authToken も明示する。未指定だと SDK が環境変数の ANTHROPIC_AUTH_TOKEN を読み、別の資格情報が混ざる
-      return new Anthropic({ apiKey: auth.apiKey, authToken: null });
+      // authToken と baseURL も明示する。未指定だと SDK が環境変数の ANTHROPIC_AUTH_TOKEN /
+      // ANTHROPIC_BASE_URL を読み、別の資格情報が混ざったり、キーが別のホストへ送られたりする
+      return new Anthropic({ apiKey: auth.apiKey, authToken: null, baseURL: ANTHROPIC_AUDIENCE });
     case 'profile':
       return new Anthropic({ profile: auth.profile });
   }

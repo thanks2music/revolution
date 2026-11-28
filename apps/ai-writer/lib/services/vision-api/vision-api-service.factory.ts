@@ -86,7 +86,7 @@ export class VisionApiServiceFactory {
       }
 
       case 'anthropic':
-        // Anthropic は API キーを受け取らない (createAnthropicClient が認証を決める)
+        // Anthropic の認証は createAnthropicClient が決める (ここではキーを渡さない)
         return new ClaudeVisionService({ model: modelName });
 
       case 'google':
