@@ -118,6 +118,56 @@ export async function convertReviewPhoto(
   }
 }
 
+export type ConvertedSquareImage = {
+  ok: true;
+  /** 作った段 (正方形)。幅の小さい順に WebP, AVIF */
+  variants: ReviewPhotoVariant[];
+};
+
+/**
+ * 正方形の画像に作り直す (プロフィール画像、one-more-time #171)。形式の見分け・HEIC・向き・メタデータの
+ * 扱いは convertReviewPhoto と同じ。真ん中を正方形に切り抜き、`widths` の各段を作る。小さい画像は拡大する
+ * (表示は 32〜56px なので、どの段も作っておく)
+ */
+export async function convertSquareImage(
+  input: Uint8Array,
+  widths: readonly number[]
+): Promise<ConvertedSquareImage | ConvertReviewPhotoFailure> {
+  if (input.length > MAX_REVIEW_PHOTO_BYTES) return { ok: false, reason: 'too_large' };
+  const format = detectReviewPhotoFormat(input);
+  if (!format) return { ok: false, reason: 'unsupported' };
+
+  try {
+    const source = format === 'heic' ? await fromHeic(input) : fromJpegOrPng(input);
+    if (!source) return { ok: false, reason: 'unreadable' };
+
+    const largest = Math.max(...widths);
+    const { data, info } = await source
+      .resize({ width: largest, height: largest, fit: 'cover' })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const raw = { width: info.width, height: info.height, channels: info.channels };
+
+    const variants: ReviewPhotoVariant[] = [];
+    for (const width of [...widths].sort((a, b) => a - b)) {
+      const resized = () => sharp(data, { raw }).resize({ width, height: width });
+      variants.push({
+        width,
+        format: 'webp',
+        body: await resized().webp({ quality: WEBP_QUALITY }).toBuffer(),
+      });
+      variants.push({
+        width,
+        format: 'avif',
+        body: await resized().avif({ quality: AVIF_QUALITY }).toBuffer(),
+      });
+    }
+    return { ok: true, variants };
+  } catch {
+    return { ok: false, reason: 'unreadable' };
+  }
+}
+
 function fromJpegOrPng(input: Uint8Array): Sharp {
   // rotate() は EXIF の向きに従って回し、向きの印を外す
   return sharp(input, { limitInputPixels: MAX_INPUT_PIXELS }).rotate();

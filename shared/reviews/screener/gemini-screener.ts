@@ -49,7 +49,7 @@ const MAX_OUTPUT_TOKENS = 2_048;
 
 const RESPONSE_JSON_SCHEMA = z.toJSONSchema(ReviewScreeningResponseSchema, { target: 'draft-7' });
 
-const THINKING_LEVELS = {
+export const THINKING_LEVELS = {
   minimal: ThinkingLevel.MINIMAL,
   low: ThinkingLevel.LOW,
   medium: ThinkingLevel.MEDIUM,
@@ -57,7 +57,7 @@ const THINKING_LEVELS = {
 } as const;
 
 /** やり直しても結果が変わらない失敗 (打ち切り・ブロック・形の崩れ) */
-class DeterministicScreeningError extends Error {}
+export class DeterministicScreeningError extends Error {}
 
 export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScreener {
   const model = options.model ?? options.prompt.model;
@@ -170,7 +170,7 @@ function parseResponse(response: GenerateContentResponse) {
 }
 
 /** 失敗の内容を短い文にする。SDK のメッセージには本文が含まれうるので、種類と HTTP のステータスだけにする */
-function describeError(error: unknown): string {
+export function describeError(error: unknown): string {
   if (error instanceof DeterministicScreeningError) return error.message;
   const classified = classifyError(error);
   switch (classified.kind) {
