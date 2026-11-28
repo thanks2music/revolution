@@ -292,7 +292,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Setup Supabase CLI
-        uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        uses: supabase/setup-cli@afb1b15109756ea5cf9d8985a359d9095235ca2b # v2.1.2
         with:
           version: ${{ env.PINNED_SUPABASE_CLI_VERSION }}
 
@@ -357,7 +357,7 @@ jobs:
 
       - name: Upload Playwright traces
         if: ${{ failure() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-test-results
           path: |
