@@ -26,7 +26,7 @@ DEST="${TEMPLATES_DEST:-templates}"
 REPO="${TEMPLATES_REPO:-thanks2music/revolution-templates}"
 REF="${TEMPLATES_REF:-main}"
 # 取り込むファイル (templates repo の中のパス)
-FILES=(reviews/screening.yaml)
+FILES=(reviews/screening.yaml reviews/avatar-screening.yaml)
 
 STAGING=$(mktemp -d)
 trap 'rm -rf "$STAGING"' EXIT

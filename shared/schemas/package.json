@@ -34,6 +34,8 @@
     "./db/title-aliases": "./db/title-aliases.ts",
     "./db/venue-aliases": "./db/venue-aliases.ts",
     "./profile": "./profile.ts",
+    "./profile-avatar": "./profile-avatar.ts",
+    "./avatar-screening-response": "./avatar-screening-response.ts",
     "./username": "./username.ts",
     "./favorite": "./favorite.ts",
     "./category": "./category.ts",

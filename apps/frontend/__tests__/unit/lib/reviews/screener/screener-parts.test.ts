@@ -16,6 +16,8 @@ import { isTransientError, withTransientRetry } from '@revolution/reviews/screen
 
 const VALID = 'version: 1\nmodel: m\nsystem: s\nuser: "<review>{{body}}</review>"\n';
 const NO_BODY = 'version: 1\nmodel: m\nsystem: s\nuser: "本文なし"\n';
+/** プロフィール画像の審査のプロンプト (one-more-time #171)。user に置き換える物を置かない */
+const AVATAR_VALID = 'version: 1\nmodel: m\nsystem: s\nuser: "画像を審査してください"\n';
 
 // テストで作った一時ディレクトリ (最後に消す)
 const tempDirs: string[] = [];
@@ -29,10 +31,11 @@ afterAll(async () => {
 });
 
 /** reviews/screening.yaml を置いた templates のディレクトリ */
-async function templatesWith(yaml: string) {
+async function templatesWith(yaml: string, avatarYaml: string = AVATAR_VALID) {
   const dir = await tempDir('templates-');
   await mkdir(path.join(dir, 'reviews'));
   await writeFile(path.join(dir, 'reviews', 'screening.yaml'), yaml);
+  await writeFile(path.join(dir, 'reviews', 'avatar-screening.yaml'), avatarYaml);
   return dir;
 }
 
@@ -286,6 +289,18 @@ describe('fetch-templates.sh', () => {
     await expect(readFile(path.join(dest, 'reviews', 'screening.yaml'), 'utf8')).resolves.toBe(
       VALID
     );
+    await expect(
+      readFile(path.join(dest, 'reviews', 'avatar-screening.yaml'), 'utf8')
+    ).resolves.toBe(AVATAR_VALID);
+  }, 60_000);
+
+  it('プロフィール画像の審査のプロンプトが崩れていても、本番では止める', async () => {
+    const source = await templatesWith(
+      VALID,
+      'version: 1\nmodel: m\nsystem: s\nuser: "{{body}}"\n'
+    );
+    const production = await run({ TEMPLATES_SOURCE_PATH: source, VERCEL_ENV: 'production' });
+    expect(production.code).toBe(1);
   }, 60_000);
 
   it('取り込み元が無ければ、本番では止め、本番以外では警告して続ける', async () => {

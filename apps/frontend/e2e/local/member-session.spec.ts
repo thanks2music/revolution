@@ -10,7 +10,8 @@ test('保存したログイン状態でマイページを開ける', async ({ pa
 
   await expect(page).toHaveURL(/\/mypage$/);
   await expect(page.getByRole('heading', { name: 'マイページ' })).toBeVisible();
-  await expect(page.getByLabel('ユーザー名 (ID)')).toHaveValue(/^test_/);
+  // 名前の下の @ID (編集はプロフィール編集 /mypage/profile、#171)
+  await expect(page.getByText(/^@test_/)).toBeVisible();
 });
 
 test.describe('ログイン状態がない時', () => {

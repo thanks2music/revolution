@@ -49,7 +49,7 @@ const MAX_OUTPUT_TOKENS = 2_048;
 
 const RESPONSE_JSON_SCHEMA = z.toJSONSchema(ReviewScreeningResponseSchema, { target: 'draft-7' });
 
-const THINKING_LEVELS = {
+export const THINKING_LEVELS = {
   minimal: ThinkingLevel.MINIMAL,
   low: ThinkingLevel.LOW,
   medium: ThinkingLevel.MEDIUM,
@@ -147,6 +147,17 @@ function matchPhotos(
 }
 
 function parseResponse(response: GenerateContentResponse) {
+  return parseStructuredResponse(response, ReviewScreeningResponseSchema);
+}
+
+/**
+ * 構造化出力の応答を読む (口コミとプロフィール画像の審査で共通)。打ち切り・空・JSON でない・形の違いは、
+ * やり直しても同じ結果になる失敗 (`DeterministicScreeningError`) として投げる
+ */
+export function parseStructuredResponse<T>(
+  response: GenerateContentResponse,
+  schema: z.ZodType<T>
+): T {
   const finishReason = response.candidates?.[0]?.finishReason;
   if (finishReason && finishReason !== 'STOP') {
     throw new DeterministicScreeningError(`response stopped (${finishReason})`);
@@ -160,7 +171,7 @@ function parseResponse(response: GenerateContentResponse) {
   } catch {
     throw new DeterministicScreeningError('response is not JSON');
   }
-  const result = ReviewScreeningResponseSchema.safeParse(json);
+  const result = schema.safeParse(json);
   if (!result.success) {
     throw new DeterministicScreeningError(
       `response shape is invalid (${result.error.issues[0]?.message})`
@@ -170,7 +181,7 @@ function parseResponse(response: GenerateContentResponse) {
 }
 
 /** 失敗の内容を短い文にする。SDK のメッセージには本文が含まれうるので、種類と HTTP のステータスだけにする */
-function describeError(error: unknown): string {
+export function describeError(error: unknown): string {
   if (error instanceof DeterministicScreeningError) return error.message;
   const classified = classifyError(error);
   switch (classified.kind) {

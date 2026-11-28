@@ -45,6 +45,9 @@ const nextConfig = {
   // 審査を走らせるのは口コミの投稿のページ (の Server Action) だけ。審査器を呼ぶルートを足したら、ここにも足す
   outputFileTracingIncludes: {
     '/[event_type]/[id]/[occurrence_slug]/review': ['./templates/reviews/**'],
+    // プロフィール画像の審査 (one-more-time #171)。画像を設定する画面の Server Action が after() で審査する
+    '/mypage/profile': ['./templates/reviews/**'],
+    '/onboarding': ['./templates/reviews/**'],
   },
 
   /**

@@ -3,13 +3,13 @@
 /**
  * アカウント管理 UI (Crescendolls 会員機能 / M3)
  *
- * マイページのアカウント編集セクション。ID (username) / 表示名 / メール / パスワードの
- * 4 つを個別フォームで編集する。各フォームは独立した Server Action を呼び、成功/失敗を
+ * マイページのアカウント編集セクション。メール / パスワードを個別フォームで編集する
+ * (表示名と ID はプロフィール編集 /mypage/profile へ移した、#171)。各フォームは独立した Server Action を呼び、成功/失敗を
  * フィールド別に表示する。
  *
  * 設計:
  * - 各フォームは `useTransition` で送信中状態を持ち、成功時はその場で表示を更新する
- *   (ページ全体のリロードはしない。username/displayName は楽観でなくサーバ確定値を採用)。
+ *   (ページ全体のリロードはしない)。
  * - **メール変更**: メール登録ユーザーのみ可。Google ユーザーは入力を無効化し理由を表示。
  * - **パスワード設定**: パスワードレス登録のため、後付け推奨導線を出す。
  * - Sky×Lightning Editorial トークン準拠 (primary / accent-yellow、紫グラデ不使用)。
@@ -19,17 +19,7 @@
 
 import { useState, useTransition } from 'react';
 
-import {
-  updateDisplayName,
-  updateEmail,
-  updatePassword,
-  updateUsername,
-  type AccountResult,
-} from '@/actions/account';
-import {
-  USERNAME_MIN_LENGTH,
-  USERNAME_MAX_LENGTH,
-} from '@revolution/schemas/username';
+import { updateEmail, updatePassword, type AccountResult } from '@/actions/account';
 
 const inputClass =
   'min-h-11 rounded-xs border border-(--line-strong) bg-bg-elevated px-4 py-2 text-base text-ink-strong outline-hidden focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500 disabled:bg-bg-tinted disabled:text-ink-muted';
@@ -59,28 +49,14 @@ function FieldMessages({ error, success }: FieldState) {
 }
 
 export function AccountManager({
-  currentUsername,
-  currentDisplayName,
   currentEmail,
   canChangeEmail,
   hasGoogle,
 }: {
-  currentUsername: string;
-  currentDisplayName: string;
   currentEmail: string;
   canChangeEmail: boolean;
   hasGoogle: boolean;
 }) {
-  // username
-  const [username, setUsername] = useState(currentUsername);
-  const [usernameMsg, setUsernameMsg] = useState<FieldState>({ error: null, success: null });
-  const [usernamePending, startUsername] = useTransition();
-
-  // displayName
-  const [displayName, setDisplayName] = useState(currentDisplayName);
-  const [displayNameMsg, setDisplayNameMsg] = useState<FieldState>({ error: null, success: null });
-  const [displayNamePending, startDisplayName] = useTransition();
-
   // email
   const [email, setEmail] = useState(currentEmail);
   const [emailMsg, setEmailMsg] = useState<FieldState>({ error: null, success: null });
@@ -94,7 +70,7 @@ export function AccountManager({
   const applyResult = (
     result: AccountResult,
     setMsg: (s: FieldState) => void,
-    onSuccess?: () => void,
+    onSuccess?: () => void
   ) => {
     if (result.ok) {
       setMsg({ error: null, success: result.message ?? '保存しました' });
@@ -106,75 +82,9 @@ export function AccountManager({
 
   return (
     <div className="mt-6 flex max-w-md flex-col gap-8">
-      {/* ユーザー名 (ID) */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setUsernameMsg({ error: null, success: null });
-          startUsername(async () => {
-            const result = await updateUsername({ username });
-            applyResult(result, setUsernameMsg);
-          });
-        }}
-        className="flex flex-col gap-2"
-        noValidate
-      >
-        <label htmlFor="acct-username" className={labelClass}>
-          ユーザー名 (ID)
-        </label>
-        <input
-          id="acct-username"
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          minLength={USERNAME_MIN_LENGTH}
-          maxLength={USERNAME_MAX_LENGTH}
-          aria-invalid={!!usernameMsg.error}
-          aria-describedby="acct-username-help"
-          className={`font-numeric ${inputClass}`}
-        />
-        <span id="acct-username-help" className="text-xs text-ink-muted">
-          半角英数字とアンダースコア (_) のみ、{USERNAME_MIN_LENGTH}〜{USERNAME_MAX_LENGTH} 文字。
-        </span>
-        <FieldMessages {...usernameMsg} />
-        <button type="submit" disabled={usernamePending} className={submitClass}>
-          {usernamePending ? '保存中…' : 'ユーザー名を変更'}
-        </button>
-      </form>
-
-      {/* 表示名 */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setDisplayNameMsg({ error: null, success: null });
-          startDisplayName(async () => {
-            const result = await updateDisplayName({ displayName });
-            applyResult(result, setDisplayNameMsg);
-          });
-        }}
-        className="flex flex-col gap-2"
-        noValidate
-      >
-        <label htmlFor="acct-displayname" className={labelClass}>
-          表示名
-        </label>
-        <input
-          id="acct-displayname"
-          type="text"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          aria-invalid={!!displayNameMsg.error}
-          className={inputClass}
-        />
-        <FieldMessages {...displayNameMsg} />
-        <button type="submit" disabled={displayNamePending} className={submitClass}>
-          {displayNamePending ? '保存中…' : '表示名を変更'}
-        </button>
-      </form>
-
       {/* メールアドレス */}
       <form
-        onSubmit={(e) => {
+        onSubmit={e => {
           e.preventDefault();
           setEmailMsg({ error: null, success: null });
           startEmail(async () => {
@@ -192,7 +102,7 @@ export function AccountManager({
           id="acct-email"
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={e => setEmail(e.target.value)}
           disabled={!canChangeEmail}
           autoComplete="email"
           aria-invalid={!!emailMsg.error}
@@ -207,18 +117,14 @@ export function AccountManager({
           </span>
         )}
         <FieldMessages {...emailMsg} />
-        <button
-          type="submit"
-          disabled={emailPending || !canChangeEmail}
-          className={submitClass}
-        >
+        <button type="submit" disabled={emailPending || !canChangeEmail} className={submitClass}>
           {emailPending ? '送信中…' : 'メールアドレスを変更'}
         </button>
       </form>
 
       {/* パスワード (任意設定) */}
       <form
-        onSubmit={(e) => {
+        onSubmit={e => {
           e.preventDefault();
           setPasswordMsg({ error: null, success: null });
           startPassword(async () => {
@@ -239,7 +145,7 @@ export function AccountManager({
           id="acct-password"
           type="password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={e => setPassword(e.target.value)}
           autoComplete="new-password"
           placeholder="8 文字以上"
           aria-invalid={!!passwordMsg.error}

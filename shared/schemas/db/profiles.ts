@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { check, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
+import { AVATAR_REJECT_REASONS, AVATAR_STATUSES } from '../profile-avatar';
+
 /**
  * Schema-SDD 真実源 (DB レイヤ): public.profiles
  *
@@ -14,7 +16,10 @@ import { check, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'dri
  * - `display_name` は **nullable** (退会時に null 化して匿名化するため)。
  *   handle_new_user トリガーが `coalesce(raw_user_meta_data->>'full_name','')` で
  *   空文字埋めし、onboarding で必須上書きする点は変わらない。
- * - `avatar_url` は作らない (v2、YAGNI)。
+ * - プロフィール画像 (0031、one-more-time #171): `avatar_key` (R2 のキーの頭。大きさと形式は後ろに付く)・
+ *   `avatar_status` (審査中 / 公開 / 落ちた / 外した)・`avatar_reason_code` (落ちた理由)・`avatar_removed_at`
+ *   (BOSS が通報を受けて外した日時。入った会員は画像を設定できない)。書くのはサーバー (service role) だけ。
+ *   他人に見せるのは、公開の時だけ値が入る生成列 `avatar_public_key` だけ (状態や落ちた理由は見せない)
  *
  * ★ M1 (認証 ID / 永続 ID の分離、migration 0011):
  *   旧構造は `profiles.id` が auth.users(id) を ON DELETE CASCADE で直接参照しており、
@@ -86,11 +91,20 @@ export const profiles = pgTable(
     // 一覧に投稿者名を出すための profiles の SELECT の policy が、この値で判定する
     // (policy から reviews を引くと、reviews の policy と互いを呼び合い再帰するため)
     publishedReviewCount: integer('published_review_count').notNull().default(0),
+    // ★0031: プロフィール画像 (one-more-time #171)。書くのはサーバー (service role) だけ
+    avatarKey: text('avatar_key'),
+    avatarStatus: text('avatar_status', { enum: AVATAR_STATUSES }),
+    avatarReasonCode: text('avatar_reason_code', { enum: AVATAR_REJECT_REASONS }),
+    avatarRemovedAt: timestamp('avatar_removed_at', { withTimezone: true }),
+    // 公開の時だけキーが入る。他人 (anon・authenticated) に見せるのはこの列だけ
+    avatarPublicKey: text('avatar_public_key').generatedAlwaysAs(
+      sql`case when avatar_status = 'published' then avatar_key end`
+    ),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     // auth.users.created_at から移送した実際の登録日時 (0011 ステップ 2b)。
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
+  table => [
     // Layer2: DB CHECK。zod (Layer1) と同じ正規表現を二段防御として保持。
     // 退会時の username = null は CHECK を通過する (NULL は CHECK 対象外)。
     check('profiles_username_format', sql`${table.username} ~ '^[a-zA-Z0-9_]{3,24}$'`),
@@ -98,7 +112,29 @@ export const profiles = pgTable(
     // Layer3: case-insensitive 一意。表示は入力時の大小を保持しつつ重複は大小無視で弾く。
     // 退会で null になった行は NULL != NULL のため複数共存できる。
     uniqueIndex('profiles_username_lower_idx').on(sql`lower(${table.username})`),
-  ],
+    // ★0031: 画像の状態の組み合わせ。キーがあるのは審査中と公開の時だけ、理由があるのは落ちた時だけ
+    check(
+      'profiles_avatar_status_chk',
+      sql`${table.avatarStatus} in ('pending', 'published', 'rejected', 'removed')`
+    ),
+    check(
+      'profiles_avatar_reason_chk',
+      sql`${table.avatarReasonCode} in ('sexual_or_violent', 'unverifiable')`
+    ),
+    check(
+      'profiles_avatar_key_status_chk',
+      sql`(${table.avatarKey} is not null) = (coalesce(${table.avatarStatus}, '') in ('pending', 'published'))`
+    ),
+    check(
+      'profiles_avatar_reason_status_chk',
+      sql`(${table.avatarReasonCode} is not null) = (coalesce(${table.avatarStatus}, '') = 'rejected')`
+    ),
+    // BOSS が外した会員は、画像を設定できない (#156)
+    check(
+      'profiles_avatar_removed_chk',
+      sql`${table.avatarRemovedAt} is null or ${table.avatarKey} is null`
+    ),
+  ]
 );
 
 export type ProfileRow = typeof profiles.$inferSelect;
