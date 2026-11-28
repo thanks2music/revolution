@@ -52,8 +52,8 @@ async function jpeg(background: string) {
  * (途中で開き直すと、上げている通信が止まる)
  */
 async function chooseAvatar(page: Page, color: string) {
-  // 組み立てが済む (React が欄に結び付く) 前に選ぶと、選んだことが欄に届かない
-  await page.waitForLoadState('networkidle');
+  // 欄は React が結び付くまで選べない (結び付く前に選んだ画像は捨てられるため)。選べるようになるのを待つ
+  await expect(page.locator('input[type="file"]')).toBeEnabled();
   const field = page.getByTestId('avatar-field');
   const before = await field.getAttribute('data-status');
   await page.locator('input[type="file"]').setInputFiles(await jpeg(color));

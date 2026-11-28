@@ -12,7 +12,7 @@ export function Avatar({
   view,
   size,
 }: {
-  /** 表示名 (頭文字に使う)。退会した会員は null */
+  /** 表示名 (頭文字に使う)。退会した会員は null。まだ決めていない (空) 時は、頭文字の無い丸 */
   name: string | null;
   /** 公開の画像。無ければ頭文字 */
   view: AvatarView | null;
@@ -20,7 +20,7 @@ export function Avatar({
   size: number;
 }) {
   const box = { width: size, height: size };
-  if (!name) {
+  if (name === null) {
     return (
       <span
         aria-hidden="true"

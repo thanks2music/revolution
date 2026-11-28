@@ -4,12 +4,9 @@ import { z } from 'zod';
  * プロフィール画像の AI 審査の応答 (one-more-time #171)。Gemini の構造化出力にこの形を渡し、受け取った物を
  * この形で確かめる。落とすのは性的・暴力的な画像だけ (ADR-0005 の「プロフィール画像は軽い審査にする」)
  */
-export const AVATAR_SCREENING_DECISIONS = ['ok', 'reject'] as const;
-export type AvatarScreeningDecision = (typeof AVATAR_SCREENING_DECISIONS)[number];
-
 export const AvatarScreeningResponseSchema = z
   .object({
-    decision: z.enum(AVATAR_SCREENING_DECISIONS),
+    decision: z.enum(['ok', 'reject']),
     reason_code: z.enum(['sexual_or_violent']).nullable(),
     reason: z.string(),
   })

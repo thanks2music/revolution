@@ -11,7 +11,8 @@
  * /onboarding 再訪は /mypage に弾く。
  */
 
-import { AvatarField, type OwnAvatarState } from '@/components/molecules/profile/AvatarField';
+import { AvatarField } from '@/components/molecules/profile/AvatarField';
+import type { OwnAvatarState } from '@revolution/reviews/avatar/view';
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 
 import { USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH } from '@revolution/schemas/username';

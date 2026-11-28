@@ -2,7 +2,7 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 
-import { GoogleGenAI, type GenerateContentResponse } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
 import { z } from 'zod';
 
@@ -11,8 +11,8 @@ import { presentEnvValue } from '@revolution/slack/env';
 
 import { allowsFakeBackends } from '../fake-backends';
 import {
-  DeterministicScreeningError,
   describeError,
+  parseStructuredResponse,
   THINKING_LEVELS,
   type GeminiModels,
 } from '../screener/gemini-screener';
@@ -85,29 +85,16 @@ export function createGeminiAvatarScreener(options: {
             }),
           options.retry
         );
-        return { ok: true, decision: parseResponse(response).decision, model };
+        return {
+          ok: true,
+          decision: parseStructuredResponse(response, AvatarScreeningResponseSchema).decision,
+          model,
+        };
       } catch (error) {
         return { ok: false, error: describeError(error), model };
       }
     },
   };
-}
-
-function parseResponse(response: GenerateContentResponse) {
-  const finishReason = response.candidates?.[0]?.finishReason;
-  if (finishReason && finishReason !== 'STOP') {
-    throw new DeterministicScreeningError(`response stopped (${finishReason})`);
-  }
-  if (!response.text) throw new DeterministicScreeningError('empty response');
-  let json: unknown;
-  try {
-    json = JSON.parse(response.text);
-  } catch {
-    throw new DeterministicScreeningError('response is not JSON');
-  }
-  const result = AvatarScreeningResponseSchema.safeParse(json);
-  if (!result.success) throw new DeterministicScreeningError('response shape is invalid');
-  return result.data;
 }
 
 export const FAKE_AVATAR_SCREENER_MODEL = 'fake-avatar-screener';

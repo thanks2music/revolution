@@ -57,7 +57,7 @@ export const THINKING_LEVELS = {
 } as const;
 
 /** やり直しても結果が変わらない失敗 (打ち切り・ブロック・形の崩れ) */
-export class DeterministicScreeningError extends Error {}
+class DeterministicScreeningError extends Error {}
 
 export function createGeminiScreener(options: GeminiScreenerOptions): ReviewScreener {
   const model = options.model ?? options.prompt.model;
@@ -147,6 +147,17 @@ function matchPhotos(
 }
 
 function parseResponse(response: GenerateContentResponse) {
+  return parseStructuredResponse(response, ReviewScreeningResponseSchema);
+}
+
+/**
+ * 構造化出力の応答を読む (口コミとプロフィール画像の審査で共通)。打ち切り・空・JSON でない・形の違いは、
+ * やり直しても同じ結果になる失敗 (`DeterministicScreeningError`) として投げる
+ */
+export function parseStructuredResponse<T>(
+  response: GenerateContentResponse,
+  schema: z.ZodType<T>
+): T {
   const finishReason = response.candidates?.[0]?.finishReason;
   if (finishReason && finishReason !== 'STOP') {
     throw new DeterministicScreeningError(`response stopped (${finishReason})`);
@@ -160,7 +171,7 @@ function parseResponse(response: GenerateContentResponse) {
   } catch {
     throw new DeterministicScreeningError('response is not JSON');
   }
-  const result = ReviewScreeningResponseSchema.safeParse(json);
+  const result = schema.safeParse(json);
   if (!result.success) {
     throw new DeterministicScreeningError(
       `response shape is invalid (${result.error.issues[0]?.message})`

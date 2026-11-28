@@ -8,6 +8,8 @@ import { z } from 'zod';
 import {
   AVATAR_SCREENING_WIDTH,
   AVATAR_WIDTHS,
+  AvatarRejectReasonSchema,
+  AvatarStatusSchema,
   type AvatarRejectReason,
   type AvatarStatus,
 } from '@revolution/schemas/profile-avatar';
@@ -56,8 +58,8 @@ const PENDING_UPLOADS_MESSAGE = 'too many pending profile avatar uploads';
 
 const AvatarRowSchema = z.object({
   avatar_key: z.string().nullable(),
-  avatar_status: z.enum(['pending', 'published', 'rejected', 'removed']).nullable(),
-  avatar_reason_code: z.enum(['sexual_or_violent', 'unverifiable']).nullable(),
+  avatar_status: AvatarStatusSchema.nullable(),
+  avatar_reason_code: AvatarRejectReasonSchema.nullable(),
   avatar_removed_at: z.string().nullable(),
 });
 const AVATAR_COLUMNS = 'avatar_key, avatar_status, avatar_reason_code, avatar_removed_at';
@@ -174,6 +176,8 @@ export async function attachAvatar(
     if (!converted.ok) return { kind: 'rejected', reason: converted.reason };
 
     const keys = avatarVariantKeys(key);
+    // 置いた段を引き上げる (取り込みを最後までやり遂げられなかった時)
+    const dropStored = () => ctx.storage.deleteStored(keys).catch(() => undefined);
     const puts = await Promise.allSettled(
       converted.variants.map(variant =>
         ctx.storage.putStored(
@@ -187,18 +191,18 @@ export async function attachAvatar(
       (result): result is PromiseRejectedResult => result.status === 'rejected'
     );
     if (failedPut) {
-      await ctx.storage.deleteStored(keys).catch(() => undefined);
+      await dropStored();
       throw failedPut.reason;
     }
     let swapped: Awaited<ReturnType<typeof swapAvatarKey>>;
     try {
       swapped = await swapAvatarKey(ctx.db, input.profileId, before.key, key);
     } catch (error) {
-      await ctx.storage.deleteStored(keys).catch(() => undefined);
+      await dropStored();
       throw error;
     }
     if (swapped.kind === 'removed') {
-      await ctx.storage.deleteStored(keys).catch(() => undefined);
+      await dropStored();
       return { kind: 'removed' };
     }
     if (swapped.previous) await deleteAvatarObjects(ctx.storage, swapped.previous);

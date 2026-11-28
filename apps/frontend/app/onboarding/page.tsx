@@ -11,7 +11,8 @@
  * 取得できる。
  */
 
-import type { OwnAvatarState } from '@/components/molecules/profile/AvatarField';
+import type { OwnAvatarState } from '@revolution/reviews/avatar/view';
+import { getCachedUser } from '@/lib/auth/current-user';
 import { loadOwnAvatarState } from '@/lib/profile/own-avatar';
 import type { Metadata } from 'next';
 
@@ -42,7 +43,7 @@ export default async function OnboardingPage({
   // 表示名の初期値を取得 (本人行のみ RLS で取得可能)。失敗しても空で続行する。
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getCachedUser();
 
   let defaultDisplayName = '';
   let avatar: OwnAvatarState | null = null;

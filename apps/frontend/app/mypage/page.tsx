@@ -98,11 +98,7 @@ export default async function MyPage() {
         {/* プロフィール (Figma #12 の上。画像は公開の時だけ、それ以外は頭文字。#171) */}
         <div className="mt-10 flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <Avatar
-              name={displayName || ' '}
-              view={avatar?.status === 'published' ? avatar.view : null}
-              size={50}
-            />
+            <Avatar name={displayName} view={avatar?.view ?? null} size={50} />
             <div className="min-w-0">
               <p className="truncate font-display text-base text-ink-strong">{displayName}</p>
               {profile?.username && (

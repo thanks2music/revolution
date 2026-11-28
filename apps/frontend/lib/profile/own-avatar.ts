@@ -4,9 +4,8 @@ import * as Sentry from '@sentry/nextjs';
 
 import { env } from '@/lib/env';
 import { createAdminClient } from '@/lib/supabase/admin';
-import type { OwnAvatarState } from '@/components/molecules/profile/AvatarField';
 import { readOwnAvatar } from '@revolution/reviews/avatar/operations';
-import { toAvatarView } from '@revolution/reviews/avatar/view';
+import { toAvatarView, type OwnAvatarState } from '@revolution/reviews/avatar/view';
 import { publicMediaBaseUrl } from '@revolution/reviews/photos/public';
 
 /**

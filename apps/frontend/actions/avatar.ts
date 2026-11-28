@@ -30,6 +30,7 @@ import {
   screenAvatar,
 } from '@revolution/reviews/avatar/operations';
 import { getAvatarScreener } from '@revolution/reviews/avatar/screener';
+import type { ConvertReviewPhotoFailure } from '@revolution/reviews/photos/convert';
 import { getReviewPhotoStorage, reviewPhotoKeyPrefix } from '@revolution/reviews/photos/storage';
 
 export type AvatarFailure = { ok: false; error: string; needsAuth?: boolean };
@@ -56,8 +57,18 @@ const FAILURES = {
   },
 } as const satisfies Record<string, AvatarFailure>;
 
-/** 画像を出すページ (本人の画面)。口コミのページは ISR の作り直しで反映される */
-const AFFECTED_PATHS = ['/mypage', '/mypage/profile'];
+/** 画像を出す本人の画面を作り直す。口コミのページは ISR の作り直しで反映される */
+function revalidateAvatarPages() {
+  revalidatePath('/mypage');
+  revalidatePath('/mypage/profile');
+}
+
+/** 取り込みで断った理由ごとの文 */
+const REJECTED_FAILURES = {
+  too_large: FAILURES.tooLarge,
+  unsupported: FAILURES.unsupported,
+  unreadable: FAILURES.unreadable,
+} as const satisfies Record<ConvertReviewPhotoFailure['reason'], AvatarFailure>;
 
 async function resolveAvatarContext() {
   const {
@@ -129,11 +140,7 @@ export async function attachAvatar(imageId: string): Promise<{ ok: true } | Avat
       case 'missing':
         return FAILURES.missing;
       case 'rejected':
-        return outcome.reason === 'too_large'
-          ? FAILURES.tooLarge
-          : outcome.reason === 'unsupported'
-            ? FAILURES.unsupported
-            : FAILURES.unreadable;
+        return REJECTED_FAILURES[outcome.reason];
       case 'ok': {
         const { profileId, ctx } = context;
         // 審査は応答の後に走らせる (会員は待たない)。結果は次に画面を開いた時に出る
@@ -143,12 +150,12 @@ export async function attachAvatar(imageId: string): Promise<{ ok: true } | Avat
               { db: ctx.db, storage: ctx.storage, screener: await getAvatarScreener() },
               { profileId, key: outcome.key }
             );
-            for (const path of AFFECTED_PATHS) revalidatePath(path);
+            revalidateAvatarPages();
           } catch (error) {
             Sentry.captureException(error, { tags: { action: 'screenAvatar' } });
           }
         });
-        for (const path of AFFECTED_PATHS) revalidatePath(path);
+        revalidateAvatarPages();
         return { ok: true };
       }
     }
@@ -161,7 +168,7 @@ export async function removeAvatar(): Promise<{ ok: true } | AvatarFailure> {
     if (!context.ok) return context.failure;
     const outcome = await removeAvatarOperation(context.ctx, context.profileId);
     if (outcome.kind === 'removed') return FAILURES.removed;
-    for (const path of AFFECTED_PATHS) revalidatePath(path);
+    revalidateAvatarPages();
     return { ok: true };
   });
 }

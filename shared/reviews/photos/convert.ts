@@ -1,7 +1,7 @@
 /// <reference path="../heic-decode.d.ts" />
 import 'server-only';
 
-import sharp, { type Sharp } from 'sharp';
+import sharp, { type ResizeOptions, type Sharp } from 'sharp';
 
 import { MAX_REVIEW_PHOTO_BYTES, REVIEW_PHOTO_WIDTHS } from '@revolution/schemas/review-photo';
 
@@ -79,43 +79,22 @@ export function variantWidthsFor(width: number): number[] {
 export async function convertReviewPhoto(
   input: Uint8Array
 ): Promise<ConvertedReviewPhoto | ConvertReviewPhotoFailure> {
-  if (input.length > MAX_REVIEW_PHOTO_BYTES) return { ok: false, reason: 'too_large' };
-  const format = detectReviewPhotoFormat(input);
-  if (!format) return { ok: false, reason: 'unsupported' };
-
-  try {
-    const source = format === 'heic' ? await fromHeic(input) : fromJpegOrPng(input);
-    if (!source) return { ok: false, reason: 'unreadable' };
-
-    // 最大の段まで縮めた画素 (向きは直してある)。以後の段はここから作る
-    const largest = REVIEW_PHOTO_WIDTHS[REVIEW_PHOTO_WIDTHS.length - 1];
-    const { data, info } = await source
-      .resize({ width: largest, withoutEnlargement: true })
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    const raw = { width: info.width, height: info.height, channels: info.channels };
-
+  // 最大の段まで縮めた画素 (向きは直してある)。以後の段はここから作る
+  const largest = REVIEW_PHOTO_WIDTHS[REVIEW_PHOTO_WIDTHS.length - 1];
+  return decodeAndEncode(input, { width: largest, withoutEnlargement: true }, info => {
     const variantWidths = variantWidthsFor(info.width);
-    const variants: ReviewPhotoVariant[] = [];
-    // 段は順に作る (同時に作るとメモリが段の数だけ要る。関数は 2GB)
-    for (const width of variantWidths) {
-      const resized = () => sharp(data, { raw }).resize({ width, withoutEnlargement: true });
-      variants.push({
-        width,
-        format: 'webp',
-        body: await resized().webp({ quality: WEBP_QUALITY }).toBuffer(),
-      });
-      variants.push({
-        width,
-        format: 'avif',
-        body: await resized().avif({ quality: AVIF_QUALITY }).toBuffer(),
-      });
-    }
-    return { ok: true, width: info.width, height: info.height, variantWidths, variants };
-  } catch {
-    // 壊れた写真・画素の上限を超えた写真。理由は利用者に「読めなかった」とだけ返す
-    return { ok: false, reason: 'unreadable' };
-  }
+    return {
+      widths: variantWidths,
+      resize: width => ({ width, withoutEnlargement: true }),
+      done: variants => ({
+        ok: true as const,
+        width: info.width,
+        height: info.height,
+        variantWidths,
+        variants,
+      }),
+    };
+  });
 }
 
 export type ConvertedSquareImage = {
@@ -133,6 +112,26 @@ export async function convertSquareImage(
   input: Uint8Array,
   widths: readonly number[]
 ): Promise<ConvertedSquareImage | ConvertReviewPhotoFailure> {
+  const largest = Math.max(...widths);
+  return decodeAndEncode(input, { width: largest, height: largest, fit: 'cover' }, () => ({
+    widths: [...widths].sort((a, b) => a - b),
+    resize: width => ({ width, height: width }),
+    done: variants => ({ ok: true as const, variants }),
+  }));
+}
+
+/**
+ * 形式を見分けて読み込み、`first` まで縮めた画素から、各段を WebP と AVIF で書き出す (2 つの変換の共通部分)
+ */
+async function decodeAndEncode<T>(
+  input: Uint8Array,
+  first: ResizeOptions,
+  plan: (info: { width: number; height: number }) => {
+    widths: number[];
+    resize: (width: number) => ResizeOptions;
+    done: (variants: ReviewPhotoVariant[]) => T;
+  }
+): Promise<T | ConvertReviewPhotoFailure> {
   if (input.length > MAX_REVIEW_PHOTO_BYTES) return { ok: false, reason: 'too_large' };
   const format = detectReviewPhotoFormat(input);
   if (!format) return { ok: false, reason: 'unsupported' };
@@ -141,16 +140,14 @@ export async function convertSquareImage(
     const source = format === 'heic' ? await fromHeic(input) : fromJpegOrPng(input);
     if (!source) return { ok: false, reason: 'unreadable' };
 
-    const largest = Math.max(...widths);
-    const { data, info } = await source
-      .resize({ width: largest, height: largest, fit: 'cover' })
-      .raw()
-      .toBuffer({ resolveWithObject: true });
+    const { data, info } = await source.resize(first).raw().toBuffer({ resolveWithObject: true });
     const raw = { width: info.width, height: info.height, channels: info.channels };
+    const { widths, resize, done } = plan(info);
 
     const variants: ReviewPhotoVariant[] = [];
-    for (const width of [...widths].sort((a, b) => a - b)) {
-      const resized = () => sharp(data, { raw }).resize({ width, height: width });
+    // 段は順に作る (同時に作るとメモリが段の数だけ要る。関数は 2GB)
+    for (const width of widths) {
+      const resized = () => sharp(data, { raw }).resize(resize(width));
       variants.push({
         width,
         format: 'webp',
@@ -162,8 +159,9 @@ export async function convertSquareImage(
         body: await resized().avif({ quality: AVIF_QUALITY }).toBuffer(),
       });
     }
-    return { ok: true, variants };
+    return done(variants);
   } catch {
+    // 壊れた写真・画素の上限を超えた写真。理由は利用者に「読めなかった」とだけ返す
     return { ok: false, reason: 'unreadable' };
   }
 }
